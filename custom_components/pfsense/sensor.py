@@ -64,6 +64,29 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         )
         entities.append(entity)
 
+    # carp interfaces
+    for interface in state["carp_interfaces"]:
+        uniqid = interface["uniqid"]
+        state_class = None
+        native_unit_of_measurement = None
+        icon = "mdi:gauge"
+        enabled_default = True
+        #entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+
+        entity = PfSenseCarpInterfaceSensor(
+            coordinator,
+            SensorEntityDescription(
+                key=f"carp.interface.{uniqid}",
+                name="CARP Interface Status {} ({})".format(uniqid, interface["descr"]),
+                native_unit_of_measurement=native_unit_of_measurement,
+                icon=icon,
+                state_class=state_class,
+                #entity_category=entity_category,
+            ),
+            True,
+        )
+        entities.append(entity)
+
     # interfaces
     for interface_name in state["telemetry"]["interfaces"].keys():
         interface = state["telemetry"]["interfaces"][interface_name]
@@ -251,6 +274,37 @@ class PfSenseInterfaceSensor(PfSenseSensor):
         property = self._pfsense_get_interface_property_name()
         try:
             return interface[property]
+        except KeyError:
+            return STATE_UNKNOWN
+
+class PfSenseCarpInterfaceSensor(PfSenseSensor):
+    def _pfsense_get_interface_name(self):
+        return self.entity_description.key.split(".")[2]
+
+    def _pfsense_get_interface(self):
+        state = self.coordinator.data
+        found = None
+        interface_name = self._pfsense_get_interface_name()
+        for i_interface in state["carp_interfaces"]:
+            if i_interface["uniqid"] == interface_name:
+                found = i_interface
+                break
+        return found
+
+    @property
+    def extra_state_attributes(self):
+        attributes = {}
+        interface = self._pfsense_get_interface()
+        for attr in ["interface", "vhid", "advskew", "advbase", "type", "subnet_bits", "subnet"]:
+            attributes[attr] = interface[attr]
+
+        return attributes
+
+    @property
+    def native_value(self):
+        interface = self._pfsense_get_interface()
+        try:
+            return interface["status"]
         except KeyError:
             return STATE_UNKNOWN
 

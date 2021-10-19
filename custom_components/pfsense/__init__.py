@@ -182,6 +182,8 @@ class PfSenseData:
             self._state["config"] = self._get_config()
             self._state["interfaces"] = self._client.get_interfaces()
             self._state["services"] = self._client.get_services()
+            self._state["carp_interfaces"] = self._client.get_carp_interfaces()
+            self._state["carp_status"] = self._client.get_carp_status()
 
             # calcule pps and kbps
             for interface_name in self._state["telemetry"]["interfaces"].keys():

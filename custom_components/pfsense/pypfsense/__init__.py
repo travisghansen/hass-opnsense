@@ -374,6 +374,82 @@ $toreturn = [
         response = self._exec_php(script)
         return response["data"]
 
+    def get_dhcp_leases(self):
+        # function system_get_dhcpleases()
+        # {'lease': [], 'failover': []}
+        # {"lease":[{"ip":"<ip>","type":"static","mac":"<mac>","if":"lan","starts":"","ends":"","hostname":"<hostname>","descr":"","act":"static","online":"online","staticmap_array_index":48} ...
+        script = """
+$toreturn = [
+  "data" => system_get_dhcpleases(),
+];
+"""
+        response = self._exec_php(script)
+        return response["data"]["lease"]
+
+    def get_virtual_ips(self):
+        script = """
+global $config;
+
+$vips = [];
+foreach ($config['virtualip']['vip'] as $vip) {
+  $vips[] = $vip;
+}
+
+$toreturn = [
+  "data" => $vips,
+];
+"""
+        response = self._exec_php(script)
+        return response["data"]
+
+    def get_carp_status(self):
+        # carp enabled or not
+        # readonly attribute, cannot be set directly
+        # function get_carp_status()
+        script = """
+$toreturn = [
+  "data" => get_carp_status(),
+];
+"""
+        response = self._exec_php(script)
+        return response["data"]
+
+    def get_carp_interface_status(self, uniqueid):
+        # function get_carp_interface_status($carpid)
+        script = """
+$status = get_carp_interface_status("_vip{}");
+$toreturn = [
+  "data" => $status,
+];
+""".format(uniqueid)
+        print(script)
+        response = self._exec_php(script)
+        return response["data"]
+
+    def get_carp_interfaces(self):
+        script = """
+global $config;
+
+$vips = [];
+foreach ($config['virtualip']['vip'] as $vip) {
+  if ($vip["mode"] != "carp") {
+    continue;
+  }
+  $vips[] = $vip;
+}
+
+foreach ($vips as &$vip) {
+  $status = get_carp_interface_status("_vip{$vip['uniqid']}");
+  $vip["status"] = $status;
+}
+
+$toreturn = [
+  "data" => $vips,
+];
+"""
+        response = self._exec_php(script)
+        return response["data"]
+
     # TODO: function find_service_by_name($name)
     # TODO: function get_service_status($service) # seems to be higher-level logic than is_service_running, passes in the full service object
 

@@ -36,10 +36,18 @@ Configuration is managed entirely from the UI using `config_flow` semantics.
 
 Many `entities` are created by `hass-pfsense` for stats etc.
 
+## binary_sensor
+
+- carp status (enabled/disabled)
+
 ## device_tracker
 
 `ScannerEntity` entries are created for the `pfSense` arp table. Disabled by
 default.
+
+Note that by default `FreeBSD`/`pfSense` use a max age of 20 minutes for arp
+entries (sysctl `net.link.ether.inet.max_age`). You may lower that using
+`Advanced -> System Tunables` if desired.
 
 ## sensor
 
@@ -53,6 +61,7 @@ default.
   `Scan Interval (seconds)` config option)), many are disabled by default so
   review disabled entities if you want more sensors
 - gateways details (status, delay, stddev, loss)
+- carp interface status
 
 ## switch
 
