@@ -13,7 +13,7 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
 )
 from homeassistant.const import (
-    ENTITY_CATEGORY_DIAGNOSTIC,
+    #ENTITY_CATEGORY_DIAGNOSTIC,
     PERCENTAGE,
     STATE_UNKNOWN,
 )
@@ -58,7 +58,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                 native_unit_of_measurement=PERCENTAGE,
                 icon="mdi:gauge",
                 state_class=STATE_CLASS_MEASUREMENT,
-                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+                #entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
             True,
         )
@@ -101,7 +101,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             native_unit_of_measurement = None
             icon = "mdi:gauge"
             enabled_default = False
-            entity_category = ENTITY_CATEGORY_DIAGNOSTIC
+            #entity_category = ENTITY_CATEGORY_DIAGNOSTIC
 
             # enabled_default
             if property in ["status", "inbytes", "inbytes_kbs", "outbytes", "outbytes_kbs", "inpkts", "inpkts_pps", "outpkts", "outpkts_pps"]:
@@ -121,7 +121,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     native_unit_of_measurement=native_unit_of_measurement,
                     icon=icon,
                     state_class=state_class,
-                    entity_category=entity_category,
+                    #entity_category=entity_category,
                 ),
                 enabled_default,
             )
@@ -135,7 +135,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             native_unit_of_measurement = None
             icon = "mdi:gauge"
             enabled_default = True
-            entity_category = ENTITY_CATEGORY_DIAGNOSTIC
+            #entity_category = ENTITY_CATEGORY_DIAGNOSTIC
 
             if property == "loss":
                 native_unit_of_measurement = PERCENTAGE
@@ -149,7 +149,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     native_unit_of_measurement=native_unit_of_measurement,
                     icon=icon,
                     state_class=state_class,
-                    entity_category=entity_category,
+                    #entity_category=entity_category,
                 ),
                 enabled_default,
             )

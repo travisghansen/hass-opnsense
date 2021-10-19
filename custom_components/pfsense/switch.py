@@ -10,7 +10,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 from homeassistant.const import (
-    ENTITY_CATEGORY_CONFIG,
+    #ENTITY_CATEGORY_CONFIG,
     STATE_UNKNOWN,
 )
 
@@ -43,7 +43,7 @@ async def async_setup_entry(
             icon = "mdi:gauge"
             # likely only want very specific rules to manipulate from actions
             enabled_default = False
-            entity_category = ENTITY_CATEGORY_CONFIG
+            #entity_category = ENTITY_CATEGORY_CONFIG
             device_class = DEVICE_CLASS_SWITCH
 
             if "tracker" not in rule.keys():
@@ -67,7 +67,7 @@ async def async_setup_entry(
                     key="filter.{}".format(tracker),
                     name="Filter Rule {} ({})".format(tracker, rule["descr"]),
                     icon=icon,
-                    entity_category=entity_category,
+                    #entity_category=entity_category,
                     device_class=device_class,
                     entity_registry_enabled_default=enabled_default
                 )
@@ -80,7 +80,7 @@ async def async_setup_entry(
             icon = "mdi:gauge"
             # likely only want very specific rules to manipulate from actions
             enabled_default = False
-            entity_category = ENTITY_CATEGORY_CONFIG
+            #entity_category = ENTITY_CATEGORY_CONFIG
             device_class = DEVICE_CLASS_SWITCH
             tracker = dict_get(rule, "created.time")
             if tracker is None:
@@ -97,7 +97,7 @@ async def async_setup_entry(
                     name="NAT Port Forward Rule {} ({})".format(
                         tracker, rule["descr"]),
                     icon=icon,
-                    entity_category=entity_category,
+                    #entity_category=entity_category,
                     device_class=device_class,
                     entity_registry_enabled_default=enabled_default
                 )
@@ -111,7 +111,7 @@ async def async_setup_entry(
             icon = "mdi:gauge"
             # likely only want very specific rules to manipulate from actions
             enabled_default = False
-            entity_category = ENTITY_CATEGORY_CONFIG
+            #entity_category = ENTITY_CATEGORY_CONFIG
             device_class = DEVICE_CLASS_SWITCH
             tracker = dict_get(rule, "created.time")
             if tracker is None:
@@ -131,7 +131,7 @@ async def async_setup_entry(
                     name="NAT Outbound Rule {} ({})".format(
                         tracker, rule["descr"]),
                     icon=icon,
-                    entity_category=entity_category,
+                    #entity_category=entity_category,
                     device_class=device_class,
                     entity_registry_enabled_default=enabled_default
                 )
@@ -144,7 +144,7 @@ async def async_setup_entry(
             icon = "mdi:gauge"
             # likely only want very specific services to manipulate from actions
             enabled_default = False
-            entity_category = ENTITY_CATEGORY_CONFIG
+            #entity_category = ENTITY_CATEGORY_CONFIG
             device_class = DEVICE_CLASS_SWITCH
 
             entity = PfSenseServiceSwitch(
@@ -153,7 +153,7 @@ async def async_setup_entry(
                     key="service.{}.{}".format(service["name"], property),
                     name="Service {} {}".format(service["name"], property),
                     icon=icon,
-                    entity_category=entity_category,
+                    #entity_category=entity_category,
                     device_class=device_class,
                     entity_registry_enabled_default=enabled_default
                 )
