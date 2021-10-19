@@ -61,8 +61,16 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     errors["base"] = "invalid_auth"
                 else:
                     errors["base"] = "cannot_connect"
-            except Exception:  # pylint: disable=broad-except
-                _LOGGER.exception("Unexpected exception")
+            except OSError as err:
+                # bad response from pfSense when creds are valid but authorization is not sufficient
+                # non-admin users must have 'System - HA node sync' privilege
+                if "unsupported XML-RPC protocol" in str(err):
+                    errors["base"] = "cannot_connect"
+                else:
+                    _LOGGER.error("OSError: {0}".format(err))
+                    errors["base"] = "unknown"
+            except BaseException as err:
+                _LOGGER.exception(f"Unexpected {err=}, {type(err)=}")
                 errors["base"] = "unknown"
 
         return self.async_show_form(

@@ -13,6 +13,13 @@ Initial development was done againt `pfSense` `2.5.2` and `home-assistant`
 
 Configuration is managed entirely from the UI using `config_flow` semantics.
 
+## pfSense
+
+- `System -> Advanced -> Max Processes` - set it 5 or more.
+- If using a non `admin` user account ensure the user has the
+  `System - HA node sync` privilege. Note that this privilege effectively gives
+  the user complete access to the system via the `xmlrpc` feature.
+
 ## config
 
 - `URL` - put the full URL to your `pfSense` installation (ie:
@@ -47,7 +54,7 @@ default.
 
 Note that by default `FreeBSD`/`pfSense` use a max age of 20 minutes for arp
 entries (sysctl `net.link.ether.inet.max_age`). You may lower that using
-`Advanced -> System Tunables` if desired.
+`System -> Advanced -> System Tunables` if desired.
 
 ## sensor
 
