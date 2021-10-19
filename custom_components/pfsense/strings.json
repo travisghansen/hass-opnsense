@@ -1,0 +1,36 @@
+{
+  "title": "Connect to the pfSense firewall / router",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to the pfSense firewall / router",
+        "data": {
+          "url": "URL",
+          "username": "Username",
+          "password": "Password",
+          "name": "Firewall Name",
+          "tls_insecure": "Allow Insecure TLS"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
+      "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
+      "unknown": "[%key:common::config_flow::error::unknown%]"
+    },
+    "abort": {
+      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "scan_interval": "Scan Interval (seconds)",
+          "device_tracker_enabled": "Enabled Device Tracker",
+          "device_tracker_scan_interval": "Device Tracker Scan Interval (seconds)"
+        }
+      }
+    }
+  }
+}
