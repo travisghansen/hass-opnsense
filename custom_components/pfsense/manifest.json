@@ -3,6 +3,7 @@
   "domain": "pfsense",
   "name": "pfSense",
   "documentation": "https://github.com/travisghansen/hass-pfsense",
+  "issue_tracker": "https://github.com/travisghansen/hass-pfsense/issues",
   "dependencies": [],
   "codeowners": ["@travisghansen"],
   "config_flow": true,
