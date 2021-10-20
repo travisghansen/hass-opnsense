@@ -12,9 +12,11 @@ from homeassistant.components.sensor import (
 
 from homeassistant.const import (
     #ENTITY_CATEGORY_DIAGNOSTIC,
+    DATA_BYTES,
     FREQUENCY_HERTZ,
     PERCENTAGE,
     TEMP_CELSIUS,
+    TIME_SECONDS,
 )
 
 DEFAULT_USERNAME = "admin"
@@ -38,11 +40,22 @@ DEFAULT_DEVICE_TRACKER_ENABLED = False
 CONF_DEVICE_TRACKER_SCAN_INTERVAL = "device_tracker_scan_interval"
 DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL = 60
 
+COUNT="count"
+
+# pulled from upnp component
+BYTES_RECEIVED = "bytes_received"
+BYTES_SENT = "bytes_sent"
+PACKETS_RECEIVED = "packets_received"
+PACKETS_SENT = "packets_sent"
+DATA_PACKETS = "packets"
+DATA_RATE_PACKETS_PER_SECOND = f"{DATA_PACKETS}/{TIME_SECONDS}"
+
 SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
     # pfstate
     "telemetry.pfstate.used": SensorEntityDescription(
         key="telemetry.pfstate.used",
         name="State Table Used",
+        native_unit_of_measurement=COUNT,
         icon="mdi:information-outline",
         state_class=STATE_CLASS_MEASUREMENT,
         #entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
@@ -50,6 +63,7 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
     "telemetry.pfstate.total": SensorEntityDescription(
         key="telemetry.pfstate.total",
         name="State Table Total",
+        native_unit_of_measurement=COUNT,
         icon="mdi:information-outline",
         #entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
@@ -66,6 +80,7 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
     "telemetry.mbuf.used": SensorEntityDescription(
         key="telemetry.mbuf.used",
         name="Memory Buffers Used",
+        native_unit_of_measurement=DATA_BYTES,
         icon="mdi:information-outline",
         state_class=STATE_CLASS_MEASUREMENT,
         #entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
@@ -73,6 +88,7 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
     "telemetry.mbuf.total": SensorEntityDescription(
         key="telemetry.mbuf.total",
         name="Memory Buffers Total",
+        native_unit_of_measurement=DATA_BYTES,
         icon="mdi:information-outline",
         #entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
@@ -89,6 +105,7 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
     "telemetry.memory.usermem": SensorEntityDescription(
         key="telemetry.memory.usermem",
         name="Memory Usermem",
+        native_unit_of_measurement=DATA_BYTES,
         icon="mdi:information-outline",
         state_class=STATE_CLASS_MEASUREMENT,
         #entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
@@ -96,6 +113,7 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
     "telemetry.memory.swap_reserved": SensorEntityDescription(
         key="telemetry.memory.swap_reserved",
         name="Memory Swap Reserved",
+        native_unit_of_measurement=DATA_BYTES,
         icon="mdi:information-outline",
         state_class=STATE_CLASS_MEASUREMENT,
         #entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
@@ -105,18 +123,21 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
     "telemetry.memory.physmem": SensorEntityDescription(
         key="telemetry.memory.physmem",
         name="Memory Physmem",
+        native_unit_of_measurement=DATA_BYTES,
         icon="mdi:information-outline",
         #entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
     "telemetry.memory.realmem": SensorEntityDescription(
         key="telemetry.memory.realmem",
         name="Memory Realmem",
+        native_unit_of_measurement=DATA_BYTES,
         icon="mdi:information-outline",
         #entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
     "telemetry.memory.swap_total": SensorEntityDescription(
         key="telemetry.memory.swap_total",
         name="Memory Swap Total",
+        native_unit_of_measurement=DATA_BYTES,
         icon="mdi:information-outline",
         #entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
@@ -158,6 +179,7 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
     "telemetry.cpu.count": SensorEntityDescription(
         key="telemetry.cpu.count",
         name="CPU Count",
+        native_unit_of_measurement=COUNT,
         icon="mdi:information-outline",
         #entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
@@ -199,6 +221,7 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
     "telemetry.system.boottime": SensorEntityDescription(
         key="telemetry.system.boottime",
         name="System Boottime",
+        native_unit_of_measurement=TIME_SECONDS,
         device_class=DEVICE_CLASS_TIMESTAMP,
         icon="mdi:clock-outline",
         #entity_category=ENTITY_CATEGORY_DIAGNOSTIC,

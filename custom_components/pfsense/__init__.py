@@ -203,7 +203,7 @@ class PfSenseData:
                     previous_value = previous_interface[property]
                     change = abs(value - previous_value)
                     pps = change / elapsed_time
-                    interface[f"{property}_pps"] = round(pps, 2)
+                    interface[f"{property}_packets_per_second"] = round(pps, 2)
 
                 for property in ["inbytes", "outbytes", "inbytespass", "outbytespass", "inbytesblock", "outbytesblock"]:
                     value = interface[property]
@@ -212,9 +212,13 @@ class PfSenseData:
                     # 1 Byte = 8 bits
                     # 1 byte is equal to 0.001 kilobytes
                     Bs = (change / elapsed_time)
+                    
                     KBs = Bs / 1000
-                    Kbs = KBs * 8
-                    interface[f"{property}_kbs"] = round(Kbs, 2)
+                    interface[f"{property}_kilobytes_per_second"] = round(KBs, 2)
+
+                    #Kbs = KBs * 8
+                    #interface[f"{property}_kilobits_per_second"] = round(Kbs, 2)
+                    
 
 
 class PfSenseEntity(CoordinatorEntity, RestoreEntity):

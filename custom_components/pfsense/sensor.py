@@ -14,13 +14,19 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import (
     #ENTITY_CATEGORY_DIAGNOSTIC,
+    DATA_BYTES,
+    DATA_RATE_KILOBYTES_PER_SECOND,
     PERCENTAGE,
     STATE_UNKNOWN,
+    TIME_MILLISECONDS,
 )
 
 from . import PfSenseEntity
 from .const import (
     COORDINATOR,
+    COUNT,
+    DATA_RATE_PACKETS_PER_SECOND,
+    DATA_PACKETS,
     DOMAIN,
     SENSOR_TYPES,
 )
@@ -99,29 +105,29 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             "outerrs",
             "collisions",
             "inbytespass",
-            "inbytespass_kbs",
+            "inbytespass_kilobytes_per_second",
             "outbytespass",
-            "outbytespass_kbs",
+            "outbytespass_kilobytes_per_second",
             "inpktspass",
-            "inpktspass_pps",
+            "inpktspass_packets_per_second",
             "outpktspass",
-            "outpktspass_pps",
+            "outpktspass_packets_per_second",
             "inbytesblock",
-            "inbytesblock_kbs",
+            "inbytesblock_kilobytes_per_second",
             "outbytesblock",
-            "outbytesblock_kbs",
+            "outbytesblock_kilobytes_per_second",
             "inpktsblock",
-            "inpktsblock_pps",
+            "inpktsblock_packets_per_second",
             "outpktsblock",
-            "outpktsblock_pps",
+            "outpktsblock_packets_per_second",
             "inbytes",
-            "inbytes_kbs",
+            "inbytes_kilobytes_per_second",
             "outbytes",
-            "outbytes_kbs",
+            "outbytes_kilobytes_per_second",
             "inpkts",
-            "inpkts_pps",
+            "inpkts_packets_per_second",
             "outpkts",
-            "outpkts_pps",
+            "outpkts_packets_per_second",
         ]:
             state_class = None
             native_unit_of_measurement = None
@@ -130,12 +136,28 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             #entity_category = ENTITY_CATEGORY_DIAGNOSTIC
 
             # enabled_default
-            if property in ["status", "inbytes", "inbytes_kbs", "outbytes", "outbytes_kbs", "inpkts", "inpkts_pps", "outpkts", "outpkts_pps"]:
+            if property in ["status", "inbytes", "inbytes_kilobytes_per_second", "outbytes", "outbytes_kilobytes_per_second", "inpkts", "inpkts_packets_per_second", "outpkts", "outpkts_packets_per_second"]:
                 enabled_default = True
 
             # state class
-            if "_pps" in property or "_kbs" in property:
+            if "_packets_per_second" in property or "_kilobytes_per_second" in property:
                 state_class = STATE_CLASS_MEASUREMENT
+
+            # native_unit_of_measurement
+            if "_packets_per_second" in property:
+                native_unit_of_measurement=DATA_RATE_PACKETS_PER_SECOND
+
+            if "_kilobytes_per_second" in property:
+                native_unit_of_measurement=DATA_RATE_KILOBYTES_PER_SECOND
+
+            if native_unit_of_measurement is None:
+                if "bytes" in property:
+                    native_unit_of_measurement=DATA_BYTES
+                if "pkts" in property:
+                    native_unit_of_measurement=DATA_PACKETS
+
+            if property in ["inerrs", "outerrs", "collisions"]:
+                native_unit_of_measurement=COUNT
 
             entity = PfSenseInterfaceSensor(
                 config_entry,
@@ -166,6 +188,9 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 
             if property == "loss":
                 native_unit_of_measurement = PERCENTAGE
+
+            if property in ["delay", "stddev"]:
+                native_unit_of_measurement=TIME_MILLISECONDS
 
             entity = PfSenseGatewaySensor(
                 config_entry,
