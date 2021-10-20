@@ -118,7 +118,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    options = entry.options
+    device_tracker_enabled = options.get(
+        CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED)
+
+    platforms = PLATFORMS.copy()
+    if not device_tracker_enabled:
+        platforms.remove("device_tracker")
+
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, platforms)
     hass.data[DOMAIN][entry.entry_id][UNDO_UPDATE_LISTENER]()
 
     if unload_ok:
