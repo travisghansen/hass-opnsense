@@ -62,6 +62,7 @@ async def async_setup_entry(
                 continue
 
             entity = PfSenseFilterSwitch(
+                config_entry,
                 coordinator,
                 SwitchEntityDescription(
                     key="filter.{}".format(tracker),
@@ -91,6 +92,7 @@ async def async_setup_entry(
                 continue
 
             entity = PfSenseNatSwitch(
+                config_entry,
                 coordinator,
                 SwitchEntityDescription(
                     key="nat_port_forward.{}".format(tracker),
@@ -125,6 +127,7 @@ async def async_setup_entry(
                 continue
 
             entity = PfSenseNatSwitch(
+                config_entry,
                 coordinator,
                 SwitchEntityDescription(
                     key="nat_outbound.{}".format(tracker),
@@ -148,6 +151,7 @@ async def async_setup_entry(
             device_class = DEVICE_CLASS_SWITCH
 
             entity = PfSenseServiceSwitch(
+                config_entry,
                 coordinator,
                 SwitchEntityDescription(
                     key="service.{}.{}".format(service["name"], property),
@@ -166,10 +170,12 @@ async def async_setup_entry(
 class PfSenseSwitch(PfSenseEntity, SwitchEntity):
     def __init__(
         self,
+        config_entry,
         coordinator: DataUpdateCoordinator,
         entity_description: SwitchEntityDescription,
     ) -> None:
         """Initialize the entity."""
+        self.config_entry = config_entry
         self.entity_description = entity_description
         self.coordinator = coordinator
         self._attr_name = f"{self.pfsense_device_name} {entity_description.name}"

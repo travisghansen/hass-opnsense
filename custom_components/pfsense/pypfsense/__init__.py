@@ -1,8 +1,11 @@
 import json
 import xmlrpc.client
 import ssl
+import socket
 from urllib.parse import urlparse, quote_plus
 
+# value to set as the socket timeout
+DEFAULT_TIMEOUT = 5
 
 class Client(object):
     """pfSense Client"""
@@ -40,6 +43,38 @@ class Client(object):
             self._url, context=context, verbose=verbose)
         return proxy
 
+    def _apply_timeout(func):
+        def inner(*args, **kwargs):
+            response = None
+            # timout applies to each recv() call, not the whole request
+            default_timeout = socket.getdefaulttimeout()
+            try: 
+                socket.setdefaulttimeout(DEFAULT_TIMEOUT)
+                response = func(*args, **kwargs)
+            finally:
+                socket.setdefaulttimeout(default_timeout)
+            return response
+        return inner
+
+
+    @_apply_timeout
+    def _get_config_section(self, section):
+        response = self._get_proxy().pfsense.backup_config_section([section])
+        return response[section]
+
+    @_apply_timeout
+    def _restore_config_section(self, section_name, data):
+        params = {
+            section_name: data
+        }
+        response = self._get_proxy().pfsense.restore_config_section(params, 60)
+        return response
+
+    @_apply_timeout
+    def _exec_php(self, script):
+        return self._get_proxy().pfsense.exec_php(script)
+
+    @_apply_timeout
     def get_host_firmware_version(self):
         return self._get_proxy().pfsense.host_firmware_version(1, 60)
 
@@ -77,19 +112,6 @@ $toreturn = [
         response = self._exec_php(script)
         return response
 
-    def _get_config_section(self, section):
-        response = self._get_proxy().pfsense.backup_config_section([section])
-        return response[section]
-
-    def _restore_config_section(self, section_name, data):
-        params = {
-            section_name: data
-        }
-        response = self._get_proxy().pfsense.restore_config_section(params, 60)
-        return response
-
-    def _exec_php(self, script):
-        return self._get_proxy().pfsense.exec_php(script)
 
     def get_config(self):
         script = """

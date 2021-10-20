@@ -38,6 +38,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     # add standard entities
     entities = [
         PfSenseSensor(
+            config_entry,
             coordinator,
             SENSOR_TYPES[sensor_type],
             True,
@@ -51,6 +52,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         mountpoint_clean = normalize_filesystem_device_name(
             filesystem["mountpoint"])
         entity = PfSenseFilesystemSensor(
+            config_entry,
             coordinator,
             SensorEntityDescription(
                 key=f"telemetry.filesystems.{device_clean}",
@@ -74,6 +76,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         #entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
 
         entity = PfSenseCarpInterfaceSensor(
+            config_entry,
             coordinator,
             SensorEntityDescription(
                 key=f"carp.interface.{uniqid}",
@@ -135,6 +138,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                 state_class = STATE_CLASS_MEASUREMENT
 
             entity = PfSenseInterfaceSensor(
+                config_entry,
                 coordinator,
                 SensorEntityDescription(
                     key="telemetry.interface.{}.{}".format(
@@ -164,6 +168,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                 native_unit_of_measurement = PERCENTAGE
 
             entity = PfSenseGatewaySensor(
+                config_entry,
                 coordinator,
                 SensorEntityDescription(
                     key="telemetry.gateway.{}.{}".format(
@@ -190,11 +195,13 @@ class PfSenseSensor(PfSenseEntity, SensorEntity):
 
     def __init__(
         self,
+        config_entry,
         coordinator: DataUpdateCoordinator,
         entity_description: SensorEntityDescription,
         enabled_default: bool,
     ) -> None:
         """Initialize the sensor."""
+        self.config_entry = config_entry
         self.entity_description = entity_description
         self.coordinator = coordinator
         self._attr_entity_registry_enabled_default = enabled_default

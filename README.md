@@ -22,8 +22,8 @@ Configuration is managed entirely from the UI using `config_flow` semantics.
 
 ## config
 
-- `URL` - put the full URL to your `pfSense` installation (ie:
-  `http://pfSense.localdomain:8080`)
+- `URL` - put the full URL to your `pfSense` UI (ie: `https://192.168.1.1`),
+  supported format is `<scheme>://<ip or host>[:<port>]`
 - `Allow Insecure TLS` - trust self-signed certs
 - `username` - the username to use for authentication (ie: `admin`)
 - `password` - the password to use for authentication

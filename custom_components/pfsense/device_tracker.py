@@ -28,6 +28,7 @@ async def async_setup_entry(
     entities = []
     for entry in state["arp_table"]:
         entity = PfSenseScannerEntity(
+            config_entry,
             coordinator,
             entry.get("mac-address")
         )
@@ -41,10 +42,12 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
 
     def __init__(
         self,
+        config_entry,
         coordinator: DataUpdateCoordinator,
         mac,
     ) -> None:
         """Set up the pfSense scanner entity."""
+        self.config_entry = config_entry
         self.coordinator = coordinator
         self._mac = mac
 

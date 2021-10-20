@@ -16,7 +16,11 @@
     "error": {
       "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
       "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
-      "unknown": "[%key:common::config_flow::error::unknown%]"
+      "unknown": "[%key:common::config_flow::error::unknown%]",
+      "invalid_url_format": "Invalid URL Format",
+      "privilege_missing": "User has insufficient privileges (System - HA node sync)",
+      "connect_timeout": "Connection timeout",
+      "cannot_connect_tls": "TLS Failure"
     },
     "abort": {
       "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"

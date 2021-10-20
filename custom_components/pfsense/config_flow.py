@@ -1,6 +1,7 @@
 """Config flow for pfSense integration."""
-import xmlrpc
 import logging
+from urllib.parse import urlparse
+import xmlrpc
 
 import voluptuous as vol
 
@@ -36,7 +37,19 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 name = user_input.get(CONF_NAME, False) or None
-                url = user_input[CONF_URL]
+               
+                url = user_input[CONF_URL].strip()
+                # ParseResult(scheme='', netloc='', path='f', params='', query='', fragment='')
+                url_parts = urlparse(url)
+                if len(url_parts.scheme) < 1:
+                    raise InvalidURL()
+                
+                if len(url_parts.netloc) < 1:
+                    raise InvalidURL()
+
+                # remove any path etc details
+                url = f"{url_parts.scheme}://{url_parts.netloc}"
+                
                 username = user_input.get(CONF_USERNAME, DEFAULT_USERNAME)
                 password = user_input[CONF_PASSWORD]
                 tls_insecure = user_input.get(CONF_TLS_INSECURE, DEFAULT_TLS_INSECURE)
@@ -44,6 +57,7 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 
                 client = Client(url, username, password)
                 system_info = await self.hass.async_add_executor_job(client.get_system_info)
+                
                 if name is None:
                     name = "{}.{}".format(system_info["hostname"], system_info["domain"])
                 
@@ -55,17 +69,27 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     title=name,
                     data={CONF_URL: url, CONF_PASSWORD: password, CONF_USERNAME: username, CONF_TLS_INSECURE: tls_insecure},
                 )
-            
+            except InvalidURL:
+                errors["base"] = "invalid_url_format"
             except xmlrpc.client.Fault as err:
+                _LOGGER.exception(f"Unexpected {err=}, {type(err)=}")
                 if "Invalid username or password" in str(err):
                     errors["base"] = "invalid_auth"
+                elif "Authentication failed: not enough privileges" in str(err):
+                    errors["base"] = "privilege_missing"
                 else:
                     errors["base"] = "cannot_connect"
             except OSError as err:
+                _LOGGER.exception(f"Unexpected {err=}, {type(err)=}")
                 # bad response from pfSense when creds are valid but authorization is not sufficient
                 # non-admin users must have 'System - HA node sync' privilege
                 if "unsupported XML-RPC protocol" in str(err):
-                    errors["base"] = "cannot_connect"
+                    errors["base"] = "privilege_missing"
+                elif "timed out" in str(err):
+                    errors["base"] = "connect_timeout"
+                elif "SSL:" in str(err):
+                    """OSError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1129)"""
+                    errors["base"] = "cannot_connect_tls"
                 else:
                     _LOGGER.error("OSError: {0}".format(err))
                     errors["base"] = "unknown"
@@ -119,5 +143,5 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
         return self.async_show_form(step_id="init", data_schema=vol.Schema(base_schema))
 
-class MacAddressRequiredError(Exception):
-    """Error to mac address required."""
+class InvalidURL(Exception):
+    """InavlidURL."""

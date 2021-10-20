@@ -240,6 +240,8 @@ class PfSenseEntity(CoordinatorEntity, RestoreEntity):
 
     @property
     def pfsense_device_name(self):
+        if self.config_entry.title and len(self.config_entry.title) > 0:
+            return self.config_entry.title
         return "{}.{}".format(self._get_pfsense_state_value("system_info.hostname"), self._get_pfsense_state_value("system_info.domain"))
 
     @property

@@ -35,6 +35,7 @@ async def async_setup_entry(
     entities = []
 
     entity = PfSenseCarpStatusBinarySensor(
+        config_entry,
         coordinator,
         BinarySensorEntityDescription(
             key=f"carp.status",
@@ -54,11 +55,13 @@ async def async_setup_entry(
 class PfSenseBinarySensor(PfSenseEntity, BinarySensorEntity):
     def __init__(
         self,
+        config_entry,
         coordinator: DataUpdateCoordinator,
         entity_description: BinarySensorEntityDescription,
         enabled_default: bool,
     ) -> None:
         """Initialize the sensor."""
+        self.config_entry = config_entry
         self.entity_description = entity_description
         self.coordinator = coordinator
         self._attr_entity_registry_enabled_default = enabled_default
