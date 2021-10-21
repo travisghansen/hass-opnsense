@@ -77,4 +77,4 @@ All of the switches below are disabled by default.
 - filter rules - enable/disable rules
 - nat port forward rules - enable/disable rules
 - nat outbound rules - enable/disable rules
-- services - start/stop services
+- services - start/stop services (note that services must be enabled before they can be started)

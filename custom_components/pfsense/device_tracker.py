@@ -11,7 +11,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 from homeassistant.util import slugify
 
-from . import CoordinatorEntityManager, PfSenseEntity
+from . import CoordinatorEntityManager, PfSenseEntity, dict_get
 
 from .const import (
     DEVICE_TRACKER_COORDINATOR,
@@ -29,13 +29,15 @@ async def async_setup_entry(
         state = coordinator.data
 
         entities = []
-        for entry in state["arp_table"]:
-            entity = PfSenseScannerEntity(
-                config_entry,
-                coordinator,
-                entry.get("mac-address")
-            )
-            entities.append(entity)
+        entries = dict_get(state, "arp_table")
+        if isinstance(entries, list):
+            for entry in entries:
+                entity = PfSenseScannerEntity(
+                    config_entry,
+                    coordinator,
+                    entry.get("mac-address")
+                )
+                entities.append(entity)
 
         return entities
     cem = CoordinatorEntityManager(hass, hass.data[DOMAIN][config_entry.entry_id][DEVICE_TRACKER_COORDINATOR], config_entry, process_entities_callback, async_add_entities)
