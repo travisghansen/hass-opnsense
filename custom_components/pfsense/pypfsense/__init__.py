@@ -335,7 +335,11 @@ $toreturn = [
         # function start_service($name, $after_sync = false)
         script = """
 require_once '/etc/inc/service-utils.inc';
-start_service("{}");
+$name = "{}";
+$is_running = is_service_running($name);
+if (!$is_running) {{
+  start_service($name);
+}}
 $toreturn = [
   // no return value
   "data" => true,
@@ -348,20 +352,11 @@ $toreturn = [
         # function stop_service($name)
         script = """
 require_once '/etc/inc/service-utils.inc';
-stop_service("{}");
-$toreturn = [
-  // no return value
-  "data" => true,
-];
-""".format(service_name)
-        response = self._exec_php(script)
-        return response["data"]
-
-    def restart_service(self, service_name):
-        # function stop_service($name)
-        script = """
-require_once '/etc/inc/service-utils.inc';
-restart_service("{}");
+$name = "{}";
+$is_running = is_service_running($name);
+if ($is_running) {{
+  stop_service($name);
+}}
 $toreturn = [
   // no return value
   "data" => true,
