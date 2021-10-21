@@ -55,7 +55,7 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 tls_insecure = user_input.get(CONF_TLS_INSECURE, DEFAULT_TLS_INSECURE)
 
                 
-                client = Client(url, username, password)
+                client = Client(url, username, password, {"tls_insecure": tls_insecure})
                 system_info = await self.hass.async_add_executor_job(client.get_system_info)
                 
                 if name is None:
