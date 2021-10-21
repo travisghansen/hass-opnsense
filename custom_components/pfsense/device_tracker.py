@@ -9,7 +9,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
 )
-from . import PfSenseEntity
+from homeassistant.util import slugify
+
+from . import CoordinatorEntityManager, PfSenseEntity
 
 from .const import (
     DEVICE_TRACKER_COORDINATOR,
@@ -21,20 +23,23 @@ async def async_setup_entry(
     hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities
 ) -> None:
     """Set up device tracker for pfSense component."""
-    data = hass.data[DOMAIN][config_entry.entry_id]
-    coordinator = data[DEVICE_TRACKER_COORDINATOR]
-    state = coordinator.data
+    def process_entities_callback(hass, config_entry):
+        data = hass.data[DOMAIN][config_entry.entry_id]
+        coordinator = data[DEVICE_TRACKER_COORDINATOR]
+        state = coordinator.data
 
-    entities = []
-    for entry in state["arp_table"]:
-        entity = PfSenseScannerEntity(
-            config_entry,
-            coordinator,
-            entry.get("mac-address")
-        )
-        entities.append(entity)
+        entities = []
+        for entry in state["arp_table"]:
+            entity = PfSenseScannerEntity(
+                config_entry,
+                coordinator,
+                entry.get("mac-address")
+            )
+            entities.append(entity)
 
-    async_add_entities(entities, True)
+        return entities
+    cem = CoordinatorEntityManager(hass, hass.data[DOMAIN][config_entry.entry_id][DEVICE_TRACKER_COORDINATOR], config_entry, process_entities_callback, async_add_entities)
+    cem.process_entities()
 
 
 class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
@@ -51,12 +56,15 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
         self.coordinator = coordinator
         self._mac = mac
 
+        self._attr_unique_id = slugify(
+            f"{self.pfsense_device_unique_id}_mac_{mac}")
+
     def _get_pfsense_arp_entry(self):
         state = self.coordinator.data
         for entry in state["arp_table"]:
             if entry.get("mac-address") == self._mac:
                 return entry
-
+              
     @property
     def source_type(self) -> str:
         """Return the source type, eg gps or router, of the device."""

@@ -3,6 +3,7 @@ import logging
 from typing import Callable
 
 from homeassistant.components.binary_sensor import BinarySensorEntity, BinarySensorEntityDescription
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     #ENTITY_CATEGORY_DIAGNOSTIC,
     STATE_UNKNOWN,
@@ -13,7 +14,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 from homeassistant.util import slugify
 
-from . import PfSenseEntity
+from . import CoordinatorEntityManager, PfSenseEntity
 
 from .const import (
     COORDINATOR,
@@ -22,35 +23,36 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+from .const import UNDO_UPDATE_LISTENER
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: dict,
+    config_entry: ConfigEntry,
     async_add_entities: Callable,
 ):
     """Set up the pfSense binary sensors."""
-    data = hass.data[DOMAIN][config_entry.entry_id]
-    coordinator = data[COORDINATOR]
-    #state = coordinator.data
-    entities = []
+    def process_entities_callback(hass, config_entry):
+        data = hass.data[DOMAIN][config_entry.entry_id]
+        coordinator = data[COORDINATOR]
+        entities = []
+        entity = PfSenseCarpStatusBinarySensor(
+            config_entry,
+            coordinator,
+            BinarySensorEntityDescription(
+                key=f"carp.status",
+                name="CARP Status",
+                #native_unit_of_measurement=native_unit_of_measurement,
+                icon="mdi:gauge",
+                #state_class=state_class,
+                #entity_category=entity_category,
+            ),
+            True,
+        )
+        entities.append(entity)
+        return entities
 
-    entity = PfSenseCarpStatusBinarySensor(
-        config_entry,
-        coordinator,
-        BinarySensorEntityDescription(
-            key=f"carp.status",
-            name="CARP Status",
-            #native_unit_of_measurement=native_unit_of_measurement,
-            icon="mdi:gauge",
-            #state_class=state_class,
-            #entity_category=entity_category,
-        ),
-        True,
-    )
-    entities.append(entity)
-
-    async_add_entities(entities)
-
+    cem = CoordinatorEntityManager(hass, hass.data[DOMAIN][config_entry.entry_id][COORDINATOR], config_entry, process_entities_callback, async_add_entities)
+    cem.process_entities()
 
 class PfSenseBinarySensor(PfSenseEntity, BinarySensorEntity):
     def __init__(

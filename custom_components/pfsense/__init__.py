@@ -102,7 +102,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         COORDINATOR: coordinator,
         DEVICE_TRACKER_COORDINATOR: device_tracker_coordinator,
         PFSENSE_CLIENT: client,
-        UNDO_UPDATE_LISTENER: undo_listener,
+        UNDO_UPDATE_LISTENER: [undo_listener],
     }
 
     # Fetch initial data so we have data when entities subscribe
@@ -127,7 +127,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         platforms.remove("device_tracker")
 
     unload_ok = await hass.config_entries.async_unload_platforms(entry, platforms)
-    hass.data[DOMAIN][entry.entry_id][UNDO_UPDATE_LISTENER]()
+    
+    for listener in hass.data[DOMAIN][entry.entry_id][UNDO_UPDATE_LISTENER]:
+        listener()
 
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
@@ -229,8 +231,32 @@ class PfSenseData:
                     
 
 
+class CoordinatorEntityManager():
+    def __init__(self, hass: HomeAssistant, coordinator: DataUpdateCoordinator, config_entry: ConfigEntry, process_entities_callback, async_add_entities) -> None:
+        self.hass = hass
+        self.coordinator = coordinator
+        self.config_entry = config_entry
+        self.process_entities_callback = process_entities_callback
+        self.async_add_entities = async_add_entities
+        hass.data[DOMAIN][config_entry.entry_id][UNDO_UPDATE_LISTENER].append(coordinator.async_add_listener(self.process_entities))
+        self.entity_unique_ids = set()
+
+    def process_entities(self):
+        entities = self.process_entities_callback(self.hass, self.config_entry)
+        for entity in entities:
+            unique_id = entity.unique_id
+            if unique_id is None:
+                raise Exception("unique_id is missing from entity")
+            if unique_id not in self.entity_unique_ids:
+                self.async_add_entities([entity])
+                self.entity_unique_ids.add(unique_id)
+                #print(f"{unique_id} registered")
+            else:
+                #print(f"{unique_id} already registered")
+                pass
+
 class PfSenseEntity(CoordinatorEntity, RestoreEntity):
-    """base enttiy for pfSense"""
+    """base entity for pfSense"""
     @property
     def device_info(self):
         """Device info for the firewall."""

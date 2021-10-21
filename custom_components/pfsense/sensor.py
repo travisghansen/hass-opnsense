@@ -3,6 +3,8 @@ import logging
 import re
 
 from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
 )
@@ -21,7 +23,7 @@ from homeassistant.const import (
     TIME_MILLISECONDS,
 )
 
-from . import PfSenseEntity
+from . import CoordinatorEntityManager, PfSenseEntity
 from .const import (
     COORDINATOR,
     COUNT,
@@ -34,181 +36,186 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
+async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities):
     """Set up the pfSense sensors."""
-    data = hass.data[DOMAIN][config_entry.entry_id]
-    coordinator = data[COORDINATOR]
-    state = coordinator.data
-    resources = [sensor_id for sensor_id in SENSOR_TYPES]
+    def process_entities_callback(hass, config_entry):
+        data = hass.data[DOMAIN][config_entry.entry_id]
+        coordinator = data[COORDINATOR]
+        state = coordinator.data
+        resources = [sensor_id for sensor_id in SENSOR_TYPES]
 
-    # add standard entities
-    entities = [
-        PfSenseSensor(
-            config_entry,
-            coordinator,
-            SENSOR_TYPES[sensor_type],
-            True,
-        )
-        for sensor_type in resources
-    ]
+        # add standard entities
+        entities = [
+            PfSenseSensor(
+                config_entry,
+                coordinator,
+                SENSOR_TYPES[sensor_type],
+                True,
+            )
+            for sensor_type in resources
+        ]
 
-    # filesystems
-    for filesystem in state["telemetry"]["filesystems"]:
-        device_clean = normalize_filesystem_device_name(filesystem["device"])
-        mountpoint_clean = normalize_filesystem_device_name(
-            filesystem["mountpoint"])
-        entity = PfSenseFilesystemSensor(
-            config_entry,
-            coordinator,
-            SensorEntityDescription(
-                key=f"telemetry.filesystems.{device_clean}",
-                name="Filesystem Used Percentage {}".format(mountpoint_clean),
-                native_unit_of_measurement=PERCENTAGE,
-                icon="mdi:gauge",
-                state_class=STATE_CLASS_MEASUREMENT,
-                #entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
-            ),
-            True,
-        )
-        entities.append(entity)
-
-    # carp interfaces
-    for interface in state["carp_interfaces"]:
-        uniqid = interface["uniqid"]
-        state_class = None
-        native_unit_of_measurement = None
-        icon = "mdi:gauge"
-        enabled_default = True
-        #entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
-
-        entity = PfSenseCarpInterfaceSensor(
-            config_entry,
-            coordinator,
-            SensorEntityDescription(
-                key=f"carp.interface.{uniqid}",
-                name="CARP Interface Status {} ({})".format(uniqid, interface["descr"]),
-                native_unit_of_measurement=native_unit_of_measurement,
-                icon=icon,
-                state_class=state_class,
-                #entity_category=entity_category,
-            ),
-            True,
-        )
-        entities.append(entity)
-
-    # interfaces
-    for interface_name in state["telemetry"]["interfaces"].keys():
-        interface = state["telemetry"]["interfaces"][interface_name]
-        for property in [
-            "status",
-            "inerrs",
-            "outerrs",
-            "collisions",
-            "inbytespass",
-            "inbytespass_kilobytes_per_second",
-            "outbytespass",
-            "outbytespass_kilobytes_per_second",
-            "inpktspass",
-            "inpktspass_packets_per_second",
-            "outpktspass",
-            "outpktspass_packets_per_second",
-            "inbytesblock",
-            "inbytesblock_kilobytes_per_second",
-            "outbytesblock",
-            "outbytesblock_kilobytes_per_second",
-            "inpktsblock",
-            "inpktsblock_packets_per_second",
-            "outpktsblock",
-            "outpktsblock_packets_per_second",
-            "inbytes",
-            "inbytes_kilobytes_per_second",
-            "outbytes",
-            "outbytes_kilobytes_per_second",
-            "inpkts",
-            "inpkts_packets_per_second",
-            "outpkts",
-            "outpkts_packets_per_second",
-        ]:
-            state_class = None
-            native_unit_of_measurement = None
-            icon = "mdi:gauge"
-            enabled_default = False
-            #entity_category = ENTITY_CATEGORY_DIAGNOSTIC
-
-            # enabled_default
-            if property in ["status", "inbytes", "inbytes_kilobytes_per_second", "outbytes", "outbytes_kilobytes_per_second", "inpkts", "inpkts_packets_per_second", "outpkts", "outpkts_packets_per_second"]:
-                enabled_default = True
-
-            # state class
-            if "_packets_per_second" in property or "_kilobytes_per_second" in property:
-                state_class = STATE_CLASS_MEASUREMENT
-
-            # native_unit_of_measurement
-            if "_packets_per_second" in property:
-                native_unit_of_measurement=DATA_RATE_PACKETS_PER_SECOND
-
-            if "_kilobytes_per_second" in property:
-                native_unit_of_measurement=DATA_RATE_KILOBYTES_PER_SECOND
-
-            if native_unit_of_measurement is None:
-                if "bytes" in property:
-                    native_unit_of_measurement=DATA_BYTES
-                if "pkts" in property:
-                    native_unit_of_measurement=DATA_PACKETS
-
-            if property in ["inerrs", "outerrs", "collisions"]:
-                native_unit_of_measurement=COUNT
-
-            entity = PfSenseInterfaceSensor(
+        # filesystems
+        for filesystem in state["telemetry"]["filesystems"]:
+            device_clean = normalize_filesystem_device_name(filesystem["device"])
+            mountpoint_clean = normalize_filesystem_device_name(
+                filesystem["mountpoint"])
+            entity = PfSenseFilesystemSensor(
                 config_entry,
                 coordinator,
                 SensorEntityDescription(
-                    key="telemetry.interface.{}.{}".format(
-                        interface["ifname"], property),
-                    name="Interface {} {}".format(
-                        interface["descr"], property),
-                    native_unit_of_measurement=native_unit_of_measurement,
-                    icon=icon,
-                    state_class=state_class,
-                    #entity_category=entity_category,
+                    key=f"telemetry.filesystems.{device_clean}",
+                    name="Filesystem Used Percentage {}".format(mountpoint_clean),
+                    native_unit_of_measurement=PERCENTAGE,
+                    icon="mdi:gauge",
+                    state_class=STATE_CLASS_MEASUREMENT,
+                    #entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
                 ),
-                enabled_default,
+                True,
             )
             entities.append(entity)
 
-    # gateways
-    for gateway_name in state["telemetry"]["gateways"].keys():
-        gateway = state["telemetry"]["gateways"][gateway_name]
-        for property in ["status", "delay", "stddev", "loss"]:
+        # carp interfaces
+        for interface in state["carp_interfaces"]:
+            uniqid = interface["uniqid"]
             state_class = None
             native_unit_of_measurement = None
             icon = "mdi:gauge"
             enabled_default = True
-            #entity_category = ENTITY_CATEGORY_DIAGNOSTIC
+            #entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
 
-            if property == "loss":
-                native_unit_of_measurement = PERCENTAGE
-
-            if property in ["delay", "stddev"]:
-                native_unit_of_measurement=TIME_MILLISECONDS
-
-            entity = PfSenseGatewaySensor(
+            entity = PfSenseCarpInterfaceSensor(
                 config_entry,
                 coordinator,
                 SensorEntityDescription(
-                    key="telemetry.gateway.{}.{}".format(
-                        gateway["name"], property),
-                    name="Gateway {} {}".format(gateway["name"], property),
+                    key=f"carp.interface.{uniqid}",
+                    name="CARP Interface Status {} ({})".format(uniqid, interface["descr"]),
                     native_unit_of_measurement=native_unit_of_measurement,
                     icon=icon,
                     state_class=state_class,
                     #entity_category=entity_category,
                 ),
-                enabled_default,
+                True,
             )
             entities.append(entity)
 
-    async_add_entities(entities)
+        # interfaces
+        for interface_name in state["telemetry"]["interfaces"].keys():
+            interface = state["telemetry"]["interfaces"][interface_name]
+            for property in [
+                "status",
+                "inerrs",
+                "outerrs",
+                "collisions",
+                "inbytespass",
+                "inbytespass_kilobytes_per_second",
+                "outbytespass",
+                "outbytespass_kilobytes_per_second",
+                "inpktspass",
+                "inpktspass_packets_per_second",
+                "outpktspass",
+                "outpktspass_packets_per_second",
+                "inbytesblock",
+                "inbytesblock_kilobytes_per_second",
+                "outbytesblock",
+                "outbytesblock_kilobytes_per_second",
+                "inpktsblock",
+                "inpktsblock_packets_per_second",
+                "outpktsblock",
+                "outpktsblock_packets_per_second",
+                "inbytes",
+                "inbytes_kilobytes_per_second",
+                "outbytes",
+                "outbytes_kilobytes_per_second",
+                "inpkts",
+                "inpkts_packets_per_second",
+                "outpkts",
+                "outpkts_packets_per_second",
+            ]:
+                state_class = None
+                native_unit_of_measurement = None
+                icon = "mdi:gauge"
+                enabled_default = False
+                #entity_category = ENTITY_CATEGORY_DIAGNOSTIC
+
+                # enabled_default
+                if property in ["status", "inbytes", "inbytes_kilobytes_per_second", "outbytes", "outbytes_kilobytes_per_second", "inpkts", "inpkts_packets_per_second", "outpkts", "outpkts_packets_per_second"]:
+                    enabled_default = True
+
+                # state class
+                if "_packets_per_second" in property or "_kilobytes_per_second" in property:
+                    state_class = STATE_CLASS_MEASUREMENT
+
+                # native_unit_of_measurement
+                if "_packets_per_second" in property:
+                    native_unit_of_measurement=DATA_RATE_PACKETS_PER_SECOND
+
+                if "_kilobytes_per_second" in property:
+                    native_unit_of_measurement=DATA_RATE_KILOBYTES_PER_SECOND
+
+                if native_unit_of_measurement is None:
+                    if "bytes" in property:
+                        native_unit_of_measurement=DATA_BYTES
+                    if "pkts" in property:
+                        native_unit_of_measurement=DATA_PACKETS
+
+                if property in ["inerrs", "outerrs", "collisions"]:
+                    native_unit_of_measurement=COUNT
+
+                entity = PfSenseInterfaceSensor(
+                    config_entry,
+                    coordinator,
+                    SensorEntityDescription(
+                        key="telemetry.interface.{}.{}".format(
+                            interface["ifname"], property),
+                        name="Interface {} {}".format(
+                            interface["descr"], property),
+                        native_unit_of_measurement=native_unit_of_measurement,
+                        icon=icon,
+                        state_class=state_class,
+                        #entity_category=entity_category,
+                    ),
+                    enabled_default,
+                )
+                entities.append(entity)
+
+        # gateways
+        for gateway_name in state["telemetry"]["gateways"].keys():
+            gateway = state["telemetry"]["gateways"][gateway_name]
+            for property in ["status", "delay", "stddev", "loss"]:
+                state_class = None
+                native_unit_of_measurement = None
+                icon = "mdi:gauge"
+                enabled_default = True
+                #entity_category = ENTITY_CATEGORY_DIAGNOSTIC
+
+                if property == "loss":
+                    native_unit_of_measurement = PERCENTAGE
+
+                if property in ["delay", "stddev"]:
+                    native_unit_of_measurement=TIME_MILLISECONDS
+
+                entity = PfSenseGatewaySensor(
+                    config_entry,
+                    coordinator,
+                    SensorEntityDescription(
+                        key="telemetry.gateway.{}.{}".format(
+                            gateway["name"], property),
+                        name="Gateway {} {}".format(gateway["name"], property),
+                        native_unit_of_measurement=native_unit_of_measurement,
+                        icon=icon,
+                        state_class=state_class,
+                        #entity_category=entity_category,
+                    ),
+                    enabled_default,
+                )
+                entities.append(entity)
+
+        return entities
+    
+    cem = CoordinatorEntityManager(hass, hass.data[DOMAIN][config_entry.entry_id][COORDINATOR], config_entry, process_entities_callback, async_add_entities)
+    cem.process_entities()
+
 
 
 def normalize_filesystem_device_name(device_name):

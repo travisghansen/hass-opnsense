@@ -54,7 +54,7 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
     # pfstate
     "telemetry.pfstate.used": SensorEntityDescription(
         key="telemetry.pfstate.used",
-        name="State Table Used",
+        name="pf State Table Used",
         native_unit_of_measurement=COUNT,
         icon="mdi:information-outline",
         state_class=STATE_CLASS_MEASUREMENT,
@@ -62,14 +62,14 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
     ),
     "telemetry.pfstate.total": SensorEntityDescription(
         key="telemetry.pfstate.total",
-        name="State Table Total",
+        name="pf State Table Total",
         native_unit_of_measurement=COUNT,
         icon="mdi:information-outline",
         #entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
     "telemetry.pfstate.used_percent": SensorEntityDescription(
         key="telemetry.pfstate.used_percent",
-        name="State Table Used Percentage",
+        name="pf State Table Used Percentage",
         native_unit_of_measurement=PERCENTAGE,
         icon="mdi:gauge",
         state_class=STATE_CLASS_MEASUREMENT,
