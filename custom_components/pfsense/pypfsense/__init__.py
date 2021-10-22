@@ -140,6 +140,8 @@ $toreturn = [
     def enable_filter_rule_by_tracker(self, tracker):
         config = self.get_config()
         for rule in config["filter"]["rule"]:
+            if "tracker" not in rule.keys():
+                continue
             if rule["tracker"] != tracker:
                 continue
 
@@ -149,7 +151,10 @@ $toreturn = [
 
     def disable_filter_rule_by_tracker(self, tracker):
         config = self.get_config()
+
         for rule in config["filter"]["rule"]:
+            if "tracker" not in rule.keys():
+                continue
             if rule["tracker"] != tracker:
                 continue
 
