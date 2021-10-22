@@ -43,7 +43,7 @@ async def async_setup_entry(
             rules = dict_get(state, "config.filter.rule")
             if isinstance(rules, list):
                 for rule in rules:
-                    icon = "mdi:gauge"
+                    icon = "mdi:security-network"
                     # likely only want very specific rules to manipulate from actions
                     enabled_default = False
                     #entity_category = ENTITY_CATEGORY_CONFIG
@@ -87,7 +87,7 @@ async def async_setup_entry(
             rules = dict_get(state, "config.nat.rule")
             if isinstance(rules, list):
                 for rule in rules:
-                    icon = "mdi:gauge"
+                    icon = "mdi:network"
                     # likely only want very specific rules to manipulate from actions
                     enabled_default = False
                     #entity_category = ENTITY_CATEGORY_CONFIG
@@ -121,7 +121,7 @@ async def async_setup_entry(
             rules = dict_get(state, "config.nat.outbound.rule")
             if isinstance(rules, list):
                 for rule in rules:
-                    icon = "mdi:gauge"
+                    icon = "mdi:network"
                     # likely only want very specific rules to manipulate from actions
                     enabled_default = False
                     #entity_category = ENTITY_CATEGORY_CONFIG
@@ -155,7 +155,7 @@ async def async_setup_entry(
         # services
         for service in state["services"]:
             for property in ["status"]:
-                icon = "mdi:gauge"
+                icon = "mdi:application-cog-outline"
                 # likely only want very specific services to manipulate from actions
                 enabled_default = False
                 #entity_category = ENTITY_CATEGORY_CONFIG

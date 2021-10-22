@@ -46,7 +46,7 @@ async def async_setup_entry(
                 #state_class=state_class,
                 #entity_category=entity_category,
             ),
-            True,
+            False,
         )
         entities.append(entity)
         return entities

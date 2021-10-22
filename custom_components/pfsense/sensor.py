@@ -44,16 +44,32 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
         state = coordinator.data
         resources = [sensor_id for sensor_id in SENSOR_TYPES]
 
+        entities = []
+
         # add standard entities
-        entities = [
-            PfSenseSensor(
+        for sensor_type in resources:
+            enabled_default=False
+            if sensor_type in [
+                    "telemetry.pfstate.used_percent",
+                    "telemetry.mbuf.used_percent",
+                    "telemetry.memory.swap_used_percent",
+                    "telemetry.memory.used_percent",
+                    "telemetry.cpu.frequency.current",
+                    "telemetry.cpu.load_average.one_minute",
+                    "telemetry.cpu.load_average.five_minute",
+                    "telemetry.cpu.load_average.fifteen_minute",
+                    "telemetry.system.temp",
+                    "telemetry.system.boottime"
+                ]:
+                enabled_default = True
+
+            entity = PfSenseSensor(
                 config_entry,
                 coordinator,
                 SENSOR_TYPES[sensor_type],
-                True,
+                enabled_default,
             )
-            for sensor_type in resources
-        ]
+            entities.append(entity)
 
         # filesystems
         for filesystem in state["telemetry"]["filesystems"]:
@@ -67,7 +83,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
                     key=f"telemetry.filesystems.{device_clean}",
                     name="Filesystem Used Percentage {}".format(mountpoint_clean),
                     native_unit_of_measurement=PERCENTAGE,
-                    icon="mdi:gauge",
+                    icon="mdi:harddisk",
                     state_class=STATE_CLASS_MEASUREMENT,
                     #entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
                 ),
@@ -80,7 +96,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
             uniqid = interface["uniqid"]
             state_class = None
             native_unit_of_measurement = None
-            icon = "mdi:gauge"
+            icon = "mdi:check-network-outline"
             enabled_default = True
             #entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
 
@@ -134,12 +150,12 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
             ]:
                 state_class = None
                 native_unit_of_measurement = None
-                icon = "mdi:gauge"
+                icon = None
                 enabled_default = False
                 #entity_category = ENTITY_CATEGORY_DIAGNOSTIC
 
                 # enabled_default
-                if property in ["status", "inbytes", "inbytes_kilobytes_per_second", "outbytes", "outbytes_kilobytes_per_second", "inpkts", "inpkts_packets_per_second", "outpkts", "outpkts_packets_per_second"]:
+                if property in ["status", "inbytes_kilobytes_per_second", "outbytes_kilobytes_per_second", "inpkts_packets_per_second", "outpkts_packets_per_second"]:
                     enabled_default = True
 
                 # state class
@@ -161,6 +177,16 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
 
                 if property in ["inerrs", "outerrs", "collisions"]:
                     native_unit_of_measurement=COUNT
+
+                # icon
+                if "pkts" in property or "bytes" in property:
+                    icon = "mdi:server-network"
+
+                if property == "status":
+                    icon = "mdi:check-network-outline"
+
+                if icon is None:
+                    icon = "mdi:gauge"
 
                 entity = PfSenseInterfaceSensor(
                     config_entry,
@@ -185,7 +211,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
             for property in ["status", "delay", "stddev", "loss"]:
                 state_class = None
                 native_unit_of_measurement = None
-                icon = "mdi:gauge"
+                icon = "mdi:router-network"
                 enabled_default = True
                 #entity_category = ENTITY_CATEGORY_DIAGNOSTIC
 
@@ -194,6 +220,9 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
 
                 if property in ["delay", "stddev"]:
                     native_unit_of_measurement=TIME_MILLISECONDS
+
+                if property == "status":
+                    icon = "mdi:check-network-outline"
 
                 entity = PfSenseGatewaySensor(
                     config_entry,
@@ -308,6 +337,13 @@ class PfSenseInterfaceSensor(PfSenseSensor):
         return attributes
 
     @property
+    def icon(self):
+        property = self._pfsense_get_interface_property_name()
+        if property == "status" and self.native_value != "up":
+            return "mdi:close-network-outline"
+        return super().icon
+
+    @property
     def native_value(self):
         interface = self._pfsense_get_interface()
         property = self._pfsense_get_interface_property_name()
@@ -338,6 +374,12 @@ class PfSenseCarpInterfaceSensor(PfSenseSensor):
             attributes[attr] = interface[attr]
 
         return attributes
+
+    @property
+    def icon(self):
+        if self.native_value != "MASTER":
+            return "mdi:close-network-outline"
+        return super().icon
 
     @property
     def native_value(self):
@@ -376,6 +418,14 @@ class PfSenseGatewaySensor(PfSenseSensor):
             attributes[attr] = value
 
         return attributes
+
+    @property
+    def icon(self):
+        property = self._pfsense_get_gateway_property_name()
+        if property == "status" and self.native_value != "online":
+            return "mdi:close-network-outline"
+        return super().icon
+
 
     @property
     def native_value(self):
