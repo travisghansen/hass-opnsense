@@ -9,6 +9,10 @@ integration.
 Initial development was done againt `pfSense` `2.5.2` and `home-assistant`
 `2021.10`.
 
+# installation
+
+
+
 # configuration
 
 Configuration is managed entirely from the UI using `config_flow` semantics.
@@ -41,7 +45,9 @@ Configuration is managed entirely from the UI using `config_flow` semantics.
 
 # entities
 
-Many `entities` are created by `hass-pfsense` for stats etc.
+Many `entities` are created by `hass-pfsense` for stats etc. Due to to volume
+of entities many are disabled by default. If something is missing be sure to
+review the disabled entities as what you're looking for is probably there.
 
 ## binary_sensor
 
@@ -65,8 +71,7 @@ entries (sysctl `net.link.ether.inet.max_age`). You may lower that using
 - memory details
 - filesystem usage
 - interface details (status, stats, pps, kbs (time samples are based on the
-  `Scan Interval (seconds)` config option)), many are disabled by default so
-  review disabled entities if you want more sensors
+  `Scan Interval (seconds)` config option))
 - gateways details (status, delay, stddev, loss)
 - carp interface status
 

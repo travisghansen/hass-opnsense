@@ -24,18 +24,24 @@ async def async_setup_entry(
 ) -> None:
     """Set up device tracker for pfSense component."""
     def process_entities_callback(hass, config_entry):
+        #options = config_entry.options
         data = hass.data[DOMAIN][config_entry.entry_id]
         coordinator = data[DEVICE_TRACKER_COORDINATOR]
         state = coordinator.data
+        # seems unlikely *all* devices are intended to be monitored
+        # disable by default and let users enable specific entries they care about
+        enabled_default = False
 
         entities = []
         entries = dict_get(state, "arp_table")
         if isinstance(entries, list):
             for entry in entries:
+                entry_mac = entry.get("mac-address").lower()
                 entity = PfSenseScannerEntity(
                     config_entry,
                     coordinator,
-                    entry.get("mac-address")
+                    enabled_default,
+                    entry_mac
                 )
                 entities.append(entity)
 
@@ -51,6 +57,7 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
         self,
         config_entry,
         coordinator: DataUpdateCoordinator,
+        enabled_default: bool,
         mac,
     ) -> None:
         """Set up the pfSense scanner entity."""
@@ -58,6 +65,7 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
         self.coordinator = coordinator
         self._mac = mac
 
+        self._attr_entity_registry_enabled_default = enabled_default
         self._attr_unique_id = slugify(
             f"{self.pfsense_device_unique_id}_mac_{mac}")
 
