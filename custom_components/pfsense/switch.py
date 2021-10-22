@@ -213,6 +213,8 @@ class PfSenseFilterSwitch(PfSenseSwitch):
         found = None
         tracker = self._pfsense_get_tracker()
         for rule in state["config"]["filter"]["rule"]:
+            if "tracker" not in rule.keys():
+                continue
             if rule["tracker"] == tracker:
                 found = rule
                 break
