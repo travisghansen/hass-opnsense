@@ -9,7 +9,7 @@
           "username": "Username",
           "password": "Password",
           "name": "Firewall Name",
-          "tls_insecure": "Allow Insecure TLS"
+          "verify_ssl": "Verify SSL certificate"
         }
       }
     },
@@ -20,7 +20,7 @@
       "invalid_url_format": "Invalid URL Format",
       "privilege_missing": "User has insufficient privileges (System - HA node sync)",
       "connect_timeout": "Connection timeout",
-      "cannot_connect_tls": "TLS Failure"
+      "cannot_connect_ssl": "SSL Failure"
     },
     "abort": {
       "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"

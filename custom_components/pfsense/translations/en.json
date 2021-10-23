@@ -10,7 +10,7 @@
       "invalid_url_format": "Invalid URL Format",
       "privilege_missing": "User has insufficient privileges (System - HA node sync)",
       "connect_timeout": "Connection timeout",
-      "cannot_connect_tls": "TLS Failure"
+      "cannot_connect_ssl": "SSL Failure"
     },
     "step": {
       "user": {
@@ -19,7 +19,7 @@
           "username": "Username",
           "name": "Firewall Name",
           "password": "Password",
-          "tls_insecure": "Allow Insecure TLS"
+          "verify_ssl": "Verify SSL certificate"
         },
         "title": "Connect to the pfSense firewall / router"
       }

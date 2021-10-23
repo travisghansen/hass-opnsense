@@ -29,11 +29,11 @@ class Client(object):
         # https://docs.python.org/3/library/xmlrpc.client.html#module-xmlrpc.client
         # https://stackoverflow.com/questions/30461969/disable-default-certificate-verification-in-python-2-7-9
         context = None
-        tls_insecure = False
-        if "tls_insecure" in self._opts.keys():
-            tls_insecure = self._opts["tls_insecure"]
+        verify_ssl = True
+        if "verify_ssl" in self._opts.keys():
+            verify_ssl = self._opts["verify_ssl"]
 
-        if self._url_parts.scheme == "https" and tls_insecure:
+        if self._url_parts.scheme == "https" and not verify_ssl:
             context = ssl._create_unverified_context()
 
         # set to True if necessary during development

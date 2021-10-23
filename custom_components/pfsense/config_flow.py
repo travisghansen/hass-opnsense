@@ -6,11 +6,12 @@ import xmlrpc
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.const import CONF_USERNAME, CONF_NAME, CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_URL
+from homeassistant.const import CONF_USERNAME, CONF_NAME, CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_URL, CONF_VERIFY_SSL
 from homeassistant.core import callback
+#import homeassistant.helpers.config_validation as cv
 from homeassistant.util import slugify
 
-from .const import CONF_TLS_INSECURE, CONF_DEVICE_TRACKER_ENABLED, CONF_DEVICE_TRACKER_SCAN_INTERVAL, DEFAULT_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DEFAULT_USERNAME, DEFAULT_TLS_INSECURE, DOMAIN
+from .const import CONF_TLS_INSECURE, CONF_DEVICE_TRACKER_ENABLED, CONF_DEVICE_TRACKER_SCAN_INTERVAL, DEFAULT_DEVICE_TRACKER_ENABLED, DEFAULT_VERIFY_SSL, DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DEFAULT_USERNAME, DEFAULT_TLS_INSECURE, DOMAIN
 
 from .pypfsense import Client
 
@@ -19,7 +20,7 @@ _LOGGER = logging.getLogger(__name__)
 CONFIG_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_URL): str,
-        vol.Optional(CONF_TLS_INSECURE): bool,
+        vol.Optional(CONF_VERIFY_SSL, default=DEFAULT_VERIFY_SSL): bool,
         vol.Optional(CONF_USERNAME, default=DEFAULT_USERNAME): str,
         vol.Required(CONF_PASSWORD): str,
         vol.Optional(CONF_NAME): str,
@@ -29,6 +30,10 @@ CONFIG_SCHEMA = vol.Schema(
 
 class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for pfSense."""
+
+    # bumping this is what triggers async_migrate_entry for the component
+    VERSION = 2
+
     # gets invoked without user input initially
     # when user submits has user_input
     async def async_step_user(self, user_input=None):
@@ -52,10 +57,10 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 
                 username = user_input.get(CONF_USERNAME, DEFAULT_USERNAME)
                 password = user_input[CONF_PASSWORD]
-                tls_insecure = user_input.get(CONF_TLS_INSECURE, DEFAULT_TLS_INSECURE)
+                verify_ssl = user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
 
                 
-                client = Client(url, username, password, {"tls_insecure": tls_insecure})
+                client = Client(url, username, password, {"verify_ssl": verify_ssl})
                 system_info = await self.hass.async_add_executor_job(client.get_system_info)
                 
                 if name is None:
@@ -67,7 +72,7 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 
                 return self.async_create_entry(
                     title=name,
-                    data={CONF_URL: url, CONF_PASSWORD: password, CONF_USERNAME: username, CONF_TLS_INSECURE: tls_insecure},
+                    data={CONF_URL: url, CONF_PASSWORD: password, CONF_USERNAME: username, CONF_VERIFY_SSL: verify_ssl},
                 )
             except InvalidURL:
                 errors["base"] = "invalid_url_format"
@@ -89,7 +94,7 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     errors["base"] = "connect_timeout"
                 elif "SSL:" in str(err):
                     """OSError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1129)"""
-                    errors["base"] = "cannot_connect_tls"
+                    errors["base"] = "cannot_connect_ssl"
                 else:
                     _LOGGER.error("OSError: {0}".format(err))
                     errors["base"] = "unknown"
@@ -139,6 +144,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             vol.Optional(CONF_DEVICE_TRACKER_SCAN_INTERVAL, default=device_tracker_scan_interval): vol.All(
                 vol.Coerce(int), vol.Clamp(min=30, max=300)
             ),
+            #vol.Optional("mac_addresses"): cv.ensure_list,
         }
 
         return self.async_show_form(step_id="init", data_schema=vol.Schema(base_schema))

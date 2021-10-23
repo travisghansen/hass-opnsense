@@ -33,6 +33,7 @@ DEVICE_TRACKER_COORDINATOR = "device_tracker_coordinator"
 DEFAULT_SCAN_INTERVAL = 30
 CONF_TLS_INSECURE = "tls_insecure"
 DEFAULT_TLS_INSECURE = False
+DEFAULT_VERIFY_SSL = True
 
 CONF_DEVICE_TRACKER_ENABLED = "device_tracker_enabled"
 DEFAULT_DEVICE_TRACKER_ENABLED = False
@@ -226,6 +227,32 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
         native_unit_of_measurement=TIME_SECONDS,
         device_class=DEVICE_CLASS_TIMESTAMP,
         icon="mdi:clock-outline",
+        #entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+
+    # dhcp
+    "dhcp_stats.leases.total": SensorEntityDescription(
+        key="dhcp_stats.leases.total",
+        name="DHCP Leases Total",
+        native_unit_of_measurement="clients",
+        icon="mdi:ip-network-outline",
+        state_class=STATE_CLASS_MEASUREMENT,
+        #entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    "dhcp_stats.leases.online": SensorEntityDescription(
+        key="dhcp_stats.leases.online",
+        name="DHCP Leases Online",
+        native_unit_of_measurement="clients",
+        icon="mdi:ip-network-outline",
+        state_class=STATE_CLASS_MEASUREMENT,
+        #entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    "dhcp_stats.leases.offline": SensorEntityDescription(
+        key="dhcp_stats.leases.offline",
+        name="DHCP Leases Offline",
+        native_unit_of_measurement="clients",
+        icon="mdi:ip-network-outline",
+        state_class=STATE_CLASS_MEASUREMENT,
         #entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
 

@@ -7,7 +7,7 @@ import time
 
 import async_timeout
 
-from homeassistant.const import CONF_USERNAME, CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_URL
+from homeassistant.const import CONF_USERNAME, CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_URL, CONF_VERIFY_SSL
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -17,11 +17,25 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 
-from .const import CONF_DEVICE_TRACKER_SCAN_INTERVAL, CONF_TLS_INSECURE, CONF_DEVICE_TRACKER_ENABLED, COORDINATOR, DEFAULT_DEVICE_TRACKER_ENABLED, DEFAULT_SCAN_INTERVAL, DEFAULT_TLS_INSECURE, DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL, DEVICE_TRACKER_COORDINATOR, DOMAIN, PLATFORMS, PFSENSE_CLIENT, UNDO_UPDATE_LISTENER
+from .const import CONF_DEVICE_TRACKER_SCAN_INTERVAL, CONF_TLS_INSECURE, CONF_DEVICE_TRACKER_ENABLED, COORDINATOR, DEFAULT_DEVICE_TRACKER_ENABLED, DEFAULT_SCAN_INTERVAL, DEFAULT_TLS_INSECURE, DEFAULT_VERIFY_SSL, DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL, DEVICE_TRACKER_COORDINATOR, DOMAIN, PLATFORMS, PFSENSE_CLIENT, UNDO_UPDATE_LISTENER
 
 from .pypfsense import Client as pfSenseClient
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def dict_get(data: dict, path: str, default=None):
+    pathList = re.split(r'\.', path, flags=re.IGNORECASE)
+    result = data
+    for key in pathList:
+        try:
+            key = int(key) if key.isnumeric() else key
+            result = result[key]
+        except:
+            result = default
+            break
+
+    return result
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry):
@@ -37,12 +51,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     url = config[CONF_URL]
     username = config[CONF_USERNAME]
     password = config[CONF_PASSWORD]
-    tls_insecure = config.get(CONF_TLS_INSECURE, DEFAULT_TLS_INSECURE)
+    verify_ssl = config.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)    
     device_tracker_enabled = options.get(
         CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED)
     client = pfSenseClient(url, username, password, {
-                           "tls_insecure": tls_insecure})
-    data = PfSenseData(client)
+                           "verify_ssl": verify_ssl})
+    data = PfSenseData(client, entry)
 
     async def async_update_data():
         """Fetch data from pfSense."""
@@ -71,7 +85,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     if not device_tracker_enabled:
         platforms.remove("device_tracker")
     else:
-        device_tracker_data = PfSenseData(client)
+        device_tracker_data = PfSenseData(client, entry)
         device_tracker_scan_interval = options.get(
             CONF_DEVICE_TRACKER_SCAN_INTERVAL, DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL)
 
@@ -137,24 +151,42 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return unload_ok
 
 
-def dict_get(data: dict, path: str, default=None):
-    pathList = re.split(r'\.', path, flags=re.IGNORECASE)
-    result = data
-    for key in pathList:
-        try:
-            key = int(key) if key.isnumeric() else key
-            result = result[key]
-        except:
-            result = default
-            break
+async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    """Migrate an old config entry."""
+    version = config_entry.version
 
-    return result
+    _LOGGER.debug("Migrating from version %s", version)
+
+    # 1 -> 2: tls_insecure to verify_ssl
+    if version == 1:
+        version = config_entry.version = 2
+        tls_insecure = config_entry.data.get(CONF_TLS_INSECURE, DEFAULT_TLS_INSECURE)
+        data = dict(config_entry.data)
+
+        # remove tls_insecure
+        if CONF_TLS_INSECURE in data.keys():
+            del data[CONF_TLS_INSECURE]
+        
+        # add verify_ssl
+        if CONF_VERIFY_SSL not in data.keys():
+            data[CONF_VERIFY_SSL] = not tls_insecure
+        
+        hass.config_entries.async_update_entry(
+            config_entry,
+            data=data,
+        )
+
+        _LOGGER.info("Migration to version %s successful", version)
+
+    return True
+
 
 
 class PfSenseData:
-    def __init__(self, client: pfSenseClient):
+    def __init__(self, client: pfSenseClient, config_entry: ConfigEntry):
         """Initialize the data object."""
         self._client = client
+        self._config_entry = config_entry
         self._state = {}
 
     @property
@@ -182,7 +214,8 @@ class PfSenseData:
 
         self._state["system_info"] = self._get_system_info()
         self._state["host_firmware_version"] = self._get_host_firmware_version()
-        self._state["update_time"] = time.time()
+        current_time = time.time()
+        self._state["update_time"] = current_time
         self._state["previous_state"] = previous_state
 
         if "scope" in opts.keys() and opts["scope"] == "device_tracker":
@@ -194,41 +227,97 @@ class PfSenseData:
             self._state["services"] = self._client.get_services()
             self._state["carp_interfaces"] = self._client.get_carp_interfaces()
             self._state["carp_status"] = self._client.get_carp_status()
+            self._state["dhcp_leases"] = self._client.get_dhcp_leases()
+            self._state["dhcp_stats"] = {}
+
+            lease_stats = {
+                "total": 0,
+                "online": 0,
+                "offline": 0
+            }
+            for lease in self._state["dhcp_leases"]:
+                if "act" in lease.keys() and lease["act"] == "expired":
+                    continue
+
+                lease_stats["total"] += 1
+                if "online" in lease.keys():
+                    if lease["online"] == "online":
+                        lease_stats["online"] += 1
+                    if lease["online"] == "offline":
+                        lease_stats["offline"] += 1
+
+            
+            self._state["dhcp_stats"]["leases"] = lease_stats
+
 
             # calcule pps and kbps
-            for interface_name in self._state["telemetry"]["interfaces"].keys():
-                interface = dict_get(
-                    self._state, f"telemetry.interfaces.{interface_name}")
-                previous_interface = dict_get(
-                    self._state, f"previous_state.telemetry.interfaces.{interface_name}")
-                if previous_interface is None:
-                    break
-                update_time = dict_get(self._state, "update_time")
-                previous_update_time = dict_get(
-                    self._state, "previous_state.update_time")
+            scan_interval = self._config_entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+            update_time = dict_get(self._state, "update_time")
+            previous_update_time = dict_get(
+                self._state, "previous_state.update_time")
+            
+            if previous_update_time is not None:
                 elapsed_time = update_time - previous_update_time
-
-                for property in ["inpkts", "outpkts", "inpktspass", "outpktspass", "inpktsblock", "outpktsblock"]:
-                    value = interface[property]
-                    previous_value = previous_interface[property]
-                    change = abs(value - previous_value)
-                    pps = change / elapsed_time
-                    interface[f"{property}_packets_per_second"] = int(round(pps, 0))
-
-                for property in ["inbytes", "outbytes", "inbytespass", "outbytespass", "inbytesblock", "outbytesblock"]:
-                    value = interface[property]
-                    previous_value = previous_interface[property]
-                    change = abs(value - previous_value)
-                    # 1 Byte = 8 bits
-                    # 1 byte is equal to 0.001 kilobytes
-                    Bs = (change / elapsed_time)
+                
+                for interface_name in self._state["telemetry"]["interfaces"].keys():
+                    interface = dict_get(
+                        self._state, f"telemetry.interfaces.{interface_name}")
+                    previous_interface = dict_get(
+                        self._state, f"previous_state.telemetry.interfaces.{interface_name}")
+                    if previous_interface is None:
+                        break
                     
-                    KBs = Bs / 1000
-                    interface[f"{property}_kilobytes_per_second"] = int(round(KBs, 0))
+                    for property in [   "inbytes",
+                                        "outbytes",
+                                        "inbytespass",
+                                        "outbytespass",
+                                        "inbytesblock",
+                                        "outbytesblock",
+                                        "inpkts",
+                                        "outpkts",
+                                        "inpktspass",
+                                        "outpktspass",
+                                        "inpktsblock",
+                                        "outpktsblock"
+                                    ]:
+                        
+                        current_parent_value = interface[property]
+                        previous_parent_value = previous_interface[property]
+                        change = abs(current_parent_value - previous_parent_value)
+                        rate = (change / elapsed_time)
+                        
+                        value = 0
+                        if "pkts" in property:
+                            label = "packets_per_second"
+                            value = rate
+                        if "bytes" in property:
+                            label = "kilobytes_per_second"
+                            # 1 Byte = 8 bits
+                            # 1 byte is equal to 0.001 kilobytes
+                            KBs = rate / 1000
+                            #Kbs = KBs * 8
+                            value = KBs
 
-                    #Kbs = KBs * 8
-                    #interface[f"{property}_kilobits_per_second"] = round(Kbs, 2)
-                    
+                        new_property = f"{property}_{label}"
+                        interface[new_property] = int(round(value, 0))
+
+                        continue
+
+                        # TODO: this logic is not perfect but probably 'good enough'
+                        # to make this perfect the stats should probably be their own coordinator
+                        # 
+                        # put this here to prevent over-agressive calculations when
+                        # data is refreshed due to switches being triggered etc
+                        #         
+                        # theoretically if switches are going on/off rapidly the value
+                        # would never get updated as the code currently is
+                        if elapsed_time >= scan_interval:
+                            interface[new_property] = int(round(value, 0))
+                        else:
+                            previous_value = dict_get(previous_interface, new_property)
+                            if previous_value is None:
+                                previous_value = value
+                            interface[new_property] = int(round(previous_value, 0))
 
 
 class CoordinatorEntityManager():

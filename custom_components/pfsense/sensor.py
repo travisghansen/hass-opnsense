@@ -59,7 +59,10 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
                     "telemetry.cpu.load_average.five_minute",
                     "telemetry.cpu.load_average.fifteen_minute",
                     "telemetry.system.temp",
-                    "telemetry.system.boottime"
+                    "telemetry.system.boottime",
+                    "dhcp_stats.leases.total",
+                    "dhcp_stats.leases.online",
+                    "dhcp_stats.leases.offline",
                 ]:
                 enabled_default = True
 
@@ -244,7 +247,6 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
     
     cem = CoordinatorEntityManager(hass, hass.data[DOMAIN][config_entry.entry_id][COORDINATOR], config_entry, process_entities_callback, async_add_entities)
     cem.process_entities()
-
 
 
 def normalize_filesystem_device_name(device_name):
