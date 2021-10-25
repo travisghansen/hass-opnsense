@@ -36,7 +36,11 @@ async def async_setup_entry(
         entries = dict_get(state, "arp_table")
         if isinstance(entries, list):
             for entry in entries:
-                entry_mac = entry.get("mac-address").lower()
+                entry_mac = entry.get("mac-address")
+                if entry_mac is None:
+                    continue
+
+                entry_mac = entry_mac.lower()
                 entity = PfSenseScannerEntity(
                     config_entry,
                     coordinator,

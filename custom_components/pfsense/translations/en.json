@@ -10,7 +10,8 @@
       "invalid_url_format": "Invalid URL Format",
       "privilege_missing": "User has insufficient privileges (System - HA node sync)",
       "connect_timeout": "Connection timeout",
-      "cannot_connect_ssl": "SSL Failure"
+      "cannot_connect_ssl": "SSL Failure",
+      "url_redirect": "Incorrect URL (redirect)"
     },
     "step": {
       "user": {

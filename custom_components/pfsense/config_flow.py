@@ -1,6 +1,6 @@
 """Config flow for pfSense integration."""
 import logging
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote_plus
 import xmlrpc
 
 import voluptuous as vol
@@ -26,6 +26,14 @@ CONFIG_SCHEMA = vol.Schema(
         vol.Optional(CONF_NAME): str,
     }
 )
+
+
+def cleanse_sensitive_data(message, secrets = []):
+    for secret in secrets:
+        if secret is not None:
+            message = message.replace(secret, "[redacted]")
+            message = message.replace(quote_plus(secret), "[redacted]")
+    return message
 
 
 class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
@@ -77,15 +85,24 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             except InvalidURL:
                 errors["base"] = "invalid_url_format"
             except xmlrpc.client.Fault as err:
-                _LOGGER.exception(f"Unexpected {err=}, {type(err)=}")
                 if "Invalid username or password" in str(err):
                     errors["base"] = "invalid_auth"
                 elif "Authentication failed: not enough privileges" in str(err):
                     errors["base"] = "privilege_missing"
                 else:
+                    message = cleanse_sensitive_data(f"Unexpected {err=}, {type(err)=}", [username, password])
+                    _LOGGER.error(message)
+                    errors["base"] = "cannot_connect"
+            except xmlrpc.client.ProtocolError as err:
+                if "307 Temporary Redirect" in str(err):
+                    errors["base"] = "url_redirect"
+                elif "301 Moved Permanently" in str(err):
+                    errors["base"] = "url_redirect"
+                else:
+                    message = cleanse_sensitive_data(f"Unexpected {err=}, {type(err)=}", [username, password])
+                    _LOGGER.error(message)
                     errors["base"] = "cannot_connect"
             except OSError as err:
-                _LOGGER.exception(f"Unexpected {err=}, {type(err)=}")
                 # bad response from pfSense when creds are valid but authorization is not sufficient
                 # non-admin users must have 'System - HA node sync' privilege
                 if "unsupported XML-RPC protocol" in str(err):
@@ -96,10 +113,12 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     """OSError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1129)"""
                     errors["base"] = "cannot_connect_ssl"
                 else:
-                    _LOGGER.error("OSError: {0}".format(err))
+                    message = cleanse_sensitive_data(f"Unexpected {err=}, {type(err)=}", [username, password])
+                    _LOGGER.error(message)
                     errors["base"] = "unknown"
             except BaseException as err:
-                _LOGGER.exception(f"Unexpected {err=}, {type(err)=}")
+                message = cleanse_sensitive_data(f"Unexpected {err=}, {type(err)=}", [username, password])
+                _LOGGER.error(message)
                 errors["base"] = "unknown"
 
         return self.async_show_form(
