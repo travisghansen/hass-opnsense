@@ -25,6 +25,7 @@ DOMAIN = "pfsense"
 UNDO_UPDATE_LISTENER = "undo_update_listener"
 
 PLATFORMS = ["sensor", "switch", "device_tracker", "binary_sensor"]
+LOADED_PLATFORMS = "loaded_platforms"
 
 PFSENSE_CLIENT = "pfsense_client"
 

@@ -471,6 +471,34 @@ $toreturn = [
 """
         response = self._exec_php(script)
         return response["data"]
+    
+    def delete_arp_entry(self, ip):
+        if len(ip) < 1:
+            return
+        script = """
+$ip = "{}";
+$ret = mwexec("arp -d " . $ip, true);
+$toreturn = [
+  "data" => $ret,
+];
+""".format(ip)
+        self._exec_php(script)
+
+    def arp_get_mac_by_ip(self, ip, do_ping = True):
+        """function arp_get_mac_by_ip($ip, $do_ping = true)"""
+        php_bool = "true" if do_ping else "false"
+        script = """
+$ip = "{}";
+$do_ping = {};
+$toreturn = [
+  "data" => arp_get_mac_by_ip($ip, $do_ping),
+];
+""".format(ip, php_bool)
+        response = self._exec_php(script)["data"]
+        if not response:
+            return None
+        return response
+
 
     # TODO: function find_service_by_name($name)
     # TODO: function get_service_status($service) # seems to be higher-level logic than is_service_running, passes in the full service object

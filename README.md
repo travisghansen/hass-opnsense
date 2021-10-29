@@ -32,7 +32,7 @@ Simply go to `Configuration -> Integrations -> Add Integration` and search for
 
 - `URL` - put the full URL to your `pfSense` UI (ie: `https://192.168.1.1`),
   supported format is `<scheme>://<ip or host>[:<port>]`
-- `Verify SSL Certificate` - if the SSL certification should be verified or not
+- `Verify SSL Certificate` - if the SSL certificate should be verified or not
   (if you get an SSL error try unchecking this)
 - `username` - the username to use for authentication (ie: `admin`)
 - `password` - the password to use for authentication
@@ -61,7 +61,7 @@ review the disabled entities as what you're looking for is probably there.
 ## device_tracker
 
 `ScannerEntity` entries are created for the `pfSense` arp table. Disabled by
-default. Not only is the feature enabled by default but created entities are
+default. Not only is the feature disabled by default but created entities are
 currently disabled by default as well. Search the disabled entity list for the
 relevant mac addresses and enable as desired.
 

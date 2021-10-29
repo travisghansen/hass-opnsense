@@ -17,7 +17,7 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 
-from .const import CONF_DEVICE_TRACKER_SCAN_INTERVAL, CONF_TLS_INSECURE, CONF_DEVICE_TRACKER_ENABLED, COORDINATOR, DEFAULT_DEVICE_TRACKER_ENABLED, DEFAULT_SCAN_INTERVAL, DEFAULT_TLS_INSECURE, DEFAULT_VERIFY_SSL, DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL, DEVICE_TRACKER_COORDINATOR, DOMAIN, PLATFORMS, PFSENSE_CLIENT, UNDO_UPDATE_LISTENER
+from .const import CONF_DEVICE_TRACKER_SCAN_INTERVAL, CONF_TLS_INSECURE, CONF_DEVICE_TRACKER_ENABLED, COORDINATOR, DEFAULT_DEVICE_TRACKER_ENABLED, DEFAULT_SCAN_INTERVAL, DEFAULT_TLS_INSECURE, DEFAULT_VERIFY_SSL, DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL, DEVICE_TRACKER_COORDINATOR, DOMAIN, LOADED_PLATFORMS, PLATFORMS, PFSENSE_CLIENT, UNDO_UPDATE_LISTENER
 
 from .pypfsense import Client as pfSenseClient
 
@@ -98,7 +98,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
                 )
 
                 if not device_tracker_data.state:
-                    raise UpdateFailed("Error fetching UPS state")
+                    raise UpdateFailed("Error fetching pfSense state")
 
                 return device_tracker_data.state
         device_tracker_coordinator = DataUpdateCoordinator(
@@ -117,6 +117,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         DEVICE_TRACKER_COORDINATOR: device_tracker_coordinator,
         PFSENSE_CLIENT: client,
         UNDO_UPDATE_LISTENER: [undo_listener],
+        LOADED_PLATFORMS: platforms,
     }
 
     # Fetch initial data so we have data when entities subscribe
@@ -132,14 +133,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    options = entry.options
-    device_tracker_enabled = options.get(
-        CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED)
-
-    platforms = PLATFORMS.copy()
-    if not device_tracker_enabled:
-        platforms.remove("device_tracker")
-
+    platforms = hass.data[DOMAIN][entry.entry_id][LOADED_PLATFORMS]
     unload_ok = await hass.config_entries.async_unload_platforms(entry, platforms)
     
     for listener in hass.data[DOMAIN][entry.entry_id][UNDO_UPDATE_LISTENER]:
