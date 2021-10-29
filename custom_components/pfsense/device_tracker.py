@@ -16,6 +16,7 @@ from . import CoordinatorEntityManager, PfSenseEntity, dict_get
 from .const import (
     DEVICE_TRACKER_COORDINATOR,
     DOMAIN,
+    PFSENSE_CLIENT,
 )
 
 
@@ -68,6 +69,7 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
         self.config_entry = config_entry
         self.coordinator = coordinator
         self._mac = mac
+        self._last_known_ip = None
 
         self._attr_entity_registry_enabled_default = enabled_default
         self._attr_unique_id = slugify(
@@ -102,7 +104,11 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
         entry = self._get_pfsense_arp_entry()
         if entry is None:
             return STATE_UNKNOWN
-        return entry.get("ip-address")
+        
+        ip_address = entry.get("ip-address")
+        if ip_address is not None and len(ip_address) > 0:
+            self._last_known_ip = ip_address
+        return ip_address
 
     @property
     def mac_address(self) -> str | None:
@@ -125,7 +131,16 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
         """Return true if the device is connected to the network."""
         entry = self._get_pfsense_arp_entry()
         if entry is None:
+            if self._last_known_ip is not None and len(self._last_known_ip) > 0:
+                # force a ping to _last_known_ip to possibly recreate arp entry?
+                pass
+
             return False
         # TODO: check "expires" here to add more honed in logic?
         # TODO: clear cache under certain scenarios?
+        ip_address = entry.get("ip-address")
+        if ip_address is not None and len(ip_address) > 0:
+            client = self.hass.data[DOMAIN][self.registry_entry.config_entry_id][PFSENSE_CLIENT]
+            self.hass.async_add_executor_job(client.delete_arp_entry, ip_address)
+
         return True
