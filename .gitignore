@@ -3,3 +3,5 @@
 /pyvenv.cfg
 /.env
 *.pyc
+venv
+.vscode
