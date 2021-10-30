@@ -134,7 +134,7 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
             connections={(CONNECTION_NETWORK_MAC, self.mac_address)},
             default_model="pfSense tracked device",
             default_name=self.name,
-            via_device={(DOMAIN, self.pfsense_device_unique_id)},
+            via_device=(DOMAIN, self.pfsense_device_unique_id),
         )
 
     @property
