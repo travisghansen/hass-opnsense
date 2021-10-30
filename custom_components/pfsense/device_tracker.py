@@ -6,6 +6,8 @@ from homeassistant.components.device_tracker.config_entry import ScannerEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
 )
@@ -24,7 +26,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up device tracker for pfSense component."""
     def process_entities_callback(hass, config_entry):
-        #options = config_entry.options
+        # options = config_entry.options
         data = hass.data[DOMAIN][config_entry.entry_id]
         coordinator = data[DEVICE_TRACKER_COORDINATOR]
         state = coordinator.data
@@ -78,7 +80,7 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
         for entry in state["arp_table"]:
             if entry.get("mac-address") == self._mac:
                 return entry
-              
+
     @property
     def source_type(self) -> str:
         """Return the source type, eg gps or router, of the device."""
@@ -119,6 +121,21 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
         if len(value) > 0:
             return value
         return None
+
+    @property
+    def name(self) -> str:
+        """Return the name of the device."""
+        return self.hostname or self.mac_address
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return the device info."""
+        return DeviceInfo(
+            connections={(CONNECTION_NETWORK_MAC, self.mac_address)},
+            default_model="pfSense tracked device",
+            default_name=self.name,
+            via_device={(DOMAIN, self.pfsense_device_unique_id)},
+        )
 
     @property
     def is_connected(self) -> bool:
