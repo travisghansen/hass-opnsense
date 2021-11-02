@@ -1,8 +1,9 @@
 import json
-import xmlrpc.client
-import ssl
 import socket
-from urllib.parse import urlparse, quote_plus
+import ssl
+from urllib.parse import quote_plus, unquote, urlparse
+from xml.parsers.expat import ExpatError
+import xmlrpc.client
 
 # value to set as the socket timeout
 DEFAULT_TIMEOUT = 5
@@ -253,11 +254,18 @@ $toreturn = [
         # [{'hostname': '?', 'ip-address': '<ip>', 'mac-address': '<mac>', 'interface': 'em0', 'expires': 1199, 'type': 'ethernet'}, ...]
         php_bool = "true" if resolve_hostnames else "false"
         script = """
+
+$data = json_decode('{}', true);
+$resolve_hostnames = $data["resolve_hostnames"];
 $toreturn = [
-  "data" => system_get_arp_table({}),
+  "data" => system_get_arp_table($resolve_hostnames),
 ];
 """.format(
-            php_bool
+            json.dumps(
+                {
+                    "resolve_hostnames": php_bool,
+                }
+            )
         )
         response = self._exec_php(script)
         return response["data"]
@@ -296,12 +304,19 @@ $toreturn = [
         # function is_service_enabled($service_name)
         script = """
 require_once '/etc/inc/service-utils.inc';
+
+$data = json_decode('{}', true);
+$service_name = $data["service_name"];
 $toreturn = [
   // always returns true, so mostly useless at this point
-  "data" => is_service_enabled("{}"),
+  "data" => is_service_enabled($service_name),
 ];
 """.format(
-            service_name
+            json.dumps(
+                {
+                    "service_name": service_name,
+                }
+            )
         )
         response = self._exec_php(script)
         return response["data"]
@@ -310,11 +325,18 @@ $toreturn = [
         # function is_service_running($service, $ps = "")
         script = """
 require_once '/etc/inc/service-utils.inc';
+
+$data = json_decode('{}', true);
+$service_name = $data["service_name"];
 $toreturn = [
-  "data" => (bool) is_service_running("{}"),
+  "data" => (bool) is_service_running($service_name),
 ];
 """.format(
-            service_name
+            json.dumps(
+                {
+                    "service_name": service_name,
+                }
+            )
         )
         response = self._exec_php(script)
         return response["data"]
@@ -323,12 +345,19 @@ $toreturn = [
         # function is_service_enabled($service_name)
         script = """
 require_once '/etc/inc/service-utils.inc';
+
+$data = json_decode('{}', true);
+$service_name = $data["service_name"];
 $toreturn = [
   // always returns true, so mostly useless at this point
-  "data" => is_service_enabled("{}"),
+  "data" => is_service_enabled($service_name),
 ];
 """.format(
-            service_name
+            json.dumps(
+                {
+                    "service_name": service_name,
+                }
+            )
         )
         response = self._exec_php(script)
         return response["data"]
@@ -350,17 +379,23 @@ $toreturn = [
         # function start_service($name, $after_sync = false)
         script = """
 require_once '/etc/inc/service-utils.inc';
-$name = "{}";
-$is_running = is_service_running($name);
+
+$data = json_decode('{}', true);
+$service_name = $data["service_name"];
+$is_running = is_service_running($service_name);
 if (!$is_running) {{
-  start_service($name);
+  start_service($service_name);
 }}
 $toreturn = [
   // no return value
   "data" => true,
 ];
 """.format(
-            service_name
+            json.dumps(
+                {
+                    "service_name": service_name,
+                }
+            )
         )
         response = self._exec_php(script)
         return response["data"]
@@ -369,17 +404,23 @@ $toreturn = [
         # function stop_service($name)
         script = """
 require_once '/etc/inc/service-utils.inc';
-$name = "{}";
-$is_running = is_service_running($name);
+
+$data = json_decode('{}', true);
+$service_name = $data["service_name"];
+$is_running = is_service_running($service_name);
 if ($is_running) {{
-  stop_service($name);
+  stop_service($service_name);
 }}
 $toreturn = [
   // no return value
   "data" => true,
 ];
 """.format(
-            service_name
+            json.dumps(
+                {
+                    "service_name": service_name,
+                }
+            )
         )
         response = self._exec_php(script)
         return response["data"]
@@ -388,13 +429,20 @@ $toreturn = [
         # function restart_service($name) (if service is not currently running, it will be started)
         script = """
 require_once '/etc/inc/service-utils.inc';
-restart_service("{}");
+
+$data = json_decode('{}', true);
+$service_name = $data["service_name"];
+restart_service($service_name);
 $toreturn = [
   // no return value
   "data" => true,
 ];
 """.format(
-            service_name
+            json.dumps(
+                {
+                    "service_name": service_name,
+                }
+            )
         )
         response = self._exec_php(script)
         return response["data"]
@@ -403,13 +451,20 @@ $toreturn = [
         # function restart_service_if_running($service)
         script = """
 require_once '/etc/inc/service-utils.inc';
-restart_service_if_running("{}");
+
+$data = json_decode('{}', true);
+$service_name = $data["service_name"];
+restart_service_if_running($service_name);
 $toreturn = [
   // no return value
   "data" => true,
 ];
 """.format(
-            service_name
+            json.dumps(
+                {
+                    "service_name": service_name,
+                }
+            )
         )
         response = self._exec_php(script)
         return response["data"]
@@ -457,14 +512,20 @@ $toreturn = [
     def get_carp_interface_status(self, uniqueid):
         # function get_carp_interface_status($carpid)
         script = """
-$status = get_carp_interface_status("_vip{}");
+$data = json_decode('{}', true);
+$uniqueid = $data["uniqueid"];
+$carp_if = "_vip{{$uniqueid}}";
+$status = get_carp_interface_status($carp_if);
 $toreturn = [
   "data" => $status,
 ];
 """.format(
-            uniqueid
+            json.dumps(
+                {
+                    "uniqueid": uniqueid,
+                }
+            )
         )
-        print(script)
         response = self._exec_php(script)
         return response["data"]
 
@@ -496,13 +557,18 @@ $toreturn = [
         if len(ip) < 1:
             return
         script = """
-$ip = "{}";
+$data = json_decode('{}', true);
+$ip = trim($data["ip"]);
 $ret = mwexec("arp -d " . $ip, true);
 $toreturn = [
   "data" => $ret,
 ];
 """.format(
-            ip
+            json.dumps(
+                {
+                    "ip": ip,
+                }
+            )
         )
         self._exec_php(script)
 
@@ -510,18 +576,116 @@ $toreturn = [
         """function arp_get_mac_by_ip($ip, $do_ping = true)"""
         php_bool = "true" if do_ping else "false"
         script = """
-$ip = "{}";
-$do_ping = {};
+$data = json_decode('{}', true);
+$ip = $data["ip"];
+$do_ping = $data["do_ping"];
 $toreturn = [
   "data" => arp_get_mac_by_ip($ip, $do_ping),
 ];
 """.format(
-            ip, php_bool
+            json.dumps(
+                {
+                    "ip": ip,
+                    "do_ping": php_bool,
+                }
+            )
         )
         response = self._exec_php(script)["data"]
         if not response:
             return None
         return response
+
+    def system_reboot(self, type="normal"):
+        """
+        type = normal = simple reboot
+        type = reroot = a reroot reboot
+        type = fsck = perform an fsck on next boot
+        """
+        script = """
+$data = json_decode('{}', true);
+$type = $data["type"];
+$type = strtolower($type);
+
+switch ($type) {{
+    case 'fsck':
+        if (php_uname('m') != 'arm') {{
+            mwexec('/sbin/nextboot -e "pfsense.fsck.force=5"');
+        }}
+        system_reboot();
+        break;
+    case 'reroot':
+        system_reboot_sync(true);
+        break;
+    case 'normal':
+        system_reboot();
+        break;
+    default:
+        break;
+}}
+
+$toreturn = [
+  "data" => true,
+];
+""".format(
+            json.dumps(
+                {
+                    "type": type,
+                }
+            )
+        )
+        try:
+            self._exec_php(script)
+        except ExpatError:
+            # ignore response failures because the system is going down
+            pass
+
+    def system_halt(self):
+        script = """
+system_halt();
+$toreturn = [
+  "data" => true,
+];
+"""
+        try:
+            self._exec_php(script)
+        except ExpatError:
+            # ignore response failures because the system is going down
+            pass
+
+    def send_wol(self, interface, mac):
+        """
+        interface should be wan, lan, opt1, opt2 etc, not the description
+        """
+
+        script = """
+$data = json_decode('{}', true);
+$if = $data["interface"];
+$mac = $data["mac"];
+function send_wol($if, $mac) {{
+        $ipaddr = get_interface_ip($if);
+        if (!is_ipaddr($ipaddr) || !is_macaddr($mac)) {{
+                return false;
+        }}
+        
+        $bcip = gen_subnet_max($ipaddr, get_interface_subnet($if));
+        return (bool) !mwexec("/usr/local/bin/wol -i {{$bcip}} {{$mac}}");
+}}
+
+$value = send_wol($if, $mac);
+$toreturn = [
+  "data" => $value,
+];
+""".format(
+            json.dumps(
+                {
+                    "interface": interface,
+                    "mac": mac,
+                }
+            )
+        )
+
+        response = self._exec_php(script)
+        return response["data"]
 
     # TODO: function find_service_by_name($name)
     # TODO: function get_service_status($service) # seems to be higher-level logic than is_service_running, passes in the full service object
@@ -655,3 +819,112 @@ foreach ($ifdescrs as $ifdescr => $ifname) {
             data["interfaces"][i_key] = json.loads(data["interfaces"][i_key])
 
         return data
+
+    def are_notices_pending(self, category="all"):
+        """
+        are_notices_pending($category = "all")
+        $category appears to be ignored currently
+        """
+        script = """
+$data = json_decode('{}', true);
+$category = $data["category"];
+$toreturn = [
+  "data" => are_notices_pending($category),
+];
+""".format(
+            json.dumps(
+                {
+                    "category": category,
+                }
+            )
+        )
+
+        response = self._exec_php(script)
+        return response["data"]
+
+    def get_notices(self, category="all"):
+        script = """
+$data = json_decode('{}', true);
+$category = $data["category"];
+$value = get_notices($category);
+if (!$value) {{
+    $value = [];
+}}
+$toreturn = [
+  "data" => $value,
+];
+""".format(
+            json.dumps(
+                {
+                    "category": category,
+                }
+            )
+        )
+
+        response = self._exec_php(script)
+        return response["data"]
+
+    def file_notice(
+        self, id, notice, category="General", url="", priority=1, local_only=False
+    ):
+        """
+        /****f* notices/file_notice
+        * NAME
+        *   file_notice
+        * INPUTS
+        *       $id, $notice, $category, $url, $priority, $local_only
+        * RESULT
+        *   Files a notice and kicks off the various alerts, smtp, telegram, pushover, system log, LED's, etc.
+        *   If $local_only is true then the notice is not sent to external places (smtp, telegram, pushover)
+        ******/
+        function file_notice($id, $notice, $category = "General", $url = "", $priority = 1, $local_only = false)
+        """
+
+        local_only_php_bool = "true" if local_only else "false"
+        script = """
+$data = json_decode('{}', true);
+$id = $data["id"];
+$notice = $data["notice"];
+$category = $data["category"];
+$url = $data["url"];
+$priority = $data["priority"];
+$local_only = $data["local_only"];
+
+$value = file_notice($id, $notice, $category, $url, $priority, $local_only);
+$toreturn = [
+  "data" => $value,
+];
+""".format(
+            json.dumps(
+                {
+                    "id": id,
+                    "notice": notice,
+                    "category": category,
+                    "url": url,
+                    "priority": priority,
+                    "local_only": local_only_php_bool,
+                }
+            )
+        )
+
+        response = self._exec_php(script)
+        return response["data"]
+
+    def close_notice(self, id):
+        script = """
+$data = json_decode('{}', true);
+$id = $data["id"];
+close_notice($id);
+$toreturn = [
+  "data" => true,
+];
+""".format(
+            json.dumps(
+                {
+                    "id": id,
+                }
+            )
+        )
+
+        response = self._exec_php(script)
+        return response["data"]
