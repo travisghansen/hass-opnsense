@@ -15,7 +15,7 @@ from homeassistant.const import (  # ENTITY_CATEGORY_DIAGNOSTIC,
     STATE_UNKNOWN,
     TIME_MILLISECONDS,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import slugify
 from homeassistant.util.dt import utc_from_timestamp
@@ -38,6 +38,7 @@ async def async_setup_entry(
 ):
     """Set up the pfSense sensors."""
 
+    @callback
     def process_entities_callback(hass, config_entry):
         data = hass.data[DOMAIN][config_entry.entry_id]
         coordinator = data[COORDINATOR]

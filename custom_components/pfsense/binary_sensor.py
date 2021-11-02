@@ -8,7 +8,7 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNKNOWN
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import slugify
 
@@ -25,6 +25,7 @@ async def async_setup_entry(
 ):
     """Set up the pfSense binary sensors."""
 
+    @callback
     def process_entities_callback(hass, config_entry):
         data = hass.data[DOMAIN][config_entry.entry_id]
         coordinator = data[COORDINATOR]
@@ -33,7 +34,7 @@ async def async_setup_entry(
             config_entry,
             coordinator,
             BinarySensorEntityDescription(
-                key=f"carp.status",
+                key="carp.status",
                 name="CARP Status",
                 # native_unit_of_measurement=native_unit_of_measurement,
                 icon="mdi:gauge",
