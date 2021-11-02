@@ -1,15 +1,20 @@
 """Support for pfSense."""
-import logging
 import copy
 from datetime import timedelta
+import logging
 import re
 import time
 
 import async_timeout
-
-from homeassistant.const import CONF_USERNAME, CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_URL, CONF_VERIFY_SSL
-from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import (
+    CONF_PASSWORD,
+    CONF_SCAN_INTERVAL,
+    CONF_URL,
+    CONF_USERNAME,
+    CONF_VERIFY_SSL,
+)
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
@@ -17,15 +22,30 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 
-from .const import CONF_DEVICE_TRACKER_SCAN_INTERVAL, CONF_TLS_INSECURE, CONF_DEVICE_TRACKER_ENABLED, COORDINATOR, DEFAULT_DEVICE_TRACKER_ENABLED, DEFAULT_SCAN_INTERVAL, DEFAULT_TLS_INSECURE, DEFAULT_VERIFY_SSL, DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL, DEVICE_TRACKER_COORDINATOR, DOMAIN, LOADED_PLATFORMS, PLATFORMS, PFSENSE_CLIENT, UNDO_UPDATE_LISTENER
-
+from .const import (
+    CONF_DEVICE_TRACKER_ENABLED,
+    CONF_DEVICE_TRACKER_SCAN_INTERVAL,
+    CONF_TLS_INSECURE,
+    COORDINATOR,
+    DEFAULT_DEVICE_TRACKER_ENABLED,
+    DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
+    DEFAULT_SCAN_INTERVAL,
+    DEFAULT_TLS_INSECURE,
+    DEFAULT_VERIFY_SSL,
+    DEVICE_TRACKER_COORDINATOR,
+    DOMAIN,
+    LOADED_PLATFORMS,
+    PFSENSE_CLIENT,
+    PLATFORMS,
+    UNDO_UPDATE_LISTENER,
+)
 from .pypfsense import Client as pfSenseClient
 
 _LOGGER = logging.getLogger(__name__)
 
 
 def dict_get(data: dict, path: str, default=None):
-    pathList = re.split(r'\.', path, flags=re.IGNORECASE)
+    pathList = re.split(r"\.", path, flags=re.IGNORECASE)
     result = data
     for key in pathList:
         try:
@@ -51,20 +71,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     url = config[CONF_URL]
     username = config[CONF_USERNAME]
     password = config[CONF_PASSWORD]
-    verify_ssl = config.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)    
+    verify_ssl = config.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
     device_tracker_enabled = options.get(
-        CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED)
-    client = pfSenseClient(url, username, password, {
-                           "verify_ssl": verify_ssl})
+        CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED
+    )
+    client = pfSenseClient(url, username, password, {"verify_ssl": verify_ssl})
     data = PfSenseData(client, entry)
 
     async def async_update_data():
         """Fetch data from pfSense."""
         async with async_timeout.timeout(10):
-            await hass.async_add_executor_job(
-                lambda:
-                    data.update()
-            )
+            await hass.async_add_executor_job(lambda: data.update())
 
             if not data.state:
                 raise UpdateFailed("Error fetching UPS state")
@@ -87,20 +104,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     else:
         device_tracker_data = PfSenseData(client, entry)
         device_tracker_scan_interval = options.get(
-            CONF_DEVICE_TRACKER_SCAN_INTERVAL, DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL)
+            CONF_DEVICE_TRACKER_SCAN_INTERVAL, DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL
+        )
 
         async def async_update_device_tracker_data():
             """Fetch data from pfSense."""
             async with async_timeout.timeout(10):
                 await hass.async_add_executor_job(
-                    lambda:
-                        device_tracker_data.update({"scope": "device_tracker"})
+                    lambda: device_tracker_data.update({"scope": "device_tracker"})
                 )
 
                 if not device_tracker_data.state:
                     raise UpdateFailed("Error fetching pfSense state")
 
                 return device_tracker_data.state
+
         device_tracker_coordinator = DataUpdateCoordinator(
             hass,
             _LOGGER,
@@ -135,7 +153,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     platforms = hass.data[DOMAIN][entry.entry_id][LOADED_PLATFORMS]
     unload_ok = await hass.config_entries.async_unload_platforms(entry, platforms)
-    
+
     for listener in hass.data[DOMAIN][entry.entry_id][UNDO_UPDATE_LISTENER]:
         listener()
 
@@ -160,11 +178,11 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
         # remove tls_insecure
         if CONF_TLS_INSECURE in data.keys():
             del data[CONF_TLS_INSECURE]
-        
+
         # add verify_ssl
         if CONF_VERIFY_SSL not in data.keys():
             data[CONF_VERIFY_SSL] = not tls_insecure
-        
+
         hass.config_entries.async_update_entry(
             config_entry,
             data=data,
@@ -173,7 +191,6 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
         _LOGGER.info("Migration to version %s successful", version)
 
     return True
-
 
 
 class PfSenseData:
@@ -224,11 +241,7 @@ class PfSenseData:
             self._state["dhcp_leases"] = self._client.get_dhcp_leases()
             self._state["dhcp_stats"] = {}
 
-            lease_stats = {
-                "total": 0,
-                "online": 0,
-                "offline": 0
-            }
+            lease_stats = {"total": 0, "online": 0, "offline": 0}
             for lease in self._state["dhcp_leases"]:
                 if "act" in lease.keys() and lease["act"] == "expired":
                     continue
@@ -240,46 +253,49 @@ class PfSenseData:
                     if lease["online"] == "offline":
                         lease_stats["offline"] += 1
 
-            
             self._state["dhcp_stats"]["leases"] = lease_stats
 
-
             # calcule pps and kbps
-            scan_interval = self._config_entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+            scan_interval = self._config_entry.options.get(
+                CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+            )
             update_time = dict_get(self._state, "update_time")
-            previous_update_time = dict_get(
-                self._state, "previous_state.update_time")
-            
+            previous_update_time = dict_get(self._state, "previous_state.update_time")
+
             if previous_update_time is not None:
                 elapsed_time = update_time - previous_update_time
-                
+
                 for interface_name in self._state["telemetry"]["interfaces"].keys():
                     interface = dict_get(
-                        self._state, f"telemetry.interfaces.{interface_name}")
+                        self._state, f"telemetry.interfaces.{interface_name}"
+                    )
                     previous_interface = dict_get(
-                        self._state, f"previous_state.telemetry.interfaces.{interface_name}")
+                        self._state,
+                        f"previous_state.telemetry.interfaces.{interface_name}",
+                    )
                     if previous_interface is None:
                         break
-                    
-                    for property in [   "inbytes",
-                                        "outbytes",
-                                        "inbytespass",
-                                        "outbytespass",
-                                        "inbytesblock",
-                                        "outbytesblock",
-                                        "inpkts",
-                                        "outpkts",
-                                        "inpktspass",
-                                        "outpktspass",
-                                        "inpktsblock",
-                                        "outpktsblock"
-                                    ]:
-                        
+
+                    for property in [
+                        "inbytes",
+                        "outbytes",
+                        "inbytespass",
+                        "outbytespass",
+                        "inbytesblock",
+                        "outbytesblock",
+                        "inpkts",
+                        "outpkts",
+                        "inpktspass",
+                        "outpktspass",
+                        "inpktsblock",
+                        "outpktsblock",
+                    ]:
+
                         current_parent_value = interface[property]
                         previous_parent_value = previous_interface[property]
                         change = abs(current_parent_value - previous_parent_value)
-                        rate = (change / elapsed_time)
-                        
+                        rate = change / elapsed_time
+
                         value = 0
                         if "pkts" in property:
                             label = "packets_per_second"
@@ -289,7 +305,7 @@ class PfSenseData:
                             # 1 Byte = 8 bits
                             # 1 byte is equal to 0.001 kilobytes
                             KBs = rate / 1000
-                            #Kbs = KBs * 8
+                            # Kbs = KBs * 8
                             value = KBs
 
                         new_property = f"{property}_{label}"
@@ -298,11 +314,12 @@ class PfSenseData:
                         continue
 
                         # TODO: this logic is not perfect but probably 'good enough'
-                        # to make this perfect the stats should probably be their own coordinator
-                        # 
+                        # to make this perfect the stats should probably be their own
+                        # coordinator
+                        #
                         # put this here to prevent over-agressive calculations when
                         # data is refreshed due to switches being triggered etc
-                        #         
+                        #
                         # theoretically if switches are going on/off rapidly the value
                         # would never get updated as the code currently is
                         if elapsed_time >= scan_interval:
@@ -314,14 +331,23 @@ class PfSenseData:
                             interface[new_property] = int(round(previous_value, 0))
 
 
-class CoordinatorEntityManager():
-    def __init__(self, hass: HomeAssistant, coordinator: DataUpdateCoordinator, config_entry: ConfigEntry, process_entities_callback, async_add_entities) -> None:
+class CoordinatorEntityManager:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        coordinator: DataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        process_entities_callback,
+        async_add_entities,
+    ) -> None:
         self.hass = hass
         self.coordinator = coordinator
         self.config_entry = config_entry
         self.process_entities_callback = process_entities_callback
         self.async_add_entities = async_add_entities
-        hass.data[DOMAIN][config_entry.entry_id][UNDO_UPDATE_LISTENER].append(coordinator.async_add_listener(self.process_entities))
+        hass.data[DOMAIN][config_entry.entry_id][UNDO_UPDATE_LISTENER].append(
+            coordinator.async_add_listener(self.process_entities)
+        )
         self.entity_unique_ids = set()
 
     def process_entities(self):
@@ -333,13 +359,15 @@ class CoordinatorEntityManager():
             if unique_id not in self.entity_unique_ids:
                 self.async_add_entities([entity])
                 self.entity_unique_ids.add(unique_id)
-                #print(f"{unique_id} registered")
+                # print(f"{unique_id} registered")
             else:
-                #print(f"{unique_id} already registered")
+                # print(f"{unique_id} already registered")
                 pass
+
 
 class PfSenseEntity(CoordinatorEntity, RestoreEntity):
     """base entity for pfSense"""
+
     @property
     def device_info(self):
         """Device info for the firewall."""
@@ -363,7 +391,10 @@ class PfSenseEntity(CoordinatorEntity, RestoreEntity):
     def pfsense_device_name(self):
         if self.config_entry.title and len(self.config_entry.title) > 0:
             return self.config_entry.title
-        return "{}.{}".format(self._get_pfsense_state_value("system_info.hostname"), self._get_pfsense_state_value("system_info.domain"))
+        return "{}.{}".format(
+            self._get_pfsense_state_value("system_info.hostname"),
+            self._get_pfsense_state_value("system_info.domain"),
+        )
 
     @property
     def pfsense_device_unique_id(self):
