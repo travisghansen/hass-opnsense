@@ -99,6 +99,7 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
         self._mac = mac
         self._mac_vendor = mac_vendor
         self._last_known_ip = None
+        self._last_known_hostname = None
 
         self._attr_entity_registry_enabled_default = enabled_default
         self._attr_unique_id = slugify(f"{self.pfsense_device_unique_id}_mac_{mac}")
@@ -151,15 +152,16 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
             return None
         value = entry.get("hostname").strip("?")
         if len(value) > 0:
+            self._last_known_hostname = value
             return value
         return None
 
     @property
     def name(self) -> str:
         """Return the name of the device."""
-        # return self.hostname or f"{self.mac_address}"
-        # return self.hostname or f"{self.pfsense_device_name} {self._mac}"
-        return self.hostname or self._mac
+        #return self.hostname or f"{self.mac_address}"
+        #return self.hostname or f"{self.pfsense_device_name} {self._mac}"
+        return self.hostname or self._last_known_hostname or self._mac
 
     @property
     def device_info(self) -> DeviceInfo:
