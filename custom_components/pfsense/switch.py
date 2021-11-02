@@ -2,25 +2,19 @@
 import logging
 from typing import Callable
 
-from homeassistant.components.switch import DEVICE_CLASS_SWITCH, SwitchEntity, SwitchEntityDescription
+from homeassistant.components.switch import (
+    DEVICE_CLASS_SWITCH,
+    SwitchEntity,
+    SwitchEntityDescription,
+)
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import STATE_UNKNOWN  # ENTITY_CATEGORY_CONFIG,
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import slugify
-from homeassistant.helpers.update_coordinator import (
-    DataUpdateCoordinator,
-)
-from homeassistant.const import (
-    #ENTITY_CATEGORY_CONFIG,
-    STATE_UNKNOWN,
-)
 
 from . import CoordinatorEntityManager, PfSenseEntity, dict_get
-
-from .const import (
-    COORDINATOR,
-    DOMAIN,
-    PFSENSE_CLIENT,
-)
+from .const import COORDINATOR, DOMAIN, PFSENSE_CLIENT
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,6 +25,7 @@ async def async_setup_entry(
     async_add_entities: Callable,
 ):
     """Set up the pfSense binary sensors."""
+
     def process_entities_callback(hass, config_entry):
         data = hass.data[DOMAIN][config_entry.entry_id]
         coordinator = data[COORDINATOR]
@@ -46,7 +41,7 @@ async def async_setup_entry(
                     icon = "mdi:security-network"
                     # likely only want very specific rules to manipulate from actions
                     enabled_default = False
-                    #entity_category = ENTITY_CATEGORY_CONFIG
+                    # entity_category = ENTITY_CATEGORY_CONFIG
                     device_class = DEVICE_CLASS_SWITCH
 
                     if "tracker" not in rule.keys():
@@ -75,10 +70,10 @@ async def async_setup_entry(
                             key="filter.{}".format(tracker),
                             name="Filter Rule {} ({})".format(tracker, rule["descr"]),
                             icon=icon,
-                            #entity_category=entity_category,
+                            # entity_category=entity_category,
                             device_class=device_class,
-                            entity_registry_enabled_default=enabled_default
-                        )
+                            entity_registry_enabled_default=enabled_default,
+                        ),
                     )
                     entities.append(entity)
 
@@ -90,7 +85,7 @@ async def async_setup_entry(
                     icon = "mdi:network"
                     # likely only want very specific rules to manipulate from actions
                     enabled_default = False
-                    #entity_category = ENTITY_CATEGORY_CONFIG
+                    # entity_category = ENTITY_CATEGORY_CONFIG
                     device_class = DEVICE_CLASS_SWITCH
                     tracker = dict_get(rule, "created.time")
                     if tracker is None:
@@ -106,12 +101,13 @@ async def async_setup_entry(
                         SwitchEntityDescription(
                             key="nat_port_forward.{}".format(tracker),
                             name="NAT Port Forward Rule {} ({})".format(
-                                tracker, rule["descr"]),
+                                tracker, rule["descr"]
+                            ),
                             icon=icon,
-                            #entity_category=entity_category,
+                            # entity_category=entity_category,
                             device_class=device_class,
-                            entity_registry_enabled_default=enabled_default
-                        )
+                            entity_registry_enabled_default=enabled_default,
+                        ),
                     )
                     entities.append(entity)
 
@@ -124,7 +120,7 @@ async def async_setup_entry(
                     icon = "mdi:network"
                     # likely only want very specific rules to manipulate from actions
                     enabled_default = False
-                    #entity_category = ENTITY_CATEGORY_CONFIG
+                    # entity_category = ENTITY_CATEGORY_CONFIG
                     device_class = DEVICE_CLASS_SWITCH
                     tracker = dict_get(rule, "created.time")
                     if tracker is None:
@@ -143,12 +139,13 @@ async def async_setup_entry(
                         SwitchEntityDescription(
                             key="nat_outbound.{}".format(tracker),
                             name="NAT Outbound Rule {} ({})".format(
-                                tracker, rule["descr"]),
+                                tracker, rule["descr"]
+                            ),
                             icon=icon,
-                            #entity_category=entity_category,
+                            # entity_category=entity_category,
                             device_class=device_class,
-                            entity_registry_enabled_default=enabled_default
-                        )
+                            entity_registry_enabled_default=enabled_default,
+                        ),
                     )
                     entities.append(entity)
 
@@ -158,7 +155,7 @@ async def async_setup_entry(
                 icon = "mdi:application-cog-outline"
                 # likely only want very specific services to manipulate from actions
                 enabled_default = False
-                #entity_category = ENTITY_CATEGORY_CONFIG
+                # entity_category = ENTITY_CATEGORY_CONFIG
                 device_class = DEVICE_CLASS_SWITCH
 
                 entity = PfSenseServiceSwitch(
@@ -168,15 +165,21 @@ async def async_setup_entry(
                         key="service.{}.{}".format(service["name"], property),
                         name="Service {} {}".format(service["name"], property),
                         icon=icon,
-                        #entity_category=entity_category,
+                        # entity_category=entity_category,
                         device_class=device_class,
-                        entity_registry_enabled_default=enabled_default
-                    )
+                        entity_registry_enabled_default=enabled_default,
+                    ),
                 )
                 entities.append(entity)
         return entities
 
-    cem = CoordinatorEntityManager(hass, hass.data[DOMAIN][config_entry.entry_id][COORDINATOR], config_entry, process_entities_callback, async_add_entities)
+    cem = CoordinatorEntityManager(
+        hass,
+        hass.data[DOMAIN][config_entry.entry_id][COORDINATOR],
+        config_entry,
+        process_entities_callback,
+        async_add_entities,
+    )
     cem.process_entities()
 
 
@@ -193,7 +196,8 @@ class PfSenseSwitch(PfSenseEntity, SwitchEntity):
         self.coordinator = coordinator
         self._attr_name = f"{self.pfsense_device_name} {entity_description.name}"
         self._attr_unique_id = slugify(
-            f"{self.pfsense_device_unique_id}_{entity_description.key}")
+            f"{self.pfsense_device_unique_id}_{entity_description.key}"
+        )
 
     @property
     def is_on(self):
@@ -236,8 +240,12 @@ class PfSenseFilterSwitch(PfSenseSwitch):
         if rule is None:
             return
         tracker = self._pfsense_get_tracker()
-        client = self.hass.data[DOMAIN][self.registry_entry.config_entry_id][PFSENSE_CLIENT]
-        await self.hass.async_add_executor_job(client.enable_filter_rule_by_tracker, tracker)
+        client = self.hass.data[DOMAIN][self.registry_entry.config_entry_id][
+            PFSENSE_CLIENT
+        ]
+        await self.hass.async_add_executor_job(
+            client.enable_filter_rule_by_tracker, tracker
+        )
         await self.coordinator.async_refresh()
 
     async def async_turn_off(self, **kwargs):
@@ -246,8 +254,12 @@ class PfSenseFilterSwitch(PfSenseSwitch):
         if rule is None:
             return
         tracker = self._pfsense_get_tracker()
-        client = self.hass.data[DOMAIN][self.registry_entry.config_entry_id][PFSENSE_CLIENT]
-        await self.hass.async_add_executor_job(client.disable_filter_rule_by_tracker, tracker)
+        client = self.hass.data[DOMAIN][self.registry_entry.config_entry_id][
+            PFSENSE_CLIENT
+        ]
+        await self.hass.async_add_executor_job(
+            client.disable_filter_rule_by_tracker, tracker
+        )
         await self.coordinator.async_refresh()
 
 
@@ -285,14 +297,15 @@ class PfSenseNatSwitch(PfSenseSwitch):
         except KeyError:
             return STATE_UNKNOWN
 
-
     async def async_turn_on(self, **kwargs):
         """Turn the entity on."""
         rule = self._pfsense_get_rule()
         if rule is None:
             return
         tracker = self._pfsense_get_tracker()
-        client = self.hass.data[DOMAIN][self.registry_entry.config_entry_id][PFSENSE_CLIENT]
+        client = self.hass.data[DOMAIN][self.registry_entry.config_entry_id][
+            PFSENSE_CLIENT
+        ]
         rule_type = self._pfsense_get_rule_type()
         if rule_type == "nat_port_forward":
             method = client.enable_nat_port_forward_rule_by_created_time
@@ -308,7 +321,9 @@ class PfSenseNatSwitch(PfSenseSwitch):
         if rule is None:
             return
         tracker = self._pfsense_get_tracker()
-        client = self.hass.data[DOMAIN][self.registry_entry.config_entry_id][PFSENSE_CLIENT]
+        client = self.hass.data[DOMAIN][self.registry_entry.config_entry_id][
+            PFSENSE_CLIENT
+        ]
         rule_type = self._pfsense_get_rule_type()
         if rule_type == "nat_port_forward":
             method = client.disable_nat_port_forward_rule_by_created_time
@@ -349,15 +364,23 @@ class PfSenseServiceSwitch(PfSenseSwitch):
     async def async_turn_on(self, **kwargs):
         """Turn the entity on."""
         service = self._pfsense_get_service()
-        client = self.hass.data[DOMAIN][self.registry_entry.config_entry_id][PFSENSE_CLIENT]
-        result = await self.hass.async_add_executor_job(client.start_service, service["name"])
+        client = self.hass.data[DOMAIN][self.registry_entry.config_entry_id][
+            PFSENSE_CLIENT
+        ]
+        result = await self.hass.async_add_executor_job(
+            client.start_service, service["name"]
+        )
         if result:
             await self.coordinator.async_refresh()
 
     async def async_turn_off(self, **kwargs):
         """Turn the entity off."""
         service = self._pfsense_get_service()
-        client = self.hass.data[DOMAIN][self.registry_entry.config_entry_id][PFSENSE_CLIENT]
-        result = await self.hass.async_add_executor_job(client.stop_service, service["name"])
+        client = self.hass.data[DOMAIN][self.registry_entry.config_entry_id][
+            PFSENSE_CLIENT
+        ]
+        result = await self.hass.async_add_executor_job(
+            client.stop_service, service["name"]
+        )
         if result:
             await self.coordinator.async_refresh()

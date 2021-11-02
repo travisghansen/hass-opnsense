@@ -1,27 +1,20 @@
 """Support for tracking for pfSense devices."""
 from __future__ import annotations
 
-from mac_vendor_lookup import AsyncMacLookup
 from homeassistant.components.device_tracker import SOURCE_TYPE_ROUTER
 from homeassistant.components.device_tracker.config_entry import ScannerEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC
 from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.update_coordinator import (
-    DataUpdateCoordinator,
-)
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import slugify
+from mac_vendor_lookup import AsyncMacLookup
 
 from . import CoordinatorEntityManager, PfSenseEntity, dict_get
-
-from .const import (
-    DEVICE_TRACKER_COORDINATOR,
-    DOMAIN,
-    PFSENSE_CLIENT,
-)
-
+from .const import DEVICE_TRACKER_COORDINATOR, DOMAIN, PFSENSE_CLIENT
 from .utils import add_method
+
 
 @add_method(AsyncMacLookup)
 def sync_lookup(self, mac):
@@ -29,6 +22,7 @@ def sync_lookup(self, mac):
     if type(mac) == str:
         mac = mac.encode("utf8")
     return self.prefixes[mac[:6]].decode("utf8")
+
 
 async def async_setup_entry(
     hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities
@@ -77,7 +71,14 @@ async def async_setup_entry(
                 entities.append(entity)
 
         return entities
-    cem = CoordinatorEntityManager(hass, hass.data[DOMAIN][config_entry.entry_id][DEVICE_TRACKER_COORDINATOR], config_entry, process_entities_callback, async_add_entities)
+
+    cem = CoordinatorEntityManager(
+        hass,
+        hass.data[DOMAIN][config_entry.entry_id][DEVICE_TRACKER_COORDINATOR],
+        config_entry,
+        process_entities_callback,
+        async_add_entities,
+    )
     cem.process_entities()
 
 
@@ -100,8 +101,7 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
         self._last_known_ip = None
 
         self._attr_entity_registry_enabled_default = enabled_default
-        self._attr_unique_id = slugify(
-            f"{self.pfsense_device_unique_id}_mac_{mac}")
+        self._attr_unique_id = slugify(f"{self.pfsense_device_unique_id}_mac_{mac}")
 
     def _get_pfsense_arp_entry(self):
         state = self.coordinator.data
@@ -132,7 +132,7 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
         entry = self._get_pfsense_arp_entry()
         if entry is None:
             return None
-        
+
         ip_address = entry.get("ip-address")
         if ip_address is not None and len(ip_address) > 0:
             self._last_known_ip = ip_address
@@ -157,8 +157,8 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
     @property
     def name(self) -> str:
         """Return the name of the device."""
-        #return self.hostname or f"{self.mac_address}"
-        #return self.hostname or f"{self.pfsense_device_name} {self._mac}"
+        # return self.hostname or f"{self.mac_address}"
+        # return self.hostname or f"{self.pfsense_device_name} {self._mac}"
         return self.hostname or self._mac
 
     @property

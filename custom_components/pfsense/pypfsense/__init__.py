@@ -7,6 +7,7 @@ from urllib.parse import urlparse, quote_plus
 # value to set as the socket timeout
 DEFAULT_TIMEOUT = 5
 
+
 class Client(object):
     """pfSense Client"""
 
@@ -19,9 +20,13 @@ class Client(object):
         self._username = username
         self._password = password
         self._opts = opts
-        parts = urlparse(url.rstrip("/") + '/xmlrpc.php')
+        parts = urlparse(url.rstrip("/") + "/xmlrpc.php")
         self._url = "{scheme}://{username}:{password}@{host}/xmlrpc.php".format(
-            scheme=parts.scheme, username=quote_plus(username), password=quote_plus(password), host=parts.netloc)
+            scheme=parts.scheme,
+            username=quote_plus(username),
+            password=quote_plus(password),
+            host=parts.netloc,
+        )
         self._url_parts = urlparse(self._url)
 
     # https://stackoverflow.com/questions/64983392/python-multiple-patch-gives-http-client-cannotsendrequest-request-sent
@@ -39,8 +44,7 @@ class Client(object):
         # set to True if necessary during development
         verbose = False
 
-        proxy = xmlrpc.client.ServerProxy(
-            self._url, context=context, verbose=verbose)
+        proxy = xmlrpc.client.ServerProxy(self._url, context=context, verbose=verbose)
         return proxy
 
     def _apply_timeout(func):
@@ -48,14 +52,14 @@ class Client(object):
             response = None
             # timout applies to each recv() call, not the whole request
             default_timeout = socket.getdefaulttimeout()
-            try: 
+            try:
                 socket.setdefaulttimeout(DEFAULT_TIMEOUT)
                 response = func(*args, **kwargs)
             finally:
                 socket.setdefaulttimeout(default_timeout)
             return response
-        return inner
 
+        return inner
 
     @_apply_timeout
     def _get_config_section(self, section):
@@ -64,9 +68,7 @@ class Client(object):
 
     @_apply_timeout
     def _restore_config_section(self, section_name, data):
-        params = {
-            section_name: data
-        }
+        params = {section_name: data}
         response = self._get_proxy().pfsense.restore_config_section(params, 60)
         return response
 
@@ -111,7 +113,6 @@ $toreturn = [
 """
         response = self._exec_php(script)
         return response
-
 
     def get_config(self):
         script = """
@@ -216,7 +217,7 @@ $toreturn = [
         return response["data"]
 
     def get_gateways(self):
-        #{'GW_WAN': {'interface': '<if>', 'gateway': '<ip>', 'name': 'GW_WAN', 'weight': '1', 'ipprotocol': 'inet', 'interval': '', 'descr': 'Interface wan Gateway', 'monitor': '<ip>', 'friendlyiface': 'wan', 'friendlyifdescr': 'WAN', 'isdefaultgw': True, 'attribute': 0, 'tiername': 'Default (IPv4)'}}
+        # {'GW_WAN': {'interface': '<if>', 'gateway': '<ip>', 'name': 'GW_WAN', 'weight': '1', 'ipprotocol': 'inet', 'interval': '', 'descr': 'Interface wan Gateway', 'monitor': '<ip>', 'friendlyiface': 'wan', 'friendlyifdescr': 'WAN', 'isdefaultgw': True, 'attribute': 0, 'tiername': 'Default (IPv4)'}}
         script = """
 $toreturn = [
   "data" => return_gateways_array(),
@@ -232,7 +233,7 @@ $toreturn = [
                 return gateways[g]
 
     def get_gateways_status(self):
-        #{'GW_WAN': {'monitorip': '<ip>', 'srcip': '<ip>', 'name': 'GW_WAN', 'delay': '0.387ms', 'stddev': '0.097ms', 'loss': '0.0%', 'status': 'online', 'substatus': 'none'}}
+        # {'GW_WAN': {'monitorip': '<ip>', 'srcip': '<ip>', 'name': 'GW_WAN', 'delay': '0.387ms', 'stddev': '0.097ms', 'loss': '0.0%', 'status': 'online', 'substatus': 'none'}}
         script = """
 $toreturn = [
   // function return_gateways_status($byname = false, $gways = false)
@@ -255,7 +256,9 @@ $toreturn = [
 $toreturn = [
   "data" => system_get_arp_table({}),
 ];
-""".format(php_bool)
+""".format(
+            php_bool
+        )
         response = self._exec_php(script)
         return response["data"]
 
@@ -285,8 +288,7 @@ $toreturn = [
 
         for service in response["data"]:
             if "status" not in service:
-                service["status"] = self.get_service_is_running(
-                    service["name"])
+                service["status"] = self.get_service_is_running(service["name"])
 
         return response["data"]
 
@@ -298,7 +300,9 @@ $toreturn = [
   // always returns true, so mostly useless at this point
   "data" => is_service_enabled("{}"),
 ];
-""".format(service_name)
+""".format(
+            service_name
+        )
         response = self._exec_php(script)
         return response["data"]
 
@@ -309,7 +313,9 @@ require_once '/etc/inc/service-utils.inc';
 $toreturn = [
   "data" => (bool) is_service_running("{}"),
 ];
-""".format(service_name)
+""".format(
+            service_name
+        )
         response = self._exec_php(script)
         return response["data"]
 
@@ -321,7 +327,9 @@ $toreturn = [
   // always returns true, so mostly useless at this point
   "data" => is_service_enabled("{}"),
 ];
-""".format(service_name)
+""".format(
+            service_name
+        )
         response = self._exec_php(script)
         return response["data"]
 
@@ -332,7 +340,9 @@ require_once '/etc/inc/service-utils.inc';
 $toreturn = [
   "data" => (bool) is_service_running("{}"),
 ];
-""".format(service_name)
+""".format(
+            service_name
+        )
         response = self._exec_php(script)
         return response["data"]
 
@@ -349,7 +359,9 @@ $toreturn = [
   // no return value
   "data" => true,
 ];
-""".format(service_name)
+""".format(
+            service_name
+        )
         response = self._exec_php(script)
         return response["data"]
 
@@ -366,7 +378,9 @@ $toreturn = [
   // no return value
   "data" => true,
 ];
-""".format(service_name)
+""".format(
+            service_name
+        )
         response = self._exec_php(script)
         return response["data"]
 
@@ -379,7 +393,9 @@ $toreturn = [
   // no return value
   "data" => true,
 ];
-""".format(service_name)
+""".format(
+            service_name
+        )
         response = self._exec_php(script)
         return response["data"]
 
@@ -392,7 +408,9 @@ $toreturn = [
   // no return value
   "data" => true,
 ];
-""".format(service_name)
+""".format(
+            service_name
+        )
         response = self._exec_php(script)
         return response["data"]
 
@@ -443,7 +461,9 @@ $status = get_carp_interface_status("_vip{}");
 $toreturn = [
   "data" => $status,
 ];
-""".format(uniqueid)
+""".format(
+            uniqueid
+        )
         print(script)
         response = self._exec_php(script)
         return response["data"]
@@ -471,7 +491,7 @@ $toreturn = [
 """
         response = self._exec_php(script)
         return response["data"]
-    
+
     def delete_arp_entry(self, ip):
         if len(ip) < 1:
             return
@@ -481,10 +501,12 @@ $ret = mwexec("arp -d " . $ip, true);
 $toreturn = [
   "data" => $ret,
 ];
-""".format(ip)
+""".format(
+            ip
+        )
         self._exec_php(script)
 
-    def arp_get_mac_by_ip(self, ip, do_ping = True):
+    def arp_get_mac_by_ip(self, ip, do_ping=True):
         """function arp_get_mac_by_ip($ip, $do_ping = true)"""
         php_bool = "true" if do_ping else "false"
         script = """
@@ -493,12 +515,13 @@ $do_ping = {};
 $toreturn = [
   "data" => arp_get_mac_by_ip($ip, $do_ping),
 ];
-""".format(ip, php_bool)
+""".format(
+            ip, php_bool
+        )
         response = self._exec_php(script)["data"]
         if not response:
             return None
         return response
-
 
     # TODO: function find_service_by_name($name)
     # TODO: function get_service_status($service) # seems to be higher-level logic than is_service_running, passes in the full service object
