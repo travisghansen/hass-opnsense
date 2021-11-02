@@ -240,6 +240,10 @@ class PfSenseData:
             self._state["carp_status"] = self._client.get_carp_status()
             self._state["dhcp_leases"] = self._client.get_dhcp_leases()
             self._state["dhcp_stats"] = {}
+            self._state["notices"] = {}
+            self._state["notices"][
+                "pending_notices_present"
+            ] = self._client.are_notices_pending()
 
             lease_stats = {"total": 0, "online": 0, "offline": 0}
             for lease in self._state["dhcp_leases"]:

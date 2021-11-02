@@ -43,6 +43,22 @@ async def async_setup_entry(
             False,
         )
         entities.append(entity)
+
+        entity = PfSensePendingNoticesPresentBinarySensor(
+            config_entry,
+            coordinator,
+            BinarySensorEntityDescription(
+                key=f"notices.pending_notices_present",
+                name="Pending Notices Present",
+                # native_unit_of_measurement=native_unit_of_measurement,
+                icon="mdi:alert",
+                # state_class=state_class,
+                # entity_category=entity_category,
+            ),
+            True,
+        )
+        entities.append(entity)
+
         return entities
 
     cem = CoordinatorEntityManager(
@@ -92,5 +108,15 @@ class PfSenseCarpStatusBinarySensor(PfSenseBinarySensor):
         state = self.coordinator.data
         try:
             return state["carp_status"]
+        except KeyError:
+            return STATE_UNKNOWN
+
+
+class PfSensePendingNoticesPresentBinarySensor(PfSenseBinarySensor):
+    @property
+    def is_on(self):
+        state = self.coordinator.data
+        try:
+            return state["notices"]["pending_notices_present"]
         except KeyError:
             return STATE_UNKNOWN
