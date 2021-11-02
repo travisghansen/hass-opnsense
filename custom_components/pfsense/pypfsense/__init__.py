@@ -252,7 +252,6 @@ $toreturn = [
 
     def get_arp_table(self, resolve_hostnames=False):
         # [{'hostname': '?', 'ip-address': '<ip>', 'mac-address': '<mac>', 'interface': 'em0', 'expires': 1199, 'type': 'ethernet'}, ...]
-        php_bool = "true" if resolve_hostnames else "false"
         script = """
 
 $data = json_decode('{}', true);
@@ -263,7 +262,7 @@ $toreturn = [
 """.format(
             json.dumps(
                 {
-                    "resolve_hostnames": php_bool,
+                    "resolve_hostnames": resolve_hostnames,
                 }
             )
         )
@@ -341,39 +340,6 @@ $toreturn = [
         response = self._exec_php(script)
         return response["data"]
 
-    def get_service_is_enabled(self, service_name):
-        # function is_service_enabled($service_name)
-        script = """
-require_once '/etc/inc/service-utils.inc';
-
-$data = json_decode('{}', true);
-$service_name = $data["service_name"];
-$toreturn = [
-  // always returns true, so mostly useless at this point
-  "data" => is_service_enabled($service_name),
-];
-""".format(
-            json.dumps(
-                {
-                    "service_name": service_name,
-                }
-            )
-        )
-        response = self._exec_php(script)
-        return response["data"]
-
-    def get_service_is_running(self, service_name):
-        # function is_service_running($service, $ps = "")
-        script = """
-require_once '/etc/inc/service-utils.inc';
-$toreturn = [
-  "data" => (bool) is_service_running("{}"),
-];
-""".format(
-            service_name
-        )
-        response = self._exec_php(script)
-        return response["data"]
 
     def start_service(self, service_name):
         # function start_service($name, $after_sync = false)
@@ -574,7 +540,6 @@ $toreturn = [
 
     def arp_get_mac_by_ip(self, ip, do_ping=True):
         """function arp_get_mac_by_ip($ip, $do_ping = true)"""
-        php_bool = "true" if do_ping else "false"
         script = """
 $data = json_decode('{}', true);
 $ip = $data["ip"];
@@ -586,7 +551,7 @@ $toreturn = [
             json.dumps(
                 {
                     "ip": ip,
-                    "do_ping": php_bool,
+                    "do_ping": do_ping,
                 }
             )
         )
@@ -890,7 +855,6 @@ $toreturn = [
         function file_notice($id, $notice, $category = "General", $url = "", $priority = 1, $local_only = false)
         """
 
-        local_only_php_bool = "true" if local_only else "false"
         script = """
 $data = json_decode('{}', true);
 $id = $data["id"];
@@ -912,7 +876,7 @@ $toreturn = [
                     "category": category,
                     "url": url,
                     "priority": priority,
-                    "local_only": local_only_php_bool,
+                    "local_only": local_only,
                 }
             )
         )
@@ -921,6 +885,9 @@ $toreturn = [
         return response["data"]
 
     def close_notice(self, id):
+        """
+        id = "all" to wipe everything
+        """
         script = """
 $data = json_decode('{}', true);
 $id = $data["id"];
