@@ -848,7 +848,7 @@ $data = json_decode('{}', true);
 $category = $data["category"];
 $value = get_notices($category);
 if (!$value) {{
-    $value = [];
+    $value = false;
 }}
 $toreturn = [
   "data" => $value,
@@ -862,7 +862,17 @@ $toreturn = [
         )
 
         response = self._exec_php(script)
-        return response["data"]
+        value = response["data"]
+        if value is False:
+            return []
+        
+        notices = []
+        for key in value.keys():
+            notice = value.get(key)
+            notice["created_at"] = key
+            notices.append(notice)
+
+        return notices
 
     def file_notice(
         self, id, notice, category="General", url="", priority=1, local_only=False

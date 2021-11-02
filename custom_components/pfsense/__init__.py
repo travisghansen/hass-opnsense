@@ -244,6 +244,7 @@ class PfSenseData:
             self._state["notices"][
                 "pending_notices_present"
             ] = self._client.are_notices_pending()
+            self._state["notices"]["pending_notices"] = self._client.get_notices()
 
             lease_stats = {"total": 0, "online": 0, "offline": 0}
             for lease in self._state["dhcp_leases"]:

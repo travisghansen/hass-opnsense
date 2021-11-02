@@ -57,6 +57,7 @@ review the disabled entities as what you're looking for is probably there.
 ## binary_sensor
 
 - carp status (enabled/disabled)
+- system notices present (the bell icon in the upper right of the UI)
 
 ## device_tracker
 

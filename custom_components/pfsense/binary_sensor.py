@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import slugify
 
-from . import CoordinatorEntityManager, PfSenseEntity
+from . import CoordinatorEntityManager, PfSenseEntity, dict_get
 from .const import COORDINATOR, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -120,3 +120,14 @@ class PfSensePendingNoticesPresentBinarySensor(PfSenseBinarySensor):
             return state["notices"]["pending_notices_present"]
         except KeyError:
             return STATE_UNKNOWN
+
+    @property
+    def extra_state_attributes(self):
+        state = self.coordinator.data
+        attrs = {}
+
+        notices = dict_get(state, "notices.pending_notices")
+        attrs["pending_notices"] = notices
+
+        return attrs
+
