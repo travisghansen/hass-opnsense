@@ -131,4 +131,3 @@ class PfSensePendingNoticesPresentBinarySensor(PfSenseBinarySensor):
         attrs["pending_notices"] = notices
 
         return attrs
-

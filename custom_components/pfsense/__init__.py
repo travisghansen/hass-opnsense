@@ -17,6 +17,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_registry import async_get_registry
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
@@ -86,7 +87,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
             await hass.async_add_executor_job(lambda: data.update())
 
             if not data.state:
-                raise UpdateFailed("Error fetching UPS state")
+                raise UpdateFailed(f"Error fetching {entry.title} pfSense state")
 
             return data.state
 
@@ -94,7 +95,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     coordinator = DataUpdateCoordinator(
         hass,
         _LOGGER,
-        name="pfSense state",
+        name=f"{entry.title} pfSense state",
         update_method=async_update_data,
         update_interval=timedelta(seconds=scan_interval),
     )
@@ -117,14 +118,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
                 )
 
                 if not device_tracker_data.state:
-                    raise UpdateFailed("Error fetching pfSense state")
+                    raise UpdateFailed(f"Error fetching {entry.title} pfSense state")
 
                 return device_tracker_data.state
 
         device_tracker_coordinator = DataUpdateCoordinator(
             hass,
             _LOGGER,
-            name="pfSense device tracker state",
+            name=f"{entry.title} pfSense device tracker state",
             update_method=async_update_device_tracker_data,
             update_interval=timedelta(seconds=device_tracker_scan_interval),
         )
@@ -356,21 +357,41 @@ class CoordinatorEntityManager:
             coordinator.async_add_listener(self.process_entities)
         )
         self.entity_unique_ids = set()
+        self.entities = {}
 
     @callback
     def process_entities(self):
         entities = self.process_entities_callback(self.hass, self.config_entry)
+        i_entity_unqiue_ids = set()
         for entity in entities:
             unique_id = entity.unique_id
             if unique_id is None:
                 raise Exception("unique_id is missing from entity")
+            i_entity_unqiue_ids.add(unique_id)
             if unique_id not in self.entity_unique_ids:
                 self.async_add_entities([entity])
                 self.entity_unique_ids.add(unique_id)
+                self.entities[unique_id] = entity
                 # print(f"{unique_id} registered")
             else:
                 # print(f"{unique_id} already registered")
                 pass
+
+        # check for missing entities
+        for entity_unique_id in self.entity_unique_ids:
+            if entity_unique_id not in i_entity_unqiue_ids:
+                pass
+                # print("should remove entity: " + str(self.entities[entity_unique_id].entry_id))
+                # print("candidate to remove entity: " + str(entity_unique_id))
+                # self.async_remove_entity(self.entities[entity_unique_id])
+                # self.entity_unique_ids.remove(entity_unique_id)
+                # del self.entities[entity_unique_id]
+
+    async def async_remove_entity(self, entity):
+        print("removing entity: " + str(entity.entity_id))
+        registry = await async_get_registry(self.hass)
+        if entity.entity_id in registry.entities:
+            registry.async_remove(entity.entity_id)
 
 
 class PfSenseEntity(CoordinatorEntity, RestoreEntity):

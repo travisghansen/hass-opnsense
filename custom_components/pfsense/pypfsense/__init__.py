@@ -340,7 +340,6 @@ $toreturn = [
         response = self._exec_php(script)
         return response["data"]
 
-
     def start_service(self, service_name):
         # function start_service($name, $after_sync = false)
         script = """

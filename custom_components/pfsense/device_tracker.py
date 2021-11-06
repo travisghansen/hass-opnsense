@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Mapping
 
+from attr import attr
 from homeassistant.components.device_tracker import SOURCE_TYPE_ROUTER
 from homeassistant.components.device_tracker.config_entry import ScannerEntity
 from homeassistant.config_entries import ConfigEntry
@@ -16,12 +17,7 @@ from homeassistant.util import slugify
 from mac_vendor_lookup import AsyncMacLookup
 
 from . import CoordinatorEntityManager, PfSenseEntity, dict_get
-from .const import (
-    CONF_DEVICES,
-    DEVICE_TRACKER_COORDINATOR,
-    DOMAIN,
-    PFSENSE_CLIENT,
-)
+from .const import CONF_DEVICES, DEVICE_TRACKER_COORDINATOR, DOMAIN, PFSENSE_CLIENT
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -66,27 +62,28 @@ async def async_setup_entry(
         enabled_default = False
 
         entities = []
-        entries = dict_get(state, "arp_table")
-        if not entries:
-            return []
+        mac_addresses = []
 
-        whitelisted_devices = config_entry.options.get(CONF_DEVICES)
-        if whitelisted_devices:
+        # use configured mac addresses if setup, otherwise create an entity per arp entry
+        configured_mac_addresses = config_entry.options.get(CONF_DEVICES)
+        if configured_mac_addresses:
+            mac_addresses = configured_mac_addresses
             enabled_default = True
+        else:
+            arp_entries = dict_get(state, "arp_table")
+            if not arp_entries:
+                return []
 
-        mac_entries = [
-            entry_mac.lower()
-            for entry in entries
-            if (entry_mac := entry.get("mac-address"))
-            and (not whitelisted_devices or entry_mac in whitelisted_devices)
-        ]
-        for entry_mac in mac_entries:
-            if enabled_default and entry_mac not in whitelisted_devices:
-                continue
+            mac_addresses = [
+                mac_address.lower()
+                for arp_entry in arp_entries
+                if (mac_address := arp_entry.get("mac-address"))
+            ]
 
+        for mac_address in mac_addresses:
             mac_vendor = None
             try:
-                mac_vendor = lookup_mac(mac_vendor_lookup, entry_mac)
+                mac_vendor = lookup_mac(mac_vendor_lookup, mac_address)
             except:
                 pass
 
@@ -95,7 +92,7 @@ async def async_setup_entry(
                 config_entry,
                 coordinator,
                 enabled_default,
-                entry_mac,
+                mac_address,
                 mac_vendor,
             )
 
@@ -112,7 +109,6 @@ async def async_setup_entry(
         config_entry,
         process_entities_callback,
         async_add_entities,
-        True,
     )
     cem.process_entities()
 
@@ -137,6 +133,7 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
         self._mac_vendor = mac_vendor
         self._last_known_ip = None
         self._last_known_hostname = None
+        self._extra_state = {}
 
         self._attr_entity_registry_enabled_default = enabled_default
         self._attr_unique_id = get_device_tracker_unique_id(
@@ -165,14 +162,17 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
     def _extra_state_attributes(self) -> Mapping[str, Any] | None:
         """Return extra state attributes."""
         entry = self._get_pfsense_arp_entry()
-        if entry is None:
-            return None
+        if entry is not None:
+            for property in ["interface", "expires", "type"]:
+                self._extra_state[property] = entry.get(property)
 
-        attrs = {}
-        for property in ["interface", "expires", "type"]:
-            attrs[property] = entry.get(property)
+        if self._last_known_hostname is not None:
+            self._extra_state["last_known_hostname"] = self._last_known_hostname
 
-        return attrs
+        if self._last_known_ip is not None:
+            self._extra_state["last_known_ip"] = self._last_known_ip
+
+        return self._extra_state
 
     @property
     def ip_address(self) -> str | None:
@@ -254,3 +254,24 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
             self.hass.async_add_executor_job(client.delete_arp_entry, ip_address)
 
         return True
+
+    async def async_added_to_hass(self) -> None:
+        """Handle entity which will be added."""
+        await super().async_added_to_hass()
+        state = await self.async_get_last_state()
+        state = state.attributes
+        for attr in [
+            "interface",
+            "expires",
+            "type",
+            "last_known_ip",
+            "last_known_hostname",
+        ]:
+            value = state.get(attr, None)
+            if value is not None:
+                self._extra_state[attr] = value
+                if attr == "last_known_hostname":
+                    self._last_known_hostname = value
+
+                if attr == "last_known_ip":
+                    self._last_known_ip = value
