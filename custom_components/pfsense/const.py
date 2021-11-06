@@ -26,7 +26,6 @@ PLATFORMS = ["sensor", "switch", "device_tracker", "binary_sensor"]
 LOADED_PLATFORMS = "loaded_platforms"
 
 PFSENSE_CLIENT = "pfsense_client"
-
 COORDINATOR = "coordinator"
 DEVICE_TRACKER_COORDINATOR = "device_tracker_coordinator"
 DEFAULT_SCAN_INTERVAL = 30
@@ -39,6 +38,8 @@ DEFAULT_DEVICE_TRACKER_ENABLED = False
 
 CONF_DEVICE_TRACKER_SCAN_INTERVAL = "device_tracker_scan_interval"
 DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL = 60
+
+CONF_DEVICES = "devices"
 
 COUNT = "count"
 

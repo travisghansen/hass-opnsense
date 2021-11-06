@@ -4,6 +4,7 @@ from datetime import timedelta
 import logging
 import re
 import time
+from typing import Callable
 
 import async_timeout
 from homeassistant.config_entries import ConfigEntry
@@ -14,7 +15,8 @@ from homeassistant.const import (
     CONF_USERNAME,
     CONF_VERIFY_SSL,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
@@ -60,7 +62,7 @@ def dict_get(data: dict, path: str, default=None):
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry):
     """Handle options update."""
-    await hass.config_entries.async_reload(entry.entry_id)
+    hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
@@ -342,8 +344,8 @@ class CoordinatorEntityManager:
         hass: HomeAssistant,
         coordinator: DataUpdateCoordinator,
         config_entry: ConfigEntry,
-        process_entities_callback,
-        async_add_entities,
+        process_entities_callback: Callable,
+        async_add_entities: AddEntitiesCallback,
     ) -> None:
         self.hass = hass
         self.coordinator = coordinator
@@ -355,6 +357,7 @@ class CoordinatorEntityManager:
         )
         self.entity_unique_ids = set()
 
+    @callback
     def process_entities(self):
         entities = self.process_entities_callback(self.hass, self.config_entry)
         for entity in entities:

@@ -13,12 +13,14 @@ from homeassistant.const import (
     CONF_VERIFY_SSL,
 )
 from homeassistant.core import callback
+import homeassistant.helpers.config_validation as cv
 from homeassistant.util import slugify
 import voluptuous as vol
 
 from .const import (
     CONF_DEVICE_TRACKER_ENABLED,
     CONF_DEVICE_TRACKER_SCAN_INTERVAL,
+    CONF_DEVICES,
     DEFAULT_DEVICE_TRACKER_ENABLED,
     DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
@@ -65,7 +67,9 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 name = user_input.get(CONF_NAME, False) or None
 
                 url = user_input[CONF_URL].strip()
-                # ParseResult(scheme='', netloc='', path='f', params='', query='', fragment='')
+                # ParseResult(
+                #     scheme='', netloc='', path='f', params='', query='', fragment=''
+                # )
                 url_parts = urlparse(url)
                 if len(url_parts.scheme) < 1:
                     raise InvalidURL()
@@ -75,7 +79,6 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
                 # remove any path etc details
                 url = f"{url_parts.scheme}://{url_parts.netloc}"
-
                 username = user_input.get(CONF_USERNAME, DEFAULT_USERNAME)
                 password = user_input[CONF_PASSWORD]
                 verify_ssl = user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
@@ -130,8 +133,9 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     _LOGGER.error(message)
                     errors["base"] = "cannot_connect"
             except OSError as err:
-                # bad response from pfSense when creds are valid but authorization is not sufficient
-                # non-admin users must have 'System - HA node sync' privilege
+                # bad response from pfSense when creds are valid but authorization is
+                # not sufficient non-admin users must have 'System - HA node sync'
+                # privilege
                 if "unsupported XML-RPC protocol" in str(err):
                     errors["base"] = "privilege_missing"
                 elif "timed out" in str(err):
@@ -172,12 +176,17 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
+        self.new_options = None
         self.config_entry = config_entry
 
     async def async_step_init(self, user_input=None):
         """Handle options flow."""
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            if user_input.get(CONF_DEVICE_TRACKER_ENABLED):
+                self.new_options = user_input
+                return await self.async_step_device_tracker()
+            else:
+                return self.async_create_entry(title="", data=user_input)
 
         scan_interval = self.config_entry.options.get(
             CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
@@ -199,10 +208,40 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             vol.Optional(
                 CONF_DEVICE_TRACKER_SCAN_INTERVAL, default=device_tracker_scan_interval
             ): vol.All(vol.Coerce(int), vol.Clamp(min=30, max=300)),
-            # vol.Optional("mac_addresses"): cv.ensure_list,
         }
 
         return self.async_show_form(step_id="init", data_schema=vol.Schema(base_schema))
+
+    async def async_step_device_tracker(self, user_input=None):
+        """Handle device tracker list step."""
+        url = self.config_entry.data[CONF_URL].strip()
+        username = self.config_entry.data.get(CONF_USERNAME, DEFAULT_USERNAME)
+        password = self.config_entry.data[CONF_PASSWORD]
+        verify_ssl = self.config_entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
+        client = Client(url, username, password, {"verify_ssl": verify_ssl})
+        if user_input is None and (
+            arp_table := await self.hass.async_add_executor_job(
+                client.get_arp_table, True
+            )
+        ):
+            entries = {
+                entry.get("mac-address", "").lower(): (
+                    f"{entry.get('hostname').strip('?')}: {entry.get('ip-address')} "
+                    f"({entry.get('mac-address')})"
+                )
+                for entry in arp_table
+            }
+            return self.async_show_form(
+                step_id="device_tracker",
+                data_schema=vol.Schema(
+                    {
+                        vol.Optional(CONF_DEVICES): cv.multi_select(entries),
+                    }
+                ),
+            )
+        if user_input:
+            self.new_options[CONF_DEVICES] = user_input[CONF_DEVICES]
+        return self.async_create_entry(title="", data=self.new_options)
 
 
 class InvalidURL(Exception):

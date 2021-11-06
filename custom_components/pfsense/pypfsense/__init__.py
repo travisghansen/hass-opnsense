@@ -1,7 +1,7 @@
 import json
 import socket
 import ssl
-from urllib.parse import quote_plus, unquote, urlparse
+from urllib.parse import quote_plus, urlparse
 from xml.parsers.expat import ExpatError
 import xmlrpc.client
 
@@ -631,7 +631,7 @@ function send_wol($if, $mac) {{
         if (!is_ipaddr($ipaddr) || !is_macaddr($mac)) {{
                 return false;
         }}
-        
+
         $bcip = gen_subnet_max($ipaddr, get_interface_subnet($if));
         return (bool) !mwexec("/usr/local/bin/wol -i {{$bcip}} {{$mac}}");
 }}
@@ -830,7 +830,7 @@ $toreturn = [
         value = response["data"]
         if value is False:
             return []
-        
+
         notices = []
         for key in value.keys():
             notice = value.get(key)
