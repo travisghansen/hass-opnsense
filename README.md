@@ -102,6 +102,16 @@ data:
   # default is to clear all notices
   # id: <some id>
 
+service: pfsense.file_notice
+data:
+  entity_id: binary_sensor.pfsense_localdomain_pending_notices_present
+  id: "hass"
+  notice: "hello world"
+  # category: "HASS"
+  # url: ""
+  # priority: 1
+  # local_only: false
+
 service: pfsense.system_halt
 data:
   entity_id: binary_sensor.pfsense_localdomain_pending_notices_present

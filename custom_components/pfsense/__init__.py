@@ -445,6 +445,10 @@ class PfSenseEntity(CoordinatorEntity, RestoreEntity):
         client = self._get_pfsense_client()
         client.close_notice(id)
 
+    def service_file_notice(self, **kwargs):
+        client = self._get_pfsense_client()
+        client.file_notice(**kwargs)
+
     def service_start_service(self, service_name: str):
         client = self._get_pfsense_client()
         client.start_service(service_name)

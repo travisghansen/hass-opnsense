@@ -251,6 +251,7 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
 }
 
 SERVICE_CLOSE_NOTICE = "close_notice"
+SERVICE_FILE_NOTICE = "file_notice"
 SERVICE_START_SERVICE = "start_service"
 SERVICE_STOP_SERVICE = "stop_service"
 SERVICE_RESTART_SERVICE = "restart_service"

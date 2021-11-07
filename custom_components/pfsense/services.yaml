@@ -10,6 +10,7 @@ close_notice:
     entity_id:
       description: pfSense entity id
       example: "binary_sensor.pfsense_localdomain_pending_notices_present"
+
     # Key of the field
     id:
       # Field name as shown in UI
@@ -24,6 +25,62 @@ close_notice:
       example: "all"
       # The default field value
       default: "all"
+
+file_notice:
+  name: File notice
+  description: Files a notice(s).
+  fields:
+    entity_id:
+      description: pfSense entity id
+      example: "binary_sensor.pfsense_localdomain_pending_notices_present"
+
+    id:
+      name: Notice ID
+      description: The notice ID
+      required: true
+      advanced: false
+      example: "all"
+      default: "all"
+
+    notice:
+      name: Notice message
+      description: The notice message
+      required: true
+      advanced: false
+      example: "hello world from hass"
+      default: ""
+
+    category:
+      name: Notice category
+      description: The category of the notice
+      required: false
+      advanced: true
+      example: "General"
+      default: "HASS"
+
+    url:
+      name: Notice url
+      description: The url of the notice
+      required: false
+      advanced: true
+      example: "https://example.com"
+      default: ""
+
+    priority:
+      name: Notice priority
+      description: The priority of the notice
+      required: false
+      advanced: true
+      example: 1
+      default: 1
+
+    local_only:
+      name: Only show in the UI
+      description: Do not send the notice via email, etc
+      required: false
+      advanced: true
+      example: false
+      default: false
 
 start_service:
   name: Start service

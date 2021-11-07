@@ -3,6 +3,7 @@ import voluptuous as vol
 
 from .const import (
     SERVICE_CLOSE_NOTICE,
+    SERVICE_FILE_NOTICE,
     SERVICE_RESTART_SERVICE,
     SERVICE_SEND_WOL,
     SERVICE_START_SERVICE,
@@ -19,6 +20,19 @@ def register_services(platform):
             vol.Optional("id", default="all"): vol.Any(cv.positive_int, cv.string),
         },
         "service_close_notice",
+    )
+
+    platform.async_register_entity_service(
+        SERVICE_FILE_NOTICE,
+        {
+            vol.Required("id"): vol.Any(cv.string),
+            vol.Required("notice"): vol.Any(cv.string),
+            vol.Optional("category", default="HASS"): vol.Any(cv.string),
+            vol.Optional("url", default=""): vol.Any(cv.string),
+            vol.Optional("priority", default=1): cv.positive_int,
+            vol.Optional("local_only", default=False): cv.boolean,
+        },
+        "service_file_notice",
     )
 
     platform.async_register_entity_service(
