@@ -224,18 +224,32 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 client.get_arp_table, True
             )
         ):
-            entries = {
-                entry.get("mac-address", "").lower(): (
-                    f"{entry.get('hostname').strip('?')}: {entry.get('ip-address')} "
-                    f"({entry.get('mac-address')})"
-                )
-                for entry in arp_table
-            }
+            selected_devices = self.config_entry.options.get(CONF_DEVICES, [])
+
+            # dicts are ordered so put all previously selected items at the top
+            entries = {}
+            for device in selected_devices:
+                entries[device] = device
+
+            # follow with all arp table entries
+            for entry in arp_table:
+                mac = entry.get("mac-address", "").lower()
+                if len(mac) < 1:
+                    continue
+
+                hostname = entry.get("hostname").strip("?")
+                ip = entry.get("ip-address")
+
+                label = f"{mac} - {hostname.strip()} ({ip.strip()})"
+                entries[mac] = label
+
             return self.async_show_form(
                 step_id="device_tracker",
                 data_schema=vol.Schema(
                     {
-                        vol.Optional(CONF_DEVICES): cv.multi_select(entries),
+                        vol.Optional(
+                            CONF_DEVICES, default=selected_devices
+                        ): cv.multi_select(entries),
                     }
                 ),
             )

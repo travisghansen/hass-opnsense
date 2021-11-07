@@ -249,3 +249,11 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
         # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
 }
+
+SERVICE_CLOSE_NOTICE = "close_notice"
+SERVICE_START_SERVICE = "start_service"
+SERVICE_STOP_SERVICE = "stop_service"
+SERVICE_RESTART_SERVICE = "restart_service"
+SERVICE_SYSTEM_HALT = "system_halt"
+SERVICE_SYSTEM_REBOOT = "system_reboot"
+SERVICE_SEND_WOL = "send_wol"

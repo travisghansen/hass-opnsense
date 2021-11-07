@@ -349,7 +349,7 @@ $data = json_decode('{}', true);
 $service_name = $data["service_name"];
 $is_running = is_service_running($service_name);
 if (!$is_running) {{
-  start_service($service_name);
+  service_control_start($service_name, []);
 }}
 $toreturn = [
   // no return value
@@ -362,8 +362,7 @@ $toreturn = [
                 }
             )
         )
-        response = self._exec_php(script)
-        return response["data"]
+        self._exec_php(script)
 
     def stop_service(self, service_name):
         # function stop_service($name)
@@ -374,7 +373,7 @@ $data = json_decode('{}', true);
 $service_name = $data["service_name"];
 $is_running = is_service_running($service_name);
 if ($is_running) {{
-  stop_service($service_name);
+  service_control_stop($service_name, []);
 }}
 $toreturn = [
   // no return value
@@ -387,8 +386,7 @@ $toreturn = [
                 }
             )
         )
-        response = self._exec_php(script)
-        return response["data"]
+        self._exec_php(script)
 
     def restart_service(self, service_name):
         # function restart_service($name) (if service is not currently running, it will be started)
@@ -397,7 +395,7 @@ require_once '/etc/inc/service-utils.inc';
 
 $data = json_decode('{}', true);
 $service_name = $data["service_name"];
-restart_service($service_name);
+service_control_restart($service_name, []);
 $toreturn = [
   // no return value
   "data" => true,
@@ -409,8 +407,7 @@ $toreturn = [
                 }
             )
         )
-        response = self._exec_php(script)
-        return response["data"]
+        self._exec_php(script)
 
     def restart_service_if_running(self, service_name):
         # function restart_service_if_running($service)
@@ -419,7 +416,10 @@ require_once '/etc/inc/service-utils.inc';
 
 $data = json_decode('{}', true);
 $service_name = $data["service_name"];
-restart_service_if_running($service_name);
+$is_running = is_service_running($service_name);
+if ($is_running) {{
+  service_control_restart($service_name, []);
+}}
 $toreturn = [
   // no return value
   "data" => true,
@@ -431,8 +431,7 @@ $toreturn = [
                 }
             )
         )
-        response = self._exec_php(script)
-        return response["data"]
+        self._exec_php(script)
 
     def get_dhcp_leases(self):
         # function system_get_dhcpleases()
@@ -781,6 +780,9 @@ foreach ($ifdescrs as $ifdescr => $ifname) {
 
         for i, i_key in enumerate(data["interfaces"].keys()):
             data["interfaces"][i_key] = json.loads(data["interfaces"][i_key])
+
+        if isinstance(data["gateways"], list):
+            data["gateways"] = {}
 
         return data
 

@@ -3,17 +3,20 @@ import logging
 from typing import Callable
 
 from homeassistant.components.binary_sensor import (
+    DEVICE_CLASS_PROBLEM,
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_platform
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import slugify
 
 from . import CoordinatorEntityManager, PfSenseEntity, dict_get
 from .const import COORDINATOR, DOMAIN
+from .services import register_services
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -24,6 +27,8 @@ async def async_setup_entry(
     async_add_entities: Callable,
 ):
     """Set up the pfSense binary sensors."""
+    platform = entity_platform.async_get_current_platform()
+    register_services(platform)
 
     @callback
     def process_entities_callback(hass, config_entry):
@@ -121,6 +126,10 @@ class PfSensePendingNoticesPresentBinarySensor(PfSenseBinarySensor):
             return state["notices"]["pending_notices_present"]
         except KeyError:
             return STATE_UNKNOWN
+
+    @property
+    def device_class(self):
+        return DEVICE_CLASS_PROBLEM
 
     @property
     def extra_state_attributes(self):

@@ -1,4 +1,6 @@
 """Support for pfSense."""
+from __future__ import annotations
+
 import copy
 from datetime import timedelta
 import logging
@@ -408,6 +410,7 @@ class PfSenseEntity(CoordinatorEntity, RestoreEntity):
         device_info = {
             "identifiers": {(DOMAIN, self.pfsense_device_unique_id)},
             "name": self.pfsense_device_name,
+            "configuration_url": self.config_entry.data.get("url", None),
         }
 
         device_info["model"] = model
@@ -434,3 +437,37 @@ class PfSenseEntity(CoordinatorEntity, RestoreEntity):
         value = dict_get(state, path, default)
 
         return value
+
+    def _get_pfsense_client(self) -> pfSenseClient:
+        return self.hass.data[DOMAIN][self.config_entry.entry_id][PFSENSE_CLIENT]
+
+    def service_close_notice(self, id: int | str | None = None):
+        client = self._get_pfsense_client()
+        client.close_notice(id)
+
+    def service_start_service(self, service_name: str):
+        client = self._get_pfsense_client()
+        client.start_service(service_name)
+
+    def service_stop_service(self, service_name: str):
+        client = self._get_pfsense_client()
+        client.stop_service(service_name)
+
+    def service_restart_service(self, service_name: str, only_if_running: bool = False):
+        client = self._get_pfsense_client()
+        if only_if_running:
+            client.restart_service_if_running(service_name)
+        else:
+            client.restart_service(service_name)
+
+    def service_system_halt(self):
+        client = self._get_pfsense_client()
+        client.system_halt()
+
+    def service_system_reboot(self):
+        client = self._get_pfsense_client()
+        client.system_reboot()
+
+    def service_send_wol(self, interface: str, mac: str):
+        client = self._get_pfsense_client()
+        client.send_wol(interface, mac)

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from os import stat
 from typing import Any, Mapping
 
 from attr import attr
@@ -17,7 +18,8 @@ from homeassistant.util import slugify
 from mac_vendor_lookup import AsyncMacLookup
 
 from . import CoordinatorEntityManager, PfSenseEntity, dict_get
-from .const import CONF_DEVICES, DEVICE_TRACKER_COORDINATOR, DOMAIN, PFSENSE_CLIENT
+from .const import CONF_DEVICES, DEVICE_TRACKER_COORDINATOR, DOMAIN
+from .services import register_services
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -40,6 +42,9 @@ async def async_setup_entry(
     async_add_entities: entity_platform.AddEntitiesCallback,
 ) -> None:
     """Set up device tracker for pfSense component."""
+    platform = entity_platform.async_get_current_platform()
+    register_services(platform)
+
     mac_vendor_lookup = AsyncMacLookup()
     try:
         await mac_vendor_lookup.update_vendors()
@@ -60,25 +65,27 @@ async def async_setup_entry(
         # seems unlikely *all* devices are intended to be monitored
         # disable by default and let users enable specific entries they care about
         enabled_default = False
+        device_per_arp_entry = False
 
         entities = []
         mac_addresses = []
 
         # use configured mac addresses if setup, otherwise create an entity per arp entry
-        configured_mac_addresses = config_entry.options.get(CONF_DEVICES)
+        configured_mac_addresses = config_entry.options.get(CONF_DEVICES, [])
         if configured_mac_addresses:
             mac_addresses = configured_mac_addresses
             enabled_default = True
         else:
-            arp_entries = dict_get(state, "arp_table")
-            if not arp_entries:
-                return []
+            if device_per_arp_entry:
+                arp_entries = dict_get(state, "arp_table")
+                if not arp_entries:
+                    return []
 
-            mac_addresses = [
-                mac_address.lower()
-                for arp_entry in arp_entries
-                if (mac_address := arp_entry.get("mac-address"))
-            ]
+                mac_addresses = [
+                    mac_address.lower()
+                    for arp_entry in arp_entries
+                    if (mac_address := arp_entry.get("mac-address"))
+                ]
 
         for mac_address in mac_addresses:
             mac_vendor = None
@@ -97,9 +104,6 @@ async def async_setup_entry(
             )
 
             entities.append(entity)
-
-            if not enabled_default:
-                continue
 
         return entities
 
@@ -250,7 +254,7 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
         # TODO: clear cache under certain scenarios?
         ip_address = entry.get("ip-address")
         if ip_address is not None and len(ip_address) > 0:
-            client = self.hass.data[DOMAIN][self.config_entry.entry_id][PFSENSE_CLIENT]
+            client = self._get_pfsense_client()
             self.hass.async_add_executor_job(client.delete_arp_entry, ip_address)
 
         return True
@@ -259,6 +263,12 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
         """Handle entity which will be added."""
         await super().async_added_to_hass()
         state = await self.async_get_last_state()
+        if state is None:
+            return
+
+        if state.attributes is None:
+            return
+
         state = state.attributes
         for attr in [
             "interface",

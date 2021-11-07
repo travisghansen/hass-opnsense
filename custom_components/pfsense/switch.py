@@ -10,11 +10,13 @@ from homeassistant.components.switch import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNKNOWN  # ENTITY_CATEGORY_CONFIG,
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_platform
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import slugify
 
 from . import CoordinatorEntityManager, PfSenseEntity, dict_get
-from .const import COORDINATOR, DOMAIN, PFSENSE_CLIENT
+from .const import COORDINATOR, DOMAIN
+from .services import register_services
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,6 +27,8 @@ async def async_setup_entry(
     async_add_entities: Callable,
 ):
     """Set up the pfSense binary sensors."""
+    platform = entity_platform.async_get_current_platform()
+    register_services(platform)
 
     @callback
     def process_entities_callback(hass, config_entry):
@@ -241,9 +245,7 @@ class PfSenseFilterSwitch(PfSenseSwitch):
         if rule is None:
             return
         tracker = self._pfsense_get_tracker()
-        client = self.hass.data[DOMAIN][self.registry_entry.config_entry_id][
-            PFSENSE_CLIENT
-        ]
+        client = self._get_pfsense_client()
         await self.hass.async_add_executor_job(
             client.enable_filter_rule_by_tracker, tracker
         )
@@ -255,9 +257,7 @@ class PfSenseFilterSwitch(PfSenseSwitch):
         if rule is None:
             return
         tracker = self._pfsense_get_tracker()
-        client = self.hass.data[DOMAIN][self.registry_entry.config_entry_id][
-            PFSENSE_CLIENT
-        ]
+        client = self._get_pfsense_client()
         await self.hass.async_add_executor_job(
             client.disable_filter_rule_by_tracker, tracker
         )
@@ -304,9 +304,7 @@ class PfSenseNatSwitch(PfSenseSwitch):
         if rule is None:
             return
         tracker = self._pfsense_get_tracker()
-        client = self.hass.data[DOMAIN][self.registry_entry.config_entry_id][
-            PFSENSE_CLIENT
-        ]
+        client = self._get_pfsense_client()
         rule_type = self._pfsense_get_rule_type()
         if rule_type == "nat_port_forward":
             method = client.enable_nat_port_forward_rule_by_created_time
@@ -322,9 +320,7 @@ class PfSenseNatSwitch(PfSenseSwitch):
         if rule is None:
             return
         tracker = self._pfsense_get_tracker()
-        client = self.hass.data[DOMAIN][self.registry_entry.config_entry_id][
-            PFSENSE_CLIENT
-        ]
+        client = self._get_pfsense_client()
         rule_type = self._pfsense_get_rule_type()
         if rule_type == "nat_port_forward":
             method = client.disable_nat_port_forward_rule_by_created_time
@@ -365,9 +361,7 @@ class PfSenseServiceSwitch(PfSenseSwitch):
     async def async_turn_on(self, **kwargs):
         """Turn the entity on."""
         service = self._pfsense_get_service()
-        client = self.hass.data[DOMAIN][self.registry_entry.config_entry_id][
-            PFSENSE_CLIENT
-        ]
+        client = self._get_pfsense_client()
         result = await self.hass.async_add_executor_job(
             client.start_service, service["name"]
         )
@@ -377,9 +371,7 @@ class PfSenseServiceSwitch(PfSenseSwitch):
     async def async_turn_off(self, **kwargs):
         """Turn the entity off."""
         service = self._pfsense_get_service()
-        client = self.hass.data[DOMAIN][self.registry_entry.config_entry_id][
-            PFSENSE_CLIENT
-        ]
+        client = self._get_pfsense_client()
         result = await self.hass.async_add_executor_job(
             client.stop_service, service["name"]
         )

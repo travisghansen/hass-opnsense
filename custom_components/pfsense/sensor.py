@@ -16,6 +16,7 @@ from homeassistant.const import (  # ENTITY_CATEGORY_DIAGNOSTIC,
     TIME_MILLISECONDS,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_platform
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import slugify
 from homeassistant.util.dt import utc_from_timestamp
@@ -29,6 +30,7 @@ from .const import (
     DOMAIN,
     SENSOR_TYPES,
 )
+from .services import register_services
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,6 +39,8 @@ async def async_setup_entry(
     hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities
 ):
     """Set up the pfSense sensors."""
+    platform = entity_platform.async_get_current_platform()
+    register_services(platform)
 
     @callback
     def process_entities_callback(hass, config_entry):
@@ -61,9 +65,9 @@ async def async_setup_entry(
                 "telemetry.cpu.load_average.fifteen_minute",
                 "telemetry.system.temp",
                 "telemetry.system.boottime",
-                "dhcp_stats.leases.total",
+                # "dhcp_stats.leases.total",
                 "dhcp_stats.leases.online",
-                "dhcp_stats.leases.offline",
+                # "dhcp_stats.leases.offline",
             ]:
                 enabled_default = True
 

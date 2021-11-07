@@ -92,3 +92,43 @@ All of the switches below are disabled by default.
 - nat port forward rules - enable/disable rules
 - nat outbound rules - enable/disable rules
 - services - start/stop services (note that services must be enabled before they can be started)
+
+# services
+
+```
+service: pfsense.close_notice
+data:
+  entity_id: binary_sensor.pfsense_localdomain_pending_notices_present
+  # default is to clear all notices
+  # id: <some id>
+
+service: pfsense.system_halt
+data:
+  entity_id: binary_sensor.pfsense_localdomain_pending_notices_present
+
+service: pfsense.system_reboot
+data:
+  entity_id: binary_sensor.pfsense_localdomain_pending_notices_present
+
+service: pfsense.start_service
+data:
+  entity_id: binary_sensor.pfsense_localdomain_pending_notices_present
+  service_name: "dpinger"
+
+service: pfsense.stop_service
+data:
+  entity_id: binary_sensor.pfsense_localdomain_pending_notices_present
+  service_name: "dpinger"
+
+service: pfsense.restart_service
+data:
+  entity_id: binary_sensor.pfsense_localdomain_pending_notices_present
+  service_name: "dpinger"
+  # only_if_running: false
+
+service: pfsense.send_wol
+data:
+  entity_id: binary_sensor.pfsense_localdomain_pending_notices_present
+  interface: lan
+  mac: "B9:7B:A6:46:B3:8B"
+```
