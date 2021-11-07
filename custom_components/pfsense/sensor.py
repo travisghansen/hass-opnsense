@@ -30,17 +30,16 @@ from .const import (
     DOMAIN,
     SENSOR_TYPES,
 )
-from .services import register_services
 
 _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: entity_platform.AddEntitiesCallback,
 ):
     """Set up the pfSense sensors."""
-    platform = entity_platform.async_get_current_platform()
-    register_services(platform)
 
     @callback
     def process_entities_callback(hass, config_entry):

@@ -45,6 +45,7 @@ from .const import (
     UNDO_UPDATE_LISTENER,
 )
 from .pypfsense import Client as pfSenseClient
+from .services import ServiceRegistrar
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -150,6 +151,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         await device_tracker_coordinator.async_config_entry_first_refresh()
 
     hass.config_entries.async_setup_platforms(entry, platforms)
+
+    service_registar = ServiceRegistrar(hass)
+    service_registar.async_register()
 
     return True
 

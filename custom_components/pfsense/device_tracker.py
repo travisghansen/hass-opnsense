@@ -19,7 +19,6 @@ from mac_vendor_lookup import AsyncMacLookup
 
 from . import CoordinatorEntityManager, PfSenseEntity, dict_get
 from .const import CONF_DEVICES, DEVICE_TRACKER_COORDINATOR, DOMAIN
-from .services import register_services
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,9 +41,6 @@ async def async_setup_entry(
     async_add_entities: entity_platform.AddEntitiesCallback,
 ) -> None:
     """Set up device tracker for pfSense component."""
-    platform = entity_platform.async_get_current_platform()
-    register_services(platform)
-
     mac_vendor_lookup = AsyncMacLookup()
     try:
         await mac_vendor_lookup.update_vendors()

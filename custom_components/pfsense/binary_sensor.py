@@ -1,6 +1,5 @@
 """pfSense integration."""
 import logging
-from typing import Callable
 
 from homeassistant.components.binary_sensor import (
     DEVICE_CLASS_PROBLEM,
@@ -16,7 +15,6 @@ from homeassistant.util import slugify
 
 from . import CoordinatorEntityManager, PfSenseEntity, dict_get
 from .const import COORDINATOR, DOMAIN
-from .services import register_services
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -24,11 +22,9 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
-    async_add_entities: Callable,
+    async_add_entities: entity_platform.AddEntitiesCallback,
 ):
     """Set up the pfSense binary sensors."""
-    platform = entity_platform.async_get_current_platform()
-    register_services(platform)
 
     @callback
     def process_entities_callback(hass, config_entry):
