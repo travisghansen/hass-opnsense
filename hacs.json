@@ -1,5 +1,5 @@
 {
-  "name": "pfSense integration for Home Assistant",
+  "name": "OPNsense integration for Home Assistant",
   "domains": ["binary_sensor", "device_tracker", "sensor", "switch"],
   "render_readme": true
 }
