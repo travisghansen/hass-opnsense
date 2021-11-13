@@ -296,12 +296,18 @@ $toreturn = [
 ];
 """
         response = self._exec_php(script)
+        for gateway_name in response["data"].keys():
+            gateway = response["data"][gateway_name]
+            if gateway["status"] == "none":
+                gateway["status"] = "online"
         return response["data"]
 
     def get_gateway_status(self, gateway):
         gateways = self.get_gateways_status()
         for g in gateways.keys():
             if g == gateway:
+                if gateways[g]["status"] == "none":
+                    gateways[g]["status"] = "online"
                 return gateways[g]
 
     def get_arp_table(self, resolve_hostnames=False):
@@ -664,6 +670,15 @@ $toreturn = [
     //"temperature_foo" => $temperature_api_data,
     //"interfaces_foo" => $interfaces_api_data,
 ];
+
+foreach ($toreturn["gateways"] as $key => $gw) {
+    $status = $gw["status"];
+    if ($status == "none") {
+        $status = "online";
+    }
+    $gw["status"] = $status;
+    $toreturn["gateways"][$key] = $gw;
+}
 
 foreach ($interfaces_api_data as $if) {
     $if["inpkts"] = (int) $if["inpkts"];
