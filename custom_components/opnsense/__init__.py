@@ -328,8 +328,6 @@ class OPNSenseData:
                         new_property = f"{property}_{label}"
                         interface[new_property] = int(round(value, 0))
 
-            _LOGGER.debug(json.dumps(self._state["interfaces"]))
-            _LOGGER.debug(json.dumps(self._state["telemetry"]))
 
 class CoordinatorEntityManager:
     def __init__(
