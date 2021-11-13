@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 from datetime import timedelta
+import json
 import logging
 import re
 import time
@@ -246,11 +247,6 @@ class OPNSenseData:
             self._state["arp_table"] = self._client.get_arp_table(True)
         else:
             self._state["telemetry"] = self._get_telemetry()
-            # self._state["telemetry"] = {}
-            # self._state["telemetry"]["interfaces"] = {}
-            # self._state["telemetry"]["gateways"] = {}
-            # self._state["telemetry"]["filesystems"] = []
-
             self._state["config"] = self._get_config()
             self._state["interfaces"] = self._client.get_interfaces()
             self._state["services"] = self._client.get_services()
@@ -280,9 +276,6 @@ class OPNSenseData:
             self._state["dhcp_stats"]["leases"] = lease_stats
 
             # calcule pps and kbps
-            scan_interval = self._config_entry.options.get(
-                CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
-            )
             update_time = dict_get(self._state, "update_time")
             previous_update_time = dict_get(self._state, "previous_state.update_time")
 
@@ -334,9 +327,9 @@ class OPNSenseData:
 
                         new_property = f"{property}_{label}"
                         interface[new_property] = int(round(value, 0))
-        # print(self._state["host_firmware_version"])
-        # exit(0)
 
+            _LOGGER.debug(json.dumps(self._state["interfaces"]))
+            _LOGGER.debug(json.dumps(self._state["telemetry"]))
 
 class CoordinatorEntityManager:
     def __init__(
