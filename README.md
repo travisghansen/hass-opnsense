@@ -1,7 +1,6 @@
 [![Build Status](https://img.shields.io/endpoint.svg?url=https%3A%2F%2Factions-badge.atrox.dev%2Ftravisghansen%2Fhass-opnsense%2Fbadge%3Fref%3Dmain&style=for-the-badge)](https://actions-badge.atrox.dev/travisghansen/hass-opnsense/goto?ref=main)
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://github.com/custom-components/hacs)
 
-
 # hass-opnsense
 
 Join `OPNsense` with `home-assistant`!
@@ -9,6 +8,16 @@ Join `OPNsense` with `home-assistant`!
 `hass-opnsense` uses the built-in `xmlrpc` service of `OPNsense` for all
 interactions. This project is currently a proof-of-concept and may fail to work
 at any time.
+
+Initial development was done againt `OPNsense` `21.7` and `home-assistant`
+`2021.10`.
+
+# installation
+
+This integration currenlty **replaces** the built-in `opnsense` integration
+which only provides `device_tracker` functionality, be sure to remove any
+associated configuration for the built-in integration before installing this
+replacement.
 
 To use the integration you must first login to the console of
 your filewall and execute the following:
@@ -45,11 +54,6 @@ EOF
 chown root:wheel /usr/local/etc/inc/xmlrpc/hass.inc
 chmod 644 /usr/local/etc/inc/xmlrpc/hass.inc
 ```
-
-Initial development was done againt `OPNsense` `21.7` and `home-assistant`
-`2021.10`.
-
-# installation
 
 Add the repo to your `hacs` installation or clone the directory manually. Once
 the integration is installed be sure to restart `hass` and refresh the UI in
