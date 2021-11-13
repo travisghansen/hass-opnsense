@@ -49,6 +49,9 @@ async def async_setup_entry(
                     if "associated-rule-id" in rule.keys():
                         continue
 
+                    if "descr" not in rule.keys():
+                        rule["descr"] = ""
+
                     # not possible to disable these rules
                     if rule["descr"] == "Anti-Lockout Rule":
                         continue
@@ -93,6 +96,9 @@ async def async_setup_entry(
                     if len(tracker) < 1:
                         continue
 
+                    if "descr" not in rule.keys():
+                        rule["descr"] = ""
+
                     entity = OPNSenseNatSwitch(
                         config_entry,
                         coordinator,
@@ -124,11 +130,14 @@ async def async_setup_entry(
                     if tracker is None:
                         continue
 
-                    if "Auto created rule" in rule["descr"]:
-                        continue
-
                     # we use tracker as the unique id
                     if len(tracker) < 1:
+                        continue
+                    
+                    if "descr" not in rule.keys():
+                        rule["descr"] = ""
+
+                    if "Auto created rule" in rule["descr"]:
                         continue
 
                     entity = OPNSenseNatSwitch(
