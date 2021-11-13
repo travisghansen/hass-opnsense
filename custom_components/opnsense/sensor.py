@@ -215,9 +215,9 @@ async def async_setup_entry(
                     coordinator,
                     SensorEntityDescription(
                         key="telemetry.interface.{}.{}".format(
-                            interface["descr"], property
+                            interface_name, property
                         ),
-                        name="Interface {} {}".format(interface["descr"], property),
+                        name="Interface {} {}".format(interface_name, property),
                         native_unit_of_measurement=native_unit_of_measurement,
                         icon=icon,
                         state_class=state_class,
@@ -473,6 +473,9 @@ class OPNSenseGatewaySensor(OPNSenseSensor):
             # cleanse "ms", etc from values
             if property in ["stddev", "delay", "loss"]:
                 value = re.sub("[^0-9\.]*", "", value)
+            
+            if len(value) < 1:
+                return STATE_UNKNOWN
 
             return value
         except KeyError:
