@@ -1,4 +1,4 @@
-"""pfSense integration."""
+"""OPNsense integration."""
 import logging
 
 from homeassistant.components.binary_sensor import (
@@ -13,7 +13,7 @@ from homeassistant.helpers import entity_platform
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import slugify
 
-from . import CoordinatorEntityManager, PfSenseEntity, dict_get
+from . import CoordinatorEntityManager, OPNSenseEntity, dict_get
 from .const import COORDINATOR, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -24,14 +24,14 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: entity_platform.AddEntitiesCallback,
 ):
-    """Set up the pfSense binary sensors."""
+    """Set up the OPNsense binary sensors."""
 
     @callback
     def process_entities_callback(hass, config_entry):
         data = hass.data[DOMAIN][config_entry.entry_id]
         coordinator = data[COORDINATOR]
         entities = []
-        entity = PfSenseCarpStatusBinarySensor(
+        entity = OPNSenseCarpStatusBinarySensor(
             config_entry,
             coordinator,
             BinarySensorEntityDescription(
@@ -46,7 +46,7 @@ async def async_setup_entry(
         )
         entities.append(entity)
 
-        entity = PfSensePendingNoticesPresentBinarySensor(
+        entity = OPNSensePendingNoticesPresentBinarySensor(
             config_entry,
             coordinator,
             BinarySensorEntityDescription(
@@ -73,7 +73,7 @@ async def async_setup_entry(
     cem.process_entities()
 
 
-class PfSenseBinarySensor(PfSenseEntity, BinarySensorEntity):
+class OPNSenseBinarySensor(OPNSenseEntity, BinarySensorEntity):
     def __init__(
         self,
         config_entry,
@@ -86,9 +86,9 @@ class PfSenseBinarySensor(PfSenseEntity, BinarySensorEntity):
         self.entity_description = entity_description
         self.coordinator = coordinator
         self._attr_entity_registry_enabled_default = enabled_default
-        self._attr_name = f"{self.pfsense_device_name} {entity_description.name}"
+        self._attr_name = f"{self.opnsense_device_name} {entity_description.name}"
         self._attr_unique_id = slugify(
-            f"{self.pfsense_device_unique_id}_{entity_description.key}"
+            f"{self.opnsense_device_unique_id}_{entity_description.key}"
         )
 
     @property
@@ -104,7 +104,7 @@ class PfSenseBinarySensor(PfSenseEntity, BinarySensorEntity):
         return None
 
 
-class PfSenseCarpStatusBinarySensor(PfSenseBinarySensor):
+class OPNSenseCarpStatusBinarySensor(OPNSenseBinarySensor):
     @property
     def is_on(self):
         state = self.coordinator.data
@@ -114,7 +114,7 @@ class PfSenseCarpStatusBinarySensor(PfSenseBinarySensor):
             return STATE_UNKNOWN
 
 
-class PfSensePendingNoticesPresentBinarySensor(PfSenseBinarySensor):
+class OPNSensePendingNoticesPresentBinarySensor(OPNSenseBinarySensor):
     @property
     def is_on(self):
         state = self.coordinator.data

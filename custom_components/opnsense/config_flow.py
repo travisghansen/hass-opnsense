@@ -1,4 +1,4 @@
-"""Config flow for pfSense integration."""
+"""Config flow for OPNsense integration."""
 import logging
 from urllib.parse import quote_plus, urlparse
 import xmlrpc
@@ -28,19 +28,9 @@ from .const import (
     DEFAULT_VERIFY_SSL,
     DOMAIN,
 )
-from .pypfsense import Client
+from .pyopnsense import Client
 
 _LOGGER = logging.getLogger(__name__)
-
-CONFIG_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_URL): str,
-        vol.Optional(CONF_VERIFY_SSL, default=DEFAULT_VERIFY_SSL): bool,
-        vol.Optional(CONF_USERNAME, default=DEFAULT_USERNAME): str,
-        vol.Required(CONF_PASSWORD): str,
-        vol.Optional(CONF_NAME): str,
-    }
-)
 
 
 def cleanse_sensitive_data(message, secrets=[]):
@@ -52,7 +42,7 @@ def cleanse_sensitive_data(message, secrets=[]):
 
 
 class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for pfSense."""
+    """Handle a config flow for OPNsense."""
 
     # bumping this is what triggers async_migrate_entry for the component
     VERSION = 2
@@ -94,9 +84,7 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     )
 
                 # https://developers.home-assistant.io/docs/config_entries_config_flow_handler#unique-ids
-                await self.async_set_unique_id(
-                    slugify(system_info["netgate_device_id"])
-                )
+                await self.async_set_unique_id(slugify(system_info["device_id"]))
                 self._abort_if_unique_id_configured()
 
                 return self.async_create_entry(
@@ -133,7 +121,7 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     _LOGGER.error(message)
                     errors["base"] = "cannot_connect"
             except OSError as err:
-                # bad response from pfSense when creds are valid but authorization is
+                # bad response from OPNsense when creds are valid but authorization is
                 # not sufficient non-admin users must have 'System - HA node sync'
                 # privilege
                 if "unsupported XML-RPC protocol" in str(err):
@@ -156,9 +144,27 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.error(message)
                 errors["base"] = "unknown"
 
-        return self.async_show_form(
-            step_id="user", data_schema=CONFIG_SCHEMA, errors=errors
+        if not user_input:
+            user_input = {}
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_URL, default=user_input.get(CONF_URL, "")): str,
+                vol.Optional(
+                    CONF_VERIFY_SSL,
+                    default=user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
+                ): bool,
+                vol.Optional(
+                    CONF_USERNAME,
+                    default=user_input.get(CONF_USERNAME, DEFAULT_USERNAME),
+                ): str,
+                vol.Required(
+                    CONF_PASSWORD, default=user_input.get(CONF_PASSWORD, "")
+                ): str,
+                vol.Optional(CONF_NAME, default=user_input.get(CONF_NAME, "")): str,
+            }
         )
+
+        return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
 
     async def async_step_import(self, user_input):
         """Handle import."""
@@ -172,7 +178,7 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle option flow for pfSense."""
+    """Handle option flow for OPNsense."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""

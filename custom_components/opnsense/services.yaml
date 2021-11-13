@@ -8,8 +8,8 @@ close_notice:
   # Different fields that your service accepts
   fields:
     entity_id:
-      description: pfSense entity id
-      example: "binary_sensor.pfsense_localdomain_pending_notices_present"
+      description: OPNsense entity id
+      example: "binary_sensor.opnsense_localdomain_pending_notices_present"
 
     # Key of the field
     id:
@@ -31,16 +31,8 @@ file_notice:
   description: Files a notice(s).
   fields:
     entity_id:
-      description: pfSense entity id
-      example: "binary_sensor.pfsense_localdomain_pending_notices_present"
-
-    id:
-      name: Notice ID
-      description: The notice ID
-      required: true
-      advanced: false
-      example: "all"
-      default: "all"
+      description: OPNsense entity id
+      example: "binary_sensor.opnsense_localdomain_pending_notices_present"
 
     notice:
       name: Notice message
@@ -50,45 +42,13 @@ file_notice:
       example: "hello world from hass"
       default: ""
 
-    category:
-      name: Notice category
-      description: The category of the notice
-      required: false
-      advanced: true
-      example: "General"
-      default: "HASS"
-
-    url:
-      name: Notice url
-      description: The url of the notice
-      required: false
-      advanced: true
-      example: "https://example.com"
-      default: ""
-
-    priority:
-      name: Notice priority
-      description: The priority of the notice
-      required: false
-      advanced: true
-      example: 1
-      default: 1
-
-    local_only:
-      name: Only show in the UI
-      description: Do not send the notice via email, etc
-      required: false
-      advanced: true
-      example: false
-      default: false
-
 start_service:
   name: Start service
   description: Starts a service.
   fields:
     entity_id:
-      description: pfSense entity id
-      example: "binary_sensor.pfsense_localdomain_pending_notices_present"
+      description: OPNsense entity id
+      example: "binary_sensor.opnsense_localdomain_pending_notices_present"
     service_name:
       name: Service Name
       description: The name of the service.
@@ -102,8 +62,8 @@ stop_service:
   description: Stops a service.
   fields:
     entity_id:
-      description: pfSense entity id
-      example: "binary_sensor.pfsense_localdomain_pending_notices_present"
+      description: OPNsense entity id
+      example: "binary_sensor.opnsense_localdomain_pending_notices_present"
     service_name:
       name: Service Name
       description: The name of the service.
@@ -117,8 +77,8 @@ restart_service:
   description: Restarts a service.
   fields:
     entity_id:
-      description: pfSense entity id
-      example: "binary_sensor.pfsense_localdomain_pending_notices_present"
+      description: OPNsense entity id
+      example: "binary_sensor.opnsense_localdomain_pending_notices_present"
     service_name:
       name: Service Name
       description: The name of the service.
@@ -132,24 +92,24 @@ system_halt:
   description: Halts the system.
   fields:
     entity_id:
-      description: pfSense entity id
-      example: "binary_sensor.pfsense_localdomain_pending_notices_present"
+      description: OPNsense entity id
+      example: "binary_sensor.opnsense_localdomain_pending_notices_present"
 
 system_reboot:
   name: Reboot system
   description: Reboots the system.
   fields:
     entity_id:
-      description: pfSense entity id
-      example: "binary_sensor.pfsense_localdomain_pending_notices_present"
+      description: OPNsense entity id
+      example: "binary_sensor.opnsense_localdomain_pending_notices_present"
 
 send_wol:
   name: Send WOL
   description: Sends wake-on-lan magic packet.
   fields:
     entity_id:
-      description: pfSense entity id
-      example: "binary_sensor.pfsense_localdomain_pending_notices_present"
+      description: OPNsense entity id
+      example: "binary_sensor.opnsense_localdomain_pending_notices_present"
 
     interface:
       name: Interface Name

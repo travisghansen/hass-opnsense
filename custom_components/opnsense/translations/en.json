@@ -22,7 +22,7 @@
           "password": "Password",
           "verify_ssl": "Verify SSL certificate"
         },
-        "title": "Connect to the pfSense firewall / router"
+        "title": "Connect to the OPNsense firewall / router"
       }
     }
   },
@@ -48,5 +48,5 @@
       }
     }
   },
-  "title": "pfSense"
+  "title": "OPNsense"
 }

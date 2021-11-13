@@ -1,4 +1,4 @@
-"""Support for pfSense."""
+"""Support for OPNsense."""
 from __future__ import annotations
 
 import copy
@@ -40,11 +40,12 @@ from .const import (
     DEVICE_TRACKER_COORDINATOR,
     DOMAIN,
     LOADED_PLATFORMS,
-    PFSENSE_CLIENT,
+    OPNSENSE_CLIENT,
     PLATFORMS,
+    SHOULD_RELOAD,
     UNDO_UPDATE_LISTENER,
 )
-from .pypfsense import Client as pfSenseClient
+from .pyopnsense import Client as OPNSenseClient
 from .services import ServiceRegistrar
 
 _LOGGER = logging.getLogger(__name__)
@@ -66,11 +67,14 @@ def dict_get(data: dict, path: str, default=None):
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry):
     """Handle options update."""
-    hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
+    if hass.data[DOMAIN][entry.entry_id].get(SHOULD_RELOAD, True):
+        hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
+    else:
+        hass.data[DOMAIN][entry.entry_id][SHOULD_RELOAD] = True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
-    """Set up pfSense from a config entry."""
+    """Set up OPNsense from a config entry."""
     config = entry.data
     options = entry.options
 
@@ -81,16 +85,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     device_tracker_enabled = options.get(
         CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED
     )
-    client = pfSenseClient(url, username, password, {"verify_ssl": verify_ssl})
-    data = PfSenseData(client, entry)
+    client = OPNSenseClient(url, username, password, {"verify_ssl": verify_ssl})
+    data = OPNSenseData(client, entry)
 
     async def async_update_data():
-        """Fetch data from pfSense."""
+        """Fetch data from OPNsense."""
         async with async_timeout.timeout(10):
             await hass.async_add_executor_job(lambda: data.update())
 
             if not data.state:
-                raise UpdateFailed(f"Error fetching {entry.title} pfSense state")
+                raise UpdateFailed(f"Error fetching {entry.title} OPNsense state")
 
             return data.state
 
@@ -98,37 +102,37 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     coordinator = DataUpdateCoordinator(
         hass,
         _LOGGER,
-        name=f"{entry.title} pfSense state",
+        name=f"{entry.title} OPNsense state",
         update_method=async_update_data,
         update_interval=timedelta(seconds=scan_interval),
     )
 
     platforms = PLATFORMS.copy()
     device_tracker_coordinator = None
-    if not device_tracker_enabled:
+    if not device_tracker_enabled and "device_tracker" in platforms:
         platforms.remove("device_tracker")
     else:
-        device_tracker_data = PfSenseData(client, entry)
+        device_tracker_data = OPNSenseData(client, entry)
         device_tracker_scan_interval = options.get(
             CONF_DEVICE_TRACKER_SCAN_INTERVAL, DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL
         )
 
         async def async_update_device_tracker_data():
-            """Fetch data from pfSense."""
+            """Fetch data from OPNsense."""
             async with async_timeout.timeout(10):
                 await hass.async_add_executor_job(
                     lambda: device_tracker_data.update({"scope": "device_tracker"})
                 )
 
                 if not device_tracker_data.state:
-                    raise UpdateFailed(f"Error fetching {entry.title} pfSense state")
+                    raise UpdateFailed(f"Error fetching {entry.title} OPNsense state")
 
                 return device_tracker_data.state
 
         device_tracker_coordinator = DataUpdateCoordinator(
             hass,
             _LOGGER,
-            name=f"{entry.title} pfSense device tracker state",
+            name=f"{entry.title} OPNsense device tracker state",
             update_method=async_update_device_tracker_data,
             update_interval=timedelta(seconds=device_tracker_scan_interval),
         )
@@ -139,7 +143,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     hass.data[DOMAIN][entry.entry_id] = {
         COORDINATOR: coordinator,
         DEVICE_TRACKER_COORDINATOR: device_tracker_coordinator,
-        PFSENSE_CLIENT: client,
+        OPNSENSE_CLIENT: client,
         UNDO_UPDATE_LISTENER: [undo_listener],
         LOADED_PLATFORMS: platforms,
     }
@@ -202,8 +206,8 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
     return True
 
 
-class PfSenseData:
-    def __init__(self, client: pfSenseClient, config_entry: ConfigEntry):
+class OPNSenseData:
+    def __init__(self, client: OPNSenseClient, config_entry: ConfigEntry):
         """Initialize the data object."""
         self._client = client
         self._config_entry = config_entry
@@ -226,7 +230,7 @@ class PfSenseData:
         return self._client.get_config()
 
     def update(self, opts={}):
-        """Fetch the latest state from pfSense."""
+        """Fetch the latest state from OPNsense."""
         # copy the old data to have around
         previous_state = copy.deepcopy(self._state)
         if "previous_state" in previous_state.keys():
@@ -242,12 +246,18 @@ class PfSenseData:
             self._state["arp_table"] = self._client.get_arp_table(True)
         else:
             self._state["telemetry"] = self._get_telemetry()
+            # self._state["telemetry"] = {}
+            # self._state["telemetry"]["interfaces"] = {}
+            # self._state["telemetry"]["gateways"] = {}
+            # self._state["telemetry"]["filesystems"] = []
+
             self._state["config"] = self._get_config()
             self._state["interfaces"] = self._client.get_interfaces()
             self._state["services"] = self._client.get_services()
             self._state["carp_interfaces"] = self._client.get_carp_interfaces()
             self._state["carp_status"] = self._client.get_carp_status()
-            self._state["dhcp_leases"] = self._client.get_dhcp_leases()
+            # self._state["dhcp_leases"] = self._client.get_dhcp_leases()
+            self._state["dhcp_leases"] = []
             self._state["dhcp_stats"] = {}
             self._state["notices"] = {}
             self._state["notices"][
@@ -293,16 +303,16 @@ class PfSenseData:
                     for property in [
                         "inbytes",
                         "outbytes",
-                        "inbytespass",
-                        "outbytespass",
-                        "inbytesblock",
-                        "outbytesblock",
+                        # "inbytespass",
+                        # "outbytespass",
+                        # "inbytesblock",
+                        # "outbytesblock",
                         "inpkts",
                         "outpkts",
-                        "inpktspass",
-                        "outpktspass",
-                        "inpktsblock",
-                        "outpktsblock",
+                        # "inpktspass",
+                        # "outpktspass",
+                        # "inpktsblock",
+                        # "outpktsblock",
                     ]:
 
                         current_parent_value = interface[property]
@@ -324,25 +334,8 @@ class PfSenseData:
 
                         new_property = f"{property}_{label}"
                         interface[new_property] = int(round(value, 0))
-
-                        continue
-
-                        # TODO: this logic is not perfect but probably 'good enough'
-                        # to make this perfect the stats should probably be their own
-                        # coordinator
-                        #
-                        # put this here to prevent over-agressive calculations when
-                        # data is refreshed due to switches being triggered etc
-                        #
-                        # theoretically if switches are going on/off rapidly the value
-                        # would never get updated as the code currently is
-                        if elapsed_time >= scan_interval:
-                            interface[new_property] = int(round(value, 0))
-                        else:
-                            previous_value = dict_get(previous_interface, new_property)
-                            if previous_value is None:
-                                previous_value = value
-                            interface[new_property] = int(round(previous_value, 0))
+        # print(self._state["host_firmware_version"])
+        # exit(0)
 
 
 class CoordinatorEntityManager:
@@ -400,20 +393,20 @@ class CoordinatorEntityManager:
             registry.async_remove(entity.entity_id)
 
 
-class PfSenseEntity(CoordinatorEntity, RestoreEntity):
-    """base entity for pfSense"""
+class OPNSenseEntity(CoordinatorEntity, RestoreEntity):
+    """base entity for OPNsense"""
 
     @property
     def device_info(self):
         """Device info for the firewall."""
         state = self.coordinator.data
-        model = state["host_firmware_version"]["platform"]
-        manufacturer = "netgate"
+        model = "OPNsense"
+        manufacturer = "Deciso B.V."
         firmware = state["host_firmware_version"]["firmware"]["version"]
 
         device_info = {
-            "identifiers": {(DOMAIN, self.pfsense_device_unique_id)},
-            "name": self.pfsense_device_name,
+            "identifiers": {(DOMAIN, self.opnsense_device_unique_id)},
+            "name": self.opnsense_device_name,
             "configuration_url": self.config_entry.data.get("url", None),
         }
 
@@ -424,58 +417,58 @@ class PfSenseEntity(CoordinatorEntity, RestoreEntity):
         return device_info
 
     @property
-    def pfsense_device_name(self):
+    def opnsense_device_name(self):
         if self.config_entry.title and len(self.config_entry.title) > 0:
             return self.config_entry.title
         return "{}.{}".format(
-            self._get_pfsense_state_value("system_info.hostname"),
-            self._get_pfsense_state_value("system_info.domain"),
+            self._get_opnsense_state_value("system_info.hostname"),
+            self._get_opnsense_state_value("system_info.domain"),
         )
 
     @property
-    def pfsense_device_unique_id(self):
-        return self._get_pfsense_state_value("system_info.netgate_device_id")
+    def opnsense_device_unique_id(self):
+        return self._get_opnsense_state_value("system_info.device_id")
 
-    def _get_pfsense_state_value(self, path, default=None):
+    def _get_opnsense_state_value(self, path, default=None):
         state = self.coordinator.data
         value = dict_get(state, path, default)
 
         return value
 
-    def _get_pfsense_client(self) -> pfSenseClient:
-        return self.hass.data[DOMAIN][self.config_entry.entry_id][PFSENSE_CLIENT]
+    def _get_opnsense_client(self) -> OPNSenseClient:
+        return self.hass.data[DOMAIN][self.config_entry.entry_id][OPNSENSE_CLIENT]
 
     def service_close_notice(self, id: int | str | None = None):
-        client = self._get_pfsense_client()
+        client = self._get_opnsense_client()
         client.close_notice(id)
 
     def service_file_notice(self, **kwargs):
-        client = self._get_pfsense_client()
+        client = self._get_opnsense_client()
         client.file_notice(**kwargs)
 
     def service_start_service(self, service_name: str):
-        client = self._get_pfsense_client()
+        client = self._get_opnsense_client()
         client.start_service(service_name)
 
     def service_stop_service(self, service_name: str):
-        client = self._get_pfsense_client()
+        client = self._get_opnsense_client()
         client.stop_service(service_name)
 
     def service_restart_service(self, service_name: str, only_if_running: bool = False):
-        client = self._get_pfsense_client()
+        client = self._get_opnsense_client()
         if only_if_running:
             client.restart_service_if_running(service_name)
         else:
             client.restart_service(service_name)
 
     def service_system_halt(self):
-        client = self._get_pfsense_client()
+        client = self._get_opnsense_client()
         client.system_halt()
 
     def service_system_reboot(self):
-        client = self._get_pfsense_client()
+        client = self._get_opnsense_client()
         client.system_reboot()
 
     def service_send_wol(self, interface: str, mac: str):
-        client = self._get_pfsense_client()
+        client = self._get_opnsense_client()
         client.send_wol(interface, mac)

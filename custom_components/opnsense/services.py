@@ -62,12 +62,7 @@ class ServiceRegistrar:
             service=SERVICE_FILE_NOTICE,
             schema=cv.make_entity_service_schema(
                 {
-                    vol.Required("id"): vol.Any(cv.string),
                     vol.Required("notice"): vol.Any(cv.string),
-                    vol.Optional("category", default="HASS"): vol.Any(cv.string),
-                    vol.Optional("url", default=""): vol.Any(cv.string),
-                    vol.Optional("priority", default=1): cv.positive_int,
-                    vol.Optional("local_only", default=False): cv.boolean,
                 }
             ),
             service_func=_async_send_service,

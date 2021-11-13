@@ -2,23 +2,30 @@
 from __future__ import annotations
 
 import logging
-from os import stat
 from typing import Any, Mapping
 
-from attr import attr
 from homeassistant.components.device_tracker import SOURCE_TYPE_ROUTER
 from homeassistant.components.device_tracker.config_entry import ScannerEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_platform
-from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC
+from homeassistant.helpers.device_registry import (
+    CONNECTION_NETWORK_MAC,
+    async_get as async_get_dev_reg,
+)
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import slugify
 from mac_vendor_lookup import AsyncMacLookup
 
-from . import CoordinatorEntityManager, PfSenseEntity, dict_get
-from .const import CONF_DEVICES, DEVICE_TRACKER_COORDINATOR, DOMAIN
+from . import CoordinatorEntityManager, OPNSenseEntity, dict_get
+from .const import (
+    CONF_DEVICES,
+    DEVICE_TRACKER_COORDINATOR,
+    DOMAIN,
+    SHOULD_RELOAD,
+    TRACKED_MACS,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,9 +37,9 @@ def lookup_mac(mac_vendor_lookup: AsyncMacLookup, mac: str) -> str:
     return mac_vendor_lookup.prefixes[mac[:6]].decode("utf8")
 
 
-def get_device_tracker_unique_id(mac: str, netgate_id: str):
+def get_device_tracker_unique_id(mac: str, device_id: str):
     """Generate device_tracker unique ID."""
-    return slugify(f"{netgate_id}_mac_{mac}")
+    return slugify(f"{device_id}_mac_{mac}")
 
 
 async def async_setup_entry(
@@ -50,12 +57,15 @@ async def async_setup_entry(
         except:
             pass
 
+    dev_reg = async_get_dev_reg(hass)
+
     @callback
     def process_entities_callback(
         hass: HomeAssistant, config_entry: ConfigEntry
-    ) -> list[PfSenseScannerEntity]:
+    ) -> list[OPNSenseScannerEntity]:
         # options = config_entry.options
         data = hass.data[DOMAIN][config_entry.entry_id]
+        previous_mac_addresses = config_entry.data.get(TRACKED_MACS, [])
         coordinator = data[DEVICE_TRACKER_COORDINATOR]
         state = coordinator.data
         # seems unlikely *all* devices are intended to be monitored
@@ -90,7 +100,7 @@ async def async_setup_entry(
             except:
                 pass
 
-            entity = PfSenseScannerEntity(
+            entity = OPNSenseScannerEntity(
                 hass,
                 config_entry,
                 coordinator,
@@ -100,6 +110,20 @@ async def async_setup_entry(
             )
 
             entities.append(entity)
+
+        # Get the MACs that need to be removed and remove their devices
+        for mac_address in list(set(previous_mac_addresses) - set(mac_addresses)):
+            device = dev_reg.async_get_device(
+                {}, {(CONNECTION_NETWORK_MAC, mac_address)}
+            )
+            if device:
+                dev_reg.async_remove_device(device.id)
+
+        if set(mac_addresses) != set(previous_mac_addresses):
+            data[SHOULD_RELOAD] = False
+            new_data = config_entry.data.copy()
+            new_data[TRACKED_MACS] = mac_addresses.copy()
+            hass.config_entries.async_update_entry(config_entry, data=new_data)
 
         return entities
 
@@ -113,7 +137,7 @@ async def async_setup_entry(
     cem.process_entities()
 
 
-class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
+class OPNSenseScannerEntity(OPNSenseEntity, ScannerEntity):
     """Represent a scanned device."""
 
     def __init__(
@@ -137,10 +161,10 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
 
         self._attr_entity_registry_enabled_default = enabled_default
         self._attr_unique_id = get_device_tracker_unique_id(
-            mac, self.pfsense_device_unique_id
+            mac, self.opnsense_device_unique_id
         )
 
-    def _get_pfsense_arp_entry(self) -> dict[str, str]:
+    def _get_opnsense_arp_entry(self) -> dict[str, str]:
         state = self.coordinator.data
         for entry in state["arp_table"]:
             if entry.get("mac-address", "").lower() == self._mac_address:
@@ -161,7 +185,7 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
     @property
     def _extra_state_attributes(self) -> Mapping[str, Any] | None:
         """Return extra state attributes."""
-        entry = self._get_pfsense_arp_entry()
+        entry = self._get_opnsense_arp_entry()
         if entry is not None:
             for property in ["interface", "expires", "type"]:
                 self._extra_state[property] = entry.get(property)
@@ -182,7 +206,7 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
     @property
     def _ip_address(self) -> str | None:
         """Return the primary ip address of the device."""
-        entry = self._get_pfsense_arp_entry()
+        entry = self._get_opnsense_arp_entry()
         if entry is None:
             return None
 
@@ -204,7 +228,7 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
     @property
     def _hostname(self) -> str | None:
         """Return hostname of the device."""
-        entry = self._get_pfsense_arp_entry()
+        entry = self._get_opnsense_arp_entry()
         if entry is None:
             return None
         value = entry.get("hostname").strip("?")
@@ -216,7 +240,8 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
     @property
     def name(self) -> str:
         """Return the name of the device."""
-        return self.hostname or self._last_known_hostname or self._mac_address
+        identifier = self.hostname or self._last_known_hostname or self._mac_address
+        return f"{self.opnsense_device_name} {identifier}"
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -225,7 +250,7 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
             connections={(CONNECTION_NETWORK_MAC, self.mac_address)},
             default_manufacturer=self._mac_vendor,
             default_name=self.name,
-            via_device=(DOMAIN, self.pfsense_device_unique_id),
+            via_device=(DOMAIN, self.opnsense_device_unique_id),
         )
 
     @property
@@ -239,7 +264,7 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
     @property
     def is_connected(self) -> bool:
         """Return true if the device is connected to the network."""
-        entry = self._get_pfsense_arp_entry()
+        entry = self._get_opnsense_arp_entry()
         if entry is None:
             if self._last_known_ip is not None and len(self._last_known_ip) > 0:
                 # force a ping to _last_known_ip to possibly recreate arp entry?
@@ -250,7 +275,7 @@ class PfSenseScannerEntity(PfSenseEntity, ScannerEntity):
         # TODO: clear cache under certain scenarios?
         ip_address = entry.get("ip-address")
         if ip_address is not None and len(ip_address) > 0:
-            client = self._get_pfsense_client()
+            client = self._get_opnsense_client()
             self.hass.async_add_executor_job(client.delete_arp_entry, ip_address)
 
         return True

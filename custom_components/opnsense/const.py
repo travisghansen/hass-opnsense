@@ -1,4 +1,4 @@
-"""The pfSense component."""
+"""The OPNsense component."""
 from __future__ import annotations
 
 from typing import Final
@@ -17,17 +17,19 @@ from homeassistant.const import (
     TIME_SECONDS,
 )
 
-DEFAULT_USERNAME = "admin"
-DOMAIN = "pfsense"
+DEFAULT_USERNAME = "root"
+DOMAIN = "opnsense"
 
 UNDO_UPDATE_LISTENER = "undo_update_listener"
 
 PLATFORMS = ["sensor", "switch", "device_tracker", "binary_sensor"]
 LOADED_PLATFORMS = "loaded_platforms"
 
-PFSENSE_CLIENT = "pfsense_client"
+OPNSENSE_CLIENT = "opnsense_client"
 COORDINATOR = "coordinator"
 DEVICE_TRACKER_COORDINATOR = "device_tracker_coordinator"
+SHOULD_RELOAD = "should_reload"
+TRACKED_MACS = "tracked_macs"
 DEFAULT_SCAN_INTERVAL = 30
 CONF_TLS_INSECURE = "tls_insecure"
 DEFAULT_TLS_INSECURE = False
@@ -103,14 +105,6 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
         # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
     # memory with state_class due to being less static
-    "telemetry.memory.usermem": SensorEntityDescription(
-        key="telemetry.memory.usermem",
-        name="Memory Usermem",
-        native_unit_of_measurement=DATA_BYTES,
-        icon=ICON_MEMORY,
-        state_class=STATE_CLASS_MEASUREMENT,
-        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
-    ),
     "telemetry.memory.swap_reserved": SensorEntityDescription(
         key="telemetry.memory.swap_reserved",
         name="Memory Swap Reserved",
@@ -127,9 +121,9 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
         icon=ICON_MEMORY,
         # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
-    "telemetry.memory.realmem": SensorEntityDescription(
-        key="telemetry.memory.realmem",
-        name="Memory Realmem",
+    "telemetry.memory.used": SensorEntityDescription(
+        key="telemetry.memory.used",
+        name="Memory Used",
         native_unit_of_measurement=DATA_BYTES,
         icon=ICON_MEMORY,
         # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
@@ -206,15 +200,15 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
         # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
     # system
-    "telemetry.system.temp": SensorEntityDescription(
-        key="telemetry.system.temp",
-        name="System Temperature",
-        native_unit_of_measurement=TEMP_CELSIUS,
-        device_class=DEVICE_CLASS_TEMPERATURE,
-        icon="mdi:thermometer",
-        state_class=STATE_CLASS_MEASUREMENT,
-        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
-    ),
+    # "telemetry.system.temp": SensorEntityDescription(
+    #    key="telemetry.system.temp",
+    #    name="System Temperature",
+    #    native_unit_of_measurement=TEMP_CELSIUS,
+    #    device_class=DEVICE_CLASS_TEMPERATURE,
+    #    icon="mdi:thermometer",
+    #    state_class=STATE_CLASS_MEASUREMENT,
+    #    # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    # ),
     "telemetry.system.boottime": SensorEntityDescription(
         key="telemetry.system.boottime",
         name="System Boottime",
@@ -224,30 +218,30 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
         # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
     # dhcp
-    "dhcp_stats.leases.total": SensorEntityDescription(
-        key="dhcp_stats.leases.total",
-        name="DHCP Leases Total",
-        native_unit_of_measurement="clients",
-        icon="mdi:ip-network-outline",
-        state_class=STATE_CLASS_MEASUREMENT,
-        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
-    ),
-    "dhcp_stats.leases.online": SensorEntityDescription(
-        key="dhcp_stats.leases.online",
-        name="DHCP Leases Online",
-        native_unit_of_measurement="clients",
-        icon="mdi:ip-network-outline",
-        state_class=STATE_CLASS_MEASUREMENT,
-        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
-    ),
-    "dhcp_stats.leases.offline": SensorEntityDescription(
-        key="dhcp_stats.leases.offline",
-        name="DHCP Leases Offline",
-        native_unit_of_measurement="clients",
-        icon="mdi:ip-network-outline",
-        state_class=STATE_CLASS_MEASUREMENT,
-        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
-    ),
+    # "dhcp_stats.leases.total": SensorEntityDescription(
+    #    key="dhcp_stats.leases.total",
+    #    name="DHCP Leases Total",
+    #    native_unit_of_measurement="clients",
+    #    icon="mdi:ip-network-outline",
+    #    state_class=STATE_CLASS_MEASUREMENT,
+    #    # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    # ),
+    # "dhcp_stats.leases.online": SensorEntityDescription(
+    #    key="dhcp_stats.leases.online",
+    #    name="DHCP Leases Online",
+    #    native_unit_of_measurement="clients",
+    #    icon="mdi:ip-network-outline",
+    #    state_class=STATE_CLASS_MEASUREMENT,
+    #    # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    # ),
+    # "dhcp_stats.leases.offline": SensorEntityDescription(
+    #    key="dhcp_stats.leases.offline",
+    #    name="DHCP Leases Offline",
+    #    native_unit_of_measurement="clients",
+    #    icon="mdi:ip-network-outline",
+    #    state_class=STATE_CLASS_MEASUREMENT,
+    #    # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    # ),
 }
 
 SERVICE_CLOSE_NOTICE = "close_notice"

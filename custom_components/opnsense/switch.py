@@ -1,4 +1,4 @@
-"""pfSense integration."""
+"""OPNsense integration."""
 import logging
 
 from homeassistant.components.switch import (
@@ -13,7 +13,7 @@ from homeassistant.helpers import entity_platform
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import slugify
 
-from . import CoordinatorEntityManager, PfSenseEntity, dict_get
+from . import CoordinatorEntityManager, OPNSenseEntity, dict_get
 from .const import COORDINATOR, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: entity_platform.AddEntitiesCallback,
 ):
-    """Set up the pfSense binary sensors."""
+    """Set up the OPNsense binary sensors."""
 
     @callback
     def process_entities_callback(hass, config_entry):
@@ -45,9 +45,6 @@ async def async_setup_entry(
                     # entity_category = ENTITY_CATEGORY_CONFIG
                     device_class = DEVICE_CLASS_SWITCH
 
-                    if "tracker" not in rule.keys():
-                        continue
-
                     # do NOT add rules that are NAT rules
                     if "associated-rule-id" in rule.keys():
                         continue
@@ -56,7 +53,7 @@ async def async_setup_entry(
                     if rule["descr"] == "Anti-Lockout Rule":
                         continue
 
-                    tracker = rule["tracker"]
+                    tracker = dict_get(rule, "created.time")
                     if tracker is None:
                         continue
 
@@ -64,7 +61,7 @@ async def async_setup_entry(
                     if len(tracker) < 1:
                         continue
 
-                    entity = PfSenseFilterSwitch(
+                    entity = OPNSenseFilterSwitch(
                         config_entry,
                         coordinator,
                         SwitchEntityDescription(
@@ -96,7 +93,7 @@ async def async_setup_entry(
                     if len(tracker) < 1:
                         continue
 
-                    entity = PfSenseNatSwitch(
+                    entity = OPNSenseNatSwitch(
                         config_entry,
                         coordinator,
                         SwitchEntityDescription(
@@ -134,7 +131,7 @@ async def async_setup_entry(
                     if len(tracker) < 1:
                         continue
 
-                    entity = PfSenseNatSwitch(
+                    entity = OPNSenseNatSwitch(
                         config_entry,
                         coordinator,
                         SwitchEntityDescription(
@@ -159,7 +156,7 @@ async def async_setup_entry(
                 # entity_category = ENTITY_CATEGORY_CONFIG
                 device_class = DEVICE_CLASS_SWITCH
 
-                entity = PfSenseServiceSwitch(
+                entity = OPNSenseServiceSwitch(
                     config_entry,
                     coordinator,
                     SwitchEntityDescription(
@@ -184,7 +181,7 @@ async def async_setup_entry(
     cem.process_entities()
 
 
-class PfSenseSwitch(PfSenseEntity, SwitchEntity):
+class OPNSenseSwitch(OPNSenseEntity, SwitchEntity):
     def __init__(
         self,
         config_entry,
@@ -195,9 +192,9 @@ class PfSenseSwitch(PfSenseEntity, SwitchEntity):
         self.config_entry = config_entry
         self.entity_description = entity_description
         self.coordinator = coordinator
-        self._attr_name = f"{self.pfsense_device_name} {entity_description.name}"
+        self._attr_name = f"{self.opnsense_device_name} {entity_description.name}"
         self._attr_unique_id = slugify(
-            f"{self.pfsense_device_unique_id}_{entity_description.key}"
+            f"{self.opnsense_device_unique_id}_{entity_description.key}"
         )
 
     @property
@@ -209,69 +206,73 @@ class PfSenseSwitch(PfSenseEntity, SwitchEntity):
         return None
 
 
-class PfSenseFilterSwitch(PfSenseSwitch):
-    def _pfsense_get_tracker(self):
-        return self.entity_description.key.split(".")[1]
+class OPNSenseFilterSwitch(OPNSenseSwitch):
+    def _opnsense_get_tracker(self):
+        parts = self.entity_description.key.split(".")
+        parts.pop(0)
+        return ".".join(parts)
 
-    def _pfsense_get_rule(self):
+    def _opnsense_get_rule(self):
         state = self.coordinator.data
         found = None
-        tracker = self._pfsense_get_tracker()
+        tracker = self._opnsense_get_tracker()
         for rule in state["config"]["filter"]["rule"]:
-            if "tracker" not in rule.keys():
-                continue
-            if rule["tracker"] == tracker:
+            if dict_get(rule, "created.time") == tracker:
                 found = rule
                 break
         return found
 
     @property
     def is_on(self):
-        rule = self._pfsense_get_rule()
+        rule = self._opnsense_get_rule()
         if rule is None:
             return STATE_UNKNOWN
         try:
-            return "disabled" not in rule.keys()
+            if "disabled" not in rule.keys():
+                return True
+            return bool(rule["disabled"] != "1")
         except KeyError:
             return STATE_UNKNOWN
 
     async def async_turn_on(self, **kwargs):
         """Turn the entity on."""
-        rule = self._pfsense_get_rule()
+        rule = self._opnsense_get_rule()
         if rule is None:
             return
-        tracker = self._pfsense_get_tracker()
-        client = self._get_pfsense_client()
+        tracker = self._opnsense_get_tracker()
+        client = self._get_opnsense_client()
         await self.hass.async_add_executor_job(
-            client.enable_filter_rule_by_tracker, tracker
+            client.enable_filter_rule_by_created_time, tracker
         )
         await self.coordinator.async_refresh()
 
     async def async_turn_off(self, **kwargs):
         """Turn the entity off."""
-        rule = self._pfsense_get_rule()
+        rule = self._opnsense_get_rule()
         if rule is None:
             return
-        tracker = self._pfsense_get_tracker()
-        client = self._get_pfsense_client()
+        tracker = self._opnsense_get_tracker()
+        client = self._get_opnsense_client()
         await self.hass.async_add_executor_job(
-            client.disable_filter_rule_by_tracker, tracker
+            client.disable_filter_rule_by_created_time, tracker
         )
         await self.coordinator.async_refresh()
 
 
-class PfSenseNatSwitch(PfSenseSwitch):
-    def _pfsense_get_rule_type(self):
+class OPNSenseNatSwitch(OPNSenseSwitch):
+    def _opnsense_get_rule_type(self):
         return self.entity_description.key.split(".")[0]
 
-    def _pfsense_get_tracker(self):
-        return self.entity_description.key.split(".")[1]
+    def _opnsense_get_tracker(self):
+        parts = self.entity_description.key.split(".")
+        parts.pop(0)
+        return ".".join(parts)
 
-    def _pfsense_get_rule(self):
+    def _opnsense_get_rule(self):
         state = self.coordinator.data
         found = None
-        tracker = self._pfsense_get_tracker()
-        rule_type = self._pfsense_get_rule_type()
+        tracker = self._opnsense_get_tracker()
+        rule_type = self._opnsense_get_rule_type()
         rules = []
         if rule_type == "nat_port_forward":
             rules = state["config"]["nat"]["rule"]
@@ -286,7 +287,7 @@ class PfSenseNatSwitch(PfSenseSwitch):
 
     @property
     def is_on(self):
-        rule = self._pfsense_get_rule()
+        rule = self._opnsense_get_rule()
         if rule is None:
             return STATE_UNKNOWN
         try:
@@ -296,12 +297,12 @@ class PfSenseNatSwitch(PfSenseSwitch):
 
     async def async_turn_on(self, **kwargs):
         """Turn the entity on."""
-        rule = self._pfsense_get_rule()
+        rule = self._opnsense_get_rule()
         if rule is None:
             return
-        tracker = self._pfsense_get_tracker()
-        client = self._get_pfsense_client()
-        rule_type = self._pfsense_get_rule_type()
+        tracker = self._opnsense_get_tracker()
+        client = self._get_opnsense_client()
+        rule_type = self._opnsense_get_rule_type()
         if rule_type == "nat_port_forward":
             method = client.enable_nat_port_forward_rule_by_created_time
         if rule_type == "nat_outbound":
@@ -312,12 +313,12 @@ class PfSenseNatSwitch(PfSenseSwitch):
 
     async def async_turn_off(self, **kwargs):
         """Turn the entity off."""
-        rule = self._pfsense_get_rule()
+        rule = self._opnsense_get_rule()
         if rule is None:
             return
-        tracker = self._pfsense_get_tracker()
-        client = self._get_pfsense_client()
-        rule_type = self._pfsense_get_rule_type()
+        tracker = self._opnsense_get_tracker()
+        client = self._get_opnsense_client()
+        rule_type = self._opnsense_get_rule_type()
         if rule_type == "nat_port_forward":
             method = client.disable_nat_port_forward_rule_by_created_time
         if rule_type == "nat_outbound":
@@ -327,17 +328,17 @@ class PfSenseNatSwitch(PfSenseSwitch):
         await self.coordinator.async_refresh()
 
 
-class PfSenseServiceSwitch(PfSenseSwitch):
-    def _pfsense_get_property_name(self):
+class OPNSenseServiceSwitch(OPNSenseSwitch):
+    def _opnsense_get_property_name(self):
         return self.entity_description.key.split(".")[2]
 
-    def _pfsense_get_service_name(self):
+    def _opnsense_get_service_name(self):
         return self.entity_description.key.split(".")[1]
 
-    def _pfsense_get_service(self):
+    def _opnsense_get_service(self):
         state = self.coordinator.data
         found = None
-        service_name = self._pfsense_get_service_name()
+        service_name = self._opnsense_get_service_name()
         for service in state["services"]:
             if service["name"] == service_name:
                 found = service
@@ -346,8 +347,8 @@ class PfSenseServiceSwitch(PfSenseSwitch):
 
     @property
     def is_on(self):
-        service = self._pfsense_get_service()
-        property = self._pfsense_get_property_name()
+        service = self._opnsense_get_service()
+        property = self._opnsense_get_property_name()
         try:
             value = service[property]
             return value
@@ -356,8 +357,8 @@ class PfSenseServiceSwitch(PfSenseSwitch):
 
     async def async_turn_on(self, **kwargs):
         """Turn the entity on."""
-        service = self._pfsense_get_service()
-        client = self._get_pfsense_client()
+        service = self._opnsense_get_service()
+        client = self._get_opnsense_client()
         result = await self.hass.async_add_executor_job(
             client.start_service, service["name"]
         )
@@ -366,8 +367,8 @@ class PfSenseServiceSwitch(PfSenseSwitch):
 
     async def async_turn_off(self, **kwargs):
         """Turn the entity off."""
-        service = self._pfsense_get_service()
-        client = self._get_pfsense_client()
+        service = self._opnsense_get_service()
+        client = self._get_opnsense_client()
         result = await self.hass.async_add_executor_job(
             client.stop_service, service["name"]
         )

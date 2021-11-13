@@ -1,4 +1,4 @@
-"""Provides a sensor to track various status aspects of pfSense."""
+"""Provides a sensor to track various status aspects of OPNsense."""
 import logging
 import re
 
@@ -21,7 +21,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import slugify
 from homeassistant.util.dt import utc_from_timestamp
 
-from . import CoordinatorEntityManager, PfSenseEntity
+from . import CoordinatorEntityManager, OPNSenseEntity
 from .const import (
     COORDINATOR,
     COUNT,
@@ -39,7 +39,7 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: entity_platform.AddEntitiesCallback,
 ):
-    """Set up the pfSense sensors."""
+    """Set up the OPNsense sensors."""
 
     @callback
     def process_entities_callback(hass, config_entry):
@@ -70,7 +70,7 @@ async def async_setup_entry(
             ]:
                 enabled_default = True
 
-            entity = PfSenseSensor(
+            entity = OPNSenseSensor(
                 config_entry,
                 coordinator,
                 SENSOR_TYPES[sensor_type],
@@ -84,7 +84,7 @@ async def async_setup_entry(
             mountpoint_clean = normalize_filesystem_device_name(
                 filesystem["mountpoint"]
             )
-            entity = PfSenseFilesystemSensor(
+            entity = OPNSenseFilesystemSensor(
                 config_entry,
                 coordinator,
                 SensorEntityDescription(
@@ -101,21 +101,24 @@ async def async_setup_entry(
 
         # carp interfaces
         for interface in state["carp_interfaces"]:
-            uniqid = interface["uniqid"]
+            # subnet is actually the ip
+            uniqid = slugify(interface["subnet"])
+            descr = ""
+            if "descr" in interface.keys():
+                descr = interface["descr"]
+
             state_class = None
             native_unit_of_measurement = None
             icon = "mdi:check-network-outline"
             enabled_default = True
             # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
 
-            entity = PfSenseCarpInterfaceSensor(
+            entity = OPNSenseCarpInterfaceSensor(
                 config_entry,
                 coordinator,
                 SensorEntityDescription(
                     key=f"carp.interface.{uniqid}",
-                    name="CARP Interface Status {} ({})".format(
-                        uniqid, interface["descr"]
-                    ),
+                    name="CARP Interface Status {} ({})".format(uniqid, descr),
                     native_unit_of_measurement=native_unit_of_measurement,
                     icon=icon,
                     state_class=state_class,
@@ -133,22 +136,22 @@ async def async_setup_entry(
                 "inerrs",
                 "outerrs",
                 "collisions",
-                "inbytespass",
-                "inbytespass_kilobytes_per_second",
-                "outbytespass",
-                "outbytespass_kilobytes_per_second",
-                "inpktspass",
-                "inpktspass_packets_per_second",
-                "outpktspass",
-                "outpktspass_packets_per_second",
-                "inbytesblock",
-                "inbytesblock_kilobytes_per_second",
-                "outbytesblock",
-                "outbytesblock_kilobytes_per_second",
-                "inpktsblock",
-                "inpktsblock_packets_per_second",
-                "outpktsblock",
-                "outpktsblock_packets_per_second",
+                # "inbytespass",
+                # "inbytespass_kilobytes_per_second",
+                # "outbytespass",
+                # "outbytespass_kilobytes_per_second",
+                # "inpktspass",
+                # "inpktspass_packets_per_second",
+                # "outpktspass",
+                # "outpktspass_packets_per_second",
+                # "inbytesblock",
+                # "inbytesblock_kilobytes_per_second",
+                # "outbytesblock",
+                # "outbytesblock_kilobytes_per_second",
+                # "inpktsblock",
+                # "inpktsblock_packets_per_second",
+                # "outpktsblock",
+                # "outpktsblock_packets_per_second",
                 "inbytes",
                 "inbytes_kilobytes_per_second",
                 "outbytes",
@@ -207,12 +210,12 @@ async def async_setup_entry(
                 if icon is None:
                     icon = "mdi:gauge"
 
-                entity = PfSenseInterfaceSensor(
+                entity = OPNSenseInterfaceSensor(
                     config_entry,
                     coordinator,
                     SensorEntityDescription(
                         key="telemetry.interface.{}.{}".format(
-                            interface["ifname"], property
+                            interface["descr"], property
                         ),
                         name="Interface {} {}".format(interface["descr"], property),
                         native_unit_of_measurement=native_unit_of_measurement,
@@ -243,7 +246,7 @@ async def async_setup_entry(
                 if property == "status":
                     icon = "mdi:check-network-outline"
 
-                entity = PfSenseGatewaySensor(
+                entity = OPNSenseGatewaySensor(
                     config_entry,
                     coordinator,
                     SensorEntityDescription(
@@ -274,8 +277,8 @@ def normalize_filesystem_device_name(device_name):
     return device_name.replace("/", "_slash_").strip("_")
 
 
-class PfSenseSensor(PfSenseEntity, SensorEntity):
-    """Representation of a sensor entity for pfSense status values."""
+class OPNSenseSensor(OPNSenseEntity, SensorEntity):
+    """Representation of a sensor entity for OPNsense status values."""
 
     def __init__(
         self,
@@ -289,15 +292,15 @@ class PfSenseSensor(PfSenseEntity, SensorEntity):
         self.entity_description = entity_description
         self.coordinator = coordinator
         self._attr_entity_registry_enabled_default = enabled_default
-        self._attr_name = f"{self.pfsense_device_name} {entity_description.name}"
+        self._attr_name = f"{self.opnsense_device_name} {entity_description.name}"
         self._attr_unique_id = slugify(
-            f"{self.pfsense_device_unique_id}_{entity_description.key}"
+            f"{self.opnsense_device_unique_id}_{entity_description.key}"
         )
 
     @property
     def native_value(self):
         """Return entity state from firewall."""
-        value = self._get_pfsense_state_value(self.entity_description.key)
+        value = self._get_opnsense_state_value(self.entity_description.key)
         if value is None:
             return STATE_UNKNOWN
 
@@ -306,8 +309,8 @@ class PfSenseSensor(PfSenseEntity, SensorEntity):
         return value
 
 
-class PfSenseFilesystemSensor(PfSenseSensor):
-    def _pfsense_get_filesystem(self):
+class OPNSenseFilesystemSensor(OPNSenseSensor):
+    def _opnsense_get_filesystem(self):
         state = self.coordinator.data
         found = None
         for filesystem in state["telemetry"]["filesystems"]:
@@ -319,31 +322,31 @@ class PfSenseFilesystemSensor(PfSenseSensor):
 
     @property
     def native_value(self):
-        filesystem = self._pfsense_get_filesystem()
-        return filesystem["percent_used"]
+        filesystem = self._opnsense_get_filesystem()
+        return filesystem["capacity"].strip("%")
 
     @property
     def extra_state_attributes(self):
         attributes = {}
-        filesystem = self._pfsense_get_filesystem()
+        filesystem = self._opnsense_get_filesystem()
         # TODO: convert total_size to bytes?
-        for attr in ["device", "type", "total_size", "mountpoint"]:
+        for attr in ["device", "type", "size", "mountpoint", "used", "available"]:
             attributes[attr] = filesystem[attr]
 
         return attributes
 
 
-class PfSenseInterfaceSensor(PfSenseSensor):
-    def _pfsense_get_interface_property_name(self):
+class OPNSenseInterfaceSensor(OPNSenseSensor):
+    def _opnsense_get_interface_property_name(self):
         return self.entity_description.key.split(".")[3]
 
-    def _pfsense_get_interface_name(self):
+    def _opnsense_get_interface_name(self):
         return self.entity_description.key.split(".")[2]
 
-    def _pfsense_get_interface(self):
+    def _opnsense_get_interface(self):
         state = self.coordinator.data
         found = None
-        interface_name = self._pfsense_get_interface_name()
+        interface_name = self._opnsense_get_interface_name()
         for i_interface_name in state["telemetry"]["interfaces"].keys():
             if i_interface_name == interface_name:
                 found = state["telemetry"]["interfaces"][i_interface_name]
@@ -353,39 +356,40 @@ class PfSenseInterfaceSensor(PfSenseSensor):
     @property
     def extra_state_attributes(self):
         attributes = {}
-        interface = self._pfsense_get_interface()
-        for attr in ["hwif", "enable", "if", "macaddr", "mtu"]:
+        interface = self._opnsense_get_interface()
+        # for attr in ["hwif", "enable", "if", "macaddr", "mtu"]:
+        for attr in ["ipaddr", "media"]:
             attributes[attr] = interface[attr]
 
         return attributes
 
     @property
     def icon(self):
-        property = self._pfsense_get_interface_property_name()
+        property = self._opnsense_get_interface_property_name()
         if property == "status" and self.native_value != "up":
             return "mdi:close-network-outline"
         return super().icon
 
     @property
     def native_value(self):
-        interface = self._pfsense_get_interface()
-        property = self._pfsense_get_interface_property_name()
+        interface = self._opnsense_get_interface()
+        property = self._opnsense_get_interface_property_name()
         try:
             return interface[property]
         except KeyError:
             return STATE_UNKNOWN
 
 
-class PfSenseCarpInterfaceSensor(PfSenseSensor):
-    def _pfsense_get_interface_name(self):
+class OPNSenseCarpInterfaceSensor(OPNSenseSensor):
+    def _opnsense_get_interface_name(self):
         return self.entity_description.key.split(".")[2]
 
-    def _pfsense_get_interface(self):
+    def _opnsense_get_interface(self):
         state = self.coordinator.data
         found = None
-        interface_name = self._pfsense_get_interface_name()
+        interface_name = self._opnsense_get_interface_name()
         for i_interface in state["carp_interfaces"]:
-            if i_interface["uniqid"] == interface_name:
+            if slugify(i_interface["subnet"]) == interface_name:
                 found = i_interface
                 break
         return found
@@ -393,7 +397,7 @@ class PfSenseCarpInterfaceSensor(PfSenseSensor):
     @property
     def extra_state_attributes(self):
         attributes = {}
-        interface = self._pfsense_get_interface()
+        interface = self._opnsense_get_interface()
         for attr in [
             "interface",
             "vhid",
@@ -402,8 +406,10 @@ class PfSenseCarpInterfaceSensor(PfSenseSensor):
             "type",
             "subnet_bits",
             "subnet",
+            "descr",
         ]:
-            attributes[attr] = interface[attr]
+            if attr in interface.keys():
+                attributes[attr] = interface[attr]
 
         return attributes
 
@@ -415,24 +421,24 @@ class PfSenseCarpInterfaceSensor(PfSenseSensor):
 
     @property
     def native_value(self):
-        interface = self._pfsense_get_interface()
+        interface = self._opnsense_get_interface()
         try:
             return interface["status"]
         except KeyError:
             return STATE_UNKNOWN
 
 
-class PfSenseGatewaySensor(PfSenseSensor):
-    def _pfsense_get_gateway_property_name(self):
+class OPNSenseGatewaySensor(OPNSenseSensor):
+    def _opnsense_get_gateway_property_name(self):
         return self.entity_description.key.split(".")[3]
 
-    def _pfsense_get_gateway_name(self):
+    def _opnsense_get_gateway_name(self):
         return self.entity_description.key.split(".")[2]
 
-    def _pfsense_get_gateway(self):
+    def _opnsense_get_gateway(self):
         state = self.coordinator.data
         found = None
-        gateway_name = self._pfsense_get_gateway_name()
+        gateway_name = self._opnsense_get_gateway_name()
         for i_gateway_name in state["telemetry"]["gateways"].keys():
             if i_gateway_name == gateway_name:
                 found = state["telemetry"]["gateways"][i_gateway_name]
@@ -442,26 +448,26 @@ class PfSenseGatewaySensor(PfSenseSensor):
     @property
     def extra_state_attributes(self):
         attributes = {}
-        gateway = self._pfsense_get_gateway()
-        for attr in ["monitorip", "srcip", "substatus"]:
-            value = gateway[attr]
-            if attr == "substatus" and gateway[attr] == "none":
-                value = None
-            attributes[attr] = value
+        gateway = self._opnsense_get_gateway()
+        # for attr in ["monitorip", "srcip", "status"]:
+        #    value = gateway[attr]
+        #    if attr == "substatus" and gateway[attr] == "none":
+        #        value = None
+        #    attributes[attr] = value
 
         return attributes
 
     @property
     def icon(self):
-        property = self._pfsense_get_gateway_property_name()
+        property = self._opnsense_get_gateway_property_name()
         if property == "status" and self.native_value != "online":
             return "mdi:close-network-outline"
         return super().icon
 
     @property
     def native_value(self):
-        gateway = self._pfsense_get_gateway()
-        property = self._pfsense_get_gateway_property_name()
+        gateway = self._opnsense_get_gateway()
+        property = self._opnsense_get_gateway_property_name()
         try:
             value = gateway[property]
             # cleanse "ms", etc from values
