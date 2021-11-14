@@ -296,6 +296,7 @@ class OPNSenseSensor(OPNSenseEntity, SensorEntity):
         self._attr_unique_id = slugify(
             f"{self.opnsense_device_unique_id}_{entity_description.key}"
         )
+        self._previous_value = None
 
     @property
     def native_value(self):
@@ -306,6 +307,16 @@ class OPNSenseSensor(OPNSenseEntity, SensorEntity):
 
         if self.entity_description.key == "telemetry.system.boottime":
             value = utc_from_timestamp(value).isoformat()
+
+        if self.entity_description.key == "telemetry.cpu.frequency.current":
+            if value == 0 and self._previous_value is not None:
+                value = self._previous_value
+        
+        if value == 0 and self.entity_description.key == "telemetry.cpu.frequency.current":
+            return STATE_UNKNOWN
+
+        self._previous_value = value
+
         return value
 
 

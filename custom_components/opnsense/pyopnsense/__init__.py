@@ -75,6 +75,10 @@ class Client(object):
 
     @_apply_timeout
     def _exec_php(self, script):
+        script = """
+ini_set('display_errors', 0);
+{}
+""".format(script)
         return self._get_proxy().opnsense.exec_php(script)
 
     @_apply_timeout
