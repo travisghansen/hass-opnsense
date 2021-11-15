@@ -77,10 +77,19 @@ class Client(object):
     def _exec_php(self, script):
         script = """
 ini_set('display_errors', 0);
-{}
-""".format(script)
-        return self._get_proxy().opnsense.exec_php(script)
 
+{}
+
+// wrapping this in json_encode and then unwrapping in python prevents funny XMLRPC NULL encoding errors
+// https://github.com/travisghansen/hass-pfsense/issues/35
+$toreturn_real = $toreturn;
+$toreturn = [];
+$toreturn["real"] = json_encode($toreturn_real);
+""".format(script)
+        response = self._get_proxy().pfsense.exec_php(script)
+        response = json.loads(response["real"])
+        return response
+        
     @_apply_timeout
     def get_host_firmware_version(self):
         return self._get_proxy().opnsense.firmware_version()
