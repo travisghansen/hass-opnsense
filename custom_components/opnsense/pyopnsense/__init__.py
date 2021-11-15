@@ -86,7 +86,7 @@ $toreturn_real = $toreturn;
 $toreturn = [];
 $toreturn["real"] = json_encode($toreturn_real);
 """.format(script)
-        response = self._get_proxy().pfsense.exec_php(script)
+        response = self._get_proxy().opnsense.exec_php(script)
         response = json.loads(response["real"])
         return response
         
