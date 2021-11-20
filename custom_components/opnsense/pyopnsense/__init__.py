@@ -1,7 +1,8 @@
 import json
+import requests
 import socket
 import ssl
-from urllib.parse import quote_plus, unquote, urlparse
+from urllib.parse import quote_plus, urlparse
 from xml.parsers.expat import ExpatError
 import xmlrpc.client
 
@@ -13,7 +14,7 @@ class Client(object):
     """OPNsense Client"""
 
     def __init__(self, url, username, password, opts=None):
-        """OPNsense Client initializer."""
+        """OPNsense XMLRPC Client initializer."""
 
         if opts is None:
             opts = {}
@@ -21,8 +22,8 @@ class Client(object):
         self._username = username
         self._password = password
         self._opts = opts
-        parts = urlparse(url.rstrip("/") + "/xmlrpc.php")
-        self._url = "{scheme}://{username}:{password}@{host}/xmlrpc.php".format(
+        parts = urlparse(url.rstrip("/"))
+        self._url = "{scheme}://{username}:{password}@{host}".format(
             scheme=parts.scheme,
             username=quote_plus(username),
             password=quote_plus(password),
@@ -45,7 +46,7 @@ class Client(object):
         # set to True if necessary during development
         verbose = False
 
-        proxy = xmlrpc.client.ServerProxy(self._url, context=context, verbose=verbose)
+        proxy = xmlrpc.client.ServerProxy(f"{self._url}/xmlrpc.php", context=context, verbose=verbose)
         return proxy
 
     def _apply_timeout(func):
@@ -109,6 +110,18 @@ $toreturn["real"] = json_encode($toreturn_real);
     @_apply_timeout
     def _restart_service(self, params):
         return self._get_proxy().opnsense.restart_service(params)
+
+    def _get(self, path):
+        # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
+        url = f"{self._url}{path}"
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        return response.json()
+
+    def _post(self, path, payload = None):
+        # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
+        url = f"{self._url}{path}"
+        response = requests.post(url, data=payload, timeout=DEFAULT_TIMEOUT)
+        return response.json()
 
     def get_device_id(self):
         script = """
