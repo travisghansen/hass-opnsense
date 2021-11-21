@@ -14,7 +14,7 @@ class Client(object):
     """OPNsense Client"""
 
     def __init__(self, url, username, password, opts=None):
-        """OPNsense XMLRPC Client initializer."""
+        """OPNsense Client initializer."""
 
         if opts is None:
             opts = {}
@@ -659,7 +659,7 @@ $toreturn = [
     ],
 
     "memory" => [
-        "swap_used_percent" => round(floatval($system_api_data["disk"]["swap"][0]["used"] / $system_api_data["disk"]["swap"][0]["total"]) * 100, 0),
+        "swap_used_percent" => ($system_api_data["disk"]["swap"][0]["total"] > 0) ? round(floatval($system_api_data["disk"]["swap"][0]["used"] / $system_api_data["disk"]["swap"][0]["total"]) * 100, 0) : 0,
         "used_percent" => round(floatval($system_api_data["kernel"]["memory"]["used"] / $system_api_data["kernel"]["memory"]["total"]) * 100, 0),
         "physmem" => (int) $system_api_data["kernel"]["memory"]["total"],
         "used" => (int) $system_api_data["kernel"]["memory"]["used"],
@@ -719,11 +719,8 @@ foreach ($interfaces_api_data as $if) {
 """
         data = self._exec_php(script)
 
-        # for fs in data["filesystems"]:
-        #    fs["percent_used"] = int(fs["percent_used"])
-
-        # for i, i_key in enumerate(data["interfaces"].keys()):
-        #    data["interfaces"][i_key] = json.loads(data["interfaces"][i_key])
+        if isinstance(data["gateways"], list):
+            data["gateways"] = {}
 
         return data
 
