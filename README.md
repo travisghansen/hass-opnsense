@@ -9,8 +9,7 @@ Join `OPNsense` with `home-assistant`!
 interactions. This project is currently a proof-of-concept and may fail to work
 at any time.
 
-Initial development was done againt `OPNsense` `21.7` and `home-assistant`
-`2021.10`.
+Initial development was done againt `OPNsense` `21.7` and `home-assistant` `2021.10`.
 
 # installation
 
@@ -19,21 +18,23 @@ which only provides `device_tracker` functionality, be sure to remove any
 associated configuration for the built-in integration before installing this
 replacement.
 
-To use the integration you need to install an OPNsense plugin.
-The plugin is available on mimugmail repo: https://www.routerperformance.net/opnsense-repo/
+To use the integration you need to install an OPNsense plugin mada available
+on mimugmail repository: `https://www.routerperformance.net/opnsense-repo/`
 
-- Install the repository by opening an SSH session on OPNsense and issue the following commands:
+First you need to install the repository:
+  - open an SSH session on OPNsense and issue the following commands:
+```
+fetch -o /usr/local/etc/pkg/repos/mimugmail.conf https://www.routerperformance.net/mimugmail.conf
+pkg update
+```
 
-'fetch -o /usr/local/etc/pkg/repos/mimugmail.conf https://www.routerperformance.net/mimugmail.conf
-pkg update'
-
-- Install plugin, two options:
+Now you need to install the plugin, you have two ways to do it:
   - In OPNsense web UI, go to System:Firmware:Plugins and install plugin `os-homeassistant-maxit`
   - From SSH shell: `pkg install os-homeassistant-maxit`
 
-Add the repo to your `hacs` installation or clone the directory manually. Once
-the integration is installed be sure to restart `hass` and refresh the UI in
-the browser.
+Now, on Home Assistant, add this repository to your `HACS` installation or clone the directory manually.
+Once the integration is installed be sure to restart `hass` and hard-refresh the UI in
+the browser (ctrl-F5) if it doesn't appear in the list.
 
 # configuration
 
