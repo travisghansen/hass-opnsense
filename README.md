@@ -9,8 +9,7 @@ Join `OPNsense` with `home-assistant`!
 interactions. This project is currently a proof-of-concept and may fail to work
 at any time.
 
-Initial development was done againt `OPNsense` `21.7` and `home-assistant`
-`2021.10`.
+Initial development was done againt `OPNsense` `21.7` and `home-assistant` `2021.10`.
 
 # installation
 
@@ -19,45 +18,23 @@ which only provides `device_tracker` functionality, be sure to remove any
 associated configuration for the built-in integration before installing this
 replacement.
 
-To use the integration you must first login to the console of
-your filewall and execute the following:
+To use the integration you need to install an OPNsense plugin mada available
+on mimugmail repository: `https://www.routerperformance.net/opnsense-repo/`
 
+First you need to install the repository:
+  - open an SSH session on OPNsense and issue the following commands:
 ```
-sh
-cat << 'EOF' > /usr/local/etc/inc/xmlrpc/hass.inc
-<?php
-function xmlrpc_publishable_hass()
-{
-    return array(
-        "exec_php_xmlrpc",
-        "exec_shell_xmlrpc"
-    );
-}
-
-function exec_php_xmlrpc($code)
-{
-    eval($code);
-    if ($toreturn)
-    {
-        return $toreturn;
-    }
-    return true;
-}
-
-function exec_shell_xmlrpc($code)
-{
-    mwexec($code);
-    return true;
-}
-
-EOF
-chown root:wheel /usr/local/etc/inc/xmlrpc/hass.inc
-chmod 644 /usr/local/etc/inc/xmlrpc/hass.inc
+fetch -o /usr/local/etc/pkg/repos/mimugmail.conf https://www.routerperformance.net/mimugmail.conf
+pkg update
 ```
 
-Add the repo to your `hacs` installation or clone the directory manually. Once
-the integration is installed be sure to restart `hass` and refresh the UI in
-the browser.
+Now you need to install the plugin, you have two ways to do it:
+  - In OPNsense web UI, go to System:Firmware:Plugins and install plugin `os-homeassistant-maxit`
+  - From SSH shell: `pkg install os-homeassistant-maxit`
+
+Now, on Home Assistant, add this repository to your `HACS` installation or clone the directory manually.
+Once the integration is installed be sure to restart `hass` and hard-refresh the UI in
+the browser (ctrl-F5) if it doesn't appear in the list.
 
 # configuration
 
@@ -67,7 +44,6 @@ Simply go to `Configuration -> Integrations -> Add Integration` and search for
 
 ## OPNsense
 
-- `System -> Advanced -> Max Processes` - set it 5 or more.
 - If using a non `admin` user account ensure the user has the
   `System - HA node sync` privilege. Note that this privilege effectively gives
   the user complete access to the system via the `xmlrpc` feature.
