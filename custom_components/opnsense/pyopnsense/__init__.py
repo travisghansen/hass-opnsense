@@ -296,8 +296,10 @@ $gateways = new \OPNsense\Routing\Gateways(legacy_interfaces_details());
 $a_gateways = array_values($gateways->gatewaysIndexedByName(true, false, true));
 
 $result = [];
-foreach ($a_gateways as $g) {
-    $result[$g["name"]] = $g;
+if (is_iterable($a_gateways)) {
+    foreach ($a_gateways as $g) {
+        $result[$g["name"]] = $g;
+    }
 }
 
 $toreturn = [
@@ -422,8 +424,10 @@ $toreturn = [
 global $config;
 
 $vips = [];
-foreach ($config['virtualip']['vip'] as $vip) {
-  $vips[] = $vip;
+if (is_iterable($config['virtualip']['vip'])) {
+  foreach ($config['virtualip']['vip'] as $vip) {
+    $vips[] = $vip;
+  }
 }
 
 $toreturn = [
@@ -456,12 +460,15 @@ $toreturn = [
 global $config;
 
 $vips = [];
-foreach ($config['virtualip']['vip'] as $vip) {
-  if ($vip["mode"] != "carp") {
-    continue;
-  }
-  $vips[] = $vip;
+if (is_iterable($config['virtualip']['vip'])) {
+    foreach ($config['virtualip']['vip'] as $vip) {
+        if ($vip["mode"] != "carp") {
+            continue;
+        }
+        $vips[] = $vip;
+    }
 }
+
 
 $intf_details = legacy_interfaces_details();
 
@@ -636,6 +643,9 @@ function stripalpha($s) {
 $system_api_data = system_api();
 $temperature_api_data = temperature_api();
 $interfaces_api_data = interfaces_api();
+if (!is_iterable($interfaces_api_data)) {
+    $interfaces_api_data = [];
+}
 
 $boottime = exec_command("sysctl kern.boottime");
 // kern.boottime: { sec = 1634047554, usec = 237429 } Tue Oct 12 08:05:54 2021
@@ -697,6 +707,9 @@ $toreturn = [
     //"interfaces_foo" => $interfaces_api_data,
 ];
 
+if (!is_iterable($toreturn["gateways"])) {
+    $toreturn["gateways"] = [];
+}
 foreach ($toreturn["gateways"] as $key => $gw) {
     $status = $gw["status"];
     if ($status == "none") {
