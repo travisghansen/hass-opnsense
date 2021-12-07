@@ -8,13 +8,17 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
 )
 from homeassistant.config_entries import ConfigEntry
+
 from homeassistant.const import (  # ENTITY_CATEGORY_DIAGNOSTIC,
     DATA_BYTES,
     DATA_RATE_KILOBYTES_PER_SECOND,
     PERCENTAGE,
     STATE_UNKNOWN,
     TIME_MILLISECONDS,
+    MAJOR_VERSION,
+    MINOR_VERSION,    
 )
+
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_platform
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -22,6 +26,7 @@ from homeassistant.util import slugify
 from homeassistant.util.dt import utc_from_timestamp
 
 from . import CoordinatorEntityManager, OPNSenseEntity
+
 from .const import (
     COORDINATOR,
     COUNT,
@@ -309,8 +314,11 @@ class OPNSenseSensor(OPNSenseEntity, SensorEntity):
             return STATE_UNKNOWN
 
         if self.entity_description.key == "telemetry.system.boottime":
-            value = utc_from_timestamp(value).isoformat()
-
+            if MAJOR_VERSION >= 2022 or (MAJOR_VERSION == 2021 and MINOR_VERSION == 12):
+                value = utc_from_timestamp(value)
+            else:
+                value = utc_from_timestamp(value).isoformat()
+                
         if self.entity_description.key == "telemetry.cpu.frequency.current":
             if value == 0 and self._previous_value is not None:
                 value = self._previous_value
