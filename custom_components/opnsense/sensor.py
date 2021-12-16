@@ -2,6 +2,8 @@
 import logging
 import re
 
+from awesomeversion import AwesomeVersion
+
 from homeassistant.components.sensor import (
     STATE_CLASS_MEASUREMENT,
     SensorEntity,
@@ -9,6 +11,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (  # ENTITY_CATEGORY_DIAGNOSTIC,
+    __version__,
     DATA_BYTES,
     DATA_RATE_KILOBYTES_PER_SECOND,
     PERCENTAGE,
@@ -309,7 +312,11 @@ class OPNSenseSensor(OPNSenseEntity, SensorEntity):
             return STATE_UNKNOWN
 
         if self.entity_description.key == "telemetry.system.boottime":
-            value = utc_from_timestamp(value).isoformat()
+            value = utc_from_timestamp(value)
+            # For backwards compatibility we will use the string version of the
+            # datetime on systems before 2021.12.0b0
+            if AwesomeVersion(__version__) < AwesomeVersion("2021.12.0b0"):
+                value = value.isoformat()
 
         if self.entity_description.key == "telemetry.cpu.frequency.current":
             if value == 0 and self._previous_value is not None:
