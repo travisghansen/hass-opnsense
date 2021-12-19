@@ -133,7 +133,7 @@ async def async_setup_entry(
                     # we use tracker as the unique id
                     if len(tracker) < 1:
                         continue
-                    
+
                     if "descr" not in rule.keys():
                         rule["descr"] = ""
 

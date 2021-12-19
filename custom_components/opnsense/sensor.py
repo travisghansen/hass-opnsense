@@ -3,7 +3,6 @@ import logging
 import re
 
 from awesomeversion import AwesomeVersion
-
 from homeassistant.components.sensor import (
     STATE_CLASS_MEASUREMENT,
     SensorEntity,
@@ -11,12 +10,12 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (  # ENTITY_CATEGORY_DIAGNOSTIC,
-    __version__,
     DATA_BYTES,
     DATA_RATE_KILOBYTES_PER_SECOND,
     PERCENTAGE,
     STATE_UNKNOWN,
     TIME_MILLISECONDS,
+    __version__,
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_platform
@@ -321,8 +320,11 @@ class OPNSenseSensor(OPNSenseEntity, SensorEntity):
         if self.entity_description.key == "telemetry.cpu.frequency.current":
             if value == 0 and self._previous_value is not None:
                 value = self._previous_value
-        
-        if value == 0 and self.entity_description.key == "telemetry.cpu.frequency.current":
+
+        if (
+            value == 0
+            and self.entity_description.key == "telemetry.cpu.frequency.current"
+        ):
             return STATE_UNKNOWN
 
         self._previous_value = value
@@ -494,7 +496,7 @@ class OPNSenseGatewaySensor(OPNSenseSensor):
             # cleanse "ms", etc from values
             if property in ["stddev", "delay", "loss"]:
                 value = re.sub("[^0-9\.]*", "", value)
-            
+
             if len(value) < 1:
                 return STATE_UNKNOWN
 

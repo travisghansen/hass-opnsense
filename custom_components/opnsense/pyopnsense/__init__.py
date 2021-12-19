@@ -1,10 +1,11 @@
 import json
-import requests
 import socket
 import ssl
 from urllib.parse import quote_plus, urlparse
 from xml.parsers.expat import ExpatError
 import xmlrpc.client
+
+import requests
 
 # value to set as the socket timeout
 DEFAULT_TIMEOUT = 10
@@ -46,7 +47,9 @@ class Client(object):
         # set to True if necessary during development
         verbose = False
 
-        proxy = xmlrpc.client.ServerProxy(f"{self._url}/xmlrpc.php", context=context, verbose=verbose)
+        proxy = xmlrpc.client.ServerProxy(
+            f"{self._url}/xmlrpc.php", context=context, verbose=verbose
+        )
         return proxy
 
     def _apply_timeout(func):
@@ -86,11 +89,13 @@ ini_set('display_errors', 0);
 $toreturn_real = $toreturn;
 $toreturn = [];
 $toreturn["real"] = json_encode($toreturn_real);
-""".format(script)
+""".format(
+            script
+        )
         response = self._get_proxy().opnsense.exec_php(script)
         response = json.loads(response["real"])
         return response
-        
+
     @_apply_timeout
     def get_host_firmware_version(self):
         return self._get_proxy().opnsense.firmware_version()
@@ -117,11 +122,54 @@ $toreturn["real"] = json_encode($toreturn_real);
         response = requests.get(url, timeout=DEFAULT_TIMEOUT)
         return response.json()
 
-    def _post(self, path, payload = None):
+    def _post(self, path, payload=None):
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
         url = f"{self._url}{path}"
         response = requests.post(url, data=payload, timeout=DEFAULT_TIMEOUT)
         return response.json()
+
+    def _is_subsystem_dirty(self, subsystem):
+        script = """
+$data = json_decode('{}', true);
+$subsystem = $data["subsystem"];
+$dirty = is_subsystem_dirty($subsystem);
+$toreturn = [
+    "data" => $dirty,
+];
+""".format(
+            json.dumps({"subsystem": subsystem})
+        )
+
+        response = self._exec_php(script)
+        return bool(response["data"])
+
+    def _mark_subsystem_dirty(self, subsystem):
+        script = """
+$data = json_decode('{}', true);
+$subsystem = $data["subsystem"];
+mark_subsystem_dirty($subsystem);
+""".format(
+            json.dumps({"subsystem": subsystem})
+        )
+        self._exec_php(script)
+
+    def _clear_subsystem_dirty(self, subsystem):
+        script = """
+$data = json_decode('{}', true);
+$subsystem = $data["subsystem"];
+clear_subsystem_dirty($subsystem);
+""".format(
+            json.dumps({"subsystem": subsystem})
+        )
+        self._exec_php(script)
+
+    def _filter_configure(self):
+        script = """
+filter_configure();
+clear_subsystem_dirty('natconf');
+clear_subsystem_dirty('filter');
+"""
+        self._exec_php(script)
 
     def get_device_id(self):
         script = """
@@ -206,6 +254,7 @@ $toreturn = [
             if "disabled" in rule.keys():
                 del rule["disabled"]
                 self._restore_config_section("filter", config["filter"])
+                self._filter_configure()
 
     def disable_filter_rule_by_created_time(self, created_time):
         config = self.get_config()
@@ -221,6 +270,7 @@ $toreturn = [
             if "disabled" not in rule.keys():
                 rule["disabled"] = "1"
                 self._restore_config_section("filter", config["filter"])
+                self._filter_configure()
 
     # use created_time as a unique_id since none other exists
     def enable_nat_port_forward_rule_by_created_time(self, created_time):
@@ -236,6 +286,7 @@ $toreturn = [
             if "disabled" in rule.keys():
                 del rule["disabled"]
                 self._restore_config_section("nat", config["nat"])
+                self._filter_configure()
 
     # use created_time as a unique_id since none other exists
     def disable_nat_port_forward_rule_by_created_time(self, created_time):
@@ -251,6 +302,7 @@ $toreturn = [
             if "disabled" not in rule.keys():
                 rule["disabled"] = "1"
                 self._restore_config_section("nat", config["nat"])
+                self._filter_configure()
 
     # use created_time as a unique_id since none other exists
     def enable_nat_outbound_rule_by_created_time(self, created_time):
@@ -266,6 +318,7 @@ $toreturn = [
             if "disabled" in rule.keys():
                 del rule["disabled"]
                 self._restore_config_section("nat", config["nat"])
+                self._filter_configure()
 
     # use created_time as a unique_id since none other exists
     def disable_nat_outbound_rule_by_created_time(self, created_time):
@@ -277,6 +330,7 @@ $toreturn = [
             if "disabled" not in rule.keys():
                 rule["disabled"] = "1"
                 self._restore_config_section("nat", config["nat"])
+                self._filter_configure()
 
     def get_configured_interface_descriptions(self):
         script = """
