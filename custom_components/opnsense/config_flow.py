@@ -18,9 +18,11 @@ from homeassistant.util import slugify
 import voluptuous as vol
 
 from .const import (
+    CONF_DEVICE_TRACKER_CONSIDER_HOME,
     CONF_DEVICE_TRACKER_ENABLED,
     CONF_DEVICE_TRACKER_SCAN_INTERVAL,
     CONF_DEVICES,
+    DEFAULT_DEVICE_TRACKER_CONSIDER_HOME,
     DEFAULT_DEVICE_TRACKER_ENABLED,
     DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
@@ -203,6 +205,9 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         device_tracker_scan_interval = self.config_entry.options.get(
             CONF_DEVICE_TRACKER_SCAN_INTERVAL, DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL
         )
+        device_tracker_consider_home = self.config_entry.options.get(
+            CONF_DEVICE_TRACKER_CONSIDER_HOME, DEFAULT_DEVICE_TRACKER_CONSIDER_HOME
+        )
 
         base_schema = {
             vol.Optional(CONF_SCAN_INTERVAL, default=scan_interval): vol.All(
@@ -214,6 +219,9 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             vol.Optional(
                 CONF_DEVICE_TRACKER_SCAN_INTERVAL, default=device_tracker_scan_interval
             ): vol.All(vol.Coerce(int), vol.Clamp(min=30, max=300)),
+            vol.Optional(
+                CONF_DEVICE_TRACKER_CONSIDER_HOME, default=device_tracker_consider_home
+            ): vol.All(vol.Coerce(int), vol.Clamp(min=0, max=600)),
         }
 
         return self.async_show_form(step_id="init", data_schema=vol.Schema(base_schema))

@@ -22,15 +22,18 @@ To use the integration you need to install an OPNsense plugin mada available
 on mimugmail repository: `https://www.routerperformance.net/opnsense-repo/`
 
 First you need to install the repository:
-  - open an SSH session on OPNsense and issue the following commands:
+
+- open an SSH session on OPNsense and issue the following commands:
+
 ```
 fetch -o /usr/local/etc/pkg/repos/mimugmail.conf https://www.routerperformance.net/mimugmail.conf
 pkg update
 ```
 
 Now you need to install the plugin, you have two ways to do it:
-  - In OPNsense web UI, go to System:Firmware:Plugins and install plugin `os-homeassistant-maxit`
-  - From SSH shell: `pkg install os-homeassistant-maxit`
+
+- In OPNsense web UI, go to System:Firmware:Plugins and install plugin `os-homeassistant-maxit`
+- From SSH shell: `pkg install os-homeassistant-maxit`
 
 Now, on Home Assistant, add this repository to your `HACS` installation or clone the directory manually.
 Once the integration is installed be sure to restart `hass` and hard-refresh the UI in
@@ -67,6 +70,12 @@ Simply go to `Configuration -> Integrations -> Add Integration` and search for
   `OPNsense` arp table (default: `false`)
 - `Device Tracker Scan Interval (seconds)` - scan interval to use for arp
   updates (default: `60`)
+- `Device Tracker Consider Home (seconds)` - seconds to wait until marking
+  a device as not home after not being seen.
+  (default: `0`)
+  - `0` - disabled (if device is not present during any given scan interval it
+    is considered away)
+  - `> 0` - generally should be a multiple of the configured scan interval
 
 # entities
 

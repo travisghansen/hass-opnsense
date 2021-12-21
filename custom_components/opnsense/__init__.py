@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import copy
 from datetime import timedelta
-import json
 import logging
 import re
 import time
@@ -218,48 +217,97 @@ class OPNSenseData:
     def state(self):
         return self._state
 
+    def _log_timing(func):
+        def inner(*args, **kwargs):
+            begin = time.time()
+            response = func(*args, **kwargs)
+            end = time.time()
+            elapsed = round((end - begin), 3)
+            _LOGGER.debug(f"execution time: OPNSenseData.{func.__name__} {elapsed}")
+
+            return response
+
+        return inner
+
+    @_log_timing
     def _get_system_info(self):
         return self._client.get_system_info()
 
+    @_log_timing
     def _get_telemetry(self):
         return self._client.get_telemetry()
 
+    @_log_timing
     def _get_host_firmware_version(self):
         return self._client.get_host_firmware_version()
 
+    @_log_timing
     def _get_config(self):
         return self._client.get_config()
+
+    @_log_timing
+    def _get_interfaces(self):
+        return self._client.get_interfaces()
+
+    @_log_timing
+    def _get_services(self):
+        return self._client.get_services()
+
+    @_log_timing
+    def _get_carp_interfaces(self):
+        return self._client.get_carp_interfaces()
+
+    @_log_timing
+    def _get_carp_status(self):
+        return self._client.get_carp_status()
+
+    @_log_timing
+    def _get_dhcp_leases(self):
+        return self._client.get_dhcp_leases()
+
+    @_log_timing
+    def _are_notices_pending(self):
+        return self._client.are_notices_pending()
+
+    @_log_timing
+    def _get_notices(self):
+        return self._client.get_notices()
+
+    @_log_timing
+    def _get_arp_table(self):
+        return self._client.get_arp_table(True)
 
     def update(self, opts={}):
         """Fetch the latest state from OPNsense."""
         # copy the old data to have around
+        current_time = time.time()
+
         previous_state = copy.deepcopy(self._state)
         if "previous_state" in previous_state.keys():
             del previous_state["previous_state"]
 
         self._state["system_info"] = self._get_system_info()
         self._state["host_firmware_version"] = self._get_host_firmware_version()
-        current_time = time.time()
         self._state["update_time"] = current_time
         self._state["previous_state"] = previous_state
 
         if "scope" in opts.keys() and opts["scope"] == "device_tracker":
-            self._state["arp_table"] = self._client.get_arp_table(True)
+            self._state["arp_table"] = self._get_arp_table()
         else:
             self._state["telemetry"] = self._get_telemetry()
             self._state["config"] = self._get_config()
-            self._state["interfaces"] = self._client.get_interfaces()
-            self._state["services"] = self._client.get_services()
-            self._state["carp_interfaces"] = self._client.get_carp_interfaces()
-            self._state["carp_status"] = self._client.get_carp_status()
+            self._state["interfaces"] = self._get_interfaces()
+            self._state["services"] = self._get_services()
+            self._state["carp_interfaces"] = self._get_carp_interfaces()
+            self._state["carp_status"] = self._get_carp_status()
             # self._state["dhcp_leases"] = self._client.get_dhcp_leases()
             self._state["dhcp_leases"] = []
             self._state["dhcp_stats"] = {}
             self._state["notices"] = {}
             self._state["notices"][
                 "pending_notices_present"
-            ] = self._client.are_notices_pending()
-            self._state["notices"]["pending_notices"] = self._client.get_notices()
+            ] = self._are_notices_pending()
+            self._state["notices"]["pending_notices"] = self._get_notices()
 
             lease_stats = {"total": 0, "online": 0, "offline": 0}
             for lease in self._state["dhcp_leases"]:
@@ -282,7 +330,9 @@ class OPNSenseData:
             if previous_update_time is not None:
                 elapsed_time = update_time - previous_update_time
 
-                for interface_name in self._state["telemetry"]["interfaces"].keys():
+                for interface_name in dict_get(
+                    self._state, "telemetry.interfaces", {}
+                ).keys():
                     interface = dict_get(
                         self._state, f"telemetry.interfaces.{interface_name}"
                     )
@@ -378,7 +428,6 @@ class CoordinatorEntityManager:
                 # del self.entities[entity_unique_id]
 
     async def async_remove_entity(self, entity):
-        print("removing entity: " + str(entity.entity_id))
         registry = await async_get_registry(self.hass)
         if entity.entity_id in registry.entities:
             registry.async_remove(entity.entity_id)

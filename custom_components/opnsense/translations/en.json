@@ -36,7 +36,8 @@
         "data": {
           "scan_interval": "Scan Interval (seconds)",
           "device_tracker_enabled": "Enable Device Tracker",
-          "device_tracker_scan_interval": "Device Tracker Scan Interval (seconds)"
+          "device_tracker_scan_interval": "Device Tracker Scan Interval (seconds)",
+          "device_tracker_consider_home": "Device Tracker Consider Home (seconds)"
         },
         "description": "Configure Options."
       },

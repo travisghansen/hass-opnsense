@@ -23,7 +23,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import slugify
 from homeassistant.util.dt import utc_from_timestamp
 
-from . import CoordinatorEntityManager, OPNSenseEntity
+from . import CoordinatorEntityManager, OPNSenseEntity, dict_get
 from .const import (
     COORDINATOR,
     COUNT,
@@ -81,7 +81,7 @@ async def async_setup_entry(
             entities.append(entity)
 
         # filesystems
-        for filesystem in state["telemetry"]["filesystems"]:
+        for filesystem in dict_get(state, "telemetry.filesystems", []):
             device_clean = normalize_filesystem_device_name(filesystem["device"])
             mountpoint_clean = normalize_filesystem_device_name(
                 filesystem["mountpoint"]
@@ -131,7 +131,7 @@ async def async_setup_entry(
             entities.append(entity)
 
         # interfaces
-        for interface_name in state["telemetry"]["interfaces"].keys():
+        for interface_name in dict_get(state, "telemetry.interfaces", {}).keys():
             interface = state["telemetry"]["interfaces"][interface_name]
             for property in [
                 "status",
@@ -230,7 +230,7 @@ async def async_setup_entry(
                 entities.append(entity)
 
         # gateways
-        for gateway_name in state["telemetry"]["gateways"].keys():
+        for gateway_name in dict_get(state, "telemetry.gateways", {}).keys():
             gateway = state["telemetry"]["gateways"][gateway_name]
             for property in ["status", "delay", "stddev", "loss"]:
                 state_class = None
@@ -305,6 +305,9 @@ class OPNSenseSensor(OPNSenseEntity, SensorEntity):
         """Return entity state from firewall."""
         value = self._get_opnsense_state_value(self.entity_description.key)
         if value is None:
+            if self.entity_description.key == "telemetry.system.boottime":
+                return value
+
             return STATE_UNKNOWN
 
         if value == 0 and self.entity_description.key == "telemetry.system.temp":
@@ -491,6 +494,10 @@ class OPNSenseGatewaySensor(OPNSenseSensor):
     def native_value(self):
         gateway = self._opnsense_get_gateway()
         property = self._opnsense_get_gateway_property_name()
+
+        if gateway is None:
+            return STATE_UNKNOWN
+
         try:
             value = gateway[property]
             # cleanse "ms", etc from values
