@@ -112,7 +112,9 @@ entries (sysctl `net.link.ether.inet.max_age`). You may lower that using
 - gateways details (status, delay, stddev, loss)
 - carp interface status
 - ~~dhcp stats (total, online, and offline clients)~~
-
+- OpenVPN server stats (per-server basis - connected client count, bytes
+  sent/received, kB/s sent/received)
+  
 ## switch
 
 All of the switches below are disabled by default.

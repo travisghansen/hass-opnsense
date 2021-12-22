@@ -686,6 +686,7 @@ $toreturn = [
 require_once '/usr/local/www/widgets/api/plugins/system.inc';
 require_once '/usr/local/www/widgets/api/plugins/interfaces.inc';
 require_once '/usr/local/www/widgets/api/plugins/temperature.inc';
+require_once '/usr/local/etc/inc/plugins.inc.d/openvpn.inc';
 
 global $config;
 global $g;
@@ -708,6 +709,7 @@ $boottime = $matches[0];
 $boottime = explode("=", $boottime)[1];
 $boottime = (int) trim($boottime);
 
+$ovpn_servers = openvpn_get_active_servers();
 
 $toreturn = [
     "pfstate" => [
@@ -753,6 +755,8 @@ $toreturn = [
     "filesystems" => $system_api_data["disk"]["devices"],
 
     "interfaces" => [],
+
+    "openvpn" => [],
     
     "gateways" => return_gateways_status(true),
 
@@ -783,6 +787,25 @@ foreach ($interfaces_api_data as $if) {
     $if["collisions"] = (int) $if["collisions"];
     $toreturn["interfaces"][$if["descr"]] = $if;
 }
+
+foreach ($ovpn_servers as $server) {
+    $vpnid = $server["vpnid"];
+    $name = $server["name"];
+    $conn_count = count($server["conns"]);
+    $total_bytes_recv = 0;
+    $total_bytes_sent = 0;
+    foreach ($server["conns"] as $conn) {
+        $total_bytes_recv += $conn["bytes_recv"];
+        $total_bytes_sent += $conn["bytes_sent"];
+    }
+    
+    $toreturn["openvpn"]["servers"][$vpnid]["name"] = $name;
+    $toreturn["openvpn"]["servers"][$vpnid]["vpnid"] = $vpnid;
+    $toreturn["openvpn"]["servers"][$vpnid]["connected_client_count"] = $conn_count;
+    $toreturn["openvpn"]["servers"][$vpnid]["total_bytes_recv"] = $total_bytes_recv;
+    $toreturn["openvpn"]["servers"][$vpnid]["total_bytes_sent"] = $total_bytes_sent;
+}
+
 """
         data = self._exec_php(script)
 

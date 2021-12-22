@@ -263,6 +263,67 @@ async def async_setup_entry(
                 )
                 entities.append(entity)
 
+        # openvpn servers
+        for vpnid in dict_get(state, "telemetry.openvpn.servers", {}).keys():
+            servers = dict_get(state, "telemetry.openvpn.servers", {})
+            server = servers[vpnid]
+            for property in [
+                "connected_client_count",
+                "total_bytes_recv",
+                "total_bytes_sent",
+                "total_bytes_recv_kilobytes_per_second",
+                "total_bytes_sent_kilobytes_per_second",
+            ]:
+                state_class = None
+                native_unit_of_measurement = None
+                icon = None
+                enabled_default = False
+
+                # state class
+                if "_kilobytes_per_second" in property:
+                    state_class = STATE_CLASS_MEASUREMENT
+
+                if property == "connected_client_count":
+                    state_class = STATE_CLASS_MEASUREMENT
+
+                # native_unit_of_measurement
+                if "_kilobytes_per_second" in property:
+                    native_unit_of_measurement = DATA_RATE_KILOBYTES_PER_SECOND
+
+                if native_unit_of_measurement is None:
+                    if "bytes" in property:
+                        native_unit_of_measurement = DATA_BYTES
+
+                if property in ["connected_client_count"]:
+                    native_unit_of_measurement = "clients"
+
+                # icon
+                if "bytes" in property:
+                    icon = "mdi:server-network"
+
+                if property == "connected_client_count":
+                    icon = "mdi:ip-network-outline"
+
+                if icon is None:
+                    icon = "mdi:gauge"
+
+                entity = OPNSenseOpenVPNServerSensor(
+                    config_entry,
+                    coordinator,
+                    SensorEntityDescription(
+                        key="telemetry.openvpn.servers.{}.{}".format(vpnid, property),
+                        name="OpenVPN Server {} ({}) {}".format(
+                            vpnid, server["name"], property
+                        ),
+                        native_unit_of_measurement=native_unit_of_measurement,
+                        icon=icon,
+                        state_class=state_class,
+                        # entity_category=entity_category,
+                    ),
+                    enabled_default,
+                )
+                entities.append(entity)
+
         return entities
 
     cem = CoordinatorEntityManager(
@@ -508,5 +569,48 @@ class OPNSenseGatewaySensor(OPNSenseSensor):
                 return STATE_UNKNOWN
 
             return value
+        except KeyError:
+            return STATE_UNKNOWN
+
+
+class OPNSenseOpenVPNServerSensor(OPNSenseSensor):
+    def _opnsense_get_server_property_name(self):
+        return self.entity_description.key.split(".")[4]
+
+    def _opnsense_get_server_vpnid(self):
+        return self.entity_description.key.split(".")[3]
+
+    def _opnsense_get_server(self):
+        state = self.coordinator.data
+        found = None
+        vpnid = self._opnsense_get_server_vpnid()
+        for server_vpnid in dict_get(state, "telemetry.openvpn.servers", {}).keys():
+            if vpnid == server_vpnid:
+                found = state["telemetry"]["openvpn"]["servers"][vpnid]
+                break
+        return found
+
+    @property
+    def extra_state_attributes(self):
+        attributes = {}
+        server = self._opnsense_get_server()
+        if server is None:
+            return attributes
+
+        for attr in ["vpnid", "name"]:
+            attributes[attr] = server[attr]
+
+        return attributes
+
+    @property
+    def native_value(self):
+        server = self._opnsense_get_server()
+        property = self._opnsense_get_server_property_name()
+
+        if server is None:
+            return STATE_UNKNOWN
+
+        try:
+            return server[property]
         except KeyError:
             return STATE_UNKNOWN

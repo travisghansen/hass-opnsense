@@ -378,6 +378,55 @@ class OPNSenseData:
                         new_property = f"{property}_{label}"
                         interface[new_property] = int(round(value, 0))
 
+                for server_name in dict_get(
+                    self._state, "telemetry.openvpn.servers", {}
+                ).keys():
+                    if (
+                        server_name
+                        not in dict_get(
+                            self._state, "telemetry.openvpn.servers", {}
+                        ).keys()
+                    ):
+                        continue
+
+                    if (
+                        server_name
+                        not in dict_get(
+                            self._state, "previous_state.telemetry.openvpn.servers", {}
+                        ).keys()
+                    ):
+                        continue
+
+                    server = self._state["telemetry"]["openvpn"]["servers"][server_name]
+                    previous_server = self._state["previous_state"]["telemetry"][
+                        "openvpn"
+                    ]["servers"][server_name]
+
+                    for property in [
+                        "total_bytes_recv",
+                        "total_bytes_sent",
+                    ]:
+
+                        current_parent_value = server[property]
+                        previous_parent_value = previous_server[property]
+                        change = abs(current_parent_value - previous_parent_value)
+                        rate = change / elapsed_time
+
+                        value = 0
+                        if "pkts" in property:
+                            label = "packets_per_second"
+                            value = rate
+                        if "bytes" in property:
+                            label = "kilobytes_per_second"
+                            # 1 Byte = 8 bits
+                            # 1 byte is equal to 0.001 kilobytes
+                            KBs = rate / 1000
+                            # Kbs = KBs * 8
+                            value = KBs
+
+                        new_property = f"{property}_{label}"
+                        server[new_property] = int(round(value, 0))
+
 
 class CoordinatorEntityManager:
     def __init__(
