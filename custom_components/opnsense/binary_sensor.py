@@ -3,6 +3,7 @@ import logging
 
 from homeassistant.components.binary_sensor import (
     DEVICE_CLASS_PROBLEM,
+    DEVICE_CLASS_UPDATE,
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
@@ -173,7 +174,7 @@ class OPNSenseFirmwareUpdatesAvailableBinarySensor(OPNSenseBinarySensor):
 
     @property
     def device_class(self):
-        return DEVICE_CLASS_PROBLEM
+        return DEVICE_CLASS_UPDATE
 
     @property
     def extra_state_attributes(self):
