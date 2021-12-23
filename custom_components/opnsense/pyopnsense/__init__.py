@@ -1,6 +1,8 @@
+import calendar
 import json
 import socket
 import ssl
+import time
 from urllib.parse import quote_plus, urlparse
 from xml.parsers.expat import ExpatError
 import xmlrpc.client
@@ -210,6 +212,63 @@ $toreturn = [
 """
         response = self._exec_php(script)
         return response
+
+    def get_firmware_update_info(self):
+        current_time = time.time()
+        refresh_triggered = False
+        refresh_interval = 2 * 60 * 60  # 2 hours
+
+        status = None
+        upgradestatus = None
+
+        # GET /api/core/firmware/status
+        status = self._get("/api/core/firmware/status")
+        # print(status)
+
+        # if error or too old trigger check (only if check is not already in progress)
+        # {'status_msg': 'Firmware status check was aborted internally. Please try again.', 'status': 'error'}
+        # error could be because data has not been refreshed at all OR an upgrade is currently in progress
+        if status["status"] == "error":
+            self._post("/api/core/firmware/check")
+            refresh_triggered = True
+        elif "last_check" in status.keys():
+            # "last_check": "Wed Dec 22 16:56:20 UTC 2021"
+            last_check = status["last_check"]
+            format = "%a %b %d %H:%M:%S %Z %Y"
+            last_check_timestamp = int(
+                calendar.timegm(time.strptime(last_check, format))
+            )
+            stale = (current_time - last_check_timestamp) > refresh_interval
+            # stale = True
+            if stale:
+                upgradestatus = self._get("/api/core/firmware/upgradestatus")
+                # print(upgradestatus)
+                if "status" in upgradestatus.keys():
+                    # status = running (package refresh in progress OR upgrade in progress)
+                    # status = done (refresh/upgrade done)
+                    if upgradestatus["status"] == "done":
+                        # tigger repo update
+                        # should this be /api/core/firmware/upgrade
+                        check = self._post("/api/core/firmware/check")
+                        # print(check)
+                        refresh_triggered = True
+                    else:
+                        # print("upgrade already running")
+                        pass
+
+        wait_for_refresh = False
+        if refresh_triggered and wait_for_refresh:
+            # print("refresh triggered, waiting for it to finish")
+            pass
+
+        return status
+
+    def upgrade_firmware(self):
+        # not sure what upgrade does? maybe same as 'check'
+        # return self._post("/api/core/firmware/upgrade")
+
+        # can watch the progress on the 'Updates' tab in the UI
+        return self._post("/api/core/firmware/update")
 
     def get_config(self):
         script = """
