@@ -168,7 +168,10 @@ class OPNSenseFirmwareUpdatesAvailableBinarySensor(OPNSenseBinarySensor):
         state = self.coordinator.data
 
         try:
-            return state["firmware_update_info"]["status"] == "update"
+            status = state["firmware_update_info"]["status"]
+            if status == "error":
+                return STATE_UNKNOWN
+            return status == "update"
         except KeyError:
             return STATE_UNKNOWN
 
