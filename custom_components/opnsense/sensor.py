@@ -72,7 +72,7 @@ async def async_setup_entry(
             ]:
                 enabled_default = True
 
-            entity = OPNSenseSensor(
+            entity = OPNSenseStaticKeySensor(
                 config_entry,
                 coordinator,
                 SENSOR_TYPES[sensor_type],
@@ -361,6 +361,26 @@ class OPNSenseSensor(OPNSenseEntity, SensorEntity):
         )
         self._previous_value = None
 
+
+class OPNSenseStaticKeySensor(OPNSenseSensor):
+    @property
+    def available(self) -> bool:
+        value = self._get_opnsense_state_value(self.entity_description.key)
+        if value is None:
+            return False
+
+        if value == 0 and self.entity_description.key == "telemetry.system.temp":
+            return False
+
+        if (
+            value == 0
+            and self.entity_description.key == "telemetry.cpu.frequency.current"
+        ):
+            if self._previous_value is None:
+                return False
+
+        return super().available
+
     @property
     def native_value(self):
         """Return entity state from firewall."""
@@ -408,6 +428,14 @@ class OPNSenseFilesystemSensor(OPNSenseSensor):
         return found
 
     @property
+    def available(self) -> bool:
+        filesystem = self._opnsense_get_filesystem()
+        if filesystem is None:
+            return False
+
+        return super().available
+
+    @property
     def native_value(self):
         filesystem = self._opnsense_get_filesystem()
         return filesystem["capacity"].strip("%")
@@ -439,6 +467,15 @@ class OPNSenseInterfaceSensor(OPNSenseSensor):
                 found = state["telemetry"]["interfaces"][i_interface_name]
                 break
         return found
+
+    @property
+    def available(self) -> bool:
+        interface = self._opnsense_get_interface()
+        property = self._opnsense_get_interface_property_name()
+        if interface is None or property not in interface.keys():
+            return False
+
+        return super().available
 
     @property
     def extra_state_attributes(self):
@@ -480,6 +517,14 @@ class OPNSenseCarpInterfaceSensor(OPNSenseSensor):
                 found = i_interface
                 break
         return found
+
+    @property
+    def available(self) -> bool:
+        interface = self._opnsense_get_interface()
+        if interface is None:
+            return False
+
+        return super().available
 
     @property
     def extra_state_attributes(self):
@@ -531,6 +576,15 @@ class OPNSenseGatewaySensor(OPNSenseSensor):
                 found = state["telemetry"]["gateways"][i_gateway_name]
                 break
         return found
+
+    @property
+    def available(self) -> bool:
+        gateway = self._opnsense_get_gateway()
+        property = self._opnsense_get_gateway_property_name()
+        if gateway is None or property not in gateway.keys():
+            return False
+
+        return super().available
 
     @property
     def extra_state_attributes(self):
@@ -589,6 +643,15 @@ class OPNSenseOpenVPNServerSensor(OPNSenseSensor):
                 found = state["telemetry"]["openvpn"]["servers"][vpnid]
                 break
         return found
+
+    @property
+    def available(self) -> bool:
+        server = self._opnsense_get_server()
+        property = self._opnsense_get_server_property_name()
+        if server is None or property not in server.keys():
+            return False
+
+        return super().available
 
     @property
     def extra_state_attributes(self):

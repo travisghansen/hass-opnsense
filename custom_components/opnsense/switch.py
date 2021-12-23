@@ -232,6 +232,14 @@ class OPNSenseFilterSwitch(OPNSenseSwitch):
         return found
 
     @property
+    def available(self) -> bool:
+        rule = self._opnsense_get_rule()
+        if rule is None:
+            return False
+
+        return super().available
+
+    @property
     def is_on(self):
         rule = self._opnsense_get_rule()
         if rule is None:
@@ -295,6 +303,14 @@ class OPNSenseNatSwitch(OPNSenseSwitch):
         return found
 
     @property
+    def available(self) -> bool:
+        rule = self._opnsense_get_rule()
+        if rule is None:
+            return False
+
+        return super().available
+
+    @property
     def is_on(self):
         rule = self._opnsense_get_rule()
         if rule is None:
@@ -353,6 +369,15 @@ class OPNSenseServiceSwitch(OPNSenseSwitch):
                 found = service
                 break
         return found
+
+    @property
+    def available(self) -> bool:
+        service = self._opnsense_get_service()
+        property = self._opnsense_get_property_name()
+        if service is None or property not in service.keys():
+            return False
+
+        return super().available
 
     @property
     def is_on(self):
