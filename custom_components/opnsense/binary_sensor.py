@@ -161,6 +161,13 @@ class OPNSenseFirmwareUpdatesAvailableBinarySensor(OPNSenseBinarySensor):
         if state["firmware_update_info"] is None:
             return False
 
+        try:
+            status = state["firmware_update_info"]["status"]
+            if status == "error":
+                return False
+        except:
+            return False
+
         return super().available
 
     @property
