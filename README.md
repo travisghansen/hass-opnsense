@@ -47,18 +47,21 @@ Simply go to `Configuration -> Integrations -> Add Integration` and search for
 
 ## OPNsense
 
-- If using a non `admin` user account ensure the user has the
-  `System - HA node sync` privilege. Note that this privilege effectively gives
-  the user complete access to the system via the `xmlrpc` feature.
+- Create a new user or choose an existing user, and create an API key associated to
+  to that user. When creating the API key, OPNsense will push the API file containing
+  the API key and API secret to your browser, you'll find it in the download folder.
+- If using a non `admin` user account ensure the user has the `System - HA node sync`
+  privilege. Note that this privilege effectively gives the user complete access to
+  the system via the `xmlrpc` feature.
 
 ## config
 
-- `URL` - put the full URL to your `OPNsense` UI (ie: `https://192.168.1.1`),
+- `URL` - the full URL to your `OPNsense` UI (ie: `https://192.168.1.1`),
   supported format is `<scheme>://<ip or host>[:<port>]`
 - `Verify SSL Certificate` - if the SSL certificate should be verified or not
   (if you get an SSL error try unchecking this)
-- `username` - the username to use for authentication (ie: `root`)
-- `password` - the password to use for authentication
+- `username` - the API key created previously
+- `password` - the API secret of the API key
 - `Firewall Name` - a custom name to be used for `entity` naming (default: use
   the `OPNsense` `hostname`)
 
