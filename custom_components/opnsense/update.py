@@ -135,7 +135,7 @@ class OPNSenseFirmwareUpdatesAvailableUpdate(OPNSenseUpdate):
             return None
 
     @property
-    def in_progress(self) -> bool:
+    def in_progress(self):
         """Update installation in progress."""
         return False
 
@@ -166,15 +166,13 @@ class OPNSenseFirmwareUpdatesAvailableUpdate(OPNSenseUpdate):
     def release_url(self):
         return self.config_entry.data.get("url", None) + "/ui/core/firmware#changelog"
 
-    async def async_install(
-        self, version: str | None, backup: bool, **kwargs: Any
-    ) -> None:
+    def install(self, version=None, backup=False):
         """Install an update."""
         client = self._get_opnsense_client()
-        task_details = await self.hass.async_add_executor_job(client.upgrade_firmware)
+        task_details = client.upgrade_firmware()
         sleep_time = 10
         running = True
         while running:
-            await self.hass.async_add_executor_job(time.sleep, sleep_time)
-            response = await self.hass.async_add_executor_job(client.upgrade_status)
+            time.sleep(sleep_time)
+            response = client.upgrade_status()
             running = response["status"] == "running"
