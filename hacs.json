@@ -1,6 +1,5 @@
 {
   "name": "OPNsense integration for Home Assistant",
-  "homeassistant": "2021.10.0",
-  "domains": ["binary_sensor", "device_tracker", "sensor", "switch"],
+  "homeassistant": "2022.04.0",
   "render_readme": true
 }

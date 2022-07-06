@@ -6,8 +6,8 @@
         "title": "Connect to the OPNsense firewall / router",
         "data": {
           "url": "URL",
-          "username": "Username",
-          "password": "Password",
+          "username": "API Key",
+          "password": "API Secret",
           "name": "Firewall Name",
           "verify_ssl": "Verify SSL certificate"
         }

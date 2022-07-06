@@ -17,9 +17,9 @@
       "user": {
         "data": {
           "url": "URL",
-          "username": "Username",
+          "username": "API Key",
+          "password": "API Secret",
           "name": "Firewall Name",
-          "password": "Password",
           "verify_ssl": "Verify SSL certificate"
         },
         "title": "Connect to the OPNsense firewall / router"

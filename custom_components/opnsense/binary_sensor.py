@@ -62,21 +62,6 @@ async def async_setup_entry(
         )
         entities.append(entity)
 
-        entity = OPNSenseFirmwareUpdatesAvailableBinarySensor(
-            config_entry,
-            coordinator,
-            BinarySensorEntityDescription(
-                key=f"firmware.update_available",
-                name="Firmware Updates Available",
-                # native_unit_of_measurement=native_unit_of_measurement,
-                icon="mdi:alert",
-                # state_class=state_class,
-                # entity_category=entity_category,
-            ),
-            True,
-        )
-        entities.append(entity)
-
         return entities
 
     cem = CoordinatorEntityManager(
@@ -150,61 +135,5 @@ class OPNSensePendingNoticesPresentBinarySensor(OPNSenseBinarySensor):
 
         notices = dict_get(state, "notices.pending_notices")
         attrs["pending_notices"] = notices
-
-        return attrs
-
-
-class OPNSenseFirmwareUpdatesAvailableBinarySensor(OPNSenseBinarySensor):
-    @property
-    def available(self) -> bool:
-        state = self.coordinator.data
-        if state["firmware_update_info"] is None:
-            return False
-
-        try:
-            status = state["firmware_update_info"]["status"]
-            if status == "error":
-                return False
-        except:
-            return False
-
-        return super().available
-
-    @property
-    def is_on(self):
-        state = self.coordinator.data
-
-        try:
-            status = state["firmware_update_info"]["status"]
-            if status == "error":
-                return STATE_UNKNOWN
-            return status == "update"
-        except KeyError:
-            return STATE_UNKNOWN
-
-    @property
-    def device_class(self):
-        return DEVICE_CLASS_UPDATE
-
-    @property
-    def extra_state_attributes(self):
-        state = self.coordinator.data
-        attrs = {}
-
-        for key in [
-            "status",
-            "status_msg",
-            "last_check",
-            "os_version",
-            "product_id",
-            "product_target",
-            "product_version",
-            "upgrade_needs_reboot",
-            "download_size",
-        ]:
-            slug_key = slugify(key)
-            attrs[f"opnsense_{slug_key}"] = dict_get(
-                state, f"firmware_update_info.{key}"
-            )
 
         return attrs

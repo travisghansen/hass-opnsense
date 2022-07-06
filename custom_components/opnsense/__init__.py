@@ -495,6 +495,10 @@ class OPNSenseEntity(CoordinatorEntity, RestoreEntity):
     """base entity for OPNsense"""
 
     @property
+    def coordinator_context(self):
+        return None
+
+    @property
     def device_info(self):
         """Device info for the firewall."""
         state = self.coordinator.data

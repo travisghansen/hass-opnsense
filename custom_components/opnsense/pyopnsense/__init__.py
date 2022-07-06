@@ -270,6 +270,9 @@ $toreturn = [
         # can watch the progress on the 'Updates' tab in the UI
         return self._post("/api/core/firmware/update")
 
+    def upgrade_status(self):
+        return self._post("/api/core/firmware/upgradestatus")
+
     def get_config(self):
         script = """
 global $config;

@@ -17,12 +17,12 @@ from homeassistant.const import (
     TIME_SECONDS,
 )
 
-DEFAULT_USERNAME = "root"
+DEFAULT_USERNAME = ""
 DOMAIN = "opnsense"
 
 UNDO_UPDATE_LISTENER = "undo_update_listener"
 
-PLATFORMS = ["sensor", "switch", "device_tracker", "binary_sensor"]
+PLATFORMS = ["sensor", "switch", "device_tracker", "binary_sensor", "update"]
 LOADED_PLATFORMS = "loaded_platforms"
 
 OPNSENSE_CLIENT = "opnsense_client"
