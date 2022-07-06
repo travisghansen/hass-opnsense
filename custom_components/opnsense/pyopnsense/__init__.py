@@ -1,5 +1,6 @@
 import calendar
 import json
+import re
 import socket
 import ssl
 import time
@@ -11,6 +12,20 @@ import requests
 
 # value to set as the socket timeout
 DEFAULT_TIMEOUT = 10
+
+
+def dict_get(data: dict, path: str, default=None):
+    pathList = re.split(r"\.", path, flags=re.IGNORECASE)
+    result = data
+    for key in pathList:
+        try:
+            key = int(key) if key.isnumeric() else key
+            result = result[key]
+        except:
+            result = default
+            break
+
+    return result
 
 
 class Client(object):
@@ -228,7 +243,13 @@ $toreturn = [
         # if error or too old trigger check (only if check is not already in progress)
         # {'status_msg': 'Firmware status check was aborted internally. Please try again.', 'status': 'error'}
         # error could be because data has not been refreshed at all OR an upgrade is currently in progress
-        if status["status"] == "error":
+        if (
+            status["status"] == "error"
+            or "last_check" not in status.keys()
+            or not isinstance(dict_get(status, "product.product_check"), dict)
+            or dict_get(status, "product.product_check") is None
+            or dict_get(status, "product.product_check") == ""
+        ):
             self._post("/api/core/firmware/check")
             refresh_triggered = True
         elif "last_check" in status.keys():
