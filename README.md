@@ -103,6 +103,9 @@ Note that by default `FreeBSD`/`OPNsense` use a max age of 20 minutes for arp
 entries (sysctl `net.link.ether.inet.max_age`). You may lower that using
 `System -> Advanced -> System Tunables` if desired.
 
+Also note that if you are running `AdGuard` DNS queries may get throttled
+causing issues with the tracker. See #22 for details.
+
 ## sensor
 
 - system details (name, version, ~~temp~~, boottime, etc)
