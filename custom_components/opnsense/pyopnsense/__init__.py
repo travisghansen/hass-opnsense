@@ -294,6 +294,9 @@ $toreturn = [
     def upgrade_status(self):
         return self._post("/api/core/firmware/upgradestatus")
 
+    def firmware_changelog(self, version):
+        return self._post("/api/core/firmware/changelog/" + version)
+
     def get_config(self):
         script = """
 global $config;
