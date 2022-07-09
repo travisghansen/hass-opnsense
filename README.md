@@ -1,6 +1,7 @@
 [![Build Status](https://img.shields.io/endpoint.svg?url=https%3A%2F%2Factions-badge.atrox.dev%2Ftravisghansen%2Fhass-opnsense%2Fbadge%3Fref%3Dmain&style=for-the-badge)](https://actions-badge.atrox.dev/travisghansen/hass-opnsense/goto?ref=main)
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://github.com/hacs/integration)
 
+
 # hass-opnsense
 
 Join `OPNsense` with `home-assistant`!
@@ -11,6 +12,21 @@ at any time.
 
 Initial development was done againt `OPNsense` `21.7` and `home-assistant` `2021.10`.
 
+# Overview
+
+- [Installation](#installation)
+- [Configuration](#configuration)
+  - [OPNsense](#OPNsense)
+  - [HA Config](#config)
+  - [Options](#options)
+- [Entities](#entities)
+  - [Binary Sensor](#binary_sensor)
+  - [Device Tracker](#device_tracker)
+  - [Sensor](#sensor)
+  - [Switch](#switch)
+  - [Services](#services)
+- [Known Issues](#known-issues)
+  - [Adguard](#adguard)
 # installation
 
 This integration currenlty **replaces** the built-in `opnsense` integration
@@ -175,3 +191,9 @@ data:
   interface: lan
   mac: "B9:7B:A6:46:B3:8B"
 ```
+# Known Issues
+
+## Adguard
+
+As mentioned [here](https://github.com/travisghansen/hass-opnsense/issues/22) using Adguard can lead to problems with the plugin.
+Setting the Ratelimit in Adguard to 0 will resolve this problem.
