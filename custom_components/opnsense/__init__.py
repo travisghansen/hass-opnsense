@@ -88,9 +88,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     client = OPNSenseClient(url, username, password, {"verify_ssl": verify_ssl})
     data = OPNSenseData(client, entry)
 
+    scan_interval = options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+
     async def async_update_data():
         """Fetch data from OPNsense."""
-        async with async_timeout.timeout(10):
+        async with async_timeout.timeout(scan_interval - 1):
             await hass.async_add_executor_job(lambda: data.update())
 
             if not data.state:
@@ -98,7 +100,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
             return data.state
 
-    scan_interval = options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     coordinator = DataUpdateCoordinator(
         hass,
         _LOGGER,
@@ -119,7 +120,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
         async def async_update_device_tracker_data():
             """Fetch data from OPNsense."""
-            async with async_timeout.timeout(10):
+            async with async_timeout.timeout(device_tracker_scan_interval - 1):
                 await hass.async_add_executor_job(
                     lambda: device_tracker_data.update({"scope": "device_tracker"})
                 )
@@ -300,7 +301,11 @@ class OPNSenseData:
         self._state["previous_state"] = previous_state
 
         if "scope" in opts.keys() and opts["scope"] == "device_tracker":
-            self._state["arp_table"] = self._get_arp_table()
+            try:
+                self._state["arp_table"] = self._get_arp_table()
+            except BaseException as err:
+                message = f"failed to retrieve arp table {err=}, {type(err)=}"
+                _LOGGER.error(message)
         else:
             self._state["firmware_update_info"] = self._get_firmware_update_info()
             self._state["telemetry"] = self._get_telemetry()

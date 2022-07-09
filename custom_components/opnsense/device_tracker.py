@@ -170,11 +170,22 @@ class OPNSenseScannerEntity(OPNSenseEntity, ScannerEntity):
 
     def _get_opnsense_arp_entry(self) -> dict[str, str]:
         state = self.coordinator.data
-        for entry in state["arp_table"]:
+        arp_table = dict_get(state, "arp_table")
+        if arp_table is None:
+            return None
+        for entry in arp_table:
             if entry.get("mac-address", "").lower() == self._mac_address:
                 return entry
 
         return None
+
+    @property
+    def available(self) -> bool:
+        state = self.coordinator.data
+        arp_table = dict_get(state, "arp_table")
+        if arp_table is None:
+            return False
+        return super().available
 
     @property
     def source_type(self) -> str:
@@ -299,7 +310,7 @@ class OPNSenseScannerEntity(OPNSenseEntity, ScannerEntity):
         ip_address = entry.get("ip-address")
         if ip_address is not None and len(ip_address) > 0:
             client = self._get_opnsense_client()
-            self.hass.async_add_executor_job(client.delete_arp_entry, ip_address)
+            self.hass.add_job(client.delete_arp_entry, ip_address)
 
         self._last_known_connected_time = int(update_time)
 

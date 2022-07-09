@@ -105,6 +105,8 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     errors["base"] = "invalid_auth"
                 elif "Authentication failed: not enough privileges" in str(err):
                     errors["base"] = "privilege_missing"
+                elif "opnsense.exec_php does not exist" in str(err):
+                    errors["base"] = "plugin_missing"
                 else:
                     message = cleanse_sensitive_data(
                         f"Unexpected {err=}, {type(err)=}", [username, password]

@@ -128,14 +128,21 @@ class OPNSenseFirmwareUpdatesAvailableUpdate(OPNSenseUpdate):
         try:
             # fake a new update
             # return "foobar"
-            product_version = dict_get(state, "firmware_update_info.product.product_version")
-            product_latest = dict_get(state, "firmware_update_info.product.product_latest")
+            product_version = dict_get(
+                state, "firmware_update_info.product.product_version"
+            )
+            product_latest = dict_get(
+                state, "firmware_update_info.product.product_latest"
+            )
             if product_version is None or product_latest is None:
                 return None
-            
-            if dict_get(state, "firmware_update_info.status") == "update" and product_version == product_latest:
+
+            if (
+                dict_get(state, "firmware_update_info.status") == "update"
+                and product_version == product_latest
+            ):
                 product_latest = product_latest + "+"
-            
+
             return product_latest
         except KeyError:
             return None
@@ -179,25 +186,43 @@ class OPNSenseFirmwareUpdatesAvailableUpdate(OPNSenseUpdate):
 
             if dict_get(state, "firmware_update_info.status") != "update":
                 return None
-            
+
             product_name = dict_get(state, "firmware_update_info.product.product_name")
-            product_nickname = dict_get(state, "firmware_update_info.product.product_nickname")
-            product_version = dict_get(state, "firmware_update_info.product.product_version")
-            product_latest = dict_get(state, "firmware_update_info.product.product_latest")
+            product_nickname = dict_get(
+                state, "firmware_update_info.product.product_nickname"
+            )
+            product_version = dict_get(
+                state, "firmware_update_info.product.product_version"
+            )
+            product_latest = dict_get(
+                state, "firmware_update_info.product.product_latest"
+            )
             status_msg = dict_get(state, "firmware_update_info.status_msg")
-            upgrade_needs_reboot = dict_get(state, "firmware_update_info.upgrade_needs_reboot")
+            upgrade_needs_reboot = dict_get(
+                state, "firmware_update_info.upgrade_needs_reboot"
+            )
 
             if upgrade_needs_reboot is None or upgrade_needs_reboot == "0":
                 upgrade_needs_reboot = False
-            
+
             if upgrade_needs_reboot == "1":
                 upgrade_needs_reboot = True
 
-            total_package_count = len(dict_get(state, "firmware_update_info.all_packages", {}).keys())
-            new_package_count = len(dict_get(state, "firmware_update_info.new_packages", []))
-            reinstall_package_count = len(dict_get(state, "firmware_update_info.reinstall_packages", []))
-            remove_package_count = len(dict_get(state, "firmware_update_info.remove_packages", []))
-            upgrade_package_count = len(dict_get(state, "firmware_update_info.upgrade_packages", []))
+            total_package_count = len(
+                dict_get(state, "firmware_update_info.all_packages", {}).keys()
+            )
+            new_package_count = len(
+                dict_get(state, "firmware_update_info.new_packages", [])
+            )
+            reinstall_package_count = len(
+                dict_get(state, "firmware_update_info.reinstall_packages", [])
+            )
+            remove_package_count = len(
+                dict_get(state, "firmware_update_info.remove_packages", [])
+            )
+            upgrade_package_count = len(
+                dict_get(state, "firmware_update_info.upgrade_packages", [])
+            )
 
             summary = """
 ## {} version {} ({})
@@ -210,11 +235,21 @@ class OPNSenseFirmwareUpdatesAvailableUpdate(OPNSenseUpdate):
 - reinstalled packages: {}
 - removed packages: {}
 - upgraded packages: {}
-""".format(product_name, product_latest, product_nickname, status_msg, upgrade_needs_reboot, total_package_count, new_package_count, reinstall_package_count, remove_package_count, upgrade_package_count)
+""".format(
+                product_name,
+                product_latest,
+                product_nickname,
+                status_msg,
+                upgrade_needs_reboot,
+                total_package_count,
+                new_package_count,
+                reinstall_package_count,
+                remove_package_count,
+                upgrade_package_count,
+            )
         except:
             return None
         return summary
-
 
     def install(self, version=None, backup=False):
         """Install an update."""
@@ -233,12 +268,12 @@ class OPNSenseFirmwareUpdatesAvailableUpdate(OPNSenseUpdate):
 
         # check needs_reboot, if yes trigger reboot
         response = client.get_firmware_update_info()
-        #upgrade_needs_reboot = dict_get(response, "upgrade_needs_reboot")
+        # upgrade_needs_reboot = dict_get(response, "upgrade_needs_reboot")
         upgrade_needs_reboot = dict_get(response, "needs_reboot")
 
         if upgrade_needs_reboot is None or upgrade_needs_reboot == "0":
             upgrade_needs_reboot = False
-        
+
         if upgrade_needs_reboot == "1":
             upgrade_needs_reboot = True
 
