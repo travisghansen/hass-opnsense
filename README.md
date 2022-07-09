@@ -25,6 +25,8 @@ Initial development was done againt `OPNsense` `21.7` and `home-assistant` `2021
   - [Sensor](#sensor)
   - [Switch](#switch)
   - [Services](#services)
+- [Known Issues](#known-issues)
+  - [Adguard](#adguard)
 # installation
 
 This integration currenlty **replaces** the built-in `opnsense` integration
@@ -189,3 +191,9 @@ data:
   interface: lan
   mac: "B9:7B:A6:46:B3:8B"
 ```
+# Known Issues
+
+## Adguard
+
+As mentioned [here](https://github.com/travisghansen/hass-opnsense/issues/22) using Adguard can lead to problems with the plugin.
+Setting the Ratelimit in Adguard to 0 will resolve this problem.
