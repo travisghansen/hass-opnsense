@@ -295,10 +295,13 @@ class OPNSenseData:
         if "previous_state" in previous_state.keys():
             del previous_state["previous_state"]
 
-        self._state["system_info"] = self._get_system_info()
-        self._state["host_firmware_version"] = self._get_host_firmware_version()
+        # ensure clean state each interval
+        self._state = {}
         self._state["update_time"] = current_time
         self._state["previous_state"] = previous_state
+
+        self._state["system_info"] = self._get_system_info()
+        self._state["host_firmware_version"] = self._get_host_firmware_version()
 
         if "scope" in opts.keys() and opts["scope"] == "device_tracker":
             try:
