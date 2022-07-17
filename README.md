@@ -59,7 +59,8 @@ the browser (ctrl-F5) if it doesn't appear in the list.
 
 Configuration is managed entirely from the UI using `config_flow` semantics.
 Simply go to `Configuration -> Integrations -> Add Integration` and search for
-`OPNsense` in the search box.
+`OPNsense` in the search box. If you can't find it in the list (common HA issue) you need to do a
+'hard-refresh' of the browser (ctrl-F5) then open the list again, you'll find it there.
 
 ## OPNsense
 
