@@ -1,3 +1,9 @@
+# v0.1.2
+
+Released 2022-08-01
+
+- better firmware update logic to support major `upgrades`
+
 # v0.1.1
 
 Released 2022-07-11

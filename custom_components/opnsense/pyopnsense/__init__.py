@@ -284,12 +284,16 @@ $toreturn = [
 
         return status
 
-    def upgrade_firmware(self):
-        # not sure what upgrade does? maybe same as 'check'
-        # return self._post("/api/core/firmware/upgrade")
+    def upgrade_firmware(self, type="update"):
+        # minor updates of the same opnsense version
+        if type == "update":
+            # can watch the progress on the 'Updates' tab in the UI
+            return self._post("/api/core/firmware/update")
 
-        # can watch the progress on the 'Updates' tab in the UI
-        return self._post("/api/core/firmware/update")
+        # major updates to a new opnsense version
+        if type == "upgrade":
+            # can watch the progress on the 'Updates' tab in the UI
+            return self._post("/api/core/firmware/upgrade")
 
     def upgrade_status(self):
         return self._post("/api/core/firmware/upgradestatus")
