@@ -827,6 +827,11 @@ $toreturn = [
         "boottime" => $boottime,
         "uptime" => (int) $system_api_data["uptime"],
         //"temp" => 0,
+        "load_average" => [
+            "one_minute" => floatval(trim($system_api_data["cpu"]["load"][0])),
+            "five_minute" => floatval(trim($system_api_data["cpu"]["load"][1])),
+            "fifteen_minute" => floatval(trim($system_api_data["cpu"]["load"][2])),
+        ],
     ],
 
     "cpu" => [
@@ -835,11 +840,6 @@ $toreturn = [
             "max" => (int) stripalpha($system_api_data["cpu"]["max.freq"]),
         ],
         "count" => (int) $system_api_data["cpu"]["cur.freq"],
-        "load_average" => [
-            "one_minute" => floatval(trim($system_api_data["cpu"]["load"][0])),
-            "five_minute" => floatval(trim($system_api_data["cpu"]["load"][1])),
-            "fifteen_minute" => floatval(trim($system_api_data["cpu"]["load"][2])),
-        ],
     ],
 
     "filesystems" => $system_api_data["disk"]["devices"],
@@ -906,6 +906,8 @@ foreach ($ovpn_servers as $server) {
 
     def are_notices_pending(self):
         script = """
+require_once '/usr/local/etc/inc/notices.inc';
+
 $toreturn = [
   "data" => are_notices_pending(),
 ];
@@ -915,6 +917,8 @@ $toreturn = [
 
     def get_notices(self):
         script = """
+require_once '/usr/local/etc/inc/notices.inc';
+
 $toreturn = [
   "data" => get_notices(),
 ];
@@ -938,6 +942,8 @@ $toreturn = [
 
     def file_notice(self, notice):
         script = """
+require_once '/usr/local/etc/inc/notices.inc';
+
 $data = json_decode('{}', true);
 $notice = $data["notice"];
 $value = file_notice($notice);
@@ -959,6 +965,8 @@ $toreturn = [
         id = "all" to wipe everything
         """
         script = """
+require_once '/usr/local/etc/inc/notices.inc';
+
 $data = json_decode('{}', true);
 $id = $data["id"];
 close_notice($id);
