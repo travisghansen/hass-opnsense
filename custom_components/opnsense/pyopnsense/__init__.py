@@ -906,22 +906,43 @@ foreach ($ovpn_servers as $server) {
 
     def are_notices_pending(self):
         script = """
-require_once '/usr/local/etc/inc/notices.inc';
+if (file_exists('/usr/local/etc/inc/notices.inc')) {
+    require_once '/usr/local/etc/inc/notices.inc';
 
-$toreturn = [
-  "data" => are_notices_pending(),
-];
+    $toreturn = [
+        "data" => are_notices_pending(),
+    ];
+} else {
+    $status = new \OPNsense\System\SystemStatus();
+    $pending = false;
+    foreach ($status->getSystemStatus() as $key => $value) {
+        if ($value["statusCode"] != 2) {
+            $pending = true;
+            break;
+        }
+    }
+    $toreturn = [
+        "data" => $pending,
+    ];
+}
 """
         response = self._exec_php(script)
         return response["data"]
 
     def get_notices(self):
         script = """
-require_once '/usr/local/etc/inc/notices.inc';
+if (file_exists('/usr/local/etc/inc/notices.inc')) {
+    require_once '/usr/local/etc/inc/notices.inc';
 
-$toreturn = [
-  "data" => get_notices(),
-];
+    $toreturn = [
+        "data" => get_notices(),
+    ];
+} else {
+    $status = new \OPNsense\System\SystemStatus();
+    $toreturn = [
+        "data" => $status->getSystemStatus(),
+    ];
+} 
 """
         response = self._exec_php(script)
         value = response["data"]
@@ -934,22 +955,38 @@ $toreturn = [
         notices = []
         for key in value.keys():
             notice = value.get(key)
-            notice["created_at"] = key
-            notice["id"] = key
-            notices.append(notice)
+            # 22.7.2+
+            if "statusCode" in notice.keys():
+                if notice["statusCode"] != 2:
+                    real_notice = {}
+                    real_notice["notice"] = notice["message"]
+                    real_notice["id"] = key
+                    real_notice["created_at"] = notice["timestamp"]
+                    notices.append(real_notice)
+            else:
+                notice["created_at"] = key
+                notice["id"] = key
+                notices.append(notice)
 
         return notices
 
     def file_notice(self, notice):
         script = """
-require_once '/usr/local/etc/inc/notices.inc';
-
 $data = json_decode('{}', true);
 $notice = $data["notice"];
-$value = file_notice($notice);
-$toreturn = [
-  "data" => $value,
-];
+
+if (file_exists('/usr/local/etc/inc/notices.inc')) {{
+    require_once '/usr/local/etc/inc/notices.inc';
+    $value = file_notice($notice);
+    $toreturn = [
+        "data" => $value,
+    ];
+}} else {{
+    // not currently supported in 22.7.2+
+    $toreturn = [
+        "data" => false,
+    ];
+}}
 """.format(
             json.dumps(
                 {
@@ -965,14 +1002,29 @@ $toreturn = [
         id = "all" to wipe everything
         """
         script = """
-require_once '/usr/local/etc/inc/notices.inc';
-
 $data = json_decode('{}', true);
 $id = $data["id"];
-close_notice($id);
-$toreturn = [
-  "data" => true,
-];
+
+if (file_exists('/usr/local/etc/inc/notices.inc')) {{
+    require_once '/usr/local/etc/inc/notices.inc';
+    close_notice($id);
+    $toreturn = [
+    "data" => true,
+    ];
+}} else {{
+    $status = new \OPNsense\System\SystemStatus();
+    if (strtolower($id) == "all") {{
+        foreach ($status->getSystemStatus() as $key => $value) {{
+            $status->dismissStatus($key);    
+        }}
+    }} else {{
+        $status->dismissStatus($id);
+    }}
+    
+    $toreturn = [
+        "data" => true,
+    ];
+}}
 """.format(
             json.dumps(
                 {

@@ -107,6 +107,14 @@ class OPNSenseBinarySensor(OPNSenseEntity, BinarySensorEntity):
 
 class OPNSenseCarpStatusBinarySensor(OPNSenseBinarySensor):
     @property
+    def available(self) -> bool:
+        state = self.coordinator.data
+        if dict_get(state, "carp_status") is None:
+            return False
+
+        return super().available
+
+    @property
     def is_on(self):
         state = self.coordinator.data
         try:
@@ -116,6 +124,14 @@ class OPNSenseCarpStatusBinarySensor(OPNSenseBinarySensor):
 
 
 class OPNSensePendingNoticesPresentBinarySensor(OPNSenseBinarySensor):
+    @property
+    def available(self) -> bool:
+        state = self.coordinator.data
+        if dict_get(state, "notices.pending_notices_present") is None:
+            return False
+
+        return super().available
+
     @property
     def is_on(self):
         state = self.coordinator.data
@@ -133,7 +149,7 @@ class OPNSensePendingNoticesPresentBinarySensor(OPNSenseBinarySensor):
         state = self.coordinator.data
         attrs = {}
 
-        notices = dict_get(state, "notices.pending_notices")
+        notices = dict_get(state, "notices.pending_notices", [])
         attrs["pending_notices"] = notices
 
         return attrs

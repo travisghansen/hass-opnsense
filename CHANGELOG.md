@@ -1,3 +1,9 @@
+# v0.1.5
+
+Released 2022-08-18
+
+- refactor notice functionality due to breakage with 22.7.2
+
 # v0.1.4
 
 Released 2022-08-17
