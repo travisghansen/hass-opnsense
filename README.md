@@ -29,7 +29,7 @@ Initial development was done againt `OPNsense` `21.7` and `Home Assistant` `2021
   - [Switch](#switch)
   - [Services](#services)
 - [Known Issues](#known-issues)
-  - [Adguard](#adguard)
+  - [AdGuardHome](#AdGuardHome)
 
 # installation
 
@@ -89,8 +89,8 @@ a 'hard-refresh' of the browser (ctrl-F5) then open the list again, you'll find 
   to that user. When creating the API key, `OPNsense` will push the API file containing
   the API key and API secret to your browser, you'll find it in the download folder.
 - If using a non `admin` user account ensure the user has the following privileges:
-  - `XMLRPC Library` Note that this privilege effectively gives the user complete access to
-    the system via the `xmlrpc` feature.
+  - `XMLRPC Library` (note that this privilege effectively gives the user complete access to
+    the system via the `xmlrpc` feature)
   - `System:Firmware`
 
 ## config
