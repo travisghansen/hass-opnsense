@@ -178,26 +178,26 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
         icon="mdi:speedometer-medium",
         # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
-    "telemetry.cpu.load_average.one_minute": SensorEntityDescription(
-        key="telemetry.cpu.load_average.one_minute",
-        name="CPU Load Average One Minute",
-        native_unit_of_measurement=PERCENTAGE,
+    "telemetry.system.load_average.one_minute": SensorEntityDescription(
+        key="telemetry.system.load_average.one_minute",
+        name="System Load Average One Minute",
+        # native_unit_of_measurement=PERCENTAGE,
         icon="mdi:speedometer-slow",
         state_class=STATE_CLASS_MEASUREMENT,
         # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
-    "telemetry.cpu.load_average.five_minute": SensorEntityDescription(
-        key="telemetry.cpu.load_average.five_minute",
-        name="CPU Load Average Five Minute",
-        native_unit_of_measurement=PERCENTAGE,
+    "telemetry.system.load_average.five_minute": SensorEntityDescription(
+        key="telemetry.system.load_average.five_minute",
+        name="System Load Average Five Minute",
+        # native_unit_of_measurement=PERCENTAGE,
         icon="mdi:speedometer-slow",
         state_class=STATE_CLASS_MEASUREMENT,
         # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
-    "telemetry.cpu.load_average.fifteen_minute": SensorEntityDescription(
-        key="telemetry.cpu.load_average.fifteen_minute",
-        name="CPU Load Average Fifteen Minute",
-        native_unit_of_measurement=PERCENTAGE,
+    "telemetry.system.load_average.fifteen_minute": SensorEntityDescription(
+        key="telemetry.system.load_average.fifteen_minute",
+        name="System Load Average Fifteen Minute",
+        # native_unit_of_measurement=PERCENTAGE,
         icon="mdi:speedometer-slow",
         state_class=STATE_CLASS_MEASUREMENT,
         # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,

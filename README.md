@@ -1,7 +1,6 @@
 [![Build Status](https://img.shields.io/endpoint.svg?url=https%3A%2F%2Factions-badge.atrox.dev%2Ftravisghansen%2Fhass-opnsense%2Fbadge%3Fref%3Dmain&style=for-the-badge)](https://actions-badge.atrox.dev/travisghansen/hass-opnsense/goto?ref=main)
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://github.com/hacs/integration)
 
-
 # hass-opnsense
 
 Join `OPNsense` with `Home Assistant`!
@@ -31,6 +30,8 @@ Initial development was done againt `OPNsense` `21.7` and `Home Assistant` `2021
   - [Services](#services)
 - [Known Issues](#known-issues)
   - [Adguard](#adguard)
+
+# installation
 
 # Installation
 
@@ -87,9 +88,10 @@ a 'hard-refresh' of the browser (ctrl-F5) then open the list again, you'll find 
 - Create a new user or choose an existing user, and create an API key associated to
   to that user. When creating the API key, `OPNsense` will push the API file containing
   the API key and API secret to your browser, you'll find it in the download folder.
-- If using a non `admin` user account ensure the user has the `System - HA node sync`
-  privilege. Note that this privilege effectively gives the user complete access to
-  the system via the `xmlrpc` feature.
+- If using a non `admin` user account ensure the user has the following privileges:
+  - `XMLRPC Library` Note that this privilege effectively gives the user complete access to
+    the system via the `xmlrpc` feature.
+  - `System:Firmware`
 
 ## config
 
@@ -140,7 +142,7 @@ Note that by default `FreeBSD`/`OPNsense` use a max age of 20 minutes for arp
 entries (sysctl `net.link.ether.inet.max_age`). You may lower that using
 `System -> Advanced -> System Tunables` if desired.
 
-Also note that if you are running `AdGuard` DNS queries may get throttled
+Also note that if you are running `AdGuardHome` DNS queries may get throttled
 causing issues with the tracker. See #22 for details.
 
 ## sensor
@@ -158,7 +160,7 @@ causing issues with the tracker. See #22 for details.
 - ~~dhcp stats (total, online, and offline clients)~~
 - OpenVPN server stats (per-server basis - connected client count, bytes
   sent/received, kB/s sent/received)
-  
+
 ## switch
 
 All of the switches below are disabled by default.
@@ -212,6 +214,7 @@ data:
   interface: lan
   mac: "B9:7B:A6:46:B3:8B"
 ```
+
 # Known Issues
 
 ## AdGuardHome
