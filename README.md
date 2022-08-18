@@ -3,19 +3,23 @@
 
 # hass-opnsense
 
-Join `OPNsense` with `home-assistant`!
+Join `OPNsense` with `Home Assistant`!
 
 `hass-opnsense` uses the built-in `xmlrpc` service of `OPNsense` for all
 interactions. This project is currently a proof-of-concept and may fail to work
 at any time.
 
-Initial development was done againt `OPNsense` `21.7` and `home-assistant` `2021.10`.
+Initial development was done againt `OPNsense` `21.7` and `Home Assistant` `2021.10`.
 
 # Overview
 
-- [Installation](#installation)
-- [Configuration](#configuration)
-  - [OPNsense](#OPNsense)
+- [Installation](#Installation)
+  - [OPNsense plugin](#OPNsense_plugin)
+  - [Home Assistant integration](#HomeAssistant_integration)
+    - [HACS installation](#HACS_installation)
+    - [Manual installation](#Manual_installation)
+- [Configuration](#Configuration)
+  - [OPNsense](#OPNsense_plugin)
   - [HA Config](#config)
   - [Options](#options)
 - [Entities](#entities)
@@ -25,21 +29,27 @@ Initial development was done againt `OPNsense` `21.7` and `home-assistant` `2021
   - [Switch](#switch)
   - [Services](#services)
 - [Known Issues](#known-issues)
-  - [Adguard](#adguard)
+  - [AdGuardHome](#AdGuardHome)
 
 # installation
 
-This integration currenlty **replaces** the built-in `opnsense` integration
+# Installation
+
+This integration currenlty **replaces** the built-in `OPNsense` integration
 which only provides `device_tracker` functionality, be sure to remove any
 associated configuration for the built-in integration before installing this
 replacement.
 
-To use the integration you need to install an OPNsense plugin mada available
+The installation requires a plugin on `OPNsense` and a custom integration in `Home Assistant`.
+
+## OPNsense_plugin
+
+To use the integration you need to install an `OPNsense` plugin made available
 on mimugmail repository: `https://www.routerperformance.net/opnsense-repo/`
 
 First you need to install the repository:
 
-- open an SSH session on OPNsense and issue the following commands:
+- open an SSH session on `OPNsense` and issue the following commands:
 
 ```
 fetch -o /usr/local/etc/pkg/repos/mimugmail.conf https://www.routerperformance.net/mimugmail.conf
@@ -48,28 +58,39 @@ pkg update
 
 Now you need to install the plugin, you have two ways to do it:
 
-- In OPNsense web UI, go to System:Firmware:Plugins and install plugin `os-homeassistant-maxit`
+- In `OPNsense` web UI, go to System:Firmware:Plugins and install plugin `os-homeassistant-maxit`
 - From SSH shell: `pkg install os-homeassistant-maxit`
 
-Now, on Home Assistant, add this repository to your `HACS` installation or clone the directory manually.
-Once the integration is installed be sure to restart `hass` and hard-refresh the UI in
-the browser (ctrl-F5) if it doesn't appear in the list.
+## HomeAssistant_integration
 
-# configuration
+In `Home Assistant`, add this repository to your `HACS` installation or clone the directory manually.
+
+### HACS_installation
+
+In HACS, add this as a custom repository: https://github.com/travisghansen/hass-opnsense then go to the
+HACS integrations page, search for `OPNsense integration for Home Assistant` and install it. Once the
+integration is installed be sure to restart `Home Assistant`.
+
+### Manual_installation
+
+Copy the contents of the custom_components folder to your `Home Assistant` config/custom_components
+folder and restart `Home Assistant`.
+
+# Configuration
 
 Configuration is managed entirely from the UI using `config_flow` semantics.
-Simply go to `Configuration -> Integrations -> Add Integration` and search for
-`OPNsense` in the search box. If you can't find it in the list (common HA issue) you need to do a
-'hard-refresh' of the browser (ctrl-F5) then open the list again, you'll find it there.
+Simply go to `Configuration -> Integrations -> Add Integration` and search for `OPNsense`
+in the search box. If you can't find it in the list (well-known HA issue) you need to do
+a 'hard-refresh' of the browser (ctrl-F5) then open the list again, you'll find it there.
 
 ## OPNsense
 
 - Create a new user or choose an existing user, and create an API key associated to
-  to that user. When creating the API key, OPNsense will push the API file containing
+  to that user. When creating the API key, `OPNsense` will push the API file containing
   the API key and API secret to your browser, you'll find it in the download folder.
 - If using a non `admin` user account ensure the user has the following privileges:
-  - `XMLRPC Library` Note that this privilege effectively gives the user complete access to
-    the system via the `xmlrpc` feature.
+  - `XMLRPC Library` (note that this privilege effectively gives the user complete access to
+    the system via the `xmlrpc` feature)
   - `System:Firmware`
 
 ## config
@@ -196,7 +217,7 @@ data:
 
 # Known Issues
 
-## Adguard
+## AdGuardHome
 
-As mentioned [here](https://github.com/travisghansen/hass-opnsense/issues/22) using Adguard can lead to problems with the plugin.
-Setting the Ratelimit in Adguard to 0 will resolve this problem.
+As mentioned [here](https://github.com/travisghansen/hass-opnsense/issues/22) using AdGuardHome can lead to problems with the plugin.
+Setting the Ratelimit in AdGuardHome to 0 will resolve this problem.
