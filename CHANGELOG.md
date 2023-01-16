@@ -1,3 +1,9 @@
+# v0.1.7
+
+Released 2023-01-16
+
+- properly use `verify_ssl` data for REST client
+
 # v0.1.6
 
 Released 2023-01-16
