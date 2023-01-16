@@ -12,6 +12,9 @@ import zoneinfo
 from dateutil.parser import parse
 import requests
 
+# import logging
+# _LOGGER = logging.getLogger(__name__)
+
 # value to set as the socket timeout
 DEFAULT_TIMEOUT = 10
 
@@ -141,14 +144,24 @@ $toreturn["real"] = json_encode($toreturn_real);
 
     def _get(self, path):
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
+        verify_ssl = True
+        if "verify_ssl" in self._opts.keys():
+            verify_ssl = self._opts["verify_ssl"]
+
         url = f"{self._url}{path}"
-        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT, verify=verify_ssl)
         return response.json()
 
     def _post(self, path, payload=None):
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
+        verify_ssl = True
+        if "verify_ssl" in self._opts.keys():
+            verify_ssl = self._opts["verify_ssl"]
+
         url = f"{self._url}{path}"
-        response = requests.post(url, data=payload, timeout=DEFAULT_TIMEOUT)
+        response = requests.post(
+            url, data=payload, timeout=DEFAULT_TIMEOUT, verify=verify_ssl
+        )
         return response.json()
 
     def _is_subsystem_dirty(self, subsystem):

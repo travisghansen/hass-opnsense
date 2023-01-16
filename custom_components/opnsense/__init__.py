@@ -239,6 +239,7 @@ class OPNSenseData:
         try:
             return self._client.get_firmware_update_info()
         except BaseException as err:
+            _LOGGER.error(err)
             return None
             # raise err
 
