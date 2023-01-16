@@ -1,4 +1,4 @@
-import calendar
+# import calendar
 import json
 import re
 import socket
@@ -7,11 +7,17 @@ import time
 from urllib.parse import quote_plus, urlparse
 from xml.parsers.expat import ExpatError
 import xmlrpc.client
+import zoneinfo
 
+from dateutil.parser import parse
 import requests
 
 # value to set as the socket timeout
 DEFAULT_TIMEOUT = 10
+
+tzinfos = {}
+for tname in zoneinfo.available_timezones():
+    tzinfos[tname] = zoneinfo.ZoneInfo(tname)
 
 
 def dict_get(data: dict, path: str, default=None):
@@ -254,11 +260,17 @@ $toreturn = [
             refresh_triggered = True
         elif "last_check" in status.keys():
             # "last_check": "Wed Dec 22 16:56:20 UTC 2021"
+            # "last_check": "Mon Jan 16 00:08:28 CET 2023"
+            # "last_check": "Sun Jan 15 22:05:55 UTC 2023"
             last_check = status["last_check"]
-            format = "%a %b %d %H:%M:%S %Z %Y"
-            last_check_timestamp = int(
-                calendar.timegm(time.strptime(last_check, format))
-            )
+            last_check_timestamp = parse(last_check, tzinfos=tzinfos).timestamp()
+
+            # https://bugs.python.org/issue22377
+            # format = "%a %b %d %H:%M:%S %Z %Y"
+            # last_check_timestamp = int(
+            #    calendar.timegm(time.strptime(last_check, format))
+            # )
+
             stale = (current_time - last_check_timestamp) > refresh_interval
             # stale = True
             if stale:

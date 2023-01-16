@@ -1,3 +1,9 @@
+# v0.1.6
+
+Released 2023-01-16
+
+- fix issue with update entity failing when opnsense date is not in UTC (#25 #54)
+
 # v0.1.5
 
 Released 2022-08-18
