@@ -1,3 +1,10 @@
+# v0.1.8
+
+Released 2023-01-17
+
+- more robust handling of vip data structures
+
+
 # v0.1.7
 
 Released 2023-01-16
