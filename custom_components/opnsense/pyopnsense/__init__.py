@@ -593,7 +593,7 @@ $toreturn = [
 global $config;
 
 $vips = [];
-if (is_iterable($config['virtualip']['vip'])) {
+if ($config['virtualip'] && is_iterable($config['virtualip']['vip'])) {
   foreach ($config['virtualip']['vip'] as $vip) {
     $vips[] = $vip;
   }
