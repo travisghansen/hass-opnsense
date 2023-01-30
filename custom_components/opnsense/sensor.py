@@ -584,6 +584,13 @@ class OPNSenseGatewaySensor(OPNSenseSensor):
         if gateway is None or property not in gateway.keys():
             return False
 
+        if property in ["stddev", "delay", "loss"]:
+            value = gateway[property]
+            if isinstance(value, str):
+                value = re.sub("[^0-9\.]*", "", value)
+                if len(value) < 1:
+                    return False
+
         return super().available
 
     @property
