@@ -619,7 +619,8 @@ class OPNSenseGatewaySensor(OPNSenseSensor):
             if property in ["stddev", "delay", "loss"]:
                 if isinstance(value, str):
                     value = re.sub("[^0-9\.]*", "", value)
-                    value = float(value)
+                    if len(value) > 0:
+                        value = float(value)
 
             if isinstance(value, str) and len(value) < 1:
                 return STATE_UNKNOWN
