@@ -1,3 +1,11 @@
+# v0.1.10
+
+Released 2023-01-29
+
+- update deprecated syntax
+- minor updates/fixes
+- better logging of api calls
+
 # v0.1.9
 
 Released 2023-01-22

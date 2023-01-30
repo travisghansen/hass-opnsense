@@ -1,5 +1,6 @@
 # import calendar
 import json
+import logging
 import re
 import socket
 import ssl
@@ -12,11 +13,10 @@ import zoneinfo
 from dateutil.parser import parse
 import requests
 
-# import logging
-# _LOGGER = logging.getLogger(__name__)
-
 # value to set as the socket timeout
 DEFAULT_TIMEOUT = 10
+
+_LOGGER = logging.getLogger(__name__)
 
 tzinfos = {}
 for tname in zoneinfo.available_timezones():
@@ -92,6 +92,16 @@ class Client(object):
 
         return inner
 
+    def _log_errors(func):
+        def inner(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except BaseException as err:
+                _LOGGER.error(f"Unexpected {func.__name__} error {err=}, {type(err)=}")
+                raise err
+
+        return inner
+
     @_apply_timeout
     def _get_config_section(self, section):
         config = self.get_config()
@@ -123,22 +133,27 @@ $toreturn["real"] = json_encode($toreturn_real);
         return response
 
     @_apply_timeout
+    @_log_errors
     def get_host_firmware_version(self):
         return self._get_proxy().opnsense.firmware_version()
 
     @_apply_timeout
+    @_log_errors
     def _list_services(self):
         return self._get_proxy().opnsense.list_services()
 
     @_apply_timeout
+    @_log_errors
     def _start_service(self, params):
         return self._get_proxy().opnsense.start_service(params)
 
     @_apply_timeout
+    @_log_errors
     def _stop_service(self, params):
         return self._get_proxy().opnsense.stop_service(params)
 
     @_apply_timeout
+    @_log_errors
     def _restart_service(self, params):
         return self._get_proxy().opnsense.restart_service(params)
 
@@ -164,6 +179,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         )
         return response.json()
 
+    @_log_errors
     def _is_subsystem_dirty(self, subsystem):
         script = """
 $data = json_decode('{}', true);
@@ -179,6 +195,7 @@ $toreturn = [
         response = self._exec_php(script)
         return bool(response["data"])
 
+    @_log_errors
     def _mark_subsystem_dirty(self, subsystem):
         script = """
 $data = json_decode('{}', true);
@@ -189,6 +206,7 @@ mark_subsystem_dirty($subsystem);
         )
         self._exec_php(script)
 
+    @_log_errors
     def _clear_subsystem_dirty(self, subsystem):
         script = """
 $data = json_decode('{}', true);
@@ -199,6 +217,7 @@ clear_subsystem_dirty($subsystem);
         )
         self._exec_php(script)
 
+    @_log_errors
     def _filter_configure(self):
         script = """
 filter_configure();
@@ -207,6 +226,7 @@ clear_subsystem_dirty('filter');
 """
         self._exec_php(script)
 
+    @_log_errors
     def get_device_id(self):
         script = """
 $file = "/conf/hassid";
@@ -224,6 +244,7 @@ $toreturn = [
         response = self._exec_php(script)
         return response["data"]
 
+    @_log_errors
     def get_system_info(self):
         # TODO: add bios details here
         script = """
@@ -247,6 +268,7 @@ $toreturn = [
         response = self._exec_php(script)
         return response
 
+    @_log_errors
     def get_firmware_update_info(self):
         current_time = time.time()
         refresh_triggered = False
@@ -309,6 +331,7 @@ $toreturn = [
 
         return status
 
+    @_log_errors
     def upgrade_firmware(self, type="update"):
         # minor updates of the same opnsense version
         if type == "update":
@@ -320,12 +343,15 @@ $toreturn = [
             # can watch the progress on the 'Updates' tab in the UI
             return self._post("/api/core/firmware/upgrade")
 
+    @_log_errors
     def upgrade_status(self):
         return self._post("/api/core/firmware/upgradestatus")
 
+    @_log_errors
     def firmware_changelog(self, version):
         return self._post("/api/core/firmware/changelog/" + version)
 
+    @_log_errors
     def get_config(self):
         script = """
 global $config;
@@ -337,13 +363,16 @@ $toreturn = [
         response = self._exec_php(script)
         return response["data"]
 
+    @_log_errors
     def get_interfaces(self):
         return self._get_config_section("interfaces")
 
+    @_log_errors
     def get_interface(self, interface):
         interfaces = self.get_interfaces()
         return interfaces[interface]
 
+    @_log_errors
     def get_interface_by_description(self, interface):
         interfaces = self.get_interfaces()
         for i, i_interface in enumerate(interfaces.keys()):
@@ -356,6 +385,7 @@ $toreturn = [
             if interfaces[i_interface]["descr"] == interface:
                 return interfaces[i_interface]
 
+    @_log_errors
     def enable_filter_rule_by_created_time(self, created_time):
         config = self.get_config()
         for rule in config["filter"]["rule"]:
@@ -371,6 +401,7 @@ $toreturn = [
                 self._restore_config_section("filter", config["filter"])
                 self._filter_configure()
 
+    @_log_errors
     def disable_filter_rule_by_created_time(self, created_time):
         config = self.get_config()
 
@@ -388,6 +419,7 @@ $toreturn = [
                 self._filter_configure()
 
     # use created_time as a unique_id since none other exists
+    @_log_errors
     def enable_nat_port_forward_rule_by_created_time(self, created_time):
         config = self.get_config()
         for rule in config["nat"]["rule"]:
@@ -404,6 +436,7 @@ $toreturn = [
                 self._filter_configure()
 
     # use created_time as a unique_id since none other exists
+    @_log_errors
     def disable_nat_port_forward_rule_by_created_time(self, created_time):
         config = self.get_config()
         for rule in config["nat"]["rule"]:
@@ -420,6 +453,7 @@ $toreturn = [
                 self._filter_configure()
 
     # use created_time as a unique_id since none other exists
+    @_log_errors
     def enable_nat_outbound_rule_by_created_time(self, created_time):
         config = self.get_config()
         for rule in config["nat"]["outbound"]["rule"]:
@@ -436,6 +470,7 @@ $toreturn = [
                 self._filter_configure()
 
     # use created_time as a unique_id since none other exists
+    @_log_errors
     def disable_nat_outbound_rule_by_created_time(self, created_time):
         config = self.get_config()
         for rule in config["nat"]["outbound"]["rule"]:
@@ -447,6 +482,7 @@ $toreturn = [
                 self._restore_config_section("nat", config["nat"])
                 self._filter_configure()
 
+    @_log_errors
     def get_configured_interface_descriptions(self):
         script = """
 $toreturn = [
@@ -456,6 +492,7 @@ $toreturn = [
         response = self._exec_php(script)
         return response["data"]
 
+    @_log_errors
     def get_gateways(self):
         # {'GW_WAN': {'interface': '<if>', 'gateway': '<ip>', 'name': 'GW_WAN', 'weight': '1', 'ipprotocol': 'inet', 'interval': '', 'descr': 'Interface wan Gateway', 'monitor': '<ip>', 'friendlyiface': 'wan', 'friendlyifdescr': 'WAN', 'isdefaultgw': True, 'attribute': 0, 'tiername': 'Default (IPv4)'}}
         script = """
@@ -478,12 +515,14 @@ $toreturn = [
         response = self._exec_php(script)
         return response["data"]
 
+    @_log_errors
     def get_gateway(self, gateway):
         gateways = self.get_gateways()
         for g in gateways.keys():
             if g == gateway:
                 return gateways[g]
 
+    @_log_errors
     def get_gateways_status(self):
         # {'GW_WAN': {'monitorip': '<ip>', 'srcip': '<ip>', 'name': 'GW_WAN', 'delay': '0.387ms', 'stddev': '0.097ms', 'loss': '0.0%', 'status': 'online', 'substatus': 'none'}}
         script = """
@@ -499,6 +538,7 @@ $toreturn = [
                 gateway["status"] = "online"
         return response["data"]
 
+    @_log_errors
     def get_gateway_status(self, gateway):
         gateways = self.get_gateways_status()
         for g in gateways.keys():
@@ -507,6 +547,7 @@ $toreturn = [
                     gateways[g]["status"] = "online"
                 return gateways[g]
 
+    @_log_errors
     def get_arp_table(self, resolve_hostnames=False):
         # [{'hostname': '?', 'ip-address': '<ip>', 'mac-address': '<mac>', 'interface': 'em0', 'expires': 1199, 'type': 'ethernet'}, ...]
         script = """
@@ -545,6 +586,7 @@ $toreturn = [
         response = self._exec_php(script)
         return response["data"]
 
+    @_log_errors
     def get_services(self):
         response = self._list_services()
         services = []
@@ -553,6 +595,7 @@ $toreturn = [
 
         return services
 
+    @_log_errors
     def get_service_is_running(self, service_name):
         services = self.get_services()
         for service in services:
@@ -561,19 +604,24 @@ $toreturn = [
 
         return False
 
+    @_log_errors
     def start_service(self, service_name):
         self._start_service({"service": service_name})
 
+    @_log_errors
     def stop_service(self, service_name):
         self._stop_service({"service": service_name})
 
+    @_log_errors
     def restart_service(self, service_name):
         self._restart_service({"service": service_name})
 
+    @_log_errors
     def restart_service_if_running(self, service_name):
         if self.get_service_is_running(service_name):
             self.restart_service(service_name)
 
+    @_log_errors
     def get_dhcp_leases(self):
         # function system_get_dhcpleases()
         # {'lease': [], 'failover': []}
@@ -588,6 +636,7 @@ $toreturn = [
         response = self._exec_php(script)
         return response["data"]["lease"]
 
+    @_log_errors
     def get_virtual_ips(self):
         script = """
 global $config;
@@ -606,6 +655,7 @@ $toreturn = [
         response = self._exec_php(script)
         return response["data"]
 
+    @_log_errors
     def get_carp_status(self):
         # carp enabled or not
         # readonly attribute, cannot be set directly
@@ -624,6 +674,7 @@ $toreturn = [
         response = self._exec_php(script)
         return response["data"]
 
+    @_log_errors
     def get_carp_interfaces(self):
         script = """
 global $config;
@@ -658,6 +709,7 @@ $toreturn = [
         response = self._exec_php(script)
         return response["data"]
 
+    @_log_errors
     def delete_arp_entry(self, ip):
         if len(ip) < 1:
             return
@@ -677,6 +729,7 @@ $toreturn = [
         )
         self._exec_php(script)
 
+    @_log_errors
     def arp_get_mac_by_ip(self, ip, do_ping=True):
         """function arp_get_mac_by_ip($ip, $do_ping = true)"""
         script = """
@@ -724,6 +777,7 @@ $toreturn = [
             return None
         return response
 
+    @_log_errors
     def system_reboot(self):
         script = """
 use OPNsense\Core\Backend;
@@ -741,6 +795,7 @@ $toreturn = [
             # ignore response failures because the system is going down
             pass
 
+    @_log_errors
     def system_halt(self):
         script = """
 use OPNsense\Core\Backend;
@@ -758,6 +813,7 @@ $toreturn = [
             # ignore response failures because the system is going down
             pass
 
+    @_log_errors
     def send_wol(self, interface, mac):
         """
         interface should be wan, lan, opt1, opt2 etc, not the description
@@ -795,6 +851,7 @@ $toreturn = [
         response = self._exec_php(script)
         return response
 
+    @_log_errors
     def get_telemetry(self):
         script = """
 require_once '/usr/local/www/widgets/api/plugins/system.inc';
@@ -928,6 +985,7 @@ foreach ($ovpn_servers as $server) {
 
         return data
 
+    @_log_errors
     def are_notices_pending(self):
         script = """
 if (file_exists('/usr/local/etc/inc/notices.inc')) {
@@ -953,6 +1011,7 @@ if (file_exists('/usr/local/etc/inc/notices.inc')) {
         response = self._exec_php(script)
         return response["data"]
 
+    @_log_errors
     def get_notices(self):
         script = """
 if (file_exists('/usr/local/etc/inc/notices.inc')) {
@@ -994,6 +1053,7 @@ if (file_exists('/usr/local/etc/inc/notices.inc')) {
 
         return notices
 
+    @_log_errors
     def file_notice(self, notice):
         script = """
 $data = json_decode('{}', true);
@@ -1021,6 +1081,7 @@ if (file_exists('/usr/local/etc/inc/notices.inc')) {{
 
         self._exec_php(script)
 
+    @_log_errors
     def close_notice(self, id):
         """
         id = "all" to wipe everything

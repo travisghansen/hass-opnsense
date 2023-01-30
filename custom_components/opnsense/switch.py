@@ -2,7 +2,7 @@
 import logging
 
 from homeassistant.components.switch import (
-    DEVICE_CLASS_SWITCH,
+    SwitchDeviceClass,
     SwitchEntity,
     SwitchEntityDescription,
 )
@@ -43,7 +43,7 @@ async def async_setup_entry(
                     # likely only want very specific rules to manipulate from actions
                     enabled_default = False
                     # entity_category = ENTITY_CATEGORY_CONFIG
-                    device_class = DEVICE_CLASS_SWITCH
+                    device_class = SwitchDeviceClass.SWITCH
 
                     # do NOT add rules that are NAT rules
                     if "associated-rule-id" in rule.keys():
@@ -87,7 +87,7 @@ async def async_setup_entry(
                     # likely only want very specific rules to manipulate from actions
                     enabled_default = False
                     # entity_category = ENTITY_CATEGORY_CONFIG
-                    device_class = DEVICE_CLASS_SWITCH
+                    device_class = SwitchDeviceClass.SWITCH
                     tracker = dict_get(rule, "created.time")
                     if tracker is None:
                         continue
@@ -125,7 +125,7 @@ async def async_setup_entry(
                     # likely only want very specific rules to manipulate from actions
                     enabled_default = False
                     # entity_category = ENTITY_CATEGORY_CONFIG
-                    device_class = DEVICE_CLASS_SWITCH
+                    device_class = SwitchDeviceClass.SWITCH
                     tracker = dict_get(rule, "created.time")
                     if tracker is None:
                         continue
@@ -163,7 +163,7 @@ async def async_setup_entry(
                 # likely only want very specific services to manipulate from actions
                 enabled_default = False
                 # entity_category = ENTITY_CATEGORY_CONFIG
-                device_class = DEVICE_CLASS_SWITCH
+                device_class = SwitchDeviceClass.SWITCH
 
                 entity = OPNSenseServiceSwitch(
                     config_entry,
