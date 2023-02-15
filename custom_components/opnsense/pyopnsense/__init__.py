@@ -873,7 +873,13 @@ if (!is_iterable($interfaces_api_data)) {
     $interfaces_api_data = [];
 }
 
-$boottime = exec_command("sysctl kern.boottime");
+// OPNsense 23.1.1: replaced single exec_command() with new shell_safe() wrapper
+if (function_exists('exec_command')) {
+    exec_command("sysctl kern.boottime");
+} else {
+    shell_safe("sysctl kern.boottime");
+}
+
 // kern.boottime: { sec = 1634047554, usec = 237429 } Tue Oct 12 08:05:54 2021
 preg_match("/sec = [0-9]*/", $boottime, $matches);
 $boottime = $matches[0];
