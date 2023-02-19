@@ -1,3 +1,9 @@
+# v0.1.14
+
+Released 2023-02-19
+
+- update deprecated syntax (`exec_command()` replaced by `shell_safe()` in `23.1.1`)
+
 # v0.1.13
 
 Released 2023-01-30
@@ -35,7 +41,6 @@ Released 2023-01-22
 Released 2023-01-17
 
 - more robust handling of vip data structures
-
 
 # v0.1.7
 
