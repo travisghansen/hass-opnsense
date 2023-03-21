@@ -909,6 +909,8 @@ if (!function_exists('openvpn_get_active_servers')) {
   }
 }
 
+$ovpn_servers = openvpn_get_active_servers();
+
 $toreturn = [
     "pfstate" => [
         "used" => (int) $system_api_data["kernel"]["pf"]["states"],
