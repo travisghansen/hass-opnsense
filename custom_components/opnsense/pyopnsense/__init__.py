@@ -886,11 +886,27 @@ $boottime = $matches[0];
 $boottime = explode("=", $boottime)[1];
 $boottime = (int) trim($boottime);
 
-// Fix for 23.1.4 (https://forum.opnsense.org/index.php?topic=33144.0)
-if (function_exists('openvpn_get_active_servers')) {
-    $ovpn_servers = openvpn_get_active_servers();
-} else {
-    $ovpn_servers = [];
+// Fix for fw 23.1.4 compatible with fw < 23.1.4 (https://forum.opnsense.org/index.php?topic=33144.0)
+// Issue: openvpn_get_active_servers() was removed
+// New Widget code to populate $ovpn_servers: https://github.com/opnsense/core/commit/bb1aa668026a1071a2af40a58a5c4ffddab9dcd0#diff-3287df0b334ee7ebfe91949288b86b35d91c0856fac92271f1dc42d3e3aeb26c
+// Original code of function openvpn_get_active_servers(): https://github.com/opnsense/core/commit/bb1aa668026a1071a2af40a58a5c4ffddab9dcd0#diff-7d3ee1c5a3214827fdd7fd01c482767479b28fc034dd73c2c303be98b2162f1c
+
+// if function does not exist (fw < 23.1.4) then define it:
+if (!function_exists('openvpn_get_active_servers')) {
+  function openvpn_get_active_servers() {
+    $openvpn_status = json_decode(configd_run('openvpn status client,server'), true) ?? [];
+    $openvpn_cfg = openvpn_config();
+    foreach ($openvpn_cfg as $section => &$ovpncfg) {
+        foreach ($ovpncfg as &$item) {
+            $opt = ($section == 'openvpn-server') ? 'server' : 'client';
+            if (!empty($openvpn_status[$opt][$item['vpnid']])) {
+                $item = array_merge($openvpn_status[$opt][$item['vpnid']], $item);
+            }
+        }
+    }
+    $ovpn_servers = $openvpn_cfg['openvpn-server'];
+    return $ovpn_servers;
+  }
 }
 
 $toreturn = [
