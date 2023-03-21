@@ -886,7 +886,9 @@ $boottime = $matches[0];
 $boottime = explode("=", $boottime)[1];
 $boottime = (int) trim($boottime);
 
-$ovpn_servers = openvpn_get_active_servers();
+// Fix for 23.1.4 (https://forum.opnsense.org/index.php?topic=33144.0)
+// $ovpn_servers = openvpn_get_active_servers();
+$ovpn_servers = [];
 
 $toreturn = [
     "pfstate" => [
