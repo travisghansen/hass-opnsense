@@ -1,3 +1,9 @@
+# v0.1.15
+
+Released 2023-03-21
+
+- temporary workaround for removal of `openvpn_get_active_servers()` in `23.1.4`
+
 # v0.1.14
 
 Released 2023-02-19
