@@ -324,6 +324,21 @@ async def async_setup_entry(
                 )
                 entities.append(entity)
 
+        # ARP table entity
+        entity = OPNSenseArpTableSensor(
+            config_entry,
+            coordinator,
+            SensorEntityDescription(
+                key="diagnostics.interfaces.getArp",
+                name="OPNSense ARP Table",
+                native_unit_of_measurement=None,
+                icon="mdi:ip-network",
+                state_class=None
+            ),
+            True
+        )
+        entities.append(entity)
+
         return entities
 
     cem = CoordinatorEntityManager(
@@ -687,3 +702,33 @@ class OPNSenseOpenVPNServerSensor(OPNSenseSensor):
             return server[property]
         except KeyError:
             return STATE_UNKNOWN
+
+
+class OPNSenseArpTableSensor(OPNSenseSensor):
+    def _opnsense_get_arp_table(self):
+        state = self.coordinator.data
+        return dict_get(state, "arp_table", [])
+
+    @staticmethod
+    def _build_client_array(arp_table):
+        clients = []
+        for arp_entry in arp_table:
+            if not arp_entry.get("expired"):
+                clients.append(arp_entry.get("ip-address"))
+        return clients
+
+    @property
+    def available(self) -> bool:
+        arp_table = self._opnsense_get_arp_table()
+        if arp_table is None:
+            return False
+
+        return super().available
+
+    @property
+    def native_value(self):
+        arp_table = self._opnsense_get_arp_table()
+        if arp_table is None:
+            return STATE_UNKNOWN
+
+        return self._build_client_array(arp_table)
