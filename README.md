@@ -13,23 +13,26 @@ Initial development was done againt `OPNsense` `21.7` and `Home Assistant` `2021
 
 # Overview
 
-- [Installation](#Installation)
-  - [OPNsense plugin](#OPNsense_plugin)
-  - [Home Assistant integration](#HomeAssistant_integration)
-    - [HACS installation](#HACS_installation)
-    - [Manual installation](#Manual_installation)
-- [Configuration](#Configuration)
-  - [OPNsense](#OPNsense_plugin)
-  - [HA Config](#config)
-  - [Options](#options)
-- [Entities](#entities)
-  - [Binary Sensor](#binary_sensor)
-  - [Device Tracker](#device_tracker)
-  - [Sensor](#sensor)
-  - [Switch](#switch)
-  - [Services](#services)
+- [hass-opnsense](#hass-opnsense)
+- [Overview](#overview)
+- [installation](#installation)
+- [Installation](#installation-1)
+  - [OPNsense\_plugin](#opnsense_plugin)
+  - [HomeAssistant\_integration](#homeassistant_integration)
+    - [HACS\_installation](#hacs_installation)
+    - [Manual\_installation](#manual_installation)
+- [Configuration](#configuration)
+  - [OPNsense](#opnsense)
+  - [config](#config)
+  - [options](#options)
+- [entities](#entities)
+  - [binary\_sensor](#binary_sensor)
+  - [device\_tracker](#device_tracker)
+  - [sensor](#sensor)
+  - [switch](#switch)
+- [services](#services)
 - [Known Issues](#known-issues)
-  - [AdGuardHome](#AdGuardHome)
+  - [AdGuardHome](#adguardhome)
 
 # installation
 
@@ -160,6 +163,7 @@ causing issues with the tracker. See #22 for details.
 - ~~dhcp stats (total, online, and offline clients)~~
 - OpenVPN server stats (per-server basis - connected client count, bytes
   sent/received, kB/s sent/received)
+- ARP table (count in ARP, all IPs, and broken up by "subnet")
 
 ## switch
 
