@@ -730,6 +730,14 @@ class OPNSenseArpTableSensor(OPNSenseSensor):
                     attributes[subnet] = []
                 attributes[subnet].append(ip)
 
+        def sort_by_ip(ip_string):
+            octets = ip_string.split(".")
+            return tuple(int(octet) for octet in octets)
+
+        for key in attributes:
+            if key != "state":
+                attributes[key] = sorted(attributes[key], key=sort_by_ip)
+
         return attributes
 
     @property
