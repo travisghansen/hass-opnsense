@@ -264,7 +264,7 @@ async def async_setup_entry(
                         key="telemetry.interface.{}.{}".format(
                             interface_name, property
                         ),
-                        name="Interface {} {}".format(interface_name, property),
+                        name="Interface {} {}".format(interface_name, property.replace("_", " ")),
                         native_unit_of_measurement=native_unit_of_measurement,
                         icon=icon,
                         state_class=state_class,
