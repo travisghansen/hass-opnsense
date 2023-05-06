@@ -1,10 +1,12 @@
 """Provides a sensor to track various status aspects of OPNsense."""
 import logging
 import re
+from datetime import datetime, date
 
 from awesomeversion import AwesomeVersion
 from homeassistant.components.sensor import (
     STATE_CLASS_MEASUREMENT,
+    STATE_CLASS_TOTAL,
     SensorEntity,
     SensorEntityDescription,
 )
@@ -156,12 +158,28 @@ async def async_setup_entry(
                 # "outpktsblock_packets_per_second",
                 "inbytes",
                 "inbytes_kilobytes_per_second",
+                "inbytes_total_this_day",
+                "inbytes_total_this_week",
+                "inbytes_total_this_month",
+                "inbytes_total_this_year",
                 "outbytes",
                 "outbytes_kilobytes_per_second",
+                "outbytes_total_this_day",
+                "outbytes_total_this_week",
+                "outbytes_total_this_month",
+                "outbytes_total_this_year",
                 "inpkts",
                 "inpkts_packets_per_second",
+                "inpkts_total_this_day",
+                "inpkts_total_this_week",
+                "inpkts_total_this_month",
+                "inpkts_total_this_year",
                 "outpkts",
                 "outpkts_packets_per_second",
+                "outpkts_total_this_day",
+                "outpkts_total_this_week",
+                "outpkts_total_this_month",
+                "outpkts_total_this_year"
             ]:
                 state_class = None
                 native_unit_of_measurement = None
@@ -185,6 +203,33 @@ async def async_setup_entry(
                     or "_kilobytes_per_second" in property
                 ):
                     state_class = STATE_CLASS_MEASUREMENT
+
+                # utility meters
+                if (
+                    "_total_this" in property
+                ):
+                    state_class = STATE_CLASS_TOTAL
+                
+                if (
+                    "_day" in property
+                ):
+                    last_reset = datetime.now().day
+                    
+                if (
+                    "_week" in property
+                ):
+                    last_reset = date.today().isocalendar().week
+                
+                if (
+                    "_month" in property
+                ):
+                    last_reset = datetime.now().month
+                
+                if (
+                    "_year" in property
+                ):
+                    last_reset = datetime.now().year
+                    
 
                 # native_unit_of_measurement
                 if "_packets_per_second" in property:
