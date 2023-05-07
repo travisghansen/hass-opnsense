@@ -1,7 +1,7 @@
 """Provides a sensor to track various status aspects of OPNsense."""
 import logging
 import re
-from datetime import datetime, date
+from datetime import datetime, date, timedelta, time
 
 from awesomeversion import AwesomeVersion
 from homeassistant.components.sensor import (
@@ -185,6 +185,7 @@ async def async_setup_entry(
                 native_unit_of_measurement = None
                 icon = None
                 enabled_default = False
+                last_reset = None
                 # entity_category = ENTITY_CATEGORY_DIAGNOSTIC
 
                 # enabled_default
@@ -213,22 +214,37 @@ async def async_setup_entry(
                 if (
                     "_day" in property
                 ):
-                    last_reset = datetime.now().day
+                    static_time = time(hour=0, minute=0, second=0)
+                    current_date = date.today()
+                    dt = datetime.combine(current_date, static_time)
+                    last_reset = dt
                     
                 if (
                     "_week" in property
                 ):
-                    last_reset = date.today().isocalendar().week
+                    today = date.today()  # get today's date
+                    week_start = today - timedelta(days=today.weekday())  # calculate the start of the week
+                    last_reset = week_start
                 
                 if (
                     "_month" in property
                 ):
-                    last_reset = datetime.now().month
+                    static_time = time(hour=0, minute=0, second=0)
+                    current_year = datetime.now().year
+                    current_month = datetime.now().month
+                    current_date = date(current_year, current_month, 1)
+                    dt = datetime.combine(current_date, static_time)
+                    last_reset = dt
                 
                 if (
                     "_year" in property
                 ):
-                    last_reset = datetime.now().year
+                    static_time = time(hour=0, minute=0, second=0)
+                    current_year = datetime.now().year
+                    current_month = 1
+                    current_date = date(current_year, current_month, 1)
+                    dt = datetime.combine(current_date, static_time)
+                    last_reset = dt
                     
 
                 # native_unit_of_measurement
@@ -269,6 +285,7 @@ async def async_setup_entry(
                         icon=icon,
                         state_class=state_class,
                         # entity_category=entity_category,
+                        last_reset=last_reset,
                     ),
                     enabled_default,
                 )
