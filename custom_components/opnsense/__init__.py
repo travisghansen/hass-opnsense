@@ -395,22 +395,6 @@ class OPNSenseData:
 
                         new_property = f"{property}_{label}"
                         interface[new_property] = int(round(value, 0))
-                    for property in [
-                        "inbytes",
-                        "outbytes",
-                        "inpkts",
-                        "outpkts",
-                    ]:
-                        for timespan in [
-                            "day",
-                            "week",
-                            "month",
-                            "year"
-                        ]:
-                            label = "total_this_" + timespan
-                            value = interface[property]
-                            new_property = f"{property}_{label}"
-                            interface[new_property] = int(round(value, 0))
 
                 for server_name in dict_get(
                     self._state, "telemetry.openvpn.servers", {}

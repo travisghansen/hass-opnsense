@@ -1,12 +1,11 @@
 """Provides a sensor to track various status aspects of OPNsense."""
 import logging
 import re
-from datetime import datetime, date, timedelta, time
 
 from awesomeversion import AwesomeVersion
 from homeassistant.components.sensor import (
     STATE_CLASS_MEASUREMENT,
-    STATE_CLASS_TOTAL,
+    STATE_CLASS_TOTAL_INCREASING,
     SensorEntity,
     SensorEntityDescription,
 )
@@ -158,34 +157,17 @@ async def async_setup_entry(
                 # "outpktsblock_packets_per_second",
                 "inbytes",
                 "inbytes_kilobytes_per_second",
-                "inbytes_total_this_day",
-                "inbytes_total_this_week",
-                "inbytes_total_this_month",
-                "inbytes_total_this_year",
                 "outbytes",
                 "outbytes_kilobytes_per_second",
-                "outbytes_total_this_day",
-                "outbytes_total_this_week",
-                "outbytes_total_this_month",
-                "outbytes_total_this_year",
                 "inpkts",
                 "inpkts_packets_per_second",
-                "inpkts_total_this_day",
-                "inpkts_total_this_week",
-                "inpkts_total_this_month",
-                "inpkts_total_this_year",
                 "outpkts",
                 "outpkts_packets_per_second",
-                "outpkts_total_this_day",
-                "outpkts_total_this_week",
-                "outpkts_total_this_month",
-                "outpkts_total_this_year"
             ]:
                 state_class = None
                 native_unit_of_measurement = None
                 icon = None
                 enabled_default = False
-                last_reset = None
                 # entity_category = ENTITY_CATEGORY_DIAGNOSTIC
 
                 # enabled_default
@@ -205,48 +187,6 @@ async def async_setup_entry(
                 ):
                     state_class = STATE_CLASS_MEASUREMENT
 
-                # utility meters
-                if (
-                    "_total_this" in property
-                ):
-                    state_class = STATE_CLASS_TOTAL
-                
-                if (
-                    "_day" in property
-                ):
-                    static_time = time(hour=0, minute=0, second=0)
-                    current_date = date.today()
-                    dt = datetime.combine(current_date, static_time)
-                    last_reset = dt
-                    
-                if (
-                    "_week" in property
-                ):
-                    today = date.today()  # get today's date
-                    week_start = today - timedelta(days=today.weekday())  # calculate the start of the week
-                    last_reset = week_start
-                
-                if (
-                    "_month" in property
-                ):
-                    static_time = time(hour=0, minute=0, second=0)
-                    current_year = datetime.now().year
-                    current_month = datetime.now().month
-                    current_date = date(current_year, current_month, 1)
-                    dt = datetime.combine(current_date, static_time)
-                    last_reset = dt
-                
-                if (
-                    "_year" in property
-                ):
-                    static_time = time(hour=0, minute=0, second=0)
-                    current_year = datetime.now().year
-                    current_month = 1
-                    current_date = date(current_year, current_month, 1)
-                    dt = datetime.combine(current_date, static_time)
-                    last_reset = dt
-                    
-
                 # native_unit_of_measurement
                 if "_packets_per_second" in property:
                     native_unit_of_measurement = DATA_RATE_PACKETS_PER_SECOND
@@ -257,8 +197,10 @@ async def async_setup_entry(
                 if native_unit_of_measurement is None:
                     if "bytes" in property:
                         native_unit_of_measurement = DATA_BYTES
+                        state_class = STATE_CLASS_TOTAL_INCREASING
                     if "pkts" in property:
                         native_unit_of_measurement = DATA_PACKETS
+                        state_class = STATE_CLASS_TOTAL_INCREASING
 
                 if property in ["inerrs", "outerrs", "collisions"]:
                     native_unit_of_measurement = COUNT
@@ -285,7 +227,6 @@ async def async_setup_entry(
                         icon=icon,
                         state_class=state_class,
                         # entity_category=entity_category,
-                        last_reset=last_reset,
                     ),
                     enabled_default,
                 )
