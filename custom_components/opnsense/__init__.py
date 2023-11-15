@@ -48,6 +48,13 @@ from .const import (
 from .pyopnsense import Client as OPNSenseClient
 from .services import ServiceRegistrar
 
+# Our Issue: https://github.com/travisghansen/hass-opnsense/issues/88
+# HA Core Issue: https://github.com/home-assistant/core/issues/94243
+# Solution: https://github.com/dougiteixeira/proxmoxve/pull/94
+import warnings
+from urllib3.exceptions import InsecureRequestWarning
+warnings.filterwarnings("ignore", category=InsecureRequestWarning)
+
 _LOGGER = logging.getLogger(__name__)
 
 
