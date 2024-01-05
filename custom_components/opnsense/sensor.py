@@ -4,17 +4,17 @@ import re
 
 from awesomeversion import AwesomeVersion
 from homeassistant.components.sensor import (
-    STATE_CLASS_MEASUREMENT,
+    SensorStateClass,
     SensorEntity,
     SensorEntityDescription,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (  # ENTITY_CATEGORY_DIAGNOSTIC,
     DATA_BYTES,
-    DATA_RATE_KILOBYTES_PER_SECOND,
+    UnitOfDataRate,
     PERCENTAGE,
     STATE_UNKNOWN,
-    TIME_MILLISECONDS,
+    UnitOfTime,
     __version__,
 )
 from homeassistant.core import HomeAssistant, callback
@@ -94,7 +94,7 @@ async def async_setup_entry(
                     name="Filesystem Used Percentage {}".format(mountpoint_clean),
                     native_unit_of_measurement=PERCENTAGE,
                     icon="mdi:harddisk",
-                    state_class=STATE_CLASS_MEASUREMENT,
+                    state_class=SensorStateClass.MEASUREMENT,
                     # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
                 ),
                 True,
@@ -184,14 +184,14 @@ async def async_setup_entry(
                     "_packets_per_second" in property
                     or "_kilobytes_per_second" in property
                 ):
-                    state_class = STATE_CLASS_MEASUREMENT
+                    state_class = SensorStateClass.MEASUREMENT
 
                 # native_unit_of_measurement
                 if "_packets_per_second" in property:
                     native_unit_of_measurement = DATA_RATE_PACKETS_PER_SECOND
 
                 if "_kilobytes_per_second" in property:
-                    native_unit_of_measurement = DATA_RATE_KILOBYTES_PER_SECOND
+                    native_unit_of_measurement = UnitOfDataRate.KILOBYTES_PER_SECOND
 
                 if native_unit_of_measurement is None:
                     if "bytes" in property:
@@ -243,7 +243,7 @@ async def async_setup_entry(
                     native_unit_of_measurement = PERCENTAGE
 
                 if property in ["delay", "stddev"]:
-                    native_unit_of_measurement = TIME_MILLISECONDS
+                    native_unit_of_measurement = UnitOfTime.MILLISECONDS
 
                 if property == "status":
                     icon = "mdi:check-network-outline"
@@ -281,14 +281,14 @@ async def async_setup_entry(
 
                 # state class
                 if "_kilobytes_per_second" in property:
-                    state_class = STATE_CLASS_MEASUREMENT
+                    state_class = SensorStateClass.MEASUREMENT
 
                 if property == "connected_client_count":
-                    state_class = STATE_CLASS_MEASUREMENT
+                    state_class = SensorStateClass.MEASUREMENT
 
                 # native_unit_of_measurement
                 if "_kilobytes_per_second" in property:
-                    native_unit_of_measurement = DATA_RATE_KILOBYTES_PER_SECOND
+                    native_unit_of_measurement = UnitOfDataRate.KILOBYTES_PER_SECOND
 
                 if native_unit_of_measurement is None:
                     if "bytes" in property:
