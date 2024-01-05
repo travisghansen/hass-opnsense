@@ -10,7 +10,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (  # ENTITY_CATEGORY_DIAGNOSTIC,
-    DATA_BYTES,
+    UnitOfInformation,
     UnitOfDataRate,
     PERCENTAGE,
     STATE_UNKNOWN,
@@ -195,7 +195,7 @@ async def async_setup_entry(
 
                 if native_unit_of_measurement is None:
                     if "bytes" in property:
-                        native_unit_of_measurement = DATA_BYTES
+                        native_unit_of_measurement = UnitOfInformation.BYTES
                     if "pkts" in property:
                         native_unit_of_measurement = DATA_PACKETS
 
@@ -292,7 +292,7 @@ async def async_setup_entry(
 
                 if native_unit_of_measurement is None:
                     if "bytes" in property:
-                        native_unit_of_measurement = DATA_BYTES
+                        native_unit_of_measurement = UnitOfInformation.BYTES
 
                 if property in ["connected_client_count"]:
                     native_unit_of_measurement = "clients"

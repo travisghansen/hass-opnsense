@@ -9,7 +9,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import (
-    DATA_BYTES,
+    UnitOfInformation,
     PERCENTAGE,
     UnitOfFrequency,
     UnitOfTemperature,
@@ -86,7 +86,7 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
     "telemetry.mbuf.used": SensorEntityDescription(
         key="telemetry.mbuf.used",
         name="Memory Buffers Used",
-        native_unit_of_measurement=DATA_BYTES,
+        native_unit_of_measurement=UnitOfInformation.BYTES,
         icon=ICON_MEMORY,
         state_class=SensorStateClass.MEASUREMENT,
         # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
@@ -94,7 +94,7 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
     "telemetry.mbuf.total": SensorEntityDescription(
         key="telemetry.mbuf.total",
         name="Memory Buffers Total",
-        native_unit_of_measurement=DATA_BYTES,
+        native_unit_of_measurement=UnitOfInformation.BYTES,
         icon=ICON_MEMORY,
         # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
@@ -110,7 +110,7 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
     "telemetry.memory.swap_reserved": SensorEntityDescription(
         key="telemetry.memory.swap_reserved",
         name="Memory Swap Reserved",
-        native_unit_of_measurement=DATA_BYTES,
+        native_unit_of_measurement=UnitOfInformation.BYTES,
         icon=ICON_MEMORY,
         state_class=SensorStateClass.MEASUREMENT,
         # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
@@ -119,21 +119,21 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
     "telemetry.memory.physmem": SensorEntityDescription(
         key="telemetry.memory.physmem",
         name="Memory Physmem",
-        native_unit_of_measurement=DATA_BYTES,
+        native_unit_of_measurement=UnitOfInformation.BYTES,
         icon=ICON_MEMORY,
         # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
     "telemetry.memory.used": SensorEntityDescription(
         key="telemetry.memory.used",
         name="Memory Used",
-        native_unit_of_measurement=DATA_BYTES,
+        native_unit_of_measurement=UnitOfInformation.BYTES,
         icon=ICON_MEMORY,
         # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
     "telemetry.memory.swap_total": SensorEntityDescription(
         key="telemetry.memory.swap_total",
         name="Memory Swap Total",
-        native_unit_of_measurement=DATA_BYTES,
+        native_unit_of_measurement=UnitOfInformation.BYTES,
         icon=ICON_MEMORY,
         # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
