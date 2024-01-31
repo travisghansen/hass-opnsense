@@ -5,7 +5,7 @@ import logging
 import time
 from typing import Any, Mapping
 
-from homeassistant.components.device_tracker import SourceType.ROUTER
+from homeassistant.components.device_tracker import SourceType
 from homeassistant.components.device_tracker.config_entry import ScannerEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
