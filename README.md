@@ -99,8 +99,8 @@ a 'hard-refresh' of the browser (ctrl-F5) then open the list again, you'll find 
   supported format is `<scheme>://<ip or host>[:<port>]`
 - `Verify SSL Certificate` - if the SSL certificate should be verified or not
   (if you get an SSL error try unchecking this)
-- `username` - the API key created previously
-- `password` - the API secret of the API key
+- `API Key` - the API key created previously
+- `API Secret` - the API secret of the API key
 - `Firewall Name` - a custom name to be used for `entity` naming (default: use
   the `OPNsense` `hostname`)
 
