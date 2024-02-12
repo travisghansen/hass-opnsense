@@ -1,4 +1,5 @@
 """Support for tracking for pfSense devices."""
+
 from __future__ import annotations
 
 import logging
@@ -212,9 +213,9 @@ class OPNSenseScannerEntity(OPNSenseEntity, ScannerEntity):
             self._extra_state["last_known_ip"] = self._last_known_ip
 
         if self._last_known_connected_time is not None:
-            self._extra_state[
-                "last_known_connected_time"
-            ] = self._last_known_connected_time
+            self._extra_state["last_known_connected_time"] = (
+                self._last_known_connected_time
+            )
 
         return self._extra_state
 

@@ -1,19 +1,20 @@
 """Provides a sensor to track various status aspects of OPNsense."""
+
 import logging
 import re
 
 from awesomeversion import AwesomeVersion
 from homeassistant.components.sensor import (
-    SensorStateClass,
     SensorEntity,
     SensorEntityDescription,
+    SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (  # ENTITY_CATEGORY_DIAGNOSTIC,
-    UnitOfInformation,
-    UnitOfDataRate,
     PERCENTAGE,
     STATE_UNKNOWN,
+    UnitOfDataRate,
+    UnitOfInformation,
     UnitOfTime,
     __version__,
 )
@@ -196,8 +197,10 @@ async def async_setup_entry(
                 if native_unit_of_measurement is None:
                     if "bytes" in property:
                         native_unit_of_measurement = UnitOfInformation.BYTES
+                        state_class = SensorStateClass.TOTAL_INCREASING
                     if "pkts" in property:
                         native_unit_of_measurement = DATA_PACKETS
+                        state_class = SensorStateClass.TOTAL_INCREASING
 
                 if property in ["inerrs", "outerrs", "collisions"]:
                     native_unit_of_measurement = COUNT

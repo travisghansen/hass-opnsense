@@ -1,4 +1,5 @@
 """OPNsense integration."""
+
 import logging
 
 from homeassistant.components.switch import (

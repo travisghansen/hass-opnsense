@@ -780,6 +780,7 @@ $toreturn = [
     @_log_errors
     def system_reboot(self):
         script = """
+// /usr/local/opnsense/mvc/app/library/OPNsense/Core/Backend.php
 use OPNsense\Core\Backend;
 
 $backend = new Backend();
@@ -855,7 +856,7 @@ $toreturn = [
     def get_telemetry(self):
         script = """
 require_once '/usr/local/www/widgets/api/plugins/system.inc';
-require_once '/usr/local/www/widgets/api/plugins/interfaces.inc';
+include_once '/usr/local/www/widgets/api/plugins/interfaces.inc';
 require_once '/usr/local/www/widgets/api/plugins/temperature.inc';
 require_once '/usr/local/etc/inc/plugins.inc.d/openvpn.inc';
 
@@ -866,12 +867,56 @@ function stripalpha($s) {
   return preg_replace("/\D/", "", $s);
 }
 
-$system_api_data = system_api();
-$temperature_api_data = temperature_api();
+// OPNsense 24.1 removed /usr/local/www/widgets/api/plugins/interfaces.inc to replace with new api endpoint
+if (!function_exists('interfaces_api')) {
+    function interfaces_api() {
+        global $config;
+        $result = array();
+        $oc = new OPNsense\Interfaces\Api\OverviewController();
+        foreach (get_configured_interface_with_descr() as $ifdescr => $ifname) {
+            $ifinfo = $oc->getInterfaceAction($config["interfaces"][$ifdescr]["if"])["message"];
+            $interfaceItem = array();
+            $interfaceItem['inpkts'] = $ifinfo["packets received"]["value"];
+            $interfaceItem['outpkts'] = $ifinfo["packets transmitted"]["value"];
+            $interfaceItem['inbytes'] = $ifinfo["bytes received"]["value"];
+            $interfaceItem['outbytes'] = $ifinfo["bytes transmitted"]["value"];
+            $interfaceItem['inbytes_frmt'] = format_bytes($interfaceItem['inbytes']);
+            $interfaceItem['outbytes_frmt'] = format_bytes($interfaceItem['outbytes']);
+            $interfaceItem['inerrs'] = $ifinfo["input errors"]["value"];
+            $interfaceItem['outerrs'] = $ifinfo["output errors"]["value"];
+            $interfaceItem['collisions'] = $ifinfo["collisions"]["value"];
+            $interfaceItem['descr'] = $ifdescr;
+            $interfaceItem['name'] = $ifname;
+            switch ($ifinfo["status"]["value"]) {
+                case 'down':
+                case 'no carrier':
+                case 'up':
+                    $interfaceItem['status'] = $ifinfo["status"]["value"];
+                    break;
+                case 'associated':
+                    $interfaceItem['status'] = 'up';
+                    break;
+                default:
+                    $interfaceItem['status'] = '';
+                    break;
+            }
+            //$interfaceItem['ipaddr'] = empty($ifinfo['ipaddr']) ? "" : $ifinfo['ipaddr'];
+            $interfaceItem['ipaddr'] = $ifinfo["ipv4"]["value"][0]["ipaddr"];
+            $interfaceItem['media'] = $ifinfo["media"]["value"];
+
+            $result[] = $interfaceItem;
+        }
+        return $result;
+    }
+}
+
 $interfaces_api_data = interfaces_api();
 if (!is_iterable($interfaces_api_data)) {
     $interfaces_api_data = [];
 }
+
+$system_api_data = system_api();
+$temperature_api_data = temperature_api();
 
 // OPNsense 23.1.1: replaced single exec_command() with new shell_safe() wrapper
 if (function_exists('exec_command')) {

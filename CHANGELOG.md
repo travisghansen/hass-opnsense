@@ -1,3 +1,10 @@
+# v0.1.17
+
+Released 2024-02-11
+
+- remove deprecated constants
+- fix issue with interface stats in 24.1+
+
 # v0.1.16
 
 Released 2023-04-30

@@ -1,4 +1,5 @@
 """The OPNsense component."""
+
 from __future__ import annotations
 
 from typing import Final
@@ -9,9 +10,9 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import (
-    UnitOfInformation,
     PERCENTAGE,
     UnitOfFrequency,
+    UnitOfInformation,
     UnitOfTemperature,
     UnitOfTime,
 )

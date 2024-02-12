@@ -1,4 +1,5 @@
 """Support for OPNsense."""
+
 from __future__ import annotations
 
 import copy
@@ -375,7 +376,6 @@ class OPNSenseData:
                         # "inpktsblock",
                         # "outpktsblock",
                     ]:
-
                         current_parent_value = interface[property]
                         previous_parent_value = previous_interface[property]
                         change = abs(current_parent_value - previous_parent_value)
@@ -424,7 +424,6 @@ class OPNSenseData:
                         "total_bytes_recv",
                         "total_bytes_sent",
                     ]:
-
                         current_parent_value = server[property]
                         previous_parent_value = previous_server[property]
                         change = abs(current_parent_value - previous_parent_value)

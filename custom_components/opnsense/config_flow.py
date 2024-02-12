@@ -1,4 +1,5 @@
 """Config flow for OPNsense integration."""
+
 import logging
 from urllib.parse import quote_plus, urlparse
 import xmlrpc

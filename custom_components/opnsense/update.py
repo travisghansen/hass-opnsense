@@ -1,4 +1,5 @@
 """pfSense integration."""
+
 import logging
 from pydoc import cli
 import time
@@ -191,7 +192,6 @@ class OPNSenseFirmwareUpdatesAvailableUpdate(OPNSenseUpdate):
             state = self.coordinator.data
 
             if dict_get(state, "firmware_update_info.status") == "update":
-
                 product_name = dict_get(
                     state, "firmware_update_info.product.product_name"
                 )
@@ -256,7 +256,6 @@ class OPNSenseFirmwareUpdatesAvailableUpdate(OPNSenseUpdate):
                 )
 
             if dict_get(state, "firmware_update_info.status") == "upgrade":
-
                 product_name = dict_get(
                     state, "firmware_update_info.product.product_name"
                 )
