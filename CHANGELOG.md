@@ -1,3 +1,9 @@
+# v0.1.18
+
+Released 2024-02-15
+
+- handle missing ipaddr property
+
 # v0.1.17
 
 Released 2024-02-11
