@@ -901,7 +901,7 @@ if (!function_exists('interfaces_api')) {
                     break;
             }
             //$interfaceItem['ipaddr'] = empty($ifinfo['ipaddr']) ? "" : $ifinfo['ipaddr'];
-            $interfaceItem['ipaddr'] = $ifinfo["ipv4"]["value"][0]["ipaddr"];
+            $interfaceItem['ipaddr'] = isset($ifinfo["ipv4"]["value"][0]["ipaddr"]) ? $ifinfo["ipv4"]["value"][0]["ipaddr"] : "";
             $interfaceItem['media'] = $ifinfo["media"]["value"];
 
             $result[] = $interfaceItem;
@@ -1081,7 +1081,7 @@ if (file_exists('/usr/local/etc/inc/notices.inc')) {
     $toreturn = [
         "data" => $status->getSystemStatus(),
     ];
-} 
+}
 """
         response = self._exec_php(script)
         value = response["data"]
