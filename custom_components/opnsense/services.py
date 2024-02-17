@@ -2,6 +2,7 @@ import logging
 
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import async_get_platforms
 import voluptuous as vol
 
@@ -20,6 +21,14 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 _data = set()
+
+
+def async_get_entities(hass: HomeAssistant) -> dict[str, Entity]:
+    """Get entities for a domain."""
+    entities: dict[str, Entity] = {}
+    for platform in async_get_platforms(hass, DOMAIN):
+        entities.update(platform.entities)
+    return entities
 
 
 class ServiceRegistrar:
@@ -41,7 +50,7 @@ class ServiceRegistrar:
         # Setup services
         async def _async_send_service(call: ServiceCall):
             await self.hass.helpers.service.entity_service_call(
-                async_get_platforms(self.hass, DOMAIN), f"service_{call.service}", call
+                async_get_entities(self.hass), f"service_{call.service}", call
             )
 
         self.hass.services.async_register(

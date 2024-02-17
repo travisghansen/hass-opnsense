@@ -1,3 +1,9 @@
+# v0.1.19
+
+Released 2024-02-17
+
+- fix services (see #123)
+
 # v0.1.18
 
 Released 2024-02-15
