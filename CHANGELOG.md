@@ -1,3 +1,9 @@
+# v0.1.20
+
+Released 2024-02-17
+
+- fix for disabled interfaces
+
 # v0.1.19
 
 Released 2024-02-17

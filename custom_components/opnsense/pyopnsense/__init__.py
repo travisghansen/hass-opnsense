@@ -875,6 +875,10 @@ if (!function_exists('interfaces_api')) {
         $oc = new OPNsense\Interfaces\Api\OverviewController();
         foreach (get_configured_interface_with_descr() as $ifdescr => $ifname) {
             $ifinfo = $oc->getInterfaceAction($config["interfaces"][$ifdescr]["if"])["message"];
+            // if interfaces is disabled returns message => "failed"
+            if (!is_array($ifinfo)) {
+                continue;
+            }
             $interfaceItem = array();
             $interfaceItem['inpkts'] = $ifinfo["packets received"]["value"];
             $interfaceItem['outpkts'] = $ifinfo["packets transmitted"]["value"];
@@ -986,10 +990,6 @@ $toreturn = [
     "openvpn" => [],
     
     "gateways" => return_gateways_status(true),
-
-    //"system_foo" => $system_api_data,
-    //"temperature_foo" => $temperature_api_data,
-    //"interfaces_foo" => $interfaces_api_data,
 ];
 
 if (!is_iterable($toreturn["gateways"])) {
