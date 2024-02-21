@@ -14,7 +14,7 @@ from dateutil.parser import parse
 import requests
 
 # value to set as the socket timeout
-DEFAULT_TIMEOUT = 10
+DEFAULT_TIMEOUT = 60
 
 _LOGGER = logging.getLogger(__name__)
 
