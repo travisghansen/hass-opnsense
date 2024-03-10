@@ -172,6 +172,7 @@ class OPNSenseFirmwareUpdatesAvailableUpdate(OPNSenseUpdate):
             "product_target",
             "product_version",
             "upgrade_needs_reboot",
+            "needs_reboot",
             "download_size",
         ]:
             slug_key = slugify(key)
@@ -205,15 +206,15 @@ class OPNSenseFirmwareUpdatesAvailableUpdate(OPNSenseUpdate):
                     state, "firmware_update_info.product.product_latest"
                 )
                 status_msg = dict_get(state, "firmware_update_info.status_msg")
-                upgrade_needs_reboot = dict_get(
-                    state, "firmware_update_info.upgrade_needs_reboot"
+                needs_reboot = dict_get(
+                    state, "firmware_update_info.needs_reboot"
                 )
 
-                if upgrade_needs_reboot is None or upgrade_needs_reboot == "0":
-                    upgrade_needs_reboot = False
+                if needs_reboot is None or needs_reboot == "0":
+                    needs_reboot = False
 
-                if upgrade_needs_reboot == "1":
-                    upgrade_needs_reboot = True
+                if needs_reboot == "1":
+                    needs_reboot = True
 
                 total_package_count = len(
                     dict_get(state, "firmware_update_info.all_packages", {}).keys()
@@ -247,7 +248,7 @@ class OPNSenseFirmwareUpdatesAvailableUpdate(OPNSenseUpdate):
                     product_latest,
                     product_nickname,
                     status_msg,
-                    upgrade_needs_reboot,
+                    needs_reboot,
                     total_package_count,
                     new_package_count,
                     reinstall_package_count,
@@ -312,8 +313,8 @@ class OPNSenseFirmwareUpdatesAvailableUpdate(OPNSenseUpdate):
 
         # check needs_reboot, if yes trigger reboot
         response = client.get_firmware_update_info()
-        # upgrade_needs_reboot = dict_get(response, "upgrade_needs_reboot")
-        upgrade_needs_reboot = dict_get(response, "needs_reboot")
+        upgrade_needs_reboot = dict_get(response, "upgrade_needs_reboot")
+        needs_reboot = dict_get(response, "needs_reboot")
 
         if upgrade_needs_reboot is None or upgrade_needs_reboot == "0":
             upgrade_needs_reboot = False
@@ -321,5 +322,11 @@ class OPNSenseFirmwareUpdatesAvailableUpdate(OPNSenseUpdate):
         if upgrade_needs_reboot == "1":
             upgrade_needs_reboot = True
 
-        if upgrade_needs_reboot:
+        if needs_reboot is None or needs_reboot == "0":
+            upgrade_needs_reboot = False
+
+        if needs_reboot == "1":
+            needs_reboot = True
+
+        if upgrade_needs_reboot or needs_reboot:
             client.system_reboot()
