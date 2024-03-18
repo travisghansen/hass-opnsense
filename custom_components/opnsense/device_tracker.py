@@ -75,7 +75,7 @@ async def async_setup_entry(
         # seems unlikely *all* devices are intended to be monitored
         # disable by default and let users enable specific entries they care about
         enabled_default = False
-        device_per_arp_entry = False
+        device_per_arp_entry = True
 
         entities = []
         mac_addresses = []
