@@ -206,9 +206,7 @@ class OPNSenseFirmwareUpdatesAvailableUpdate(OPNSenseUpdate):
                     state, "firmware_update_info.product.product_latest"
                 )
                 status_msg = dict_get(state, "firmware_update_info.status_msg")
-                needs_reboot = dict_get(
-                    state, "firmware_update_info.needs_reboot"
-                )
+                needs_reboot = dict_get(state, "firmware_update_info.needs_reboot")
 
                 if needs_reboot is None or needs_reboot == "0":
                     needs_reboot = False

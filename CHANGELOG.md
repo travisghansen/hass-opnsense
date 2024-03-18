@@ -1,3 +1,10 @@
+# v0.1.21
+
+Released 2024-03-18
+
+- increase timeout
+- better logic for needs reboot on the firmware updater
+
 # v0.1.20
 
 Released 2024-02-17
