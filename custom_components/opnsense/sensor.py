@@ -31,7 +31,7 @@ from .const import (
     DATA_PACKETS,
     DATA_RATE_PACKETS_PER_SECOND,
     DOMAIN,
-    SENSOR_TYPES,
+    SENSOR_TYPES, DEVICE_TRACKER_COORDINATOR,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -326,6 +326,22 @@ async def async_setup_entry(
                     enabled_default,
                 )
                 entities.append(entity)
+
+        # ARP table entity
+        device_tracker_coordinator = data[DEVICE_TRACKER_COORDINATOR]
+        entity = OPNSenseArpTableSensor(
+            config_entry,
+            device_tracker_coordinator,
+            SensorEntityDescription(
+                key="diagnostics.interfaces.getArp",
+                name="OPNSense ARP Table",
+                native_unit_of_measurement=None,
+                icon="mdi:ip-network",
+                state_class=None
+            ),
+            True
+        )
+        entities.append(entity)
 
         return entities
 
@@ -690,3 +706,64 @@ class OPNSenseOpenVPNServerSensor(OPNSenseSensor):
             return server[property]
         except KeyError:
             return STATE_UNKNOWN
+
+
+class OPNSenseArpTableSensor(OPNSenseSensor):
+    def _opnsense_get_arp_table(self):
+        state = self.coordinator.data
+        return dict_get(state, "arp_table", [])
+
+    @staticmethod
+    def _build_sensor_attributes(arp_table):
+        attributes = {
+            "state": 0,
+            "ip_addresses": [],
+        }
+
+        for arp_entry in arp_table:
+            ip = arp_entry.get("ip-address")
+            if not arp_entry.get("expired") and ip:
+                attributes["state"] += 1
+                attributes["ip_addresses"].append(ip)
+
+                subnet_parts = ip.rsplit(".", 1)
+                subnet = str(subnet_parts[0])
+                _LOGGER.error(f"SUBNET: {subnet}")
+                if attributes.get(subnet, None) is None:
+                    attributes[subnet] = []
+                attributes[subnet].append(ip)
+
+        def sort_by_ip(ip_string):
+            octets = ip_string.split(".")
+            return tuple(int(octet) for octet in octets)
+
+        for key in attributes:
+            if key != "state":
+                attributes[key] = sorted(attributes[key], key=sort_by_ip)
+
+        return attributes
+
+    @property
+    def available(self) -> bool:
+        arp_table = self._opnsense_get_arp_table()
+        if not arp_table:
+            return False
+
+        return super().available
+
+    @property
+    def native_value(self):
+        arp_table = self._opnsense_get_arp_table()
+        if not arp_table:
+            return STATE_UNKNOWN
+
+        attributes = self._build_sensor_attributes(arp_table)
+
+        return attributes["state"]
+
+    @property
+    def extra_state_attributes(self):
+        arp_table = self._opnsense_get_arp_table()
+        attributes = self._build_sensor_attributes(arp_table)
+
+        return attributes
