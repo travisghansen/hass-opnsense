@@ -855,9 +855,9 @@ $toreturn = [
     @_log_errors
     def get_telemetry(self):
         script = """
-require_once '/usr/local/www/widgets/api/plugins/system.inc';
+include_once '/usr/local/www/widgets/api/plugins/system.inc';
 include_once '/usr/local/www/widgets/api/plugins/interfaces.inc';
-require_once '/usr/local/www/widgets/api/plugins/temperature.inc';
+include_once '/usr/local/www/widgets/api/plugins/temperature.inc';
 require_once '/usr/local/etc/inc/plugins.inc.d/openvpn.inc';
 
 global $config;
@@ -919,8 +919,8 @@ if (!is_iterable($interfaces_api_data)) {
     $interfaces_api_data = [];
 }
 
-$system_api_data = system_api();
-$temperature_api_data = temperature_api();
+// $system_api_data = system_api();
+// $temperature_api_data = temperature_api();
 
 // OPNsense 23.1.1: replaced single exec_command() with new shell_safe() wrapper
 if (function_exists('exec_command')) {
@@ -943,47 +943,47 @@ if (function_exists('openvpn_get_active_servers')) {
 }
 
 $toreturn = [
-    "pfstate" => [
-        "used" => (int) $system_api_data["kernel"]["pf"]["states"],
-        "total" => (int) $system_api_data["kernel"]["pf"]["maxstates"],
-        "used_percent" => round(floatval($system_api_data["kernel"]["pf"]["states"] / $system_api_data["kernel"]["pf"]["maxstates"]) * 100, 0),
-    ],
+//    "pfstate" => [
+//        "used" => (int) $system_api_data["kernel"]["pf"]["states"],
+//        "total" => (int) $system_api_data["kernel"]["pf"]["maxstates"],
+//        "used_percent" => round(floatval($system_api_data["kernel"]["pf"]["states"] / $system_api_data["kernel"]["pf"]["maxstates"]) * 100, 0),
+//    ],
 
-    "mbuf" => [
-        "used" => (int) $system_api_data["kernel"]["mbuf"]["total"],
-        "total" => (int) $system_api_data["kernel"]["mbuf"]["max"],
-        "used_percent" =>  round(floatval($system_api_data["kernel"]["mbuf"]["total"] / $system_api_data["kernel"]["mbuf"]["max"]) * 100, 0),
-    ],
+//    "mbuf" => [
+//        "used" => (int) $system_api_data["kernel"]["mbuf"]["total"],
+//        "total" => (int) $system_api_data["kernel"]["mbuf"]["max"],
+//        "used_percent" =>  round(floatval($system_api_data["kernel"]["mbuf"]["total"] / $system_api_data["kernel"]["mbuf"]["max"]) * 100, 0),
+//    ],
 
-    "memory" => [
-        "swap_used_percent" => ($system_api_data["disk"]["swap"][0]["total"] > 0) ? round(floatval($system_api_data["disk"]["swap"][0]["used"] / $system_api_data["disk"]["swap"][0]["total"]) * 100, 0) : 0,
-        "used_percent" => round(floatval($system_api_data["kernel"]["memory"]["used"] / $system_api_data["kernel"]["memory"]["total"]) * 100, 0),
-        "physmem" => (int) $system_api_data["kernel"]["memory"]["total"],
-        "used" => (int) $system_api_data["kernel"]["memory"]["used"],
-        "swap_total" => (int) $system_api_data["disk"]["swap"][0]["total"],
-        "swap_reserved" => (int) $system_api_data["disk"]["swap"][0]["used"],
-    ],
+//    "memory" => [
+//        "swap_used_percent" => ($system_api_data["disk"]["swap"][0]["total"] > 0) ? round(floatval($system_api_data["disk"]["swap"][0]["used"] / $system_api_data["disk"]["swap"][0]["total"]) * 100, 0) : 0,
+//        "used_percent" => round(floatval($system_api_data["kernel"]["memory"]["used"] / $system_api_data["kernel"]["memory"]["total"]) * 100, 0),
+//        "physmem" => (int) $system_api_data["kernel"]["memory"]["total"],
+//        "used" => (int) $system_api_data["kernel"]["memory"]["used"],
+//        "swap_total" => (int) $system_api_data["disk"]["swap"][0]["total"],
+//        "swap_reserved" => (int) $system_api_data["disk"]["swap"][0]["used"],
+//    ],
 
     "system" => [
         "boottime" => $boottime,
-        "uptime" => (int) $system_api_data["uptime"],
+//      "uptime" => (int) $system_api_data["uptime"],
         //"temp" => 0,
-        "load_average" => [
-            "one_minute" => floatval(trim($system_api_data["cpu"]["load"][0])),
-            "five_minute" => floatval(trim($system_api_data["cpu"]["load"][1])),
-            "fifteen_minute" => floatval(trim($system_api_data["cpu"]["load"][2])),
-        ],
+//        "load_average" => [
+//            "one_minute" => floatval(trim($system_api_data["cpu"]["load"][0])),
+//            "five_minute" => floatval(trim($system_api_data["cpu"]["load"][1])),
+//            "fifteen_minute" => floatval(trim($system_api_data["cpu"]["load"][2])),
+//        ],
     ],
 
-    "cpu" => [
-        "frequency" => [
-            "current" => (int) stripalpha($system_api_data["cpu"]["cur.freq"]),
-            "max" => (int) stripalpha($system_api_data["cpu"]["max.freq"]),
-        ],
-        "count" => (int) $system_api_data["cpu"]["cur.freq"],
-    ],
+//    "cpu" => [
+//        "frequency" => [
+//            "current" => (int) stripalpha($system_api_data["cpu"]["cur.freq"]),
+//            "max" => (int) stripalpha($system_api_data["cpu"]["max.freq"]),
+//        ],
+//        "count" => (int) $system_api_data["cpu"]["cur.freq"],
+//    ],
 
-    "filesystems" => $system_api_data["disk"]["devices"],
+//    "filesystems" => $system_api_data["disk"]["devices"],
 
     "interfaces" => [],
 
