@@ -71,7 +71,7 @@ class Client(object):
             context = ssl._create_unverified_context()
 
         # set to True if necessary during development
-        verbose = False
+        verbose = True
 
         proxy = xmlrpc.client.ServerProxy(
             f"{self._url}/xmlrpc.php", context=context, verbose=verbose
@@ -853,193 +853,238 @@ $toreturn = [
         return response
 
     @_log_errors
-    def get_telemetry(self):
-        script = """
-require_once '/usr/local/www/widgets/api/plugins/system.inc';
-include_once '/usr/local/www/widgets/api/plugins/interfaces.inc';
-require_once '/usr/local/www/widgets/api/plugins/temperature.inc';
-require_once '/usr/local/etc/inc/plugins.inc.d/openvpn.inc';
+    def get_telemetry(self) -> dict:
+        telemetry = {}
+        interface_info = self._post("/api/interfaces/overview/export")
+        _LOGGER.debug(f"[get_telemetry] interface_info: {interface_info}")
+        interfaces = {}
+        for ifinfo in interface_info:
+            interface = {}
+            interface["inpkts"] = int(ifinfo["statistics"]["packets received"])
+            interface["outpkts"] = int(ifinfo["statistics"]["packets transmitted"])
+            interface["inbytes"] = int(ifinfo["statistics"]["bytes received"])
+            interface["outbytes"] = int(ifinfo["statistics"]["bytes transmitted"])
+            interface["inbytes_frmt"] = int(ifinfo["statistics"]["bytes received"])
+            interface["outbytes_frmt"] = int(ifinfo["statistics"]["bytes transmitted"])
+            interface["inerrs"] = int(ifinfo["statistics"]["input errors"])
+            interface["outerrs"] = int(ifinfo["statistics"]["output errors"])
+            interface["collisions"] = int(ifinfo["statistics"]["collisions"])
+            interface["descr"] = ifinfo["description"]
+            if ifinfo["description"] == "Unassigned Interface":
+                interface["descr"] = f"{ifinfo['description']} ({ifinfo['device']})"
+            interface["name"] = ifinfo["description"]
+            interface["status"] = ""
+            if ifinfo["status"] in ("down", "no carrier", "up"):
+                interface["status"] = ifinfo["status"]
+            elif ifinfo["status"] in ("associated"):
+                interface["status"] = "up"
+            interface["ipaddr"] = ""
+            if "addr4" in ifinfo:
+                interface["ipaddr"] = ifinfo["addr4"]
+            interface["media"] = ""
+            if "media" in ifinfo:
+                interface["media"] = ifinfo["description"]
+            interfaces[ifinfo["description"]] = interface
+        _LOGGER.debug(f"[get_telemetry] interfaces: {interfaces}")
+        telemetry["interfaces"] = interfaces
+        mbuf = {}
+        mbuf_info = self._post("/api/diagnostics/system/system_mbuf")
+        _LOGGER.debug(f"[get_telemetry] mbuf_info: {mbuf_info}")
+        mbuf["used"] = int(mbuf_info["mbuf-statistics"]["mbuf-current"])
+        mbuf["total"] = int(mbuf_info["mbuf-statistics"]["mbuf-total"])
+        mbuf["used_percent"] = round(mbuf["used"] / mbuf["total"] * 100)
+        _LOGGER.debug(f"[get_telemetry] mbuf: {mbuf}")
+        telemetry["mbuf"] = mbuf
+        return telemetry
 
-global $config;
-global $g;
+    #     @_log_errors
+    #     def get_telemetry(self):
+    #         script = """
+    # require_once '/usr/local/www/widgets/api/plugins/system.inc';
+    # include_once '/usr/local/www/widgets/api/plugins/interfaces.inc';
+    # require_once '/usr/local/www/widgets/api/plugins/temperature.inc';
+    # require_once '/usr/local/etc/inc/plugins.inc.d/openvpn.inc';
 
-function stripalpha($s) {
-  return preg_replace("/\D/", "", $s);
-}
+    # global $config;
+    # global $g;
 
-// OPNsense 24.1 removed /usr/local/www/widgets/api/plugins/interfaces.inc to replace with new api endpoint
-if (!function_exists('interfaces_api')) {
-    function interfaces_api() {
-        global $config;
-        $result = array();
-        $oc = new OPNsense\Interfaces\Api\OverviewController();
-        foreach (get_configured_interface_with_descr() as $ifdescr => $ifname) {
-            $ifinfo = $oc->getInterfaceAction($config["interfaces"][$ifdescr]["if"])["message"];
-            // if interfaces is disabled returns message => "failed"
-            if (!is_array($ifinfo)) {
-                continue;
-            }
-            $interfaceItem = array();
-            $interfaceItem['inpkts'] = $ifinfo["packets received"]["value"];
-            $interfaceItem['outpkts'] = $ifinfo["packets transmitted"]["value"];
-            $interfaceItem['inbytes'] = $ifinfo["bytes received"]["value"];
-            $interfaceItem['outbytes'] = $ifinfo["bytes transmitted"]["value"];
-            $interfaceItem['inbytes_frmt'] = format_bytes($interfaceItem['inbytes']);
-            $interfaceItem['outbytes_frmt'] = format_bytes($interfaceItem['outbytes']);
-            $interfaceItem['inerrs'] = $ifinfo["input errors"]["value"];
-            $interfaceItem['outerrs'] = $ifinfo["output errors"]["value"];
-            $interfaceItem['collisions'] = $ifinfo["collisions"]["value"];
-            $interfaceItem['descr'] = $ifdescr;
-            $interfaceItem['name'] = $ifname;
-            switch ($ifinfo["status"]["value"]) {
-                case 'down':
-                case 'no carrier':
-                case 'up':
-                    $interfaceItem['status'] = $ifinfo["status"]["value"];
-                    break;
-                case 'associated':
-                    $interfaceItem['status'] = 'up';
-                    break;
-                default:
-                    $interfaceItem['status'] = '';
-                    break;
-            }
-            //$interfaceItem['ipaddr'] = empty($ifinfo['ipaddr']) ? "" : $ifinfo['ipaddr'];
-            $interfaceItem['ipaddr'] = isset($ifinfo["ipv4"]["value"][0]["ipaddr"]) ? $ifinfo["ipv4"]["value"][0]["ipaddr"] : "";
-            $interfaceItem['media'] = $ifinfo["media"]["value"];
+    # function stripalpha($s) {
+    #   return preg_replace("/\D/", "", $s);
+    # }
 
-            $result[] = $interfaceItem;
-        }
-        return $result;
-    }
-}
+    # // OPNsense 24.1 removed /usr/local/www/widgets/api/plugins/interfaces.inc to replace with new api endpoint
+    # if (!function_exists('interfaces_api')) {
+    #     function interfaces_api() {
+    #         global $config;
+    #         $result = array();
+    #         $oc = new OPNsense\Interfaces\Api\OverviewController();
+    #         foreach (get_configured_interface_with_descr() as $ifdescr => $ifname) {
+    #             $ifinfo = $oc->getInterfaceAction($config["interfaces"][$ifdescr]["if"])["message"];
+    #             // if interfaces is disabled returns message => "failed"
+    #             if (!is_array($ifinfo)) {
+    #                 continue;
+    #             }
+    #             $interfaceItem = array();
+    #             $interfaceItem['inpkts'] = $ifinfo["packets received"]["value"];
+    #             $interfaceItem['outpkts'] = $ifinfo["packets transmitted"]["value"];
+    #             $interfaceItem['inbytes'] = $ifinfo["bytes received"]["value"];
+    #             $interfaceItem['outbytes'] = $ifinfo["bytes transmitted"]["value"];
+    #             $interfaceItem['inbytes_frmt'] = format_bytes($interfaceItem['inbytes']);
+    #             $interfaceItem['outbytes_frmt'] = format_bytes($interfaceItem['outbytes']);
+    #             $interfaceItem['inerrs'] = $ifinfo["input errors"]["value"];
+    #             $interfaceItem['outerrs'] = $ifinfo["output errors"]["value"];
+    #             $interfaceItem['collisions'] = $ifinfo["collisions"]["value"];
+    #             $interfaceItem['descr'] = $ifdescr;
+    #             $interfaceItem['name'] = $ifname;
+    #             switch ($ifinfo["status"]["value"]) {
+    #                 case 'down':
+    #                 case 'no carrier':
+    #                 case 'up':
+    #                     $interfaceItem['status'] = $ifinfo["status"]["value"];
+    #                     break;
+    #                 case 'associated':
+    #                     $interfaceItem['status'] = 'up';
+    #                     break;
+    #                 default:
+    #                     $interfaceItem['status'] = '';
+    #                     break;
+    #             }
+    #             //$interfaceItem['ipaddr'] = empty($ifinfo['ipaddr']) ? "" : $ifinfo['ipaddr'];
+    #             $interfaceItem['ipaddr'] = isset($ifinfo["ipv4"]["value"][0]["ipaddr"]) ? $ifinfo["ipv4"]["value"][0]["ipaddr"] : "";
+    #             $interfaceItem['media'] = $ifinfo["media"]["value"];
 
-$interfaces_api_data = interfaces_api();
-if (!is_iterable($interfaces_api_data)) {
-    $interfaces_api_data = [];
-}
+    #             $result[] = $interfaceItem;
+    #         }
+    #         return $result;
+    #     }
+    # }
 
-$system_api_data = system_api();
-$temperature_api_data = temperature_api();
+    # $interfaces_api_data = interfaces_api();
+    # if (!is_iterable($interfaces_api_data)) {
+    #     $interfaces_api_data = [];
+    # }
 
-// OPNsense 23.1.1: replaced single exec_command() with new shell_safe() wrapper
-if (function_exists('exec_command')) {
-    $boottime = exec_command("sysctl kern.boottime");
-} else {
-    $boottime = shell_safe("sysctl kern.boottime");
-}
+    # $system_api_data = system_api();
+    # $temperature_api_data = temperature_api();
 
-// kern.boottime: { sec = 1634047554, usec = 237429 } Tue Oct 12 08:05:54 2021
-preg_match("/sec = [0-9]*/", $boottime, $matches);
-$boottime = $matches[0];
-$boottime = explode("=", $boottime)[1];
-$boottime = (int) trim($boottime);
+    # // OPNsense 23.1.1: replaced single exec_command() with new shell_safe() wrapper
+    # if (function_exists('exec_command')) {
+    #     $boottime = exec_command("sysctl kern.boottime");
+    # } else {
+    #     $boottime = shell_safe("sysctl kern.boottime");
+    # }
 
-// Fix for 23.1.4 (https://forum.opnsense.org/index.php?topic=33144.0)
-if (function_exists('openvpn_get_active_servers')) {
-    $ovpn_servers = openvpn_get_active_servers();
-} else {
-    $ovpn_servers = [];
-}
+    # // kern.boottime: { sec = 1634047554, usec = 237429 } Tue Oct 12 08:05:54 2021
+    # preg_match("/sec = [0-9]*/", $boottime, $matches);
+    # $boottime = $matches[0];
+    # $boottime = explode("=", $boottime)[1];
+    # $boottime = (int) trim($boottime);
 
-$toreturn = [
-    "pfstate" => [
-        "used" => (int) $system_api_data["kernel"]["pf"]["states"],
-        "total" => (int) $system_api_data["kernel"]["pf"]["maxstates"],
-        "used_percent" => round(floatval($system_api_data["kernel"]["pf"]["states"] / $system_api_data["kernel"]["pf"]["maxstates"]) * 100, 0),
-    ],
+    # // Fix for 23.1.4 (https://forum.opnsense.org/index.php?topic=33144.0)
+    # if (function_exists('openvpn_get_active_servers')) {
+    #     $ovpn_servers = openvpn_get_active_servers();
+    # } else {
+    #     $ovpn_servers = [];
+    # }
 
-    "mbuf" => [
-        "used" => (int) $system_api_data["kernel"]["mbuf"]["total"],
-        "total" => (int) $system_api_data["kernel"]["mbuf"]["max"],
-        "used_percent" =>  round(floatval($system_api_data["kernel"]["mbuf"]["total"] / $system_api_data["kernel"]["mbuf"]["max"]) * 100, 0),
-    ],
+    # $toreturn = [
+    #     "pfstate" => [
+    #         "used" => (int) $system_api_data["kernel"]["pf"]["states"],
+    #         "total" => (int) $system_api_data["kernel"]["pf"]["maxstates"],
+    #         "used_percent" => round(floatval($system_api_data["kernel"]["pf"]["states"] / $system_api_data["kernel"]["pf"]["maxstates"]) * 100, 0),
+    #     ],
 
-    "memory" => [
-        "swap_used_percent" => ($system_api_data["disk"]["swap"][0]["total"] > 0) ? round(floatval($system_api_data["disk"]["swap"][0]["used"] / $system_api_data["disk"]["swap"][0]["total"]) * 100, 0) : 0,
-        "used_percent" => round(floatval($system_api_data["kernel"]["memory"]["used"] / $system_api_data["kernel"]["memory"]["total"]) * 100, 0),
-        "physmem" => (int) $system_api_data["kernel"]["memory"]["total"],
-        "used" => (int) $system_api_data["kernel"]["memory"]["used"],
-        "swap_total" => (int) $system_api_data["disk"]["swap"][0]["total"],
-        "swap_reserved" => (int) $system_api_data["disk"]["swap"][0]["used"],
-    ],
+    #     "mbuf" => [
+    #         "used" => (int) $system_api_data["kernel"]["mbuf"]["total"],
+    #         "total" => (int) $system_api_data["kernel"]["mbuf"]["max"],
+    #         "used_percent" =>  round(floatval($system_api_data["kernel"]["mbuf"]["total"] / $system_api_data["kernel"]["mbuf"]["max"]) * 100, 0),
+    #     ],
 
-    "system" => [
-        "boottime" => $boottime,
-        "uptime" => (int) $system_api_data["uptime"],
-        //"temp" => 0,
-        "load_average" => [
-            "one_minute" => floatval(trim($system_api_data["cpu"]["load"][0])),
-            "five_minute" => floatval(trim($system_api_data["cpu"]["load"][1])),
-            "fifteen_minute" => floatval(trim($system_api_data["cpu"]["load"][2])),
-        ],
-    ],
+    #     "memory" => [
+    #         "swap_used_percent" => ($system_api_data["disk"]["swap"][0]["total"] > 0) ? round(floatval($system_api_data["disk"]["swap"][0]["used"] / $system_api_data["disk"]["swap"][0]["total"]) * 100, 0) : 0,
+    #         "used_percent" => round(floatval($system_api_data["kernel"]["memory"]["used"] / $system_api_data["kernel"]["memory"]["total"]) * 100, 0),
+    #         "physmem" => (int) $system_api_data["kernel"]["memory"]["total"],
+    #         "used" => (int) $system_api_data["kernel"]["memory"]["used"],
+    #         "swap_total" => (int) $system_api_data["disk"]["swap"][0]["total"],
+    #         "swap_reserved" => (int) $system_api_data["disk"]["swap"][0]["used"],
+    #     ],
 
-    "cpu" => [
-        "frequency" => [
-            "current" => (int) stripalpha($system_api_data["cpu"]["cur.freq"]),
-            "max" => (int) stripalpha($system_api_data["cpu"]["max.freq"]),
-        ],
-        "count" => (int) $system_api_data["cpu"]["cur.freq"],
-    ],
+    #     "system" => [
+    #         "boottime" => $boottime,
+    #         "uptime" => (int) $system_api_data["uptime"],
+    #         //"temp" => 0,
+    #         "load_average" => [
+    #             "one_minute" => floatval(trim($system_api_data["cpu"]["load"][0])),
+    #             "five_minute" => floatval(trim($system_api_data["cpu"]["load"][1])),
+    #             "fifteen_minute" => floatval(trim($system_api_data["cpu"]["load"][2])),
+    #         ],
+    #     ],
 
-    "filesystems" => $system_api_data["disk"]["devices"],
+    #     "cpu" => [
+    #         "frequency" => [
+    #             "current" => (int) stripalpha($system_api_data["cpu"]["cur.freq"]),
+    #             "max" => (int) stripalpha($system_api_data["cpu"]["max.freq"]),
+    #         ],
+    #         "count" => (int) $system_api_data["cpu"]["cur.freq"],
+    #     ],
 
-    "interfaces" => [],
+    #     "filesystems" => $system_api_data["disk"]["devices"],
 
-    "openvpn" => [],
-    
-    "gateways" => return_gateways_status(true),
-];
+    #     "interfaces" => [],
 
-if (!is_iterable($toreturn["gateways"])) {
-    $toreturn["gateways"] = [];
-}
-foreach ($toreturn["gateways"] as $key => $gw) {
-    $status = $gw["status"];
-    if ($status == "none") {
-        $status = "online";
-    }
-    $gw["status"] = $status;
-    $toreturn["gateways"][$key] = $gw;
-}
+    #     "openvpn" => [],
 
-foreach ($interfaces_api_data as $if) {
-    $if["inpkts"] = (int) $if["inpkts"];
-    $if["outpkts"] = (int) $if["outpkts"];
-    $if["inbytes"] = (int) $if["inbytes"];
-    $if["outbytes"] = (int) $if["outbytes"];
-    $if["inerrs"] = (int) $if["inerrs"];
-    $if["outerrs"] = (int) $if["outerrs"];
-    $if["collisions"] = (int) $if["collisions"];
-    $toreturn["interfaces"][$if["descr"]] = $if;
-}
+    #     "gateways" => return_gateways_status(true),
+    # ];
 
-foreach ($ovpn_servers as $server) {
-    $vpnid = $server["vpnid"];
-    $name = $server["name"];
-    $conn_count = count($server["conns"]);
-    $total_bytes_recv = 0;
-    $total_bytes_sent = 0;
-    foreach ($server["conns"] as $conn) {
-        $total_bytes_recv += $conn["bytes_recv"];
-        $total_bytes_sent += $conn["bytes_sent"];
-    }
-    
-    $toreturn["openvpn"]["servers"][$vpnid]["name"] = $name;
-    $toreturn["openvpn"]["servers"][$vpnid]["vpnid"] = $vpnid;
-    $toreturn["openvpn"]["servers"][$vpnid]["connected_client_count"] = $conn_count;
-    $toreturn["openvpn"]["servers"][$vpnid]["total_bytes_recv"] = $total_bytes_recv;
-    $toreturn["openvpn"]["servers"][$vpnid]["total_bytes_sent"] = $total_bytes_sent;
-}
+    # if (!is_iterable($toreturn["gateways"])) {
+    #     $toreturn["gateways"] = [];
+    # }
+    # foreach ($toreturn["gateways"] as $key => $gw) {
+    #     $status = $gw["status"];
+    #     if ($status == "none") {
+    #         $status = "online";
+    #     }
+    #     $gw["status"] = $status;
+    #     $toreturn["gateways"][$key] = $gw;
+    # }
 
-"""
-        data = self._exec_php(script)
+    # foreach ($interfaces_api_data as $if) {
+    #     $if["inpkts"] = (int) $if["inpkts"];
+    #     $if["outpkts"] = (int) $if["outpkts"];
+    #     $if["inbytes"] = (int) $if["inbytes"];
+    #     $if["outbytes"] = (int) $if["outbytes"];
+    #     $if["inerrs"] = (int) $if["inerrs"];
+    #     $if["outerrs"] = (int) $if["outerrs"];
+    #     $if["collisions"] = (int) $if["collisions"];
+    #     $toreturn["interfaces"][$if["descr"]] = $if;
+    # }
 
-        if isinstance(data["gateways"], list):
-            data["gateways"] = {}
+    # foreach ($ovpn_servers as $server) {
+    #     $vpnid = $server["vpnid"];
+    #     $name = $server["name"];
+    #     $conn_count = count($server["conns"]);
+    #     $total_bytes_recv = 0;
+    #     $total_bytes_sent = 0;
+    #     foreach ($server["conns"] as $conn) {
+    #         $total_bytes_recv += $conn["bytes_recv"];
+    #         $total_bytes_sent += $conn["bytes_sent"];
+    #     }
 
-        return data
+    #     $toreturn["openvpn"]["servers"][$vpnid]["name"] = $name;
+    #     $toreturn["openvpn"]["servers"][$vpnid]["vpnid"] = $vpnid;
+    #     $toreturn["openvpn"]["servers"][$vpnid]["connected_client_count"] = $conn_count;
+    #     $toreturn["openvpn"]["servers"][$vpnid]["total_bytes_recv"] = $total_bytes_recv;
+    #     $toreturn["openvpn"]["servers"][$vpnid]["total_bytes_sent"] = $total_bytes_sent;
+    # }
+
+    # """
+    #         data = self._exec_php(script)
+
+    #         if isinstance(data["gateways"], list):
+    #             data["gateways"] = {}
+
+    #         return data
 
     @_log_errors
     def are_notices_pending(self):
