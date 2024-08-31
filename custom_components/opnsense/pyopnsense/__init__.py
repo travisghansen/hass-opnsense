@@ -1,10 +1,12 @@
 # import calendar
+from datetime import datetime, timedelta
 import json
 import logging
 import re
 import socket
 import ssl
 import time
+from typing import Any
 from urllib.parse import quote_plus, urlparse
 from xml.parsers.expat import ExpatError
 import xmlrpc.client
@@ -854,12 +856,25 @@ $toreturn = [
 
     @_log_errors
     def get_telemetry(self) -> dict:
-        telemetry = {}
-        interface_info = self._post("/api/interfaces/overview/export")
-        _LOGGER.debug(f"[get_telemetry] interface_info: {interface_info}")
-        interfaces = {}
+        telemetry: dict[str, Any] = {}
+        telemetry["interfaces"] = self._get_telemetry_interfaces()
+        telemetry["mbuf"] = self._get_telemetry_mbuf()
+        telemetry["pfstate"] = self._get_telemetry_pfstate()
+        telemetry["memory"] = self._get_telemetry_memory()
+        telemetry["system"] = self._get_telemetry_system()
+        # telemetry["cpu"] = self._get_telemetry_cpu()
+        telemetry["filesystems"] = self._get_telemetry_filesystems()
+        # telemetry["openvpn"] = self._get_telemetry_openvpn()
+        telemetry["gateways"] = self._get_telemetry_gateways()
+        return telemetry
+
+    @_log_errors
+    def _get_telemetry_interfaces(self) -> dict:
+        interface_info: dict[str, Any] = self._post("/api/interfaces/overview/export")
+        _LOGGER.debug(f"[get_telemetry_interfaces] interface_info: {interface_info}")
+        interfaces: dict[str, Any] = {}
         for ifinfo in interface_info:
-            interface = {}
+            interface: dict[str, Any] = {}
             interface["inpkts"] = int(ifinfo["statistics"]["packets received"])
             interface["outpkts"] = int(ifinfo["statistics"]["packets transmitted"])
             interface["inbytes"] = int(ifinfo["statistics"]["bytes received"])
@@ -885,17 +900,125 @@ $toreturn = [
             if "media" in ifinfo:
                 interface["media"] = ifinfo["description"]
             interfaces[ifinfo["description"]] = interface
-        _LOGGER.debug(f"[get_telemetry] interfaces: {interfaces}")
-        telemetry["interfaces"] = interfaces
-        mbuf = {}
-        mbuf_info = self._post("/api/diagnostics/system/system_mbuf")
-        _LOGGER.debug(f"[get_telemetry] mbuf_info: {mbuf_info}")
+        _LOGGER.debug(f"[get_telemetry_interfaces] interfaces: {interfaces}")
+        return interfaces
+
+    @_log_errors
+    def _get_telemetry_mbuf(self) -> dict:
+        mbuf: dict[str, Any] = {}
+        mbuf_info: dict[str, Any] = self._post("/api/diagnostics/system/system_mbuf")
+        _LOGGER.debug(f"[get_telemetry_mbuf] mbuf_info: {mbuf_info}")
         mbuf["used"] = int(mbuf_info["mbuf-statistics"]["mbuf-current"])
         mbuf["total"] = int(mbuf_info["mbuf-statistics"]["mbuf-total"])
         mbuf["used_percent"] = round(mbuf["used"] / mbuf["total"] * 100)
-        _LOGGER.debug(f"[get_telemetry] mbuf: {mbuf}")
-        telemetry["mbuf"] = mbuf
-        return telemetry
+        _LOGGER.debug(f"[get_telemetry_mbuf] mbuf: {mbuf}")
+        return mbuf
+
+    @_log_errors
+    def _get_telemetry_pfstate(self) -> dict:
+        pfstate: dict[str, Any] = {}
+        pfstate_info: dict[str, Any] = self._post("/api/diagnostics/firewall/pfstates")
+        _LOGGER.debug(f"[get_telemetry_pfstate] pfstate_info: {pfstate_info}")
+        pfstate["used"] = int(pfstate_info["current"])
+        pfstate["total"] = int(pfstate_info["limit"])
+        pfstate["used_percent"] = round(pfstate["used"] / pfstate["total"] * 100)
+        _LOGGER.debug(f"[get_telemetry_pfstate] pfstate: {pfstate}")
+        return pfstate
+
+    @_log_errors
+    def _get_telemetry_memory(self) -> dict:
+        memory: dict[str, Any] = {}
+        memory_info: dict[str, Any] = self._post(
+            "/api/diagnostics/system/systemResources"
+        )
+        swap_info: dict[str, Any] = self._post("/api/diagnostics/system/systemSwap")
+        _LOGGER.debug(f"[get_telemetry_memory] memory_info: {memory_info}")
+        _LOGGER.debug(f"[get_telemetry_memory] swap_info: {swap_info}")
+        memory["physmem"] = int(memory_info["memory"]["total"])
+        memory["used"] = int(memory_info["memory"]["used"])
+        memory["swap_total"] = int(swap_info["swap"][0]["total"])
+        memory["swap_reserved"] = int(swap_info["swap"][0]["used"])
+        memory["swap_used_percent"] = (
+            round(memory["swap_reserved"] / memory["swap_total"] * 100)
+            if memory["swap_total"] > 0
+            else 0
+        )
+        memory["used_percent"] = round(memory["used"] / memory["physmem"] * 100)
+        _LOGGER.debug(f"[get_telemetry_memory] memory: {memory}")
+        return memory
+
+    @_log_errors
+    def _get_telemetry_system(self) -> dict:
+        system: dict[str, Any] = {}
+        time_info: dict[str, Any] = self._post("/api/diagnostics/system/systemTime")
+        _LOGGER.debug(f"[get_telemetry_system] time_info: {time_info}")
+        uptime_str: str = time_info["uptime"]
+        uptime_list: list[str] = uptime_str.split(":")
+        system["uptime"] = (
+            int(uptime_list[2])
+            + (int(uptime_list[1]) * 60)
+            + (int(uptime_list[0]) * 3600)
+        )
+        boottime: datetime = datetime.now() - timedelta(seconds=system["uptime"])
+        system["boottime"] = boottime.timestamp()        
+        load_str: str = time_info["loadavg"]
+        load_list: list[str] = load_str.split(", ")
+        system["load_average"] = {
+            "one_minute": float(load_list[0]),
+            "five_minute": float(load_list[1]),
+            "fifteen_minute": float(load_list[2]),
+        }
+        _LOGGER.debug(f"[get_telemetry_system] system: {system}")
+        return system
+
+    @_log_errors
+    def _get_telemetry_cpu(self) -> dict:
+        cpu: dict[str, Any] = {}
+        cpu_info: dict[str, Any] = self._post("/api/diagnostics/system/system_mbuf")
+        _LOGGER.debug(f"[get_telemetry_cpu] cpu_info: {cpu_info}")
+
+        _LOGGER.debug(f"[get_telemetry_cpu] cpu: {cpu}")
+        return cpu
+
+    @_log_errors
+    def _get_telemetry_filesystems(self) -> dict:
+        filesystems: dict[str, Any] = {}
+        filesystems_info: dict[str, Any] = self._post(
+            "/api/diagnostics/system/systemDisk"
+        )
+        _LOGGER.debug(f"[get_telemetry_filesystems] filesystems_info: {filesystems_info}")
+        filesystems = filesystems_info["devices"]
+        # To conform to the previous data being returned
+        for filesystem in filesystems:
+            filesystem["size"] = filesystem.pop("blocks", None)
+            filesystem["capacity"] = f"{filesystem.pop("used_pct")}%"
+        _LOGGER.debug(f"[get_telemetry_filesystems] filesystems: {filesystems}")
+        return filesystems
+
+    @_log_errors
+    def _get_telemetry_openvpn(self) -> dict:
+        openvpn: dict[str, Any] = {}
+        openvpn_info: dict[str, Any] = self._post("/api/diagnostics/system/system_mbuf")
+        _LOGGER.debug(f"[get_telemetry_openvpn] openvpn_info: {openvpn_info}")
+
+        _LOGGER.debug(f"[get_telemetry_openvpn] openvpn: {openvpn}")
+        return openvpn
+
+    @_log_errors
+    def _get_telemetry_gateways(self) -> dict:
+        gateways: dict[str, Any] = {}
+        gateways_info: dict[str, Any] = self._post(
+            "/api/routes/gateway/status"
+        )
+        _LOGGER.debug(f"[get_telemetry_gateways] gateways_info: {gateways_info}")
+        for gw_info in gateways_info["items"]:
+            _LOGGER.debug(f"[get_telemetry_gateways] gw_info: {gw_info}")
+            gateways[gw_info["name"]] = gw_info
+        _LOGGER.debug(f"[get_telemetry_gateways] gateways pre: {gateways}")    
+        for gateway in gateways.values():
+            gateway["status"] = gateway.pop("status_translated", gateway["status"]).lower()
+        _LOGGER.debug(f"[get_telemetry_gateways] gateways: {gateways}")
+        return gateways
 
     #     @_log_errors
     #     def get_telemetry(self):
