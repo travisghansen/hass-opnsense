@@ -73,7 +73,7 @@ class Client(object):
             context = ssl._create_unverified_context()
 
         # set to True if necessary during development
-        verbose = True
+        verbose = False
 
         proxy = xmlrpc.client.ServerProxy(
             f"{self._url}/xmlrpc.php", context=context, verbose=verbose

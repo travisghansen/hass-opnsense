@@ -315,9 +315,7 @@ async def async_setup_entry(
                     coordinator,
                     SensorEntityDescription(
                         key="telemetry.openvpn.servers.{}.{}".format(vpnid, property),
-                        name="OpenVPN Server {} ({}) {}".format(
-                            vpnid, server["name"], property
-                        ),
+                        name="OpenVPN Server {} {}".format(server["name"], property),
                         native_unit_of_measurement=native_unit_of_measurement,
                         icon=icon,
                         state_class=state_class,
