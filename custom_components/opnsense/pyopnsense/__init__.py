@@ -1,4 +1,5 @@
 # import calendar
+from collections.abc import Mapping
 from datetime import datetime, timedelta
 import json
 import logging
@@ -855,6 +856,13 @@ $toreturn = [
         return response
 
     @_log_errors
+    def _try_to_int(self, input, retval=None) -> int | None:
+        try:
+            return int(input)
+        except (ValueError, TypeError):
+            return retval
+
+    @_log_errors
     def get_telemetry(self) -> dict:
         telemetry: dict[str, Any] = {}
         telemetry["interfaces"] = self._get_telemetry_interfaces()
@@ -873,118 +881,195 @@ $toreturn = [
     def _get_telemetry_interfaces(self) -> dict:
         interface_info: dict[str, Any] = self._post("/api/interfaces/overview/export")
         _LOGGER.debug(f"[get_telemetry_interfaces] interface_info: {interface_info}")
+        if interface_info is None or not isinstance(interface_info, list):
+            return {}
         interfaces: dict[str, Any] = {}
         for ifinfo in interface_info:
             interface: dict[str, Any] = {}
-            interface["inpkts"] = int(ifinfo["statistics"]["packets received"])
-            interface["outpkts"] = int(ifinfo["statistics"]["packets transmitted"])
-            interface["inbytes"] = int(ifinfo["statistics"]["bytes received"])
-            interface["outbytes"] = int(ifinfo["statistics"]["bytes transmitted"])
-            interface["inbytes_frmt"] = int(ifinfo["statistics"]["bytes received"])
-            interface["outbytes_frmt"] = int(ifinfo["statistics"]["bytes transmitted"])
-            interface["inerrs"] = int(ifinfo["statistics"]["input errors"])
-            interface["outerrs"] = int(ifinfo["statistics"]["output errors"])
-            interface["collisions"] = int(ifinfo["statistics"]["collisions"])
-            interface["descr"] = ifinfo['device']
-            interface["name"] = ifinfo["description"]
+            if ifinfo is None or not isinstance(ifinfo, Mapping):
+                continue
+            interface["inpkts"] = self._try_to_int(
+                ifinfo.get("statistics", {}).get("packets received", None)
+            )
+            interface["outpkts"] = self._try_to_int(
+                ifinfo.get("statistics", {}).get("packets transmitted", None)
+            )
+            interface["inbytes"] = self._try_to_int(
+                ifinfo.get("statistics", {}).get("bytes received", None)
+            )
+            interface["outbytes"] = self._try_to_int(
+                ifinfo.get("statistics", {}).get("bytes transmitted", None)
+            )
+            interface["inbytes_frmt"] = self._try_to_int(
+                ifinfo.get("statistics", {}).get("bytes received", None)
+            )
+            interface["outbytes_frmt"] = self._try_to_int(
+                ifinfo.get("statistics", {}).get("bytes transmitted", None)
+            )
+            interface["inerrs"] = self._try_to_int(
+                ifinfo.get("statistics", {}).get("input errors", None)
+            )
+            interface["outerrs"] = self._try_to_int(
+                ifinfo.get("statistics", {}).get("output errors", None)
+            )
+            interface["collisions"] = self._try_to_int(
+                ifinfo.get("statistics", {}).get("collisions", None)
+            )
+            interface["descr"] = ifinfo.get("device", "")
+            interface["name"] = ifinfo.get("description", "")
             interface["status"] = ""
-            if ifinfo["status"] in ("down", "no carrier", "up"):
-                interface["status"] = ifinfo["status"]
-            elif ifinfo["status"] in ("associated"):
+            if ifinfo.get("status", "") in ("down", "no carrier", "up"):
+                interface["status"] = ifinfo.get("status", "")
+            elif ifinfo.get("status", "") in ("associated"):
                 interface["status"] = "up"
-            interface["ipaddr"] = ""
-            if "addr4" in ifinfo:
-                interface["ipaddr"] = ifinfo["addr4"]
-            interface["media"] = ""
-            if "media" in ifinfo:
-                interface["media"] = ifinfo["description"]
-            if ifinfo["description"].lower() == "unassigned interface":
-                interfaces[ifinfo['device']] = interface
+            interface["ipaddr"] = ifinfo.get("addr4", "")
+            interface["media"] = ifinfo.get("media", "")
+            if (
+                ifinfo.get("description", "").lower() == "unassigned interface"
+                and "device" in ifinfo
+            ):
+                interfaces[ifinfo.get("device", "")] = interface
             else:
-                interfaces[ifinfo["description"]] = interface
+                interfaces[ifinfo.get("description", "")] = interface
         _LOGGER.debug(f"[get_telemetry_interfaces] interfaces: {interfaces}")
         return interfaces
 
     @_log_errors
     def _get_telemetry_mbuf(self) -> dict:
-        mbuf: dict[str, Any] = {}
         mbuf_info: dict[str, Any] = self._post("/api/diagnostics/system/system_mbuf")
         _LOGGER.debug(f"[get_telemetry_mbuf] mbuf_info: {mbuf_info}")
-        mbuf["used"] = int(mbuf_info["mbuf-statistics"]["mbuf-current"])
-        mbuf["total"] = int(mbuf_info["mbuf-statistics"]["mbuf-total"])
-        mbuf["used_percent"] = round(mbuf["used"] / mbuf["total"] * 100)
+        if mbuf_info is None or not isinstance(mbuf_info, Mapping):
+            return {}
+        mbuf: dict[str, Any] = {}
+        mbuf["used"] = self._try_to_int(
+            mbuf_info.get("mbuf-statistics", {}).get("mbuf-current", None)
+        )
+        mbuf["total"] = self._try_to_int(
+            mbuf_info.get("mbuf-statistics", {}).get("mbuf-total", None)
+        )
+        mbuf["used_percent"] = (
+            round(mbuf["used"] / mbuf["total"] * 100)
+            if isinstance(mbuf["used"], int)
+            and isinstance(mbuf["total"], int)
+            and mbuf["total"] > 0
+            else None
+        )
         _LOGGER.debug(f"[get_telemetry_mbuf] mbuf: {mbuf}")
         return mbuf
 
     @_log_errors
     def _get_telemetry_pfstate(self) -> dict:
-        pfstate: dict[str, Any] = {}
         pfstate_info: dict[str, Any] = self._post("/api/diagnostics/firewall/pfstates")
         _LOGGER.debug(f"[get_telemetry_pfstate] pfstate_info: {pfstate_info}")
-        pfstate["used"] = int(pfstate_info["current"])
-        pfstate["total"] = int(pfstate_info["limit"])
-        pfstate["used_percent"] = round(pfstate["used"] / pfstate["total"] * 100)
+        if pfstate_info is None or not isinstance(pfstate_info, Mapping):
+            return {}
+        pfstate: dict[str, Any] = {}
+        pfstate["used"] = self._try_to_int(pfstate_info.get("current", None))
+        pfstate["total"] = self._try_to_int(pfstate_info.get("limit", None))
+        pfstate["used_percent"] = (
+            round(pfstate["used"] / pfstate["total"] * 100)
+            if isinstance(pfstate["used"], int)
+            and isinstance(pfstate["total"], int)
+            and pfstate["total"] > 0
+            else None
+        )
         _LOGGER.debug(f"[get_telemetry_pfstate] pfstate: {pfstate}")
         return pfstate
 
     @_log_errors
     def _get_telemetry_memory(self) -> dict:
-        memory: dict[str, Any] = {}
         memory_info: dict[str, Any] = self._post(
             "/api/diagnostics/system/systemResources"
         )
-        swap_info: dict[str, Any] = self._post("/api/diagnostics/system/systemSwap")
         _LOGGER.debug(f"[get_telemetry_memory] memory_info: {memory_info}")
+        if memory_info is None or not isinstance(memory_info, Mapping):
+            return memory
+        memory: dict[str, Any] = {}
+        memory["physmem"] = self._try_to_int(
+            memory_info.get("memory", {}).get("total", None)
+        )
+        memory["used"] = self._try_to_int(
+            memory_info.get("memory", {}).get("used", None)
+        )
+        memory["used_percent"] = (
+            round(memory["used"] / memory["physmem"] * 100)
+            if isinstance(memory["used"], int)
+            and isinstance(memory["physmem"], int)
+            and memory["physmem"] > 0
+            else None
+        )
+        swap_info: dict[str, Any] = self._post("/api/diagnostics/system/systemSwap")
+        if (
+            swap_info is None
+            or not isinstance(swap_info, Mapping)
+            or not isinstance(swap_info.get("swap", [])[0], Mapping)
+        ):
+            return memory
         _LOGGER.debug(f"[get_telemetry_memory] swap_info: {swap_info}")
-        memory["physmem"] = int(memory_info["memory"]["total"])
-        memory["used"] = int(memory_info["memory"]["used"])
-        memory["swap_total"] = int(swap_info["swap"][0]["total"])
-        memory["swap_reserved"] = int(swap_info["swap"][0]["used"])
+        memory["swap_total"] = self._try_to_int(
+            swap_info.get("swap", [])[0].get("total", None)
+        )
+        memory["swap_reserved"] = self._try_to_int(
+            swap_info["swap"][0].get("used", None)
+        )
         memory["swap_used_percent"] = (
             round(memory["swap_reserved"] / memory["swap_total"] * 100)
-            if memory["swap_total"] > 0
+            if isinstance(memory["swap_reserved"], int)
+            and isinstance(memory["swap_total"], int)
+            and memory["swap_total"] > 0
             else 0
         )
-        memory["used_percent"] = round(memory["used"] / memory["physmem"] * 100)
         _LOGGER.debug(f"[get_telemetry_memory] memory: {memory}")
         return memory
 
     @_log_errors
     def _get_telemetry_system(self) -> dict:
-        system: dict[str, Any] = {}
         time_info: dict[str, Any] = self._post("/api/diagnostics/system/systemTime")
         _LOGGER.debug(f"[get_telemetry_system] time_info: {time_info}")
-        pattern = re.compile(r'^(?:(\d+)\s+days?,\s+)?(\d{2}):(\d{2}):(\d{2})$')
-        match = pattern.match(time_info["uptime"])
+        if time_info is None or not isinstance(time_info, Mapping):
+            return {}
+        system: dict[str, Any] = {}
+        pattern = re.compile(r"^(?:(\d+)\s+days?,\s+)?(\d{2}):(\d{2}):(\d{2})$")
+        match = pattern.match(time_info.get("uptime", ""))
         if not match:
             raise ValueError("Invalid uptime format")
         days_str, hours_str, minutes_str, seconds_str = match.groups()
-        days: int = int(days_str) if days_str else 0
-        hours: int = int(hours_str)
-        minutes: int = int(minutes_str)
-        seconds: int = int(seconds_str)
+        days: int = self._try_to_int(days_str, 0)
+        hours: int = self._try_to_int(hours_str, 0)
+        minutes: int = self._try_to_int(minutes_str, 0)
+        seconds: int = self._try_to_int(seconds_str, 0)
         system["uptime"] = days * 86400 + hours * 3600 + minutes * 60 + seconds
 
         boottime: datetime = datetime.now() - timedelta(seconds=system["uptime"])
-        system["boottime"] = boottime.timestamp()        
-        load_str: str = time_info["loadavg"]
+        system["boottime"] = boottime.timestamp()
+        load_str: str = time_info.get("loadavg", "")
         load_list: list[str] = load_str.split(", ")
-        system["load_average"] = {
-            "one_minute": float(load_list[0]),
-            "five_minute": float(load_list[1]),
-            "fifteen_minute": float(load_list[2]),
-        }
+        if len(load_list) == 3:
+            system["load_average"] = {
+                "one_minute": float(load_list[0]),
+                "five_minute": float(load_list[1]),
+                "fifteen_minute": float(load_list[2]),
+            }
+        else:
+            system["load_average"] = {
+                "one_minute": None,
+                "five_minute": None,
+                "fifteen_minute": None,
+            }
         _LOGGER.debug(f"[get_telemetry_system] system: {system}")
         return system
 
     @_log_errors
     def _get_telemetry_cpu(self) -> dict:
-        cpu: dict[str, Any] = {}
-        cputype_info: dict[str, Any] = self._post("/api/diagnostics/cpu_usage/getCPUType")
+        cputype_info: dict[str, Any] = self._post(
+            "/api/diagnostics/cpu_usage/getCPUType"
+        )
         _LOGGER.debug(f"[get_telemetry_cpu] cpu_info: {cputype_info}")
-        # Hacky and probably not universally applicable
-        cores_match = re.search(r'\((\d+) cores', cputype_info[0])
-        cpu["count"] = int(cores_match.group(1)) if cores_match else 0
+        if cputype_info is None or not isinstance(cputype_info, list):
+            return {}
+        cpu: dict[str, Any] = {}
+        cores_match = re.search(r"\((\d+) cores", cputype_info[0])
+        cpu["count"] = self._try_to_int(cores_match.group(1)) if cores_match else 0
         # Missing frequency current and max
         # cpu["frequency"] = {"current": 0, "max": 0}
         _LOGGER.debug(f"[get_telemetry_cpu] cpu: {cpu}")
@@ -996,52 +1081,71 @@ $toreturn = [
         filesystems_info: dict[str, Any] = self._post(
             "/api/diagnostics/system/systemDisk"
         )
-        _LOGGER.debug(f"[get_telemetry_filesystems] filesystems_info: {filesystems_info}")
-        filesystems = filesystems_info["devices"]
+        if filesystems_info is None or not isinstance(filesystems_info, Mapping):
+            return {}
+        _LOGGER.debug(
+            f"[get_telemetry_filesystems] filesystems_info: {filesystems_info}"
+        )
+        filesystems = filesystems_info.get("devices", {})
         # To conform to the previous data being returned
         for filesystem in filesystems:
             filesystem["size"] = filesystem.pop("blocks", None)
-            filesystem["capacity"] = f"{filesystem.pop("used_pct")}%"
+            filesystem["capacity"] = f"{filesystem.pop('used_pct','')}%"
         _LOGGER.debug(f"[get_telemetry_filesystems] filesystems: {filesystems}")
         return filesystems
 
     @_log_errors
     def _get_telemetry_openvpn(self) -> dict:
+        openvpn_info: dict[str, Any] = self._post("/api/openvpn/export/providers")
+        _LOGGER.debug(f"[get_telemetry_openvpn] openvpn_info: {openvpn_info}")
+        if openvpn_info is None or not isinstance(openvpn_info, Mapping):
+            return {}
         openvpn: dict[str, Any] = {}
         openvpn["servers"] = {}
-        openvpn_info: dict[str, Any] = self._post("/api/openvpn/export/providers")
-        connection_info: dict[str, Any] = self._post("/api/openvpn/service/searchSessions")
-        _LOGGER.debug(f"[get_telemetry_openvpn] openvpn_info: {openvpn_info}")
+        connection_info: dict[str, Any] = self._post(
+            "/api/openvpn/service/searchSessions"
+        )
         _LOGGER.debug(f"[get_telemetry_openvpn] connection_info: {connection_info}")
+        if connection_info is None or not isinstance(connection_info, Mapping):
+            return {}
         for vpnid, vpn_info in openvpn_info.items():
             vpn: dict[str, Any] = {}
-            vpn["vpnid"] = vpn_info["vpnid"]
-            vpn["name"] = vpn_info["name"]
+            vpn["vpnid"] = vpn_info.get("vpnid", "")
+            vpn["name"] = vpn_info.get("name", "")
             total_bytes_recv = 0
             total_bytes_sent = 0
-            for connect in connection_info["rows"]:
-                if connect["id"] == vpn["vpnid"]:
-                    total_bytes_recv += int(connect["bytes_received"]) if connect["bytes_received"] else 0
-                    total_bytes_sent += int(connect["bytes_sent"]) if connect["bytes_sent"] else 0
+            for connect in connection_info.get("rows", {}):
+                if connect.get("id", None) and connect.get("id", None) == vpn.get(
+                    "vpnid", None
+                ):
+                    total_bytes_recv += self._try_to_int(
+                        connect.get("bytes_received", 0), 0
+                    )
+                    total_bytes_sent += self._try_to_int(
+                        connect.get("bytes_sent", 0), 0
+                    )
             vpn["total_bytes_recv"] = total_bytes_recv
             vpn["total_bytes_sent"] = total_bytes_sent
             # Missing connected_client_count
-            # vpn["connected_client_count"] = 
+            # vpn["connected_client_count"] =
             openvpn["servers"][vpnid] = vpn
         _LOGGER.debug(f"[get_telemetry_openvpn] openvpn: {openvpn}")
         return openvpn
 
     @_log_errors
     def _get_telemetry_gateways(self) -> dict:
-        gateways: dict[str, Any] = {}
-        gateways_info: dict[str, Any] = self._post(
-            "/api/routes/gateway/status"
-        )
+        gateways_info: dict[str, Any] = self._post("/api/routes/gateway/status")
         _LOGGER.debug(f"[get_telemetry_gateways] gateways_info: {gateways_info}")
-        for gw_info in gateways_info["items"]:
-            gateways[gw_info["name"]] = gw_info  
+        if gateways_info is None or not isinstance(gateways_info, Mapping):
+            return {}
+        gateways: dict[str, Any] = {}
+        for gw_info in gateways_info.get("items", []):
+            if isinstance(gw_info, Mapping) and "name" in gw_info:
+                gateways[gw_info["name"]] = gw_info
         for gateway in gateways.values():
-            gateway["status"] = gateway.pop("status_translated", gateway["status"]).lower()
+            gateway["status"] = gateway.pop(
+                "status_translated", gateway.get("status", "")
+            ).lower()
         _LOGGER.debug(f"[get_telemetry_gateways] gateways: {gateways}")
         return gateways
 
