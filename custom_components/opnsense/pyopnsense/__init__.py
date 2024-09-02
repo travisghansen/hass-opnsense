@@ -118,7 +118,7 @@ class Client(object):
 
     @_apply_timeout
     def _exec_php(self, script):
-        script = """
+        script = r"""
 ini_set('display_errors', 0);
 
 {}
@@ -184,7 +184,7 @@ $toreturn["real"] = json_encode($toreturn_real);
 
     @_log_errors
     def _is_subsystem_dirty(self, subsystem):
-        script = """
+        script = r"""
 $data = json_decode('{}', true);
 $subsystem = $data["subsystem"];
 $dirty = is_subsystem_dirty($subsystem);
@@ -200,7 +200,7 @@ $toreturn = [
 
     @_log_errors
     def _mark_subsystem_dirty(self, subsystem):
-        script = """
+        script = r"""
 $data = json_decode('{}', true);
 $subsystem = $data["subsystem"];
 mark_subsystem_dirty($subsystem);
@@ -211,7 +211,7 @@ mark_subsystem_dirty($subsystem);
 
     @_log_errors
     def _clear_subsystem_dirty(self, subsystem):
-        script = """
+        script = r"""
 $data = json_decode('{}', true);
 $subsystem = $data["subsystem"];
 clear_subsystem_dirty($subsystem);
@@ -222,7 +222,7 @@ clear_subsystem_dirty($subsystem);
 
     @_log_errors
     def _filter_configure(self):
-        script = """
+        script = r"""
 filter_configure();
 clear_subsystem_dirty('natconf');
 clear_subsystem_dirty('filter');
@@ -231,7 +231,7 @@ clear_subsystem_dirty('filter');
 
     @_log_errors
     def get_device_id(self):
-        script = """
+        script = r"""
 $file = "/conf/hassid";
 $id;
 if (!file_exists($file)) {
@@ -250,7 +250,7 @@ $toreturn = [
     @_log_errors
     def get_system_info(self):
         # TODO: add bios details here
-        script = """
+        script = r"""
 global $config;
 
 $file = "/conf/hassid";
@@ -356,7 +356,7 @@ $toreturn = [
 
     @_log_errors
     def get_config(self):
-        script = """
+        script = r"""
 global $config;
 
 $toreturn = [
@@ -487,7 +487,7 @@ $toreturn = [
 
     @_log_errors
     def get_configured_interface_descriptions(self):
-        script = """
+        script = r"""
 $toreturn = [
   "data" => get_configured_interface_with_descr(),
 ];
@@ -498,7 +498,7 @@ $toreturn = [
     @_log_errors
     def get_gateways(self):
         # {'GW_WAN': {'interface': '<if>', 'gateway': '<ip>', 'name': 'GW_WAN', 'weight': '1', 'ipprotocol': 'inet', 'interval': '', 'descr': 'Interface wan Gateway', 'monitor': '<ip>', 'friendlyiface': 'wan', 'friendlyifdescr': 'WAN', 'isdefaultgw': True, 'attribute': 0, 'tiername': 'Default (IPv4)'}}
-        script = """
+        script = r"""
 $gateways = new \OPNsense\Routing\Gateways(legacy_interfaces_details());
 //$default_gwv4 = $gateways->getDefaultGW(return_down_gateways(), "inet");
 //$default_gwv6 = $gateways->getDefaultGW(return_down_gateways(), "inet6");
@@ -528,7 +528,7 @@ $toreturn = [
     @_log_errors
     def get_gateways_status(self):
         # {'GW_WAN': {'monitorip': '<ip>', 'srcip': '<ip>', 'name': 'GW_WAN', 'delay': '0.387ms', 'stddev': '0.097ms', 'loss': '0.0%', 'status': 'online', 'substatus': 'none'}}
-        script = """
+        script = r"""
 $toreturn = [
   // function return_gateways_status($byname = false, $gways = false)
   "data" => return_gateways_status(true),
@@ -553,7 +553,7 @@ $toreturn = [
     @_log_errors
     def get_arp_table(self, resolve_hostnames=False):
         # [{'hostname': '?', 'ip-address': '<ip>', 'mac-address': '<mac>', 'interface': 'em0', 'expires': 1199, 'type': 'ethernet'}, ...]
-        script = """
+        script = r"""
 $data = json_decode('{}', true);
 $resolve_hostnames = $data["resolve_hostnames"];
 
@@ -629,7 +629,7 @@ $toreturn = [
         # function system_get_dhcpleases()
         # {'lease': [], 'failover': []}
         # {"lease":[{"ip":"<ip>","type":"static","mac":"<mac>","if":"lan","starts":"","ends":"","hostname":"<hostname>","descr":"","act":"static","online":"online","staticmap_array_index":48} ...
-        script = """
+        script = r"""
 require_once '/usr/local/etc/inc/plugins.inc.d/dhcpd.inc';
 
 $toreturn = [
@@ -641,7 +641,7 @@ $toreturn = [
 
     @_log_errors
     def get_virtual_ips(self):
-        script = """
+        script = r"""
 global $config;
 
 $vips = [];
@@ -663,7 +663,7 @@ $toreturn = [
         # carp enabled or not
         # readonly attribute, cannot be set directly
         # function get_carp_status()
-        script = """
+        script = r"""
 function get_carp_status() {
         /* grab the current status of carp */
         $status = get_single_sysctl('net.inet.carp.allow');
@@ -679,7 +679,7 @@ $toreturn = [
 
     @_log_errors
     def get_carp_interfaces(self):
-        script = """
+        script = r"""
 global $config;
 
 $vips = [];
@@ -716,7 +716,7 @@ $toreturn = [
     def delete_arp_entry(self, ip):
         if len(ip) < 1:
             return
-        script = """
+        script = r"""
 $data = json_decode('{}', true);
 $ip = trim($data["ip"]);
 $ret = mwexec("arp -d " . $ip, true);
@@ -735,7 +735,7 @@ $toreturn = [
     @_log_errors
     def arp_get_mac_by_ip(self, ip, do_ping=True):
         """function arp_get_mac_by_ip($ip, $do_ping = true)"""
-        script = """
+        script = r"""
 $data = json_decode('{}', true);
 $ip = $data["ip"];
 $do_ping = $data["do_ping"];
@@ -782,7 +782,7 @@ $toreturn = [
 
     @_log_errors
     def system_reboot(self):
-        script = """
+        script = r"""
 // /usr/local/opnsense/mvc/app/library/OPNsense/Core/Backend.php
 use OPNsense\Core\Backend;
 
@@ -801,7 +801,7 @@ $toreturn = [
 
     @_log_errors
     def system_halt(self):
-        script = """
+        script = r"""
 use OPNsense\Core\Backend;
 
 $backend = new Backend();
@@ -823,7 +823,7 @@ $toreturn = [
         interface should be wan, lan, opt1, opt2 etc, not the description
         """
 
-        script = """
+        script = r"""
 $data = json_decode('{}', true);
 $if = $data["interface"];
 $mac = $data["mac"];
@@ -1151,7 +1151,7 @@ $toreturn = [
 
     @_log_errors
     def are_notices_pending(self):
-        script = """
+        script = r"""
 if (file_exists('/usr/local/etc/inc/notices.inc')) {
     require_once '/usr/local/etc/inc/notices.inc';
 
@@ -1177,7 +1177,7 @@ if (file_exists('/usr/local/etc/inc/notices.inc')) {
 
     @_log_errors
     def get_notices(self):
-        script = """
+        script = r"""
 if (file_exists('/usr/local/etc/inc/notices.inc')) {
     require_once '/usr/local/etc/inc/notices.inc';
 
@@ -1219,7 +1219,7 @@ if (file_exists('/usr/local/etc/inc/notices.inc')) {
 
     @_log_errors
     def file_notice(self, notice):
-        script = """
+        script = r"""
 $data = json_decode('{}', true);
 $notice = $data["notice"];
 
@@ -1250,7 +1250,7 @@ if (file_exists('/usr/local/etc/inc/notices.inc')) {{
         """
         id = "all" to wipe everything
         """
-        script = """
+        script = r"""
 $data = json_decode('{}', true);
 $id = $data["id"];
 
