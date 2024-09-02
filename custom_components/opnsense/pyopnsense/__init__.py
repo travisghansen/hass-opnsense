@@ -866,6 +866,7 @@ $toreturn = [
         telemetry["filesystems"] = self._get_telemetry_filesystems()
         telemetry["openvpn"] = self._get_telemetry_openvpn()
         telemetry["gateways"] = self._get_telemetry_gateways()
+        _LOGGER.debug(f"[get_telemetry] telemetry: {telemetry}")
         return telemetry
 
     @_log_errors
@@ -884,9 +885,7 @@ $toreturn = [
             interface["inerrs"] = int(ifinfo["statistics"]["input errors"])
             interface["outerrs"] = int(ifinfo["statistics"]["output errors"])
             interface["collisions"] = int(ifinfo["statistics"]["collisions"])
-            interface["descr"] = ifinfo["description"]
-            if ifinfo["description"] == "Unassigned Interface":
-                interface["descr"] = f"{ifinfo['description']} ({ifinfo['device']})"
+            interface["descr"] = ifinfo['device']
             interface["name"] = ifinfo["description"]
             interface["status"] = ""
             if ifinfo["status"] in ("down", "no carrier", "up"):
@@ -899,7 +898,10 @@ $toreturn = [
             interface["media"] = ""
             if "media" in ifinfo:
                 interface["media"] = ifinfo["description"]
-            interfaces[ifinfo["description"]] = interface
+            if ifinfo["description"].lower() == "unassigned interface":
+                interfaces[ifinfo['device']] = interface
+            else:
+                interfaces[ifinfo["description"]] = interface
         _LOGGER.debug(f"[get_telemetry_interfaces] interfaces: {interfaces}")
         return interfaces
 
@@ -952,13 +954,17 @@ $toreturn = [
         system: dict[str, Any] = {}
         time_info: dict[str, Any] = self._post("/api/diagnostics/system/systemTime")
         _LOGGER.debug(f"[get_telemetry_system] time_info: {time_info}")
-        uptime_str: str = time_info["uptime"]
-        uptime_list: list[str] = uptime_str.split(":")
-        system["uptime"] = (
-            int(uptime_list[2])
-            + (int(uptime_list[1]) * 60)
-            + (int(uptime_list[0]) * 3600)
-        )
+        pattern = re.compile(r'^(?:(\d+)\s+days?,\s+)?(\d{2}):(\d{2}):(\d{2})$')
+        match = pattern.match(time_info["uptime"])
+        if not match:
+            raise ValueError("Invalid uptime format")
+        days_str, hours_str, minutes_str, seconds_str = match.groups()
+        days: int = int(days_str) if days_str else 0
+        hours: int = int(hours_str)
+        minutes: int = int(minutes_str)
+        seconds: int = int(seconds_str)
+        system["uptime"] = days * 86400 + hours * 3600 + minutes * 60 + seconds
+
         boottime: datetime = datetime.now() - timedelta(seconds=system["uptime"])
         system["boottime"] = boottime.timestamp()        
         load_str: str = time_info["loadavg"]

@@ -590,7 +590,7 @@ class OPNSenseGatewaySensor(OPNSenseSensor):
         if property in ["stddev", "delay", "loss"]:
             value = gateway[property]
             if isinstance(value, str):
-                value = re.sub("[^0-9\.]*", "", value)
+                value = re.sub(r"[^0-9\.]*", "", value)
                 if len(value) < 1:
                     return False
 
@@ -628,7 +628,7 @@ class OPNSenseGatewaySensor(OPNSenseSensor):
             # cleanse "ms", etc from values
             if property in ["stddev", "delay", "loss"]:
                 if isinstance(value, str):
-                    value = re.sub("[^0-9\.]*", "", value)
+                    value = re.sub(r"[^0-9\.]*", "", value)
                     if len(value) > 0:
                         value = float(value)
 
