@@ -315,9 +315,7 @@ async def async_setup_entry(
                     coordinator,
                     SensorEntityDescription(
                         key="telemetry.openvpn.servers.{}.{}".format(vpnid, property),
-                        name="OpenVPN Server {} ({}) {}".format(
-                            vpnid, server["name"], property
-                        ),
+                        name="OpenVPN Server {} {}".format(server["name"], property),
                         native_unit_of_measurement=native_unit_of_measurement,
                         icon=icon,
                         state_class=state_class,
@@ -590,7 +588,7 @@ class OPNSenseGatewaySensor(OPNSenseSensor):
         if property in ["stddev", "delay", "loss"]:
             value = gateway[property]
             if isinstance(value, str):
-                value = re.sub("[^0-9\.]*", "", value)
+                value = re.sub(r"[^0-9\.]*", "", value)
                 if len(value) < 1:
                     return False
 
@@ -628,7 +626,7 @@ class OPNSenseGatewaySensor(OPNSenseSensor):
             # cleanse "ms", etc from values
             if property in ["stddev", "delay", "loss"]:
                 if isinstance(value, str):
-                    value = re.sub("[^0-9\.]*", "", value)
+                    value = re.sub(r"[^0-9\.]*", "", value)
                     if len(value) > 0:
                         value = float(value)
 

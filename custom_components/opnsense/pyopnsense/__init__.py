@@ -1,10 +1,13 @@
 # import calendar
+from collections.abc import Mapping
+from datetime import datetime, timedelta
 import json
 import logging
 import re
 import socket
 import ssl
 import time
+from typing import Any
 from urllib.parse import quote_plus, urlparse
 from xml.parsers.expat import ExpatError
 import xmlrpc.client
@@ -115,7 +118,7 @@ class Client(object):
 
     @_apply_timeout
     def _exec_php(self, script):
-        script = """
+        script = r"""
 ini_set('display_errors', 0);
 
 {}
@@ -181,7 +184,7 @@ $toreturn["real"] = json_encode($toreturn_real);
 
     @_log_errors
     def _is_subsystem_dirty(self, subsystem):
-        script = """
+        script = r"""
 $data = json_decode('{}', true);
 $subsystem = $data["subsystem"];
 $dirty = is_subsystem_dirty($subsystem);
@@ -197,7 +200,7 @@ $toreturn = [
 
     @_log_errors
     def _mark_subsystem_dirty(self, subsystem):
-        script = """
+        script = r"""
 $data = json_decode('{}', true);
 $subsystem = $data["subsystem"];
 mark_subsystem_dirty($subsystem);
@@ -208,7 +211,7 @@ mark_subsystem_dirty($subsystem);
 
     @_log_errors
     def _clear_subsystem_dirty(self, subsystem):
-        script = """
+        script = r"""
 $data = json_decode('{}', true);
 $subsystem = $data["subsystem"];
 clear_subsystem_dirty($subsystem);
@@ -219,7 +222,7 @@ clear_subsystem_dirty($subsystem);
 
     @_log_errors
     def _filter_configure(self):
-        script = """
+        script = r"""
 filter_configure();
 clear_subsystem_dirty('natconf');
 clear_subsystem_dirty('filter');
@@ -228,7 +231,7 @@ clear_subsystem_dirty('filter');
 
     @_log_errors
     def get_device_id(self):
-        script = """
+        script = r"""
 $file = "/conf/hassid";
 $id;
 if (!file_exists($file)) {
@@ -247,7 +250,7 @@ $toreturn = [
     @_log_errors
     def get_system_info(self):
         # TODO: add bios details here
-        script = """
+        script = r"""
 global $config;
 
 $file = "/conf/hassid";
@@ -353,7 +356,7 @@ $toreturn = [
 
     @_log_errors
     def get_config(self):
-        script = """
+        script = r"""
 global $config;
 
 $toreturn = [
@@ -484,7 +487,7 @@ $toreturn = [
 
     @_log_errors
     def get_configured_interface_descriptions(self):
-        script = """
+        script = r"""
 $toreturn = [
   "data" => get_configured_interface_with_descr(),
 ];
@@ -495,7 +498,7 @@ $toreturn = [
     @_log_errors
     def get_gateways(self):
         # {'GW_WAN': {'interface': '<if>', 'gateway': '<ip>', 'name': 'GW_WAN', 'weight': '1', 'ipprotocol': 'inet', 'interval': '', 'descr': 'Interface wan Gateway', 'monitor': '<ip>', 'friendlyiface': 'wan', 'friendlyifdescr': 'WAN', 'isdefaultgw': True, 'attribute': 0, 'tiername': 'Default (IPv4)'}}
-        script = """
+        script = r"""
 $gateways = new \OPNsense\Routing\Gateways(legacy_interfaces_details());
 //$default_gwv4 = $gateways->getDefaultGW(return_down_gateways(), "inet");
 //$default_gwv6 = $gateways->getDefaultGW(return_down_gateways(), "inet6");
@@ -525,7 +528,7 @@ $toreturn = [
     @_log_errors
     def get_gateways_status(self):
         # {'GW_WAN': {'monitorip': '<ip>', 'srcip': '<ip>', 'name': 'GW_WAN', 'delay': '0.387ms', 'stddev': '0.097ms', 'loss': '0.0%', 'status': 'online', 'substatus': 'none'}}
-        script = """
+        script = r"""
 $toreturn = [
   // function return_gateways_status($byname = false, $gways = false)
   "data" => return_gateways_status(true),
@@ -550,7 +553,7 @@ $toreturn = [
     @_log_errors
     def get_arp_table(self, resolve_hostnames=False):
         # [{'hostname': '?', 'ip-address': '<ip>', 'mac-address': '<mac>', 'interface': 'em0', 'expires': 1199, 'type': 'ethernet'}, ...]
-        script = """
+        script = r"""
 $data = json_decode('{}', true);
 $resolve_hostnames = $data["resolve_hostnames"];
 
@@ -626,7 +629,7 @@ $toreturn = [
         # function system_get_dhcpleases()
         # {'lease': [], 'failover': []}
         # {"lease":[{"ip":"<ip>","type":"static","mac":"<mac>","if":"lan","starts":"","ends":"","hostname":"<hostname>","descr":"","act":"static","online":"online","staticmap_array_index":48} ...
-        script = """
+        script = r"""
 require_once '/usr/local/etc/inc/plugins.inc.d/dhcpd.inc';
 
 $toreturn = [
@@ -638,7 +641,7 @@ $toreturn = [
 
     @_log_errors
     def get_virtual_ips(self):
-        script = """
+        script = r"""
 global $config;
 
 $vips = [];
@@ -660,7 +663,7 @@ $toreturn = [
         # carp enabled or not
         # readonly attribute, cannot be set directly
         # function get_carp_status()
-        script = """
+        script = r"""
 function get_carp_status() {
         /* grab the current status of carp */
         $status = get_single_sysctl('net.inet.carp.allow');
@@ -676,7 +679,7 @@ $toreturn = [
 
     @_log_errors
     def get_carp_interfaces(self):
-        script = """
+        script = r"""
 global $config;
 
 $vips = [];
@@ -713,7 +716,7 @@ $toreturn = [
     def delete_arp_entry(self, ip):
         if len(ip) < 1:
             return
-        script = """
+        script = r"""
 $data = json_decode('{}', true);
 $ip = trim($data["ip"]);
 $ret = mwexec("arp -d " . $ip, true);
@@ -732,7 +735,7 @@ $toreturn = [
     @_log_errors
     def arp_get_mac_by_ip(self, ip, do_ping=True):
         """function arp_get_mac_by_ip($ip, $do_ping = true)"""
-        script = """
+        script = r"""
 $data = json_decode('{}', true);
 $ip = $data["ip"];
 $do_ping = $data["do_ping"];
@@ -779,7 +782,7 @@ $toreturn = [
 
     @_log_errors
     def system_reboot(self):
-        script = """
+        script = r"""
 // /usr/local/opnsense/mvc/app/library/OPNsense/Core/Backend.php
 use OPNsense\Core\Backend;
 
@@ -798,7 +801,7 @@ $toreturn = [
 
     @_log_errors
     def system_halt(self):
-        script = """
+        script = r"""
 use OPNsense\Core\Backend;
 
 $backend = new Backend();
@@ -820,7 +823,7 @@ $toreturn = [
         interface should be wan, lan, opt1, opt2 etc, not the description
         """
 
-        script = """
+        script = r"""
 $data = json_decode('{}', true);
 $if = $data["interface"];
 $mac = $data["mac"];
@@ -853,197 +856,302 @@ $toreturn = [
         return response
 
     @_log_errors
-    def get_telemetry(self):
-        script = """
-require_once '/usr/local/www/widgets/api/plugins/system.inc';
-include_once '/usr/local/www/widgets/api/plugins/interfaces.inc';
-require_once '/usr/local/www/widgets/api/plugins/temperature.inc';
-require_once '/usr/local/etc/inc/plugins.inc.d/openvpn.inc';
+    def _try_to_int(self, input, retval=None) -> int | None:
+        try:
+            return int(input)
+        except (ValueError, TypeError):
+            return retval
 
-global $config;
-global $g;
+    @_log_errors
+    def get_telemetry(self) -> dict:
+        telemetry: dict[str, Any] = {}
+        telemetry["interfaces"] = self._get_telemetry_interfaces()
+        telemetry["mbuf"] = self._get_telemetry_mbuf()
+        telemetry["pfstate"] = self._get_telemetry_pfstate()
+        telemetry["memory"] = self._get_telemetry_memory()
+        telemetry["system"] = self._get_telemetry_system()
+        telemetry["cpu"] = self._get_telemetry_cpu()
+        telemetry["filesystems"] = self._get_telemetry_filesystems()
+        telemetry["openvpn"] = self._get_telemetry_openvpn()
+        telemetry["gateways"] = self._get_telemetry_gateways()
+        _LOGGER.debug(f"[get_telemetry] telemetry: {telemetry}")
+        return telemetry
 
-function stripalpha($s) {
-  return preg_replace("/\D/", "", $s);
-}
+    @_log_errors
+    def _get_telemetry_interfaces(self) -> dict:
+        interface_info: dict[str, Any] = self._post("/api/interfaces/overview/export")
+        _LOGGER.debug(f"[get_telemetry_interfaces] interface_info: {interface_info}")
+        if interface_info is None or not isinstance(interface_info, list):
+            return {}
+        interfaces: dict[str, Any] = {}
+        for ifinfo in interface_info:
+            interface: dict[str, Any] = {}
+            if ifinfo is None or not isinstance(ifinfo, Mapping):
+                continue
+            interface["inpkts"] = self._try_to_int(
+                ifinfo.get("statistics", {}).get("packets received", None)
+            )
+            interface["outpkts"] = self._try_to_int(
+                ifinfo.get("statistics", {}).get("packets transmitted", None)
+            )
+            interface["inbytes"] = self._try_to_int(
+                ifinfo.get("statistics", {}).get("bytes received", None)
+            )
+            interface["outbytes"] = self._try_to_int(
+                ifinfo.get("statistics", {}).get("bytes transmitted", None)
+            )
+            interface["inbytes_frmt"] = self._try_to_int(
+                ifinfo.get("statistics", {}).get("bytes received", None)
+            )
+            interface["outbytes_frmt"] = self._try_to_int(
+                ifinfo.get("statistics", {}).get("bytes transmitted", None)
+            )
+            interface["inerrs"] = self._try_to_int(
+                ifinfo.get("statistics", {}).get("input errors", None)
+            )
+            interface["outerrs"] = self._try_to_int(
+                ifinfo.get("statistics", {}).get("output errors", None)
+            )
+            interface["collisions"] = self._try_to_int(
+                ifinfo.get("statistics", {}).get("collisions", None)
+            )
+            interface["descr"] = ifinfo.get("device", "")
+            interface["name"] = ifinfo.get("description", "")
+            interface["status"] = ""
+            if ifinfo.get("status", "") in ("down", "no carrier", "up"):
+                interface["status"] = ifinfo.get("status", "")
+            elif ifinfo.get("status", "") in ("associated"):
+                interface["status"] = "up"
+            interface["ipaddr"] = ifinfo.get("addr4", "")
+            interface["media"] = ifinfo.get("media", "")
+            if (
+                ifinfo.get("description", "").lower() == "unassigned interface"
+                and "device" in ifinfo
+            ):
+                interfaces[ifinfo.get("device", "")] = interface
+            else:
+                interfaces[ifinfo.get("description", "")] = interface
+        _LOGGER.debug(f"[get_telemetry_interfaces] interfaces: {interfaces}")
+        return interfaces
 
-// OPNsense 24.1 removed /usr/local/www/widgets/api/plugins/interfaces.inc to replace with new api endpoint
-if (!function_exists('interfaces_api')) {
-    function interfaces_api() {
-        global $config;
-        $result = array();
-        $oc = new OPNsense\Interfaces\Api\OverviewController();
-        foreach (get_configured_interface_with_descr() as $ifdescr => $ifname) {
-            $ifinfo = $oc->getInterfaceAction($config["interfaces"][$ifdescr]["if"])["message"];
-            // if interfaces is disabled returns message => "failed"
-            if (!is_array($ifinfo)) {
-                continue;
+    @_log_errors
+    def _get_telemetry_mbuf(self) -> dict:
+        mbuf_info: dict[str, Any] = self._post("/api/diagnostics/system/system_mbuf")
+        _LOGGER.debug(f"[get_telemetry_mbuf] mbuf_info: {mbuf_info}")
+        if mbuf_info is None or not isinstance(mbuf_info, Mapping):
+            return {}
+        mbuf: dict[str, Any] = {}
+        mbuf["used"] = self._try_to_int(
+            mbuf_info.get("mbuf-statistics", {}).get("mbuf-current", None)
+        )
+        mbuf["total"] = self._try_to_int(
+            mbuf_info.get("mbuf-statistics", {}).get("mbuf-total", None)
+        )
+        mbuf["used_percent"] = (
+            round(mbuf["used"] / mbuf["total"] * 100)
+            if isinstance(mbuf["used"], int)
+            and isinstance(mbuf["total"], int)
+            and mbuf["total"] > 0
+            else None
+        )
+        _LOGGER.debug(f"[get_telemetry_mbuf] mbuf: {mbuf}")
+        return mbuf
+
+    @_log_errors
+    def _get_telemetry_pfstate(self) -> dict:
+        pfstate_info: dict[str, Any] = self._post("/api/diagnostics/firewall/pfstates")
+        _LOGGER.debug(f"[get_telemetry_pfstate] pfstate_info: {pfstate_info}")
+        if pfstate_info is None or not isinstance(pfstate_info, Mapping):
+            return {}
+        pfstate: dict[str, Any] = {}
+        pfstate["used"] = self._try_to_int(pfstate_info.get("current", None))
+        pfstate["total"] = self._try_to_int(pfstate_info.get("limit", None))
+        pfstate["used_percent"] = (
+            round(pfstate["used"] / pfstate["total"] * 100)
+            if isinstance(pfstate["used"], int)
+            and isinstance(pfstate["total"], int)
+            and pfstate["total"] > 0
+            else None
+        )
+        _LOGGER.debug(f"[get_telemetry_pfstate] pfstate: {pfstate}")
+        return pfstate
+
+    @_log_errors
+    def _get_telemetry_memory(self) -> dict:
+        memory_info: dict[str, Any] = self._post(
+            "/api/diagnostics/system/systemResources"
+        )
+        _LOGGER.debug(f"[get_telemetry_memory] memory_info: {memory_info}")
+        if memory_info is None or not isinstance(memory_info, Mapping):
+            return memory
+        memory: dict[str, Any] = {}
+        memory["physmem"] = self._try_to_int(
+            memory_info.get("memory", {}).get("total", None)
+        )
+        memory["used"] = self._try_to_int(
+            memory_info.get("memory", {}).get("used", None)
+        )
+        memory["used_percent"] = (
+            round(memory["used"] / memory["physmem"] * 100)
+            if isinstance(memory["used"], int)
+            and isinstance(memory["physmem"], int)
+            and memory["physmem"] > 0
+            else None
+        )
+        swap_info: dict[str, Any] = self._post("/api/diagnostics/system/systemSwap")
+        if (
+            swap_info is None
+            or not isinstance(swap_info, Mapping)
+            or not isinstance(swap_info.get("swap", [])[0], Mapping)
+        ):
+            return memory
+        _LOGGER.debug(f"[get_telemetry_memory] swap_info: {swap_info}")
+        memory["swap_total"] = self._try_to_int(
+            swap_info.get("swap", [])[0].get("total", None)
+        )
+        memory["swap_reserved"] = self._try_to_int(
+            swap_info["swap"][0].get("used", None)
+        )
+        memory["swap_used_percent"] = (
+            round(memory["swap_reserved"] / memory["swap_total"] * 100)
+            if isinstance(memory["swap_reserved"], int)
+            and isinstance(memory["swap_total"], int)
+            and memory["swap_total"] > 0
+            else 0
+        )
+        _LOGGER.debug(f"[get_telemetry_memory] memory: {memory}")
+        return memory
+
+    @_log_errors
+    def _get_telemetry_system(self) -> dict:
+        time_info: dict[str, Any] = self._post("/api/diagnostics/system/systemTime")
+        _LOGGER.debug(f"[get_telemetry_system] time_info: {time_info}")
+        if time_info is None or not isinstance(time_info, Mapping):
+            return {}
+        system: dict[str, Any] = {}
+        pattern = re.compile(r"^(?:(\d+)\s+days?,\s+)?(\d{2}):(\d{2}):(\d{2})$")
+        match = pattern.match(time_info.get("uptime", ""))
+        if not match:
+            raise ValueError("Invalid uptime format")
+        days_str, hours_str, minutes_str, seconds_str = match.groups()
+        days: int = self._try_to_int(days_str, 0)
+        hours: int = self._try_to_int(hours_str, 0)
+        minutes: int = self._try_to_int(minutes_str, 0)
+        seconds: int = self._try_to_int(seconds_str, 0)
+        system["uptime"] = days * 86400 + hours * 3600 + minutes * 60 + seconds
+
+        boottime: datetime = datetime.now() - timedelta(seconds=system["uptime"])
+        system["boottime"] = boottime.timestamp()
+        load_str: str = time_info.get("loadavg", "")
+        load_list: list[str] = load_str.split(", ")
+        if len(load_list) == 3:
+            system["load_average"] = {
+                "one_minute": float(load_list[0]),
+                "five_minute": float(load_list[1]),
+                "fifteen_minute": float(load_list[2]),
             }
-            $interfaceItem = array();
-            $interfaceItem['inpkts'] = $ifinfo["packets received"]["value"];
-            $interfaceItem['outpkts'] = $ifinfo["packets transmitted"]["value"];
-            $interfaceItem['inbytes'] = $ifinfo["bytes received"]["value"];
-            $interfaceItem['outbytes'] = $ifinfo["bytes transmitted"]["value"];
-            $interfaceItem['inbytes_frmt'] = format_bytes($interfaceItem['inbytes']);
-            $interfaceItem['outbytes_frmt'] = format_bytes($interfaceItem['outbytes']);
-            $interfaceItem['inerrs'] = $ifinfo["input errors"]["value"];
-            $interfaceItem['outerrs'] = $ifinfo["output errors"]["value"];
-            $interfaceItem['collisions'] = $ifinfo["collisions"]["value"];
-            $interfaceItem['descr'] = $ifdescr;
-            $interfaceItem['name'] = $ifname;
-            switch ($ifinfo["status"]["value"]) {
-                case 'down':
-                case 'no carrier':
-                case 'up':
-                    $interfaceItem['status'] = $ifinfo["status"]["value"];
-                    break;
-                case 'associated':
-                    $interfaceItem['status'] = 'up';
-                    break;
-                default:
-                    $interfaceItem['status'] = '';
-                    break;
+        else:
+            system["load_average"] = {
+                "one_minute": None,
+                "five_minute": None,
+                "fifteen_minute": None,
             }
-            //$interfaceItem['ipaddr'] = empty($ifinfo['ipaddr']) ? "" : $ifinfo['ipaddr'];
-            $interfaceItem['ipaddr'] = isset($ifinfo["ipv4"]["value"][0]["ipaddr"]) ? $ifinfo["ipv4"]["value"][0]["ipaddr"] : "";
-            $interfaceItem['media'] = $ifinfo["media"]["value"];
+        _LOGGER.debug(f"[get_telemetry_system] system: {system}")
+        return system
 
-            $result[] = $interfaceItem;
-        }
-        return $result;
-    }
-}
+    @_log_errors
+    def _get_telemetry_cpu(self) -> dict:
+        cputype_info: dict[str, Any] = self._post(
+            "/api/diagnostics/cpu_usage/getCPUType"
+        )
+        _LOGGER.debug(f"[get_telemetry_cpu] cpu_info: {cputype_info}")
+        if cputype_info is None or not isinstance(cputype_info, list):
+            return {}
+        cpu: dict[str, Any] = {}
+        cores_match = re.search(r"\((\d+) cores", cputype_info[0])
+        cpu["count"] = self._try_to_int(cores_match.group(1)) if cores_match else 0
+        # Missing frequency current and max
+        # cpu["frequency"] = {"current": 0, "max": 0}
+        _LOGGER.debug(f"[get_telemetry_cpu] cpu: {cpu}")
+        return cpu
 
-$interfaces_api_data = interfaces_api();
-if (!is_iterable($interfaces_api_data)) {
-    $interfaces_api_data = [];
-}
+    @_log_errors
+    def _get_telemetry_filesystems(self) -> dict:
+        filesystems: dict[str, Any] = {}
+        filesystems_info: dict[str, Any] = self._post(
+            "/api/diagnostics/system/systemDisk"
+        )
+        if filesystems_info is None or not isinstance(filesystems_info, Mapping):
+            return {}
+        _LOGGER.debug(
+            f"[get_telemetry_filesystems] filesystems_info: {filesystems_info}"
+        )
+        filesystems = filesystems_info.get("devices", {})
+        # To conform to the previous data being returned
+        for filesystem in filesystems:
+            filesystem["size"] = filesystem.pop("blocks", None)
+            filesystem["capacity"] = f"{filesystem.pop('used_pct','')}%"
+        _LOGGER.debug(f"[get_telemetry_filesystems] filesystems: {filesystems}")
+        return filesystems
 
-$system_api_data = system_api();
-$temperature_api_data = temperature_api();
+    @_log_errors
+    def _get_telemetry_openvpn(self) -> dict:
+        openvpn_info: dict[str, Any] = self._post("/api/openvpn/export/providers")
+        _LOGGER.debug(f"[get_telemetry_openvpn] openvpn_info: {openvpn_info}")
+        if openvpn_info is None or not isinstance(openvpn_info, Mapping):
+            return {}
+        openvpn: dict[str, Any] = {}
+        openvpn["servers"] = {}
+        connection_info: dict[str, Any] = self._post(
+            "/api/openvpn/service/searchSessions"
+        )
+        _LOGGER.debug(f"[get_telemetry_openvpn] connection_info: {connection_info}")
+        if connection_info is None or not isinstance(connection_info, Mapping):
+            return {}
+        for vpnid, vpn_info in openvpn_info.items():
+            vpn: dict[str, Any] = {}
+            vpn["vpnid"] = vpn_info.get("vpnid", "")
+            vpn["name"] = vpn_info.get("name", "")
+            total_bytes_recv = 0
+            total_bytes_sent = 0
+            for connect in connection_info.get("rows", {}):
+                if connect.get("id", None) and connect.get("id", None) == vpn.get(
+                    "vpnid", None
+                ):
+                    total_bytes_recv += self._try_to_int(
+                        connect.get("bytes_received", 0), 0
+                    )
+                    total_bytes_sent += self._try_to_int(
+                        connect.get("bytes_sent", 0), 0
+                    )
+            vpn["total_bytes_recv"] = total_bytes_recv
+            vpn["total_bytes_sent"] = total_bytes_sent
+            # Missing connected_client_count
+            # vpn["connected_client_count"] =
+            openvpn["servers"][vpnid] = vpn
+        _LOGGER.debug(f"[get_telemetry_openvpn] openvpn: {openvpn}")
+        return openvpn
 
-// OPNsense 23.1.1: replaced single exec_command() with new shell_safe() wrapper
-if (function_exists('exec_command')) {
-    $boottime = exec_command("sysctl kern.boottime");
-} else {
-    $boottime = shell_safe("sysctl kern.boottime");
-}
-
-// kern.boottime: { sec = 1634047554, usec = 237429 } Tue Oct 12 08:05:54 2021
-preg_match("/sec = [0-9]*/", $boottime, $matches);
-$boottime = $matches[0];
-$boottime = explode("=", $boottime)[1];
-$boottime = (int) trim($boottime);
-
-// Fix for 23.1.4 (https://forum.opnsense.org/index.php?topic=33144.0)
-if (function_exists('openvpn_get_active_servers')) {
-    $ovpn_servers = openvpn_get_active_servers();
-} else {
-    $ovpn_servers = [];
-}
-
-$toreturn = [
-    "pfstate" => [
-        "used" => (int) $system_api_data["kernel"]["pf"]["states"],
-        "total" => (int) $system_api_data["kernel"]["pf"]["maxstates"],
-        "used_percent" => round(floatval($system_api_data["kernel"]["pf"]["states"] / $system_api_data["kernel"]["pf"]["maxstates"]) * 100, 0),
-    ],
-
-    "mbuf" => [
-        "used" => (int) $system_api_data["kernel"]["mbuf"]["total"],
-        "total" => (int) $system_api_data["kernel"]["mbuf"]["max"],
-        "used_percent" =>  round(floatval($system_api_data["kernel"]["mbuf"]["total"] / $system_api_data["kernel"]["mbuf"]["max"]) * 100, 0),
-    ],
-
-    "memory" => [
-        "swap_used_percent" => ($system_api_data["disk"]["swap"][0]["total"] > 0) ? round(floatval($system_api_data["disk"]["swap"][0]["used"] / $system_api_data["disk"]["swap"][0]["total"]) * 100, 0) : 0,
-        "used_percent" => round(floatval($system_api_data["kernel"]["memory"]["used"] / $system_api_data["kernel"]["memory"]["total"]) * 100, 0),
-        "physmem" => (int) $system_api_data["kernel"]["memory"]["total"],
-        "used" => (int) $system_api_data["kernel"]["memory"]["used"],
-        "swap_total" => (int) $system_api_data["disk"]["swap"][0]["total"],
-        "swap_reserved" => (int) $system_api_data["disk"]["swap"][0]["used"],
-    ],
-
-    "system" => [
-        "boottime" => $boottime,
-        "uptime" => (int) $system_api_data["uptime"],
-        //"temp" => 0,
-        "load_average" => [
-            "one_minute" => floatval(trim($system_api_data["cpu"]["load"][0])),
-            "five_minute" => floatval(trim($system_api_data["cpu"]["load"][1])),
-            "fifteen_minute" => floatval(trim($system_api_data["cpu"]["load"][2])),
-        ],
-    ],
-
-    "cpu" => [
-        "frequency" => [
-            "current" => (int) stripalpha($system_api_data["cpu"]["cur.freq"]),
-            "max" => (int) stripalpha($system_api_data["cpu"]["max.freq"]),
-        ],
-        "count" => (int) $system_api_data["cpu"]["cur.freq"],
-    ],
-
-    "filesystems" => $system_api_data["disk"]["devices"],
-
-    "interfaces" => [],
-
-    "openvpn" => [],
-    
-    "gateways" => return_gateways_status(true),
-];
-
-if (!is_iterable($toreturn["gateways"])) {
-    $toreturn["gateways"] = [];
-}
-foreach ($toreturn["gateways"] as $key => $gw) {
-    $status = $gw["status"];
-    if ($status == "none") {
-        $status = "online";
-    }
-    $gw["status"] = $status;
-    $toreturn["gateways"][$key] = $gw;
-}
-
-foreach ($interfaces_api_data as $if) {
-    $if["inpkts"] = (int) $if["inpkts"];
-    $if["outpkts"] = (int) $if["outpkts"];
-    $if["inbytes"] = (int) $if["inbytes"];
-    $if["outbytes"] = (int) $if["outbytes"];
-    $if["inerrs"] = (int) $if["inerrs"];
-    $if["outerrs"] = (int) $if["outerrs"];
-    $if["collisions"] = (int) $if["collisions"];
-    $toreturn["interfaces"][$if["descr"]] = $if;
-}
-
-foreach ($ovpn_servers as $server) {
-    $vpnid = $server["vpnid"];
-    $name = $server["name"];
-    $conn_count = count($server["conns"]);
-    $total_bytes_recv = 0;
-    $total_bytes_sent = 0;
-    foreach ($server["conns"] as $conn) {
-        $total_bytes_recv += $conn["bytes_recv"];
-        $total_bytes_sent += $conn["bytes_sent"];
-    }
-    
-    $toreturn["openvpn"]["servers"][$vpnid]["name"] = $name;
-    $toreturn["openvpn"]["servers"][$vpnid]["vpnid"] = $vpnid;
-    $toreturn["openvpn"]["servers"][$vpnid]["connected_client_count"] = $conn_count;
-    $toreturn["openvpn"]["servers"][$vpnid]["total_bytes_recv"] = $total_bytes_recv;
-    $toreturn["openvpn"]["servers"][$vpnid]["total_bytes_sent"] = $total_bytes_sent;
-}
-
-"""
-        data = self._exec_php(script)
-
-        if isinstance(data["gateways"], list):
-            data["gateways"] = {}
-
-        return data
+    @_log_errors
+    def _get_telemetry_gateways(self) -> dict:
+        gateways_info: dict[str, Any] = self._post("/api/routes/gateway/status")
+        _LOGGER.debug(f"[get_telemetry_gateways] gateways_info: {gateways_info}")
+        if gateways_info is None or not isinstance(gateways_info, Mapping):
+            return {}
+        gateways: dict[str, Any] = {}
+        for gw_info in gateways_info.get("items", []):
+            if isinstance(gw_info, Mapping) and "name" in gw_info:
+                gateways[gw_info["name"]] = gw_info
+        for gateway in gateways.values():
+            gateway["status"] = gateway.pop(
+                "status_translated", gateway.get("status", "")
+            ).lower()
+        _LOGGER.debug(f"[get_telemetry_gateways] gateways: {gateways}")
+        return gateways
 
     @_log_errors
     def are_notices_pending(self):
-        script = """
+        script = r"""
 if (file_exists('/usr/local/etc/inc/notices.inc')) {
     require_once '/usr/local/etc/inc/notices.inc';
 
@@ -1069,7 +1177,7 @@ if (file_exists('/usr/local/etc/inc/notices.inc')) {
 
     @_log_errors
     def get_notices(self):
-        script = """
+        script = r"""
 if (file_exists('/usr/local/etc/inc/notices.inc')) {
     require_once '/usr/local/etc/inc/notices.inc';
 
@@ -1111,7 +1219,7 @@ if (file_exists('/usr/local/etc/inc/notices.inc')) {
 
     @_log_errors
     def file_notice(self, notice):
-        script = """
+        script = r"""
 $data = json_decode('{}', true);
 $notice = $data["notice"];
 
@@ -1142,7 +1250,7 @@ if (file_exists('/usr/local/etc/inc/notices.inc')) {{
         """
         id = "all" to wipe everything
         """
-        script = """
+        script = r"""
 $data = json_decode('{}', true);
 $id = $data["id"];
 
