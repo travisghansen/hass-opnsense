@@ -881,7 +881,14 @@ $toreturn = [
     def _get_telemetry_interfaces(self) -> dict:
         interface_info: dict[str, Any] = self._post("/api/interfaces/overview/export")
         _LOGGER.debug(f"[get_telemetry_interfaces] interface_info: {interface_info}")
-        if interface_info is None or not isinstance(interface_info, list):
+        if (
+            interface_info is None
+            or not isinstance(interface_info, list)
+            or not len(interface_info) > 0
+        ):
+            _LOGGER.error(
+                "Unable to get Interface data. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'Status: Interfaces' privilege."
+            )
             return {}
         interfaces: dict[str, Any] = {}
         for ifinfo in interface_info:
@@ -938,7 +945,14 @@ $toreturn = [
     def _get_telemetry_mbuf(self) -> dict:
         mbuf_info: dict[str, Any] = self._post("/api/diagnostics/system/system_mbuf")
         _LOGGER.debug(f"[get_telemetry_mbuf] mbuf_info: {mbuf_info}")
-        if mbuf_info is None or not isinstance(mbuf_info, Mapping):
+        if (
+            mbuf_info is None
+            or not isinstance(mbuf_info, Mapping)
+            or mbuf_info.get("status", None) == 403
+        ):
+            _LOGGER.error(
+                "Unable to get mbuf data. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'Dashboard (all)' privilege."
+            )
             return {}
         mbuf: dict[str, Any] = {}
         mbuf["used"] = self._try_to_int(
@@ -961,7 +975,14 @@ $toreturn = [
     def _get_telemetry_pfstate(self) -> dict:
         pfstate_info: dict[str, Any] = self._post("/api/diagnostics/firewall/pfstates")
         _LOGGER.debug(f"[get_telemetry_pfstate] pfstate_info: {pfstate_info}")
-        if pfstate_info is None or not isinstance(pfstate_info, Mapping):
+        if (
+            pfstate_info is None
+            or not isinstance(pfstate_info, Mapping)
+            or pfstate_info.get("status", None) == 403
+        ):
+            _LOGGER.error(
+                "Unable to get pfstate data. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'Dashboard (all)' privilege."
+            )
             return {}
         pfstate: dict[str, Any] = {}
         pfstate["used"] = self._try_to_int(pfstate_info.get("current", None))
@@ -982,8 +1003,15 @@ $toreturn = [
             "/api/diagnostics/system/systemResources"
         )
         _LOGGER.debug(f"[get_telemetry_memory] memory_info: {memory_info}")
-        if memory_info is None or not isinstance(memory_info, Mapping):
-            return memory
+        if (
+            memory_info is None
+            or not isinstance(memory_info, Mapping)
+            or memory_info.get("status", None) == 403
+        ):
+            _LOGGER.error(
+                "Unable to get Memory data. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'Dashboard (all)' privilege."
+            )
+            return {}
         memory: dict[str, Any] = {}
         memory["physmem"] = self._try_to_int(
             memory_info.get("memory", {}).get("total", None)
@@ -998,12 +1026,19 @@ $toreturn = [
             and memory["physmem"] > 0
             else None
         )
-        swap_info: dict[str, Any] = self._post("/api/diagnostics/system/systemSwap")
+        swap_info: dict[str, Any] = self._post("/api/diagnostics/system/system_swap")
+        _LOGGER.debug(f"[get_telemetry_memory] swap_info: {swap_info}")
         if (
             swap_info is None
             or not isinstance(swap_info, Mapping)
+            or swap_info.get("status", None) == 403
+            or not isinstance(swap_info.get("swap", None), list)
+            or not len(swap_info.get("swap", [])) > 0
             or not isinstance(swap_info.get("swap", [])[0], Mapping)
         ):
+            _LOGGER.error(
+                "Unable to get Swap data. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'Dashboard (all)' privilege."
+            )
             return memory
         _LOGGER.debug(f"[get_telemetry_memory] swap_info: {swap_info}")
         memory["swap_total"] = self._try_to_int(
@@ -1026,7 +1061,14 @@ $toreturn = [
     def _get_telemetry_system(self) -> dict:
         time_info: dict[str, Any] = self._post("/api/diagnostics/system/systemTime")
         _LOGGER.debug(f"[get_telemetry_system] time_info: {time_info}")
-        if time_info is None or not isinstance(time_info, Mapping):
+        if (
+            time_info is None
+            or not isinstance(time_info, Mapping)
+            or time_info.get("status", None) == 403
+        ):
+            _LOGGER.error(
+                "Unable to get System data. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'Lobby: Login / Logout / Dashboard' privilege."
+            )
             return {}
         system: dict[str, Any] = {}
         pattern = re.compile(r"^(?:(\d+)\s+days?,\s+)?(\d{2}):(\d{2}):(\d{2})$")
@@ -1065,7 +1107,14 @@ $toreturn = [
             "/api/diagnostics/cpu_usage/getCPUType"
         )
         _LOGGER.debug(f"[get_telemetry_cpu] cpu_info: {cputype_info}")
-        if cputype_info is None or not isinstance(cputype_info, list):
+        if (
+            cputype_info is None
+            or not isinstance(cputype_info, list)
+            or not len(cputype_info) > 0
+        ):
+            _LOGGER.error(
+                "Unable to get CPU data. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'Dashboard (all)' privilege."
+            )
             return {}
         cpu: dict[str, Any] = {}
         cores_match = re.search(r"\((\d+) cores", cputype_info[0])
@@ -1081,7 +1130,14 @@ $toreturn = [
         filesystems_info: dict[str, Any] = self._post(
             "/api/diagnostics/system/systemDisk"
         )
-        if filesystems_info is None or not isinstance(filesystems_info, Mapping):
+        if (
+            filesystems_info is None
+            or not isinstance(filesystems_info, Mapping)
+            or filesystems_info.get("status", None) == 403
+        ):
+            _LOGGER.error(
+                "Unable to get Filesystem data. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'Dashboard (all)' privilege."
+            )
             return {}
         _LOGGER.debug(
             f"[get_telemetry_filesystems] filesystems_info: {filesystems_info}"
@@ -1098,7 +1154,14 @@ $toreturn = [
     def _get_telemetry_openvpn(self) -> dict:
         openvpn_info: dict[str, Any] = self._post("/api/openvpn/export/providers")
         _LOGGER.debug(f"[get_telemetry_openvpn] openvpn_info: {openvpn_info}")
-        if openvpn_info is None or not isinstance(openvpn_info, Mapping):
+        if (
+            openvpn_info is None
+            or not isinstance(openvpn_info, Mapping)
+            or openvpn_info.get("status", None) == 403
+        ):
+            _LOGGER.error(
+                "Unable to get OpenVPN data. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'VPN: OpenVPN: Client Export Utility' AND 'Status: OpenVPN' privileges."
+            )
             return {}
         openvpn: dict[str, Any] = {}
         openvpn["servers"] = {}
@@ -1106,7 +1169,14 @@ $toreturn = [
             "/api/openvpn/service/searchSessions"
         )
         _LOGGER.debug(f"[get_telemetry_openvpn] connection_info: {connection_info}")
-        if connection_info is None or not isinstance(connection_info, Mapping):
+        if (
+            connection_info is None
+            or not isinstance(connection_info, Mapping)
+            or connection_info.get("status", None) == 403
+        ):
+            _LOGGER.error(
+                "Unable to get OpenVPN data. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'VPN: OpenVPN: Client Export Utility' AND 'Status: OpenVPN' privileges."
+            )
             return {}
         for vpnid, vpn_info in openvpn_info.items():
             vpn: dict[str, Any] = {}
@@ -1136,7 +1206,14 @@ $toreturn = [
     def _get_telemetry_gateways(self) -> dict:
         gateways_info: dict[str, Any] = self._post("/api/routes/gateway/status")
         _LOGGER.debug(f"[get_telemetry_gateways] gateways_info: {gateways_info}")
-        if gateways_info is None or not isinstance(gateways_info, Mapping):
+        if (
+            gateways_info is None
+            or not isinstance(gateways_info, Mapping)
+            or gateways_info.get("status", None) == 403
+        ):
+            _LOGGER.error(
+                "Unable to get Gateway data. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'Dashboard (all)' privilege."
+            )
             return {}
         gateways: dict[str, Any] = {}
         for gw_info in gateways_info.get("items", []):
