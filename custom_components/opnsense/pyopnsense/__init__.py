@@ -959,7 +959,7 @@ $toreturn = [
 
     @_log_errors
     def _get_telemetry_pfstate(self) -> dict:
-        pfstate_info: dict[str, Any] = self._post("/api/diagnostics/firewall/pfstates")
+        pfstate_info: dict[str, Any] = self._post("/api/diagnostics/firewall/pf_states")
         _LOGGER.debug(f"[get_telemetry_pfstate] pfstate_info: {pfstate_info}")
         if pfstate_info is None or not isinstance(pfstate_info, Mapping):
             return {}
