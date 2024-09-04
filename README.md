@@ -92,6 +92,21 @@ a 'hard-refresh' of the browser (ctrl-F5) then open the list again, you'll find 
   - `XMLRPC Library` (note that this privilege effectively gives the user complete access to
     the system via the `xmlrpc` feature)
   - `System:Firmware`
+  - The integration also uses OPNsense REST API, and it requires these additional privileges:
+
+    | Endpoint | Permission |
+    | -------- | ------- |
+    | /api/diagnostics/system/system_mbuf | Dashboard (all) |
+    | /api/diagnostics/firewall/pfstates | Dashboard (all) |
+    | /api/routes/gateway/status | Dashboard (all) |
+    | /api/diagnostics/system/systemResources | Dashboard (all) |
+    | /api/diagnostics/system/systemSwap | Dashboard (all) |
+    | /api/diagnostics/cpu_usage/getCPUType | Dashboard (all) |
+    | /api/diagnostics/system/systemDisk | Dashboard (all) |
+    | /api/diagnostics/system/systemTime | Lobby: Login / Logout / Dashboard |
+    | /api/openvpn/export/providers | VPN: OpenVPN: Client Export Utility |
+    | /api/interfaces/overview/export | Status: Interfaces |
+    | /api/openvpn/service/searchSessions | Status: OpenVPN |
 
 ## config
 
