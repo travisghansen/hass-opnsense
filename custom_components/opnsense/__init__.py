@@ -511,7 +511,7 @@ class OPNSenseEntity(CoordinatorEntity, RestoreEntity):
     def device_info(self) -> Mapping[str, Any]:
         """Device info for the firewall."""
         state: Mapping[str, Any] = self.coordinator.data
-        _LOGGER.debug(f"[device_info] state: {state}")
+        # _LOGGER.debug(f"[device_info] state: {state}")
         model: str = "OPNsense"
         manufacturer: str = "Deciso B.V."
         if (
