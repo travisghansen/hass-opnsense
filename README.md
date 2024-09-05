@@ -5,20 +5,20 @@
 
 Join `OPNsense` with `Home Assistant`!
 
-`hass-opnsense` uses the built-in `xmlrpc` service (along with [the REST API](https://docs.opnsense.org/development/api.html)) of `OPNsense` for all interactions. This project is currently a proof-of-concept and may fail to work
+`hass-opnsense` uses the built-in `xmlrpc` service and `OPNsense` [REST API](https://docs.opnsense.org/development/api.html)) to integrate OPNsense with Home Assistant. This project is currently a proof-of-concept and may fail to work
 at any time.
 
 Initial development was done againt `OPNsense` `21.7` and `Home Assistant` `2021.10`.
 
 # Overview
 
-- [Installation](#Installation)
-  - [OPNsense plugin](#OPNsense-plugin)
-  - [Home Assistant integration](#HomeAssistant-integration)
-    - [HACS installation](#HACS-installation)
-    - [Manual installation](#Manual-installation)
-- [Configuration](#Configuration)
-  - [OPNsense](#OPNsense-plugin)
+- [Installation](#installation)
+  - [OPNsense plugin](#opnsense-plugin)
+  - [Home Assistant integration](#homeassistant-integration)
+    - [HACS installation](#hacs-installation)
+    - [Manual installation](#manual-installation)
+- [Configuration](#configuration)
+  - [OPNsense](#opnsense-plugin)
   - [HA Config](#config)
   - [Options](#options)
 - [Entities](#entities)
@@ -28,7 +28,7 @@ Initial development was done againt `OPNsense` `21.7` and `Home Assistant` `2021
   - [Switch](#switch)
   - [Services](#services)
 - [Known Issues](#known-issues)
-  - [AdGuardHome](#AdGuardHome)
+  - [AdGuardHome](#adguardhome)
 
 # Installation
 
@@ -72,8 +72,10 @@ Configuration is managed entirely from the UI using `config_flow` semantics. Sim
 
 ## OPNsense
 
-- Create a new user or choose an existing user, and create an API key associated to to that user. When creating the API key, `OPNsense` will push the API file containing the API key and API secret to your browser, you'll find it in the download folder.
-- If using a non `admin` user account, ensure the user has the following privileges:
+The official recommendation is that the service user to be created has the admin role.
+
+- Create a new admin role user (or choose an existing admin user), and create an API key associated to the user. When creating the API key, `OPNsense` will push the API file containing the API key and API secret to your browser, you'll find it in the download folder.
+- If you don't want to user an `admin` user account, you can try assigning the following privileges, but this is not guaranteed to work and could lead to potential issues, so we still recommend using an admin user:
   - `Dashboard (all)`
   - `Lobby: Login / Logout / Dashboard`
   - `Status: Interfaces`
