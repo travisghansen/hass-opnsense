@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import copy
 from datetime import timedelta
 import logging
 import re
 import time
-from typing import Callable
+from typing import Any, Callable
 
 import async_timeout
 from homeassistant.config_entries import ConfigEntry
@@ -507,14 +508,26 @@ class OPNSenseEntity(CoordinatorEntity, RestoreEntity):
         return None
 
     @property
-    def device_info(self):
+    def device_info(self) -> Mapping[str, Any]:
         """Device info for the firewall."""
-        state = self.coordinator.data
-        model = "OPNsense"
-        manufacturer = "Deciso B.V."
-        firmware = state["host_firmware_version"]["firmware"]["version"]
+        state: Mapping[str, Any] = self.coordinator.data
+        # _LOGGER.debug(f"[device_info] state: {state}")
+        model: str = "OPNsense"
+        manufacturer: str = "Deciso B.V."
+        if (
+            state is None
+            or not isinstance(state, Mapping)
+            or not isinstance(state.get("host_firmware_version", None), Mapping)
+        ):
+            firmware: str | None = None
+        else:
+            firmware: str | None = (
+                state.get("host_firmware_version", {})
+                .get("firmware", {})
+                .get("version", None)
+            )
 
-        device_info = {
+        device_info: Mapping[str, Any] = {
             "identifiers": {(DOMAIN, self.opnsense_device_unique_id)},
             "name": self.opnsense_device_name,
             "configuration_url": self.config_entry.data.get("url", None),

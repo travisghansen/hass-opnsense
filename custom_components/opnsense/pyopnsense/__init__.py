@@ -106,19 +106,23 @@ class Client(object):
         return inner
 
     @_apply_timeout
-    def _get_config_section(self, section):
-        config = self.get_config()
-        return config[section]
+    def _get_config_section(self, section) -> Mapping[str, Any]:
+        config: Mapping[str, Any] = self.get_config()
+        if config is None or not isinstance(config, Mapping):
+            _LOGGER.error("Invalid data returned from get_config_section")
+            return {}
+        return config.get(section, {})
 
     @_apply_timeout
     def _restore_config_section(self, section_name, data):
-        params = {section_name: data}
+        params: Mapping[str, Any] = {section_name: data}
         response = self._get_proxy().opnsense.restore_config_section(params)
         return response
 
     @_apply_timeout
-    def _exec_php(self, script):
-        script = r"""
+    def _exec_php(self, script, calling_method="") -> Mapping[str, Any]:
+        script: str = (
+            r"""
 ini_set('display_errors', 0);
 
 {}
@@ -129,11 +133,18 @@ $toreturn_real = $toreturn;
 $toreturn = [];
 $toreturn["real"] = json_encode($toreturn_real);
 """.format(
-            script
+                script
+            )
         )
         response = self._get_proxy().opnsense.exec_php(script)
-        response = json.loads(response["real"])
-        return response
+        try:
+            response = json.loads(response["real"])
+            return response
+        except TypeError as e:
+            _LOGGER.error(
+                f"Invalid data returned from exec_php for {calling_method}. {e.__class__.__qualname__}: {e}. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'XMLRPC Library' privilege."
+            )
+            return {}
 
     @_apply_timeout
     @_log_errors
@@ -143,7 +154,11 @@ $toreturn["real"] = json_encode($toreturn_real);
     @_apply_timeout
     @_log_errors
     def _list_services(self):
-        return self._get_proxy().opnsense.list_services()
+        response = self._get_proxy().opnsense.list_services()
+        if response is None or not isinstance(response, Mapping):
+            _LOGGER.error("Invalid data returned from list_services")
+            return {}
+        return response
 
     @_apply_timeout
     @_log_errors
@@ -183,7 +198,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         return response.json()
 
     @_log_errors
-    def _is_subsystem_dirty(self, subsystem):
+    def _is_subsystem_dirty(self, subsystem) -> bool:
         script = r"""
 $data = json_decode('{}', true);
 $subsystem = $data["subsystem"];
@@ -195,11 +210,14 @@ $toreturn = [
             json.dumps({"subsystem": subsystem})
         )
 
-        response = self._exec_php(script)
-        return bool(response["data"])
+        response: Mapping[str, Any] = self._exec_php(script, "is_subsystem_dirty")
+        if response is None or not isinstance(response, Mapping):
+            _LOGGER.error("Invalid data returned from is_subsystem_dirty")
+            return False
+        return bool(response.get("data", False))
 
     @_log_errors
-    def _mark_subsystem_dirty(self, subsystem):
+    def _mark_subsystem_dirty(self, subsystem) -> None:
         script = r"""
 $data = json_decode('{}', true);
 $subsystem = $data["subsystem"];
@@ -207,10 +225,10 @@ mark_subsystem_dirty($subsystem);
 """.format(
             json.dumps({"subsystem": subsystem})
         )
-        self._exec_php(script)
+        self._exec_php(script, "mark_subsystem_dirty")
 
     @_log_errors
-    def _clear_subsystem_dirty(self, subsystem):
+    def _clear_subsystem_dirty(self, subsystem) -> None:
         script = r"""
 $data = json_decode('{}', true);
 $subsystem = $data["subsystem"];
@@ -218,19 +236,19 @@ clear_subsystem_dirty($subsystem);
 """.format(
             json.dumps({"subsystem": subsystem})
         )
-        self._exec_php(script)
+        self._exec_php(script, "clear_subsystem_dirty")
 
     @_log_errors
-    def _filter_configure(self):
+    def _filter_configure(self) -> None:
         script = r"""
 filter_configure();
 clear_subsystem_dirty('natconf');
 clear_subsystem_dirty('filter');
 """
-        self._exec_php(script)
+        self._exec_php(script, "filter_configure")
 
     @_log_errors
-    def get_device_id(self):
+    def get_device_id(self) -> Mapping[str, Any]:
         script = r"""
 $file = "/conf/hassid";
 $id;
@@ -244,11 +262,14 @@ $toreturn = [
   "data" => $id,
 ];
 """
-        response = self._exec_php(script)
-        return response["data"]
+        response: Mapping[str, Any] = self._exec_php(script, "get_device_id")
+        if response is None or not isinstance(response, Mapping):
+            _LOGGER.error("Invalid data returned from get_device_id")
+            return {}
+        return response.get("data", {})
 
     @_log_errors
-    def get_system_info(self):
+    def get_system_info(self) -> Mapping[str, Any]:
         # TODO: add bios details here
         script = r"""
 global $config;
@@ -268,7 +289,7 @@ $toreturn = [
   "device_id" => $id,
 ];
 """
-        response = self._exec_php(script)
+        response: Mapping[str, Any] = self._exec_php(script, "get_system_info")
         return response
 
     @_log_errors
@@ -355,7 +376,7 @@ $toreturn = [
         return self._post("/api/core/firmware/changelog/" + version)
 
     @_log_errors
-    def get_config(self):
+    def get_config(self) -> Mapping[str, Any]:
         script = r"""
 global $config;
 
@@ -363,21 +384,23 @@ $toreturn = [
   "data" => $config,
 ];
 """
-        response = self._exec_php(script)
-        return response["data"]
+        response: Mapping[str, Any] = self._exec_php(script, "get_config")
+        if response is None or not isinstance(response, Mapping):
+            return {}
+        return response.get("data", {})
 
     @_log_errors
-    def get_interfaces(self):
+    def get_interfaces(self) -> Mapping[str, Any]:
         return self._get_config_section("interfaces")
 
     @_log_errors
-    def get_interface(self, interface):
-        interfaces = self.get_interfaces()
-        return interfaces[interface]
+    def get_interface(self, interface) -> Mapping[str, Any]:
+        interfaces: Mapping[str, Any] = self.get_interfaces()
+        return interfaces.get(interface, {})
 
     @_log_errors
     def get_interface_by_description(self, interface):
-        interfaces = self.get_interfaces()
+        interfaces: Mapping[str, Any] = self.get_interfaces()
         for i, i_interface in enumerate(interfaces.keys()):
             if "descr" not in interfaces[i_interface]:
                 continue
@@ -406,9 +429,9 @@ $toreturn = [
 
     @_log_errors
     def disable_filter_rule_by_created_time(self, created_time):
-        config = self.get_config()
+        config: Mapping[str, Any] = self.get_config()
 
-        for rule in config["filter"]["rule"]:
+        for rule in config.get("filter", {}).get("rule", []):
             if "created" not in rule.keys():
                 continue
             if "time" not in rule["created"].keys():
@@ -424,8 +447,8 @@ $toreturn = [
     # use created_time as a unique_id since none other exists
     @_log_errors
     def enable_nat_port_forward_rule_by_created_time(self, created_time):
-        config = self.get_config()
-        for rule in config["nat"]["rule"]:
+        config: Mapping[str, Any] = self.get_config()
+        for rule in config.get("nat", {}).get("rule", []):
             if "created" not in rule.keys():
                 continue
             if "time" not in rule["created"].keys():
@@ -441,8 +464,8 @@ $toreturn = [
     # use created_time as a unique_id since none other exists
     @_log_errors
     def disable_nat_port_forward_rule_by_created_time(self, created_time):
-        config = self.get_config()
-        for rule in config["nat"]["rule"]:
+        config: Mapping[str, Any] = self.get_config()
+        for rule in config.get("nat", {}).get("rule", []):
             if "created" not in rule.keys():
                 continue
             if "time" not in rule["created"].keys():
@@ -458,8 +481,8 @@ $toreturn = [
     # use created_time as a unique_id since none other exists
     @_log_errors
     def enable_nat_outbound_rule_by_created_time(self, created_time):
-        config = self.get_config()
-        for rule in config["nat"]["outbound"]["rule"]:
+        config: Mapping[str, Any] = self.get_config()
+        for rule in config.get("nat", {}).get("outbound", {}).get("rule", []):
             if "created" not in rule.keys():
                 continue
             if "time" not in rule["created"].keys():
@@ -475,8 +498,8 @@ $toreturn = [
     # use created_time as a unique_id since none other exists
     @_log_errors
     def disable_nat_outbound_rule_by_created_time(self, created_time):
-        config = self.get_config()
-        for rule in config["nat"]["outbound"]["rule"]:
+        config: Mapping[str, Any] = self.get_config()
+        for rule in config.get("nat", {}).get("outbound", {}).get("rule", []):
             if rule["created"]["time"] != created_time:
                 continue
 
@@ -486,17 +509,24 @@ $toreturn = [
                 self._filter_configure()
 
     @_log_errors
-    def get_configured_interface_descriptions(self):
+    def get_configured_interface_descriptions(self) -> Mapping[str, Any]:
         script = r"""
 $toreturn = [
   "data" => get_configured_interface_with_descr(),
 ];
 """
-        response = self._exec_php(script)
-        return response["data"]
+        response: Mapping[str, Any] = self._exec_php(
+            script, "get_configured_interface_descriptions"
+        )
+        if response is None or not isinstance(response, Mapping):
+            _LOGGER.error(
+                "Invalid data returned from get_configured_interface_descriptions"
+            )
+            return {}
+        return response.get("data", {})
 
     @_log_errors
-    def get_gateways(self):
+    def get_gateways(self) -> Mapping[str, Any]:
         # {'GW_WAN': {'interface': '<if>', 'gateway': '<ip>', 'name': 'GW_WAN', 'weight': '1', 'ipprotocol': 'inet', 'interval': '', 'descr': 'Interface wan Gateway', 'monitor': '<ip>', 'friendlyiface': 'wan', 'friendlyifdescr': 'WAN', 'isdefaultgw': True, 'attribute': 0, 'tiername': 'Default (IPv4)'}}
         script = r"""
 $gateways = new \OPNsense\Routing\Gateways(legacy_interfaces_details());
@@ -515,8 +545,11 @@ $toreturn = [
   "data" => $result,
 ];
 """
-        response = self._exec_php(script)
-        return response["data"]
+        response: Mapping[str, Any] = self._exec_php(script, "get_gateways")
+        if response is None or not isinstance(response, Mapping):
+            _LOGGER.error("Invalid data returned from get_gateways")
+            return {}
+        return response.get("data", {})
 
     @_log_errors
     def get_gateway(self, gateway):
@@ -526,7 +559,7 @@ $toreturn = [
                 return gateways[g]
 
     @_log_errors
-    def get_gateways_status(self):
+    def get_gateways_status(self) -> Mapping[str, Any]:
         # {'GW_WAN': {'monitorip': '<ip>', 'srcip': '<ip>', 'name': 'GW_WAN', 'delay': '0.387ms', 'stddev': '0.097ms', 'loss': '0.0%', 'status': 'online', 'substatus': 'none'}}
         script = r"""
 $toreturn = [
@@ -534,12 +567,14 @@ $toreturn = [
   "data" => return_gateways_status(true),
 ];
 """
-        response = self._exec_php(script)
-        for gateway_name in response["data"].keys():
-            gateway = response["data"][gateway_name]
+        response: Mapping[str, Any] = self._exec_php(script, "get_gateways_status")
+        if response is None or not isinstance(response, Mapping):
+            _LOGGER.error("Invalid data returned from get_gateways_status")
+            return {}
+        for gateway_name, gateway in response.get("data", {}).items():
             if gateway["status"] == "none":
                 gateway["status"] = "online"
-        return response["data"]
+        return response.get("data", {})
 
     @_log_errors
     def get_gateway_status(self, gateway):
@@ -551,7 +586,7 @@ $toreturn = [
                 return gateways[g]
 
     @_log_errors
-    def get_arp_table(self, resolve_hostnames=False):
+    def get_arp_table(self, resolve_hostnames=False) -> Mapping[str, Any]:
         # [{'hostname': '?', 'ip-address': '<ip>', 'mac-address': '<mac>', 'interface': 'em0', 'expires': 1199, 'type': 'ethernet'}, ...]
         script = r"""
 $data = json_decode('{}', true);
@@ -586,8 +621,11 @@ $toreturn = [
                 }
             )
         )
-        response = self._exec_php(script)
-        return response["data"]
+        response: Mapping[str, Any] = self._exec_php(script, "get_arp_table")
+        if response is None or not isinstance(response, Mapping):
+            _LOGGER.error("Invalid data returned from get_arp_table")
+            return {}
+        return response.get("data", {})
 
     @_log_errors
     def get_services(self):
@@ -636,11 +674,18 @@ $toreturn = [
   "data" => dhcpd_leases(4),
 ];
 """
-        response = self._exec_php(script)
-        return response["data"]["lease"]
+        response: Mapping[str, Any] = self._exec_php(script, "get_dhcp_leases")
+        if (
+            response is None
+            or not isinstance(response, Mapping)
+            or not isinstance(response.get("data", None), Mapping)
+        ):
+            _LOGGER.error("Invalid data returned from get_dhcp_leases")
+            return []
+        return response.get("data", {}).get("lease", [])
 
     @_log_errors
-    def get_virtual_ips(self):
+    def get_virtual_ips(self) -> Mapping[str, Any]:
         script = r"""
 global $config;
 
@@ -655,11 +700,14 @@ $toreturn = [
   "data" => $vips,
 ];
 """
-        response = self._exec_php(script)
-        return response["data"]
+        response: Mapping[str, Any] = self._exec_php(script, "get_virtual_ips")
+        if response is None or not isinstance(response, Mapping):
+            _LOGGER.error("Invalid data returned from get_virtual_ips")
+            return {}
+        return response.get("data", {})
 
     @_log_errors
-    def get_carp_status(self):
+    def get_carp_status(self) -> Mapping[str, Any]:
         # carp enabled or not
         # readonly attribute, cannot be set directly
         # function get_carp_status()
@@ -674,11 +722,14 @@ $toreturn = [
   "data" => get_carp_status(),
 ];
 """
-        response = self._exec_php(script)
-        return response["data"]
+        response: Mapping[str, Any] = self._exec_php(script, "get_carp_status")
+        if response is None or not isinstance(response, Mapping):
+            _LOGGER.error("Invalid data returned from list_services")
+            return {}
+        return response.get("data", {})
 
     @_log_errors
-    def get_carp_interfaces(self):
+    def get_carp_interfaces(self) -> Mapping[str, Any]:
         script = r"""
 global $config;
 
@@ -709,11 +760,14 @@ $toreturn = [
   "data" => $vips,
 ];
 """
-        response = self._exec_php(script)
-        return response["data"]
+        response: Mapping[str, Any] = self._exec_php(script, "get_carp_interfaces")
+        if response is None or not isinstance(response, Mapping):
+            _LOGGER.error("Invalid data returned from get_carp_interfaces")
+            return {}
+        return response.get("data", {})
 
     @_log_errors
-    def delete_arp_entry(self, ip):
+    def delete_arp_entry(self, ip) -> None:
         if len(ip) < 1:
             return
         script = r"""
@@ -730,7 +784,7 @@ $toreturn = [
                 }
             )
         )
-        self._exec_php(script)
+        self._exec_php(script, "delete_arp_entry")
 
     @_log_errors
     def arp_get_mac_by_ip(self, ip, do_ping=True):
@@ -775,13 +829,13 @@ $toreturn = [
                 }
             )
         )
-        response = self._exec_php(script)["data"]
+        response = self._exec_php(script, "arp_get_mac_by_ip").get("data", None)
         if not response:
             return None
         return response
 
     @_log_errors
-    def system_reboot(self):
+    def system_reboot(self) -> None:
         script = r"""
 // /usr/local/opnsense/mvc/app/library/OPNsense/Core/Backend.php
 use OPNsense\Core\Backend;
@@ -794,13 +848,13 @@ $toreturn = [
 ];
 """
         try:
-            self._exec_php(script)
+            self._exec_php(script, "system_reboot")
         except ExpatError:
             # ignore response failures because the system is going down
             pass
 
     @_log_errors
-    def system_halt(self):
+    def system_halt(self) -> None:
         script = r"""
 use OPNsense\Core\Backend;
 
@@ -812,13 +866,13 @@ $toreturn = [
 ];
 """
         try:
-            self._exec_php(script)
+            self._exec_php(script, "system_halt")
         except ExpatError:
             # ignore response failures because the system is going down
             pass
 
     @_log_errors
-    def send_wol(self, interface, mac):
+    def send_wol(self, interface, mac) -> Mapping[str, Any]:
         """
         interface should be wan, lan, opt1, opt2 etc, not the description
         """
@@ -852,7 +906,7 @@ $toreturn = [
             )
         )
 
-        response = self._exec_php(script)
+        response: Mapping[str, Any] = self._exec_php(script, "send_wol")
         return response
 
     @_log_errors
@@ -864,7 +918,7 @@ $toreturn = [
 
     @_log_errors
     def get_telemetry(self) -> dict:
-        telemetry: dict[str, Any] = {}
+        telemetry: Mapping[str, Any] = {}
         telemetry["interfaces"] = self._get_telemetry_interfaces()
         telemetry["mbuf"] = self._get_telemetry_mbuf()
         telemetry["pfstate"] = self._get_telemetry_pfstate()
@@ -879,13 +933,22 @@ $toreturn = [
 
     @_log_errors
     def _get_telemetry_interfaces(self) -> dict:
-        interface_info: dict[str, Any] = self._post("/api/interfaces/overview/export")
+        interface_info: Mapping[str, Any] = self._post(
+            "/api/interfaces/overview/export"
+        )
         _LOGGER.debug(f"[get_telemetry_interfaces] interface_info: {interface_info}")
-        if interface_info is None or not isinstance(interface_info, list):
+        if (
+            interface_info is None
+            or not isinstance(interface_info, list)
+            or not len(interface_info) > 0
+        ):
+            _LOGGER.error(
+                "Unable to get Interface data. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'Status: Interfaces' privilege."
+            )
             return {}
-        interfaces: dict[str, Any] = {}
+        interfaces: Mapping[str, Any] = {}
         for ifinfo in interface_info:
-            interface: dict[str, Any] = {}
+            interface: Mapping[str, Any] = {}
             if ifinfo is None or not isinstance(ifinfo, Mapping):
                 continue
             interface["inpkts"] = self._try_to_int(
@@ -936,11 +999,18 @@ $toreturn = [
 
     @_log_errors
     def _get_telemetry_mbuf(self) -> dict:
-        mbuf_info: dict[str, Any] = self._post("/api/diagnostics/system/system_mbuf")
+        mbuf_info: Mapping[str, Any] = self._post("/api/diagnostics/system/system_mbuf")
         _LOGGER.debug(f"[get_telemetry_mbuf] mbuf_info: {mbuf_info}")
-        if mbuf_info is None or not isinstance(mbuf_info, Mapping):
+        if (
+            mbuf_info is None
+            or not isinstance(mbuf_info, Mapping)
+            or mbuf_info.get("status", None) == 403
+        ):
+            _LOGGER.error(
+                "Unable to get mbuf data. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'Dashboard (all)' privilege."
+            )
             return {}
-        mbuf: dict[str, Any] = {}
+        mbuf: Mapping[str, Any] = {}
         mbuf["used"] = self._try_to_int(
             mbuf_info.get("mbuf-statistics", {}).get("mbuf-current", None)
         )
@@ -959,11 +1029,20 @@ $toreturn = [
 
     @_log_errors
     def _get_telemetry_pfstate(self) -> dict:
-        pfstate_info: dict[str, Any] = self._post("/api/diagnostics/firewall/pf_states")
+        pfstate_info: Mapping[str, Any] = self._post(
+            "/api/diagnostics/firewall/pf_states"
+        )
         _LOGGER.debug(f"[get_telemetry_pfstate] pfstate_info: {pfstate_info}")
-        if pfstate_info is None or not isinstance(pfstate_info, Mapping):
+        if (
+            pfstate_info is None
+            or not isinstance(pfstate_info, Mapping)
+            or pfstate_info.get("status", None) == 403
+        ):
+            _LOGGER.error(
+                "Unable to get pfstate data. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'Dashboard (all)' privilege."
+            )
             return {}
-        pfstate: dict[str, Any] = {}
+        pfstate: Mapping[str, Any] = {}
         pfstate["used"] = self._try_to_int(pfstate_info.get("current", None))
         pfstate["total"] = self._try_to_int(pfstate_info.get("limit", None))
         pfstate["used_percent"] = (
@@ -978,13 +1057,20 @@ $toreturn = [
 
     @_log_errors
     def _get_telemetry_memory(self) -> dict:
-        memory_info: dict[str, Any] = self._post(
+        memory_info: Mapping[str, Any] = self._post(
             "/api/diagnostics/system/systemResources"
         )
         _LOGGER.debug(f"[get_telemetry_memory] memory_info: {memory_info}")
-        if memory_info is None or not isinstance(memory_info, Mapping):
-            return memory
-        memory: dict[str, Any] = {}
+        if (
+            memory_info is None
+            or not isinstance(memory_info, Mapping)
+            or memory_info.get("status", None) == 403
+        ):
+            _LOGGER.error(
+                "Unable to get Memory data. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'Dashboard (all)' privilege."
+            )
+            return {}
+        memory: Mapping[str, Any] = {}
         memory["physmem"] = self._try_to_int(
             memory_info.get("memory", {}).get("total", None)
         )
@@ -998,12 +1084,18 @@ $toreturn = [
             and memory["physmem"] > 0
             else None
         )
-        swap_info: dict[str, Any] = self._post("/api/diagnostics/system/systemSwap")
+        swap_info: Mapping[str, Any] = self._post("/api/diagnostics/system/system_swap")
         if (
             swap_info is None
             or not isinstance(swap_info, Mapping)
+            or swap_info.get("status", None) == 403
+            or not isinstance(swap_info.get("swap", None), list)
+            or not len(swap_info.get("swap", [])) > 0
             or not isinstance(swap_info.get("swap", [])[0], Mapping)
         ):
+            _LOGGER.error(
+                "Unable to get Swap data. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'Dashboard (all)' privilege."
+            )
             return memory
         _LOGGER.debug(f"[get_telemetry_memory] swap_info: {swap_info}")
         memory["swap_total"] = self._try_to_int(
@@ -1024,11 +1116,18 @@ $toreturn = [
 
     @_log_errors
     def _get_telemetry_system(self) -> dict:
-        time_info: dict[str, Any] = self._post("/api/diagnostics/system/systemTime")
+        time_info: Mapping[str, Any] = self._post("/api/diagnostics/system/systemTime")
         _LOGGER.debug(f"[get_telemetry_system] time_info: {time_info}")
-        if time_info is None or not isinstance(time_info, Mapping):
+        if (
+            time_info is None
+            or not isinstance(time_info, Mapping)
+            or time_info.get("status", None) == 403
+        ):
+            _LOGGER.error(
+                "Unable to get System data. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'Lobby: Login / Logout / Dashboard' privilege."
+            )
             return {}
-        system: dict[str, Any] = {}
+        system: Mapping[str, Any] = {}
         pattern = re.compile(r"^(?:(\d+)\s+days?,\s+)?(\d{2}):(\d{2}):(\d{2})$")
         match = pattern.match(time_info.get("uptime", ""))
         if not match:
@@ -1061,13 +1160,20 @@ $toreturn = [
 
     @_log_errors
     def _get_telemetry_cpu(self) -> dict:
-        cputype_info: dict[str, Any] = self._post(
+        cputype_info: Mapping[str, Any] = self._post(
             "/api/diagnostics/cpu_usage/getCPUType"
         )
         _LOGGER.debug(f"[get_telemetry_cpu] cpu_info: {cputype_info}")
-        if cputype_info is None or not isinstance(cputype_info, list):
+        if (
+            cputype_info is None
+            or not isinstance(cputype_info, list)
+            or not len(cputype_info) > 0
+        ):
+            _LOGGER.error(
+                "Unable to get CPU data. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'Dashboard (all)' privilege."
+            )
             return {}
-        cpu: dict[str, Any] = {}
+        cpu: Mapping[str, Any] = {}
         cores_match = re.search(r"\((\d+) cores", cputype_info[0])
         cpu["count"] = self._try_to_int(cores_match.group(1)) if cores_match else 0
         # Missing frequency current and max
@@ -1077,11 +1183,18 @@ $toreturn = [
 
     @_log_errors
     def _get_telemetry_filesystems(self) -> dict:
-        filesystems: dict[str, Any] = {}
-        filesystems_info: dict[str, Any] = self._post(
+        filesystems: Mapping[str, Any] = {}
+        filesystems_info: Mapping[str, Any] = self._post(
             "/api/diagnostics/system/systemDisk"
         )
-        if filesystems_info is None or not isinstance(filesystems_info, Mapping):
+        if (
+            filesystems_info is None
+            or not isinstance(filesystems_info, Mapping)
+            or filesystems_info.get("status", None) == 403
+        ):
+            _LOGGER.error(
+                "Unable to get Filesystem data. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'Dashboard (all)' privilege."
+            )
             return {}
         _LOGGER.debug(
             f"[get_telemetry_filesystems] filesystems_info: {filesystems_info}"
@@ -1096,20 +1209,34 @@ $toreturn = [
 
     @_log_errors
     def _get_telemetry_openvpn(self) -> dict:
-        openvpn_info: dict[str, Any] = self._post("/api/openvpn/export/providers")
+        openvpn_info: Mapping[str, Any] = self._post("/api/openvpn/export/providers")
         _LOGGER.debug(f"[get_telemetry_openvpn] openvpn_info: {openvpn_info}")
-        if openvpn_info is None or not isinstance(openvpn_info, Mapping):
+        if (
+            openvpn_info is None
+            or not isinstance(openvpn_info, Mapping)
+            or openvpn_info.get("status", None) == 403
+        ):
+            _LOGGER.error(
+                "Unable to get OpenVPN data. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'VPN: OpenVPN: Client Export Utility' AND 'Status: OpenVPN' privileges."
+            )
             return {}
-        openvpn: dict[str, Any] = {}
+        openvpn: Mapping[str, Any] = {}
         openvpn["servers"] = {}
-        connection_info: dict[str, Any] = self._post(
+        connection_info: Mapping[str, Any] = self._post(
             "/api/openvpn/service/searchSessions"
         )
         _LOGGER.debug(f"[get_telemetry_openvpn] connection_info: {connection_info}")
-        if connection_info is None or not isinstance(connection_info, Mapping):
+        if (
+            connection_info is None
+            or not isinstance(connection_info, Mapping)
+            or connection_info.get("status", None) == 403
+        ):
+            _LOGGER.error(
+                "Unable to get OpenVPN data. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'VPN: OpenVPN: Client Export Utility' AND 'Status: OpenVPN' privileges."
+            )
             return {}
         for vpnid, vpn_info in openvpn_info.items():
-            vpn: dict[str, Any] = {}
+            vpn: Mapping[str, Any] = {}
             vpn["vpnid"] = vpn_info.get("vpnid", "")
             vpn["name"] = vpn_info.get("name", "")
             total_bytes_recv = 0
@@ -1134,11 +1261,18 @@ $toreturn = [
 
     @_log_errors
     def _get_telemetry_gateways(self) -> dict:
-        gateways_info: dict[str, Any] = self._post("/api/routes/gateway/status")
+        gateways_info: Mapping[str, Any] = self._post("/api/routes/gateway/status")
         _LOGGER.debug(f"[get_telemetry_gateways] gateways_info: {gateways_info}")
-        if gateways_info is None or not isinstance(gateways_info, Mapping):
+        if (
+            gateways_info is None
+            or not isinstance(gateways_info, Mapping)
+            or gateways_info.get("status", None) == 403
+        ):
+            _LOGGER.error(
+                "Unable to get Gateway data. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'Dashboard (all)' privilege."
+            )
             return {}
-        gateways: dict[str, Any] = {}
+        gateways: Mapping[str, Any] = {}
         for gw_info in gateways_info.get("items", []):
             if isinstance(gw_info, Mapping) and "name" in gw_info:
                 gateways[gw_info["name"]] = gw_info
@@ -1150,7 +1284,7 @@ $toreturn = [
         return gateways
 
     @_log_errors
-    def are_notices_pending(self):
+    def are_notices_pending(self) -> Mapping[str, Any]:
         script = r"""
 if (file_exists('/usr/local/etc/inc/notices.inc')) {
     require_once '/usr/local/etc/inc/notices.inc';
@@ -1172,8 +1306,11 @@ if (file_exists('/usr/local/etc/inc/notices.inc')) {
     ];
 }
 """
-        response = self._exec_php(script)
-        return response["data"]
+        response: Mapping[str, Any] = self._exec_php(script, "are_notices_pending")
+        if response is None or not isinstance(response, Mapping):
+            _LOGGER.error("Invalid data returned from are_notices_pending")
+            return {}
+        return response.get("data", {})
 
     @_log_errors
     def get_notices(self):
@@ -1191,17 +1328,18 @@ if (file_exists('/usr/local/etc/inc/notices.inc')) {
     ];
 }
 """
-        response = self._exec_php(script)
-        value = response["data"]
-        if value is False:
+        response: Mapping[str, Any] = self._exec_php(script, "get_notices")
+        if response is None or not isinstance(response, Mapping):
+            _LOGGER.error("Invalid data returned from get_notices -> getSystemStatus")
             return []
+        value: Mapping[str, Any] = response.get("data", [])
 
         if isinstance(value, list):
             return []
 
-        notices = []
+        notices: list = []
         for key in value.keys():
-            notice = value.get(key)
+            notice: Mapping[str, Any] = value.get(key)
             # 22.7.2+
             if "statusCode" in notice.keys():
                 if notice["statusCode"] != 2:
@@ -1218,7 +1356,7 @@ if (file_exists('/usr/local/etc/inc/notices.inc')) {
         return notices
 
     @_log_errors
-    def file_notice(self, notice):
+    def file_notice(self, notice) -> None:
         script = r"""
 $data = json_decode('{}', true);
 $notice = $data["notice"];
@@ -1243,10 +1381,10 @@ if (file_exists('/usr/local/etc/inc/notices.inc')) {{
             )
         )
 
-        self._exec_php(script)
+        self._exec_php(script, "file_notice")
 
     @_log_errors
-    def close_notice(self, id):
+    def close_notice(self, id) -> None:
         """
         id = "all" to wipe everything
         """
@@ -1282,4 +1420,4 @@ if (file_exists('/usr/local/etc/inc/notices.inc')) {{
             )
         )
 
-        self._exec_php(script)
+        self._exec_php(script, "close_notice")

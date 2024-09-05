@@ -76,9 +76,9 @@ Configuration is managed entirely from the UI using `config_flow` semantics. Sim
 - If using a non `admin` user account, ensure the user has the following privileges:
   - `Dashboard (all)`
   - `Lobby: Login / Logout / Dashboard`
-  - `System: Firmware`
   - `Status: Interfaces`
   - `Status: OpenVPN`
+  - `System: Firmware`
   - `VPN: OpenVPN: Client Export Utility`
   - `XMLRPC Library` (note that this privilege effectively gives the user complete access to
     the system via the `xmlrpc` feature)
