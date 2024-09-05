@@ -924,13 +924,7 @@ $toreturn = [
                 interface["status"] = "up"
             interface["ipaddr"] = ifinfo.get("addr4", "")
             interface["media"] = ifinfo.get("media", "")
-            if (
-                ifinfo.get("description", "").lower() == "unassigned interface"
-                and "device" in ifinfo
-            ):
-                interfaces[ifinfo.get("device", "")] = interface
-            else:
-                interfaces[ifinfo.get("description", "")] = interface
+            interfaces[ifinfo.get("device", "")] = interface
         _LOGGER.debug(f"[get_telemetry_interfaces] interfaces: {interfaces}")
         return interfaces
 
