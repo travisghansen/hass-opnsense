@@ -949,7 +949,11 @@ $toreturn = [
         interfaces: Mapping[str, Any] = {}
         for ifinfo in interface_info:
             interface: Mapping[str, Any] = {}
-            if ifinfo is None or not isinstance(ifinfo, Mapping):
+            if (
+                ifinfo is None
+                or not isinstance(ifinfo, Mapping)
+                or ifinfo.get("identifier", "") == ""
+            ):
                 continue
             interface["inpkts"] = self._try_to_int(
                 ifinfo.get("statistics", {}).get("packets received", None)
@@ -978,7 +982,7 @@ $toreturn = [
             interface["collisions"] = self._try_to_int(
                 ifinfo.get("statistics", {}).get("collisions", None)
             )
-            interface["descr"] = ifinfo.get("device", "")
+            interface["descr"] = ifinfo.get("identifier", "")
             interface["name"] = ifinfo.get("description", "")
             interface["status"] = ""
             if ifinfo.get("status", "") in ("down", "no carrier", "up"):
@@ -987,7 +991,7 @@ $toreturn = [
                 interface["status"] = "up"
             interface["ipaddr"] = ifinfo.get("addr4", "")
             interface["media"] = ifinfo.get("media", "")
-            interfaces[ifinfo.get("device", "")] = interface
+            interfaces[ifinfo.get("identifier", "")] = interface
         _LOGGER.debug(f"[get_telemetry_interfaces] interfaces: {interfaces}")
         return interfaces
 
