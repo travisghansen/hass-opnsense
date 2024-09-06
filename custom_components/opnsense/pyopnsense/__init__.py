@@ -1206,6 +1206,12 @@ $toreturn = [
         openvpn_info: Mapping[str, Any] = self._post("/api/openvpn/export/providers")
         _LOGGER.debug(f"[get_telemetry_openvpn] openvpn_info: {openvpn_info}")
         if (
+            openvpn_info is not None
+            and isinstance(openvpn_info, list)
+            and len(openvpn_info) == 0
+        ):
+            return {}
+        if (
             openvpn_info is None
             or not isinstance(openvpn_info, Mapping)
             or openvpn_info.get("status", None) == 403

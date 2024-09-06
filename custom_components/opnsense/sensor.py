@@ -501,7 +501,7 @@ class OPNSenseInterfaceSensor(OPNSenseSensor):
         property = self._opnsense_get_interface_property_name()
         try:
             return interface[property]
-        except KeyError:
+        except (KeyError, TypeError):
             return STATE_UNKNOWN
 
 
