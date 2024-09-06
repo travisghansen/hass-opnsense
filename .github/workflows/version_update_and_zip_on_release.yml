@@ -1,0 +1,59 @@
+name: Update Version and Create Zip on Release
+on:
+  workflow_dispatch:
+  release:
+    types: [published, edited]
+
+jobs:
+  update_version:
+    if: ${{ github.event_name == 'release' && github.event.release.prerelease == false && github.event.release.draft == false }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.1.7
+      - name: Debug Variables
+        run: |
+            echo "github.event_name: ${{ github.event_name }}"
+            echo "github.ref_name: ${{ github.ref_name }}"
+            echo "github.event.repository.default_branch: ${{ github.event.repository.default_branch }}"
+            echo "github.event.release.target_commitish: ${{ github.event.release.target_commitish }}"
+            echo "github.event.release.prerelease: ${{ github.event.release.prerelease }}"
+            echo "github.event.release.draft: ${{ github.event.release.draft }}"      
+      - name: Update Version in Manifest
+        run: |
+          sed -i 's/\"version\"\s*\:\s*\".*\"/\"version\"\:\"${{ github.ref_name }}\"/g' ./custom_components/opnsense/manifest.json
+      - name: Update Version in const.py
+        run: |
+          sed -i 's/VERSION \= \".*\"/VERSION \= \"${{ github.ref_name }}\"/' ./custom_components/opnsense/const.py
+      - name: Commit & Push Version Changes
+        uses: actions-js/push@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.event.release.target_commitish }}
+          message: 'Updating to version ${{ github.ref_name }}'
+
+  create_zip:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4.1.7
+    - name: Create Zip
+      uses: thedoctor0/zip-release@0.7.6
+      with:
+        type: 'zip'
+        filename: 'opnsense.zip'
+        directory: ./custom_components/opnsense
+    - name: Upload Zip to Release
+      if: ${{ github.event_name == 'release' }}
+      uses: Roang-zero1/github-upload-release-artifacts-action@v3.0.0
+      with:
+        args: ./custom_components/opnsense/opnsense.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Add Zip to Action
+      if: ${{ github.event_name == 'workflow_dispatch' }}
+      uses: actions/upload-artifact@v4.3.6
+      with:
+        name: opnsense
+        path: ./custom_components/opnsense/opnsense.zip
+        if-no-files-found: error
