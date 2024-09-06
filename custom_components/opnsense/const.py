@@ -1,7 +1,5 @@
 """The OPNsense component."""
 
-from __future__ import annotations
-
 from typing import Final
 
 from homeassistant.components.sensor import (
@@ -13,10 +11,10 @@ from homeassistant.const import (
     PERCENTAGE,
     UnitOfFrequency,
     UnitOfInformation,
-    UnitOfTemperature,
     UnitOfTime,
 )
 
+VERSION = "0.1.0"
 DEFAULT_USERNAME = ""
 DOMAIN = "opnsense"
 
