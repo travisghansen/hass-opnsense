@@ -3,3 +3,25 @@ changelog:
     labels:
       - ignore-for-release
       - dependencies
+  categories:
+    - title: ":boom: Breaking Change :boom:"
+      labels:
+        - Semver-Major
+        - breaking-change
+    - title: ":zap: Enhancements & New Features :zap:"
+      labels:
+        - Semver-Minor
+        - enhancement
+        - feature
+    - title: ":bug: Bug Fixes :bug:"
+      labels:
+        - fix
+        - bugfix
+        - bug
+    - title: ":wrench: Maintenance :wrench:"
+      labels:
+        - chore
+        - github_actions
+    - title: Other Changes
+      labels:
+        - "*"
