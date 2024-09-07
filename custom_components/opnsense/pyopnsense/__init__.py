@@ -182,6 +182,7 @@ $toreturn["real"] = json_encode($toreturn_real);
             verify_ssl = self._opts["verify_ssl"]
 
         url = f"{self._url}{path}"
+        requests.packages.urllib3.disable_warnings()
         response = requests.get(url, timeout=DEFAULT_TIMEOUT, verify=verify_ssl)
         return response.json()
 
@@ -192,6 +193,7 @@ $toreturn["real"] = json_encode($toreturn_real);
             verify_ssl = self._opts["verify_ssl"]
 
         url = f"{self._url}{path}"
+        requests.packages.urllib3.disable_warnings()
         response = requests.post(
             url, data=payload, timeout=DEFAULT_TIMEOUT, verify=verify_ssl
         )
