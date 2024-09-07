@@ -7,12 +7,7 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import (
-    PERCENTAGE,
-    UnitOfFrequency,
-    UnitOfInformation,
-    UnitOfTime,
-)
+from homeassistant.const import PERCENTAGE, UnitOfInformation, UnitOfTime
 
 VERSION = "v0.2.0"
 DEFAULT_USERNAME = ""
@@ -154,25 +149,32 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
         # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
     # cpu
-    "telemetry.cpu.frequency.current": SensorEntityDescription(
-        key="telemetry.cpu.frequency.current",
-        name="CPU Frequency Current",
-        native_unit_of_measurement=UnitOfFrequency.HERTZ,
-        icon="mdi:speedometer-medium",
-        state_class=SensorStateClass.MEASUREMENT,
-        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
-    ),
-    "telemetry.cpu.frequency.max": SensorEntityDescription(
-        key="telemetry.cpu.frequency.max",
-        name="CPU Frequency Max",
-        native_unit_of_measurement=UnitOfFrequency.HERTZ,
-        icon="mdi:speedometer",
-        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
-    ),
+    # "telemetry.cpu.frequency.current": SensorEntityDescription(
+    #     key="telemetry.cpu.frequency.current",
+    #     name="CPU Frequency Current",
+    #     native_unit_of_measurement=UnitOfFrequency.HERTZ,
+    #     icon="mdi:speedometer-medium",
+    #     state_class=SensorStateClass.MEASUREMENT,
+    #     # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    # ),
+    # "telemetry.cpu.frequency.max": SensorEntityDescription(
+    #     key="telemetry.cpu.frequency.max",
+    #     name="CPU Frequency Max",
+    #     native_unit_of_measurement=UnitOfFrequency.HERTZ,
+    #     icon="mdi:speedometer",
+    #     # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    # ),
     "telemetry.cpu.count": SensorEntityDescription(
         key="telemetry.cpu.count",
         name="CPU Count",
         native_unit_of_measurement=COUNT,
+        icon="mdi:speedometer-medium",
+        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    "telemetry.cpu.usage_total": SensorEntityDescription(
+        key="telemetry.cpu.usage_total",
+        name="CPU Usage",
+        native_unit_of_measurement=PERCENTAGE,
         icon="mdi:speedometer-medium",
         # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
