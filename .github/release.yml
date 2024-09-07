@@ -4,21 +4,21 @@ changelog:
       - ignore-for-release
       - dependencies
   categories:
-    - title: ":boom: Breaking Change :boom:"
+    - title: "💥 Breaking Change 💥"
       labels:
         - Semver-Major
         - breaking-change
-    - title: ":zap: Enhancements & New Features :zap:"
+    - title: "🎉 Enhancements & New Features 🎉"
       labels:
         - Semver-Minor
         - enhancement
         - feature
-    - title: ":bug: Bug Fixes :bug:"
+    - title: "🕷️ Bug Fixes 🕷️"
       labels:
         - fix
         - bugfix
         - bug
-    - title: ":wrench: Maintenance :wrench:"
+    - title: "🔧 Maintenance 🔧"
       labels:
         - chore
         - github_actions
