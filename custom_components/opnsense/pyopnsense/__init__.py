@@ -950,6 +950,13 @@ $toreturn = [
             return retval
 
     @_log_errors
+    def _try_to_float(self, input, retval=None) -> int | None:
+        try:
+            return float(input)
+        except (ValueError, TypeError):
+            return retval
+
+    @_log_errors
     def get_telemetry(self) -> dict:
         telemetry: Mapping[str, Any] = {}
         telemetry["interfaces"] = self._get_telemetry_interfaces()
@@ -961,6 +968,7 @@ $toreturn = [
         telemetry["filesystems"] = self._get_telemetry_filesystems()
         telemetry["openvpn"] = self._get_telemetry_openvpn()
         telemetry["gateways"] = self._get_telemetry_gateways()
+        telemetry["temps"] = self._get_telemetry_temps()
         _LOGGER.debug(f"[get_telemetry] telemetry: {telemetry}")
         return telemetry
 
@@ -1245,6 +1253,26 @@ $toreturn = [
             ).lower()
         _LOGGER.debug(f"[get_telemetry_gateways] gateways: {gateways}")
         return gateways
+
+    @_log_errors
+    def _get_telemetry_temps(self) -> Mapping[str, Any]:
+        temps_info: Mapping[str, Any] | list = self._post(
+            "/api/diagnostics/system/systemTemperature"
+        )
+        _LOGGER.debug(f"[get_telemetry_temps] temps_info: {temps_info}")
+        if not isinstance(temps_info, list) or not len(temps_info) > 0:
+            return {}
+        temps: Mapping[str, Any] = {}
+        for i, temp_info in enumerate(temps_info):
+            temp: Mapping[str, Any] = {}
+            temp["temperature"] = self._try_to_float(temp_info.get("temperature", 0), 0)
+            temp["name"] = (
+                f"{temp_info.get('type_translated', 'Num')} {temp_info.get('device_seq', i)}"
+            )
+            temp["device_id"] = temp_info.get("device", str(i))
+            temps[temp_info.get("device", str(i)).replace(".", "_")] = temp
+        _LOGGER.debug(f"[get_telemetry_temps] temps: {temps}")
+        return temps
 
     @_log_errors
     def are_notices_pending(self) -> Mapping[str, Any]:
