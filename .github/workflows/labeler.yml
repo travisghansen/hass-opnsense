@@ -1,0 +1,16 @@
+name: "Pull Request Labeler"
+on:
+    workflow_dispatch:
+    pull_request:
+
+jobs:
+  labeler:
+    permissions:
+      contents: read
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+    - name: Pull Request Labeler
+      uses: srvaroa/labeler@v1.11.0
+      env:
+        GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
