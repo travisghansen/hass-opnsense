@@ -47,7 +47,7 @@ from .const import (
     SHOULD_RELOAD,
     UNDO_UPDATE_LISTENER,
 )
-from .pyopnsense import Client as OPNSenseClient
+from .pyopnsense import OPNSenseClient
 from .services import ServiceRegistrar
 
 _LOGGER = logging.getLogger(__name__)

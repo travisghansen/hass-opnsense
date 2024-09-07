@@ -1,6 +1,6 @@
 {
   "name": "OPNsense integration for Home Assistant",
-  "homeassistant": "2022.4.0b0",
+  "homeassistant": "2023.8.0b0",
   "zip_release": true,
   "filename": "opnsense.zip"  
 }
