@@ -730,46 +730,16 @@ $toreturn = [
     @_log_errors
     async def get_arp_table(self, resolve_hostnames=False) -> Mapping[str, Any]:
         # [{'hostname': '?', 'ip-address': '<ip>', 'mac-address': '<mac>', 'interface': 'em0', 'expires': 1199, 'type': 'ethernet'}, ...]
-        script: str = (
-            r"""
-$data = json_decode('{}', true);
-$resolve_hostnames = $data["resolve_hostnames"];
-
-function system_get_arp_table($resolve_hostnames = false) {{
-        $params="-a";
-        if (!$resolve_hostnames) {{
-                $params .= "n";
-        }}
-
-        $arp_table = array();
-        $_gb = exec("/usr/sbin/arp --libxo json {{$params}}", $rawdata, $rc);
-        if ($rc == 0) {{
-                $arp_table = json_decode(implode(" ", $rawdata),
-                    JSON_OBJECT_AS_ARRAY);
-                if ($rc == 0) {{
-                        $arp_table = $arp_table['arp']['arp-cache'];
-                }}
-        }}
-
-        return $arp_table;
-}}
-
-$toreturn = [
-  "data" => system_get_arp_table($resolve_hostnames),
-];
-""".format(
-                json.dumps(
-                    {
-                        "resolve_hostnames": resolve_hostnames,
-                    }
-                )
-            )
+        request_body: Mapping[str, Any] = {"resolve": "yes"}
+        arp_table_info: Mapping[str, Any] | list = await self._post(
+            "/api/diagnostics/interface/search_arp", payload=request_body
         )
-        response: Mapping[str, Any] = await self._exec_php(script)
-        if response is None or not isinstance(response, Mapping):
-            _LOGGER.error("Invalid data returned from get_arp_table")
-            return {}
-        return response.get("data", {})
+        if not isinstance(arp_table_info, Mapping):
+            return []
+        _LOGGER.debug(f"[get_arp_table] arp_table_info: {arp_table_info}")
+        arp_table: list = arp_table_info.get("rows", [])
+        _LOGGER.debug(f"[get_arp_table] arp_table: {arp_table}")
+        return arp_table
 
     @_log_errors
     async def get_services(self):
