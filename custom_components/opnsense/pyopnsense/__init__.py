@@ -132,13 +132,18 @@ $toreturn["real"] = json_encode($toreturn_real);
                 script
             )
         )
-        response = self._get_proxy().opnsense.exec_php(script)
         try:
-            response = json.loads(response["real"])
-            return response
+            response = self._get_proxy().opnsense.exec_php(script)
+            response_json = json.loads(response["real"])
+            return response_json
         except TypeError as e:
             _LOGGER.error(
                 f"Invalid data returned from exec_php for {calling_method}. {e.__class__.__qualname__}: {e}. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'XMLRPC Library' privilege."
+            )
+            return {}
+        except xmlrpc.client.Fault as e:
+            _LOGGER.error(
+                f"Error running exec_php script for {calling_method}. {e.__class__.__qualname__}: {e}. Ensure the 'os-homeassistant-maxit' plugin has been installed on OPNsense ."
             )
             return {}
 
