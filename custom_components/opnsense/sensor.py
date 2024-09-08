@@ -1,9 +1,8 @@
-"""Provides a sensor to track various status aspects of OPNsense."""
+"""Provides sensors to track various status aspects of OPNsense."""
 
 import logging
 import re
 
-from awesomeversion import AwesomeVersion
 from homeassistant.components.sensor import (
     SensorEntity,
     SensorEntityDescription,
@@ -62,6 +61,7 @@ async def async_setup_entry(
                 "telemetry.memory.swap_used_percent",
                 "telemetry.memory.used_percent",
                 "telemetry.cpu.frequency.current",
+                "telemetry.cpu.usage_total",
                 "telemetry.system.load_average.one_minute",
                 "telemetry.system.load_average.five_minute",
                 "telemetry.system.load_average.fifteen_minute",
@@ -375,10 +375,14 @@ class OPNSenseStaticKeySensor(OPNSenseSensor):
 
         if (
             value == 0
-            and self.entity_description.key == "telemetry.cpu.frequency.current"
+            and self._previous_value is None
+            and self.entity_description.key
+            in (
+                "telemetry.cpu.frequency.current",
+                "telemetry.cpu.usage_total",
+            )
         ):
-            if self._previous_value is None:
-                return False
+            return False
 
         return super().available
 
@@ -397,24 +401,33 @@ class OPNSenseStaticKeySensor(OPNSenseSensor):
 
         if self.entity_description.key == "telemetry.system.boottime":
             value = utc_from_timestamp(value)
-            # For backwards compatibility we will use the string version of the
-            # datetime on systems before 2021.12.0b0
-            if AwesomeVersion(__version__) < AwesomeVersion("2021.12.0b0"):
-                value = value.isoformat()
 
-        if self.entity_description.key == "telemetry.cpu.frequency.current":
+        if self.entity_description.key in (
+            "telemetry.cpu.frequency.current",
+            "telemetry.cpu.usage_total",
+        ):
             if value == 0 and self._previous_value is not None:
                 value = self._previous_value
 
-        if (
-            value == 0
-            and self.entity_description.key == "telemetry.cpu.frequency.current"
-        ):
-            return STATE_UNKNOWN
+            if value == 0:
+                return STATE_UNKNOWN
 
         self._previous_value = value
 
         return value
+
+    @property
+    def extra_state_attributes(self):
+        attributes = {}
+        if self.entity_description.key in ("telemetry.cpu.usage_total"):
+            temp_attr = self._get_opnsense_state_value("telemetry.cpu")
+            _LOGGER.debug(f"[extra_state_attributes] temp_attr: {temp_attr}")
+            for k, v in temp_attr.items():
+                if k.startswith("usage_") and k != "usage_total":
+                    attributes[k.replace("usage_", "")] = f"{v}%"
+            _LOGGER.debug(f"[extra_state_attributes] attributes: {attributes}")
+
+        return attributes
 
 
 class OPNSenseFilesystemSensor(OPNSenseSensor):

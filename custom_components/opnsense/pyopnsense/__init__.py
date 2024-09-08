@@ -170,6 +170,55 @@ $toreturn["real"] = json_encode($toreturn_real);
     def _restart_service(self, params):
         return self._get_proxy().opnsense.restart_service(params)
 
+    def _get_from_stream(self, path) -> Mapping[str, Any] | list:
+        url: str = f"{self._url}{path}"
+        _LOGGER.debug(f"[get_from_stream] url: {url}")
+        requests.packages.urllib3.disable_warnings()
+
+        response = requests.get(
+            url,
+            auth=HTTPBasicAuth(self._username, self._password),
+            timeout=DEFAULT_TIMEOUT,
+            verify=self._verify_ssl,
+            stream=True,
+        )
+        _LOGGER.debug(
+            f"[get_from_stream] Response {response.status_code}: {response.reason}"
+        )
+
+        if response.ok:
+            buffer = ""
+            message_count = 0
+            for chunk in response.iter_content(chunk_size=1024, decode_unicode=True):
+                buffer += chunk
+                if "\n\n" in buffer:
+                    message, buffer = buffer.split("\n\n", 1)
+                    # Split by lines
+                    lines = message.splitlines()
+                    for line in lines:
+                        if line.startswith("data:"):
+                            message_count += 1
+                            if message_count == 2:
+                                response_str: str = line[len("data:") :].strip()
+                                response_json: Mapping[str, Any] | list = json.loads(
+                                    response_str
+                                )
+                                _LOGGER.debug(
+                                    f"[get_from_stream] response_json ({type(response_json).__name__}): {response_json}"
+                                )
+                                response.close()
+                                return response_json  # Exit after processing the first line
+
+        elif response.status_code == 403:
+            _LOGGER.error(
+                f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname}. Path: {path}. Ensure the OPNsense user connected to HA has full Admin access."
+            )
+        else:
+            _LOGGER.error(
+                f"Error in {inspect.currentframe().f_back.f_code.co_qualname}. Path: {path}. Response {response.status_code}: {response.reason}"
+            )
+        return {}
+
     def _get(self, path) -> Mapping[str, Any] | list:
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
 
@@ -181,6 +230,7 @@ $toreturn["real"] = json_encode($toreturn_real);
             auth=HTTPBasicAuth(self._username, self._password),
             timeout=DEFAULT_TIMEOUT,
             verify=self._verify_ssl,
+            stream=False,
         )
         _LOGGER.debug(f"[get] Response {response.status_code}: {response.reason}")
         if response.ok:
@@ -1158,14 +1208,26 @@ $toreturn = [
         cputype_info: Mapping[str, Any] | list = self._post(
             "/api/diagnostics/cpu_usage/getCPUType"
         )
-        _LOGGER.debug(f"[get_telemetry_cpu] cpu_info: {cputype_info}")
+        _LOGGER.debug(f"[get_telemetry_cpu] cputype_info: {cputype_info}")
         if not isinstance(cputype_info, list) or not len(cputype_info) > 0:
             return {}
         cpu: Mapping[str, Any] = {}
         cores_match = re.search(r"\((\d+) cores", cputype_info[0])
         cpu["count"] = self._try_to_int(cores_match.group(1)) if cores_match else 0
-        # Missing frequency current and max
-        # cpu["frequency"] = {"current": 0, "max": 0}
+
+        cpustream_info: Mapping[str, Any] | list = self._get_from_stream(
+            "/api/diagnostics/cpu_usage/stream"
+        )
+        # {"total":29,"user":2,"nice":0,"sys":27,"intr":0,"idle":70}
+        _LOGGER.debug(f"[get_telemetry_cpu] cpustream_info: {cpustream_info}")
+        if not isinstance(cpustream_info, Mapping):
+            return cpu
+        cpu["usage_total"] = self._try_to_int(cpustream_info.get("total", None))
+        cpu["usage_user"] = self._try_to_int(cpustream_info.get("user", None))
+        cpu["usage_nice"] = self._try_to_int(cpustream_info.get("nice", None))
+        cpu["usage_system"] = self._try_to_int(cpustream_info.get("sys", None))
+        cpu["usage_interrupt"] = self._try_to_int(cpustream_info.get("intr", None))
+        cpu["usage_idle"] = self._try_to_int(cpustream_info.get("idle", None))
         _LOGGER.debug(f"[get_telemetry_cpu] cpu: {cpu}")
         return cpu
 
