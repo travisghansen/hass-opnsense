@@ -46,6 +46,7 @@ from .const import (
     PLATFORMS,
     SHOULD_RELOAD,
     UNDO_UPDATE_LISTENER,
+    VERSION,
 )
 from .pyopnsense import OPNSenseClient
 from .services import ServiceRegistrar
@@ -80,17 +81,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     config = entry.data
     options = entry.options
 
-    url = config[CONF_URL]
-    username = config[CONF_USERNAME]
-    password = config[CONF_PASSWORD]
-    verify_ssl = config.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
-    device_tracker_enabled = options.get(
+    url: str = config[CONF_URL]
+    username: str = config[CONF_USERNAME]
+    password: str = config[CONF_PASSWORD]
+    verify_ssl: bool = config.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
+    device_tracker_enabled: bool = options.get(
         CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED
     )
     client = OPNSenseClient(url, username, password, {"verify_ssl": verify_ssl})
     data = OPNSenseData(client, entry)
 
-    scan_interval = options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+    scan_interval: int = options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+    _LOGGER.info(f"Starting hass-opnsense {VERSION}")
 
     async def async_update_data():
         """Fetch data from OPNsense."""
@@ -98,14 +100,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
             await hass.async_add_executor_job(lambda: data.update())
 
             if not data.state:
-                raise UpdateFailed(f"Error fetching {entry.title} OPNsense state")
+                raise UpdateFailed(f"Error fetching {entry.title} state")
 
             return data.state
 
     coordinator = DataUpdateCoordinator(
         hass,
         _LOGGER,
-        name=f"{entry.title} OPNsense state",
+        name=f"{entry.title} state",
         update_method=async_update_data,
         update_interval=timedelta(seconds=scan_interval),
     )
