@@ -1,9 +1,12 @@
 """Provides sensors to track various status aspects of OPNsense."""
 
+from collections.abc import Mapping
 import logging
 import re
+from typing import Any
 
 from homeassistant.components.sensor import (
+    SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
     SensorStateClass,
@@ -14,6 +17,7 @@ from homeassistant.const import (  # ENTITY_CATEGORY_DIAGNOSTIC,
     STATE_UNKNOWN,
     UnitOfDataRate,
     UnitOfInformation,
+    UnitOfTemperature,
     UnitOfTime,
     __version__,
 )
@@ -33,7 +37,7 @@ from .const import (
     SENSOR_TYPES,
 )
 
-_LOGGER = logging.getLogger(__name__)
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -50,7 +54,7 @@ async def async_setup_entry(
         state = coordinator.data
         resources = [sensor_id for sensor_id in SENSOR_TYPES]
 
-        entities = []
+        entities: list = []
 
         # add standard entities
         for sensor_type in resources:
@@ -324,6 +328,25 @@ async def async_setup_entry(
                     enabled_default,
                 )
                 entities.append(entity)
+
+        # temperatures
+        for temp_device, temp in state.get("telemetry", {}).get("temps", {}).items():
+
+            entity = OPNSenseTempSensor(
+                config_entry=config_entry,
+                coordinator=coordinator,
+                entity_description=SensorEntityDescription(
+                    key=f"telemetry.temps.{temp_device}",
+                    name=f"Temp {temp.get('name', temp_device)}",
+                    native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+                    device_class=SensorDeviceClass.TEMPERATURE,
+                    icon="mdi:thermometer",
+                    state_class=SensorStateClass.MEASUREMENT,
+                    # entity_category=entity_category,
+                ),
+                enabled_default=True,
+            )
+            entities.append(entity)
 
         return entities
 
@@ -700,4 +723,39 @@ class OPNSenseOpenVPNServerSensor(OPNSenseSensor):
         try:
             return server[property]
         except KeyError:
+            return STATE_UNKNOWN
+
+
+class OPNSenseTempSensor(OPNSenseSensor):
+    def _opnsense_get_temp_device(self) -> str:
+        return self.entity_description.key.split(".")[2]
+
+    def _opnsense_get_temp(self) -> Mapping[str, Any]:
+        state = self.coordinator.data
+        sensor_temp_device: str = self._opnsense_get_temp_device()
+        for temp_device, temp in state.get("telemetry", {}).get("temps", {}).items():
+            if temp_device == sensor_temp_device:
+                return temp
+        return {}
+
+    @property
+    def available(self) -> bool:
+        if len(self._opnsense_get_temp()) == 0:
+            return False
+        return super().available
+
+    @property
+    def extra_state_attributes(self) -> Mapping[str, Any]:
+        temp: Mapping[str, Any] = self._opnsense_get_temp()
+        attributes: Mapping[str, Any] = {}
+        for attr in ["device_id"]:
+            attributes[attr] = temp.get(attr, None)
+        return attributes
+
+    @property
+    def native_value(self):
+        temp: Mapping[str, Any] = self._opnsense_get_temp()
+        try:
+            return temp.get("temperature", STATE_UNKNOWN)
+        except (KeyError, TypeError):
             return STATE_UNKNOWN
