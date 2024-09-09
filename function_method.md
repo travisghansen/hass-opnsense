@@ -4,13 +4,13 @@
 | ----- | ----- | ----- | ----- |
 | Get Config | Yes | No | Returns a __large__ dictionary of elements used for multiple functions. Some can be replaced, others cannot. More details in the other functions. |
 | Restore Config Section | No | | |
-| Get Firmware Version | No | | |
+| Get Firmware Version | No | Yes | |
 | Get ARP Table | Yes | Yes | |
-| Get/List Services | Yes | | |
-| Start Service | Yes | | |
-| Stop Service | Yes | | |
-| Restart Service | Yes | | |
-| Restart Service if Running | Yes | | |
+| Get/List Services | No | Yes | |
+| Start Service | No | Yes | |
+| Stop Service | No | Yes | |
+| Restart Service | No | Yes | |
+| Restart Service if Running | No | Yes | |
 | Is Subsystem Dirty | Yes | | |
 | Mark Subsystem Dirty | Yes | | |
 | Clear Subsystem Dirty | Yes | | |
