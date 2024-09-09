@@ -13,6 +13,7 @@ from xml.parsers.expat import ExpatError
 import xmlrpc.client
 import zoneinfo
 
+from awesomeversion import AwesomeVersion
 from dateutil.parser import parse
 import requests
 from requests.auth import HTTPBasicAuth
@@ -131,13 +132,18 @@ $toreturn["real"] = json_encode($toreturn_real);
                 script
             )
         )
-        response = self._get_proxy().opnsense.exec_php(script)
         try:
-            response = json.loads(response["real"])
-            return response
+            response = self._get_proxy().opnsense.exec_php(script)
+            response_json = json.loads(response["real"])
+            return response_json
         except TypeError as e:
             _LOGGER.error(
                 f"Invalid data returned from exec_php for {calling_method}. {e.__class__.__qualname__}: {e}. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'XMLRPC Library' privilege."
+            )
+            return {}
+        except xmlrpc.client.Fault as e:
+            _LOGGER.error(
+                f"Error running exec_php script for {calling_method}. {e.__class__.__qualname__}: {e}. Ensure the 'os-homeassistant-maxit' plugin has been installed on OPNsense ."
             )
             return {}
 
@@ -1007,7 +1013,18 @@ $toreturn = [
             return retval
 
     @_log_errors
-    def get_telemetry(self) -> dict:
+    def get_telemetry(self) -> Mapping[str, Any]:
+        version: Mapping[str, Any] = self.get_host_firmware_version()
+        if version is None or not isinstance(version, Mapping):
+            firmware: str = "24.7"
+        else:
+            firmware: str = version.get("firmware", {}).get("version", "24.7")
+        _LOGGER.debug(f"[get_telemetry] firmware: {firmware}")
+        if AwesomeVersion(firmware) < AwesomeVersion("24.7"):
+            _LOGGER.debug(
+                f"[get_telemetry] Using legacy telemetry method for OPNsense < 24.7"
+            )
+            return self._get_telemetry_legacy()
         telemetry: Mapping[str, Any] = {}
         telemetry["interfaces"] = self._get_telemetry_interfaces()
         telemetry["mbuf"] = self._get_telemetry_mbuf()
@@ -1335,6 +1352,197 @@ $toreturn = [
             temps[temp_info.get("device", str(i)).replace(".", "_")] = temp
         _LOGGER.debug(f"[get_telemetry_temps] temps: {temps}")
         return temps
+
+    @_log_errors
+    def _get_telemetry_legacy(self) -> Mapping[str, Any]:
+        script = r"""
+require_once '/usr/local/www/widgets/api/plugins/system.inc';
+include_once '/usr/local/www/widgets/api/plugins/interfaces.inc';
+require_once '/usr/local/www/widgets/api/plugins/temperature.inc';
+require_once '/usr/local/etc/inc/plugins.inc.d/openvpn.inc';
+
+global $config;
+global $g;
+
+function stripalpha($s) {
+  return preg_replace("/\D/", "", $s);
+}
+
+// OPNsense 24.1 removed /usr/local/www/widgets/api/plugins/interfaces.inc to replace with new api endpoint
+if (!function_exists('interfaces_api')) {
+    function interfaces_api() {
+        global $config;
+        $result = array();
+        $oc = new OPNsense\Interfaces\Api\OverviewController();
+        foreach (get_configured_interface_with_descr() as $ifdescr => $ifname) {
+            $ifinfo = $oc->getInterfaceAction($config["interfaces"][$ifdescr]["if"])["message"];
+            // if interfaces is disabled returns message => "failed"
+            if (!is_array($ifinfo)) {
+                continue;
+            }
+            $interfaceItem = array();
+            $interfaceItem['inpkts'] = $ifinfo["packets received"]["value"];
+            $interfaceItem['outpkts'] = $ifinfo["packets transmitted"]["value"];
+            $interfaceItem['inbytes'] = $ifinfo["bytes received"]["value"];
+            $interfaceItem['outbytes'] = $ifinfo["bytes transmitted"]["value"];
+            $interfaceItem['inbytes_frmt'] = format_bytes($interfaceItem['inbytes']);
+            $interfaceItem['outbytes_frmt'] = format_bytes($interfaceItem['outbytes']);
+            $interfaceItem['inerrs'] = $ifinfo["input errors"]["value"];
+            $interfaceItem['outerrs'] = $ifinfo["output errors"]["value"];
+            $interfaceItem['collisions'] = $ifinfo["collisions"]["value"];
+            $interfaceItem['descr'] = $ifdescr;
+            $interfaceItem['name'] = $ifname;
+            switch ($ifinfo["status"]["value"]) {
+                case 'down':
+                case 'no carrier':
+                case 'up':
+                    $interfaceItem['status'] = $ifinfo["status"]["value"];
+                    break;
+                case 'associated':
+                    $interfaceItem['status'] = 'up';
+                    break;
+                default:
+                    $interfaceItem['status'] = '';
+                    break;
+            }
+            //$interfaceItem['ipaddr'] = empty($ifinfo['ipaddr']) ? "" : $ifinfo['ipaddr'];
+            $interfaceItem['ipaddr'] = isset($ifinfo["ipv4"]["value"][0]["ipaddr"]) ? $ifinfo["ipv4"]["value"][0]["ipaddr"] : "";
+            $interfaceItem['media'] = $ifinfo["media"]["value"];
+
+            $result[] = $interfaceItem;
+        }
+        return $result;
+    }
+}
+
+$interfaces_api_data = interfaces_api();
+if (!is_iterable($interfaces_api_data)) {
+    $interfaces_api_data = [];
+}
+
+$system_api_data = system_api();
+$temperature_api_data = temperature_api();
+
+// OPNsense 23.1.1: replaced single exec_command() with new shell_safe() wrapper
+if (function_exists('exec_command')) {
+    $boottime = exec_command("sysctl kern.boottime");
+} else {
+    $boottime = shell_safe("sysctl kern.boottime");
+}
+
+// kern.boottime: { sec = 1634047554, usec = 237429 } Tue Oct 12 08:05:54 2021
+preg_match("/sec = [0-9]*/", $boottime, $matches);
+$boottime = $matches[0];
+$boottime = explode("=", $boottime)[1];
+$boottime = (int) trim($boottime);
+
+// Fix for 23.1.4 (https://forum.opnsense.org/index.php?topic=33144.0)
+if (function_exists('openvpn_get_active_servers')) {
+    $ovpn_servers = openvpn_get_active_servers();
+} else {
+    $ovpn_servers = [];
+}
+
+$toreturn = [
+    "pfstate" => [
+        "used" => (int) $system_api_data["kernel"]["pf"]["states"],
+        "total" => (int) $system_api_data["kernel"]["pf"]["maxstates"],
+        "used_percent" => round(floatval($system_api_data["kernel"]["pf"]["states"] / $system_api_data["kernel"]["pf"]["maxstates"]) * 100, 0),
+    ],
+
+    "mbuf" => [
+        "used" => (int) $system_api_data["kernel"]["mbuf"]["total"],
+        "total" => (int) $system_api_data["kernel"]["mbuf"]["max"],
+        "used_percent" =>  round(floatval($system_api_data["kernel"]["mbuf"]["total"] / $system_api_data["kernel"]["mbuf"]["max"]) * 100, 0),
+    ],
+
+    "memory" => [
+        "swap_used_percent" => ($system_api_data["disk"]["swap"][0]["total"] > 0) ? round(floatval($system_api_data["disk"]["swap"][0]["used"] / $system_api_data["disk"]["swap"][0]["total"]) * 100, 0) : 0,
+        "used_percent" => round(floatval($system_api_data["kernel"]["memory"]["used"] / $system_api_data["kernel"]["memory"]["total"]) * 100, 0),
+        "physmem" => (int) $system_api_data["kernel"]["memory"]["total"],
+        "used" => (int) $system_api_data["kernel"]["memory"]["used"],
+        "swap_total" => (int) $system_api_data["disk"]["swap"][0]["total"],
+        "swap_reserved" => (int) $system_api_data["disk"]["swap"][0]["used"],
+    ],
+
+    "system" => [
+        "boottime" => $boottime,
+        "uptime" => (int) $system_api_data["uptime"],
+        //"temp" => 0,
+        "load_average" => [
+            "one_minute" => floatval(trim($system_api_data["cpu"]["load"][0])),
+            "five_minute" => floatval(trim($system_api_data["cpu"]["load"][1])),
+            "fifteen_minute" => floatval(trim($system_api_data["cpu"]["load"][2])),
+        ],
+    ],
+
+    "cpu" => [
+        "frequency" => [
+            "current" => (int) stripalpha($system_api_data["cpu"]["cur.freq"]),
+            "max" => (int) stripalpha($system_api_data["cpu"]["max.freq"]),
+        ],
+        "count" => (int) $system_api_data["cpu"]["cur.freq"],
+    ],
+
+    "filesystems" => $system_api_data["disk"]["devices"],
+
+    "interfaces" => [],
+
+    "openvpn" => [],
+    
+    "gateways" => return_gateways_status(true),
+];
+
+if (!is_iterable($toreturn["gateways"])) {
+    $toreturn["gateways"] = [];
+}
+foreach ($toreturn["gateways"] as $key => $gw) {
+    $status = $gw["status"];
+    if ($status == "none") {
+        $status = "online";
+    }
+    $gw["status"] = $status;
+    $toreturn["gateways"][$key] = $gw;
+}
+
+foreach ($interfaces_api_data as $if) {
+    $if["inpkts"] = (int) $if["inpkts"];
+    $if["outpkts"] = (int) $if["outpkts"];
+    $if["inbytes"] = (int) $if["inbytes"];
+    $if["outbytes"] = (int) $if["outbytes"];
+    $if["inerrs"] = (int) $if["inerrs"];
+    $if["outerrs"] = (int) $if["outerrs"];
+    $if["collisions"] = (int) $if["collisions"];
+    $toreturn["interfaces"][$if["descr"]] = $if;
+}
+
+foreach ($ovpn_servers as $server) {
+    $vpnid = $server["vpnid"];
+    $name = $server["name"];
+    $conn_count = count($server["conns"]);
+    $total_bytes_recv = 0;
+    $total_bytes_sent = 0;
+    foreach ($server["conns"] as $conn) {
+        $total_bytes_recv += $conn["bytes_recv"];
+        $total_bytes_sent += $conn["bytes_sent"];
+    }
+    
+    $toreturn["openvpn"]["servers"][$vpnid]["name"] = $name;
+    $toreturn["openvpn"]["servers"][$vpnid]["vpnid"] = $vpnid;
+    $toreturn["openvpn"]["servers"][$vpnid]["connected_client_count"] = $conn_count;
+    $toreturn["openvpn"]["servers"][$vpnid]["total_bytes_recv"] = $total_bytes_recv;
+    $toreturn["openvpn"]["servers"][$vpnid]["total_bytes_sent"] = $total_bytes_sent;
+}
+
+"""
+        telemetry: Mapping[str, Any] = self._exec_php(script, "get_telemetry_legacy")
+        if telemetry is None or not isinstance(telemetry, Mapping):
+            _LOGGER.error("Invalid data returned from get_telemetry_legacy")
+            return {}
+        if isinstance(telemetry.get("gateways", []), list):
+            telemetry["gateways"] = {}
+        _LOGGER.debug(f"[get_telemetry_legacy] telemetry: {telemetry}")
+        return telemetry
 
     @_log_errors
     def are_notices_pending(self) -> Mapping[str, Any]:
