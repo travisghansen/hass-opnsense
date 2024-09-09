@@ -252,7 +252,7 @@ class OPNSenseData:
         return self._client.get_telemetry()
 
     @_log_timing
-    def _get_host_firmware_version(self):
+    def _get_host_firmware_version(self) -> None | str:
         return self._client.get_host_firmware_version()
 
     @_log_timing
@@ -516,18 +516,10 @@ class OPNSenseEntity(CoordinatorEntity, RestoreEntity):
         # _LOGGER.debug(f"[device_info] state: {state}")
         model: str = "OPNsense"
         manufacturer: str = "Deciso B.V."
-        if (
-            state is None
-            or not isinstance(state, Mapping)
-            or not isinstance(state.get("host_firmware_version", None), Mapping)
-        ):
+        if state is None:
             firmware: str | None = None
         else:
-            firmware: str | None = (
-                state.get("host_firmware_version", {})
-                .get("firmware", {})
-                .get("version", None)
-            )
+            firmware: str | None = state.get("host_firmware_version", None)
 
         device_info: Mapping[str, Any] = {
             "identifiers": {(DOMAIN, self.opnsense_device_unique_id)},

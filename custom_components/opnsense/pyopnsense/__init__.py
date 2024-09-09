@@ -149,8 +149,15 @@ $toreturn["real"] = json_encode($toreturn_real);
 
     @_apply_timeout
     @_log_errors
-    def get_host_firmware_version(self):
-        return self._get_proxy().opnsense.firmware_version()
+    def get_host_firmware_version(self) -> None | str:
+        # return self._get_proxy().opnsense.firmware_version()
+        firmware_info: Mapping[str, Any] | list = self._get("/api/core/firmware/status")
+        # _LOGGER.debug(f"[get_host_firmware_version] firmware_info: {firmware_info}")
+        if not isinstance(firmware_info, Mapping):
+            return None
+        firmware: str | None = firmware_info.get("product_version", None)
+        _LOGGER.debug(f"[get_host_firmware_version] firmware: {firmware}")
+        return firmware
 
     @_apply_timeout
     @_log_errors
@@ -209,9 +216,7 @@ $toreturn["real"] = json_encode($toreturn_real);
                                 response_json: Mapping[str, Any] | list = json.loads(
                                     response_str
                                 )
-                                _LOGGER.debug(
-                                    f"[get_from_stream] response_json ({type(response_json).__name__}): {response_json}"
-                                )
+                                # _LOGGER.debug(f"[get_from_stream] response_json ({type(response_json).__name__}): {response_json}")
                                 response.close()
                                 return response_json  # Exit after processing the first line
 
@@ -241,9 +246,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         _LOGGER.debug(f"[get] Response {response.status_code}: {response.reason}")
         if response.ok:
             response_json: Mapping[str, Any] | list = response.json()
-            _LOGGER.debug(
-                f"[get] response_json ({type(response_json).__name__}): {response_json}"
-            )
+            # _LOGGER.debug(f"[get] response_json ({type(response_json).__name__}): {response_json}")
             return response_json
         elif response.status_code == 403:
             _LOGGER.error(
@@ -272,9 +275,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         _LOGGER.debug(f"[post] Response {response.status_code}: {response.reason}")
         if response.ok:
             response_json: Mapping[str, Any] | list = response.json()
-            _LOGGER.debug(
-                f"[post] response_json ({type(response_json).__name__}): {response_json}"
-            )
+            # _LOGGER.debug(f"[post] response_json ({type(response_json).__name__}): {response_json}")
             return response_json
         elif response.status_code == 403:
             _LOGGER.error(
@@ -1014,12 +1015,10 @@ $toreturn = [
 
     @_log_errors
     def get_telemetry(self) -> Mapping[str, Any]:
-        version: Mapping[str, Any] = self.get_host_firmware_version()
-        if version is None or not isinstance(version, Mapping):
+        firmware: str | None = self.get_host_firmware_version()
+        if firmware is None:
             firmware: str = "24.7"
-        else:
-            firmware: str = version.get("firmware", {}).get("version", "24.7")
-        _LOGGER.debug(f"[get_telemetry] firmware: {firmware}")
+        # _LOGGER.debug(f"[get_telemetry] firmware: {firmware}")
         if AwesomeVersion(firmware) < AwesomeVersion("24.7"):
             _LOGGER.debug(
                 f"[get_telemetry] Using legacy telemetry method for OPNsense < 24.7"
