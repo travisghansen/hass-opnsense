@@ -6,11 +6,11 @@
 | Restore Config Section | No | | |
 | Get Firmware Version | No | | |
 | Get ARP Table | Yes | Yes | |
-| Get/List Services | No | | |
-| Start Service | No | | |
-| Stop Service | No | | |
-| Restart Service | No | | |
-| Restart Service if Running | No | | |
+| Get/List Services | Yes | | |
+| Start Service | Yes | | |
+| Stop Service | Yes | | |
+| Restart Service | Yes | | |
+| Restart Service if Running | Yes | | |
 | Is Subsystem Dirty | Yes | | |
 | Mark Subsystem Dirty | Yes | | |
 | Clear Subsystem Dirty | Yes | | |
