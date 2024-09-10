@@ -1,3 +1,49 @@
+<a name="v0.2.1"></a>
+# [v0.2.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.2.1) - 10 Sep 2024
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🎉 Enhancements & New Features 🎉
+* Feature: Add CPU Usage and remove CPU Frequency entities by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/169
+* Feature: Add Temperature Sensors by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/168
+### 🕷️ Bug Fixes 🕷️
+* Add back support for OPNsense 24.1 by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/173
+### Other Changes
+* Update get and post to handle response status by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/164
+* Create HA issue if OPNsense Firmware below min version by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/178
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.2.0...v0.2.1
+
+[Changes][v0.2.1]
+
+
+<a name="v0.2.1-beta.1"></a>
+# [v0.2.1-beta.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.2.1-beta.1) - 09 Sep 2024
+
+Please note that in OPNsense < 24.7, the following entities won't work (should be part of the final release notes):
+* Temperature sensors
+* CPU Usage
+* _Possibly others_
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🎉 Enhancements & New Features 🎉
+* Feature: Add CPU Usage and remove CPU Frequency entities by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/169
+* Feature: Add Temperature Sensors by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/168
+### 🕷️ Bug Fixes 🕷️
+* Add back support for OPNsense 24.1 by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/173
+### Other Changes
+* Update get and post to handle response status by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/164
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.2.0...v0.2.1-beta.1
+
+[Changes][v0.2.1-beta.1]
+
+
 <a name="v0.2.0"></a>
 # [v0.2.0 - Use the REST API for Telemetry](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.2.0) - 07 Sep 2024
 
@@ -271,6 +317,8 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.2.1]: https://github.com/travisghansen/hass-opnsense/compare/v0.2.1-beta.1...v0.2.1
+[v0.2.1-beta.1]: https://github.com/travisghansen/hass-opnsense/compare/v0.2.0...v0.2.1-beta.1
 [v0.2.0]: https://github.com/travisghansen/hass-opnsense/compare/v0.2.0-beta.2...v0.2.0
 [v0.2.0-beta.2]: https://github.com/travisghansen/hass-opnsense/compare/v0.2.0-beta.1...v0.2.0-beta.2
 [v0.2.0-beta.1]: https://github.com/travisghansen/hass-opnsense/compare/v0.1.23-beta.1...v0.2.0-beta.1
