@@ -12,6 +12,7 @@ from homeassistant.const import PERCENTAGE, UnitOfInformation, UnitOfTime
 VERSION = "v0.2.0"
 DEFAULT_USERNAME = ""
 DOMAIN = "opnsense"
+OPNSENSE_MIN_FIRMWARE = "24.7"
 
 UNDO_UPDATE_LISTENER = "undo_update_listener"
 

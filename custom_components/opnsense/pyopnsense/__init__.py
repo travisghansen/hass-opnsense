@@ -150,9 +150,7 @@ $toreturn["real"] = json_encode($toreturn_real);
     @_apply_timeout
     @_log_errors
     def get_host_firmware_version(self) -> None | str:
-        # return self._get_proxy().opnsense.firmware_version()
         firmware_info: Mapping[str, Any] | list = self._get("/api/core/firmware/status")
-        # _LOGGER.debug(f"[get_host_firmware_version] firmware_info: {firmware_info}")
         if not isinstance(firmware_info, Mapping):
             return None
         firmware: str | None = firmware_info.get("product_version", None)
@@ -1018,7 +1016,6 @@ $toreturn = [
         firmware: str | None = self.get_host_firmware_version()
         if firmware is None:
             firmware: str = "24.7"
-        # _LOGGER.debug(f"[get_telemetry] firmware: {firmware}")
         if AwesomeVersion(firmware) < AwesomeVersion("24.7"):
             _LOGGER.debug(
                 f"[get_telemetry] Using legacy telemetry method for OPNsense < 24.7"
