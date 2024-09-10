@@ -3,7 +3,7 @@
 [![][discord-shield]][discord]
 
 [discord]: https://discord.gg/MXV7DgsaEQ
-[discord-shield]: https://img.shields.io/discord/1283169313653526559?style=for-the-badge&label=Discord&logo=discord&&logoColor=lightblue&color=blue
+[discord-shield]: https://img.shields.io/discord/1283169313653526559?style=for-the-badge&label=Discord&logo=discord&&logoColor=lightpurple&logoSize=auto&color=white
 
 
 # hass-opnsense
