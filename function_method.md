@@ -4,7 +4,6 @@
 | ----- | ----- | ----- | ----- |
 | Get Config | Yes | No | Returns a __large__ dictionary of elements used for multiple functions. Some can be replaced, others cannot. More details in the other functions. |
 | Restore Config Section | No | | |
-| Get Firmware Version | No | Yes | |
 | Get ARP Table | Yes | Yes | |
 | Get/List Services | No | Yes | |
 | Start Service | No | Yes | |
@@ -55,7 +54,7 @@
 | Get OpenVPN | /api/openvpn/export/providers | 20.1 | |
 | Get Gateways | /api/routes/gateway/status | 2021 | |
 | Get Temperatures | /api/diagnostics/system/systemTemperature | 24.7 | |
-| Get Firmware Update Info | /api/core/firmware/status | 2018 | |
+| Get Firmware Update Info<br>Get Firmware Version | /api/core/firmware/status | 2018 | |
 | Upgrade Firmware | /api/core/firmware/update<br>/api/core/firmware/upgrade | 2018 | |
 | Firmware Upgrade Status | /api/core/firmware/upgradestatus | 2018 | |
 | Firmware Changelog | /api/core/firmware/changelog/ | 2018 | |

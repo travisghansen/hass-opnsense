@@ -11,6 +11,7 @@ import time
 from typing import Any, Callable
 
 import async_timeout
+from awesomeversion import AwesomeVersion
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     CONF_PASSWORD,
@@ -22,6 +23,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import async_get
+from homeassistant.helpers.issue_registry import IssueSeverity, async_create_issue
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
@@ -43,6 +45,7 @@ from .const import (
     DOMAIN,
     LOADED_PLATFORMS,
     OPNSENSE_CLIENT,
+    OPNSENSE_MIN_FIRMWARE,
     PLATFORMS,
     SHOULD_RELOAD,
     UNDO_UPDATE_LISTENER,
@@ -159,6 +162,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         # Fetch initial data so we have data when entities subscribe
         await device_tracker_coordinator.async_config_entry_first_refresh()
 
+    firmware: str | None = coordinator.data.get("host_firmware_version", None)
+    _LOGGER.info(f"OPNsense Firmware {firmware}")
+
+    if AwesomeVersion(firmware) < AwesomeVersion(OPNSENSE_MIN_FIRMWARE):
+        async_create_issue(
+            hass,
+            DOMAIN,
+            f"opnsense_{firmware}_below_min_firmware_{OPNSENSE_MIN_FIRMWARE}",
+            is_fixable=False,
+            is_persistent=False,
+            issue_domain=DOMAIN,
+            severity=IssueSeverity.WARNING,
+            translation_key="below_min_firmware",
+            translation_placeholders={
+                "version": VERSION,
+                "min_firmware": OPNSENSE_MIN_FIRMWARE,
+                "firmware": firmware,
+            },
+        )
+
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
 
     service_registar = ServiceRegistrar(hass)
@@ -252,7 +275,7 @@ class OPNSenseData:
         return self._client.get_telemetry()
 
     @_log_timing
-    def _get_host_firmware_version(self):
+    def _get_host_firmware_version(self) -> None | str:
         return self._client.get_host_firmware_version()
 
     @_log_timing
@@ -513,21 +536,12 @@ class OPNSenseEntity(CoordinatorEntity, RestoreEntity):
     def device_info(self) -> Mapping[str, Any]:
         """Device info for the firewall."""
         state: Mapping[str, Any] = self.coordinator.data
-        # _LOGGER.debug(f"[device_info] state: {state}")
         model: str = "OPNsense"
         manufacturer: str = "Deciso B.V."
-        if (
-            state is None
-            or not isinstance(state, Mapping)
-            or not isinstance(state.get("host_firmware_version", None), Mapping)
-        ):
+        if state is None:
             firmware: str | None = None
         else:
-            firmware: str | None = (
-                state.get("host_firmware_version", {})
-                .get("firmware", {})
-                .get("version", None)
-            )
+            firmware: str | None = state.get("host_firmware_version", None)
 
         device_info: Mapping[str, Any] = {
             "identifiers": {(DOMAIN, self.opnsense_device_unique_id)},

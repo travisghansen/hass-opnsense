@@ -50,5 +50,11 @@
       }
     }
   },
+  "issues": {
+    "below_min_firmware": {
+      "title": "OPNsense Firmware below Recommended Version",
+      "description": "Some hass-opnsense {version} functions require OPNsense firmware {min_firmware} or later. With firmware {firmware}, some functions may not work and there may be errors in the logs."
+    }
+  },  
   "title": "OPNsense"
 }
