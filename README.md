@@ -1,7 +1,9 @@
 [![Build Status](https://img.shields.io/endpoint.svg?url=https%3A%2F%2Factions-badge.atrox.dev%2Ftravisghansen%2Fhass-opnsense%2Fbadge%3Fref%3Dmain&style=for-the-badge)](https://actions-badge.atrox.dev/travisghansen/hass-opnsense/goto?ref=main)
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://github.com/hacs/integration)
-<img alt="Discord" src="https://img.shields.io/discord/1283169313653526559?style=for-the-badge&label=Discord&color=blue&link=https%3A%2F%2Fdiscord.gg%2FMXV7DgsaEQ">
+[![][discord-shield]][discord]
 
+[discord]: https://discord.gg/MXV7DgsaEQ
+[discord-shield]: https://img.shields.io/discord/1283169313653526559?style=for-the-badge&label=Discord&color=blue
 
 
 # hass-opnsense
@@ -12,6 +14,8 @@ Join `OPNsense` with `Home Assistant`!
 at any time.
 
 Initial development was done againt `OPNsense` `21.7` and `Home Assistant` `2021.10`.
+
+A Discord server to discuss the integration is available, please click the Discord badge at the beginning of the page for the invite link.
 
 # Overview
 
