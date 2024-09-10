@@ -125,6 +125,23 @@ class OPNsenseClient(ABC):
         proxy = xmlrpc.client.ServerProxy(
             f"{self._xmlrpc_url}/xmlrpc.php", context=context, verbose=verbose
         )
+
+        # Test Proxy to ensure it is connected
+        try:
+            methods = proxy.system.listMethods()
+            if methods:
+                if "authentication failed" in str(methods).lower():
+                    _LOGGER.error(f"Authentication failed: Check your credentials.")
+                    _LOGGER.error(
+                        f"Authentication Error connecting to XMLRPC Proxy. Ensure the OPNsense user connected to HA has full Admin access."
+                    )
+        except xmlrpc.client.Fault as fault:
+            _LOGGER.error(f"RPC Fault in XMLRPC Proxy: {fault.faultString}")
+        except xmlrpc.client.ProtocolError as err:
+            _LOGGER.error(f"Protocol Error in XMLRPC Proxy: {err.errmsg}")
+        except xmlrpc.client.ResponseError as re:
+            _LOGGER.error(f"Response Error in XMLRPC Proxy: {re}")
+
         return proxy
 
     # @_xmlrpc_timeout
