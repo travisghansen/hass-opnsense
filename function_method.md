@@ -10,9 +10,9 @@
 | Stop Service | No | Yes | |
 | Restart Service | No | Yes | |
 | Restart Service if Running | No | Yes | |
-| Is Subsystem Dirty | Yes | | Doesn't appear to be used anymore. Probably just remove altogether. |
-| Mark Subsystem Dirty | Yes | | Doesn't appear to be used anymore. Probably just remove altogether. |
-| Clear Subsystem Dirty | Yes | | Doesn't appear to be used anymore. Probably just remove altogether. |
+| Is Subsystem Dirty | Yes | No | Doesn't appear to be used anymore. Probably just remove altogether. |
+| Mark Subsystem Dirty | Yes | No | Doesn't appear to be used anymore. Probably just remove altogether. |
+| Clear Subsystem Dirty | Yes | No | Doesn't appear to be used anymore. Probably just remove altogether. |
 | Filter Configure | Yes | | |
 | Get Device ID | Yes | Maybe | Used as Unique ID for device. It is just a random 10 digit number generated the first time it is requested. May be able to transition to using the Config Entry ID or something else as a Unique ID. |
 | Get System Info | Yes | Partial | Returns hostname and domain as well as Device ID. Hostname and Domain can be obtained in REST API. |
@@ -35,7 +35,7 @@
 | System Reboot | Yes | Yes | |
 | System Halt | Yes | Yes | |
 | Send WOL | Yes | Yes | |
-| Are Notices Pending | Yes | | |
+| Are Notices Pending | Yes | Yes | |
 | Get Notices | Yes | Yes | |
 | File Notice | Yes | No | Has not worked since OPNsense 22.7.2. Probably just remove altogether. |
 | Close Notice | Yes | Yes | |
