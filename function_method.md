@@ -3,16 +3,16 @@
 | Function | Uses Plugin | Possible in REST API | Comments |
 | ----- | ----- | ----- | ----- |
 | Get Config | Yes | No | Returns a __large__ dictionary of elements used for multiple functions. Some can be replaced, others cannot. More details in the other functions. |
-| Restore Config Section | No | | |
+| Restore Config Section | No | No | |
 | Get ARP Table | Yes | Yes | |
 | Get/List Services | No | Yes | |
 | Start Service | No | Yes | |
 | Stop Service | No | Yes | |
 | Restart Service | No | Yes | |
 | Restart Service if Running | No | Yes | |
-| Is Subsystem Dirty | Yes | | |
-| Mark Subsystem Dirty | Yes | | |
-| Clear Subsystem Dirty | Yes | | |
+| Is Subsystem Dirty | Yes | | Doesn't appear to be used anymore. Probably just remove altogether. |
+| Mark Subsystem Dirty | Yes | | Doesn't appear to be used anymore. Probably just remove altogether. |
+| Clear Subsystem Dirty | Yes | | Doesn't appear to be used anymore. Probably just remove altogether. |
 | Filter Configure | Yes | | |
 | Get Device ID | Yes | Maybe | Used as Unique ID for device. It is just a random 10 digit number generated the first time it is requested. May be able to transition to using the Config Entry ID or something else as a Unique ID. |
 | Get System Info | Yes | Partial | Returns hostname and domain as well as Device ID. Hostname and Domain can be obtained in REST API. |
@@ -26,19 +26,19 @@
 | Get Configured Interface Descriptions | Yes | | |
 | Get Gateways | Yes | Yes | Can use same function that is used for the Gateway data for the Telemetry data. |
 | Get Gateways Status | Yes | | |
-| Get DHCP Leases | Yes | | |
-| Get Virtual IPs | Yes | | |
-| Get Carp Status | Yes | | |
-| Get Carp Interfaces | Yes | | |
+| Get DHCP Leases | Yes | Yes | Currently not in use, but desired feature. Will need to handle both the legacy DHCP and Kea endpoints. |
+| Get Virtual IPs | Yes | Yes | Doesn't appear to be used anymore. Probably just remove altogether. |
+| Get Carp Status | Yes | Yes | |
+| Get Carp Interfaces | Yes | Yes | |
 | Delete ARP Entry | Yes | | |
-| Get MAC by IP | Yes | | |
+| Get MAC by IP | Yes | Yes | Doesn't appear to be used anymore. Probably just remove altogether. |
 | System Reboot | Yes | Yes | |
 | System Halt | Yes | Yes | |
-| Send WOL | Yes | | |
+| Send WOL | Yes | Yes | |
 | Are Notices Pending | Yes | | |
-| Get Notices | Yes | | |
-| File Notice | Yes | | |
-| Close Notice | Yes | | |
+| Get Notices | Yes | Yes | |
+| File Notice | Yes | No | Has not worked since OPNsense 22.7.2. Probably just remove altogether. |
+| Close Notice | Yes | Yes | |
 
 # REST API Functions
 
