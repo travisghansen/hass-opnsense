@@ -1,3 +1,5 @@
+from abc import ABC
+import asyncio
 from collections.abc import Mapping
 from datetime import datetime, timedelta
 import inspect
@@ -13,15 +15,14 @@ from xml.parsers.expat import ExpatError
 import xmlrpc.client
 import zoneinfo
 
+import aiohttp
 from awesomeversion import AwesomeVersion
 from dateutil.parser import parse
-import requests
-from requests.auth import HTTPBasicAuth
 
 # value to set as the socket timeout
 DEFAULT_TIMEOUT = 60
 
-_LOGGER = logging.getLogger(__name__)
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 
 tzinfos = {}
 for tname in zoneinfo.available_timezones():
@@ -42,7 +43,7 @@ def dict_get(data: dict, path: str, default=None):
     return result
 
 
-class OPNSenseClient(object):
+class OPNSenseClient(ABC):
     """OPNsense Client"""
 
     def __init__(self, url, username, password, opts=None):
@@ -59,6 +60,7 @@ class OPNSenseClient(object):
             f"{parts.scheme}://{quote_plus(username)}:{quote_plus(password)}@{parts.netloc}"
         )
         self._scheme = parts.scheme
+        self._proxy = self._get_proxy()
 
     # https://stackoverflow.com/questions/64983392/python-multiple-patch-gives-http-client-cannotsendrequest-request-sent
     def _get_proxy(self):
@@ -147,7 +149,6 @@ $toreturn["real"] = json_encode($toreturn_real);
             )
             return {}
 
-    @_apply_timeout
     @_log_errors
     def get_host_firmware_version(self) -> None | str:
         firmware_info: Mapping[str, Any] | list = self._get("/api/core/firmware/status")
@@ -181,108 +182,169 @@ $toreturn["real"] = json_encode($toreturn_real);
     def _restart_service(self, params):
         return self._get_proxy().opnsense.restart_service(params)
 
-    def _get_from_stream(self, path) -> Mapping[str, Any] | list:
+    def _get_from_stream(self, path: str) -> Mapping[str, Any] | list:
         url: str = f"{self._url}{path}"
         _LOGGER.debug(f"[get_from_stream] url: {url}")
-        requests.packages.urllib3.disable_warnings()
 
-        response = requests.get(
-            url,
-            auth=HTTPBasicAuth(self._username, self._password),
-            timeout=DEFAULT_TIMEOUT,
-            verify=self._verify_ssl,
-            stream=True,
-        )
-        _LOGGER.debug(
-            f"[get_from_stream] Response {response.status_code}: {response.reason}"
-        )
+        # Create an event loop to run the async function
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
-        if response.ok:
-            buffer = ""
-            message_count = 0
-            for chunk in response.iter_content(chunk_size=1024, decode_unicode=True):
-                buffer += chunk
-                if "\n\n" in buffer:
-                    message, buffer = buffer.split("\n\n", 1)
-                    # Split by lines
-                    lines = message.splitlines()
-                    for line in lines:
-                        if line.startswith("data:"):
-                            message_count += 1
-                            if message_count == 2:
-                                response_str: str = line[len("data:") :].strip()
-                                response_json: Mapping[str, Any] | list = json.loads(
-                                    response_str
-                                )
-                                # _LOGGER.debug(f"[get_from_stream] response_json ({type(response_json).__name__}): {response_json}")
-                                response.close()
-                                return response_json  # Exit after processing the first line
-
-        elif response.status_code == 403:
-            _LOGGER.error(
-                f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname}. Path: {path}. Ensure the OPNsense user connected to HA has full Admin access."
+        try:
+            response_json: Mapping[str, Any] | list = loop.run_until_complete(
+                self._async_get_from_stream(url)
             )
-        else:
-            _LOGGER.error(
-                f"Error in {inspect.currentframe().f_back.f_code.co_qualname}. Path: {path}. Response {response.status_code}: {response.reason}"
-            )
+            return response_json
+        finally:
+            loop.close()
+
+    async def _async_get_from_stream(self, url: str) -> Mapping[str, Any] | list:
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.get(
+                    url,
+                    auth=aiohttp.BasicAuth(self._username, self._password),
+                    timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
+                    ssl=self._verify_ssl,
+                ) as response:
+                    _LOGGER.debug(
+                        f"[get_from_stream] Response {response.status}: {response.reason}"
+                    )
+
+                    if response.ok:
+                        buffer = ""
+                        message_count = 0
+
+                        # Stream the response in chunks
+                        async for chunk in response.content.iter_chunked(1024):
+                            buffer += chunk.decode("utf-8")
+
+                            if "\n\n" in buffer:
+                                message, buffer = buffer.split("\n\n", 1)
+                                lines = message.splitlines()
+
+                                for line in lines:
+                                    if line.startswith("data:"):
+                                        message_count += 1
+                                        if message_count == 2:
+                                            response_str: str = line[
+                                                len("data:") :
+                                            ].strip()
+                                            response_json: Mapping[str, Any] | list = (
+                                                json.loads(response_str)
+                                            )
+
+                                            _LOGGER.debug(
+                                                f"[get_from_stream] response_json ({type(response_json).__name__}): {response_json}"
+                                            )
+                                            return response_json  # Exit after processing the second message
+
+                    elif response.status == 403:
+                        _LOGGER.error(
+                            f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname}. Path: {url}. Ensure the OPNsense user connected to HA has full Admin access."
+                        )
+                    else:
+                        _LOGGER.error(
+                            f"Error in {inspect.currentframe().f_back.f_code.co_qualname}. Path: {url}. Response {response.status}: {response.reason}"
+                        )
+            except aiohttp.ClientError as e:
+                _LOGGER.error(f"Client error: {str(e)}")
+
         return {}
 
-    def _get(self, path) -> Mapping[str, Any] | list:
+    def _get(self, path: str) -> Mapping[str, Any] | list:
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
-
         url: str = f"{self._url}{path}"
         _LOGGER.debug(f"[get] url: {url}")
-        requests.packages.urllib3.disable_warnings()
-        response: requests.Response = requests.get(
-            url,
-            auth=HTTPBasicAuth(self._username, self._password),
-            timeout=DEFAULT_TIMEOUT,
-            verify=self._verify_ssl,
-            stream=False,
-        )
-        _LOGGER.debug(f"[get] Response {response.status_code}: {response.reason}")
-        if response.ok:
-            response_json: Mapping[str, Any] | list = response.json()
-            # _LOGGER.debug(f"[get] response_json ({type(response_json).__name__}): {response_json}")
+
+        # Create an event loop to run the async function
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            response_json = loop.run_until_complete(self._async_get(url))
             return response_json
-        elif response.status_code == 403:
-            _LOGGER.error(
-                f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname}. Path: {path}. Ensure the OPNsense user connected to HA has full Admin access."
-            )
-        else:
-            _LOGGER.error(
-                f"Error in {inspect.currentframe().f_back.f_code.co_qualname}. Path: {path}. Response {response.status_code}: {response.reason}"
-            )
+        finally:
+            loop.close()
+
+    async def _async_get(self, url: str) -> Mapping[str, Any] | list:
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.get(
+                    url,
+                    auth=aiohttp.BasicAuth(self._username, self._password),
+                    timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
+                    ssl=self._verify_ssl,
+                ) as response:
+                    _LOGGER.debug(
+                        f"[get] Response {response.status}: {response.reason}"
+                    )
+                    if response.ok:
+                        response_json: Mapping[str, Any] | list = await response.json(
+                            content_type=None
+                        )
+                        return response_json
+                    if response.status == 403:
+                        _LOGGER.error(
+                            f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname}. Path: {url}. Ensure the OPNsense user connected to HA has full Admin access."
+                        )
+                    else:
+                        _LOGGER.error(
+                            f"Error in {inspect.currentframe().f_back.f_code.co_qualname}. Path: {url}. Response {response.status}: {response.reason}"
+                        )
+            except aiohttp.ClientError as e:
+                _LOGGER.error(f"Client error: {str(e)}")
+
         return {}
 
     def _post(self, path, payload=None) -> Mapping[str, Any] | list:
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
-
         url: str = f"{self._url}{path}"
         _LOGGER.debug(f"[post] url: {url}")
         _LOGGER.debug(f"[post] payload: {payload}")
-        requests.packages.urllib3.disable_warnings()
-        response: requests.Response = requests.post(
-            url,
-            data=payload,
-            auth=HTTPBasicAuth(self._username, self._password),
-            timeout=DEFAULT_TIMEOUT,
-            verify=self._verify_ssl,
-        )
-        _LOGGER.debug(f"[post] Response {response.status_code}: {response.reason}")
-        if response.ok:
-            response_json: Mapping[str, Any] | list = response.json()
-            # _LOGGER.debug(f"[post] response_json ({type(response_json).__name__}): {response_json}")
+
+        # Create an event loop to run the async function
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            response_json: Mapping[str, Any] | list = loop.run_until_complete(
+                self._async_post(url, payload)
+            )
             return response_json
-        elif response.status_code == 403:
-            _LOGGER.error(
-                f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname}. Path: {path}. Ensure the OPNsense user connected to HA has full Admin access."
-            )
-        else:
-            _LOGGER.error(
-                f"Error in {inspect.currentframe().f_back.f_code.co_qualname}. Path: {path}. Response {response.status_code}: {response.reason}"
-            )
+        finally:
+            loop.close()
+
+    async def _async_post(self, url: str, payload: Any) -> Mapping[str, Any] | list:
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.post(
+                    url,
+                    data=payload,
+                    auth=aiohttp.BasicAuth(self._username, self._password),
+                    timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
+                    ssl=self._verify_ssl,
+                ) as response:
+                    _LOGGER.debug(
+                        f"[post] Response {response.status}: {response.reason}"
+                    )
+
+                    if response.ok:
+                        response_json: Mapping[str, Any] | list = await response.json(
+                            content_type=None
+                        )
+                        return response_json
+                    elif response.status == 403:
+                        _LOGGER.error(
+                            f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname}. Path: {url}. Ensure the OPNsense user connected to HA has full Admin access."
+                        )
+                    else:
+                        _LOGGER.error(
+                            f"Error in {inspect.currentframe().f_back.f_code.co_qualname}. Path: {url}. Response {response.status}: {response.reason}"
+                        )
+            except aiohttp.ClientError as e:
+                _LOGGER.error(f"Client error: {str(e)}")
+
         return {}
 
     @_log_errors

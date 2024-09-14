@@ -91,7 +91,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     device_tracker_enabled: bool = options.get(
         CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED
     )
-    client = OPNSenseClient(url, username, password, {"verify_ssl": verify_ssl})
+    client = OPNSenseClient(
+        url=url,
+        username=username,
+        password=password,
+        opts={"verify_ssl": verify_ssl},
+    )
     data = OPNSenseData(client, entry)
 
     scan_interval: int = options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
@@ -237,7 +242,7 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
 class OPNSenseData:
     def __init__(self, client: OPNSenseClient, config_entry: ConfigEntry):
         """Initialize the data object."""
-        self._client = client
+        self._client: OPNSenseClient = client
         self._config_entry = config_entry
         self._state = {}
 
