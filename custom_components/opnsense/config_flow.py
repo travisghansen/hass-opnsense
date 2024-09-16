@@ -14,6 +14,7 @@ from homeassistant.const import (
     CONF_VERIFY_SSL,
 )
 from homeassistant.core import callback
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 import homeassistant.helpers.config_validation as cv
 from homeassistant.util import slugify
 import voluptuous as vol
@@ -80,6 +81,9 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     url=url,
                     username=username,
                     password=password,
+                    session=async_create_clientsession(
+                        self.hass, raise_for_status=False
+                    ),
                     opts={"verify_ssl": verify_ssl},
                 )
                 system_info = await client.get_system_info()
@@ -242,6 +246,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             url=url,
             username=username,
             password=password,
+            session=async_create_clientsession(self.hass, raise_for_status=False),
             opts={"verify_ssl": verify_ssl},
         )
         if user_input is None and (arp_table := await client.get_arp_table(True)):
