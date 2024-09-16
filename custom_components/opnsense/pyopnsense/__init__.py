@@ -46,7 +46,14 @@ def dict_get(data: Mapping[str, Any], path: str, default=None):
 class OPNsenseClient(ABC):
     """OPNsense Client"""
 
-    def __init__(self, url, username, password, opts=None):
+    def __init__(
+        self,
+        url: str,
+        username: str,
+        password: str,
+        session: aiohttp.ClientSession,
+        opts: Mapping[str, Any] = None,
+    ) -> None:
         """OPNsense Client initializer."""
 
         self._username: str = username
@@ -60,6 +67,7 @@ class OPNsenseClient(ABC):
             f"{parts.scheme}://{quote_plus(username)}:{quote_plus(password)}@{parts.netloc}"
         )
         self._scheme: str = parts.scheme
+        self._session: aiohttp.ClientSession = session
         try:
             self._loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -215,55 +223,52 @@ $toreturn["real"] = json_encode($toreturn_real);
     async def _get_from_stream(self, path: str) -> Mapping[str, Any] | list:
         url: str = f"{self._url}{path}"
         _LOGGER.debug(f"[get_from_stream] url: {url}")
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.get(
-                    url,
-                    auth=aiohttp.BasicAuth(self._username, self._password),
-                    timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
-                    ssl=self._verify_ssl,
-                ) as response:
-                    _LOGGER.debug(
-                        f"[get_from_stream] Response {response.status}: {response.reason}"
+        try:
+            async with self._session.get(
+                url,
+                auth=aiohttp.BasicAuth(self._username, self._password),
+                timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
+                ssl=self._verify_ssl,
+            ) as response:
+                _LOGGER.debug(
+                    f"[get_from_stream] Response {response.status}: {response.reason}"
+                )
+
+                if response.ok:
+                    buffer = ""
+                    message_count = 0
+
+                    async for chunk in response.content.iter_chunked(1024):
+                        buffer += chunk.decode("utf-8")
+
+                        if "\n\n" in buffer:
+                            message, buffer = buffer.split("\n\n", 1)
+                            lines = message.splitlines()
+
+                            for line in lines:
+                                if line.startswith("data:"):
+                                    message_count += 1
+                                    if message_count == 2:
+                                        response_str: str = line[len("data:") :].strip()
+                                        response_json: Mapping[str, Any] | list = (
+                                            json.loads(response_str)
+                                        )
+
+                                        _LOGGER.debug(
+                                            f"[get_from_stream] response_json ({type(response_json).__name__}): {response_json}"
+                                        )
+                                        return response_json  # Exit after processing the second message
+
+                elif response.status == 403:
+                    _LOGGER.error(
+                        f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Ensure the OPNsense user connected to HA has full Admin access."
                     )
-
-                    if response.ok:
-                        buffer = ""
-                        message_count = 0
-
-                        async for chunk in response.content.iter_chunked(1024):
-                            buffer += chunk.decode("utf-8")
-
-                            if "\n\n" in buffer:
-                                message, buffer = buffer.split("\n\n", 1)
-                                lines = message.splitlines()
-
-                                for line in lines:
-                                    if line.startswith("data:"):
-                                        message_count += 1
-                                        if message_count == 2:
-                                            response_str: str = line[
-                                                len("data:") :
-                                            ].strip()
-                                            response_json: Mapping[str, Any] | list = (
-                                                json.loads(response_str)
-                                            )
-
-                                            _LOGGER.debug(
-                                                f"[get_from_stream] response_json ({type(response_json).__name__}): {response_json}"
-                                            )
-                                            return response_json  # Exit after processing the second message
-
-                    elif response.status == 403:
-                        _LOGGER.error(
-                            f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Ensure the OPNsense user connected to HA has full Admin access."
-                        )
-                    else:
-                        _LOGGER.error(
-                            f"Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Response {response.status}: {response.reason}"
-                        )
-            except aiohttp.ClientError as e:
-                _LOGGER.error(f"Client error: {str(e)}")
+                else:
+                    _LOGGER.error(
+                        f"Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Response {response.status}: {response.reason}"
+                    )
+        except aiohttp.ClientError as e:
+            _LOGGER.error(f"Client error: {str(e)}")
 
         return {}
 
@@ -271,32 +276,29 @@ $toreturn["real"] = json_encode($toreturn_real);
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
         url: str = f"{self._url}{path}"
         _LOGGER.debug(f"[get] url: {url}")
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.get(
-                    url,
-                    auth=aiohttp.BasicAuth(self._username, self._password),
-                    timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
-                    ssl=self._verify_ssl,
-                ) as response:
-                    _LOGGER.debug(
-                        f"[get] Response {response.status}: {response.reason}"
+        try:
+            async with self._session.get(
+                url,
+                auth=aiohttp.BasicAuth(self._username, self._password),
+                timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
+                ssl=self._verify_ssl,
+            ) as response:
+                _LOGGER.debug(f"[get] Response {response.status}: {response.reason}")
+                if response.ok:
+                    response_json: Mapping[str, Any] | list = await response.json(
+                        content_type=None
                     )
-                    if response.ok:
-                        response_json: Mapping[str, Any] | list = await response.json(
-                            content_type=None
-                        )
-                        return response_json
-                    if response.status == 403:
-                        _LOGGER.error(
-                            f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Ensure the OPNsense user connected to HA has full Admin access."
-                        )
-                    else:
-                        _LOGGER.error(
-                            f"Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Response {response.status}: {response.reason}"
-                        )
-            except aiohttp.ClientError as e:
-                _LOGGER.error(f"Client error: {str(e)}")
+                    return response_json
+                if response.status == 403:
+                    _LOGGER.error(
+                        f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Ensure the OPNsense user connected to HA has full Admin access."
+                    )
+                else:
+                    _LOGGER.error(
+                        f"Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Response {response.status}: {response.reason}"
+                    )
+        except aiohttp.ClientError as e:
+            _LOGGER.error(f"Client error: {str(e)}")
 
         return {}
 
@@ -305,34 +307,31 @@ $toreturn["real"] = json_encode($toreturn_real);
         url: str = f"{self._url}{path}"
         _LOGGER.debug(f"[post] url: {url}")
         _LOGGER.debug(f"[post] payload: {payload}")
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.post(
-                    url,
-                    data=payload,
-                    auth=aiohttp.BasicAuth(self._username, self._password),
-                    timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
-                    ssl=self._verify_ssl,
-                ) as response:
-                    _LOGGER.debug(
-                        f"[post] Response {response.status}: {response.reason}"
-                    )
+        try:
+            async with self._session.post(
+                url,
+                data=payload,
+                auth=aiohttp.BasicAuth(self._username, self._password),
+                timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
+                ssl=self._verify_ssl,
+            ) as response:
+                _LOGGER.debug(f"[post] Response {response.status}: {response.reason}")
 
-                    if response.ok:
-                        response_json: Mapping[str, Any] | list = await response.json(
-                            content_type=None
-                        )
-                        return response_json
-                    elif response.status == 403:
-                        _LOGGER.error(
-                            f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Ensure the OPNsense user connected to HA has full Admin access."
-                        )
-                    else:
-                        _LOGGER.error(
-                            f"Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Response {response.status}: {response.reason}"
-                        )
-            except aiohttp.ClientError as e:
-                _LOGGER.error(f"Client error: {str(e)}")
+                if response.ok:
+                    response_json: Mapping[str, Any] | list = await response.json(
+                        content_type=None
+                    )
+                    return response_json
+                elif response.status == 403:
+                    _LOGGER.error(
+                        f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Ensure the OPNsense user connected to HA has full Admin access."
+                    )
+                else:
+                    _LOGGER.error(
+                        f"Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Response {response.status}: {response.reason}"
+                    )
+        except aiohttp.ClientError as e:
+            _LOGGER.error(f"Client error: {str(e)}")
 
         return {}
 
@@ -486,7 +485,7 @@ $toreturn = [
                     if upgradestatus["status"] == "done":
                         # tigger repo update
                         # should this be /api/core/firmware/upgrade
-                        check = self._post("/api/core/firmware/check")
+                        check = await self._post("/api/core/firmware/check")
                         # print(check)
                         refresh_triggered = True
                     else:
@@ -1343,7 +1342,7 @@ $toreturn = [
             return {}
         openvpn: Mapping[str, Any] = {}
         openvpn["servers"] = {}
-        connection_info: Mapping[str, Any] = self._post(
+        connection_info: Mapping[str, Any] = await self._post(
             "/api/openvpn/service/searchSessions"
         )
         _LOGGER.debug(f"[get_telemetry_openvpn] connection_info: {connection_info}")

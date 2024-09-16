@@ -15,6 +15,7 @@ from homeassistant.const import (
     CONF_VERIFY_SSL,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import async_get
 from homeassistant.helpers.issue_registry import IssueSeverity, async_create_issue
@@ -73,6 +74,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         url=url,
         username=username,
         password=password,
+        session=async_create_clientsession(hass, raise_for_status=False),
         opts={"verify_ssl": verify_ssl},
     )
 
