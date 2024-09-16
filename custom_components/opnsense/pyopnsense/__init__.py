@@ -24,12 +24,12 @@ DEFAULT_TIMEOUT = 60
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
-tzinfos = {}
+tzinfos: Mapping[str, Any] = {}
 for tname in zoneinfo.available_timezones():
     tzinfos[tname] = zoneinfo.ZoneInfo(tname)
 
 
-def dict_get(data: dict, path: str, default=None):
+def dict_get(data: Mapping[str, Any], path: str, default=None):
     pathList = re.split(r"\.", path, flags=re.IGNORECASE)
     result = data
     for key in pathList:
@@ -43,7 +43,7 @@ def dict_get(data: dict, path: str, default=None):
     return result
 
 
-class OPNSenseClient(ABC):
+class OPNsenseClient(ABC):
     """OPNsense Client"""
 
     def __init__(self, url, username, password, opts=None):
@@ -59,11 +59,51 @@ class OPNSenseClient(ABC):
         self._xmlrpc_url: str = (
             f"{parts.scheme}://{quote_plus(username)}:{quote_plus(password)}@{parts.netloc}"
         )
-        self._scheme = parts.scheme
-        self._proxy = self._get_proxy()
+        self._scheme: str = parts.scheme
+        try:
+            self._loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self._loop)
+        self._loop.set_exception_handler(self._loop_exception_handler)
+
+    def _xmlrpc_timeout(func):
+        async def inner(self, *args, **kwargs):
+            response = None
+            # timout applies to each recv() call, not the whole request
+            default_timeout = socket.getdefaulttimeout()
+            try:
+                socket.setdefaulttimeout(DEFAULT_TIMEOUT)
+                response = await func(self, *args, **kwargs)
+            finally:
+                socket.setdefaulttimeout(default_timeout)
+            return response
+
+        return inner
+
+    def _log_errors(func):
+        async def inner(self, *args, **kwargs):
+            try:
+                return await func(self, *args, **kwargs)
+            except asyncio.CancelledError as e:
+                raise e
+            except BaseException as e:
+                _LOGGER.error(
+                    f"Error in {func.__name__.strip('_')}. {e.__class__.__qualname__}: {e}"
+                )
+                # raise err
+
+        return inner
+
+    def _loop_exception_handler(self, loop, context) -> None:
+        exception = context.get("exception", None)
+        message = context.get("message", None)
+        _LOGGER.error(
+            f"Error in event loop. {exception.__class__.__qualname__}: {exception}. {message}"
+        )
 
     # https://stackoverflow.com/questions/64983392/python-multiple-patch-gives-http-client-cannotsendrequest-request-sent
-    def _get_proxy(self):
+    def _get_proxy(self) -> xmlrpc.client.ServerProxy:
         # https://docs.python.org/3/library/xmlrpc.client.html#module-xmlrpc.client
         # https://stackoverflow.com/questions/30461969/disable-default-certificate-verification-in-python-2-7-9
         context = None
@@ -79,46 +119,24 @@ class OPNSenseClient(ABC):
         )
         return proxy
 
-    def _apply_timeout(func):
-        def inner(*args, **kwargs):
-            response = None
-            # timout applies to each recv() call, not the whole request
-            default_timeout = socket.getdefaulttimeout()
-            try:
-                socket.setdefaulttimeout(DEFAULT_TIMEOUT)
-                response = func(*args, **kwargs)
-            finally:
-                socket.setdefaulttimeout(default_timeout)
-            return response
-
-        return inner
-
-    def _log_errors(func):
-        def inner(*args, **kwargs):
-            try:
-                return func(*args, **kwargs)
-            except BaseException as err:
-                _LOGGER.error(f"Unexpected {func.__name__} error {err=}, {type(err)=}")
-                raise err
-
-        return inner
-
-    @_apply_timeout
-    def _get_config_section(self, section) -> Mapping[str, Any]:
-        config: Mapping[str, Any] = self.get_config()
+    # @_xmlrpc_timeout
+    async def _get_config_section(self, section) -> Mapping[str, Any]:
+        config: Mapping[str, Any] = await self.get_config()
         if config is None or not isinstance(config, Mapping):
             _LOGGER.error("Invalid data returned from get_config_section")
             return {}
         return config.get(section, {})
 
-    @_apply_timeout
-    def _restore_config_section(self, section_name, data):
+    @_xmlrpc_timeout
+    async def _restore_config_section(self, section_name, data):
         params: Mapping[str, Any] = {section_name: data}
-        response = self._get_proxy().opnsense.restore_config_section(params)
+        response = await self._loop.run_in_executor(
+            None, self._get_proxy().opnsense.restore_config_section, params
+        )
         return response
 
-    @_apply_timeout
-    def _exec_php(self, script, calling_method="") -> Mapping[str, Any]:
+    @_xmlrpc_timeout
+    async def _exec_php(self, script) -> Mapping[str, Any]:
         script: str = (
             r"""
 ini_set('display_errors', 0);
@@ -135,70 +153,68 @@ $toreturn["real"] = json_encode($toreturn_real);
             )
         )
         try:
-            response = self._get_proxy().opnsense.exec_php(script)
+            response = await self._loop.run_in_executor(
+                None, self._get_proxy().opnsense.exec_php, script
+            )
             response_json = json.loads(response["real"])
             return response_json
         except TypeError as e:
             _LOGGER.error(
-                f"Invalid data returned from exec_php for {calling_method}. {e.__class__.__qualname__}: {e}. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'XMLRPC Library' privilege."
+                f"Invalid data returned from exec_php for {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. {e.__class__.__qualname__}: {e}. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'XMLRPC Library' privilege."
             )
             return {}
         except xmlrpc.client.Fault as e:
             _LOGGER.error(
-                f"Error running exec_php script for {calling_method}. {e.__class__.__qualname__}: {e}. Ensure the 'os-homeassistant-maxit' plugin has been installed on OPNsense ."
+                f"Error running exec_php script for {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. {e.__class__.__qualname__}: {e}. Ensure the 'os-homeassistant-maxit' plugin has been installed on OPNsense ."
             )
             return {}
 
     @_log_errors
-    def get_host_firmware_version(self) -> None | str:
-        firmware_info: Mapping[str, Any] | list = self._get("/api/core/firmware/status")
+    async def get_host_firmware_version(self) -> None | str:
+        firmware_info: Mapping[str, Any] | list = await self._get(
+            "/api/core/firmware/status"
+        )
         if not isinstance(firmware_info, Mapping):
             return None
         firmware: str | None = firmware_info.get("product_version", None)
         _LOGGER.debug(f"[get_host_firmware_version] firmware: {firmware}")
         return firmware
 
-    @_apply_timeout
+    @_xmlrpc_timeout
     @_log_errors
-    def _list_services(self):
-        response = self._get_proxy().opnsense.list_services()
+    async def _list_services(self):
+        response = await self._loop.run_in_executor(
+            None, self._get_proxy().opnsense.list_services
+        )
         if response is None or not isinstance(response, Mapping):
             _LOGGER.error("Invalid data returned from list_services")
             return {}
         return response
 
-    @_apply_timeout
+    @_xmlrpc_timeout
     @_log_errors
-    def _start_service(self, params):
-        return self._get_proxy().opnsense.start_service(params)
+    async def _start_service(self, params):
+        return await self._loop.run_in_executor(
+            None, self._get_proxy().opnsense.start_services, params
+        )
 
-    @_apply_timeout
+    @_xmlrpc_timeout
     @_log_errors
-    def _stop_service(self, params):
-        return self._get_proxy().opnsense.stop_service(params)
+    async def _stop_service(self, params):
+        return await self._loop.run_in_executor(
+            None, self._get_proxy().opnsense.stop_services, params
+        )
 
-    @_apply_timeout
+    @_xmlrpc_timeout
     @_log_errors
-    def _restart_service(self, params):
-        return self._get_proxy().opnsense.restart_service(params)
+    async def _restart_service(self, params):
+        return await self._loop.run_in_executor(
+            None, self._get_proxy().opnsense.restart_services, params
+        )
 
-    def _get_from_stream(self, path: str) -> Mapping[str, Any] | list:
+    async def _get_from_stream(self, path: str) -> Mapping[str, Any] | list:
         url: str = f"{self._url}{path}"
         _LOGGER.debug(f"[get_from_stream] url: {url}")
-
-        # Create an event loop to run the async function
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-        try:
-            response_json: Mapping[str, Any] | list = loop.run_until_complete(
-                self._async_get_from_stream(url)
-            )
-            return response_json
-        finally:
-            loop.close()
-
-    async def _async_get_from_stream(self, url: str) -> Mapping[str, Any] | list:
         async with aiohttp.ClientSession() as session:
             try:
                 async with session.get(
@@ -215,7 +231,6 @@ $toreturn["real"] = json_encode($toreturn_real);
                         buffer = ""
                         message_count = 0
 
-                        # Stream the response in chunks
                         async for chunk in response.content.iter_chunked(1024):
                             buffer += chunk.decode("utf-8")
 
@@ -241,33 +256,21 @@ $toreturn["real"] = json_encode($toreturn_real);
 
                     elif response.status == 403:
                         _LOGGER.error(
-                            f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname}. Path: {url}. Ensure the OPNsense user connected to HA has full Admin access."
+                            f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Ensure the OPNsense user connected to HA has full Admin access."
                         )
                     else:
                         _LOGGER.error(
-                            f"Error in {inspect.currentframe().f_back.f_code.co_qualname}. Path: {url}. Response {response.status}: {response.reason}"
+                            f"Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Response {response.status}: {response.reason}"
                         )
             except aiohttp.ClientError as e:
                 _LOGGER.error(f"Client error: {str(e)}")
 
         return {}
 
-    def _get(self, path: str) -> Mapping[str, Any] | list:
+    async def _get(self, path: str) -> Mapping[str, Any] | list:
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
         url: str = f"{self._url}{path}"
         _LOGGER.debug(f"[get] url: {url}")
-
-        # Create an event loop to run the async function
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-        try:
-            response_json = loop.run_until_complete(self._async_get(url))
-            return response_json
-        finally:
-            loop.close()
-
-    async def _async_get(self, url: str) -> Mapping[str, Any] | list:
         async with aiohttp.ClientSession() as session:
             try:
                 async with session.get(
@@ -286,36 +289,22 @@ $toreturn["real"] = json_encode($toreturn_real);
                         return response_json
                     if response.status == 403:
                         _LOGGER.error(
-                            f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname}. Path: {url}. Ensure the OPNsense user connected to HA has full Admin access."
+                            f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Ensure the OPNsense user connected to HA has full Admin access."
                         )
                     else:
                         _LOGGER.error(
-                            f"Error in {inspect.currentframe().f_back.f_code.co_qualname}. Path: {url}. Response {response.status}: {response.reason}"
+                            f"Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Response {response.status}: {response.reason}"
                         )
             except aiohttp.ClientError as e:
                 _LOGGER.error(f"Client error: {str(e)}")
 
         return {}
 
-    def _post(self, path, payload=None) -> Mapping[str, Any] | list:
+    async def _post(self, path: str, payload=None) -> Mapping[str, Any] | list:
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
         url: str = f"{self._url}{path}"
         _LOGGER.debug(f"[post] url: {url}")
         _LOGGER.debug(f"[post] payload: {payload}")
-
-        # Create an event loop to run the async function
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-        try:
-            response_json: Mapping[str, Any] | list = loop.run_until_complete(
-                self._async_post(url, payload)
-            )
-            return response_json
-        finally:
-            loop.close()
-
-    async def _async_post(self, url: str, payload: Any) -> Mapping[str, Any] | list:
         async with aiohttp.ClientSession() as session:
             try:
                 async with session.post(
@@ -336,11 +325,11 @@ $toreturn["real"] = json_encode($toreturn_real);
                         return response_json
                     elif response.status == 403:
                         _LOGGER.error(
-                            f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname}. Path: {url}. Ensure the OPNsense user connected to HA has full Admin access."
+                            f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Ensure the OPNsense user connected to HA has full Admin access."
                         )
                     else:
                         _LOGGER.error(
-                            f"Error in {inspect.currentframe().f_back.f_code.co_qualname}. Path: {url}. Response {response.status}: {response.reason}"
+                            f"Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Response {response.status}: {response.reason}"
                         )
             except aiohttp.ClientError as e:
                 _LOGGER.error(f"Client error: {str(e)}")
@@ -348,8 +337,9 @@ $toreturn["real"] = json_encode($toreturn_real);
         return {}
 
     @_log_errors
-    def _is_subsystem_dirty(self, subsystem) -> bool:
-        script = r"""
+    async def _is_subsystem_dirty(self, subsystem) -> bool:
+        script: str = (
+            r"""
 $data = json_decode('{}', true);
 $subsystem = $data["subsystem"];
 $dirty = is_subsystem_dirty($subsystem);
@@ -357,49 +347,54 @@ $toreturn = [
     "data" => $dirty,
 ];
 """.format(
-            json.dumps({"subsystem": subsystem})
+                json.dumps({"subsystem": subsystem})
+            )
         )
 
-        response: Mapping[str, Any] = self._exec_php(script, "is_subsystem_dirty")
+        response: Mapping[str, Any] = await self._exec_php(script)
         if response is None or not isinstance(response, Mapping):
             _LOGGER.error("Invalid data returned from is_subsystem_dirty")
             return False
         return bool(response.get("data", False))
 
     @_log_errors
-    def _mark_subsystem_dirty(self, subsystem) -> None:
-        script = r"""
+    async def _mark_subsystem_dirty(self, subsystem) -> None:
+        script: str = (
+            r"""
 $data = json_decode('{}', true);
 $subsystem = $data["subsystem"];
 mark_subsystem_dirty($subsystem);
 """.format(
-            json.dumps({"subsystem": subsystem})
+                json.dumps({"subsystem": subsystem})
+            )
         )
-        self._exec_php(script, "mark_subsystem_dirty")
+        await self._exec_php(script)
 
     @_log_errors
-    def _clear_subsystem_dirty(self, subsystem) -> None:
-        script = r"""
+    async def _clear_subsystem_dirty(self, subsystem) -> None:
+        script: str = (
+            r"""
 $data = json_decode('{}', true);
 $subsystem = $data["subsystem"];
 clear_subsystem_dirty($subsystem);
 """.format(
-            json.dumps({"subsystem": subsystem})
+                json.dumps({"subsystem": subsystem})
+            )
         )
-        self._exec_php(script, "clear_subsystem_dirty")
+        await self._exec_php(script)
 
     @_log_errors
-    def _filter_configure(self) -> None:
-        script = r"""
+    async def _filter_configure(self) -> None:
+        script: str = r"""
 filter_configure();
 clear_subsystem_dirty('natconf');
 clear_subsystem_dirty('filter');
 """
-        self._exec_php(script, "filter_configure")
+        await self._exec_php(script)
 
     @_log_errors
-    def get_device_id(self) -> Mapping[str, Any]:
-        script = r"""
+    async def get_device_id(self) -> Mapping[str, Any]:
+        script: str = r"""
 $file = "/conf/hassid";
 $id;
 if (!file_exists($file)) {
@@ -412,16 +407,16 @@ $toreturn = [
   "data" => $id,
 ];
 """
-        response: Mapping[str, Any] = self._exec_php(script, "get_device_id")
+        response: Mapping[str, Any] = await self._exec_php(script)
         if response is None or not isinstance(response, Mapping):
             _LOGGER.error("Invalid data returned from get_device_id")
             return {}
         return response.get("data", {})
 
     @_log_errors
-    def get_system_info(self) -> Mapping[str, Any]:
+    async def get_system_info(self) -> Mapping[str, Any]:
         # TODO: add bios details here
-        script = r"""
+        script: str = r"""
 global $config;
 
 $file = "/conf/hassid";
@@ -439,11 +434,11 @@ $toreturn = [
   "device_id" => $id,
 ];
 """
-        response: Mapping[str, Any] = self._exec_php(script, "get_system_info")
+        response: Mapping[str, Any] = await self._exec_php(script)
         return response
 
     @_log_errors
-    def get_firmware_update_info(self):
+    async def get_firmware_update_info(self):
         current_time = time.time()
         refresh_triggered = False
         refresh_interval = 2 * 60 * 60  # 2 hours
@@ -452,7 +447,7 @@ $toreturn = [
         upgradestatus = None
 
         # GET /api/core/firmware/status
-        status = self._get("/api/core/firmware/status")
+        status = await self._get("/api/core/firmware/status")
         # print(status)
 
         # if error or too old trigger check (only if check is not already in progress)
@@ -465,7 +460,7 @@ $toreturn = [
             or dict_get(status, "product.product_check") is None
             or dict_get(status, "product.product_check") == ""
         ):
-            self._post("/api/core/firmware/check")
+            await self._post("/api/core/firmware/check")
             refresh_triggered = True
         elif "last_check" in status.keys():
             # "last_check": "Wed Dec 22 16:56:20 UTC 2021"
@@ -483,7 +478,7 @@ $toreturn = [
             stale = (current_time - last_check_timestamp) > refresh_interval
             # stale = True
             if stale:
-                upgradestatus = self._get("/api/core/firmware/upgradestatus")
+                upgradestatus = await self._get("/api/core/firmware/upgradestatus")
                 # print(upgradestatus)
                 if "status" in upgradestatus.keys():
                     # status = running (package refresh in progress OR upgrade in progress)
@@ -506,51 +501,51 @@ $toreturn = [
         return status
 
     @_log_errors
-    def upgrade_firmware(self, type="update"):
+    async def upgrade_firmware(self, type="update"):
         # minor updates of the same opnsense version
         if type == "update":
             # can watch the progress on the 'Updates' tab in the UI
-            return self._post("/api/core/firmware/update")
+            return await self._post("/api/core/firmware/update")
 
         # major updates to a new opnsense version
         if type == "upgrade":
             # can watch the progress on the 'Updates' tab in the UI
-            return self._post("/api/core/firmware/upgrade")
+            return await self._post("/api/core/firmware/upgrade")
 
     @_log_errors
-    def upgrade_status(self):
-        return self._post("/api/core/firmware/upgradestatus")
+    async def upgrade_status(self):
+        return await self._post("/api/core/firmware/upgradestatus")
 
     @_log_errors
-    def firmware_changelog(self, version):
-        return self._post("/api/core/firmware/changelog/" + version)
+    async def firmware_changelog(self, version):
+        return await self._post("/api/core/firmware/changelog/" + version)
 
     @_log_errors
-    def get_config(self) -> Mapping[str, Any]:
-        script = r"""
+    async def get_config(self) -> Mapping[str, Any]:
+        script: str = r"""
 global $config;
 
 $toreturn = [
   "data" => $config,
 ];
 """
-        response: Mapping[str, Any] = self._exec_php(script, "get_config")
+        response: Mapping[str, Any] = await self._exec_php(script)
         if response is None or not isinstance(response, Mapping):
             return {}
         return response.get("data", {})
 
     @_log_errors
-    def get_interfaces(self) -> Mapping[str, Any]:
-        return self._get_config_section("interfaces")
+    async def get_interfaces(self) -> Mapping[str, Any]:
+        return await self._get_config_section("interfaces")
 
     @_log_errors
-    def get_interface(self, interface) -> Mapping[str, Any]:
-        interfaces: Mapping[str, Any] = self.get_interfaces()
+    async def get_interface(self, interface) -> Mapping[str, Any]:
+        interfaces: Mapping[str, Any] = await self.get_interfaces()
         return interfaces.get(interface, {})
 
     @_log_errors
-    def get_interface_by_description(self, interface):
-        interfaces: Mapping[str, Any] = self.get_interfaces()
+    async def get_interface_by_description(self, interface):
+        interfaces: Mapping[str, Any] = await self.get_interfaces()
         for i, i_interface in enumerate(interfaces.keys()):
             if "descr" not in interfaces[i_interface]:
                 continue
@@ -562,8 +557,8 @@ $toreturn = [
                 return interfaces[i_interface]
 
     @_log_errors
-    def enable_filter_rule_by_created_time(self, created_time):
-        config = self.get_config()
+    async def enable_filter_rule_by_created_time(self, created_time) -> None:
+        config = await self.get_config()
         for rule in config["filter"]["rule"]:
             if "created" not in rule.keys():
                 continue
@@ -574,12 +569,12 @@ $toreturn = [
 
             if "disabled" in rule.keys():
                 del rule["disabled"]
-                self._restore_config_section("filter", config["filter"])
-                self._filter_configure()
+                await self._restore_config_section("filter", config["filter"])
+                await self._filter_configure()
 
     @_log_errors
-    def disable_filter_rule_by_created_time(self, created_time):
-        config: Mapping[str, Any] = self.get_config()
+    async def disable_filter_rule_by_created_time(self, created_time) -> None:
+        config: Mapping[str, Any] = await self.get_config()
 
         for rule in config.get("filter", {}).get("rule", []):
             if "created" not in rule.keys():
@@ -591,13 +586,13 @@ $toreturn = [
 
             if "disabled" not in rule.keys():
                 rule["disabled"] = "1"
-                self._restore_config_section("filter", config["filter"])
-                self._filter_configure()
+                await self._restore_config_section("filter", config["filter"])
+                await self._filter_configure()
 
     # use created_time as a unique_id since none other exists
     @_log_errors
-    def enable_nat_port_forward_rule_by_created_time(self, created_time):
-        config: Mapping[str, Any] = self.get_config()
+    async def enable_nat_port_forward_rule_by_created_time(self, created_time) -> None:
+        config: Mapping[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("rule", []):
             if "created" not in rule.keys():
                 continue
@@ -608,13 +603,13 @@ $toreturn = [
 
             if "disabled" in rule.keys():
                 del rule["disabled"]
-                self._restore_config_section("nat", config["nat"])
-                self._filter_configure()
+                await self._restore_config_section("nat", config["nat"])
+                await self._filter_configure()
 
     # use created_time as a unique_id since none other exists
     @_log_errors
-    def disable_nat_port_forward_rule_by_created_time(self, created_time):
-        config: Mapping[str, Any] = self.get_config()
+    async def disable_nat_port_forward_rule_by_created_time(self, created_time) -> None:
+        config: Mapping[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("rule", []):
             if "created" not in rule.keys():
                 continue
@@ -625,13 +620,13 @@ $toreturn = [
 
             if "disabled" not in rule.keys():
                 rule["disabled"] = "1"
-                self._restore_config_section("nat", config["nat"])
-                self._filter_configure()
+                await self._restore_config_section("nat", config["nat"])
+                await self._filter_configure()
 
     # use created_time as a unique_id since none other exists
     @_log_errors
-    def enable_nat_outbound_rule_by_created_time(self, created_time):
-        config: Mapping[str, Any] = self.get_config()
+    async def enable_nat_outbound_rule_by_created_time(self, created_time) -> None:
+        config: Mapping[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("outbound", {}).get("rule", []):
             if "created" not in rule.keys():
                 continue
@@ -642,32 +637,30 @@ $toreturn = [
 
             if "disabled" in rule.keys():
                 del rule["disabled"]
-                self._restore_config_section("nat", config["nat"])
-                self._filter_configure()
+                await self._restore_config_section("nat", config["nat"])
+                await self._filter_configure()
 
     # use created_time as a unique_id since none other exists
     @_log_errors
-    def disable_nat_outbound_rule_by_created_time(self, created_time):
-        config: Mapping[str, Any] = self.get_config()
+    async def disable_nat_outbound_rule_by_created_time(self, created_time) -> None:
+        config: Mapping[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("outbound", {}).get("rule", []):
             if rule["created"]["time"] != created_time:
                 continue
 
             if "disabled" not in rule.keys():
                 rule["disabled"] = "1"
-                self._restore_config_section("nat", config["nat"])
-                self._filter_configure()
+                await self._restore_config_section("nat", config["nat"])
+                await self._filter_configure()
 
     @_log_errors
-    def get_configured_interface_descriptions(self) -> Mapping[str, Any]:
-        script = r"""
+    async def get_configured_interface_descriptions(self) -> Mapping[str, Any]:
+        script: str = r"""
 $toreturn = [
   "data" => get_configured_interface_with_descr(),
 ];
 """
-        response: Mapping[str, Any] = self._exec_php(
-            script, "get_configured_interface_descriptions"
-        )
+        response: Mapping[str, Any] = await self._exec_php(script)
         if response is None or not isinstance(response, Mapping):
             _LOGGER.error(
                 "Invalid data returned from get_configured_interface_descriptions"
@@ -676,9 +669,9 @@ $toreturn = [
         return response.get("data", {})
 
     @_log_errors
-    def get_gateways(self) -> Mapping[str, Any]:
+    async def get_gateways(self) -> Mapping[str, Any]:
         # {'GW_WAN': {'interface': '<if>', 'gateway': '<ip>', 'name': 'GW_WAN', 'weight': '1', 'ipprotocol': 'inet', 'interval': '', 'descr': 'Interface wan Gateway', 'monitor': '<ip>', 'friendlyiface': 'wan', 'friendlyifdescr': 'WAN', 'isdefaultgw': True, 'attribute': 0, 'tiername': 'Default (IPv4)'}}
-        script = r"""
+        script: str = r"""
 $gateways = new \OPNsense\Routing\Gateways(legacy_interfaces_details());
 //$default_gwv4 = $gateways->getDefaultGW(return_down_gateways(), "inet");
 //$default_gwv6 = $gateways->getDefaultGW(return_down_gateways(), "inet6");
@@ -695,29 +688,29 @@ $toreturn = [
   "data" => $result,
 ];
 """
-        response: Mapping[str, Any] = self._exec_php(script, "get_gateways")
+        response: Mapping[str, Any] = await self._exec_php(script)
         if response is None or not isinstance(response, Mapping):
             _LOGGER.error("Invalid data returned from get_gateways")
             return {}
         return response.get("data", {})
 
     @_log_errors
-    def get_gateway(self, gateway):
-        gateways = self.get_gateways()
+    async def get_gateway(self, gateway):
+        gateways = await self.get_gateways()
         for g in gateways.keys():
             if g == gateway:
                 return gateways[g]
 
     @_log_errors
-    def get_gateways_status(self) -> Mapping[str, Any]:
+    async def get_gateways_status(self) -> Mapping[str, Any]:
         # {'GW_WAN': {'monitorip': '<ip>', 'srcip': '<ip>', 'name': 'GW_WAN', 'delay': '0.387ms', 'stddev': '0.097ms', 'loss': '0.0%', 'status': 'online', 'substatus': 'none'}}
-        script = r"""
+        script: str = r"""
 $toreturn = [
   // function return_gateways_status($byname = false, $gways = false)
   "data" => return_gateways_status(true),
 ];
 """
-        response: Mapping[str, Any] = self._exec_php(script, "get_gateways_status")
+        response: Mapping[str, Any] = await self._exec_php(script)
         if response is None or not isinstance(response, Mapping):
             _LOGGER.error("Invalid data returned from get_gateways_status")
             return {}
@@ -727,8 +720,8 @@ $toreturn = [
         return response.get("data", {})
 
     @_log_errors
-    def get_gateway_status(self, gateway):
-        gateways = self.get_gateways_status()
+    async def get_gateway_status(self, gateway):
+        gateways = await self.get_gateways_status()
         for g in gateways.keys():
             if g == gateway:
                 if gateways[g]["status"] == "none":
@@ -736,9 +729,10 @@ $toreturn = [
                 return gateways[g]
 
     @_log_errors
-    def get_arp_table(self, resolve_hostnames=False) -> Mapping[str, Any]:
+    async def get_arp_table(self, resolve_hostnames=False) -> Mapping[str, Any]:
         # [{'hostname': '?', 'ip-address': '<ip>', 'mac-address': '<mac>', 'interface': 'em0', 'expires': 1199, 'type': 'ethernet'}, ...]
-        script = r"""
+        script: str = (
+            r"""
 $data = json_decode('{}', true);
 $resolve_hostnames = $data["resolve_hostnames"];
 
@@ -765,21 +759,22 @@ $toreturn = [
   "data" => system_get_arp_table($resolve_hostnames),
 ];
 """.format(
-            json.dumps(
-                {
-                    "resolve_hostnames": resolve_hostnames,
-                }
+                json.dumps(
+                    {
+                        "resolve_hostnames": resolve_hostnames,
+                    }
+                )
             )
         )
-        response: Mapping[str, Any] = self._exec_php(script, "get_arp_table")
+        response: Mapping[str, Any] = await self._exec_php(script)
         if response is None or not isinstance(response, Mapping):
             _LOGGER.error("Invalid data returned from get_arp_table")
             return {}
         return response.get("data", {})
 
     @_log_errors
-    def get_services(self):
-        response = self._list_services()
+    async def get_services(self):
+        response = await self._list_services()
         services = []
         for key in response.keys():
             services.append(response[key])
@@ -787,8 +782,8 @@ $toreturn = [
         return services
 
     @_log_errors
-    def get_service_is_running(self, service_name):
-        services = self.get_services()
+    async def get_service_is_running(self, service_name):
+        services = await self.get_services()
         for service in services:
             if service["name"] == service_name:
                 return service["status"]
@@ -796,35 +791,35 @@ $toreturn = [
         return False
 
     @_log_errors
-    def start_service(self, service_name):
+    async def start_service(self, service_name):
         self._start_service({"service": service_name})
 
     @_log_errors
-    def stop_service(self, service_name):
-        self._stop_service({"service": service_name})
+    async def stop_service(self, service_name):
+        await self._stop_service({"service": service_name})
 
     @_log_errors
-    def restart_service(self, service_name):
-        self._restart_service({"service": service_name})
+    async def restart_service(self, service_name):
+        await self._restart_service({"service": service_name})
 
     @_log_errors
-    def restart_service_if_running(self, service_name):
-        if self.get_service_is_running(service_name):
-            self.restart_service(service_name)
+    async def restart_service_if_running(self, service_name):
+        if await self.get_service_is_running(service_name):
+            await self.restart_service(service_name)
 
     @_log_errors
-    def get_dhcp_leases(self):
+    async def get_dhcp_leases(self):
         # function system_get_dhcpleases()
         # {'lease': [], 'failover': []}
         # {"lease":[{"ip":"<ip>","type":"static","mac":"<mac>","if":"lan","starts":"","ends":"","hostname":"<hostname>","descr":"","act":"static","online":"online","staticmap_array_index":48} ...
-        script = r"""
+        script: str = r"""
 require_once '/usr/local/etc/inc/plugins.inc.d/dhcpd.inc';
 
 $toreturn = [
   "data" => dhcpd_leases(4),
 ];
 """
-        response: Mapping[str, Any] = self._exec_php(script, "get_dhcp_leases")
+        response: Mapping[str, Any] = await self._exec_php(script)
         if (
             response is None
             or not isinstance(response, Mapping)
@@ -835,8 +830,8 @@ $toreturn = [
         return response.get("data", {}).get("lease", [])
 
     @_log_errors
-    def get_virtual_ips(self) -> Mapping[str, Any]:
-        script = r"""
+    async def get_virtual_ips(self) -> Mapping[str, Any]:
+        script: str = r"""
 global $config;
 
 $vips = [];
@@ -850,18 +845,18 @@ $toreturn = [
   "data" => $vips,
 ];
 """
-        response: Mapping[str, Any] = self._exec_php(script, "get_virtual_ips")
+        response: Mapping[str, Any] = await self._exec_php(script)
         if response is None or not isinstance(response, Mapping):
             _LOGGER.error("Invalid data returned from get_virtual_ips")
             return {}
         return response.get("data", {})
 
     @_log_errors
-    def get_carp_status(self) -> Mapping[str, Any]:
+    async def get_carp_status(self) -> Mapping[str, Any]:
         # carp enabled or not
         # readonly attribute, cannot be set directly
         # function get_carp_status()
-        script = r"""
+        script: str = r"""
 function get_carp_status() {
         /* grab the current status of carp */
         $status = get_single_sysctl('net.inet.carp.allow');
@@ -872,15 +867,15 @@ $toreturn = [
   "data" => get_carp_status(),
 ];
 """
-        response: Mapping[str, Any] = self._exec_php(script, "get_carp_status")
+        response: Mapping[str, Any] = await self._exec_php(script)
         if response is None or not isinstance(response, Mapping):
             _LOGGER.error("Invalid data returned from list_services")
             return {}
         return response.get("data", {})
 
     @_log_errors
-    def get_carp_interfaces(self) -> Mapping[str, Any]:
-        script = r"""
+    async def get_carp_interfaces(self) -> Mapping[str, Any]:
+        script: str = r"""
 global $config;
 
 $vips = [];
@@ -910,17 +905,18 @@ $toreturn = [
   "data" => $vips,
 ];
 """
-        response: Mapping[str, Any] = self._exec_php(script, "get_carp_interfaces")
+        response: Mapping[str, Any] = await self._exec_php(script)
         if response is None or not isinstance(response, Mapping):
             _LOGGER.error("Invalid data returned from get_carp_interfaces")
             return {}
         return response.get("data", {})
 
     @_log_errors
-    def delete_arp_entry(self, ip) -> None:
+    async def delete_arp_entry(self, ip) -> None:
         if len(ip) < 1:
             return
-        script = r"""
+        script: str = (
+            r"""
 $data = json_decode('{}', true);
 $ip = trim($data["ip"]);
 $ret = mwexec("arp -d " . $ip, true);
@@ -928,18 +924,20 @@ $toreturn = [
   "data" => $ret,
 ];
 """.format(
-            json.dumps(
-                {
-                    "ip": ip,
-                }
+                json.dumps(
+                    {
+                        "ip": ip,
+                    }
+                )
             )
         )
-        self._exec_php(script, "delete_arp_entry")
+        await self._exec_php(script)
 
     @_log_errors
-    def arp_get_mac_by_ip(self, ip, do_ping=True):
+    async def arp_get_mac_by_ip(self, ip, do_ping=True):
         """function arp_get_mac_by_ip($ip, $do_ping = true)"""
-        script = r"""
+        script: str = (
+            r"""
 $data = json_decode('{}', true);
 $ip = $data["ip"];
 $do_ping = $data["do_ping"];
@@ -972,21 +970,22 @@ $toreturn = [
   "data" => arp_get_mac_by_ip($ip, $do_ping),
 ];
 """.format(
-            json.dumps(
-                {
-                    "ip": ip,
-                    "do_ping": do_ping,
-                }
+                json.dumps(
+                    {
+                        "ip": ip,
+                        "do_ping": do_ping,
+                    }
+                )
             )
         )
-        response = self._exec_php(script, "arp_get_mac_by_ip").get("data", None)
-        if not response:
-            return None
-        return response
+        response: Mapping[str, Any] = await self._exec_php(script)
+        if isinstance(response, Mapping):
+            return response.get("data", None)
+        return None
 
     @_log_errors
-    def system_reboot(self) -> None:
-        script = r"""
+    async def system_reboot(self) -> None:
+        script: str = r"""
 // /usr/local/opnsense/mvc/app/library/OPNsense/Core/Backend.php
 use OPNsense\Core\Backend;
 
@@ -998,14 +997,14 @@ $toreturn = [
 ];
 """
         try:
-            self._exec_php(script, "system_reboot")
+            await self._exec_php(script)
         except ExpatError:
             # ignore response failures because the system is going down
             pass
 
     @_log_errors
-    def system_halt(self) -> None:
-        script = r"""
+    async def system_halt(self) -> None:
+        script: str = r"""
 use OPNsense\Core\Backend;
 
 $backend = new Backend();
@@ -1016,18 +1015,19 @@ $toreturn = [
 ];
 """
         try:
-            self._exec_php(script, "system_halt")
+            await self._exec_php(script)
         except ExpatError:
             # ignore response failures because the system is going down
             pass
 
     @_log_errors
-    def send_wol(self, interface, mac) -> Mapping[str, Any]:
+    async def send_wol(self, interface, mac) -> Mapping[str, Any]:
         """
         interface should be wan, lan, opt1, opt2 etc, not the description
         """
 
-        script = r"""
+        script: str = (
+            r"""
 $data = json_decode('{}', true);
 $if = $data["interface"];
 $mac = $data["mac"];
@@ -1048,25 +1048,24 @@ $toreturn = [
   "data" => $value,
 ];
 """.format(
-            json.dumps(
-                {
-                    "interface": interface,
-                    "mac": mac,
-                }
+                json.dumps(
+                    {
+                        "interface": interface,
+                        "mac": mac,
+                    }
+                )
             )
         )
 
-        response: Mapping[str, Any] = self._exec_php(script, "send_wol")
+        response: Mapping[str, Any] = await self._exec_php(script)
         return response
 
-    @_log_errors
     def _try_to_int(self, input, retval=None) -> int | None:
         try:
             return int(input)
         except (ValueError, TypeError):
             return retval
 
-    @_log_errors
     def _try_to_float(self, input, retval=None) -> int | None:
         try:
             return float(input)
@@ -1074,32 +1073,32 @@ $toreturn = [
             return retval
 
     @_log_errors
-    def get_telemetry(self) -> Mapping[str, Any]:
-        firmware: str | None = self.get_host_firmware_version()
+    async def get_telemetry(self) -> Mapping[str, Any]:
+        firmware: str | None = await self.get_host_firmware_version()
         if firmware is None:
             firmware: str = "24.7"
         if AwesomeVersion(firmware) < AwesomeVersion("24.7"):
             _LOGGER.debug(
                 f"[get_telemetry] Using legacy telemetry method for OPNsense < 24.7"
             )
-            return self._get_telemetry_legacy()
+            return await self._get_telemetry_legacy()
         telemetry: Mapping[str, Any] = {}
-        telemetry["interfaces"] = self._get_telemetry_interfaces()
-        telemetry["mbuf"] = self._get_telemetry_mbuf()
-        telemetry["pfstate"] = self._get_telemetry_pfstate()
-        telemetry["memory"] = self._get_telemetry_memory()
-        telemetry["system"] = self._get_telemetry_system()
-        telemetry["cpu"] = self._get_telemetry_cpu()
-        telemetry["filesystems"] = self._get_telemetry_filesystems()
-        telemetry["openvpn"] = self._get_telemetry_openvpn()
-        telemetry["gateways"] = self._get_telemetry_gateways()
-        telemetry["temps"] = self._get_telemetry_temps()
+        telemetry["interfaces"] = await self._get_telemetry_interfaces()
+        telemetry["mbuf"] = await self._get_telemetry_mbuf()
+        telemetry["pfstate"] = await self._get_telemetry_pfstate()
+        telemetry["memory"] = await self._get_telemetry_memory()
+        telemetry["system"] = await self._get_telemetry_system()
+        telemetry["cpu"] = await self._get_telemetry_cpu()
+        telemetry["filesystems"] = await self._get_telemetry_filesystems()
+        telemetry["openvpn"] = await self._get_telemetry_openvpn()
+        telemetry["gateways"] = await self._get_telemetry_gateways()
+        telemetry["temps"] = await self._get_telemetry_temps()
         _LOGGER.debug(f"[get_telemetry] telemetry: {telemetry}")
         return telemetry
 
     @_log_errors
-    def _get_telemetry_interfaces(self) -> Mapping[str, Any]:
-        interface_info: Mapping[str, Any] | list = self._post(
+    async def _get_telemetry_interfaces(self) -> Mapping[str, Any]:
+        interface_info: Mapping[str, Any] | list = await self._post(
             "/api/interfaces/overview/export"
         )
         _LOGGER.debug(f"[get_telemetry_interfaces] interface_info: {interface_info}")
@@ -1155,8 +1154,8 @@ $toreturn = [
         return interfaces
 
     @_log_errors
-    def _get_telemetry_mbuf(self) -> Mapping[str, Any]:
-        mbuf_info: Mapping[str, Any] | list = self._post(
+    async def _get_telemetry_mbuf(self) -> Mapping[str, Any]:
+        mbuf_info: Mapping[str, Any] | list = await self._post(
             "/api/diagnostics/system/system_mbuf"
         )
         _LOGGER.debug(f"[get_telemetry_mbuf] mbuf_info: {mbuf_info}")
@@ -1180,8 +1179,8 @@ $toreturn = [
         return mbuf
 
     @_log_errors
-    def _get_telemetry_pfstate(self) -> Mapping[str, Any]:
-        pfstate_info: Mapping[str, Any] | list = self._post(
+    async def _get_telemetry_pfstate(self) -> Mapping[str, Any]:
+        pfstate_info: Mapping[str, Any] | list = await self._post(
             "/api/diagnostics/firewall/pf_states"
         )
         _LOGGER.debug(f"[get_telemetry_pfstate] pfstate_info: {pfstate_info}")
@@ -1201,8 +1200,8 @@ $toreturn = [
         return pfstate
 
     @_log_errors
-    def _get_telemetry_memory(self) -> Mapping[str, Any]:
-        memory_info: Mapping[str, Any] | list = self._post(
+    async def _get_telemetry_memory(self) -> Mapping[str, Any]:
+        memory_info: Mapping[str, Any] | list = await self._post(
             "/api/diagnostics/system/systemResources"
         )
         _LOGGER.debug(f"[get_telemetry_memory] memory_info: {memory_info}")
@@ -1222,7 +1221,9 @@ $toreturn = [
             and memory["physmem"] > 0
             else None
         )
-        swap_info: Mapping[str, Any] = self._post("/api/diagnostics/system/system_swap")
+        swap_info: Mapping[str, Any] = await self._post(
+            "/api/diagnostics/system/system_swap"
+        )
         if (
             not isinstance(swap_info, Mapping)
             or not isinstance(swap_info.get("swap", None), list)
@@ -1248,8 +1249,8 @@ $toreturn = [
         return memory
 
     @_log_errors
-    def _get_telemetry_system(self) -> Mapping[str, Any]:
-        time_info: Mapping[str, Any] | list = self._post(
+    async def _get_telemetry_system(self) -> Mapping[str, Any]:
+        time_info: Mapping[str, Any] | list = await self._post(
             "/api/diagnostics/system/systemTime"
         )
         _LOGGER.debug(f"[get_telemetry_system] time_info: {time_info}")
@@ -1287,8 +1288,8 @@ $toreturn = [
         return system
 
     @_log_errors
-    def _get_telemetry_cpu(self) -> Mapping[str, Any]:
-        cputype_info: Mapping[str, Any] | list = self._post(
+    async def _get_telemetry_cpu(self) -> Mapping[str, Any]:
+        cputype_info: Mapping[str, Any] | list = await self._post(
             "/api/diagnostics/cpu_usage/getCPUType"
         )
         _LOGGER.debug(f"[get_telemetry_cpu] cputype_info: {cputype_info}")
@@ -1298,7 +1299,7 @@ $toreturn = [
         cores_match = re.search(r"\((\d+) cores", cputype_info[0])
         cpu["count"] = self._try_to_int(cores_match.group(1)) if cores_match else 0
 
-        cpustream_info: Mapping[str, Any] | list = self._get_from_stream(
+        cpustream_info: Mapping[str, Any] | list = await self._get_from_stream(
             "/api/diagnostics/cpu_usage/stream"
         )
         # {"total":29,"user":2,"nice":0,"sys":27,"intr":0,"idle":70}
@@ -1315,8 +1316,8 @@ $toreturn = [
         return cpu
 
     @_log_errors
-    def _get_telemetry_filesystems(self) -> Mapping[str, Any]:
-        filesystems_info: Mapping[str, Any] | list = self._post(
+    async def _get_telemetry_filesystems(self) -> Mapping[str, Any]:
+        filesystems_info: Mapping[str, Any] | list = await self._post(
             "/api/diagnostics/system/systemDisk"
         )
         if not isinstance(filesystems_info, Mapping):
@@ -1333,8 +1334,8 @@ $toreturn = [
         return filesystems
 
     @_log_errors
-    def _get_telemetry_openvpn(self) -> Mapping[str, Any]:
-        openvpn_info: Mapping[str, Any] | list = self._post(
+    async def _get_telemetry_openvpn(self) -> Mapping[str, Any]:
+        openvpn_info: Mapping[str, Any] | list = await self._post(
             "/api/openvpn/export/providers"
         )
         _LOGGER.debug(f"[get_telemetry_openvpn] openvpn_info: {openvpn_info}")
@@ -1373,8 +1374,8 @@ $toreturn = [
         return openvpn
 
     @_log_errors
-    def _get_telemetry_gateways(self) -> Mapping[str, Any]:
-        gateways_info: Mapping[str, Any] | list = self._post(
+    async def _get_telemetry_gateways(self) -> Mapping[str, Any]:
+        gateways_info: Mapping[str, Any] | list = await self._post(
             "/api/routes/gateway/status"
         )
         _LOGGER.debug(f"[get_telemetry_gateways] gateways_info: {gateways_info}")
@@ -1392,8 +1393,8 @@ $toreturn = [
         return gateways
 
     @_log_errors
-    def _get_telemetry_temps(self) -> Mapping[str, Any]:
-        temps_info: Mapping[str, Any] | list = self._post(
+    async def _get_telemetry_temps(self) -> Mapping[str, Any]:
+        temps_info: Mapping[str, Any] | list = await self._post(
             "/api/diagnostics/system/systemTemperature"
         )
         _LOGGER.debug(f"[get_telemetry_temps] temps_info: {temps_info}")
@@ -1412,8 +1413,8 @@ $toreturn = [
         return temps
 
     @_log_errors
-    def _get_telemetry_legacy(self) -> Mapping[str, Any]:
-        script = r"""
+    async def _get_telemetry_legacy(self) -> Mapping[str, Any]:
+        script: str = r"""
 require_once '/usr/local/www/widgets/api/plugins/system.inc';
 include_once '/usr/local/www/widgets/api/plugins/interfaces.inc';
 require_once '/usr/local/www/widgets/api/plugins/temperature.inc';
@@ -1593,7 +1594,7 @@ foreach ($ovpn_servers as $server) {
 }
 
 """
-        telemetry: Mapping[str, Any] = self._exec_php(script, "get_telemetry_legacy")
+        telemetry: Mapping[str, Any] = await self._exec_php(script)
         if telemetry is None or not isinstance(telemetry, Mapping):
             _LOGGER.error("Invalid data returned from get_telemetry_legacy")
             return {}
@@ -1603,8 +1604,8 @@ foreach ($ovpn_servers as $server) {
         return telemetry
 
     @_log_errors
-    def are_notices_pending(self) -> Mapping[str, Any]:
-        script = r"""
+    async def are_notices_pending(self) -> Mapping[str, Any]:
+        script: str = r"""
 if (file_exists('/usr/local/etc/inc/notices.inc')) {
     require_once '/usr/local/etc/inc/notices.inc';
 
@@ -1625,15 +1626,15 @@ if (file_exists('/usr/local/etc/inc/notices.inc')) {
     ];
 }
 """
-        response: Mapping[str, Any] = self._exec_php(script, "are_notices_pending")
+        response: Mapping[str, Any] = await self._exec_php(script)
         if response is None or not isinstance(response, Mapping):
             _LOGGER.error("Invalid data returned from are_notices_pending")
             return {}
         return response.get("data", {})
 
     @_log_errors
-    def get_notices(self):
-        script = r"""
+    async def get_notices(self):
+        script: str = r"""
 if (file_exists('/usr/local/etc/inc/notices.inc')) {
     require_once '/usr/local/etc/inc/notices.inc';
 
@@ -1647,7 +1648,7 @@ if (file_exists('/usr/local/etc/inc/notices.inc')) {
     ];
 }
 """
-        response: Mapping[str, Any] = self._exec_php(script, "get_notices")
+        response: Mapping[str, Any] = await self._exec_php(script)
         if response is None or not isinstance(response, Mapping):
             _LOGGER.error("Invalid data returned from get_notices -> getSystemStatus")
             return []
@@ -1675,8 +1676,9 @@ if (file_exists('/usr/local/etc/inc/notices.inc')) {
         return notices
 
     @_log_errors
-    def file_notice(self, notice) -> None:
-        script = r"""
+    async def file_notice(self, notice) -> None:
+        script: str = (
+            r"""
 $data = json_decode('{}', true);
 $notice = $data["notice"];
 
@@ -1693,21 +1695,23 @@ if (file_exists('/usr/local/etc/inc/notices.inc')) {{
     ];
 }}
 """.format(
-            json.dumps(
-                {
-                    "notice": notice,
-                }
+                json.dumps(
+                    {
+                        "notice": notice,
+                    }
+                )
             )
         )
 
-        self._exec_php(script, "file_notice")
+        await self._exec_php(script)
 
     @_log_errors
-    def close_notice(self, id) -> None:
+    async def close_notice(self, id) -> None:
         """
         id = "all" to wipe everything
         """
-        script = r"""
+        script: str = (
+            r"""
 $data = json_decode('{}', true);
 $id = $data["id"];
 
@@ -1732,11 +1736,12 @@ if (file_exists('/usr/local/etc/inc/notices.inc')) {{
     ];
 }}
 """.format(
-            json.dumps(
-                {
-                    "id": id,
-                }
+                json.dumps(
+                    {
+                        "id": id,
+                    }
+                )
             )
         )
 
-        self._exec_php(script, "close_notice")
+        await self._exec_php(script)

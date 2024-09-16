@@ -20,7 +20,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import slugify
 from mac_vendor_lookup import AsyncMacLookup
 
-from . import CoordinatorEntityManager, OPNSenseEntity, dict_get
+from . import CoordinatorEntityManager, OPNsenseEntity
 from .const import (
     CONF_DEVICE_TRACKER_CONSIDER_HOME,
     CONF_DEVICES,
@@ -30,8 +30,9 @@ from .const import (
     SHOULD_RELOAD,
     TRACKED_MACS,
 )
+from .helpers import dict_get
 
-_LOGGER = logging.getLogger(__name__)
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 def lookup_mac(mac_vendor_lookup: AsyncMacLookup, mac: str) -> str:
@@ -66,7 +67,7 @@ async def async_setup_entry(
     @callback
     def process_entities_callback(
         hass: HomeAssistant, config_entry: ConfigEntry
-    ) -> list[OPNSenseScannerEntity]:
+    ) -> list[OPNsenseScannerEntity]:
         # options = config_entry.options
         data = hass.data[DOMAIN][config_entry.entry_id]
         previous_mac_addresses = config_entry.data.get(TRACKED_MACS, [])
@@ -104,7 +105,7 @@ async def async_setup_entry(
             except:
                 pass
 
-            entity = OPNSenseScannerEntity(
+            entity = OPNsenseScannerEntity(
                 hass,
                 config_entry,
                 coordinator,
@@ -141,7 +142,7 @@ async def async_setup_entry(
     cem.process_entities()
 
 
-class OPNSenseScannerEntity(OPNSenseEntity, ScannerEntity):
+class OPNsenseScannerEntity(OPNsenseEntity, ScannerEntity):
     """Represent a scanned device."""
 
     def __init__(
@@ -213,9 +214,9 @@ class OPNSenseScannerEntity(OPNSenseEntity, ScannerEntity):
             self._extra_state["last_known_ip"] = self._last_known_ip
 
         if self._last_known_connected_time is not None:
-            self._extra_state[
-                "last_known_connected_time"
-            ] = self._last_known_connected_time
+            self._extra_state["last_known_connected_time"] = (
+                self._last_known_connected_time
+            )
 
         return self._extra_state
 

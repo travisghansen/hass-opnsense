@@ -1,10 +1,9 @@
 """Support for OPNsense."""
 
-from __future__ import annotations
-
+from collections.abc import Mapping
 from datetime import timedelta
 import logging
-import re
+from typing import Any, Callable
 
 from awesomeversion import AwesomeVersion
 from homeassistant.config_entries import ConfigEntry
@@ -15,8 +14,12 @@ from homeassistant.const import (
     CONF_USERNAME,
     CONF_VERIFY_SSL,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_registry import async_get
 from homeassistant.helpers.issue_registry import IssueSeverity, async_create_issue
+from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     CONF_DEVICE_TRACKER_ENABLED,
@@ -39,27 +42,14 @@ from .const import (
     VERSION,
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
-from .pyopnsense import OPNSenseClient
+from .helpers import dict_get
+from .pyopnsense import OPNsenseClient
 from .services import ServiceRegistrar
 
-_LOGGER = logging.getLogger(__name__)
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
-def dict_get(data: dict, path: str, default=None):
-    pathList = re.split(r"\.", path, flags=re.IGNORECASE)
-    result = data
-    for key in pathList:
-        try:
-            key = int(key) if key.isnumeric() else key
-            result = result[key]
-        except:
-            result = default
-            break
-
-    return result
-
-
-async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry):
+async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Handle options update."""
     if hass.data[DOMAIN][entry.entry_id].get(SHOULD_RELOAD, True):
         hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
@@ -67,7 +57,7 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry):
         hass.data[DOMAIN][entry.entry_id][SHOULD_RELOAD] = True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up OPNsense from a config entry."""
     config = entry.data
     options = entry.options
@@ -79,7 +69,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     device_tracker_enabled: bool = options.get(
         CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED
     )
-    client = OPNSenseClient(
+    client = OPNsenseClient(
         url=url,
         username=username,
         password=password,
@@ -200,3 +190,148 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
         _LOGGER.info("Migration to version %s successful", version)
 
     return True
+
+
+class CoordinatorEntityManager:
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        coordinator: OPNsenseDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        process_entities_callback: Callable,
+        async_add_entities: AddEntitiesCallback,
+    ) -> None:
+        self.hass = hass
+        self.coordinator: OPNsenseDataUpdateCoordinator = coordinator
+        self.config_entry = config_entry
+        self.process_entities_callback = process_entities_callback
+        self.async_add_entities = async_add_entities
+        hass.data[DOMAIN][config_entry.entry_id][UNDO_UPDATE_LISTENER].append(
+            coordinator.async_add_listener(self.process_entities)
+        )
+        self.entity_unique_ids = set()
+        self.entities = {}
+
+    @callback
+    def process_entities(self):
+        entities = self.process_entities_callback(self.hass, self.config_entry)
+        i_entity_unqiue_ids = set()
+        for entity in entities:
+            unique_id = entity.unique_id
+            if unique_id is None:
+                raise Exception("unique_id is missing from entity")
+            i_entity_unqiue_ids.add(unique_id)
+            if unique_id not in self.entity_unique_ids:
+                self.async_add_entities([entity])
+                self.entity_unique_ids.add(unique_id)
+                self.entities[unique_id] = entity
+                # print(f"{unique_id} registered")
+            else:
+                # print(f"{unique_id} already registered")
+                pass
+
+        # check for missing entities
+        for entity_unique_id in self.entity_unique_ids:
+            if entity_unique_id not in i_entity_unqiue_ids:
+                pass
+                # print("should remove entity: " + str(self.entities[entity_unique_id].entry_id))
+                # print("candidate to remove entity: " + str(entity_unique_id))
+                # self.async_remove_entity(self.entities[entity_unique_id])
+                # self.entity_unique_ids.remove(entity_unique_id)
+                # del self.entities[entity_unique_id]
+
+    async def async_remove_entity(self, entity):
+        registry = await async_get(self.hass)
+        if entity.entity_id in registry.entities:
+            registry.async_remove(entity.entity_id)
+
+
+class OPNsenseEntity(CoordinatorEntity, RestoreEntity):
+    """Base entity for OPNsense"""
+
+    @property
+    def coordinator_context(self):
+        return None
+
+    @property
+    def device_info(self) -> Mapping[str, Any]:
+        """Device info for the firewall."""
+        state: Mapping[str, Any] = self.coordinator.data
+        model: str = "OPNsense"
+        manufacturer: str = "Deciso B.V."
+        if state is None:
+            firmware: str | None = None
+        else:
+            firmware: str | None = state.get("host_firmware_version", None)
+
+        device_info: Mapping[str, Any] = {
+            "identifiers": {(DOMAIN, self.opnsense_device_unique_id)},
+            "name": self.opnsense_device_name,
+            "configuration_url": self.config_entry.data.get("url", None),
+        }
+
+        device_info["model"] = model
+        device_info["manufacturer"] = manufacturer
+        device_info["sw_version"] = firmware
+
+        return device_info
+
+    @property
+    def opnsense_device_name(self) -> str:
+        if self.config_entry.title and len(self.config_entry.title) > 0:
+            return self.config_entry.title
+        return "{}.{}".format(
+            self._get_opnsense_state_value("system_info.hostname"),
+            self._get_opnsense_state_value("system_info.domain"),
+        )
+
+    @property
+    def opnsense_device_unique_id(self):
+        return self._get_opnsense_state_value("system_info.device_id")
+
+    def _get_opnsense_state_value(self, path, default=None):
+        state = self.coordinator.data
+        value = dict_get(state, path, default)
+
+        return value
+
+    def _get_opnsense_client(self) -> OPNsenseClient:
+        return self.hass.data[DOMAIN][self.config_entry.entry_id][OPNSENSE_CLIENT]
+
+    async def service_close_notice(self, id: int | str | None = None) -> None:
+        client = self._get_opnsense_client()
+        await client.close_notice(id)
+
+    async def service_file_notice(self, **kwargs) -> None:
+        client = self._get_opnsense_client()
+        await client.file_notice(**kwargs)
+
+    async def service_start_service(self, service_name: str) -> None:
+        client = self._get_opnsense_client()
+        await client.start_service(service_name)
+
+    async def service_stop_service(self, service_name: str) -> None:
+        client = self._get_opnsense_client()
+        await client.stop_service(service_name)
+
+    async def service_restart_service(
+        self, service_name: str, only_if_running: bool = False
+    ) -> None:
+        client = self._get_opnsense_client()
+        if only_if_running:
+            await client.restart_service_if_running(service_name)
+        else:
+            await client.restart_service(service_name)
+
+    async def service_system_halt(self) -> None:
+        client = self._get_opnsense_client()
+        await client.system_halt()
+
+    async def service_system_reboot(self) -> None:
+        client = self._get_opnsense_client()
+        await client.system_reboot()
+
+    async def service_send_wol(self, interface: str, mac: str) -> None:
+        client = self._get_opnsense_client()
+        await client.send_wol(interface, mac)

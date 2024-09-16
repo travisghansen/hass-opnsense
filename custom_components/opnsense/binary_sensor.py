@@ -14,10 +14,11 @@ from homeassistant.helpers import entity_platform
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import slugify
 
-from . import CoordinatorEntityManager, OPNSenseEntity, dict_get
+from . import CoordinatorEntityManager, OPNsenseEntity
 from .const import COORDINATOR, DOMAIN
+from .helpers import dict_get
 
-_LOGGER = logging.getLogger(__name__)
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -32,7 +33,7 @@ async def async_setup_entry(
         data = hass.data[DOMAIN][config_entry.entry_id]
         coordinator = data[COORDINATOR]
         entities = []
-        entity = OPNSenseCarpStatusBinarySensor(
+        entity = OPNsenseCarpStatusBinarySensor(
             config_entry,
             coordinator,
             BinarySensorEntityDescription(
@@ -47,7 +48,7 @@ async def async_setup_entry(
         )
         entities.append(entity)
 
-        entity = OPNSensePendingNoticesPresentBinarySensor(
+        entity = OPNsensePendingNoticesPresentBinarySensor(
             config_entry,
             coordinator,
             BinarySensorEntityDescription(
@@ -74,7 +75,7 @@ async def async_setup_entry(
     cem.process_entities()
 
 
-class OPNSenseBinarySensor(OPNSenseEntity, BinarySensorEntity):
+class OPNsenseBinarySensor(OPNsenseEntity, BinarySensorEntity):
     def __init__(
         self,
         config_entry,
@@ -105,7 +106,7 @@ class OPNSenseBinarySensor(OPNSenseEntity, BinarySensorEntity):
         return None
 
 
-class OPNSenseCarpStatusBinarySensor(OPNSenseBinarySensor):
+class OPNsenseCarpStatusBinarySensor(OPNsenseBinarySensor):
     @property
     def available(self) -> bool:
         state = self.coordinator.data
@@ -123,7 +124,7 @@ class OPNSenseCarpStatusBinarySensor(OPNSenseBinarySensor):
             return STATE_UNKNOWN
 
 
-class OPNSensePendingNoticesPresentBinarySensor(OPNSenseBinarySensor):
+class OPNsensePendingNoticesPresentBinarySensor(OPNsenseBinarySensor):
     @property
     def available(self) -> bool:
         state = self.coordinator.data
