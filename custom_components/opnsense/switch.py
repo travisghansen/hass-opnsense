@@ -14,10 +14,11 @@ from homeassistant.helpers import entity_platform
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import slugify
 
-from . import CoordinatorEntityManager, OPNSenseEntity, dict_get
+from . import CoordinatorEntityManager, OPNsenseEntity
 from .const import COORDINATOR, DOMAIN
+from .helpers import dict_get
 
-_LOGGER = logging.getLogger(__name__)
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -67,7 +68,7 @@ async def async_setup_entry(
                     if len(tracker) < 1:
                         continue
 
-                    entity = OPNSenseFilterSwitch(
+                    entity = OPNsenseFilterSwitch(
                         config_entry,
                         coordinator,
                         SwitchEntityDescription(
@@ -104,7 +105,7 @@ async def async_setup_entry(
                     if "descr" not in rule.keys():
                         rule["descr"] = ""
 
-                    entity = OPNSenseNatSwitch(
+                    entity = OPNsenseNatSwitch(
                         config_entry,
                         coordinator,
                         SwitchEntityDescription(
@@ -147,7 +148,7 @@ async def async_setup_entry(
                     if "Auto created rule" in rule["descr"]:
                         continue
 
-                    entity = OPNSenseNatSwitch(
+                    entity = OPNsenseNatSwitch(
                         config_entry,
                         coordinator,
                         SwitchEntityDescription(
@@ -172,7 +173,7 @@ async def async_setup_entry(
                 # entity_category = ENTITY_CATEGORY_CONFIG
                 device_class = SwitchDeviceClass.SWITCH
 
-                entity = OPNSenseServiceSwitch(
+                entity = OPNsenseServiceSwitch(
                     config_entry,
                     coordinator,
                     SwitchEntityDescription(
@@ -197,7 +198,7 @@ async def async_setup_entry(
     cem.process_entities()
 
 
-class OPNSenseSwitch(OPNSenseEntity, SwitchEntity):
+class OPNsenseSwitch(OPNsenseEntity, SwitchEntity):
     def __init__(
         self,
         config_entry,
@@ -222,7 +223,7 @@ class OPNSenseSwitch(OPNSenseEntity, SwitchEntity):
         return None
 
 
-class OPNSenseFilterSwitch(OPNSenseSwitch):
+class OPNsenseFilterSwitch(OPNsenseSwitch):
     def _opnsense_get_tracker(self):
         parts = self.entity_description.key.split(".")
         parts.pop(0)
@@ -283,7 +284,7 @@ class OPNSenseFilterSwitch(OPNSenseSwitch):
         await self.coordinator.async_refresh()
 
 
-class OPNSenseNatSwitch(OPNSenseSwitch):
+class OPNsenseNatSwitch(OPNsenseSwitch):
     def _opnsense_get_rule_type(self):
         return self.entity_description.key.split(".")[0]
 
@@ -360,7 +361,7 @@ class OPNSenseNatSwitch(OPNSenseSwitch):
         await self.coordinator.async_refresh()
 
 
-class OPNSenseServiceSwitch(OPNSenseSwitch):
+class OPNsenseServiceSwitch(OPNsenseSwitch):
     def _opnsense_get_property_name(self):
         return self.entity_description.key.split(".")[2]
 

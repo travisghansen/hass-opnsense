@@ -1,6 +1,8 @@
+from collections.abc import Mapping
 import copy
 import logging
 import time
+from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -23,10 +25,10 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
     ) -> None:
         """Initialize the data object."""
         _LOGGER.info(
-            f"Initializing DataUpdateCoordinator for OPNsense {'Device Tracker' if device_tracker_coordinator else ''}"
+            f"Initializing OPNsense Data Update Coordinator {'for Device Tracker' if device_tracker_coordinator else ''}"
         )
         self._client: OPNsenseClient = client
-        self._state = {}
+        self._state: Mapping[str, Any] = {}
         self._device_tracker_coordinator: bool = device_tracker_coordinator
         super().__init__(
             hass,
@@ -35,87 +37,87 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=update_interval,
         )
 
-    # @property
-    # def state(self):
-    #     return self._state
-
     def _log_timing(func):
-        def inner(*args, **kwargs):
-            begin = time.time()
-            response = func(*args, **kwargs)
-            end = time.time()
-            elapsed = round((end - begin), 3)
+        async def inner(self, *args, **kwargs):
+            begin: float = time.time()
+            response = await func(self, *args, **kwargs)
+            end: float = time.time()
+            elapsed: float = round((end - begin), 3)
             _LOGGER.debug(
-                f"execution time: OPNsenseDataUpdateCoordinator.{func.__name__} {elapsed}"
+                f"[{'DT ' if self._device_tracker_coordinator else ''}Coordinator Timing] {func.__name__.strip('_')}: {elapsed} seconds"
             )
-
             return response
 
         return inner
 
     @_log_timing
-    def _get_system_info(self):
-        return self._client.get_system_info()
+    async def _get_system_info(self):
+        return await self._client.get_system_info()
 
     @_log_timing
-    def _get_firmware_update_info(self):
+    async def _get_firmware_update_info(self):
         try:
-            return self._client.get_firmware_update_info()
-        except BaseException as err:
-            _LOGGER.error(err)
+            return await self._client.get_firmware_update_info()
+        except BaseException as e:
+            _LOGGER.error(
+                f"Error in get_firmware_update_info. {e.__class__.__qualname__}: {e}"
+            )
             return None
             # raise err
 
     @_log_timing
-    def _get_telemetry(self):
-        return self._client.get_telemetry()
+    async def _get_telemetry(self):
+        return await self._client.get_telemetry()
 
     @_log_timing
-    def _get_host_firmware_version(self) -> None | str:
-        return self._client.get_host_firmware_version()
+    async def _get_host_firmware_version(self) -> None | str:
+        return await self._client.get_host_firmware_version()
 
     @_log_timing
-    def _get_config(self):
-        return self._client.get_config()
+    async def _get_config(self):
+        return await self._client.get_config()
 
     @_log_timing
-    def _get_interfaces(self):
-        return self._client.get_interfaces()
+    async def _get_interfaces(self):
+        return await self._client.get_interfaces()
 
     @_log_timing
-    def _get_services(self):
-        return self._client.get_services()
+    async def _get_services(self):
+        return await self._client.get_services()
 
     @_log_timing
-    def _get_carp_interfaces(self):
-        return self._client.get_carp_interfaces()
+    async def _get_carp_interfaces(self):
+        return await self._client.get_carp_interfaces()
 
     @_log_timing
-    def _get_carp_status(self):
-        return self._client.get_carp_status()
+    async def _get_carp_status(self):
+        return await self._client.get_carp_status()
 
     @_log_timing
-    def _get_dhcp_leases(self):
-        return self._client.get_dhcp_leases()
+    async def _get_dhcp_leases(self):
+        return await self._client.get_dhcp_leases()
 
     @_log_timing
-    def _are_notices_pending(self):
-        return self._client.are_notices_pending()
+    async def _are_notices_pending(self):
+        return await self._client.are_notices_pending()
 
     @_log_timing
-    def _get_notices(self):
-        return self._client.get_notices()
+    async def _get_notices(self):
+        return await self._client.get_notices()
 
     @_log_timing
-    def _get_arp_table(self):
-        return self._client.get_arp_table(True)
+    async def _get_arp_table(self):
+        return await self._client.get_arp_table(True)
 
     async def _async_update_data(self):
         """Fetch the latest state from OPNsense."""
+        _LOGGER.info(
+            f"{'DT ' if self._device_tracker_coordinator else ''}Updating Data"
+        )
         # copy the old data to have around
-        current_time = time.time()
+        current_time: float = time.time()
 
-        previous_state = copy.deepcopy(self._state)
+        previous_state: Mapping[str, Any] = copy.deepcopy(self._state)
         if "previous_state" in previous_state.keys():
             del previous_state["previous_state"]
 
@@ -130,9 +132,10 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         if self._device_tracker_coordinator:
             try:
                 self._state["arp_table"] = await self._get_arp_table()
-            except BaseException as err:
-                message = f"failed to retrieve arp table {err=}, {type(err)=}"
-                _LOGGER.error(message)
+            except BaseException as e:
+                _LOGGER.error(
+                    f"Error getting arp table. {e.__class__.__qualname__}: {e}"
+                )
         else:
             self._state["firmware_update_info"] = await self._get_firmware_update_info()
             self._state["telemetry"] = await self._get_telemetry()
@@ -150,7 +153,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             ] = await self._are_notices_pending()
             self._state["notices"]["pending_notices"] = await self._get_notices()
 
-            lease_stats = {"total": 0, "online": 0, "offline": 0}
+            lease_stats: Mapping[str, int] = {"total": 0, "online": 0, "offline": 0}
             for lease in self._state["dhcp_leases"]:
                 if "act" in lease.keys() and lease["act"] == "expired":
                     continue
@@ -263,6 +266,6 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                             # Kbs = KBs * 8
                             value = KBs
 
-                        new_property = f"{property}_{label}"
+                        new_property: str = f"{property}_{label}"
                         server[new_property] = int(round(value, 0))
         return self._state
