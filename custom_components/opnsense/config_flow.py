@@ -14,6 +14,7 @@ from homeassistant.const import (
     CONF_VERIFY_SSL,
 )
 from homeassistant.core import callback
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 import homeassistant.helpers.config_validation as cv
 from homeassistant.util import slugify
 import voluptuous as vol
@@ -31,7 +32,7 @@ from .const import (
     DEFAULT_VERIFY_SSL,
     DOMAIN,
 )
-from .pyopnsense import OPNSenseClient
+from .pyopnsense import OPNsenseClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -76,12 +77,16 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 password = user_input[CONF_PASSWORD]
                 verify_ssl = user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
 
-                client = OPNSenseClient(
-                    url, username, password, {"verify_ssl": verify_ssl}
+                client = OPNsenseClient(
+                    url=url,
+                    username=username,
+                    password=password,
+                    session=async_create_clientsession(
+                        self.hass, raise_for_status=False
+                    ),
+                    opts={"verify_ssl": verify_ssl},
                 )
-                system_info = await self.hass.async_add_executor_job(
-                    client.get_system_info
-                )
+                system_info = await client.get_system_info()
 
                 if name is None:
                     name = "{}.{}".format(
@@ -237,12 +242,14 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         username = self.config_entry.data.get(CONF_USERNAME, DEFAULT_USERNAME)
         password = self.config_entry.data[CONF_PASSWORD]
         verify_ssl = self.config_entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
-        client = OPNSenseClient(url, username, password, {"verify_ssl": verify_ssl})
-        if user_input is None and (
-            arp_table := await self.hass.async_add_executor_job(
-                client.get_arp_table, True
-            )
-        ):
+        client = OPNsenseClient(
+            url=url,
+            username=username,
+            password=password,
+            session=async_create_clientsession(self.hass, raise_for_status=False),
+            opts={"verify_ssl": verify_ssl},
+        )
+        if user_input is None and (arp_table := await client.get_arp_table(True)):
             selected_devices = self.config_entry.options.get(CONF_DEVICES, [])
 
             # dicts are ordered so put all previously selected items at the top

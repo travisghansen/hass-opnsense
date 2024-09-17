@@ -27,7 +27,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import slugify
 from homeassistant.util.dt import utc_from_timestamp
 
-from . import CoordinatorEntityManager, OPNSenseEntity, dict_get
+from . import CoordinatorEntityManager, OPNsenseEntity
 from .const import (
     COORDINATOR,
     COUNT,
@@ -36,6 +36,7 @@ from .const import (
     DOMAIN,
     SENSOR_TYPES,
 )
+from .helpers import dict_get
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -77,7 +78,7 @@ async def async_setup_entry(
             ]:
                 enabled_default = True
 
-            entity = OPNSenseStaticKeySensor(
+            entity = OPNsenseStaticKeySensor(
                 config_entry,
                 coordinator,
                 SENSOR_TYPES[sensor_type],
@@ -91,7 +92,7 @@ async def async_setup_entry(
             mountpoint_clean = normalize_filesystem_device_name(
                 filesystem["mountpoint"]
             )
-            entity = OPNSenseFilesystemSensor(
+            entity = OPNsenseFilesystemSensor(
                 config_entry,
                 coordinator,
                 SensorEntityDescription(
@@ -120,7 +121,7 @@ async def async_setup_entry(
             enabled_default = True
             # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
 
-            entity = OPNSenseCarpInterfaceSensor(
+            entity = OPNsenseCarpInterfaceSensor(
                 config_entry,
                 coordinator,
                 SensorEntityDescription(
@@ -219,7 +220,7 @@ async def async_setup_entry(
                 if icon is None:
                     icon = "mdi:gauge"
 
-                entity = OPNSenseInterfaceSensor(
+                entity = OPNsenseInterfaceSensor(
                     config_entry,
                     coordinator,
                     SensorEntityDescription(
@@ -255,7 +256,7 @@ async def async_setup_entry(
                 if property == "status":
                     icon = "mdi:check-network-outline"
 
-                entity = OPNSenseGatewaySensor(
+                entity = OPNsenseGatewaySensor(
                     config_entry,
                     coordinator,
                     SensorEntityDescription(
@@ -314,7 +315,7 @@ async def async_setup_entry(
                 if icon is None:
                     icon = "mdi:gauge"
 
-                entity = OPNSenseOpenVPNServerSensor(
+                entity = OPNsenseOpenVPNServerSensor(
                     config_entry,
                     coordinator,
                     SensorEntityDescription(
@@ -332,7 +333,7 @@ async def async_setup_entry(
         # temperatures
         for temp_device, temp in state.get("telemetry", {}).get("temps", {}).items():
 
-            entity = OPNSenseTempSensor(
+            entity = OPNsenseTempSensor(
                 config_entry=config_entry,
                 coordinator=coordinator,
                 entity_description=SensorEntityDescription(
@@ -364,7 +365,7 @@ def normalize_filesystem_device_name(device_name):
     return device_name.replace("/", "_slash_").strip("_")
 
 
-class OPNSenseSensor(OPNSenseEntity, SensorEntity):
+class OPNsenseSensor(OPNsenseEntity, SensorEntity):
     """Representation of a sensor entity for OPNsense status values."""
 
     def __init__(
@@ -386,7 +387,7 @@ class OPNSenseSensor(OPNSenseEntity, SensorEntity):
         self._previous_value = None
 
 
-class OPNSenseStaticKeySensor(OPNSenseSensor):
+class OPNsenseStaticKeySensor(OPNsenseSensor):
     @property
     def available(self) -> bool:
         value = self._get_opnsense_state_value(self.entity_description.key)
@@ -444,16 +445,16 @@ class OPNSenseStaticKeySensor(OPNSenseSensor):
         attributes = {}
         if self.entity_description.key in ("telemetry.cpu.usage_total"):
             temp_attr = self._get_opnsense_state_value("telemetry.cpu")
-            _LOGGER.debug(f"[extra_state_attributes] temp_attr: {temp_attr}")
+            # _LOGGER.debug(f"[extra_state_attributes] temp_attr: {temp_attr}")
             for k, v in temp_attr.items():
                 if k.startswith("usage_") and k != "usage_total":
                     attributes[k.replace("usage_", "")] = f"{v}%"
-            _LOGGER.debug(f"[extra_state_attributes] attributes: {attributes}")
+            # _LOGGER.debug(f"[extra_state_attributes] attributes: {attributes}")
 
         return attributes
 
 
-class OPNSenseFilesystemSensor(OPNSenseSensor):
+class OPNsenseFilesystemSensor(OPNsenseSensor):
     def _opnsense_get_filesystem(self):
         state = self.coordinator.data
         found = None
@@ -488,7 +489,7 @@ class OPNSenseFilesystemSensor(OPNSenseSensor):
         return attributes
 
 
-class OPNSenseInterfaceSensor(OPNSenseSensor):
+class OPNsenseInterfaceSensor(OPNsenseSensor):
     def _opnsense_get_interface_property_name(self):
         return self.entity_description.key.split(".")[3]
 
@@ -541,7 +542,7 @@ class OPNSenseInterfaceSensor(OPNSenseSensor):
             return STATE_UNKNOWN
 
 
-class OPNSenseCarpInterfaceSensor(OPNSenseSensor):
+class OPNsenseCarpInterfaceSensor(OPNsenseSensor):
     def _opnsense_get_interface_name(self):
         return self.entity_description.key.split(".")[2]
 
@@ -597,7 +598,7 @@ class OPNSenseCarpInterfaceSensor(OPNSenseSensor):
             return STATE_UNKNOWN
 
 
-class OPNSenseGatewaySensor(OPNSenseSensor):
+class OPNsenseGatewaySensor(OPNsenseSensor):
     def _opnsense_get_gateway_property_name(self):
         return self.entity_description.key.split(".")[3]
 
@@ -674,7 +675,7 @@ class OPNSenseGatewaySensor(OPNSenseSensor):
             return STATE_UNKNOWN
 
 
-class OPNSenseOpenVPNServerSensor(OPNSenseSensor):
+class OPNsenseOpenVPNServerSensor(OPNsenseSensor):
     def _opnsense_get_server_property_name(self):
         return self.entity_description.key.split(".")[4]
 
@@ -726,7 +727,7 @@ class OPNSenseOpenVPNServerSensor(OPNSenseSensor):
             return STATE_UNKNOWN
 
 
-class OPNSenseTempSensor(OPNSenseSensor):
+class OPNsenseTempSensor(OPNsenseSensor):
     def _opnsense_get_temp_device(self) -> str:
         return self.entity_description.key.split(".")[2]
 

@@ -1,16 +1,10 @@
 """Support for OPNsense."""
 
-from __future__ import annotations
-
 from collections.abc import Mapping
-import copy
 from datetime import timedelta
 import logging
-import re
-import time
 from typing import Any, Callable
 
-import async_timeout
 from awesomeversion import AwesomeVersion
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
@@ -21,15 +15,12 @@ from homeassistant.const import (
     CONF_VERIFY_SSL,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import async_get
 from homeassistant.helpers.issue_registry import IssueSeverity, async_create_issue
 from homeassistant.helpers.restore_state import RestoreEntity
-from homeassistant.helpers.update_coordinator import (
-    CoordinatorEntity,
-    DataUpdateCoordinator,
-    UpdateFailed,
-)
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     CONF_DEVICE_TRACKER_ENABLED,
@@ -51,27 +42,15 @@ from .const import (
     UNDO_UPDATE_LISTENER,
     VERSION,
 )
-from .pyopnsense import OPNSenseClient
+from .coordinator import OPNsenseDataUpdateCoordinator
+from .helpers import dict_get
+from .pyopnsense import OPNsenseClient
 from .services import ServiceRegistrar
 
-_LOGGER = logging.getLogger(__name__)
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
-def dict_get(data: dict, path: str, default=None):
-    pathList = re.split(r"\.", path, flags=re.IGNORECASE)
-    result = data
-    for key in pathList:
-        try:
-            key = int(key) if key.isnumeric() else key
-            result = result[key]
-        except:
-            result = default
-            break
-
-    return result
-
-
-async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry):
+async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Handle options update."""
     if hass.data[DOMAIN][entry.entry_id].get(SHOULD_RELOAD, True):
         hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
@@ -79,7 +58,7 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry):
         hass.data[DOMAIN][entry.entry_id][SHOULD_RELOAD] = True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up OPNsense from a config entry."""
     config = entry.data
     options = entry.options
@@ -91,58 +70,39 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     device_tracker_enabled: bool = options.get(
         CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED
     )
-    client = OPNSenseClient(url, username, password, {"verify_ssl": verify_ssl})
-    data = OPNSenseData(client, entry)
+    client = OPNsenseClient(
+        url=url,
+        username=username,
+        password=password,
+        session=async_create_clientsession(hass, raise_for_status=False),
+        opts={"verify_ssl": verify_ssl},
+    )
 
     scan_interval: int = options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     _LOGGER.info(f"Starting hass-opnsense {VERSION}")
 
-    async def async_update_data():
-        """Fetch data from OPNsense."""
-        async with async_timeout.timeout(scan_interval - 1):
-            await hass.async_add_executor_job(lambda: data.update())
-
-            if not data.state:
-                raise UpdateFailed(f"Error fetching {entry.title} state")
-
-            return data.state
-
-    coordinator = DataUpdateCoordinator(
-        hass,
-        _LOGGER,
+    coordinator = OPNsenseDataUpdateCoordinator(
+        hass=hass,
         name=f"{entry.title} state",
-        update_method=async_update_data,
         update_interval=timedelta(seconds=scan_interval),
+        client=client,
     )
 
-    platforms = PLATFORMS.copy()
+    platforms: list = PLATFORMS.copy()
     device_tracker_coordinator = None
     if not device_tracker_enabled and "device_tracker" in platforms:
         platforms.remove("device_tracker")
     else:
-        device_tracker_data = OPNSenseData(client, entry)
         device_tracker_scan_interval = options.get(
             CONF_DEVICE_TRACKER_SCAN_INTERVAL, DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL
         )
 
-        async def async_update_device_tracker_data():
-            """Fetch data from OPNsense."""
-            async with async_timeout.timeout(device_tracker_scan_interval - 1):
-                await hass.async_add_executor_job(
-                    lambda: device_tracker_data.update({"scope": "device_tracker"})
-                )
-
-                if not device_tracker_data.state:
-                    raise UpdateFailed(f"Error fetching {entry.title} OPNsense state")
-
-                return device_tracker_data.state
-
-        device_tracker_coordinator = DataUpdateCoordinator(
-            hass,
-            _LOGGER,
-            name=f"{entry.title} OPNsense device tracker state",
-            update_method=async_update_device_tracker_data,
+        device_tracker_coordinator = OPNsenseDataUpdateCoordinator(
+            hass=hass,
+            name=f"{entry.title} Device Tracker state",
             update_interval=timedelta(seconds=device_tracker_scan_interval),
+            client=client,
+            device_tracker_coordinator=True,
         )
 
     undo_listener = entry.add_update_listener(_async_update_listener)
@@ -234,254 +194,18 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
     return True
 
 
-class OPNSenseData:
-    def __init__(self, client: OPNSenseClient, config_entry: ConfigEntry):
-        """Initialize the data object."""
-        self._client = client
-        self._config_entry = config_entry
-        self._state = {}
-
-    @property
-    def state(self):
-        return self._state
-
-    def _log_timing(func):
-        def inner(*args, **kwargs):
-            begin = time.time()
-            response = func(*args, **kwargs)
-            end = time.time()
-            elapsed = round((end - begin), 3)
-            _LOGGER.debug(f"execution time: OPNSenseData.{func.__name__} {elapsed}")
-
-            return response
-
-        return inner
-
-    @_log_timing
-    def _get_system_info(self):
-        return self._client.get_system_info()
-
-    @_log_timing
-    def _get_firmware_update_info(self):
-        try:
-            return self._client.get_firmware_update_info()
-        except BaseException as err:
-            _LOGGER.error(err)
-            return None
-            # raise err
-
-    @_log_timing
-    def _get_telemetry(self):
-        return self._client.get_telemetry()
-
-    @_log_timing
-    def _get_host_firmware_version(self) -> None | str:
-        return self._client.get_host_firmware_version()
-
-    @_log_timing
-    def _get_config(self):
-        return self._client.get_config()
-
-    @_log_timing
-    def _get_interfaces(self):
-        return self._client.get_interfaces()
-
-    @_log_timing
-    def _get_services(self):
-        return self._client.get_services()
-
-    @_log_timing
-    def _get_carp_interfaces(self):
-        return self._client.get_carp_interfaces()
-
-    @_log_timing
-    def _get_carp_status(self):
-        return self._client.get_carp_status()
-
-    @_log_timing
-    def _get_dhcp_leases(self):
-        return self._client.get_dhcp_leases()
-
-    @_log_timing
-    def _are_notices_pending(self):
-        return self._client.are_notices_pending()
-
-    @_log_timing
-    def _get_notices(self):
-        return self._client.get_notices()
-
-    @_log_timing
-    def _get_arp_table(self):
-        return self._client.get_arp_table(True)
-
-    def update(self, opts={}):
-        """Fetch the latest state from OPNsense."""
-        # copy the old data to have around
-        current_time = time.time()
-
-        previous_state = copy.deepcopy(self._state)
-        if "previous_state" in previous_state.keys():
-            del previous_state["previous_state"]
-
-        # ensure clean state each interval
-        self._state = {}
-        self._state["update_time"] = current_time
-        self._state["previous_state"] = previous_state
-
-        self._state["system_info"] = self._get_system_info()
-        self._state["host_firmware_version"] = self._get_host_firmware_version()
-
-        if "scope" in opts.keys() and opts["scope"] == "device_tracker":
-            try:
-                self._state["arp_table"] = self._get_arp_table()
-            except BaseException as err:
-                message = f"failed to retrieve arp table {err=}, {type(err)=}"
-                _LOGGER.error(message)
-        else:
-            self._state["firmware_update_info"] = self._get_firmware_update_info()
-            self._state["telemetry"] = self._get_telemetry()
-            self._state["config"] = self._get_config()
-            self._state["interfaces"] = self._get_interfaces()
-            self._state["services"] = self._get_services()
-            self._state["carp_interfaces"] = self._get_carp_interfaces()
-            self._state["carp_status"] = self._get_carp_status()
-            # self._state["dhcp_leases"] = self._client.get_dhcp_leases()
-            self._state["dhcp_leases"] = []
-            self._state["dhcp_stats"] = {}
-            self._state["notices"] = {}
-            self._state["notices"][
-                "pending_notices_present"
-            ] = self._are_notices_pending()
-            self._state["notices"]["pending_notices"] = self._get_notices()
-
-            lease_stats = {"total": 0, "online": 0, "offline": 0}
-            for lease in self._state["dhcp_leases"]:
-                if "act" in lease.keys() and lease["act"] == "expired":
-                    continue
-
-                lease_stats["total"] += 1
-                if "online" in lease.keys():
-                    if lease["online"] == "online":
-                        lease_stats["online"] += 1
-                    if lease["online"] == "offline":
-                        lease_stats["offline"] += 1
-
-            self._state["dhcp_stats"]["leases"] = lease_stats
-
-            # calcule pps and kbps
-            update_time = dict_get(self._state, "update_time")
-            previous_update_time = dict_get(self._state, "previous_state.update_time")
-
-            if previous_update_time is not None:
-                elapsed_time = update_time - previous_update_time
-
-                for interface_name in dict_get(
-                    self._state, "telemetry.interfaces", {}
-                ).keys():
-                    interface = dict_get(
-                        self._state, f"telemetry.interfaces.{interface_name}"
-                    )
-                    previous_interface = dict_get(
-                        self._state,
-                        f"previous_state.telemetry.interfaces.{interface_name}",
-                    )
-                    if previous_interface is None:
-                        break
-
-                    for property in [
-                        "inbytes",
-                        "outbytes",
-                        # "inbytespass",
-                        # "outbytespass",
-                        # "inbytesblock",
-                        # "outbytesblock",
-                        "inpkts",
-                        "outpkts",
-                        # "inpktspass",
-                        # "outpktspass",
-                        # "inpktsblock",
-                        # "outpktsblock",
-                    ]:
-                        current_parent_value = interface[property]
-                        previous_parent_value = previous_interface[property]
-                        change = abs(current_parent_value - previous_parent_value)
-                        rate = change / elapsed_time
-
-                        value = 0
-                        if "pkts" in property:
-                            label = "packets_per_second"
-                            value = rate
-                        if "bytes" in property:
-                            label = "kilobytes_per_second"
-                            # 1 Byte = 8 bits
-                            # 1 byte is equal to 0.001 kilobytes
-                            KBs = rate / 1000
-                            # Kbs = KBs * 8
-                            value = KBs
-
-                        new_property = f"{property}_{label}"
-                        interface[new_property] = int(round(value, 0))
-
-                for server_name in dict_get(
-                    self._state, "telemetry.openvpn.servers", {}
-                ).keys():
-                    if (
-                        server_name
-                        not in dict_get(
-                            self._state, "telemetry.openvpn.servers", {}
-                        ).keys()
-                    ):
-                        continue
-
-                    if (
-                        server_name
-                        not in dict_get(
-                            self._state, "previous_state.telemetry.openvpn.servers", {}
-                        ).keys()
-                    ):
-                        continue
-
-                    server = self._state["telemetry"]["openvpn"]["servers"][server_name]
-                    previous_server = self._state["previous_state"]["telemetry"][
-                        "openvpn"
-                    ]["servers"][server_name]
-
-                    for property in [
-                        "total_bytes_recv",
-                        "total_bytes_sent",
-                    ]:
-                        current_parent_value = server[property]
-                        previous_parent_value = previous_server[property]
-                        change = abs(current_parent_value - previous_parent_value)
-                        rate = change / elapsed_time
-
-                        value = 0
-                        if "pkts" in property:
-                            label = "packets_per_second"
-                            value = rate
-                        if "bytes" in property:
-                            label = "kilobytes_per_second"
-                            # 1 Byte = 8 bits
-                            # 1 byte is equal to 0.001 kilobytes
-                            KBs = rate / 1000
-                            # Kbs = KBs * 8
-                            value = KBs
-
-                        new_property = f"{property}_{label}"
-                        server[new_property] = int(round(value, 0))
-
-
 class CoordinatorEntityManager:
+
     def __init__(
         self,
         hass: HomeAssistant,
-        coordinator: DataUpdateCoordinator,
+        coordinator: OPNsenseDataUpdateCoordinator,
         config_entry: ConfigEntry,
         process_entities_callback: Callable,
         async_add_entities: AddEntitiesCallback,
     ) -> None:
         self.hass = hass
-        self.coordinator = coordinator
+        self.coordinator: OPNsenseDataUpdateCoordinator = coordinator
         self.config_entry = config_entry
         self.process_entities_callback = process_entities_callback
         self.async_add_entities = async_add_entities
@@ -525,8 +249,8 @@ class CoordinatorEntityManager:
             registry.async_remove(entity.entity_id)
 
 
-class OPNSenseEntity(CoordinatorEntity, RestoreEntity):
-    """base entity for OPNsense"""
+class OPNsenseEntity(CoordinatorEntity, RestoreEntity):
+    """Base entity for OPNsense"""
 
     @property
     def coordinator_context(self):
@@ -556,7 +280,7 @@ class OPNSenseEntity(CoordinatorEntity, RestoreEntity):
         return device_info
 
     @property
-    def opnsense_device_name(self):
+    def opnsense_device_name(self) -> str:
         if self.config_entry.title and len(self.config_entry.title) > 0:
             return self.config_entry.title
         return "{}.{}".format(
@@ -574,40 +298,42 @@ class OPNSenseEntity(CoordinatorEntity, RestoreEntity):
 
         return value
 
-    def _get_opnsense_client(self) -> OPNSenseClient:
+    def _get_opnsense_client(self) -> OPNsenseClient:
         return self.hass.data[DOMAIN][self.config_entry.entry_id][OPNSENSE_CLIENT]
 
-    def service_close_notice(self, id: int | str | None = None):
+    async def service_close_notice(self, id: int | str | None = None) -> None:
         client = self._get_opnsense_client()
-        client.close_notice(id)
+        await client.close_notice(id)
 
-    def service_file_notice(self, **kwargs):
+    async def service_file_notice(self, **kwargs) -> None:
         client = self._get_opnsense_client()
-        client.file_notice(**kwargs)
+        await client.file_notice(**kwargs)
 
-    def service_start_service(self, service_name: str):
+    async def service_start_service(self, service_name: str) -> None:
         client = self._get_opnsense_client()
-        client.start_service(service_name)
+        await client.start_service(service_name)
 
-    def service_stop_service(self, service_name: str):
+    async def service_stop_service(self, service_name: str) -> None:
         client = self._get_opnsense_client()
-        client.stop_service(service_name)
+        await client.stop_service(service_name)
 
-    def service_restart_service(self, service_name: str, only_if_running: bool = False):
+    async def service_restart_service(
+        self, service_name: str, only_if_running: bool = False
+    ) -> None:
         client = self._get_opnsense_client()
         if only_if_running:
-            client.restart_service_if_running(service_name)
+            await client.restart_service_if_running(service_name)
         else:
-            client.restart_service(service_name)
+            await client.restart_service(service_name)
 
-    def service_system_halt(self):
+    async def service_system_halt(self) -> None:
         client = self._get_opnsense_client()
-        client.system_halt()
+        await client.system_halt()
 
-    def service_system_reboot(self):
+    async def service_system_reboot(self) -> None:
         client = self._get_opnsense_client()
-        client.system_reboot()
+        await client.system_reboot()
 
-    def service_send_wol(self, interface: str, mac: str):
+    async def service_send_wol(self, interface: str, mac: str) -> None:
         client = self._get_opnsense_client()
-        client.send_wol(interface, mac)
+        await client.send_wol(interface, mac)
