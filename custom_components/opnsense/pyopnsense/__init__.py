@@ -310,13 +310,12 @@ $toreturn["real"] = json_encode($toreturn_real);
         try:
             async with self._session.post(
                 url,
-                data=payload,
+                json=payload,
                 auth=aiohttp.BasicAuth(self._username, self._password),
                 timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
                 ssl=self._verify_ssl,
             ) as response:
                 _LOGGER.debug(f"[post] Response {response.status}: {response.reason}")
-
                 if response.ok:
                     response_json: Mapping[str, Any] | list = await response.json(
                         content_type=None
@@ -1020,44 +1019,17 @@ $toreturn = [
             pass
 
     @_log_errors
-    async def send_wol(self, interface, mac) -> Mapping[str, Any]:
+    async def send_wol(self, interface, mac) -> bool:
         """
         interface should be wan, lan, opt1, opt2 etc, not the description
         """
-
-        script: str = (
-            r"""
-$data = json_decode('{}', true);
-$if = $data["interface"];
-$mac = $data["mac"];
-
-function send_wol($if, $mac) {{
-    global $config;
-    $ipaddr = get_interface_ip($if);
-    if (!is_ipaddr($ipaddr) || !is_macaddr($mac)) {{
-            return false;
-    }}
-    
-    $bcip = gen_subnet_max($ipaddr, $config["interfaces"][$if]["subnet"]);
-    return (bool) !mwexec("/usr/local/bin/wol -i {{$bcip}} {{$mac}}");
-}}
-
-$value = send_wol($if, $mac);
-$toreturn = [
-  "data" => $value,
-];
-""".format(
-                json.dumps(
-                    {
-                        "interface": interface,
-                        "mac": mac,
-                    }
-                )
-            )
-        )
-
-        response: Mapping[str, Any] = await self._exec_php(script)
-        return response
+        payload: Mapping[str, Any] = {"wake": {"interface": interface, "mac": mac}}
+        _LOGGER.debug(f"[send_wol] payload: {payload}")
+        response = await self._post("/api/wol/wol/set", payload)
+        _LOGGER.debug(f"[send_wol] response: {response}")
+        if isinstance(response, Mapping) and response.get("status", "") == "ok":
+            return True
+        return False
 
     def _try_to_int(self, input, retval=None) -> int | None:
         try:
