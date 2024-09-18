@@ -58,7 +58,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
     async def _get_firmware_update_info(self):
         try:
             return await self._client.get_firmware_update_info()
-        except BaseException as e:
+        except Exception as e:
             _LOGGER.error(
                 f"Error in get_firmware_update_info. {e.__class__.__qualname__}: {e}"
             )
@@ -128,7 +128,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         if self._device_tracker_coordinator:
             try:
                 self._state["arp_table"] = await self._get_arp_table()
-            except BaseException as e:
+            except Exception as e:
                 _LOGGER.error(
                     f"Error getting arp table. {e.__class__.__qualname__}: {e}"
                 )

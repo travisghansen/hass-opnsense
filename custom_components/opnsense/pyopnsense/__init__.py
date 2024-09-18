@@ -93,7 +93,7 @@ class OPNsenseClient(ABC):
                 return await func(self, *args, **kwargs)
             except asyncio.CancelledError as e:
                 raise e
-            except BaseException as e:
+            except Exception as e:
                 _LOGGER.error(
                     f"Error in {func.__name__.strip('_')}. {e.__class__.__qualname__}: {e}"
                 )
