@@ -17,10 +17,6 @@ import zoneinfo
 
 import aiohttp
 import awesomeversion
-<<<<<<< Move-get_system_info-(except-device_id)-to-REST-API
-from awesomeversion import AwesomeVersion
-=======
->>>>>>> main
 from dateutil.parser import parse
 
 # value to set as the socket timeout
