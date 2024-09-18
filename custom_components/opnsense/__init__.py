@@ -283,13 +283,10 @@ class OPNsenseEntity(CoordinatorEntity, RestoreEntity):
     def opnsense_device_name(self) -> str:
         if self.config_entry.title and len(self.config_entry.title) > 0:
             return self.config_entry.title
-        return "{}.{}".format(
-            self._get_opnsense_state_value("system_info.hostname"),
-            self._get_opnsense_state_value("system_info.domain"),
-        )
+        return self._get_opnsense_state_value("system_info.name")
 
     @property
-    def opnsense_device_unique_id(self):
+    def opnsense_device_unique_id(self) -> str | None:
         return self._get_opnsense_state_value("system_info.device_id")
 
     def _get_opnsense_state_value(self, path, default=None):

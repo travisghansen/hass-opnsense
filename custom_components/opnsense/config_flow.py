@@ -1,6 +1,8 @@
 """Config flow for OPNsense integration."""
 
+from collections.abc import Mapping
 import logging
+from typing import Any
 from urllib.parse import quote_plus, urlparse
 import xmlrpc
 
@@ -86,12 +88,10 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     ),
                     opts={"verify_ssl": verify_ssl},
                 )
-                system_info = await client.get_system_info()
+                system_info: Mapping[str, Any] = await client.get_system_info()
 
                 if name is None:
-                    name = "{}.{}".format(
-                        system_info["hostname"], system_info["domain"]
-                    )
+                    name: str = system_info["name"]
 
                 # https://developers.home-assistant.io/docs/config_entries_config_flow_handler#unique-ids
                 await self.async_set_unique_id(slugify(system_info["device_id"]))

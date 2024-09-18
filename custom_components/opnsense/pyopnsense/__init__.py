@@ -16,6 +16,7 @@ import xmlrpc.client
 import zoneinfo
 
 import aiohttp
+import awesomeversion
 from awesomeversion import AwesomeVersion
 from dateutil.parser import parse
 
@@ -392,7 +393,7 @@ clear_subsystem_dirty('filter');
         await self._exec_php(script)
 
     @_log_errors
-    async def get_device_id(self) -> Mapping[str, Any]:
+    async def _get_device_id(self) -> str | None:
         script: str = r"""
 $file = "/conf/hassid";
 $id;
@@ -410,10 +411,30 @@ $toreturn = [
         if response is None or not isinstance(response, Mapping):
             _LOGGER.error("Invalid data returned from get_device_id")
             return {}
-        return response.get("data", {})
+        return response.get("data", None)
 
     @_log_errors
     async def get_system_info(self) -> Mapping[str, Any]:
+        # TODO: add bios details here
+        firmware: str | None = await self.get_host_firmware_version()
+        try:
+            if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
+                "24.7"
+            ):
+                _LOGGER.info(f"Using legacy get_system_info method for OPNsense < 24.7")
+                return await self._get_system_info_legacy()
+        except awesomeversion.exceptions.AwesomeVersionCompareException:
+            pass
+        system_info: Mapping[str, Any] = {}
+        system_info["device_id"] = await self._get_device_id()
+        response: Mapping[str, Any] | list = await self._get(
+            "/api/diagnostics/system/systemInformation"
+        )
+        system_info["name"] = response.get("name", None)
+        return system_info
+
+    @_log_errors
+    async def _get_system_info_legacy(self) -> Mapping[str, Any]:
         # TODO: add bios details here
         script: str = r"""
 global $config;
@@ -434,6 +455,7 @@ $toreturn = [
 ];
 """
         response: Mapping[str, Any] = await self._exec_php(script)
+        response["name"] = f"{response.pop('hostname','')}.{response.pop('domain','')}"
         return response
 
     @_log_errors
