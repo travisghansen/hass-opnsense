@@ -15,7 +15,6 @@
 | Clear Subsystem Dirty | Yes | No | Doesn't appear to be used anymore. Probably just remove altogether. |
 | Filter Configure | Yes | | |
 | Get Device ID | Yes | Maybe | Used as Unique ID for device. It is just a random 10 digit number generated the first time it is requested. May be able to transition to using the Config Entry ID or something else as a Unique ID. |
-| Get System Info | Yes | Partial | Returns hostname and domain as well as Device ID. Hostname and Domain can be obtained in REST API. |
 | Get Interfaces | Yes | Yes | Uses Get Config. Can use same function that is used for the Interface data for the Telemetry data. |
 | Enable Filter Rule | Yes | No | Uses Get Config, Filter Configure and Restore Config Section. |
 | Disable Filter Rule | Yes | No | Uses Get Config, Filter Configure and Restore Config Section. |
@@ -58,3 +57,4 @@
 | Upgrade Firmware | /api/core/firmware/update<br>/api/core/firmware/upgrade | 2018 | |
 | Firmware Upgrade Status | /api/core/firmware/upgradestatus | 2018 | |
 | Firmware Changelog | /api/core/firmware/changelog/ | 2018 | |
+| Get System Info | /api/diagnostics/system/systemInformation | 24.7 | Partial: Still using XMLRPC for Getting Device ID |
