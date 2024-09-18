@@ -73,7 +73,6 @@ class OPNsenseClient(ABC):
         except RuntimeError:
             self._loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self._loop)
-        self._loop.set_exception_handler(self._loop_exception_handler)
 
     def _xmlrpc_timeout(func):
         async def inner(self, *args, **kwargs):
@@ -102,13 +101,6 @@ class OPNsenseClient(ABC):
                 # raise err
 
         return inner
-
-    def _loop_exception_handler(self, loop, context) -> None:
-        exception = context.get("exception", None)
-        message = context.get("message", None)
-        _LOGGER.error(
-            f"Error in event loop. {exception.__class__.__qualname__}: {exception}. {message}"
-        )
 
     # https://stackoverflow.com/questions/64983392/python-multiple-patch-gives-http-client-cannotsendrequest-request-sent
     def _get_proxy(self) -> xmlrpc.client.ServerProxy:
