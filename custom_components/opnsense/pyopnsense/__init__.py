@@ -16,7 +16,7 @@ import xmlrpc.client
 import zoneinfo
 
 import aiohttp
-from awesomeversion import AwesomeVersion
+import awesomeversion
 from dateutil.parser import parse
 
 # value to set as the socket timeout
@@ -1074,13 +1074,14 @@ $toreturn = [
     @_log_errors
     async def get_telemetry(self) -> Mapping[str, Any]:
         firmware: str | None = await self.get_host_firmware_version()
-        if firmware is None:
-            firmware: str = "24.7"
-        if AwesomeVersion(firmware) < AwesomeVersion("24.7"):
-            _LOGGER.debug(
-                f"[get_telemetry] Using legacy telemetry method for OPNsense < 24.7"
-            )
-            return await self._get_telemetry_legacy()
+        try:
+            if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
+                "24.7"
+            ):
+                _LOGGER.info(f"Using legacy get_telemetry method for OPNsense < 24.7")
+                return await self._get_telemetry_legacy()
+        except awesomeversion.exceptions.AwesomeVersionCompareException:
+            pass
         telemetry: Mapping[str, Any] = {}
         telemetry["interfaces"] = await self._get_telemetry_interfaces()
         telemetry["mbuf"] = await self._get_telemetry_mbuf()
