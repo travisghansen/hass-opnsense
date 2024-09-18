@@ -5,7 +5,7 @@ from datetime import timedelta
 import logging
 from typing import Any, Callable
 
-from awesomeversion import AwesomeVersion
+import awesomeversion
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     CONF_PASSWORD,
@@ -124,23 +124,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     firmware: str | None = coordinator.data.get("host_firmware_version", None)
     _LOGGER.info(f"OPNsense Firmware {firmware}")
-
-    if AwesomeVersion(firmware) < AwesomeVersion(OPNSENSE_MIN_FIRMWARE):
-        async_create_issue(
-            hass,
-            DOMAIN,
-            f"opnsense_{firmware}_below_min_firmware_{OPNSENSE_MIN_FIRMWARE}",
-            is_fixable=False,
-            is_persistent=False,
-            issue_domain=DOMAIN,
-            severity=IssueSeverity.WARNING,
-            translation_key="below_min_firmware",
-            translation_placeholders={
-                "version": VERSION,
-                "min_firmware": OPNSENSE_MIN_FIRMWARE,
-                "firmware": firmware,
-            },
-        )
+    try:
+        if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
+            OPNSENSE_MIN_FIRMWARE
+        ):
+            async_create_issue(
+                hass,
+                DOMAIN,
+                f"opnsense_{firmware}_below_min_firmware_{OPNSENSE_MIN_FIRMWARE}",
+                is_fixable=False,
+                is_persistent=False,
+                issue_domain=DOMAIN,
+                severity=IssueSeverity.WARNING,
+                translation_key="below_min_firmware",
+                translation_placeholders={
+                    "version": VERSION,
+                    "min_firmware": OPNSENSE_MIN_FIRMWARE,
+                    "firmware": firmware,
+                },
+            )
+    except awesomeversion.exceptions.AwesomeVersionCompareException:
+        pass
 
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
 

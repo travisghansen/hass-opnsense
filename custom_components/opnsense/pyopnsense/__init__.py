@@ -17,7 +17,10 @@ import zoneinfo
 
 import aiohttp
 import awesomeversion
+<<<<<<< Move-get_system_info-(except-device_id)-to-REST-API
 from awesomeversion import AwesomeVersion
+=======
+>>>>>>> main
 from dateutil.parser import parse
 
 # value to set as the socket timeout
@@ -126,6 +129,23 @@ class OPNsenseClient(ABC):
         proxy = xmlrpc.client.ServerProxy(
             f"{self._xmlrpc_url}/xmlrpc.php", context=context, verbose=verbose
         )
+
+        # Test Proxy to ensure it is connected
+        try:
+            methods = proxy.system.listMethods()
+            if methods:
+                if "authentication failed" in str(methods).lower():
+                    _LOGGER.error(f"Authentication failed: Check your credentials.")
+                    _LOGGER.error(
+                        f"Authentication Error connecting to XMLRPC Proxy. Ensure the OPNsense user connected to HA has full Admin access."
+                    )
+        except xmlrpc.client.Fault as fault:
+            _LOGGER.error(f"RPC Fault in XMLRPC Proxy: {fault.faultString}")
+        except xmlrpc.client.ProtocolError as err:
+            _LOGGER.error(f"Protocol Error in XMLRPC Proxy: {err.errmsg}")
+        except xmlrpc.client.ResponseError as re:
+            _LOGGER.error(f"Response Error in XMLRPC Proxy: {re}")
+
         return proxy
 
     # @_xmlrpc_timeout
@@ -1096,13 +1116,14 @@ $toreturn = [
     @_log_errors
     async def get_telemetry(self) -> Mapping[str, Any]:
         firmware: str | None = await self.get_host_firmware_version()
-        if firmware is None:
-            firmware: str = "24.7"
-        if AwesomeVersion(firmware) < AwesomeVersion("24.7"):
-            _LOGGER.debug(
-                f"[get_telemetry] Using legacy telemetry method for OPNsense < 24.7"
-            )
-            return await self._get_telemetry_legacy()
+        try:
+            if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
+                "24.7"
+            ):
+                _LOGGER.info(f"Using legacy get_telemetry method for OPNsense < 24.7")
+                return await self._get_telemetry_legacy()
+        except awesomeversion.exceptions.AwesomeVersionCompareException:
+            pass
         telemetry: Mapping[str, Any] = {}
         telemetry["interfaces"] = await self._get_telemetry_interfaces()
         telemetry["mbuf"] = await self._get_telemetry_mbuf()
