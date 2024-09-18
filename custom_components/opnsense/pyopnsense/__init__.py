@@ -11,7 +11,6 @@ import ssl
 import time
 from typing import Any
 from urllib.parse import quote_plus, urlparse
-from xml.parsers.expat import ExpatError
 import xmlrpc.client
 import zoneinfo
 
@@ -983,41 +982,20 @@ $toreturn = [
         return None
 
     @_log_errors
-    async def system_reboot(self) -> None:
-        script: str = r"""
-// /usr/local/opnsense/mvc/app/library/OPNsense/Core/Backend.php
-use OPNsense\Core\Backend;
-
-$backend = new Backend();
-$backend->configdRun('system reboot', true);
-
-$toreturn = [
-  "data" => true,
-];
-"""
-        try:
-            await self._exec_php(script)
-        except ExpatError:
-            # ignore response failures because the system is going down
-            pass
+    async def system_reboot(self) -> bool:
+        response: Mapping[str, Any] | list = await self._post("/api/core/system/reboot")
+        _LOGGER.debug(f"[system_reboot] response: {response}")
+        if isinstance(response, Mapping) and response.get("status", "") == "ok":
+            return True
+        return False
 
     @_log_errors
     async def system_halt(self) -> None:
-        script: str = r"""
-use OPNsense\Core\Backend;
-
-$backend = new Backend();
-$backend->configdRun('system halt', true);
-
-$toreturn = [
-  "data" => true,
-];
-"""
-        try:
-            await self._exec_php(script)
-        except ExpatError:
-            # ignore response failures because the system is going down
-            pass
+        response: Mapping[str, Any] | list = await self._post("/api/core/system/halt")
+        _LOGGER.debug(f"[system_halt] response: {response}")
+        if isinstance(response, Mapping) and response.get("status", "") == "ok":
+            return True
+        return False
 
     @_log_errors
     async def send_wol(self, interface, mac) -> Mapping[str, Any]:
