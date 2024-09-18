@@ -32,8 +32,6 @@
 | Get Carp Interfaces | Yes | Yes | |
 | Delete ARP Entry | Yes | | |
 | Get MAC by IP | Yes | Yes | Doesn't appear to be used anymore. Probably just remove altogether. |
-| System Reboot | Yes | Yes | |
-| System Halt | Yes | Yes | |
 | Send WOL | Yes | Yes | |
 | Are Notices Pending | Yes | Yes | |
 | Get Notices | Yes | Yes | |
@@ -58,3 +56,5 @@
 | Upgrade Firmware | /api/core/firmware/update<br>/api/core/firmware/upgrade | 2018 | |
 | Firmware Upgrade Status | /api/core/firmware/upgradestatus | 2018 | |
 | Firmware Changelog | /api/core/firmware/changelog/ | 2018 | |
+| System Reboot | /api/core/system/reboot | 20.1 | |
+| System Halt | /api/core/system/halt | 20.1 | |
