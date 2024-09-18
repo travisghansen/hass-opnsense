@@ -4,7 +4,6 @@
 | ----- | ----- | ----- | ----- |
 | Get Config | Yes | No | Returns a __large__ dictionary of elements used for multiple functions. Some can be replaced, others cannot. More details in the other functions. |
 | Restore Config Section | No | No | |
-| Get ARP Table | Yes | Yes | |
 | Get/List Services | No | Yes | |
 | Start Service | No | Yes | |
 | Stop Service | No | Yes | |
@@ -58,3 +57,4 @@
 | Upgrade Firmware | /api/core/firmware/update<br>/api/core/firmware/upgrade | 2018 | |
 | Firmware Upgrade Status | /api/core/firmware/upgradestatus | 2018 | |
 | Firmware Changelog | /api/core/firmware/changelog/ | 2018 | |
+| Get ARP Table | /api/diagnostics/interface/search_arp | 2022 | |
