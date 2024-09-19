@@ -946,56 +946,6 @@ $toreturn = [
         await self._exec_php(script)
 
     @_log_errors
-    async def arp_get_mac_by_ip(self, ip, do_ping=True):
-        """function arp_get_mac_by_ip($ip, $do_ping = true)"""
-        script: str = (
-            r"""
-$data = json_decode('{}', true);
-$ip = $data["ip"];
-$do_ping = $data["do_ping"];
-
-function arp_get_mac_by_ip($ip, $do_ping = true) {{
-        unset($macaddr);
-        $retval = 1;
-        switch (is_ipaddr($ip)) {{
-                case 4:
-                        if ($do_ping === true) {{
-                                mwexec("/sbin/ping -c 1 -t 1 " . escapeshellarg($ip), true);
-                        }}
-                        $macaddr = exec("/usr/sbin/arp -n " . escapeshellarg($ip) . " | /usr/bin/awk '{{print $4}}'", $output, $retval);
-                        break;
-                case 6:
-                        if ($do_ping === true) {{
-                                mwexec("/sbin/ping6 -c 1 -X 1 " . escapeshellarg($ip), true);
-                        }}
-                        $macaddr = exec("/usr/sbin/ndp -n " . escapeshellarg($ip) . " | /usr/bin/awk '{{print $2}}'", $output, $retval);
-                        break;
-        }}
-        if ($retval == 0 && is_macaddr($macaddr)) {{
-                return $macaddr;
-        }} else {{
-                return false;
-        }}
-}}
-
-$toreturn = [
-  "data" => arp_get_mac_by_ip($ip, $do_ping),
-];
-""".format(
-                json.dumps(
-                    {
-                        "ip": ip,
-                        "do_ping": do_ping,
-                    }
-                )
-            )
-        )
-        response: Mapping[str, Any] = await self._exec_php(script)
-        if isinstance(response, Mapping):
-            return response.get("data", None)
-        return None
-
-    @_log_errors
     async def system_reboot(self) -> None:
         script: str = r"""
 // /usr/local/opnsense/mvc/app/library/OPNsense/Core/Backend.php
