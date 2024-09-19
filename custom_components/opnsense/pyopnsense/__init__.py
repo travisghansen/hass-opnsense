@@ -1689,36 +1689,6 @@ if (file_exists('/usr/local/etc/inc/notices.inc')) {
         return notices
 
     @_log_errors
-    async def file_notice(self, notice) -> None:
-        script: str = (
-            r"""
-$data = json_decode('{}', true);
-$notice = $data["notice"];
-
-if (file_exists('/usr/local/etc/inc/notices.inc')) {{
-    require_once '/usr/local/etc/inc/notices.inc';
-    $value = file_notice($notice);
-    $toreturn = [
-        "data" => $value,
-    ];
-}} else {{
-    // not currently supported in 22.7.2+
-    $toreturn = [
-        "data" => false,
-    ];
-}}
-""".format(
-                json.dumps(
-                    {
-                        "notice": notice,
-                    }
-                )
-            )
-        )
-
-        await self._exec_php(script)
-
-    @_log_errors
     async def close_notice(self, id) -> None:
         """
         id = "all" to wipe everything

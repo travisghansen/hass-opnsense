@@ -9,7 +9,6 @@ import voluptuous as vol
 from .const import (
     DOMAIN,
     SERVICE_CLOSE_NOTICE,
-    SERVICE_FILE_NOTICE,
     SERVICE_RESTART_SERVICE,
     SERVICE_SEND_WOL,
     SERVICE_START_SERVICE,
@@ -61,17 +60,6 @@ class ServiceRegistrar:
                     vol.Optional("id", default="all"): vol.Any(
                         cv.positive_int, cv.string
                     ),
-                }
-            ),
-            service_func=_async_send_service,
-        )
-
-        self.hass.services.async_register(
-            domain=DOMAIN,
-            service=SERVICE_FILE_NOTICE,
-            schema=cv.make_entity_service_schema(
-                {
-                    vol.Required("notice"): vol.Any(cv.string),
                 }
             ),
             service_func=_async_send_service,
