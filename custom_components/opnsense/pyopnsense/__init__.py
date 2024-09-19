@@ -842,28 +842,6 @@ $toreturn = [
         return response.get("data", {}).get("lease", [])
 
     @_log_errors
-    async def get_virtual_ips(self) -> Mapping[str, Any]:
-        script: str = r"""
-global $config;
-
-$vips = [];
-if ($config['virtualip'] && is_iterable($config['virtualip']['vip'])) {
-  foreach ($config['virtualip']['vip'] as $vip) {
-    $vips[] = $vip;
-  }
-}
-
-$toreturn = [
-  "data" => $vips,
-];
-"""
-        response: Mapping[str, Any] = await self._exec_php(script)
-        if response is None or not isinstance(response, Mapping):
-            _LOGGER.error("Invalid data returned from get_virtual_ips")
-            return {}
-        return response.get("data", {})
-
-    @_log_errors
     async def get_carp_status(self) -> Mapping[str, Any]:
         # carp enabled or not
         # readonly attribute, cannot be set directly
