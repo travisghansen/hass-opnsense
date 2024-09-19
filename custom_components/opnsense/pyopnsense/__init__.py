@@ -328,53 +328,6 @@ $toreturn["real"] = json_encode($toreturn_real);
         return {}
 
     @_log_errors
-    async def _is_subsystem_dirty(self, subsystem) -> bool:
-        script: str = (
-            r"""
-$data = json_decode('{}', true);
-$subsystem = $data["subsystem"];
-$dirty = is_subsystem_dirty($subsystem);
-$toreturn = [
-    "data" => $dirty,
-];
-""".format(
-                json.dumps({"subsystem": subsystem})
-            )
-        )
-
-        response: Mapping[str, Any] = await self._exec_php(script)
-        if response is None or not isinstance(response, Mapping):
-            _LOGGER.error("Invalid data returned from is_subsystem_dirty")
-            return False
-        return bool(response.get("data", False))
-
-    @_log_errors
-    async def _mark_subsystem_dirty(self, subsystem) -> None:
-        script: str = (
-            r"""
-$data = json_decode('{}', true);
-$subsystem = $data["subsystem"];
-mark_subsystem_dirty($subsystem);
-""".format(
-                json.dumps({"subsystem": subsystem})
-            )
-        )
-        await self._exec_php(script)
-
-    @_log_errors
-    async def _clear_subsystem_dirty(self, subsystem) -> None:
-        script: str = (
-            r"""
-$data = json_decode('{}', true);
-$subsystem = $data["subsystem"];
-clear_subsystem_dirty($subsystem);
-""".format(
-                json.dumps({"subsystem": subsystem})
-            )
-        )
-        await self._exec_php(script)
-
-    @_log_errors
     async def _filter_configure(self) -> None:
         script: str = r"""
 filter_configure();
