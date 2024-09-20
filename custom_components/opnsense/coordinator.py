@@ -51,7 +51,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         return inner
 
     @_log_timing
-    async def _get_system_info(self):
+    async def _get_system_info(self) -> Mapping[str, Any]:
         return await self._client.get_system_info()
 
     @_log_timing

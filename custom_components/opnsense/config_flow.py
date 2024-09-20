@@ -1,9 +1,12 @@
 """Config flow for OPNsense integration."""
 
+from collections.abc import Mapping
 import logging
+from typing import Any
 from urllib.parse import quote_plus, urlparse
 import xmlrpc
 
+import aiohttp
 from homeassistant import config_entries
 from homeassistant.const import (
     CONF_NAME,
@@ -86,27 +89,16 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     ),
                     opts={"verify_ssl": verify_ssl},
                 )
-                system_info = await client.get_system_info()
+                system_info: Mapping[str, Any] = await client.get_system_info()
 
                 if name is None:
-                    name = "{}.{}".format(
-                        system_info["hostname"], system_info["domain"]
-                    )
+                    name: str = system_info["name"]
 
                 # https://developers.home-assistant.io/docs/config_entries_config_flow_handler#unique-ids
                 await self.async_set_unique_id(slugify(system_info["device_id"]))
                 self._abort_if_unique_id_configured()
 
-                return self.async_create_entry(
-                    title=name,
-                    data={
-                        CONF_URL: url,
-                        CONF_PASSWORD: password,
-                        CONF_USERNAME: username,
-                        CONF_VERIFY_SSL: verify_ssl,
-                    },
-                )
-            except InvalidURL:
+            except (aiohttp.InvalidURL, InvalidURL):
                 errors["base"] = "invalid_url_format"
             except xmlrpc.client.Fault as err:
                 if "Invalid username or password" in str(err):
@@ -132,6 +124,10 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     )
                     _LOGGER.error(message)
                     errors["base"] = "cannot_connect"
+            except (aiohttp.TooManyRedirects, aiohttp.RedirectClientError):
+                errors["base"] = "url_redirect"
+            except (TimeoutError, aiohttp.ServerTimeoutError):
+                errors["base"] = "connect_timeout"
             except OSError as err:
                 # bad response from OPNsense when creds are valid but authorization is
                 # not sufficient non-admin users must have 'System - HA node sync'
@@ -155,6 +151,16 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 )
                 _LOGGER.error(message)
                 errors["base"] = "unknown"
+            else:
+                return self.async_create_entry(
+                    title=name,
+                    data={
+                        CONF_URL: url,
+                        CONF_PASSWORD: password,
+                        CONF_USERNAME: username,
+                        CONF_VERIFY_SSL: verify_ssl,
+                    },
+                )
 
         if not user_input:
             user_input = {}
