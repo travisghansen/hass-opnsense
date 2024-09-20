@@ -1,3 +1,86 @@
+<a name="v0.3.0"></a>
+# [v0.3.0](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.0) - 20 Sep 2024
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🎉 Enhancements & New Features 🎉
+* Move get_system_info (except device_id) to REST API by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/196
+* Update config_flow exception handling by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/197
+* Change get_arp_table to REST API by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/191
+* Change send_wol to REST API by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/192
+* Change system_halt and system_reboot to REST API by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/194
+* Change notices functions to REST API by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/203
+### 🕷️ Bug Fixes 🕷️
+* Handle potential AwesomeVersion errors by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/189
+### Other Changes
+* Update README.md adding images by [@mkopnsrc](https://github.com/mkopnsrc) in https://github.com/travisghansen/hass-opnsense/pull/185
+* Pyopnsense and coordinator to async by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/187
+* Remove unused functions by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/202
+* Update all coordinator references by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/201
+
+## New Contributors
+* [@mkopnsrc](https://github.com/mkopnsrc) made their first contribution in https://github.com/travisghansen/hass-opnsense/pull/185
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.2.1...v0.3.0
+
+[Changes][v0.3.0]
+
+
+<a name="v0.3.0-beta.3"></a>
+# [v0.3.0-beta.3](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.0-beta.3) - 19 Sep 2024
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### Other Changes
+* Revert "Add error for XMLRPC auth" by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/200
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.0-beta.2...v0.3.0-beta.3
+
+[Changes][v0.3.0-beta.3]
+
+
+<a name="v0.3.0-beta.2"></a>
+# [v0.3.0-beta.2](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.0-beta.2) - 18 Sep 2024
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🎉 Enhancements & New Features 🎉
+* Add error for XMLRPC auth by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/190
+* Move get_system_info (except device_id) to REST API by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/196
+* Update config_flow exception handling by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/197
+### 🕷️ Bug Fixes 🕷️
+* Handle potential AwesomeVersion errors by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/189
+* Stop catching all errors in the event loop by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/198
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.0-beta.1...v0.3.0-beta.2
+
+[Changes][v0.3.0-beta.2]
+
+
+<a name="v0.3.0-beta.1"></a>
+# [v0.3.0-beta.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.0-beta.1) - 17 Sep 2024
+
+This is the first version of the integration that changes the core components of the integration to async, thus we jump to a new "major" version. Please provide feedbacks on this beta since the changes are quite deep.
+
+**_Changelog:_**
+* Moves pyopnsense and coordinator to async to reduce blocking
+  * _Can likely optimize the entity classes as well in a future PR_
+* Change from `requests` to `aiohttp` for GET and POST calls
+  * XMLRPC remains __not__ threadsafe. There are a couple of async/aio versions but I'm not sure how maintained they are. 
+* Move coordinator to its own file
+* Move `dict_get` to helpers file
+* Add more typing hints and annotations
+* Standardized case everywhere to be `OPNsense`
+* Improved logging and error messages
+
+[Changes][v0.3.0-beta.1]
+
+
 <a name="v0.2.1"></a>
 # [v0.2.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.2.1) - 10 Sep 2024
 
@@ -317,6 +400,10 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.3.0]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.0-beta.3...v0.3.0
+[v0.3.0-beta.3]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.0-beta.2...v0.3.0-beta.3
+[v0.3.0-beta.2]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.0-beta.1...v0.3.0-beta.2
+[v0.3.0-beta.1]: https://github.com/travisghansen/hass-opnsense/compare/v0.2.1...v0.3.0-beta.1
 [v0.2.1]: https://github.com/travisghansen/hass-opnsense/compare/v0.2.1-beta.1...v0.2.1
 [v0.2.1-beta.1]: https://github.com/travisghansen/hass-opnsense/compare/v0.2.0...v0.2.1-beta.1
 [v0.2.0]: https://github.com/travisghansen/hass-opnsense/compare/v0.2.0-beta.2...v0.2.0
