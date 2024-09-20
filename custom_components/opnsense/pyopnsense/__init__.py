@@ -1673,42 +1673,39 @@ if (file_exists('/usr/local/etc/inc/notices.inc')) {{
         await self._exec_php(script)
 
     @_log_errors
-    async def close_notice(self, id) -> None:
+    async def close_notice(self, id) -> bool:
         """
         id = "all" to wipe everything
         """
-        script: str = (
-            r"""
-$data = json_decode('{}', true);
-$id = $data["id"];
-
-if (file_exists('/usr/local/etc/inc/notices.inc')) {{
-    require_once '/usr/local/etc/inc/notices.inc';
-    close_notice($id);
-    $toreturn = [
-    "data" => true,
-    ];
-}} else {{
-    $status = new \OPNsense\System\SystemStatus();
-    if (strtolower($id) == "all") {{
-        foreach ($status->getSystemStatus() as $key => $value) {{
-            $status->dismissStatus($key);    
-        }}
-    }} else {{
-        $status->dismissStatus($id);
-    }}
-    
-    $toreturn = [
-        "data" => true,
-    ];
-}}
-""".format(
-                json.dumps(
-                    {
-                        "id": id,
-                    }
-                )
+        success = True
+        if id.lower() == "all":
+            notices: Mapping[str, Any] | list = await self._get(
+                "/api/core/system/status"
             )
-        )
+            _LOGGER.debug(f"[close_notice] notices: {notices}")
 
-        await self._exec_php(script)
+            if not isinstance(notices, Mapping):
+                return False
+            for key, notice in notices.items():
+                if "statusCode" in notice:
+                    dismiss: Mapping[str, Any] | list = await self._post(
+                        "/api/core/system/dismissStatus", payload={"subject": key}
+                    )
+                    _LOGGER.debug(f"[close_notice] id: {key}, dismiss: {dismiss}")
+                    if (
+                        not isinstance(dismiss, Mapping)
+                        or dismiss.get("status", "failed") != "ok"
+                    ):
+                        success = False
+        else:
+            dismiss: Mapping[str, Any] | list = await self._post(
+                "/api/core/system/dismissStatus", payload={"subject": id}
+            )
+            _LOGGER.debug(f"[close_notice] id: {id}, dismiss: {dismiss}")
+            if (
+                not isinstance(dismiss, Mapping)
+                or dismiss.get("status", "failed") != "ok"
+            ):
+                success = False
+        _LOGGER.debug(f"[close_notice] success: {success}")
+        return success
