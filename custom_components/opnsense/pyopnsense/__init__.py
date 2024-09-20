@@ -1617,75 +1617,29 @@ foreach ($ovpn_servers as $server) {
         return telemetry
 
     @_log_errors
-    async def are_notices_pending(self) -> Mapping[str, Any]:
-        script: str = r"""
-if (file_exists('/usr/local/etc/inc/notices.inc')) {
-    require_once '/usr/local/etc/inc/notices.inc';
+    async def get_notices(self) -> list:
+        notices_info: Mapping[str, Any] | list = await self._get(
+            "/api/core/system/status"
+        )
+        _LOGGER.debug(f"[get_notices] notices_info: {notices_info}")
 
-    $toreturn = [
-        "data" => are_notices_pending(),
-    ];
-} else {
-    $status = new \OPNsense\System\SystemStatus();
-    $pending = false;
-    foreach ($status->getSystemStatus() as $key => $value) {
-        if ($value["statusCode"] != 2) {
-            $pending = true;
-            break;
-        }
-    }
-    $toreturn = [
-        "data" => $pending,
-    ];
-}
-"""
-        response: Mapping[str, Any] = await self._exec_php(script)
-        if response is None or not isinstance(response, Mapping):
-            _LOGGER.error("Invalid data returned from are_notices_pending")
-            return {}
-        return response.get("data", {})
-
-    @_log_errors
-    async def get_notices(self):
-        script: str = r"""
-if (file_exists('/usr/local/etc/inc/notices.inc')) {
-    require_once '/usr/local/etc/inc/notices.inc';
-
-    $toreturn = [
-        "data" => get_notices(),
-    ];
-} else {
-    $status = new \OPNsense\System\SystemStatus();
-    $toreturn = [
-        "data" => $status->getSystemStatus(),
-    ];
-}
-"""
-        response: Mapping[str, Any] = await self._exec_php(script)
-        if response is None or not isinstance(response, Mapping):
-            _LOGGER.error("Invalid data returned from get_notices -> getSystemStatus")
+        if not isinstance(notices_info, Mapping):
             return []
-        value: Mapping[str, Any] = response.get("data", [])
+        pending_notices_present = False
+        pending_notices: list = []
+        for key, notice in notices_info.items():
+            if isinstance(notices_info, Mapping) and notice.get("statusCode", 2) != 2:
+                pending_notices_present = True
+                real_notice: Mapping[str, Any] = {}
+                real_notice["notice"] = notice.get("message", None)
+                real_notice["id"] = key
+                real_notice["created_at"] = notice.get("timestamp", None)
+                pending_notices.append(real_notice)
 
-        if isinstance(value, list):
-            return []
-
-        notices: list = []
-        for key in value.keys():
-            notice: Mapping[str, Any] = value.get(key)
-            # 22.7.2+
-            if "statusCode" in notice.keys():
-                if notice["statusCode"] != 2:
-                    real_notice = {}
-                    real_notice["notice"] = notice["message"]
-                    real_notice["id"] = key
-                    real_notice["created_at"] = notice["timestamp"]
-                    notices.append(real_notice)
-            else:
-                notice["created_at"] = key
-                notice["id"] = key
-                notices.append(notice)
-
+        notices: Mapping[str, Any] = {}
+        notices["pending_notices_present"] = pending_notices_present
+        notices["pending_notices"] = pending_notices
+        _LOGGER.debug(f"[get_notices] notices: {notices}")
         return notices
 
     @_log_errors
