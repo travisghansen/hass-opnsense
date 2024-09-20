@@ -27,7 +27,6 @@
 | Delete ARP Entry | Yes | | |
 | System Reboot | Yes | Yes | |
 | System Halt | Yes | Yes | |
-| Send WOL | Yes | Yes | |
 | Are Notices Pending | Yes | Yes | |
 | Get Notices | Yes | Yes | |
 | Close Notice | Yes | Yes | |
@@ -50,5 +49,6 @@
 | Upgrade Firmware | /api/core/firmware/update<br>/api/core/firmware/upgrade | 2018 | |
 | Firmware Upgrade Status | /api/core/firmware/upgradestatus | 2018 | |
 | Firmware Changelog | /api/core/firmware/changelog/ | 2018 | |
+| Send WOL | /api/wol/wol/set | 2018 | |
 | Get ARP Table | /api/diagnostics/interface/search_arp | 2022 | |
 | Get System Info | /api/diagnostics/system/systemInformation | 24.7 | Partial: Still using XMLRPC for Getting Device ID |
