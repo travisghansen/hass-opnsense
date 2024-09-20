@@ -2,22 +2,22 @@
 
 | Function | Uses Plugin | Possible in REST API | Comments |
 | ----- | ----- | ----- | ----- |
-| Get Config | Yes | No | Returns a __large__ dictionary of elements used for multiple functions. Some can be replaced, others cannot. More details in the other functions. |
-| Restore Config Section | No | No | |
+| Get Config | Yes | No as of 24.7 | Returns a __large__ dictionary of elements used for multiple functions. Some can be replaced, others cannot. More details in the other functions. |
+| Restore Config Section | No | No as of 24.7 | |
 | Get/List Services | No | Yes | |
 | Start Service | No | Yes | |
 | Stop Service | No | Yes | |
 | Restart Service | No | Yes | |
 | Restart Service if Running | No | Yes | |
-| Filter Configure | Yes | No | Used by the Filter and NAT functions |
+| Filter Configure | Yes | No as of 24.7 | Used by the Filter and NAT functions |
 | Get Device ID | Yes | Maybe | Used as Unique ID for device. It is just a random 10 digit number generated the first time it is requested. May be able to transition to using the Config Entry ID or something else as a Unique ID. |
 | Get Interfaces | Yes | Yes | Uses Get Config. Can use same function that is used for the Interface data for the Telemetry data. |
-| Enable Filter Rule | Yes | No | Uses Get Config, Filter Configure and Restore Config Section. |
-| Disable Filter Rule | Yes | No | Uses Get Config, Filter Configure and Restore Config Section. |
-| Enable NAT Port Forward Rule | Yes | No | Uses Get Config, Filter Configure and Restore Config Section. |
-| Disable NAT Port Forward Rule | Yes | No | Uses Get Config, Filter Configure and Restore Config Section. |
-| Enable NAT Outbound Rule | Yes | No | Uses Get Config, Filter Configure and Restore Config Section. |
-| Disable NAT Outbound Rule | Yes | No | Uses Get Config, Filter Configure and Restore Config Section. |
+| Enable Filter Rule | Yes | No as of 24.7 | Uses Get Config, Filter Configure and Restore Config Section. |
+| Disable Filter Rule | Yes | No as of 24.7 | Uses Get Config, Filter Configure and Restore Config Section. |
+| Enable NAT Port Forward Rule | Yes | No as of 24.7 | Uses Get Config, Filter Configure and Restore Config Section. |
+| Disable NAT Port Forward Rule | Yes | No as of 24.7 | Uses Get Config, Filter Configure and Restore Config Section. |
+| Enable NAT Outbound Rule | Yes | No as of 24.7 | Uses Get Config, Filter Configure and Restore Config Section. |
+| Disable NAT Outbound Rule | Yes | No as of 24.7 | Uses Get Config, Filter Configure and Restore Config Section. |
 | Get Configured Interface Descriptions | Yes | | |
 | Get Gateways | Yes | Yes | Can use same function that is used for the Gateway data for the Telemetry data. |
 | Get Gateways Status | Yes | | |
