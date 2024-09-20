@@ -328,53 +328,6 @@ $toreturn["real"] = json_encode($toreturn_real);
         return {}
 
     @_log_errors
-    async def _is_subsystem_dirty(self, subsystem) -> bool:
-        script: str = (
-            r"""
-$data = json_decode('{}', true);
-$subsystem = $data["subsystem"];
-$dirty = is_subsystem_dirty($subsystem);
-$toreturn = [
-    "data" => $dirty,
-];
-""".format(
-                json.dumps({"subsystem": subsystem})
-            )
-        )
-
-        response: Mapping[str, Any] = await self._exec_php(script)
-        if response is None or not isinstance(response, Mapping):
-            _LOGGER.error("Invalid data returned from is_subsystem_dirty")
-            return False
-        return bool(response.get("data", False))
-
-    @_log_errors
-    async def _mark_subsystem_dirty(self, subsystem) -> None:
-        script: str = (
-            r"""
-$data = json_decode('{}', true);
-$subsystem = $data["subsystem"];
-mark_subsystem_dirty($subsystem);
-""".format(
-                json.dumps({"subsystem": subsystem})
-            )
-        )
-        await self._exec_php(script)
-
-    @_log_errors
-    async def _clear_subsystem_dirty(self, subsystem) -> None:
-        script: str = (
-            r"""
-$data = json_decode('{}', true);
-$subsystem = $data["subsystem"];
-clear_subsystem_dirty($subsystem);
-""".format(
-                json.dumps({"subsystem": subsystem})
-            )
-        )
-        await self._exec_php(script)
-
-    @_log_errors
     async def _filter_configure(self) -> None:
         script: str = r"""
 filter_configure();
@@ -842,28 +795,6 @@ $toreturn = [
         return response.get("data", {}).get("lease", [])
 
     @_log_errors
-    async def get_virtual_ips(self) -> Mapping[str, Any]:
-        script: str = r"""
-global $config;
-
-$vips = [];
-if ($config['virtualip'] && is_iterable($config['virtualip']['vip'])) {
-  foreach ($config['virtualip']['vip'] as $vip) {
-    $vips[] = $vip;
-  }
-}
-
-$toreturn = [
-  "data" => $vips,
-];
-"""
-        response: Mapping[str, Any] = await self._exec_php(script)
-        if response is None or not isinstance(response, Mapping):
-            _LOGGER.error("Invalid data returned from get_virtual_ips")
-            return {}
-        return response.get("data", {})
-
-    @_log_errors
     async def get_carp_status(self) -> Mapping[str, Any]:
         # carp enabled or not
         # readonly attribute, cannot be set directly
@@ -944,56 +875,6 @@ $toreturn = [
             )
         )
         await self._exec_php(script)
-
-    @_log_errors
-    async def arp_get_mac_by_ip(self, ip, do_ping=True):
-        """function arp_get_mac_by_ip($ip, $do_ping = true)"""
-        script: str = (
-            r"""
-$data = json_decode('{}', true);
-$ip = $data["ip"];
-$do_ping = $data["do_ping"];
-
-function arp_get_mac_by_ip($ip, $do_ping = true) {{
-        unset($macaddr);
-        $retval = 1;
-        switch (is_ipaddr($ip)) {{
-                case 4:
-                        if ($do_ping === true) {{
-                                mwexec("/sbin/ping -c 1 -t 1 " . escapeshellarg($ip), true);
-                        }}
-                        $macaddr = exec("/usr/sbin/arp -n " . escapeshellarg($ip) . " | /usr/bin/awk '{{print $4}}'", $output, $retval);
-                        break;
-                case 6:
-                        if ($do_ping === true) {{
-                                mwexec("/sbin/ping6 -c 1 -X 1 " . escapeshellarg($ip), true);
-                        }}
-                        $macaddr = exec("/usr/sbin/ndp -n " . escapeshellarg($ip) . " | /usr/bin/awk '{{print $2}}'", $output, $retval);
-                        break;
-        }}
-        if ($retval == 0 && is_macaddr($macaddr)) {{
-                return $macaddr;
-        }} else {{
-                return false;
-        }}
-}}
-
-$toreturn = [
-  "data" => arp_get_mac_by_ip($ip, $do_ping),
-];
-""".format(
-                json.dumps(
-                    {
-                        "ip": ip,
-                        "do_ping": do_ping,
-                    }
-                )
-            )
-        )
-        response: Mapping[str, Any] = await self._exec_php(script)
-        if isinstance(response, Mapping):
-            return response.get("data", None)
-        return None
 
     @_log_errors
     async def system_reboot(self) -> None:
@@ -1687,36 +1568,6 @@ if (file_exists('/usr/local/etc/inc/notices.inc')) {
                 notices.append(notice)
 
         return notices
-
-    @_log_errors
-    async def file_notice(self, notice) -> None:
-        script: str = (
-            r"""
-$data = json_decode('{}', true);
-$notice = $data["notice"];
-
-if (file_exists('/usr/local/etc/inc/notices.inc')) {{
-    require_once '/usr/local/etc/inc/notices.inc';
-    $value = file_notice($notice);
-    $toreturn = [
-        "data" => $value,
-    ];
-}} else {{
-    // not currently supported in 22.7.2+
-    $toreturn = [
-        "data" => false,
-    ];
-}}
-""".format(
-                json.dumps(
-                    {
-                        "notice": notice,
-                    }
-                )
-            )
-        )
-
-        await self._exec_php(script)
 
     @_log_errors
     async def close_notice(self, id) -> None:
