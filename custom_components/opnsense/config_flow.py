@@ -265,14 +265,14 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
             # follow with all arp table entries
             for entry in arp_table:
-                mac = entry.get("mac-address", "").lower()
+                mac: str = entry.get("mac", "").lower()
                 if len(mac) < 1:
                     continue
 
-                hostname = entry.get("hostname").strip("?")
-                ip = entry.get("ip-address")
+                hostname: str = entry.get("hostname", "").strip("?")
+                ip: str = entry.get("ip", "")
 
-                label = f"{mac} - {hostname.strip()} ({ip.strip()})"
+                label: str = f"{mac} - {hostname.strip()} ({ip.strip()})"
                 entries[mac] = label
 
             return self.async_show_form(
