@@ -62,7 +62,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         #         ]
         #     else:
         #         return []
-        clients: list = []
+
         entry_ids: list = []
         if opndevice_id:
             try:
@@ -90,6 +90,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 )
                 if entity_entry.config_entry_id not in entry_ids:
                     entry_ids.append(entity_entry.config_entry_id)
+        clients: list = []
         _LOGGER.debug(f"[get_clients] entry_ids: {entry_ids}")
         for entry_id, entry in hass.data[DOMAIN].items():
             _LOGGER.debug(f"[get_clients] entry_id: {entry_id}")
@@ -174,7 +175,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         service=SERVICE_CLOSE_NOTICE,
         schema=vol.Schema(
             {
-                vol.Optional("id", default="all"): vol.Any(cv.positive_int, cv.string),
+                vol.Required("id", default="all"): vol.Any(cv.positive_int, cv.string),
                 vol.Optional("device_id"): vol.Any(cv.string),
                 vol.Optional("entity_id"): vol.Any(cv.string),
             }
