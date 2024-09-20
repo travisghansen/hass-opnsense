@@ -98,10 +98,6 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         return await self._client.get_dhcp_leases()
 
     @_log_timing
-    async def _are_notices_pending(self):
-        return await self._client.are_notices_pending()
-
-    @_log_timing
     async def _get_notices(self):
         return await self._client.get_notices()
 
@@ -147,11 +143,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             # self._state["dhcp_leases"] = await self._client.get_dhcp_leases()
             self._state["dhcp_leases"] = []
             self._state["dhcp_stats"] = {}
-            self._state["notices"] = {}
-            self._state["notices"][
-                "pending_notices_present"
-            ] = await self._are_notices_pending()
-            self._state["notices"]["pending_notices"] = await self._get_notices()
+            self._state["notices"] = await self._get_notices()
 
             lease_stats: Mapping[str, int] = {"total": 0, "online": 0, "offline": 0}
             for lease in self._state["dhcp_leases"]:
