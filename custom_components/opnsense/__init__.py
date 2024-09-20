@@ -306,10 +306,6 @@ class OPNsenseEntity(CoordinatorEntity, RestoreEntity):
         client = self._get_opnsense_client()
         await client.close_notice(id)
 
-    async def service_file_notice(self, **kwargs) -> None:
-        client = self._get_opnsense_client()
-        await client.file_notice(**kwargs)
-
     async def service_start_service(self, service_name: str) -> None:
         client = self._get_opnsense_client()
         await client.start_service(service_name)

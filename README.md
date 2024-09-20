@@ -181,11 +181,6 @@ data:
   # default is to clear all notices
   # id: <some id>
 
-service: opnsense.file_notice
-data:
-  entity_id: binary_sensor.opnsense_localdomain_pending_notices_present
-  notice: "hello world"
-
 service: opnsense.system_halt
 data:
   entity_id: binary_sensor.opnsense_localdomain_pending_notices_present

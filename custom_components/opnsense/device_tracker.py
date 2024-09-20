@@ -16,7 +16,6 @@ from homeassistant.helpers.device_registry import (
     async_get as async_get_dev_reg,
 )
 from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import slugify
 from mac_vendor_lookup import AsyncMacLookup
 
@@ -30,6 +29,7 @@ from .const import (
     SHOULD_RELOAD,
     TRACKED_MACS,
 )
+from .coordinator import OPNsenseDataUpdateCoordinator
 from .helpers import dict_get
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -92,10 +92,10 @@ async def async_setup_entry(
                 if not arp_entries:
                     return []
 
-                mac_addresses = [
+                mac_addresses: list = [
                     mac_address.lower()
                     for arp_entry in arp_entries
-                    if (mac_address := arp_entry.get("mac-address"))
+                    if (mac_address := arp_entry.get("mac", ""))
                 ]
 
         for mac_address in mac_addresses:
@@ -149,7 +149,7 @@ class OPNsenseScannerEntity(OPNsenseEntity, ScannerEntity):
         self,
         hass: HomeAssistant,
         config_entry: ConfigEntry,
-        coordinator: DataUpdateCoordinator,
+        coordinator: OPNsenseDataUpdateCoordinator,
         enabled_default: bool,
         mac: str,
         mac_vendor: str,
@@ -176,7 +176,7 @@ class OPNsenseScannerEntity(OPNsenseEntity, ScannerEntity):
         if arp_table is None:
             return None
         for entry in arp_table:
-            if entry.get("mac-address", "").lower() == self._mac_address:
+            if entry.get("mac", "").lower() == self._mac_address:
                 return entry
 
         return None
@@ -232,7 +232,7 @@ class OPNsenseScannerEntity(OPNsenseEntity, ScannerEntity):
         if entry is None:
             return None
 
-        ip_address = entry.get("ip-address")
+        ip_address = entry.get("ip")
         if ip_address is not None and len(ip_address) > 0:
             self._last_known_ip = ip_address
         return ip_address
@@ -309,7 +309,7 @@ class OPNsenseScannerEntity(OPNsenseEntity, ScannerEntity):
             return False
         # TODO: check "expires" here to add more honed in logic?
         # TODO: clear cache under certain scenarios?
-        ip_address = entry.get("ip-address")
+        ip_address = entry.get("ip")
         if ip_address is not None and len(ip_address) > 0:
             client = self._get_opnsense_client()
             self.hass.add_job(client.delete_arp_entry, ip_address)

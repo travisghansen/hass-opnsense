@@ -11,7 +11,6 @@ import ssl
 import time
 from typing import Any
 from urllib.parse import quote_plus, urlparse
-from xml.parsers.expat import ExpatError
 import xmlrpc.client
 import zoneinfo
 
@@ -302,13 +301,12 @@ $toreturn["real"] = json_encode($toreturn_real);
         try:
             async with self._session.post(
                 url,
-                data=payload,
+                json=payload,
                 auth=aiohttp.BasicAuth(self._username, self._password),
                 timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
                 ssl=self._verify_ssl,
             ) as response:
                 _LOGGER.debug(f"[post] Response {response.status}: {response.reason}")
-
                 if response.ok:
                     response_json: Mapping[str, Any] | list = await response.json(
                         content_type=None
@@ -326,53 +324,6 @@ $toreturn["real"] = json_encode($toreturn_real);
             _LOGGER.error(f"Client error: {str(e)}")
 
         return {}
-
-    @_log_errors
-    async def _is_subsystem_dirty(self, subsystem) -> bool:
-        script: str = (
-            r"""
-$data = json_decode('{}', true);
-$subsystem = $data["subsystem"];
-$dirty = is_subsystem_dirty($subsystem);
-$toreturn = [
-    "data" => $dirty,
-];
-""".format(
-                json.dumps({"subsystem": subsystem})
-            )
-        )
-
-        response: Mapping[str, Any] = await self._exec_php(script)
-        if response is None or not isinstance(response, Mapping):
-            _LOGGER.error("Invalid data returned from is_subsystem_dirty")
-            return False
-        return bool(response.get("data", False))
-
-    @_log_errors
-    async def _mark_subsystem_dirty(self, subsystem) -> None:
-        script: str = (
-            r"""
-$data = json_decode('{}', true);
-$subsystem = $data["subsystem"];
-mark_subsystem_dirty($subsystem);
-""".format(
-                json.dumps({"subsystem": subsystem})
-            )
-        )
-        await self._exec_php(script)
-
-    @_log_errors
-    async def _clear_subsystem_dirty(self, subsystem) -> None:
-        script: str = (
-            r"""
-$data = json_decode('{}', true);
-$subsystem = $data["subsystem"];
-clear_subsystem_dirty($subsystem);
-""".format(
-                json.dumps({"subsystem": subsystem})
-            )
-        )
-        await self._exec_php(script)
 
     @_log_errors
     async def _filter_configure(self) -> None:
@@ -743,46 +694,16 @@ $toreturn = [
     @_log_errors
     async def get_arp_table(self, resolve_hostnames=False) -> Mapping[str, Any]:
         # [{'hostname': '?', 'ip-address': '<ip>', 'mac-address': '<mac>', 'interface': 'em0', 'expires': 1199, 'type': 'ethernet'}, ...]
-        script: str = (
-            r"""
-$data = json_decode('{}', true);
-$resolve_hostnames = $data["resolve_hostnames"];
-
-function system_get_arp_table($resolve_hostnames = false) {{
-        $params="-a";
-        if (!$resolve_hostnames) {{
-                $params .= "n";
-        }}
-
-        $arp_table = array();
-        $_gb = exec("/usr/sbin/arp --libxo json {{$params}}", $rawdata, $rc);
-        if ($rc == 0) {{
-                $arp_table = json_decode(implode(" ", $rawdata),
-                    JSON_OBJECT_AS_ARRAY);
-                if ($rc == 0) {{
-                        $arp_table = $arp_table['arp']['arp-cache'];
-                }}
-        }}
-
-        return $arp_table;
-}}
-
-$toreturn = [
-  "data" => system_get_arp_table($resolve_hostnames),
-];
-""".format(
-                json.dumps(
-                    {
-                        "resolve_hostnames": resolve_hostnames,
-                    }
-                )
-            )
+        request_body: Mapping[str, Any] = {"resolve": "yes"}
+        arp_table_info: Mapping[str, Any] | list = await self._post(
+            "/api/diagnostics/interface/search_arp", payload=request_body
         )
-        response: Mapping[str, Any] = await self._exec_php(script)
-        if response is None or not isinstance(response, Mapping):
-            _LOGGER.error("Invalid data returned from get_arp_table")
-            return {}
-        return response.get("data", {})
+        if not isinstance(arp_table_info, Mapping):
+            return []
+        _LOGGER.debug(f"[get_arp_table] arp_table_info: {arp_table_info}")
+        arp_table: list = arp_table_info.get("rows", [])
+        _LOGGER.debug(f"[get_arp_table] arp_table: {arp_table}")
+        return arp_table
 
     @_log_errors
     async def get_services(self):
@@ -840,28 +761,6 @@ $toreturn = [
             _LOGGER.error("Invalid data returned from get_dhcp_leases")
             return []
         return response.get("data", {}).get("lease", [])
-
-    @_log_errors
-    async def get_virtual_ips(self) -> Mapping[str, Any]:
-        script: str = r"""
-global $config;
-
-$vips = [];
-if ($config['virtualip'] && is_iterable($config['virtualip']['vip'])) {
-  foreach ($config['virtualip']['vip'] as $vip) {
-    $vips[] = $vip;
-  }
-}
-
-$toreturn = [
-  "data" => $vips,
-];
-"""
-        response: Mapping[str, Any] = await self._exec_php(script)
-        if response is None or not isinstance(response, Mapping):
-            _LOGGER.error("Invalid data returned from get_virtual_ips")
-            return {}
-        return response.get("data", {})
 
     @_log_errors
     async def get_carp_status(self) -> Mapping[str, Any]:
@@ -946,131 +845,33 @@ $toreturn = [
         await self._exec_php(script)
 
     @_log_errors
-    async def arp_get_mac_by_ip(self, ip, do_ping=True):
-        """function arp_get_mac_by_ip($ip, $do_ping = true)"""
-        script: str = (
-            r"""
-$data = json_decode('{}', true);
-$ip = $data["ip"];
-$do_ping = $data["do_ping"];
-
-function arp_get_mac_by_ip($ip, $do_ping = true) {{
-        unset($macaddr);
-        $retval = 1;
-        switch (is_ipaddr($ip)) {{
-                case 4:
-                        if ($do_ping === true) {{
-                                mwexec("/sbin/ping -c 1 -t 1 " . escapeshellarg($ip), true);
-                        }}
-                        $macaddr = exec("/usr/sbin/arp -n " . escapeshellarg($ip) . " | /usr/bin/awk '{{print $4}}'", $output, $retval);
-                        break;
-                case 6:
-                        if ($do_ping === true) {{
-                                mwexec("/sbin/ping6 -c 1 -X 1 " . escapeshellarg($ip), true);
-                        }}
-                        $macaddr = exec("/usr/sbin/ndp -n " . escapeshellarg($ip) . " | /usr/bin/awk '{{print $2}}'", $output, $retval);
-                        break;
-        }}
-        if ($retval == 0 && is_macaddr($macaddr)) {{
-                return $macaddr;
-        }} else {{
-                return false;
-        }}
-}}
-
-$toreturn = [
-  "data" => arp_get_mac_by_ip($ip, $do_ping),
-];
-""".format(
-                json.dumps(
-                    {
-                        "ip": ip,
-                        "do_ping": do_ping,
-                    }
-                )
-            )
-        )
-        response: Mapping[str, Any] = await self._exec_php(script)
-        if isinstance(response, Mapping):
-            return response.get("data", None)
-        return None
-
-    @_log_errors
-    async def system_reboot(self) -> None:
-        script: str = r"""
-// /usr/local/opnsense/mvc/app/library/OPNsense/Core/Backend.php
-use OPNsense\Core\Backend;
-
-$backend = new Backend();
-$backend->configdRun('system reboot', true);
-
-$toreturn = [
-  "data" => true,
-];
-"""
-        try:
-            await self._exec_php(script)
-        except ExpatError:
-            # ignore response failures because the system is going down
-            pass
+    async def system_reboot(self) -> bool:
+        response: Mapping[str, Any] | list = await self._post("/api/core/system/reboot")
+        _LOGGER.debug(f"[system_reboot] response: {response}")
+        if isinstance(response, Mapping) and response.get("status", "") == "ok":
+            return True
+        return False
 
     @_log_errors
     async def system_halt(self) -> None:
-        script: str = r"""
-use OPNsense\Core\Backend;
-
-$backend = new Backend();
-$backend->configdRun('system halt', true);
-
-$toreturn = [
-  "data" => true,
-];
-"""
-        try:
-            await self._exec_php(script)
-        except ExpatError:
-            # ignore response failures because the system is going down
-            pass
+        response: Mapping[str, Any] | list = await self._post("/api/core/system/halt")
+        _LOGGER.debug(f"[system_halt] response: {response}")
+        if isinstance(response, Mapping) and response.get("status", "") == "ok":
+            return True
+        return False
 
     @_log_errors
-    async def send_wol(self, interface, mac) -> Mapping[str, Any]:
+    async def send_wol(self, interface, mac) -> bool:
         """
         interface should be wan, lan, opt1, opt2 etc, not the description
         """
-
-        script: str = (
-            r"""
-$data = json_decode('{}', true);
-$if = $data["interface"];
-$mac = $data["mac"];
-
-function send_wol($if, $mac) {{
-    global $config;
-    $ipaddr = get_interface_ip($if);
-    if (!is_ipaddr($ipaddr) || !is_macaddr($mac)) {{
-            return false;
-    }}
-    
-    $bcip = gen_subnet_max($ipaddr, $config["interfaces"][$if]["subnet"]);
-    return (bool) !mwexec("/usr/local/bin/wol -i {{$bcip}} {{$mac}}");
-}}
-
-$value = send_wol($if, $mac);
-$toreturn = [
-  "data" => $value,
-];
-""".format(
-                json.dumps(
-                    {
-                        "interface": interface,
-                        "mac": mac,
-                    }
-                )
-            )
-        )
-
-        response: Mapping[str, Any] = await self._exec_php(script)
-        return response
+        payload: Mapping[str, Any] = {"wake": {"interface": interface, "mac": mac}}
+        _LOGGER.debug(f"[send_wol] payload: {payload}")
+        response = await self._post("/api/wol/wol/set", payload)
+        _LOGGER.debug(f"[send_wol] response: {response}")
+        if isinstance(response, Mapping) and response.get("status", "") == "ok":
+            return True
+        return False
 
     def _try_to_int(self, input, retval=None) -> int | None:
         try:
@@ -1641,36 +1442,6 @@ foreach ($ovpn_servers as $server) {
         notices["pending_notices"] = pending_notices
         _LOGGER.debug(f"[get_notices] notices: {notices}")
         return notices
-
-    @_log_errors
-    async def file_notice(self, notice) -> None:
-        script: str = (
-            r"""
-$data = json_decode('{}', true);
-$notice = $data["notice"];
-
-if (file_exists('/usr/local/etc/inc/notices.inc')) {{
-    require_once '/usr/local/etc/inc/notices.inc';
-    $value = file_notice($notice);
-    $toreturn = [
-        "data" => $value,
-    ];
-}} else {{
-    // not currently supported in 22.7.2+
-    $toreturn = [
-        "data" => false,
-    ];
-}}
-""".format(
-                json.dumps(
-                    {
-                        "notice": notice,
-                    }
-                )
-            )
-        )
-
-        await self._exec_php(script)
 
     @_log_errors
     async def close_notice(self, id) -> bool:
