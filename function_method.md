@@ -25,9 +25,6 @@
 | Get Carp Status | Yes | Yes | |
 | Get Carp Interfaces | Yes | Yes | |
 | Delete ARP Entry | Yes | | |
-| Are Notices Pending | Yes | Yes | |
-| Get Notices | Yes | Yes | |
-| Close Notice | Yes | Yes | |
 
 # REST API Functions
 
@@ -52,3 +49,5 @@
 | Send WOL | /api/wol/wol/set | 2018 | |
 | Get ARP Table | /api/diagnostics/interface/search_arp | 2022 | |
 | Get System Info | /api/diagnostics/system/systemInformation | 24.7 | Partial: Still using XMLRPC for Getting Device ID |
+| Get Notices | /api/core/system/status | 2022 | |
+| Close Notice | /api/core/system/status<br>/api/core/system/dismissStatus | 2022 | |
