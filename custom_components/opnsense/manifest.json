@@ -1,12 +1,12 @@
 {
   "domain": "opnsense",
   "name": "OPNsense",
-  "codeowners": ["@travisghansen"],
+  "codeowners": ["@travisghansen", "@Snuffy2"],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/travisghansen/hass-opnsense",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/travisghansen/hass-opnsense/issues",
-  "requirements": ["mac-vendor-lookup>=0.1.11", "python-dateutil"],
+  "requirements": ["mac-vendor-lookup>=0.1.11", "python-dateutil", "awesomeversion"],
   "version":"v0.2.1"
 }

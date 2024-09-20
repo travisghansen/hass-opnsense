@@ -109,9 +109,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             )
             await client.close_notice(call.data.get("id"))
 
-    # async def service_file_notice(self, **kwargs) -> None:
-    #     await self._client.file_notice(**kwargs)
-
     async def service_start_service(call: ServiceCall) -> None:
         clients: list = await _get_clients()
         _LOGGER.debug(f"[service_start_service] clients: {clients}")
@@ -184,17 +181,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         ),
         service_func=service_close_notice,
     )
-
-    # hass.services.async_register(
-    #     domain=DOMAIN,
-    #     service=SERVICE_FILE_NOTICE,
-    #     schema=vol.Schema(
-    #         {
-    #             vol.Required("notice"): vol.Any(cv.string),
-    #         }
-    #     ),
-    #     service_func=service_file_notice,
-    # )
 
     hass.services.async_register(
         domain=DOMAIN,

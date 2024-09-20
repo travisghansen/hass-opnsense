@@ -38,22 +38,6 @@ close_notice:
                 - integration: opnsense
                   domain: sensor
 
-# file_notice:
-#   name: File notice
-#   description: Files a notice(s).
-#   fields:
-#     entity_id:
-#       name: Entity ID
-#       description: OPNsense entity id
-#       example: "binary_sensor.opnsense_localdomain_pending_notices_present"
-#     notice:
-#       name: Notice message
-#       description: The notice message
-#       required: true
-#       advanced: false
-#       example: "hello world from hass"
-#       default: ""
-
 start_service:
   name: Start service
   description: Starts a service.
