@@ -16,7 +16,6 @@ from homeassistant.helpers.device_registry import (
     async_get as async_get_dev_reg,
 )
 from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import slugify
 from mac_vendor_lookup import AsyncMacLookup
 
@@ -30,6 +29,7 @@ from .const import (
     SHOULD_RELOAD,
     TRACKED_MACS,
 )
+from .coordinator import OPNsenseDataUpdateCoordinator
 from .helpers import dict_get
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -149,7 +149,7 @@ class OPNsenseScannerEntity(OPNsenseEntity, ScannerEntity):
         self,
         hass: HomeAssistant,
         config_entry: ConfigEntry,
-        coordinator: DataUpdateCoordinator,
+        coordinator: OPNsenseDataUpdateCoordinator,
         enabled_default: bool,
         mac: str,
         mac_vendor: str,

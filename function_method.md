@@ -10,12 +10,8 @@
 | Stop Service | No | Yes | |
 | Restart Service | No | Yes | |
 | Restart Service if Running | No | Yes | |
-| Is Subsystem Dirty | Yes | No | Doesn't appear to be used anymore. Probably just remove altogether. |
-| Mark Subsystem Dirty | Yes | No | Doesn't appear to be used anymore. Probably just remove altogether. |
-| Clear Subsystem Dirty | Yes | No | Doesn't appear to be used anymore. Probably just remove altogether. |
-| Filter Configure | Yes | | |
+| Filter Configure | Yes | No | Used by the Filter and NAT functions |
 | Get Device ID | Yes | Maybe | Used as Unique ID for device. It is just a random 10 digit number generated the first time it is requested. May be able to transition to using the Config Entry ID or something else as a Unique ID. |
-| Get System Info | Yes | Partial | Returns hostname and domain as well as Device ID. Hostname and Domain can be obtained in REST API. |
 | Get Interfaces | Yes | Yes | Uses Get Config. Can use same function that is used for the Interface data for the Telemetry data. |
 | Enable Filter Rule | Yes | No | Uses Get Config, Filter Configure and Restore Config Section. |
 | Disable Filter Rule | Yes | No | Uses Get Config, Filter Configure and Restore Config Section. |
@@ -27,16 +23,13 @@
 | Get Gateways | Yes | Yes | Can use same function that is used for the Gateway data for the Telemetry data. |
 | Get Gateways Status | Yes | | |
 | Get DHCP Leases | Yes | Yes | Currently not in use, but desired feature. Will need to handle both the legacy DHCP and Kea endpoints. |
-| Get Virtual IPs | Yes | Yes | Doesn't appear to be used anymore. Probably just remove altogether. |
 | Get Carp Status | Yes | Yes | |
 | Get Carp Interfaces | Yes | Yes | |
 | Delete ARP Entry | Yes | | |
-| Get MAC by IP | Yes | Yes | Doesn't appear to be used anymore. Probably just remove altogether. |
 | System Reboot | Yes | Yes | |
 | System Halt | Yes | Yes | |
 | Are Notices Pending | Yes | Yes | |
 | Get Notices | Yes | Yes | |
-| File Notice | Yes | No | Has not worked since OPNsense 22.7.2. Probably just remove altogether. |
 | Close Notice | Yes | Yes | |
 
 # REST API Functions
@@ -58,3 +51,4 @@
 | Firmware Upgrade Status | /api/core/firmware/upgradestatus | 2018 | |
 | Firmware Changelog | /api/core/firmware/changelog/ | 2018 | |
 | Send WOL | /api/wol/wol/set | 2018 | |
+| Get System Info | /api/diagnostics/system/systemInformation | 24.7 | Partial: Still using XMLRPC for Getting Device ID |

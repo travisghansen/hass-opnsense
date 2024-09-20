@@ -15,11 +15,11 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity import EntityCategory
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import slugify
 
 from . import CoordinatorEntityManager, OPNsenseEntity
 from .const import COORDINATOR, DOMAIN
+from .coordinator import OPNsenseDataUpdateCoordinator
 from .helpers import dict_get
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ class OPNsenseUpdate(OPNsenseEntity, UpdateEntity):
     def __init__(
         self,
         config_entry,
-        coordinator: DataUpdateCoordinator,
+        coordinator: OPNsenseDataUpdateCoordinator,
         entity_description: UpdateEntityDescription,
         enabled_default: bool,
     ) -> None:

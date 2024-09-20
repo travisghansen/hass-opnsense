@@ -23,7 +23,6 @@ from homeassistant.const import (  # ENTITY_CATEGORY_DIAGNOSTIC,
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_platform
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import slugify
 from homeassistant.util.dt import utc_from_timestamp
 
@@ -36,6 +35,7 @@ from .const import (
     DOMAIN,
     SENSOR_TYPES,
 )
+from .coordinator import OPNsenseDataUpdateCoordinator
 from .helpers import dict_get
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -371,7 +371,7 @@ class OPNsenseSensor(OPNsenseEntity, SensorEntity):
     def __init__(
         self,
         config_entry,
-        coordinator: DataUpdateCoordinator,
+        coordinator: OPNsenseDataUpdateCoordinator,
         entity_description: SensorEntityDescription,
         enabled_default: bool,
     ) -> None:
