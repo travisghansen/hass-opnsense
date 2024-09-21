@@ -179,38 +179,6 @@ $toreturn["real"] = json_encode($toreturn_real);
         _LOGGER.debug(f"[get_host_firmware_version] firmware: {firmware}")
         return firmware
 
-    @_xmlrpc_timeout
-    @_log_errors
-    async def _list_services(self):
-        response = await self._loop.run_in_executor(
-            None, self._get_proxy().opnsense.list_services
-        )
-        if response is None or not isinstance(response, Mapping):
-            _LOGGER.error("Invalid data returned from list_services")
-            return {}
-        return response
-
-    @_xmlrpc_timeout
-    @_log_errors
-    async def _start_service(self, params):
-        return await self._loop.run_in_executor(
-            None, self._get_proxy().opnsense.start_services, params
-        )
-
-    @_xmlrpc_timeout
-    @_log_errors
-    async def _stop_service(self, params):
-        return await self._loop.run_in_executor(
-            None, self._get_proxy().opnsense.stop_services, params
-        )
-
-    @_xmlrpc_timeout
-    @_log_errors
-    async def _restart_service(self, params):
-        return await self._loop.run_in_executor(
-            None, self._get_proxy().opnsense.restart_services, params
-        )
-
     async def _get_from_stream(self, path: str) -> Mapping[str, Any] | list:
         url: str = f"{self._url}{path}"
         _LOGGER.debug(f"[get_from_stream] url: {url}")
@@ -706,39 +674,75 @@ $toreturn = [
         return arp_table
 
     @_log_errors
-    async def get_services(self):
-        response = await self._list_services()
-        services = []
-        for key in response.keys():
-            services.append(response[key])
-
+    async def get_services(self) -> list:
+        response = await self._loop.run_in_executor(
+            None, self._get_proxy().opnsense.list_services
+        )
+        response: Mapping[str, Any] | list = await self._get("/api/core/service/search")
+        if response is None or not isinstance(response, Mapping):
+            _LOGGER.error("Invalid data returned from get_services")
+            return []
+        _LOGGER.debug(f"[get_services] response: {response}")
+        services: list = response.get("rows", [])
+        for service in services:
+            service["status"] = service.get("running", 0) == 1
+        _LOGGER.debug(f"[get_services] services: {services}")
         return services
 
     @_log_errors
-    async def get_service_is_running(self, service_name):
-        services = await self.get_services()
+    async def get_service_is_running(self, service) -> bool:
+        services: list = await self.get_services()
+        if services is None or not isinstance(services, list):
+            return False
         for service in services:
-            if service["name"] == service_name:
-                return service["status"]
-
+            if (
+                service.get("name", None) == service
+                or service.get("id", None) == service
+            ) and service.get("status", False):
+                return True
         return False
 
     @_log_errors
-    async def start_service(self, service_name):
-        self._start_service({"service": service_name})
+    async def start_service(self, service) -> bool:
+        api_addr: str = f"/api/core/service/start/{service}"
+        response: Mapping[str, Any] | list = await self._post(api_addr)
+        if (
+            response is None
+            or not isinstance(response, Mapping)
+            or response.get("result", "failed") != "ok"
+        ):
+            return False
+        return True
 
     @_log_errors
-    async def stop_service(self, service_name):
-        await self._stop_service({"service": service_name})
+    async def stop_service(self, service) -> bool:
+        api_addr: str = f"/api/core/service/stop/{service}"
+        response: Mapping[str, Any] | list = await self._post(api_addr)
+        if (
+            response is None
+            or not isinstance(response, Mapping)
+            or response.get("result", "failed") != "ok"
+        ):
+            return False
+        return True
 
     @_log_errors
-    async def restart_service(self, service_name):
-        await self._restart_service({"service": service_name})
+    async def restart_service(self, service) -> bool:
+        api_addr: str = f"/api/core/service/restart/{service}"
+        response: Mapping[str, Any] | list = await self._post(api_addr)
+        if (
+            response is None
+            or not isinstance(response, Mapping)
+            or response.get("result", "failed") != "ok"
+        ):
+            return False
+        return True
 
     @_log_errors
-    async def restart_service_if_running(self, service_name):
-        if await self.get_service_is_running(service_name):
-            await self.restart_service(service_name)
+    async def restart_service_if_running(self, service) -> bool:
+        if await self.get_service_is_running(service):
+            return await self.restart_service(service)
+        return True
 
     @_log_errors
     async def get_dhcp_leases(self):
@@ -780,7 +784,7 @@ $toreturn = [
 """
         response: Mapping[str, Any] = await self._exec_php(script)
         if response is None or not isinstance(response, Mapping):
-            _LOGGER.error("Invalid data returned from list_services")
+            _LOGGER.error("Invalid data returned from get_carp_status")
             return {}
         return response.get("data", {})
 

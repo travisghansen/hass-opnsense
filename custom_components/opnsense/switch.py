@@ -1,6 +1,8 @@
 """OPNsense integration."""
 
+from collections.abc import Mapping
 import logging
+from typing import Any
 
 from homeassistant.components.switch import (
     SwitchDeviceClass,
@@ -12,6 +14,8 @@ from homeassistant.const import STATE_UNKNOWN  # ENTITY_CATEGORY_CONFIG,
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_platform
 from homeassistant.util import slugify
+
+from custom_components.opnsense.pyopnsense import OPNsenseClient
 
 from . import CoordinatorEntityManager, OPNsenseEntity
 from .const import COORDINATOR, DOMAIN
@@ -26,7 +30,7 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: entity_platform.AddEntitiesCallback,
 ):
-    """Set up the OPNsense binary sensors."""
+    """Set up the OPNsense switches."""
 
     @callback
     def process_entities_callback(hass, config_entry):
@@ -166,6 +170,8 @@ async def async_setup_entry(
 
         # services
         for service in state["services"]:
+            if service.get("locked", 1) == 1:
+                continue
             for property in ["status"]:
                 icon = "mdi:application-cog-outline"
                 # likely only want very specific services to manipulate from actions
@@ -177,8 +183,8 @@ async def async_setup_entry(
                     config_entry,
                     coordinator,
                     SwitchEntityDescription(
-                        key="service.{}.{}".format(service["name"], property),
-                        name="Service {} {}".format(service["name"], property),
+                        key="service.{}.{}".format(service["id"], property),
+                        name="Service {} {}".format(service["description"], property),
                         icon=icon,
                         # entity_category=entity_category,
                         device_class=device_class,
@@ -362,26 +368,24 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
 
 
 class OPNsenseServiceSwitch(OPNsenseSwitch):
-    def _opnsense_get_property_name(self):
+    def _opnsense_get_property_name(self) -> str:
         return self.entity_description.key.split(".")[2]
 
-    def _opnsense_get_service_name(self):
+    def _opnsense_get_service_id(self) -> str:
         return self.entity_description.key.split(".")[1]
 
-    def _opnsense_get_service(self):
-        state = self.coordinator.data
-        found = None
-        service_name = self._opnsense_get_service_name()
+    def _opnsense_get_service(self) -> Mapping[str, Any] | None:
+        state: Mapping[str, Any] = self.coordinator.data
+        service_id: str = self._opnsense_get_service_id()
         for service in state["services"]:
-            if service["name"] == service_name:
-                found = service
-                break
-        return found
+            if service["id"] == service_id:
+                return service
+        return None
 
     @property
     def available(self) -> bool:
-        service = self._opnsense_get_service()
-        property = self._opnsense_get_property_name()
+        service: Mapping[str, Any] | None = self._opnsense_get_service()
+        property: str = self._opnsense_get_property_name()
         if service is None or property not in service.keys():
             return False
 
@@ -389,30 +393,32 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
 
     @property
     def is_on(self):
-        service = self._opnsense_get_service()
-        property = self._opnsense_get_property_name()
+        service: Mapping[str, Any] | None = self._opnsense_get_service()
+        property: str = self._opnsense_get_property_name()
         try:
             value = service[property]
             return value
         except KeyError:
             return STATE_UNKNOWN
 
-    async def async_turn_on(self, **kwargs):
+    async def async_turn_on(self, **kwargs) -> None:
         """Turn the entity on."""
-        service = self._opnsense_get_service()
-        client = self._get_opnsense_client()
-        result = await self.hass.async_add_executor_job(
-            client.start_service, service["name"]
-        )
-        if result:
-            await self.coordinator.async_refresh()
+        service: Mapping[str, Any] | None = self._opnsense_get_service()
+        if isinstance(service, Mapping):
+            client: OPNsenseClient = self._get_opnsense_client()
+            result: bool = await client.start_service(
+                service.get("id", service.get("name", None))
+            )
+            if result:
+                await self.coordinator.async_refresh()
 
-    async def async_turn_off(self, **kwargs):
+    async def async_turn_off(self, **kwargs) -> None:
         """Turn the entity off."""
-        service = self._opnsense_get_service()
-        client = self._get_opnsense_client()
-        result = await self.hass.async_add_executor_job(
-            client.stop_service, service["name"]
-        )
-        if result:
-            await self.coordinator.async_refresh()
+        service: Mapping[str, Any] | None = self._opnsense_get_service()
+        if isinstance(service, Mapping):
+            client: OPNsenseClient = self._get_opnsense_client()
+            result: bool = await client.stop_service(
+                service.get("id", service.get("name", None))
+            )
+            if result:
+                await self.coordinator.async_refresh()
