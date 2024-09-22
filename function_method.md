@@ -11,9 +11,6 @@
 | Disable NAT Port Forward Rule | Yes | No as of 24.7 | Uses Get Config, Filter Configure and Restore Config Section. |
 | Enable NAT Outbound Rule | Yes | No as of 24.7 | Uses Get Config, Filter Configure and Restore Config Section. |
 | Disable NAT Outbound Rule | Yes | No as of 24.7 | Uses Get Config, Filter Configure and Restore Config Section. |
-| Get Configured Interface Descriptions | Yes | | Doesn't appear to be used anymore. Probably just remove altogether. |
-| Get Gateways | Yes | Yes | Doesn't appear to be used anymore. Probably just remove altogether. |
-| Get Gateways Status | Yes | | Doesn't appear to be used anymore. Probably just remove altogether. |
 | Get DHCP Leases | Yes | Yes | Currently not in use, but desired feature. Will need to handle both the legacy DHCP and Kea endpoints. |
 | Get Device ID | Yes | Maybe | Used as Unique ID for device. It is just a random 10 digit number generated the first time it is requested. May be able to transition to using the Config Entry ID or something else as a Unique ID. |
 | Get Interfaces | Yes | Yes | Uses Get Config. Can use same function that is used for the Interface data for the Telemetry data. |
