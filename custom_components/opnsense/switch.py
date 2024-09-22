@@ -29,7 +29,7 @@ async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
     async_add_entities: entity_platform.AddEntitiesCallback,
-):
+) -> None:
     """Set up the OPNsense switches."""
 
     @callback
@@ -230,20 +230,18 @@ class OPNsenseSwitch(OPNsenseEntity, SwitchEntity):
 
 
 class OPNsenseFilterSwitch(OPNsenseSwitch):
-    def _opnsense_get_tracker(self):
+    def _opnsense_get_tracker(self) -> str:
         parts = self.entity_description.key.split(".")
         parts.pop(0)
         return ".".join(parts)
 
     def _opnsense_get_rule(self):
-        state = self.coordinator.data
-        found = None
-        tracker = self._opnsense_get_tracker()
+        state: Mapping[str, Any] = self.coordinator.data
+        tracker: str = self._opnsense_get_tracker()
         for rule in state["config"]["filter"]["rule"]:
             if dict_get(rule, "created.time") == tracker:
-                found = rule
-                break
-        return found
+                return rule
+        return None
 
     @property
     def available(self) -> bool:
@@ -265,46 +263,41 @@ class OPNsenseFilterSwitch(OPNsenseSwitch):
         except KeyError:
             return STATE_UNKNOWN
 
-    async def async_turn_on(self, **kwargs):
+    async def async_turn_on(self, **kwargs) -> None:
         """Turn the entity on."""
         rule = self._opnsense_get_rule()
         if rule is None:
             return
-        tracker = self._opnsense_get_tracker()
-        client = self._get_opnsense_client()
-        await self.hass.async_add_executor_job(
-            client.enable_filter_rule_by_created_time, tracker
-        )
+        tracker: str = self._opnsense_get_tracker()
+        client: OPNsenseClient = self._get_opnsense_client()
+        await client.enable_filter_rule_by_created_time(tracker)
         await self.coordinator.async_refresh()
 
-    async def async_turn_off(self, **kwargs):
+    async def async_turn_off(self, **kwargs) -> None:
         """Turn the entity off."""
         rule = self._opnsense_get_rule()
         if rule is None:
             return
-        tracker = self._opnsense_get_tracker()
-        client = self._get_opnsense_client()
-        await self.hass.async_add_executor_job(
-            client.disable_filter_rule_by_created_time, tracker
-        )
+        tracker: str = self._opnsense_get_tracker()
+        client: OPNsenseClient = self._get_opnsense_client()
+        await client.disable_filter_rule_by_created_time(tracker)
         await self.coordinator.async_refresh()
 
 
 class OPNsenseNatSwitch(OPNsenseSwitch):
-    def _opnsense_get_rule_type(self):
+    def _opnsense_get_rule_type(self) -> str:
         return self.entity_description.key.split(".")[0]
 
-    def _opnsense_get_tracker(self):
+    def _opnsense_get_tracker(self) -> str:
         parts = self.entity_description.key.split(".")
         parts.pop(0)
         return ".".join(parts)
 
     def _opnsense_get_rule(self):
-        state = self.coordinator.data
-        found = None
-        tracker = self._opnsense_get_tracker()
-        rule_type = self._opnsense_get_rule_type()
-        rules = []
+        state: Mapping[str, Any] = self.coordinator.data
+        tracker: str = self._opnsense_get_tracker()
+        rule_type: str = self._opnsense_get_rule_type()
+        rules: list = []
         if rule_type == "nat_port_forward":
             rules = state["config"]["nat"]["rule"]
         if rule_type == "nat_outbound":
@@ -312,9 +305,8 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
 
         for rule in rules:
             if dict_get(rule, "created.time") == tracker:
-                found = rule
-                break
-        return found
+                return rule
+        return None
 
     @property
     def available(self) -> bool:
@@ -334,36 +326,36 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
         except KeyError:
             return STATE_UNKNOWN
 
-    async def async_turn_on(self, **kwargs):
+    async def async_turn_on(self, **kwargs) -> None:
         """Turn the entity on."""
         rule = self._opnsense_get_rule()
         if rule is None:
             return
-        tracker = self._opnsense_get_tracker()
-        client = self._get_opnsense_client()
-        rule_type = self._opnsense_get_rule_type()
+        tracker: str = self._opnsense_get_tracker()
+        client: OPNsenseClient = self._get_opnsense_client()
+        rule_type: str = self._opnsense_get_rule_type()
         if rule_type == "nat_port_forward":
             method = client.enable_nat_port_forward_rule_by_created_time
         if rule_type == "nat_outbound":
             method = client.enable_nat_outbound_rule_by_created_time
 
-        await self.hass.async_add_executor_job(method, tracker)
+        await method(tracker)
         await self.coordinator.async_refresh()
 
-    async def async_turn_off(self, **kwargs):
+    async def async_turn_off(self, **kwargs) -> None:
         """Turn the entity off."""
         rule = self._opnsense_get_rule()
         if rule is None:
             return
-        tracker = self._opnsense_get_tracker()
-        client = self._get_opnsense_client()
-        rule_type = self._opnsense_get_rule_type()
+        tracker: str = self._opnsense_get_tracker()
+        client: OPNsenseClient = self._get_opnsense_client()
+        rule_type: str = self._opnsense_get_rule_type()
         if rule_type == "nat_port_forward":
             method = client.disable_nat_port_forward_rule_by_created_time
         if rule_type == "nat_outbound":
             method = client.disable_nat_outbound_rule_by_created_time
 
-        await self.hass.async_add_executor_job(method, tracker)
+        await method(tracker)
         await self.coordinator.async_refresh()
 
 

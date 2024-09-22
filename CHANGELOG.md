@@ -1,3 +1,22 @@
+<a name="v0.3.1"></a>
+# [v0.3.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.1) - 22 Sep 2024
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🎉 Enhancements & New Features 🎉
+* Improve sensor error handling by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/207
+### 🕷️ Bug Fixes 🕷️
+* Fix switches to use async by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/208
+### Other Changes
+* Remove unused methods - take 2 by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/209
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.0...v0.3.1
+
+[Changes][v0.3.1]
+
+
 <a name="v0.3.0"></a>
 # [v0.3.0](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.0) - 20 Sep 2024
 
@@ -400,6 +419,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.3.1]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.0...v0.3.1
 [v0.3.0]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.0-beta.3...v0.3.0
 [v0.3.0-beta.3]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.0-beta.2...v0.3.0-beta.3
 [v0.3.0-beta.2]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.0-beta.1...v0.3.0-beta.2
