@@ -194,21 +194,21 @@ $toreturn["real"] = json_encode($toreturn_real);
     @_log_errors
     async def _start_service(self, params):
         return await self._loop.run_in_executor(
-            None, self._get_proxy().opnsense.start_services, params
+            None, self._get_proxy().opnsense.start_service, params
         )
 
     @_xmlrpc_timeout
     @_log_errors
     async def _stop_service(self, params):
         return await self._loop.run_in_executor(
-            None, self._get_proxy().opnsense.stop_services, params
+            None, self._get_proxy().opnsense.stop_service, params
         )
 
     @_xmlrpc_timeout
     @_log_errors
     async def _restart_service(self, params):
         return await self._loop.run_in_executor(
-            None, self._get_proxy().opnsense.restart_services, params
+            None, self._get_proxy().opnsense.restart_service, params
         )
 
     async def _get_from_stream(self, path: str) -> Mapping[str, Any] | list:
