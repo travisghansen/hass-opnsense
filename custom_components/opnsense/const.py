@@ -9,7 +9,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import PERCENTAGE, UnitOfInformation, UnitOfTime
 
-VERSION = "v0.3.0"
+VERSION = "v0.3.1"
 DEFAULT_USERNAME = ""
 DOMAIN = "opnsense"
 OPNSENSE_MIN_FIRMWARE = "24.7"
