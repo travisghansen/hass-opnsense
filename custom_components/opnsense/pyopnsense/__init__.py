@@ -1130,16 +1130,16 @@ $toreturn = [
         return cpu
 
     @_log_errors
-    async def _get_telemetry_filesystems(self) -> Mapping[str, Any]:
+    async def _get_telemetry_filesystems(self) -> list:
         filesystems_info: Mapping[str, Any] | list = await self._post(
             "/api/diagnostics/system/systemDisk"
         )
         if not isinstance(filesystems_info, Mapping):
-            return {}
+            return []
         _LOGGER.debug(
             f"[get_telemetry_filesystems] filesystems_info: {filesystems_info}"
         )
-        filesystems = filesystems_info.get("devices", {})
+        filesystems: list = filesystems_info.get("devices", [])
         # To conform to the previous data being returned
         for filesystem in filesystems:
             filesystem["size"] = filesystem.pop("blocks", None)
