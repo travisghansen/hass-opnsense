@@ -172,7 +172,7 @@ async def async_setup_entry(
         for service in state["services"]:
             if service.get("locked", 1) == 1:
                 continue
-            for property in ["status"]:
+            for prop_name in ["status"]:
                 icon = "mdi:application-cog-outline"
                 # likely only want very specific services to manipulate from actions
                 enabled_default = False
@@ -183,8 +183,8 @@ async def async_setup_entry(
                     config_entry,
                     coordinator,
                     SwitchEntityDescription(
-                        key="service.{}.{}".format(service["id"], property),
-                        name="Service {} {}".format(service["description"], property),
+                        key=f"service.{service.get('id', service.get('name', 'unknown'))}.{prop_name}",
+                        name=f"Service {service.get('description', service.get('name', 'Unknown'))} {prop_name}",
                         icon=icon,
                         # entity_category=entity_category,
                         device_class=device_class,
@@ -377,8 +377,8 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
     @property
     def available(self) -> bool:
         service: Mapping[str, Any] | None = self._opnsense_get_service()
-        property: str = self._opnsense_get_property_name()
-        if service is None or property not in service.keys():
+        prop_name: str = self._opnsense_get_property_name()
+        if service is None or prop_name not in service:
             return False
 
         return super().available
@@ -386,11 +386,10 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
     @property
     def is_on(self):
         service: Mapping[str, Any] | None = self._opnsense_get_service()
-        property: str = self._opnsense_get_property_name()
+        prop_name: str = self._opnsense_get_property_name()
         try:
-            value = service[property]
-            return value
-        except KeyError:
+            return service[prop_name]
+        except (TypeError, KeyError):
             return STATE_UNKNOWN
 
     async def async_turn_on(self, **kwargs) -> None:
@@ -414,3 +413,11 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
             )
             if result:
                 await self.coordinator.async_refresh()
+
+    @property
+    def extra_state_attributes(self) -> Mapping[str, Any]:
+        service: Mapping[str, Any] | None = self._opnsense_get_service()
+        attributes = {}
+        for attr in ["id", "name"]:
+            attributes[f"service_{attr}"] = service.get(attr, None)
+        return attributes

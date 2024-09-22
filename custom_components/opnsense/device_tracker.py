@@ -204,8 +204,8 @@ class OPNsenseScannerEntity(OPNsenseEntity, ScannerEntity):
         """Return extra state attributes."""
         entry = self._get_opnsense_arp_entry()
         if entry is not None:
-            for property in ["interface", "expires", "type"]:
-                self._extra_state[property] = entry.get(property)
+            for prop_name in ["interface", "expires", "type"]:
+                self._extra_state[prop_name] = entry.get(prop_name)
 
         if self._last_known_hostname is not None:
             self._extra_state["last_known_hostname"] = self._last_known_hostname

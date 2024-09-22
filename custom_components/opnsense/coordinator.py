@@ -179,7 +179,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                     if previous_interface is None:
                         break
 
-                    for property in [
+                    for prop_name in [
                         "inbytes",
                         "outbytes",
                         # "inbytespass",
@@ -193,16 +193,16 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                         # "inpktsblock",
                         # "outpktsblock",
                     ]:
-                        current_parent_value = interface[property]
-                        previous_parent_value = previous_interface[property]
+                        current_parent_value = interface[prop_name]
+                        previous_parent_value = previous_interface[prop_name]
                         change = abs(current_parent_value - previous_parent_value)
                         rate = change / elapsed_time
 
                         value = 0
-                        if "pkts" in property:
+                        if "pkts" in prop_name:
                             label = "packets_per_second"
                             value = rate
-                        if "bytes" in property:
+                        if "bytes" in prop_name:
                             label = "kilobytes_per_second"
                             # 1 Byte = 8 bits
                             # 1 byte is equal to 0.001 kilobytes
@@ -210,7 +210,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                             # Kbs = KBs * 8
                             value = KBs
 
-                        new_property = f"{property}_{label}"
+                        new_property = f"{prop_name}_{label}"
                         interface[new_property] = int(round(value, 0))
 
                 for server_name in dict_get(
@@ -237,20 +237,20 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                         "openvpn"
                     ]["servers"][server_name]
 
-                    for property in [
+                    for prop_name in [
                         "total_bytes_recv",
                         "total_bytes_sent",
                     ]:
-                        current_parent_value = server[property]
-                        previous_parent_value = previous_server[property]
+                        current_parent_value = server[prop_name]
+                        previous_parent_value = previous_server[prop_name]
                         change = abs(current_parent_value - previous_parent_value)
                         rate = change / elapsed_time
 
                         value = 0
-                        if "pkts" in property:
+                        if "pkts" in prop_name:
                             label = "packets_per_second"
                             value = rate
-                        if "bytes" in property:
+                        if "bytes" in prop_name:
                             label = "kilobytes_per_second"
                             # 1 Byte = 8 bits
                             # 1 byte is equal to 0.001 kilobytes
@@ -258,6 +258,6 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                             # Kbs = KBs * 8
                             value = KBs
 
-                        new_property: str = f"{property}_{label}"
+                        new_property: str = f"{prop_name}_{label}"
                         server[new_property] = int(round(value, 0))
         return self._state
