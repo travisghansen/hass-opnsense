@@ -222,12 +222,12 @@ class CoordinatorEntityManager:
     @callback
     def process_entities(self):
         entities = self.process_entities_callback(self.hass, self.config_entry)
-        i_entity_unqiue_ids = set()
+        i_entity_unique_ids = set()
         for entity in entities:
             unique_id = entity.unique_id
             if unique_id is None:
-                raise Exception("unique_id is missing from entity")
-            i_entity_unqiue_ids.add(unique_id)
+                raise ValueError("unique_id is missing from entity")
+            i_entity_unique_ids.add(unique_id)
             if unique_id not in self.entity_unique_ids:
                 self.async_add_entities([entity])
                 self.entity_unique_ids.add(unique_id)
@@ -239,7 +239,7 @@ class CoordinatorEntityManager:
 
         # check for missing entities
         for entity_unique_id in self.entity_unique_ids:
-            if entity_unique_id not in i_entity_unqiue_ids:
+            if entity_unique_id not in i_entity_unique_ids:
                 pass
                 # print("should remove entity: " + str(self.entities[entity_unique_id].entry_id))
                 # print("candidate to remove entity: " + str(entity_unique_id))
