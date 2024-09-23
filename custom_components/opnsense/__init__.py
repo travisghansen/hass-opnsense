@@ -15,11 +15,13 @@ from homeassistant.const import (
     CONF_VERIFY_SSL,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import async_get
 from homeassistant.helpers.issue_registry import IssueSeverity, async_create_issue
 from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
@@ -45,9 +47,10 @@ from .const import (
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .helpers import dict_get
 from .pyopnsense import OPNsenseClient
-from .services import ServiceRegistrar
+from .services import async_setup_services
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -56,6 +59,11 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
         hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
     else:
         hass.data[DOMAIN][entry.entry_id][SHOULD_RELOAD] = True
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    await async_setup_services(hass)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -147,9 +155,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         pass
 
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
-
-    service_registar = ServiceRegistrar(hass)
-    service_registar.async_register()
 
     return True
 
@@ -301,36 +306,3 @@ class OPNsenseEntity(CoordinatorEntity, RestoreEntity):
 
     def _get_opnsense_client(self) -> OPNsenseClient:
         return self.hass.data[DOMAIN][self.config_entry.entry_id][OPNSENSE_CLIENT]
-
-    async def service_close_notice(self, id: int | str | None = None) -> None:
-        client = self._get_opnsense_client()
-        await client.close_notice(id)
-
-    async def service_start_service(self, service_name: str) -> None:
-        client = self._get_opnsense_client()
-        await client.start_service(service_name)
-
-    async def service_stop_service(self, service_name: str) -> None:
-        client = self._get_opnsense_client()
-        await client.stop_service(service_name)
-
-    async def service_restart_service(
-        self, service_name: str, only_if_running: bool = False
-    ) -> None:
-        client = self._get_opnsense_client()
-        if only_if_running:
-            await client.restart_service_if_running(service_name)
-        else:
-            await client.restart_service(service_name)
-
-    async def service_system_halt(self) -> None:
-        client = self._get_opnsense_client()
-        await client.system_halt()
-
-    async def service_system_reboot(self) -> None:
-        client = self._get_opnsense_client()
-        await client.system_reboot()
-
-    async def service_send_wol(self, interface: str, mac: str) -> None:
-        client = self._get_opnsense_client()
-        await client.send_wol(interface, mac)

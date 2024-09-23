@@ -145,7 +145,7 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     )
                     _LOGGER.error(message)
                     errors["base"] = "unknown"
-            except BaseException as err:
+            except Exception as err:
                 message = cleanse_sensitive_data(
                     f"Unexpected {err=}, {type(err)=}", [username, password]
                 )

@@ -1,119 +1,265 @@
 close_notice:
-  # Service name as shown in UI
   name: Close notice
-  # Description of the service
-  description: Closes a notice(s).
-  # If the service accepts entity IDs, target allows the user to specify entities by entity, device, or area. If `target` is specified, `entity_id` should not be defined in the `fields` map. By default it shows only targets matching entities from the same domain as the service, but if further customization is required, target supports the entity, device, and area selectors (https://www.home-assistant.io/docs/blueprint/selectors/). Entity selector parameters will automatically be applied to device and area, and device selector parameters will automatically be applied to area. 
-  #target:
-  # Different fields that your service accepts
+  description: Closes one or all notices on OPNsense
   fields:
-    entity_id:
-      name: Entity ID
-      description: OPNsense entity id
-      example: "binary_sensor.opnsense_localdomain_pending_notices_present"
-
-    # Key of the field
     id:
-      # Field name as shown in UI
       name: Notice ID
-      # Description of the field
-      description: The notice ID
-      # Whether or not field is required (default = false)
-      required: false
-      # Advanced fields are only shown when the advanced mode is enabled for the user (default = false)
+      description: "The notice ID to clear. Enter 'all' to clear all notices."
+      required: true
       advanced: false
-      # Example value that can be passed for this field
       example: "all"
-      # The default field value
       default: "all"
+      selector:
+        text:
+    multiple_opnsense:
+      name: Only needed if there is more than one OPNsense Router
+      collapsed: true
+      fields:
+        device_id:
+          name: OPNsense Device
+          description: Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers.
+          required: false
+          selector:
+            device:
+              multiple: false
+              filter:
+                - integration: opnsense
+              entity:
+                - domain: sensor
+        entity_id:
+          name: OPNsense Entity
+          description: Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers.
+          example: "sensor.opnsense_interface_lan_status"
+          required: false
+          selector:
+            entity:
+              multiple: false
+              filter:
+                - integration: opnsense
+                  domain: sensor
 
 start_service:
   name: Start service
-  description: Starts a service.
+  description: Starts an OPNsense service
   fields:
-    entity_id:
-      name: Entity ID
-      description: OPNsense entity id
-      example: "binary_sensor.opnsense_localdomain_pending_notices_present"
-    service_name:
-      name: Service Name
-      description: The name of the service.
-      required: true
+    service_id:
+      name: Service ID or Name
+      description: "The ID or name of the service. Like: udpbroadcastrelay/3, haproxy, dhcp, etc."
+      required: false
       advanced: false
-      example: "haproxy|dhcp|dpinger|.."
       default: ""
+      selector:
+        text:
+    multiple_opnsense:
+      name: Only needed if there is more than one OPNsense Router
+      collapsed: true
+      fields:
+        device_id:
+          name: OPNsense Device
+          description: Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers.
+          required: false
+          selector:
+            device:
+              multiple: false
+              filter:
+                - integration: opnsense
+              entity:
+                - domain: sensor
+        entity_id:
+          name: OPNsense Entity
+          description: Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers.
+          example: "sensor.opnsense_interface_lan_status"
+          required: false
+          selector:
+            entity:
+              multiple: false
+              filter:
+                - integration: opnsense
+                  domain: sensor
 
 stop_service:
   name: Stop service
-  description: Stops a service.
+  description: Stops an OPNsense service
   fields:
-    entity_id:
-      name: Entity ID
-      description: OPNsense entity id
-      example: "binary_sensor.opnsense_localdomain_pending_notices_present"
-    service_name:
-      name: Service Name
-      description: The name of the service.
-      required: true
+    service_id:
+      name: Service ID or Name
+      description: "The ID or name of the service. Like: udpbroadcastrelay/3, haproxy, dhcp, etc."
+      required: false
       advanced: false
-      example: "haproxy|dhcp|dpinger|.."
       default: ""
+      selector:
+        text:
+    multiple_opnsense:
+      name: Only needed if there is more than one OPNsense Router
+      collapsed: true
+      fields:
+        device_id:
+          name: OPNsense Device
+          description: Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers.
+          required: false
+          selector:
+            device:
+              multiple: false
+              filter:
+                - integration: opnsense
+              entity:
+                - domain: sensor
+        entity_id:
+          name: OPNsense Entity
+          description: Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers.
+          example: "sensor.opnsense_interface_lan_status"
+          required: false
+          selector:
+            entity:
+              multiple: false
+              filter:
+                - integration: opnsense
+                  domain: sensor
 
 restart_service:
   name: Restart service
-  description: Restarts a service.
+  description: Restarts an OPNsense service
   fields:
-    entity_id:
-      name: Entity ID
-      description: OPNsense entity id
-      example: "binary_sensor.opnsense_localdomain_pending_notices_present"
-    service_name:
-      name: Service Name
-      description: The name of the service.
+    service_id:
+      name: Service ID or Name
+      description: "The ID or name of the service. Like: udpbroadcastrelay/3, haproxy, dhcp, etc."
+      required: false
+      advanced: false
+      default: ""
+      selector:
+        text:
+    only_if_running:
+      name: Only if Running
+      description: Restart the service only if it is already running.
       required: true
       advanced: false
-      example: "haproxy|dhcp|dpinger|.."
-      default: ""
+      example: false
+      default: false
+      selector:
+        boolean:
+    multiple_opnsense:
+      name: Only needed if there is more than one OPNsense Router
+      collapsed: true
+      fields:
+        device_id:
+          name: OPNsense Device
+          description: Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers.
+          required: false
+          selector:
+            device:
+              multiple: false
+              filter:
+                - integration: opnsense
+              entity:
+                - domain: sensor
+        entity_id:
+          name: OPNsense Entity
+          description: Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers.
+          example: "sensor.opnsense_interface_lan_status"
+          required: false
+          selector:
+            entity:
+              multiple: false
+              filter:
+                - integration: opnsense
+                  domain: sensor
 
 system_halt:
   name: Halt system
-  description: Halts the system.
+  description: Halts the OPNsense Router
   fields:
+    device_id:
+      name: OPNsense Device
+      description: Only needed if there is more than one OPNsense Router. Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers.
+      required: false
+      selector:
+        device:
+          multiple: false
+          filter:
+            - integration: opnsense
+          entity:
+            - domain: sensor
     entity_id:
-      name: Entity ID
-      description: OPNsense entity id
-      example: "binary_sensor.opnsense_localdomain_pending_notices_present"
+      name: OPNsense Entity
+      description: Only needed if there is more than one OPNsense Router. Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers.
+      example: "sensor.opnsense_interface_lan_status"
+      required: false
+      selector:
+        entity:
+          multiple: false
+          filter:
+            - integration: opnsense
+              domain: sensor
 
 system_reboot:
   name: Reboot system
-  description: Reboots the system.
+  description: Reboots the OPNsense Router
   fields:
+    device_id:
+      name: OPNsense Device
+      description: Only needed if there is more than one OPNsense Router. Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers.
+      required: false
+      selector:
+        device:
+          multiple: false
+          filter:
+            - integration: opnsense
+          entity:
+            - domain: sensor
     entity_id:
-      name: Entity ID
-      description: OPNsense entity id
-      example: "binary_sensor.opnsense_localdomain_pending_notices_present"
+      name: OPNsense Entity
+      description: Only needed if there is more than one OPNsense Router. Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers.
+      example: "sensor.opnsense_interface_lan_status"
+      required: false
+      selector:
+        entity:
+          multiple: false
+          filter:
+            - integration: opnsense
+              domain: sensor
 
 send_wol:
   name: Send WOL
-  description: Sends wake-on-lan magic packet.
+  description: Sends a wake-on-lan magic packet
   fields:
-    entity_id:
-      name: Entity ID
-      description: OPNsense entity id
-      example: "binary_sensor.opnsense_localdomain_pending_notices_present"
-
     interface:
       name: Interface Name
-      description: The name of the interface.
+      description: "The name of the interface. Like: wan|lan|opt1|opt2|.."
       required: true
       advanced: false
-      example: "wan|lan|opt1|opt2|..."
-      default: ""
-
+      example: ""
+      selector:
+        text:
     mac:
       name: MAC Address
       description: The target mac address.
       required: true
       advanced: false
-      example: ""
-      default: ""
+      selector:
+        text:
+    multiple_opnsense:
+      name: Only needed if there is more than one OPNsense Router
+      collapsed: true
+      fields:
+        device_id:
+          name: OPNsense Device
+          description: Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers.
+          required: false
+          selector:
+            device:
+              multiple: false
+              filter:
+                - integration: opnsense
+              entity:
+                - domain: sensor
+        entity_id:
+          name: OPNsense Entity
+          description: Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers.
+          example: "sensor.opnsense_interface_lan_status"
+          required: false
+          selector:
+            entity:
+              multiple: false
+              filter:
+                - integration: opnsense
+                  domain: sensor
