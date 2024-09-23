@@ -170,7 +170,9 @@ async def async_setup_entry(
 
         # services
         for service in state["services"]:
-            for property in ["status"]:
+            if service.get("locked", 1) == 1:
+                continue
+            for prop_name in ["status"]:
                 icon = "mdi:application-cog-outline"
                 # likely only want very specific services to manipulate from actions
                 enabled_default = False
@@ -181,8 +183,8 @@ async def async_setup_entry(
                     config_entry,
                     coordinator,
                     SwitchEntityDescription(
-                        key="service.{}.{}".format(service["name"], property),
-                        name="Service {} {}".format(service["name"], property),
+                        key=f"service.{service.get('id', service.get('name', 'unknown'))}.{prop_name}",
+                        name=f"Service {service.get('description', service.get('name', 'Unknown'))} {prop_name}",
                         icon=icon,
                         # entity_category=entity_category,
                         device_class=device_class,
@@ -361,48 +363,61 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
     def _opnsense_get_property_name(self) -> str:
         return self.entity_description.key.split(".")[2]
 
-    def _opnsense_get_service_name(self) -> str:
+    def _opnsense_get_service_id(self) -> str:
         return self.entity_description.key.split(".")[1]
 
-    def _opnsense_get_service(self):
+    def _opnsense_get_service(self) -> Mapping[str, Any] | None:
         state: Mapping[str, Any] = self.coordinator.data
-        service_name: str = self._opnsense_get_service_name()
+        service_id: str = self._opnsense_get_service_id()
         for service in state["services"]:
-            if service["name"] == service_name:
+            if service["id"] == service_id:
                 return service
         return None
 
     @property
     def available(self) -> bool:
-        service = self._opnsense_get_service()
-        property: str = self._opnsense_get_property_name()
-        if service is None or property not in service.keys():
+        service: Mapping[str, Any] | None = self._opnsense_get_service()
+        prop_name: str = self._opnsense_get_property_name()
+        if service is None or prop_name not in service:
             return False
 
         return super().available
 
     @property
     def is_on(self):
-        service = self._opnsense_get_service()
-        property: str = self._opnsense_get_property_name()
+        service: Mapping[str, Any] | None = self._opnsense_get_service()
+        prop_name: str = self._opnsense_get_property_name()
         try:
-            value = service[property]
-            return value
-        except KeyError:
+            return service[prop_name]
+        except (TypeError, KeyError):
             return STATE_UNKNOWN
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the entity on."""
-        service = self._opnsense_get_service()
-        client: OPNsenseClient = self._get_opnsense_client()
-        result: bool = await client.start_service(service["name"])
-        if result:
-            await self.coordinator.async_refresh()
+        service: Mapping[str, Any] | None = self._opnsense_get_service()
+        if isinstance(service, Mapping):
+            client: OPNsenseClient = self._get_opnsense_client()
+            result: bool = await client.start_service(
+                service.get("id", service.get("name", None))
+            )
+            if result:
+                await self.coordinator.async_refresh()
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the entity off."""
-        service = self._opnsense_get_service()
-        client: OPNsenseClient = self._get_opnsense_client()
-        result: bool = await client.stop_service(service["name"])
-        if result:
-            await self.coordinator.async_refresh()
+        service: Mapping[str, Any] | None = self._opnsense_get_service()
+        if isinstance(service, Mapping):
+            client: OPNsenseClient = self._get_opnsense_client()
+            result: bool = await client.stop_service(
+                service.get("id", service.get("name", None))
+            )
+            if result:
+                await self.coordinator.async_refresh()
+
+    @property
+    def extra_state_attributes(self) -> Mapping[str, Any]:
+        service: Mapping[str, Any] | None = self._opnsense_get_service()
+        attributes = {}
+        for attr in ["id", "name"]:
+            attributes[f"service_{attr}"] = service.get(attr, None)
+        return attributes

@@ -138,7 +138,7 @@ async def async_setup_entry(
         for interface_name, interface in dict_get(
             state, "telemetry.interfaces", {}
         ).items():
-            for property in [
+            for prop_name in [
                 "status",
                 "inerrs",
                 "outerrs",
@@ -175,7 +175,7 @@ async def async_setup_entry(
                 # entity_category = ENTITY_CATEGORY_DIAGNOSTIC
 
                 # enabled_default
-                if property in [
+                if prop_name in [
                     "status",
                     "inbytes_kilobytes_per_second",
                     "outbytes_kilobytes_per_second",
@@ -186,34 +186,34 @@ async def async_setup_entry(
 
                 # state class
                 if (
-                    "_packets_per_second" in property
-                    or "_kilobytes_per_second" in property
+                    "_packets_per_second" in prop_name
+                    or "_kilobytes_per_second" in prop_name
                 ):
                     state_class = SensorStateClass.MEASUREMENT
 
                 # native_unit_of_measurement
-                if "_packets_per_second" in property:
+                if "_packets_per_second" in prop_name:
                     native_unit_of_measurement = DATA_RATE_PACKETS_PER_SECOND
 
-                if "_kilobytes_per_second" in property:
+                if "_kilobytes_per_second" in prop_name:
                     native_unit_of_measurement = UnitOfDataRate.KILOBYTES_PER_SECOND
 
                 if native_unit_of_measurement is None:
-                    if "bytes" in property:
+                    if "bytes" in prop_name:
                         native_unit_of_measurement = UnitOfInformation.BYTES
                         state_class = SensorStateClass.TOTAL_INCREASING
-                    if "pkts" in property:
+                    if "pkts" in prop_name:
                         native_unit_of_measurement = DATA_PACKETS
                         state_class = SensorStateClass.TOTAL_INCREASING
 
-                if property in ["inerrs", "outerrs", "collisions"]:
+                if prop_name in ["inerrs", "outerrs", "collisions"]:
                     native_unit_of_measurement = COUNT
 
                 # icon
-                if "pkts" in property or "bytes" in property:
+                if "pkts" in prop_name or "bytes" in prop_name:
                     icon = "mdi:server-network"
 
-                if property == "status":
+                if prop_name == "status":
                     icon = "mdi:check-network-outline"
 
                 if icon is None:
@@ -223,8 +223,8 @@ async def async_setup_entry(
                     config_entry,
                     coordinator,
                     SensorEntityDescription(
-                        key=f"telemetry.interface.{interface_name}.{property}",
-                        name=f"Interface {interface_name} {property}",
+                        key=f"telemetry.interface.{interface_name}.{prop_name}",
+                        name=f"Interface {interface_name} {prop_name}",
                         native_unit_of_measurement=native_unit_of_measurement,
                         icon=icon,
                         state_class=state_class,
@@ -236,28 +236,28 @@ async def async_setup_entry(
 
         # gateways
         for gateway in dict_get(state, "telemetry.gateways", {}).values():
-            for property in ["status", "delay", "stddev", "loss"]:
+            for prop_name in ["status", "delay", "stddev", "loss"]:
                 state_class = None
                 native_unit_of_measurement = None
                 icon = "mdi:router-network"
                 enabled_default = True
                 # entity_category = ENTITY_CATEGORY_DIAGNOSTIC
 
-                if property == "loss":
+                if prop_name == "loss":
                     native_unit_of_measurement = PERCENTAGE
 
-                if property in ["delay", "stddev"]:
+                if prop_name in ["delay", "stddev"]:
                     native_unit_of_measurement = UnitOfTime.MILLISECONDS
 
-                if property == "status":
+                if prop_name == "status":
                     icon = "mdi:check-network-outline"
 
                 entity = OPNsenseGatewaySensor(
                     config_entry,
                     coordinator,
                     SensorEntityDescription(
-                        key=f"telemetry.gateway.{gateway["name"]}.{property}",
-                        name=f"Gateway {gateway["name"]} {property}",
+                        key=f"telemetry.gateway.{gateway["name"]}.{prop_name}",
+                        name=f"Gateway {gateway["name"]} {prop_name}",
                         native_unit_of_measurement=native_unit_of_measurement,
                         icon=icon,
                         state_class=state_class,
@@ -273,7 +273,7 @@ async def async_setup_entry(
             server: Mapping[str, Any] | None = servers.get(vpnid, None)
             if server is None or not isinstance(server, Mapping) or len(server) == 0:
                 continue
-            for property in [
+            for prop_name in [
                 "connected_client_count",
                 "total_bytes_recv",
                 "total_bytes_sent",
@@ -286,28 +286,28 @@ async def async_setup_entry(
                 enabled_default = False
 
                 # state class
-                if "_kilobytes_per_second" in property:
+                if "_kilobytes_per_second" in prop_name:
                     state_class = SensorStateClass.MEASUREMENT
 
-                if property == "connected_client_count":
+                if prop_name == "connected_client_count":
                     state_class = SensorStateClass.MEASUREMENT
 
                 # native_unit_of_measurement
-                if "_kilobytes_per_second" in property:
+                if "_kilobytes_per_second" in prop_name:
                     native_unit_of_measurement = UnitOfDataRate.KILOBYTES_PER_SECOND
 
                 if native_unit_of_measurement is None:
-                    if "bytes" in property:
+                    if "bytes" in prop_name:
                         native_unit_of_measurement = UnitOfInformation.BYTES
 
-                if property in ["connected_client_count"]:
+                if prop_name in ["connected_client_count"]:
                     native_unit_of_measurement = "clients"
 
                 # icon
-                if "bytes" in property:
+                if "bytes" in prop_name:
                     icon = "mdi:server-network"
 
-                if property == "connected_client_count":
+                if prop_name == "connected_client_count":
                     icon = "mdi:ip-network-outline"
 
                 if icon is None:
@@ -317,8 +317,8 @@ async def async_setup_entry(
                     config_entry,
                     coordinator,
                     SensorEntityDescription(
-                        key=f"telemetry.openvpn.servers.{vpnid}.{property}",
-                        name=f"OpenVPN Server {server["name"]} {property}",
+                        key=f"telemetry.openvpn.servers.{vpnid}.{prop_name}",
+                        name=f"OpenVPN Server {server["name"]} {prop_name}",
                         native_unit_of_measurement=native_unit_of_measurement,
                         icon=icon,
                         state_class=state_class,
@@ -503,8 +503,8 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
     @property
     def available(self) -> bool:
         interface = self._opnsense_get_interface()
-        property = self._opnsense_get_interface_property_name()
-        if interface is None or property not in interface.keys():
+        prop_name = self._opnsense_get_interface_property_name()
+        if interface is None or prop_name not in interface.keys():
             return False
 
         return super().available
@@ -521,17 +521,17 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
 
     @property
     def icon(self):
-        property = self._opnsense_get_interface_property_name()
-        if property == "status" and self.native_value != "up":
+        prop_name = self._opnsense_get_interface_property_name()
+        if prop_name == "status" and self.native_value != "up":
             return "mdi:close-network-outline"
         return super().icon
 
     @property
     def native_value(self):
         interface = self._opnsense_get_interface()
-        property: str = self._opnsense_get_interface_property_name()
+        prop_name: str = self._opnsense_get_interface_property_name()
         try:
-            return interface[property]
+            return interface[prop_name]
         except (KeyError, TypeError):
             return STATE_UNKNOWN
 
@@ -608,12 +608,12 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
     @property
     def available(self) -> bool:
         gateway = self._opnsense_get_gateway()
-        property: str = self._opnsense_get_gateway_property_name()
-        if gateway is None or property not in gateway.keys():
+        prop_name: str = self._opnsense_get_gateway_property_name()
+        if gateway is None or prop_name not in gateway.keys():
             return False
 
-        if property in ["stddev", "delay", "loss"]:
-            value = gateway[property]
+        if prop_name in ["stddev", "delay", "loss"]:
+            value = gateway[prop_name]
             if isinstance(value, str):
                 value = re.sub(r"[^0-9\.]*", "", value)
                 if len(value) < 1:
@@ -635,23 +635,23 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
 
     @property
     def icon(self):
-        property = self._opnsense_get_gateway_property_name()
-        if property == "status" and self.native_value != "online":
+        prop_name = self._opnsense_get_gateway_property_name()
+        if prop_name == "status" and self.native_value != "online":
             return "mdi:close-network-outline"
         return super().icon
 
     @property
     def native_value(self):
         gateway = self._opnsense_get_gateway()
-        property = self._opnsense_get_gateway_property_name()
+        prop_name = self._opnsense_get_gateway_property_name()
 
         if gateway is None:
             return STATE_UNKNOWN
 
         try:
-            value = gateway[property]
+            value = gateway[prop_name]
             # cleanse "ms", etc from values
-            if property in ["stddev", "delay", "loss"]:
+            if prop_name in ["stddev", "delay", "loss"]:
                 if isinstance(value, str):
                     value = re.sub(r"[^0-9\.]*", "", value)
                     if len(value) > 0:
@@ -683,8 +683,8 @@ class OPNsenseOpenVPNServerSensor(OPNsenseSensor):
     @property
     def available(self) -> bool:
         server = self._opnsense_get_server()
-        property = self._opnsense_get_server_property_name()
-        if server is None or property not in server.keys():
+        prop_name = self._opnsense_get_server_property_name()
+        if server is None or prop_name not in server.keys():
             return False
 
         return super().available
@@ -704,13 +704,13 @@ class OPNsenseOpenVPNServerSensor(OPNsenseSensor):
     @property
     def native_value(self):
         server = self._opnsense_get_server()
-        property = self._opnsense_get_server_property_name()
+        prop_name = self._opnsense_get_server_property_name()
 
         if server is None:
             return STATE_UNKNOWN
 
         try:
-            return server[property]
+            return server[prop_name]
         except KeyError:
             return STATE_UNKNOWN
 
