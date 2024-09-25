@@ -1393,3 +1393,61 @@ foreach ($ovpn_servers as $server) {
                 success = False
         _LOGGER.debug(f"[close_notice] success: {success}")
         return success
+
+    @_log_errors
+    async def get_unbound_blocklist(self) -> Mapping[str, Any]:
+        response: Mapping[str, Any] | list = await self._get(
+            "/api/unbound/settings/get"
+        )
+        if response is None or not isinstance(response, Mapping):
+            _LOGGER.error("Invalid data returned from get_unbound_blocklist")
+            return {}
+        # _LOGGER.debug(f"[get_unbound_blocklist] response: {response}")
+        dnsbl_settings = response.get("unbound", {}).get("dnsbl", {})
+        # _LOGGER.debug(f"[get_unbound_blocklist] dnsbl_settings: {dnsbl_settings}")
+        if not isinstance(dnsbl_settings, Mapping):
+            return {}
+        dnsbl = {}
+        for attr in ["enabled", "safesearch", "nxdomain", "address"]:
+            dnsbl[attr] = dnsbl_settings.get(attr, "")
+        for attr in ["type", "lists", "whitelists", "blocklists", "wildcards"]:
+            if isinstance(dnsbl_settings[attr], Mapping):
+                dnsbl[attr] = ",".join(
+                    [
+                        key
+                        for key, value in dnsbl_settings.get(attr, {}).items()
+                        if isinstance(value, Mapping) and value.get("selected", 0) == 1
+                    ]
+                )
+            else:
+                dnsbl[attr] = ""
+        _LOGGER.debug(f"[get_unbound_blocklist] dnsbl: {dnsbl}")
+        return dnsbl
+
+    async def _set_unbound_blocklist(self, set_state: bool) -> bool:
+        payload = {}
+        payload["unbound"] = {}
+        payload["unbound"]["dnsbl"] = await self.get_unbound_blocklist()
+        if set_state:
+            payload["unbound"]["dnsbl"]["enabled"] = "1"
+        else:
+            payload["unbound"]["dnsbl"]["enabled"] = "0"
+        response: Mapping[str, Any] | list = await self._post(
+            "/api/unbound/settings/set", payload=payload
+        )
+        _LOGGER.debug(
+            f"[set_unbound_blocklist] set_state: {'On' if set_state else 'Off'}, payload: {payload}, response: {response}"
+        )
+        return not (
+            response is None
+            or not isinstance(response, Mapping)
+            or response.get("result", "failed") != "saved"
+        )
+
+    @_log_errors
+    async def enable_unbound_blocklist(self) -> bool:
+        return await self._set_unbound_blocklist(set_state=True)
+
+    @_log_errors
+    async def disable_unbound_blocklist(self) -> bool:
+        return await self._set_unbound_blocklist(set_state=False)
