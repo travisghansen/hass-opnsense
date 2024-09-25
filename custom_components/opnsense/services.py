@@ -51,9 +51,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             except Exception:
                 pass
             else:
-                _LOGGER.debug(
-                    f"[get_clients] device_id: {opndevice_id}, device_entry: {device_entry}"
-                )
+                # _LOGGER.debug(f"[get_clients] device_id: {opndevice_id}, device_entry: {device_entry}")
                 if device_entry.primary_config_entry not in entry_ids:
                     entry_ids.append(device_entry.primary_config_entry)
         if opnentity_id:
@@ -64,15 +62,13 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             except Exception:
                 pass
             else:
-                _LOGGER.debug(
-                    f"[get_clients] entity_id: {opnentity_id}, entity_entry: {entity_entry}"
-                )
+                # _LOGGER.debug(f"[get_clients] entity_id: {opnentity_id}, entity_entry: {entity_entry}")
                 if entity_entry.config_entry_id not in entry_ids:
                     entry_ids.append(entity_entry.config_entry_id)
         clients: list = []
-        _LOGGER.debug(f"[get_clients] entry_ids: {entry_ids}")
+        # _LOGGER.debug(f"[get_clients] entry_ids: {entry_ids}")
         for entry_id, entry in hass.data[DOMAIN].items():
-            _LOGGER.debug(f"[get_clients] entry_id: {entry_id}")
+            # _LOGGER.debug(f"[get_clients] entry_id: {entry_id}")
             if (
                 len(entry_ids) == 0 or entry_id in entry_ids
             ) and OPNSENSE_CLIENT in entry:
@@ -84,7 +80,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         clients: list = await _get_clients(
             call.data.get("device_id", []), call.data.get("entity_id", [])
         )
-        _LOGGER.debug(f"[service_close_notice] clients: {clients}")
+        # _LOGGER.debug(f"[service_close_notice] clients: {clients}")
         for client in clients:
             _LOGGER.debug(
                 f"[service_close_notice] Calling stop_service for {call.data.get('id')}"
@@ -95,7 +91,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         clients: list = await _get_clients(
             call.data.get("device_id", []), call.data.get("entity_id", [])
         )
-        _LOGGER.debug(f"[service_start_service] clients: {clients}")
+        # _LOGGER.debug(f"[service_start_service] clients: {clients}")
         success = None
         for client in clients:
             _LOGGER.debug(
@@ -115,7 +111,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         clients: list = await _get_clients(
             call.data.get("device_id", []), call.data.get("entity_id", [])
         )
-        _LOGGER.debug(f"[service_stop_service] clients: {clients}")
+        # _LOGGER.debug(f"[service_stop_service] clients: {clients}")
         success = None
         for client in clients:
             _LOGGER.debug(
@@ -135,7 +131,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         clients: list = await _get_clients(
             call.data.get("device_id", []), call.data.get("entity_id", [])
         )
-        _LOGGER.debug(f"[service_restart_service] clients: {clients}")
+        # _LOGGER.debug(f"[service_restart_service] clients: {clients}")
         success = None
         if call.data.get("only_if_running"):
             for client in clients:
@@ -172,7 +168,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         clients: list = await _get_clients(
             call.data.get("device_id", []), call.data.get("entity_id", [])
         )
-        _LOGGER.debug(f"[service_system_halt] clients: {clients}")
+        # _LOGGER.debug(f"[service_system_halt] clients: {clients}")
         for client in clients:
             _LOGGER.debug("[service_system_halt] Calling System Halt")
             await client.system_halt()
@@ -181,7 +177,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         clients: list = await _get_clients(
             call.data.get("device_id", []), call.data.get("entity_id", [])
         )
-        _LOGGER.debug(f"[service_system_reboot] clients: {clients}")
+        # _LOGGER.debug(f"[service_system_reboot] clients: {clients}")
         for client in clients:
             _LOGGER.debug("[service_system_reboot] Calling System Reboot")
             await client.system_reboot()
@@ -190,7 +186,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         clients: list = await _get_clients(
             call.data.get("device_id", []), call.data.get("entity_id", [])
         )
-        _LOGGER.debug(f"[service_send_wol] clients: {clients}")
+        # _LOGGER.debug(f"[service_send_wol] clients: {clients}")
         for client in clients:
             _LOGGER.debug(
                 f"[service_send_wol] Calling WOL. interface: {call.data.get('interface')}, mac: {call.data.get('mac')}"
