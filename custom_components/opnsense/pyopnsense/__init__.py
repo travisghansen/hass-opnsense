@@ -642,7 +642,9 @@ $toreturn = [
 
     @_log_errors
     async def get_dhcp_leases(self) -> list:
-        leases: list = await self._get_kea_dhcpv4_leases()
+        leases: list = (
+            await self._get_kea_dhcpv4_leases() + await self._get_isc_dhcpv6_leases()
+        )
         _LOGGER.debug(f"[get_dhcp_leases] leases: {leases}")
         # return leases
         return []
@@ -653,28 +655,25 @@ $toreturn = [
             return []
         leases_info: list = response.get("rows", [])
         # _LOGGER.debug(f"[get_kea_dhcpv4_leases] leases_info: {leases_info}")
-        leases = []
+        leases: list = []
         for lease_info in leases_info:
             if lease_info is None or not isinstance(lease_info, Mapping):
                 continue
             lease: Mapping[str, Any] = {}
-            for attr in [
-                "address",
-                "hostname",
-                "if_descr",
-                "if_name",
-            ]:
-                lease[attr] = lease_info.get(attr, None)
+            lease["address"] = lease_info.get("address", None)
+            lease["hostname"] = lease_info.get("hostname", None)
+            lease["if_descr"] = lease_info.get("if_descr", None)
+            lease["if_name"] = lease_info.get("if_name", None)
             lease["mac"] = lease_info.get("hwaddr", None)
             if self._try_to_int(lease_info.get("expire", None)):
-                lease["expire"] = datetime.fromtimestamp(
+                lease["expires"] = datetime.fromtimestamp(
                     self._try_to_int(lease_info.get("expire", None)),
                     tz=datetime.now().astimezone().tzinfo,
                 )
             else:
-                lease["expire"] = lease_info.get("expire", None)
+                lease["expires"] = lease_info.get("expire", None)
             leases.append(lease)
-        # _LOGGER.debug(f"[get_kea_dhcpv4_leases] leases: {leases}")
+        _LOGGER.debug(f"[get_kea_dhcpv4_leases] leases: {leases}")
         return leases
 
     # Kea DHCPv4
@@ -695,6 +694,39 @@ $toreturn = [
     #     "if_descr": "IOT_50",
     #     "if_name": "opt5"
     # },
+
+    async def _get_isc_dhcpv6_leases(self) -> list:
+        response: Mapping[str, Any] | list = await self._get(
+            "/api/dhcpv6/leases/searchLease"
+        )
+        if response is None or not isinstance(response, Mapping):
+            return []
+        leases_info: list = response.get("rows", [])
+        # _LOGGER.debug(f"[get_isc_dhcpv6_leases] leases_info: {leases_info}")
+        leases: list = []
+        for lease_info in leases_info:
+            if (
+                lease_info is None
+                or not isinstance(lease_info, Mapping)
+                or lease_info.get("status", "") != "active"
+            ):
+                continue
+            lease: Mapping[str, Any] = {}
+            lease["address"] = lease_info.get("address", None)
+            lease["hostname"] = lease_info.get("hostname", None)
+            lease["if_descr"] = lease_info.get("if_descr", None)
+            lease["if_name"] = lease_info.get("if", None)
+            lease["mac"] = lease_info.get("mac", None)
+            if lease_info.get("ends", None):
+                dt: datetime = datetime.strptime(
+                    lease_info.get("ends", None), "%Y/%m/%d %H:%M:%S"
+                )
+                lease["expires"] = dt.replace(tzinfo=datetime.now().astimezone().tzinfo)
+            else:
+                lease["expires"] = lease_info.get("ends", None)
+            leases.append(lease)
+        _LOGGER.debug(f"[get_isc_dhcpv6_leases] leases: {leases}")
+        return leases
 
     # Legacy DHCPv6
     # {
