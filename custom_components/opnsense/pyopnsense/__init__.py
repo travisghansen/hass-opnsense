@@ -213,9 +213,7 @@ $toreturn["real"] = json_encode($toreturn_real);
                                             json.loads(response_str)
                                         )
 
-                                        _LOGGER.debug(
-                                            f"[get_from_stream] response_json ({type(response_json).__name__}): {response_json}"
-                                        )
+                                        # _LOGGER.debug(f"[get_from_stream] response_json ({type(response_json).__name__}): {response_json}")
                                         return response_json  # Exit after processing the second message
 
                 elif response.status == 403:
@@ -593,7 +591,7 @@ $toreturn = [
         )
         if not isinstance(arp_table_info, Mapping):
             return []
-        _LOGGER.debug(f"[get_arp_table] arp_table_info: {arp_table_info}")
+        # _LOGGER.debug(f"[get_arp_table] arp_table_info: {arp_table_info}")
         arp_table: list = arp_table_info.get("rows", [])
         _LOGGER.debug(f"[get_arp_table] arp_table: {arp_table}")
         return arp_table
@@ -828,7 +826,7 @@ $toreturn = [
         interface_info: Mapping[str, Any] | list = await self._post(
             "/api/interfaces/overview/export"
         )
-        _LOGGER.debug(f"[get_telemetry_interfaces] interface_info: {interface_info}")
+        # _LOGGER.debug(f"[get_telemetry_interfaces] interface_info: {interface_info}")
         if not isinstance(interface_info, list) or not len(interface_info) > 0:
             return {}
         interfaces: Mapping[str, Any] = {}
@@ -877,7 +875,7 @@ $toreturn = [
             interface["ipaddr"] = ifinfo.get("addr4", "")
             interface["media"] = ifinfo.get("media", "")
             interfaces[ifinfo.get("identifier", "")] = interface
-        _LOGGER.debug(f"[get_telemetry_interfaces] interfaces: {interfaces}")
+        # _LOGGER.debug(f"[get_telemetry_interfaces] interfaces: {interfaces}")
         return interfaces
 
     @_log_errors
@@ -885,7 +883,7 @@ $toreturn = [
         mbuf_info: Mapping[str, Any] | list = await self._post(
             "/api/diagnostics/system/system_mbuf"
         )
-        _LOGGER.debug(f"[get_telemetry_mbuf] mbuf_info: {mbuf_info}")
+        # _LOGGER.debug(f"[get_telemetry_mbuf] mbuf_info: {mbuf_info}")
         if not isinstance(mbuf_info, Mapping):
             return {}
         mbuf: Mapping[str, Any] = {}
@@ -902,7 +900,7 @@ $toreturn = [
             and mbuf["total"] > 0
             else None
         )
-        _LOGGER.debug(f"[get_telemetry_mbuf] mbuf: {mbuf}")
+        # _LOGGER.debug(f"[get_telemetry_mbuf] mbuf: {mbuf}")
         return mbuf
 
     @_log_errors
@@ -910,7 +908,7 @@ $toreturn = [
         pfstate_info: Mapping[str, Any] | list = await self._post(
             "/api/diagnostics/firewall/pf_states"
         )
-        _LOGGER.debug(f"[get_telemetry_pfstate] pfstate_info: {pfstate_info}")
+        # _LOGGER.debug(f"[get_telemetry_pfstate] pfstate_info: {pfstate_info}")
         if not isinstance(pfstate_info, Mapping):
             return {}
         pfstate: Mapping[str, Any] = {}
@@ -923,7 +921,7 @@ $toreturn = [
             and pfstate["total"] > 0
             else None
         )
-        _LOGGER.debug(f"[get_telemetry_pfstate] pfstate: {pfstate}")
+        # _LOGGER.debug(f"[get_telemetry_pfstate] pfstate: {pfstate}")
         return pfstate
 
     @_log_errors
@@ -931,7 +929,7 @@ $toreturn = [
         memory_info: Mapping[str, Any] | list = await self._post(
             "/api/diagnostics/system/systemResources"
         )
-        _LOGGER.debug(f"[get_telemetry_memory] memory_info: {memory_info}")
+        # _LOGGER.debug(f"[get_telemetry_memory] memory_info: {memory_info}")
         if not isinstance(memory_info, Mapping):
             return {}
         memory: Mapping[str, Any] = {}
@@ -958,7 +956,7 @@ $toreturn = [
             or not isinstance(swap_info.get("swap", [])[0], Mapping)
         ):
             return memory
-        _LOGGER.debug(f"[get_telemetry_memory] swap_info: {swap_info}")
+        # _LOGGER.debug(f"[get_telemetry_memory] swap_info: {swap_info}")
         memory["swap_total"] = self._try_to_int(
             swap_info.get("swap", [])[0].get("total", None)
         )
@@ -972,7 +970,7 @@ $toreturn = [
             and memory["swap_total"] > 0
             else 0
         )
-        _LOGGER.debug(f"[get_telemetry_memory] memory: {memory}")
+        # _LOGGER.debug(f"[get_telemetry_memory] memory: {memory}")
         return memory
 
     @_log_errors
@@ -980,7 +978,7 @@ $toreturn = [
         time_info: Mapping[str, Any] | list = await self._post(
             "/api/diagnostics/system/systemTime"
         )
-        _LOGGER.debug(f"[get_telemetry_system] time_info: {time_info}")
+        # _LOGGER.debug(f"[get_telemetry_system] time_info: {time_info}")
         if not isinstance(time_info, Mapping):
             return {}
         system: Mapping[str, Any] = {}
@@ -1011,7 +1009,7 @@ $toreturn = [
                 "five_minute": None,
                 "fifteen_minute": None,
             }
-        _LOGGER.debug(f"[get_telemetry_system] system: {system}")
+        # _LOGGER.debug(f"[get_telemetry_system] system: {system}")
         return system
 
     @_log_errors
@@ -1019,7 +1017,7 @@ $toreturn = [
         cputype_info: Mapping[str, Any] | list = await self._post(
             "/api/diagnostics/cpu_usage/getCPUType"
         )
-        _LOGGER.debug(f"[get_telemetry_cpu] cputype_info: {cputype_info}")
+        # _LOGGER.debug(f"[get_telemetry_cpu] cputype_info: {cputype_info}")
         if not isinstance(cputype_info, list) or not len(cputype_info) > 0:
             return {}
         cpu: Mapping[str, Any] = {}
@@ -1030,7 +1028,7 @@ $toreturn = [
             "/api/diagnostics/cpu_usage/stream"
         )
         # {"total":29,"user":2,"nice":0,"sys":27,"intr":0,"idle":70}
-        _LOGGER.debug(f"[get_telemetry_cpu] cpustream_info: {cpustream_info}")
+        # _LOGGER.debug(f"[get_telemetry_cpu] cpustream_info: {cpustream_info}")
         if not isinstance(cpustream_info, Mapping):
             return cpu
         cpu["usage_total"] = self._try_to_int(cpustream_info.get("total", None))
@@ -1039,7 +1037,7 @@ $toreturn = [
         cpu["usage_system"] = self._try_to_int(cpustream_info.get("sys", None))
         cpu["usage_interrupt"] = self._try_to_int(cpustream_info.get("intr", None))
         cpu["usage_idle"] = self._try_to_int(cpustream_info.get("idle", None))
-        _LOGGER.debug(f"[get_telemetry_cpu] cpu: {cpu}")
+        # _LOGGER.debug(f"[get_telemetry_cpu] cpu: {cpu}")
         return cpu
 
     @_log_errors
@@ -1049,15 +1047,13 @@ $toreturn = [
         )
         if not isinstance(filesystems_info, Mapping):
             return []
-        _LOGGER.debug(
-            f"[get_telemetry_filesystems] filesystems_info: {filesystems_info}"
-        )
+        # _LOGGER.debug(f"[get_telemetry_filesystems] filesystems_info: {filesystems_info}")
         filesystems: list = filesystems_info.get("devices", [])
         # To conform to the previous data being returned
         for filesystem in filesystems:
             filesystem["size"] = filesystem.pop("blocks", None)
             filesystem["capacity"] = f"{filesystem.pop('used_pct','')}%"
-        _LOGGER.debug(f"[get_telemetry_filesystems] filesystems: {filesystems}")
+        # _LOGGER.debug(f"[get_telemetry_filesystems] filesystems: {filesystems}")
         return filesystems
 
     @_log_errors
@@ -1065,7 +1061,7 @@ $toreturn = [
         openvpn_info: Mapping[str, Any] | list = await self._post(
             "/api/openvpn/export/providers"
         )
-        _LOGGER.debug(f"[get_telemetry_openvpn] openvpn_info: {openvpn_info}")
+        # _LOGGER.debug(f"[get_telemetry_openvpn] openvpn_info: {openvpn_info}")
         if not isinstance(openvpn_info, Mapping):
             return {}
         openvpn: Mapping[str, Any] = {}
@@ -1073,7 +1069,7 @@ $toreturn = [
         connection_info: Mapping[str, Any] = await self._post(
             "/api/openvpn/service/searchSessions"
         )
-        _LOGGER.debug(f"[get_telemetry_openvpn] connection_info: {connection_info}")
+        # _LOGGER.debug(f"[get_telemetry_openvpn] connection_info: {connection_info}")
         if connection_info is None or not isinstance(connection_info, Mapping):
             return {}
         for vpnid, vpn_info in openvpn_info.items():
@@ -1097,7 +1093,7 @@ $toreturn = [
             # Missing connected_client_count
             # vpn["connected_client_count"] =
             openvpn["servers"][vpnid] = vpn
-        _LOGGER.debug(f"[get_telemetry_openvpn] openvpn: {openvpn}")
+        # _LOGGER.debug(f"[get_telemetry_openvpn] openvpn: {openvpn}")
         return openvpn
 
     @_log_errors
@@ -1105,7 +1101,7 @@ $toreturn = [
         gateways_info: Mapping[str, Any] | list = await self._post(
             "/api/routes/gateway/status"
         )
-        _LOGGER.debug(f"[get_telemetry_gateways] gateways_info: {gateways_info}")
+        # _LOGGER.debug(f"[get_telemetry_gateways] gateways_info: {gateways_info}")
         if not isinstance(gateways_info, Mapping):
             return {}
         gateways: Mapping[str, Any] = {}
@@ -1116,7 +1112,7 @@ $toreturn = [
             gateway["status"] = gateway.pop(
                 "status_translated", gateway.get("status", "")
             ).lower()
-        _LOGGER.debug(f"[get_telemetry_gateways] gateways: {gateways}")
+        # _LOGGER.debug(f"[get_telemetry_gateways] gateways: {gateways}")
         return gateways
 
     @_log_errors
@@ -1124,7 +1120,7 @@ $toreturn = [
         temps_info: Mapping[str, Any] | list = await self._post(
             "/api/diagnostics/system/systemTemperature"
         )
-        _LOGGER.debug(f"[get_telemetry_temps] temps_info: {temps_info}")
+        # _LOGGER.debug(f"[get_telemetry_temps] temps_info: {temps_info}")
         if not isinstance(temps_info, list) or not len(temps_info) > 0:
             return {}
         temps: Mapping[str, Any] = {}
@@ -1136,7 +1132,7 @@ $toreturn = [
             )
             temp["device_id"] = temp_info.get("device", str(i))
             temps[temp_info.get("device", str(i)).replace(".", "_")] = temp
-        _LOGGER.debug(f"[get_telemetry_temps] temps: {temps}")
+        # _LOGGER.debug(f"[get_telemetry_temps] temps: {temps}")
         return temps
 
     @_log_errors
@@ -1327,7 +1323,7 @@ foreach ($ovpn_servers as $server) {
             return {}
         if isinstance(telemetry.get("gateways", []), list):
             telemetry["gateways"] = {}
-        _LOGGER.debug(f"[get_telemetry_legacy] telemetry: {telemetry}")
+        # _LOGGER.debug(f"[get_telemetry_legacy] telemetry: {telemetry}")
         return telemetry
 
     @_log_errors
@@ -1335,7 +1331,7 @@ foreach ($ovpn_servers as $server) {
         notices_info: Mapping[str, Any] | list = await self._get(
             "/api/core/system/status"
         )
-        _LOGGER.debug(f"[get_notices] notices_info: {notices_info}")
+        # _LOGGER.debug(f"[get_notices] notices_info: {notices_info}")
 
         if not isinstance(notices_info, Mapping):
             return []
