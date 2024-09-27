@@ -1,5 +1,6 @@
 """OPNsense integration."""
 
+import asyncio
 from collections.abc import Mapping
 import logging
 from typing import Any
@@ -17,12 +18,201 @@ from homeassistant.util import slugify
 
 from custom_components.opnsense.pyopnsense import OPNsenseClient
 
-from . import CoordinatorEntityManager, OPNsenseEntity
+from . import OPNsenseEntity
 from .const import ATTR_UNBOUND_BLOCKLIST, COORDINATOR, DOMAIN
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .helpers import dict_get
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+
+
+async def _compile_filter_switches(
+    config_entry: ConfigEntry,
+    coordinator: OPNsenseDataUpdateCoordinator,
+    state: Mapping[str, Any],
+) -> list:
+    entities: list = []
+    # filter rules
+    if "filter" in state["config"]:
+        rules = dict_get(state, "config.filter.rule")
+        if isinstance(rules, list):
+            for rule in rules:
+                if not isinstance(rule, dict):
+                    continue
+                icon = "mdi:security-network"
+                # likely only want very specific rules to manipulate from actions
+                enabled_default = False
+                # entity_category = ENTITY_CATEGORY_CONFIG
+                device_class = SwitchDeviceClass.SWITCH
+
+                # do NOT add rules that are NAT rules
+                if "associated-rule-id" in rule:
+                    continue
+
+                # not possible to disable these rules
+                if rule.get("descr", "") == "Anti-Lockout Rule":
+                    continue
+
+                tracker = dict_get(rule, "created.time")
+                # we use tracker as the unique id
+                if tracker is None or len(tracker) < 1:
+                    continue
+
+                entity = OPNsenseFilterSwitch(
+                    config_entry=config_entry,
+                    coordinator=coordinator,
+                    entity_description=SwitchEntityDescription(
+                        key=f"filter.{tracker}",
+                        name=f"Filter Rule {tracker} ({rule.get('descr', '')})",
+                        icon=icon,
+                        # entity_category=entity_category,
+                        device_class=device_class,
+                        entity_registry_enabled_default=enabled_default,
+                    ),
+                )
+                entities.append(entity)
+    return entities
+
+
+async def _compile_port_forward_switches(
+    config_entry: ConfigEntry,
+    coordinator: OPNsenseDataUpdateCoordinator,
+    state: Mapping[str, Any],
+) -> list:
+    entities: list = []
+    # nat port forward rules
+    if "nat" in state.get("config", {}):
+        rules = dict_get(state, "config.nat.rule")
+        if isinstance(rules, list):
+            for rule in rules:
+                if not isinstance(rule, dict):
+                    continue
+                icon = "mdi:network"
+                # likely only want very specific rules to manipulate from actions
+                enabled_default = False
+                # entity_category = ENTITY_CATEGORY_CONFIG
+                device_class = SwitchDeviceClass.SWITCH
+                tracker = dict_get(rule, "created.time")
+                # we use tracker as the unique id
+                if tracker is None or len(tracker) < 1:
+                    continue
+
+                if "descr" not in rule.keys():
+                    rule["descr"] = ""
+
+                entity = OPNsenseNatSwitch(
+                    config_entry=config_entry,
+                    coordinator=coordinator,
+                    entity_description=SwitchEntityDescription(
+                        key=f"nat_port_forward.{tracker}".format(tracker),
+                        name=f"NAT Port Forward Rule {tracker} ({rule.get('descr','')})",
+                        icon=icon,
+                        # entity_category=entity_category,
+                        device_class=device_class,
+                        entity_registry_enabled_default=enabled_default,
+                    ),
+                )
+                entities.append(entity)
+    return entities
+
+
+async def _compile_nat_outbound_switches(
+    config_entry: ConfigEntry,
+    coordinator: OPNsenseDataUpdateCoordinator,
+    state: Mapping[str, Any],
+) -> list:
+    entities: list = []
+    # nat outbound rules
+    if "nat" in state.get("config", {}):
+        # to actually be applicable mode must by "hybrid" or "advanced"
+        rules = dict_get(state, "config.nat.outbound.rule")
+        if isinstance(rules, list):
+            for rule in rules:
+                if not isinstance(rule, dict):
+                    continue
+                icon = "mdi:network"
+                # likely only want very specific rules to manipulate from actions
+                enabled_default = False
+                # entity_category = ENTITY_CATEGORY_CONFIG
+                device_class = SwitchDeviceClass.SWITCH
+                tracker = dict_get(rule, "created.time")
+                # we use tracker as the unique id
+                if tracker is None or len(tracker) < 1:
+                    continue
+
+                if "Auto created rule" in rule.get("descr", ""):
+                    continue
+
+                entity = OPNsenseNatSwitch(
+                    config_entry=config_entry,
+                    coordinator=coordinator,
+                    entity_description=SwitchEntityDescription(
+                        key=f"nat_outbound.{tracker}",
+                        name=f"NAT Outbound Rule {tracker} ({rule.get('descr','')})",
+                        icon=icon,
+                        # entity_category=entity_category,
+                        device_class=device_class,
+                        entity_registry_enabled_default=enabled_default,
+                    ),
+                )
+                entities.append(entity)
+    return entities
+
+
+async def _compile_service_switches(
+    config_entry: ConfigEntry,
+    coordinator: OPNsenseDataUpdateCoordinator,
+    state: Mapping[str, Any],
+) -> list:
+    entities: list = []
+    # services
+    for service in state.get("services", []):
+        if service.get("locked", 1) == 1:
+            continue
+        for prop_name in ["status"]:
+            icon = "mdi:application-cog-outline"
+            # likely only want very specific services to manipulate from actions
+            enabled_default = False
+            # entity_category = ENTITY_CATEGORY_CONFIG
+            device_class = SwitchDeviceClass.SWITCH
+
+            entity = OPNsenseServiceSwitch(
+                config_entry=config_entry,
+                coordinator=coordinator,
+                entity_description=SwitchEntityDescription(
+                    key=f"service.{service.get('id', service.get('name', 'unknown'))}.{prop_name}",
+                    name=f"Service {service.get('description', service.get('name', 'Unknown'))} {prop_name}",
+                    icon=icon,
+                    # entity_category=entity_category,
+                    device_class=device_class,
+                    entity_registry_enabled_default=enabled_default,
+                ),
+            )
+            entities.append(entity)
+    return entities
+
+
+async def _compile_static_switches(
+    config_entry: ConfigEntry,
+    coordinator: OPNsenseDataUpdateCoordinator,
+    state: Mapping[str, Any],
+) -> list:
+    entities: list = []
+    entity = OPNsenseUnboundBlocklistSwitch(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=SwitchEntityDescription(
+            key=f"unbound_blocklist.switch",
+            name=f"Unbound Blocklist Switch",
+            # icon=icon,
+            # entity_category=ENTITY_CATEGORY_CONFIG,
+            device_class=SwitchDeviceClass.SWITCH,
+            entity_registry_enabled_default=False,
+        ),
+    )
+    entities.append(entity)
+
+    return entities
 
 
 async def async_setup_entry(
@@ -31,205 +221,49 @@ async def async_setup_entry(
     async_add_entities: entity_platform.AddEntitiesCallback,
 ) -> None:
     """Set up the OPNsense switches."""
+    coordinator: OPNsenseDataUpdateCoordinator = hass.data[DOMAIN][
+        config_entry.entry_id
+    ][COORDINATOR]
+    state: Mapping[str, Any] = coordinator.data
 
-    @callback
-    def process_entities_callback(hass, config_entry):
-        data = hass.data[DOMAIN][config_entry.entry_id]
-        coordinator = data[COORDINATOR]
-        state = coordinator.data
+    _LOGGER.debug(f"[switch async_setup_entry] coordinator: {coordinator}")
+    _LOGGER.debug(f"[switch async_setup_entry] state length: {len(state)}")
+    _LOGGER.debug(f"[switch async_setup_entry] state keys: {state.keys()}")
 
-        entities = []
+    # entities = await _compile_static_switches(config_entry, coordinator, state)
 
-        # filter rules
-        if "filter" in state["config"].keys():
-            rules = dict_get(state, "config.filter.rule")
-            if isinstance(rules, list):
-                for rule in rules:
-                    if not isinstance(rule, dict):
-                        continue
-                    icon = "mdi:security-network"
-                    # likely only want very specific rules to manipulate from actions
-                    enabled_default = False
-                    # entity_category = ENTITY_CATEGORY_CONFIG
-                    device_class = SwitchDeviceClass.SWITCH
-
-                    # do NOT add rules that are NAT rules
-                    if "associated-rule-id" in rule.keys():
-                        continue
-
-                    if "descr" not in rule.keys():
-                        rule["descr"] = ""
-
-                    # not possible to disable these rules
-                    if rule["descr"] == "Anti-Lockout Rule":
-                        continue
-
-                    tracker = dict_get(rule, "created.time")
-                    if tracker is None:
-                        continue
-
-                    # we use tracker as the unique id
-                    if len(tracker) < 1:
-                        continue
-
-                    entity = OPNsenseFilterSwitch(
-                        config_entry,
-                        coordinator,
-                        SwitchEntityDescription(
-                            key="filter.{}".format(tracker),
-                            name="Filter Rule {} ({})".format(tracker, rule["descr"]),
-                            icon=icon,
-                            # entity_category=entity_category,
-                            device_class=device_class,
-                            entity_registry_enabled_default=enabled_default,
-                        ),
-                    )
-                    entities.append(entity)
-
-        # nat port forward rules
-        if "nat" in state["config"].keys():
-            rules = dict_get(state, "config.nat.rule")
-            if isinstance(rules, list):
-                for rule in rules:
-                    if not isinstance(rule, dict):
-                        continue
-                    icon = "mdi:network"
-                    # likely only want very specific rules to manipulate from actions
-                    enabled_default = False
-                    # entity_category = ENTITY_CATEGORY_CONFIG
-                    device_class = SwitchDeviceClass.SWITCH
-                    tracker = dict_get(rule, "created.time")
-                    if tracker is None:
-                        continue
-
-                    # we use tracker as the unique id
-                    if len(tracker) < 1:
-                        continue
-
-                    if "descr" not in rule.keys():
-                        rule["descr"] = ""
-
-                    entity = OPNsenseNatSwitch(
-                        config_entry,
-                        coordinator,
-                        SwitchEntityDescription(
-                            key="nat_port_forward.{}".format(tracker),
-                            name="NAT Port Forward Rule {} ({})".format(
-                                tracker, rule["descr"]
-                            ),
-                            icon=icon,
-                            # entity_category=entity_category,
-                            device_class=device_class,
-                            entity_registry_enabled_default=enabled_default,
-                        ),
-                    )
-                    entities.append(entity)
-
-        # nat outbound rules
-        if "nat" in state["config"].keys():
-            # to actually be applicable mode must by "hybrid" or "advanced"
-            rules = dict_get(state, "config.nat.outbound.rule")
-            if isinstance(rules, list):
-                for rule in rules:
-                    if not isinstance(rule, dict):
-                        continue
-                    icon = "mdi:network"
-                    # likely only want very specific rules to manipulate from actions
-                    enabled_default = False
-                    # entity_category = ENTITY_CATEGORY_CONFIG
-                    device_class = SwitchDeviceClass.SWITCH
-                    tracker = dict_get(rule, "created.time")
-                    if tracker is None:
-                        continue
-
-                    # we use tracker as the unique id
-                    if len(tracker) < 1:
-                        continue
-
-                    if "descr" not in rule.keys():
-                        rule["descr"] = ""
-
-                    if "Auto created rule" in rule["descr"]:
-                        continue
-
-                    entity = OPNsenseNatSwitch(
-                        config_entry,
-                        coordinator,
-                        SwitchEntityDescription(
-                            key="nat_outbound.{}".format(tracker),
-                            name="NAT Outbound Rule {} ({})".format(
-                                tracker, rule["descr"]
-                            ),
-                            icon=icon,
-                            # entity_category=entity_category,
-                            device_class=device_class,
-                            entity_registry_enabled_default=enabled_default,
-                        ),
-                    )
-                    entities.append(entity)
-
-        # services
-        for service in state["services"]:
-            if service.get("locked", 1) == 1:
-                continue
-            for prop_name in ["status"]:
-                icon = "mdi:application-cog-outline"
-                # likely only want very specific services to manipulate from actions
-                enabled_default = False
-                # entity_category = ENTITY_CATEGORY_CONFIG
-                device_class = SwitchDeviceClass.SWITCH
-
-                entity = OPNsenseServiceSwitch(
-                    config_entry,
-                    coordinator,
-                    SwitchEntityDescription(
-                        key=f"service.{service.get('id', service.get('name', 'unknown'))}.{prop_name}",
-                        name=f"Service {service.get('description', service.get('name', 'Unknown'))} {prop_name}",
-                        icon=icon,
-                        # entity_category=entity_category,
-                        device_class=device_class,
-                        entity_registry_enabled_default=enabled_default,
-                    ),
-                )
-                entities.append(entity)
-
-        entity = OPNsenseUnboundBlocklistSwitch(
-            config_entry,
-            coordinator,
-            SwitchEntityDescription(
-                key=f"unbound_blocklist.switch",
-                name=f"Unbound Blocklist Switch",
-                # icon=icon,
-                # entity_category=ENTITY_CATEGORY_CONFIG,
-                device_class=SwitchDeviceClass.SWITCH,
-                entity_registry_enabled_default=False,
-            ),
-        )
-        entities.append(entity)
-
-        return entities
-
-    cem = CoordinatorEntityManager(
-        hass,
-        hass.data[DOMAIN][config_entry.entry_id][COORDINATOR],
-        config_entry,
-        process_entities_callback,
-        async_add_entities,
+    results: list = await asyncio.gather(
+        _compile_filter_switches(config_entry, coordinator, state),
+        _compile_port_forward_switches(config_entry, coordinator, state),
+        _compile_nat_outbound_switches(config_entry, coordinator, state),
+        _compile_service_switches(config_entry, coordinator, state),
+        _compile_static_switches(config_entry, coordinator, state),
+        return_exceptions=True,
     )
-    cem.process_entities()
+    entities: list = []
+    for result in results:
+        if isinstance(result, list):
+            entities += result
+        else:
+            _LOGGER.error(
+                f"Error in switch async_setup_entry. {result.__class__.__qualname__}: {result}"
+            )
+    _LOGGER.debug(f"[switch async_setup_entry] entities: {len(entities)}")
+    async_add_entities(entities)
 
 
 class OPNsenseSwitch(OPNsenseEntity, SwitchEntity):
+
     def __init__(
         self,
-        config_entry,
+        config_entry: ConfigEntry,
         coordinator: OPNsenseDataUpdateCoordinator,
         entity_description: SwitchEntityDescription,
     ) -> None:
         """Initialize the entity."""
         self.config_entry = config_entry
         self.entity_description = entity_description
-        self.coordinator = coordinator
+        self.coordinator: OPNsenseDataUpdateCoordinator = coordinator
         self._attr_name = f"{self.opnsense_device_name} {entity_description.name}"
         self._attr_unique_id = slugify(
             f"{self.opnsense_device_unique_id}_{entity_description.key}"
