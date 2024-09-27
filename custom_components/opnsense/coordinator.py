@@ -110,7 +110,6 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         self._state["previous_state"] = previous_state
 
         if self._device_tracker_coordinator:
-
             categories: list = [
                 {"function": "get_device_unique_id", "state_key": "device_unique_id"},
                 {"function": "get_system_info", "state_key": "system_info"},
@@ -136,6 +135,8 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 )
                 return {}
             return self._state
+
+        self._state["dhcp_leases"] = await self._client.get_dhcp_leases()
 
         categories: list = [
             {"function": "get_device_unique_id", "state_key": "device_unique_id"},

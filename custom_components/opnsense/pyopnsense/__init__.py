@@ -641,26 +641,79 @@ $toreturn = [
         return True
 
     @_log_errors
-    async def get_dhcp_leases(self):
-        # function system_get_dhcpleases()
-        # {'lease': [], 'failover': []}
-        # {"lease":[{"ip":"<ip>","type":"static","mac":"<mac>","if":"lan","starts":"","ends":"","hostname":"<hostname>","descr":"","act":"static","online":"online","staticmap_array_index":48} ...
-        script: str = r"""
-require_once '/usr/local/etc/inc/plugins.inc.d/dhcpd.inc';
+    async def get_dhcp_leases(self) -> list:
+        leases: list = await self._get_kea_dhcpv4_leases()
+        _LOGGER.debug(f"[get_dhcp_leases] leases: {leases}")
+        # return leases
+        return []
 
-$toreturn = [
-  "data" => dhcpd_leases(4),
-];
-"""
-        response: Mapping[str, Any] = await self._exec_php(script)
-        if (
-            response is None
-            or not isinstance(response, Mapping)
-            or not isinstance(response.get("data", None), Mapping)
-        ):
-            _LOGGER.error("Invalid data returned from get_dhcp_leases")
+    async def _get_kea_dhcpv4_leases(self) -> list:
+        response: Mapping[str, Any] | list = await self._get("/api/kea/leases4/search")
+        if response is None or not isinstance(response, Mapping):
             return []
-        return response.get("data", {}).get("lease", [])
+        leases_info: list = response.get("rows", [])
+        # _LOGGER.debug(f"[get_kea_dhcpv4_leases] leases_info: {leases_info}")
+        leases = []
+        for lease_info in leases_info:
+            if lease_info is None or not isinstance(lease_info, Mapping):
+                continue
+            lease: Mapping[str, Any] = {}
+            for attr in [
+                "address",
+                "hostname",
+                "if_descr",
+                "if_name",
+            ]:
+                lease[attr] = lease_info.get(attr, None)
+            lease["mac"] = lease_info.get("hwaddr", None)
+            if self._try_to_int(lease_info.get("expire", None)):
+                lease["expire"] = datetime.fromtimestamp(
+                    self._try_to_int(lease_info.get("expire", None)),
+                    tz=datetime.now().astimezone().tzinfo,
+                )
+            else:
+                lease["expire"] = lease_info.get("expire", None)
+            leases.append(lease)
+        # _LOGGER.debug(f"[get_kea_dhcpv4_leases] leases: {leases}")
+        return leases
+
+    # Kea DHCPv4
+    # {
+    #     "if": "vlan03",
+    #     "address": "10.100.50.5",
+    #     "hwaddr": "34:98:7a:5e:ae:b4",
+    #     "client_id": "01:34:98:7a:5e:ae:b4",
+    #     "valid_lifetime": "86400",
+    #     "expire": "1727487541",
+    #     "subnet_id": "3",
+    #     "fqdn_fwd": "0",
+    #     "fqdn_rev": "0",
+    #     "hostname": "keepconnect",
+    #     "state": "0",
+    #     "user_context": "",
+    #     "pool_id": "0",
+    #     "if_descr": "IOT_50",
+    #     "if_name": "opt5"
+    # },
+
+    # Legacy DHCPv6
+    # {
+    #     "type": "dynamic",
+    #     "lease_type": "ia-na",
+    #     "iaid": 0,
+    #     "duid": "00:01:00:01:20:44:59:47:ac:bc:32:75:d6:af",
+    #     "iaid_duid": "00:00:00:00:00:01:00:01:20:44:59:47:ac:bc:32:75:d6:af",
+    #     "descr": "",
+    #     "if": "opt5",
+    #     "cltt": "2024/09/26 22:05:30",
+    #     "state": "active",
+    #     "ends": "2024/09/27 00:05:30",
+    #     "address": "2600:4040:a506:ce32::1764",
+    #     "status": "online",
+    #     "man": "Apple, Inc.",
+    #     "mac": "ac:bc:32:75:d6:ad",
+    #     "if_descr": "IOT_50",
+    # },
 
     @_log_errors
     async def get_carp_status(self) -> Mapping[str, Any]:
