@@ -7,6 +7,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
+from .const import ATTR_UNBOUND_BLOCKLIST
 from .helpers import dict_get
 from .pyopnsense import OPNsenseClient
 
@@ -144,6 +145,9 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             self._state["dhcp_leases"] = []
             self._state["dhcp_stats"] = {}
             self._state["notices"] = await self._get_notices()
+            self._state[ATTR_UNBOUND_BLOCKLIST] = (
+                await self._client.get_unbound_blocklist()
+            )
 
             lease_stats: Mapping[str, int] = {"total": 0, "online": 0, "offline": 0}
             for lease in self._state["dhcp_leases"]:

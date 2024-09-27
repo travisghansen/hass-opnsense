@@ -18,7 +18,7 @@ from homeassistant.util import slugify
 from custom_components.opnsense.pyopnsense import OPNsenseClient
 
 from . import CoordinatorEntityManager, OPNsenseEntity
-from .const import COORDINATOR, DOMAIN
+from .const import ATTR_UNBOUND_BLOCKLIST, COORDINATOR, DOMAIN
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .helpers import dict_get
 
@@ -192,6 +192,21 @@ async def async_setup_entry(
                     ),
                 )
                 entities.append(entity)
+
+        entity = OPNsenseUnboundBlocklistSwitch(
+            config_entry,
+            coordinator,
+            SwitchEntityDescription(
+                key=f"unbound_blocklist.switch",
+                name=f"Unbound Blocklist Switch",
+                # icon=icon,
+                # entity_category=ENTITY_CATEGORY_CONFIG,
+                device_class=SwitchDeviceClass.SWITCH,
+                entity_registry_enabled_default=False,
+            ),
+        )
+        entities.append(entity)
+
         return entities
 
     cem = CoordinatorEntityManager(
@@ -220,13 +235,13 @@ class OPNsenseSwitch(OPNsenseEntity, SwitchEntity):
             f"{self.opnsense_device_unique_id}_{entity_description.key}"
         )
 
-    @property
-    def is_on(self):
-        return False
+    # @property
+    # def is_on(self):
+    #     return False
 
-    @property
-    def extra_state_attributes(self):
-        return None
+    # @property
+    # def extra_state_attributes(self):
+    #     return None
 
 
 class OPNsenseFilterSwitch(OPNsenseSwitch):
@@ -421,3 +436,58 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         for attr in ["id", "name"]:
             attributes[f"service_{attr}"] = service.get(attr, None)
         return attributes
+
+
+class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
+
+    def __init__(
+        self,
+        config_entry,
+        coordinator: OPNsenseDataUpdateCoordinator,
+        entity_description: SwitchEntityDescription,
+    ) -> None:
+        super().__init__(
+            config_entry=config_entry,
+            coordinator=coordinator,
+            entity_description=entity_description,
+        )
+        self._attr_is_on = STATE_UNKNOWN
+        self._attr_extra_state_attributes = {}
+        self._attr_available = False
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        dnsbl = self.coordinator.data.get(ATTR_UNBOUND_BLOCKLIST, {})
+        if not isinstance(dnsbl, Mapping) or len(dnsbl) == 0:
+            self._attr_available = False
+            return
+        self._attr_available = True
+        self._attr_is_on = True if dnsbl.get("enabled", "0") == "1" else False
+        self._attr_extra_state_attributes = {
+            "Force SafeSearch": (
+                True if dnsbl.get("safesearch", "0") == "1" else False
+            ),
+            "Type of DNSBL": dnsbl.get("type", ""),
+            "URLs of Blocklists": dnsbl.get("lists", ""),
+            "Whitelist Domains": dnsbl.get("whitelists", ""),
+            "Blocklist Domains": dnsbl.get("blocklists", ""),
+            "Wildcard Domains": dnsbl.get("wildcards", ""),
+            "Destination Address": dnsbl.get("address", ""),
+            "Return NXDOMAIN": (True if dnsbl.get("nxdomain", "0") == "1" else False),
+        }
+        self.async_write_ha_state()
+
+    async def async_turn_on(self, **kwargs) -> None:
+        """Turn the entity on."""
+        client: OPNsenseClient = self._get_opnsense_client()
+        result: bool = await client.enable_unbound_blocklist()
+        if result:
+            await self.coordinator.async_refresh()
+
+    async def async_turn_off(self, **kwargs) -> None:
+        """Turn the entity off."""
+        client: OPNsenseClient = self._get_opnsense_client()
+        result: bool = await client.disable_unbound_blocklist()
+        if result:
+            await self.coordinator.async_refresh()

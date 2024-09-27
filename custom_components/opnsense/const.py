@@ -52,6 +52,8 @@ DATA_RATE_PACKETS_PER_SECOND = f"{DATA_PACKETS}/{UnitOfTime.SECONDS}"
 
 ICON_MEMORY = "mdi:memory"
 
+ATTR_UNBOUND_BLOCKLIST = "unbound_blocklist"
+
 SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
     # pfstate
     "telemetry.pfstate.used": SensorEntityDescription(
