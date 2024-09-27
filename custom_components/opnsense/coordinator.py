@@ -79,10 +79,6 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         return await self._client.get_config()
 
     @_log_timing
-    async def _get_interfaces(self):
-        return await self._client.get_interfaces()
-
-    @_log_timing
     async def _get_services(self):
         return await self._client.get_services()
 
@@ -137,7 +133,6 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             self._state["firmware_update_info"] = await self._get_firmware_update_info()
             self._state["telemetry"] = await self._get_telemetry()
             self._state["config"] = await self._get_config()
-            self._state["interfaces"] = await self._get_interfaces()
             self._state["services"] = await self._get_services()
             self._state["carp_interfaces"] = await self._get_carp_interfaces()
             self._state["carp_status"] = await self._get_carp_status()
