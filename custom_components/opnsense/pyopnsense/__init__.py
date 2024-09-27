@@ -466,28 +466,6 @@ $toreturn = [
         return response.get("data", {})
 
     @_log_errors
-    async def get_interfaces(self) -> Mapping[str, Any]:
-        return await self._get_config_section("interfaces")
-
-    @_log_errors
-    async def get_interface(self, interface) -> Mapping[str, Any]:
-        interfaces: Mapping[str, Any] = await self.get_interfaces()
-        return interfaces.get(interface, {})
-
-    @_log_errors
-    async def get_interface_by_description(self, interface):
-        interfaces: Mapping[str, Any] = await self.get_interfaces()
-        for i, i_interface in enumerate(interfaces.keys()):
-            if "descr" not in interfaces[i_interface]:
-                continue
-
-            if interfaces[i_interface]["descr"] is None:
-                continue
-
-            if interfaces[i_interface]["descr"] == interface:
-                return interfaces[i_interface]
-
-    @_log_errors
     async def enable_filter_rule_by_created_time(self, created_time) -> None:
         config = await self.get_config()
         for rule in config["filter"]["rule"]:

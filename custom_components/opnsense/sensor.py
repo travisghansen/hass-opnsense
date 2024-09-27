@@ -224,7 +224,7 @@ async def async_setup_entry(
                     coordinator,
                     SensorEntityDescription(
                         key=f"telemetry.interface.{interface_name}.{prop_name}",
-                        name=f"Interface {interface_name} {prop_name}",
+                        name=f"Interface {interface.get('name', interface_name)} {prop_name}",
                         native_unit_of_measurement=native_unit_of_measurement,
                         icon=icon,
                         state_class=state_class,
