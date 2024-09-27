@@ -1,6 +1,7 @@
 """Config flow for OPNsense integration."""
 
 from collections.abc import Mapping
+import ipaddress
 import logging
 from typing import Any
 from urllib.parse import quote_plus, urlparse
@@ -38,6 +39,14 @@ from .const import (
 from .pyopnsense import OPNsenseClient
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def is_ip_address(value) -> bool:
+    try:
+        ipaddress.ip_address(value)
+        return True
+    except ValueError:
+        return False
 
 
 def cleanse_sensitive_data(message, secrets=[]):
@@ -245,9 +254,11 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_device_tracker(self, user_input=None):
         """Handle device tracker list step."""
         url = self.config_entry.data[CONF_URL].strip()
-        username = self.config_entry.data.get(CONF_USERNAME, DEFAULT_USERNAME)
-        password = self.config_entry.data[CONF_PASSWORD]
-        verify_ssl = self.config_entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
+        username: str = self.config_entry.data.get(CONF_USERNAME, DEFAULT_USERNAME)
+        password: str = self.config_entry.data[CONF_PASSWORD]
+        verify_ssl: bool = self.config_entry.data.get(
+            CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL
+        )
         client = OPNsenseClient(
             url=url,
             username=username,
@@ -256,24 +267,39 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             opts={"verify_ssl": verify_ssl},
         )
         if user_input is None and (arp_table := await client.get_arp_table(True)):
-            selected_devices = self.config_entry.options.get(CONF_DEVICES, [])
+            selected_devices: list = self.config_entry.options.get(CONF_DEVICES, [])
 
             # dicts are ordered so put all previously selected items at the top
-            entries = {}
+            entries: Mapping[str, Any] = {}
             for device in selected_devices:
                 entries[device] = device
 
             # follow with all arp table entries
             for entry in arp_table:
-                mac: str = entry.get("mac", "").lower()
+                mac: str = entry.get("mac", "").lower().strip()
                 if len(mac) < 1:
                     continue
-
-                hostname: str = entry.get("hostname", "").strip("?")
-                ip: str = entry.get("ip", "")
-
-                label: str = f"{mac} - {hostname.strip()} ({ip.strip()})"
+                hostname: str = entry.get("hostname", "").strip("?").strip()
+                ip: str = entry.get("ip", "").strip()
+                label: str = f"{ip} {'('+hostname+') ' if hostname else ''}[{mac}]"
                 entries[mac] = label
+
+            sorted_entries: Mapping[str, Any] = {
+                key: value
+                for key, value in sorted(
+                    entries.items(),
+                    key=lambda item: (
+                        (
+                            0 if not is_ip_address(item[1].split()[0]) else 1
+                        ),  # Sort MAC address only labels first
+                        (
+                            item[1].split()[0]
+                            if not is_ip_address(item[1].split()[0])
+                            else ipaddress.ip_address(item[1].split()[0])
+                        ),
+                    ),
+                )
+            }
 
             return self.async_show_form(
                 step_id="device_tracker",
@@ -281,7 +307,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     {
                         vol.Optional(
                             CONF_DEVICES, default=selected_devices
-                        ): cv.multi_select(entries),
+                        ): cv.multi_select(sorted_entries),
                     }
                 ),
             )
