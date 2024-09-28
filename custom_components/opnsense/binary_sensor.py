@@ -1,6 +1,8 @@
 """OPNsense integration."""
 
+from collections.abc import Mapping
 import logging
+from typing import Any
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -8,11 +10,10 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntityDescription,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_platform
 
-from . import CoordinatorEntityManager, OPNsenseEntity
+from . import OPNsenseEntity
 from .const import COORDINATOR, DOMAIN
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .helpers import dict_get
@@ -24,131 +25,101 @@ async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
     async_add_entities: entity_platform.AddEntitiesCallback,
-):
+) -> None:
     """Set up the OPNsense binary sensors."""
 
-    @callback
-    def process_entities_callback(hass, config_entry):
-        data = hass.data[DOMAIN][config_entry.entry_id]
-        coordinator = data[COORDINATOR]
-        entities = []
-        entity = OPNsenseCarpStatusBinarySensor(
-            config_entry,
-            coordinator,
-            BinarySensorEntityDescription(
-                key="carp.status",
-                name="CARP Status",
-                # native_unit_of_measurement=native_unit_of_measurement,
-                icon="mdi:gauge",
-                # state_class=state_class,
-                # entity_category=entity_category,
-            ),
-            False,
-        )
-        entities.append(entity)
+    coordinator: OPNsenseDataUpdateCoordinator = hass.data[DOMAIN][
+        config_entry.entry_id
+    ][COORDINATOR]
 
-        entity = OPNsensePendingNoticesPresentBinarySensor(
-            config_entry,
-            coordinator,
-            BinarySensorEntityDescription(
-                key=f"notices.pending_notices_present",
-                name="Pending Notices Present",
-                # native_unit_of_measurement=native_unit_of_measurement,
-                icon="mdi:alert",
-                # state_class=state_class,
-                # entity_category=entity_category,
-            ),
-            True,
-        )
-        entities.append(entity)
-
-        return entities
-
-    cem = CoordinatorEntityManager(
-        hass,
-        hass.data[DOMAIN][config_entry.entry_id][COORDINATOR],
-        config_entry,
-        process_entities_callback,
-        async_add_entities,
+    entities: list = []
+    entity = OPNsenseCarpStatusBinarySensor(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=BinarySensorEntityDescription(
+            key="carp.status",
+            name="CARP Status",
+            icon="mdi:gauge",
+            device_class=None,
+            # entity_category=entity_category,
+            entity_registry_enabled_default=False,
+        ),
     )
-    cem.process_entities()
+    entities.append(entity)
+
+    entity = OPNsensePendingNoticesPresentBinarySensor(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=BinarySensorEntityDescription(
+            key="notices.pending_notices_present",
+            name="Pending Notices Present",
+            icon="mdi:alert",
+            device_class=BinarySensorDeviceClass.PROBLEM,
+            # entity_category=entity_category,
+            entity_registry_enabled_default=True,
+        ),
+    )
+    entities.append(entity)
+
+    async_add_entities(entities)
 
 
 class OPNsenseBinarySensor(OPNsenseEntity, BinarySensorEntity):
+
     def __init__(
         self,
-        config_entry,
+        config_entry: ConfigEntry,
         coordinator: OPNsenseDataUpdateCoordinator,
         entity_description: BinarySensorEntityDescription,
-        enabled_default: bool,
     ) -> None:
         super().__init__(
-            config_entry,
-            coordinator,
+            config_entry=config_entry,
+            coordinator=coordinator,
             unique_id_suffix=entity_description.key,
             name_suffix=entity_description.name,
         )
-        self.entity_description = entity_description
-        self._attr_entity_registry_enabled_default = enabled_default
+        self.entity_description: BinarySensorEntityDescription = entity_description
+        self._attr_is_on: bool = False
+        self._attr_extra_state_attributes: Mapping[str, Any] = {}
+        self._available: bool = (
+            False  # Move this to OPNsenseEntity once all entity-types are updated
+        )
 
+    # Move this to OPNsenseEntity once all entity-types are updated
     @property
-    def is_on(self):
-        return False
+    def available(self) -> bool:
+        return self._available
 
-    @property
-    def device_class(self):
-        return None
-
-    @property
-    def extra_state_attributes(self):
-        return None
+    # Move this to OPNsenseEntity once all entity-types are updated
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._handle_coordinator_update()
 
 
 class OPNsenseCarpStatusBinarySensor(OPNsenseBinarySensor):
-    @property
-    def available(self) -> bool:
-        state = self.coordinator.data
-        if dict_get(state, "carp_status") is None:
-            return False
 
-        return super().available
-
-    @property
-    def is_on(self):
+    @callback
+    def _handle_coordinator_update(self) -> None:
         state = self.coordinator.data
         try:
-            return state["carp_status"]
-        except KeyError:
-            return STATE_UNKNOWN
+            self._attr_is_on = state["carp_status"]
+        except (KeyError, TypeError):
+            self._available = False
+            return
+        self._available = True
 
 
 class OPNsensePendingNoticesPresentBinarySensor(OPNsenseBinarySensor):
-    @property
-    def available(self) -> bool:
-        state = self.coordinator.data
-        if dict_get(state, "notices.pending_notices_present") is None:
-            return False
-
-        return super().available
-
-    @property
-    def is_on(self):
+    @callback
+    def _handle_coordinator_update(self) -> None:
         state = self.coordinator.data
         try:
-            return state["notices"]["pending_notices_present"]
-        except KeyError:
-            return STATE_UNKNOWN
-
-    @property
-    def device_class(self):
-        return BinarySensorDeviceClass.PROBLEM
-
-    @property
-    def extra_state_attributes(self):
-        state = self.coordinator.data
-        attrs = {}
+            self._attr_is_on = state["notices"]["pending_notices_present"]
+        except (KeyError, TypeError):
+            self._available = False
+            return
+        self._available = True
+        self._attr_extra_state_attributes = {}
 
         notices = dict_get(state, "notices.pending_notices", [])
-        attrs["pending_notices"] = notices
-
-        return attrs
+        self._attr_extra_state_attributes["pending_notices"] = notices

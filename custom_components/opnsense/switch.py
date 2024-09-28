@@ -263,8 +263,11 @@ class OPNsenseSwitch(OPNsenseEntity, SwitchEntity):
         self.entity_description = entity_description
         self._attr_is_on: bool = False
         self._attr_extra_state_attributes: Mapping[str, Any] = {}
-        self._available: bool = False
+        self._available: bool = (
+            False  # Move this to OPNsenseEntity once all entity-types are updated
+        )
 
+    # Move this to OPNsenseEntity once all entity-types are updated
     @property
     def available(self) -> bool:
         return self._available
