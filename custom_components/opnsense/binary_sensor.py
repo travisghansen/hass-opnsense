@@ -11,7 +11,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_platform
-from homeassistant.util import slugify
 
 from . import CoordinatorEntityManager, OPNsenseEntity
 from .const import COORDINATOR, DOMAIN
@@ -83,15 +82,14 @@ class OPNsenseBinarySensor(OPNsenseEntity, BinarySensorEntity):
         entity_description: BinarySensorEntityDescription,
         enabled_default: bool,
     ) -> None:
-        """Initialize the sensor."""
-        self.config_entry = config_entry
-        self.entity_description = entity_description
-        self.coordinator = coordinator
-        self._attr_entity_registry_enabled_default = enabled_default
-        self._attr_name = f"{self.opnsense_device_name} {entity_description.name}"
-        self._attr_unique_id = slugify(
-            f"{self.opnsense_device_unique_id}_{entity_description.key}"
+        super().__init__(
+            config_entry,
+            coordinator,
+            unique_id_suffix=entity_description.key,
+            name_suffix=entity_description.name,
         )
+        self.entity_description = entity_description
+        self._attr_entity_registry_enabled_default = enabled_default
 
     @property
     def is_on(self):

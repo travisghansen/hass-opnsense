@@ -53,6 +53,8 @@ DATA_RATE_PACKETS_PER_SECOND = f"{DATA_PACKETS}/{UnitOfTime.SECONDS}"
 ICON_MEMORY = "mdi:memory"
 
 ATTR_UNBOUND_BLOCKLIST = "unbound_blocklist"
+ATTR_NAT_PORT_FORWARD = "nat_port_forward"
+ATTR_NAT_OUTBOUND = "nat_outbound"
 
 SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
     # pfstate

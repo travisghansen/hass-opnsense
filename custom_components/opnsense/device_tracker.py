@@ -154,10 +154,8 @@ class OPNsenseScannerEntity(OPNsenseEntity, ScannerEntity):
         mac: str,
         mac_vendor: str,
     ) -> None:
-        """Set up the pfSense scanner entity."""
-        self.hass = hass
-        self.config_entry = config_entry
-        self.coordinator = coordinator
+        """Set up the OPNsense scanner entity."""
+        super().__init__(config_entry, coordinator, unique_id_suffix=f"mac_{mac}")
         self._mac_address = mac
         self._mac_vendor = mac_vendor
         self._last_known_ip = None
@@ -166,9 +164,6 @@ class OPNsenseScannerEntity(OPNsenseEntity, ScannerEntity):
         self._extra_state = {}
 
         self._attr_entity_registry_enabled_default = enabled_default
-        self._attr_unique_id = get_device_tracker_unique_id(
-            mac, self.opnsense_device_unique_id
-        )
 
     def _get_opnsense_arp_entry(self) -> dict[str, str]:
         state = self.coordinator.data
