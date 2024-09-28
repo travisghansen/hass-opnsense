@@ -23,6 +23,7 @@ from homeassistant.helpers.issue_registry import IssueSeverity, async_create_iss
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import slugify
 
 from .const import (
     CONF_DEVICE_TRACKER_ENABLED,
@@ -258,12 +259,27 @@ class CoordinatorEntityManager:
             registry.async_remove(entity.entity_id)
 
 
-class OPNsenseEntity(CoordinatorEntity, RestoreEntity):
+class OPNsenseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator], RestoreEntity):
     """Base entity for OPNsense"""
 
-    @property
-    def coordinator_context(self):
-        return None
+    def __init__(
+        self,
+        config_entry: ConfigEntry,
+        coordinator: OPNsenseDataUpdateCoordinator,
+        unique_id_suffix: str,
+        name_suffix: str | None = None,
+    ) -> None:
+        self.config_entry: ConfigEntry = config_entry
+        self.coordinator: OPNsenseDataUpdateCoordinator = coordinator
+        self._attr_unique_id: str = slugify(
+            f"{self.opnsense_device_unique_id}_{unique_id_suffix}"
+        )
+        if name_suffix:
+            self._attr_name: str = (
+                f"{self.opnsense_device_name or 'OPNsense'} {name_suffix}"
+            )
+        self._client: OPNsenseClient | None = None
+        super().__init__(self.coordinator, self._attr_unique_id)
 
     @property
     def device_info(self) -> Mapping[str, Any]:
@@ -304,5 +320,14 @@ class OPNsenseEntity(CoordinatorEntity, RestoreEntity):
 
         return value
 
-    def _get_opnsense_client(self) -> OPNsenseClient:
+    def _get_opnsense_client(self) -> OPNsenseClient | None:
+        if self.hass is None:
+            return None
         return self.hass.data[DOMAIN][self.config_entry.entry_id][OPNSENSE_CLIENT]
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        if self._client is None:
+            self._client: OPNsenseClient = self._get_opnsense_client()
+        if self._client is None:
+            _LOGGER.error("Unable to get client in async_added_to_hass.")
