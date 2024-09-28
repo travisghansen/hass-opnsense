@@ -1,3 +1,46 @@
+<a name="v0.3.2"></a>
+# [v0.3.2](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.2) - 28 Sep 2024
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 💥 Breaking Change 💥
+* Move OPNsense services functions to REST API by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/206
+### 🎉 Enhancements & New Features 🎉
+* Move HA services from entity level to platform level by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/204
+* Add Unbound Blocklist Switch by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/210
+* Sort Device Tracker Selector by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/214
+* Add concurrency to Coordinator by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/218
+* Optimize switches with concurrency and update logic by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/219
+### Other Changes
+* Turn down Debug logging by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/211
+* Remove unused get_interfaces by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/216
+
+## New Contributors
+* [@dependabot](https://github.com/dependabot) made their first contribution in https://github.com/travisghansen/hass-opnsense/pull/213
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.1...v0.3.2
+
+[Changes][v0.3.2]
+
+
+<a name="v0.3.2-beta.1"></a>
+# [v0.3.2-beta.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.2-beta.1) - 23 Sep 2024
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 💥 Breaking Change 💥
+* Move OPNsense services functions to REST API by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/206
+### 🎉 Enhancements & New Features 🎉
+* Move HA services from entity level to platform level by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/204
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.1...v0.3.2-beta.1
+
+[Changes][v0.3.2-beta.1]
+
+
 <a name="v0.3.1"></a>
 # [v0.3.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.1) - 22 Sep 2024
 
@@ -419,6 +462,8 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.3.2]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.2-beta.1...v0.3.2
+[v0.3.2-beta.1]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.1...v0.3.2-beta.1
 [v0.3.1]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.0...v0.3.1
 [v0.3.0]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.0-beta.3...v0.3.0
 [v0.3.0-beta.3]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.0-beta.2...v0.3.0-beta.3
