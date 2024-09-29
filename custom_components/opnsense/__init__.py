@@ -20,7 +20,6 @@ from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import async_get
 from homeassistant.helpers.issue_registry import IssueSeverity, async_create_issue
-from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import slugify
@@ -259,7 +258,7 @@ class CoordinatorEntityManager:
             registry.async_remove(entity.entity_id)
 
 
-class OPNsenseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator], RestoreEntity):
+class OPNsenseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
     """Base entity for OPNsense"""
 
     def __init__(
