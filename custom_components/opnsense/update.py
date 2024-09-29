@@ -1,8 +1,8 @@
 """OPNsense integration."""
 
+import asyncio
 from collections.abc import Mapping
 import logging
-import time
 from typing import Any
 
 from homeassistant.components.update import (
@@ -17,7 +17,7 @@ from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.util import slugify
 
-from . import CoordinatorEntityManager, OPNsenseEntity
+from . import OPNsenseEntity
 from .const import COORDINATOR, DOMAIN
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .helpers import dict_get
@@ -31,43 +31,33 @@ async def async_setup_entry(
     async_add_entities: entity_platform.AddEntitiesCallback,
 ) -> None:
     """Set up the OPNsense update entities."""
-
-    @callback
-    def process_entities_callback(hass, config_entry) -> list:
-        data = hass.data[DOMAIN][config_entry.entry_id]
-        coordinator = data[COORDINATOR]
-        entities: list = []
-        entity = OPNsenseFirmwareUpdatesAvailableUpdate(
-            config_entry,
-            coordinator,
-            UpdateEntityDescription(
-                key=f"firmware.update_available",
-                name="Firmware Updates Available",
-                entity_category=EntityCategory.DIAGNOSTIC,
-            ),
-            True,
-        )
-        entities.append(entity)
-
-        return entities
-
-    cem = CoordinatorEntityManager(
-        hass,
-        hass.data[DOMAIN][config_entry.entry_id][COORDINATOR],
-        config_entry,
-        process_entities_callback,
-        async_add_entities,
+    coordinator: OPNsenseDataUpdateCoordinator = hass.data[DOMAIN][
+        config_entry.entry_id
+    ][COORDINATOR]
+    entities: list = []
+    entity = OPNsenseFirmwareUpdatesAvailableUpdate(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=UpdateEntityDescription(
+            key="firmware.update_available",
+            name="Firmware Updates Available",
+            entity_category=EntityCategory.DIAGNOSTIC,
+            device_class=UpdateDeviceClass.FIRMWARE,
+            entity_registry_enabled_default=True,
+        ),
     )
-    cem.process_entities()
+    entities.append(entity)
+
+    async_add_entities(entities)
 
 
 class OPNsenseUpdate(OPNsenseEntity, UpdateEntity):
+
     def __init__(
         self,
-        config_entry,
+        config_entry: ConfigEntry,
         coordinator: OPNsenseDataUpdateCoordinator,
         entity_description: UpdateEntityDescription,
-        enabled_default: bool,
     ) -> None:
         super().__init__(
             config_entry,
@@ -75,59 +65,58 @@ class OPNsenseUpdate(OPNsenseEntity, UpdateEntity):
             unique_id_suffix=entity_description.key,
             name_suffix=entity_description.name,
         )
-        self.entity_description = entity_description
-        self._attr_entity_registry_enabled_default = enabled_default
+        self.entity_description: UpdateEntityDescription = entity_description
         self._attr_supported_features |= (
             UpdateEntityFeature.INSTALL
+            | UpdateEntityFeature.RELEASE_NOTES
             # | UpdateEntityFeature.BACKUP
             # | UpdateEntityFeature.PROGRESS
-            # | UpdateEntityFeature.RELEASE_NOTES
             # | UpdateEntityFeature.SPECIFIC_VERSION
         )
+        self._attr_title: str = "OPNsense"
+        self._attr_in_progress: bool = False
+        self._attr_installed_version: str | None = None
+        self._attr_latest_version: str | None = None
+        self._attr_release_url: str | None = None
+        self._release_notes: str | None = None
+        self._attr_extra_state_attributes: Mapping[str, Any] = {}
+        self._available: bool = (
+            False  # Move this to OPNsenseEntity once all entity-types are updated
+        )
 
+    # Move this to OPNsenseEntity once all entity-types are updated
     @property
-    def device_class(self):
-        return UpdateDeviceClass.FIRMWARE
+    def available(self) -> bool:
+        return self._available
+
+    # Move this to OPNsenseEntity once all entity-types are updated
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._handle_coordinator_update()
 
 
 class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
-    @property
-    def available(self) -> bool:
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
         state = self.coordinator.data
-        if state["firmware_update_info"] is None:
-            return False
+        try:
+            if state["firmware_update_info"]["status"] == "error":
+                self._available = False
+                return
+        except (TypeError, KeyError):
+            self._available = False
+            return
+        self._available = True
 
         try:
-            status = state["firmware_update_info"]["status"]
-            if status == "error":
-                return False
-        except:
-            return False
-
-        return super().available
-
-    @property
-    def title(self) -> str:
-        return "OPNsense"
-
-    @property
-    def installed_version(self):
-        """Version installed and in use."""
-        state = self.coordinator.data
+            self._attr_installed_version = dict_get(
+                state, "firmware_update_info.product.product_version"
+            )
+        except (TypeError, KeyError):
+            self._attr_installed_version = None
 
         try:
-            return dict_get(state, "firmware_update_info.product.product_version")
-        except KeyError:
-            return None
-
-    @property
-    def latest_version(self):
-        """Latest version available for install."""
-        state = self.coordinator.data
-
-        try:
-            # fake a new update
-            # return "foobar"
             product_version = dict_get(
                 state, "firmware_update_info.product.product_version"
             )
@@ -135,7 +124,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
                 state, "firmware_update_info.product.product_latest"
             )
             if product_version is None or product_latest is None:
-                return None
+                self._attr_latest_version = None
 
             if (
                 dict_get(state, "firmware_update_info.status") == "update"
@@ -148,49 +137,16 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
                     state, "firmware_update_info.upgrade_major_version"
                 )
 
-            return product_latest
-        except KeyError:
-            return None
+            self._attr_latest_version = product_latest
+        except (TypeError, KeyError):
+            self._attr_latest_version = None
 
-    @property
-    def in_progress(self) -> bool:
-        """Update installation in progress."""
-        return False
+        self._attr_release_url = (
+            self.config_entry.data.get("url", None) + "/ui/core/firmware#changelog"
+        )
 
-    @property
-    def extra_state_attributes(self) -> Mapping[str, Any]:
-        state = self.coordinator.data
-        attrs: Mapping[str, Any] = {}
-
-        for key in [
-            "status",
-            "status_msg",
-            "last_check",
-            "os_version",
-            "product_id",
-            "product_target",
-            "product_version",
-            "upgrade_needs_reboot",
-            "needs_reboot",
-            "download_size",
-        ]:
-            slug_key = slugify(key)
-            attrs[f"opnsense_{slug_key}"] = dict_get(
-                state, f"firmware_update_info.{key}"
-            )
-
-        return attrs
-
-    @property
-    def release_url(self) -> str:
-        return self.config_entry.data.get("url", None) + "/ui/core/firmware#changelog"
-
-    @property
-    def release_summary(self) -> None | str:
         summary = None
         try:
-            state = self.coordinator.data
-
             if dict_get(state, "firmware_update_info.status") == "update":
                 product_name = dict_get(
                     state, "firmware_update_info.product.product_name"
@@ -205,13 +161,12 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
                     state, "firmware_update_info.product.product_latest"
                 )
                 status_msg = dict_get(state, "firmware_update_info.status_msg")
-                needs_reboot = dict_get(state, "firmware_update_info.needs_reboot")
 
-                if needs_reboot is None or needs_reboot == "0":
-                    needs_reboot = False
-
-                if needs_reboot == "1":
-                    needs_reboot = True
+                needs_reboot: bool = (
+                    dict_get(state, "firmware_update_info.needs_reboot") == "1"
+                    if dict_get(state, "firmware_update_info.needs_reboot")
+                    else False
+                )
 
                 total_package_count: int = len(
                     dict_get(state, "firmware_update_info.all_packages", {}).keys()
@@ -229,32 +184,18 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
                     dict_get(state, "firmware_update_info.upgrade_packages", [])
                 )
 
-                summary: str = (
-                    """
-## {} version {} ({})
+                summary: str = f"""
+## {product_name} version {product_latest} ({product_nickname})
 
-{}
+{status_msg}
 
-- reboot needed: {}
-- total affected packages: {}
-- new packages: {}
-- reinstalled packages: {}
-- removed packages: {}
-- upgraded packages: {}
-""".format(
-                        product_name,
-                        product_latest,
-                        product_nickname,
-                        status_msg,
-                        needs_reboot,
-                        total_package_count,
-                        new_package_count,
-                        reinstall_package_count,
-                        remove_package_count,
-                        upgrade_package_count,
-                    )
-                )
-
+- reboot needed: {needs_reboot}
+- total affected packages: {total_package_count}
+- new packages: {new_package_count}
+- reinstalled packages: {reinstall_package_count}
+- removed packages: {remove_package_count}
+- upgraded packages: {upgrade_package_count}
+"""
             if dict_get(state, "firmware_update_info.status") == "upgrade":
                 product_name = dict_get(
                     state, "firmware_update_info.product.product_name"
@@ -263,71 +204,90 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
                     state, "firmware_update_info.upgrade_major_version"
                 )
                 status_msg = dict_get(state, "firmware_update_info.status_msg")
-                upgrade_needs_reboot = dict_get(
-                    state, "firmware_update_info.upgrade_needs_reboot"
+
+                upgrade_needs_reboot: bool = (
+                    dict_get(state, "firmware_update_info.upgrade_needs_reboot") == "1"
+                    if dict_get(state, "firmware_update_info.upgrade_needs_reboot")
+                    else False
                 )
 
-                if upgrade_needs_reboot is None or upgrade_needs_reboot == "0":
-                    upgrade_needs_reboot = False
+                summary: str = f"""
+## {product_name} version {product_version}
 
-                if upgrade_needs_reboot == "1":
-                    upgrade_needs_reboot = True
+{status_msg}
 
-                summary: str = (
-                    """
-## {} version {}
+- reboot needed: {upgrade_needs_reboot}
+"""
+        except (TypeError, KeyError):
+            self._release_notes = None
+        self._release_notes = summary
 
-{}
+        self._attr_extra_state_attributes = {}
 
-- reboot needed: {}
-""".format(
-                        product_name,
-                        product_version,
-                        status_msg,
-                        upgrade_needs_reboot,
-                    )
-                )
+        for key in [
+            "status",
+            "status_msg",
+            "last_check",
+            "os_version",
+            "product_id",
+            "product_target",
+            "product_version",
+            "upgrade_needs_reboot",
+            "needs_reboot",
+            "download_size",
+        ]:
+            slug_key = slugify(key)
+            self._attr_extra_state_attributes[f"opnsense_{slug_key}"] = dict_get(
+                state, f"firmware_update_info.{key}"
+            )
+        self.async_write_ha_state()
 
-        except:
-            return None
-        return summary
+    async def async_release_notes(self) -> str | None:
+        """Return the release notes of the latest version."""
+        return self._release_notes
 
-    def install(self, version=None, backup=False) -> None:
+    async def async_install(
+        self, version: str | None = None, backup: bool = False, **kwargs: Any
+    ) -> None:
         """Install an update."""
         state = self.coordinator.data
         upgrade_type = dict_get(state, "firmware_update_info.status")
         if upgrade_type not in ["update", "upgrade"]:
             return
 
-        client = self._get_opnsense_client()
-        task_details = client.upgrade_firmware(upgrade_type)
         sleep_time = 10
+        exceptions = 0
         running = True
         while running:
-            time.sleep(sleep_time)
+            await asyncio.sleep(sleep_time)
             try:
-                response = client.upgrade_status()
+                response = self._client.upgrade_status()
                 # after finished status is "done"
-                running = response["status"] == "running"
-            except:
+                running: bool = response["status"] == "running"
+            except Exception as e:
+                exceptions += 1
+                _LOGGER.debug(
+                    f"Error #{exceptions} while getting upgrade_status. {e.__class__.__qualname__}: {e}"
+                )
+                if exceptions > 3:
+                    running = False
                 pass
+            else:
+                exceptions = 0
 
         # check needs_reboot, if yes trigger reboot
-        response = client.get_firmware_update_info()
-        upgrade_needs_reboot = dict_get(response, "upgrade_needs_reboot")
-        needs_reboot = dict_get(response, "needs_reboot")
+        response = self._client.get_firmware_update_info()
 
-        if upgrade_needs_reboot is None or upgrade_needs_reboot == "0":
-            upgrade_needs_reboot = False
-
-        if upgrade_needs_reboot == "1":
-            upgrade_needs_reboot = True
-
-        if needs_reboot is None or needs_reboot == "0":
-            upgrade_needs_reboot = False
-
-        if needs_reboot == "1":
-            needs_reboot = True
+        upgrade_needs_reboot: bool = (
+            dict_get(response, "needs_reboot") == "1"
+            if dict_get(response, "upgrade_needs_reboot")
+            else False
+        )
+        needs_reboot: bool = (
+            dict_get(response, "needs_reboot") == "1"
+            if dict_get(response, "needs_reboot")
+            else False
+        )
 
         if upgrade_needs_reboot or needs_reboot:
-            client.system_reboot()
+            self._client.system_reboot()
