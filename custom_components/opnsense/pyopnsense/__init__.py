@@ -52,6 +52,7 @@ class OPNsenseClient(ABC):
         password: str,
         session: aiohttp.ClientSession,
         opts: Mapping[str, Any] = None,
+        initial: bool = False,
     ) -> None:
         """OPNsense Client initializer."""
 
@@ -67,6 +68,7 @@ class OPNsenseClient(ABC):
         )
         self._scheme: str = parts.scheme
         self._session: aiohttp.ClientSession = session
+        self._initial = initial
         try:
             self._loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -95,9 +97,11 @@ class OPNsenseClient(ABC):
                 raise e
             except Exception as e:
                 _LOGGER.error(
-                    f"Error in {func.__name__.strip('_')}. {e.__class__.__qualname__}: {e}"
+                    f"Error in {func.__name__.strip('_')}. {e.__class__.__qualname__}: "
+                    f"{re.sub(r'(\w+):(\w+)@', '<redacted>:<redacted>@', str(e))}"
                 )
-                # raise err
+                if self._initial:
+                    raise e
 
         return inner
 
@@ -225,7 +229,9 @@ $toreturn["real"] = json_encode($toreturn_real);
                         f"Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Response {response.status}: {response.reason}"
                     )
         except aiohttp.ClientError as e:
-            _LOGGER.error(f"Client error: {str(e)}")
+            _LOGGER.error(f"Client error. {e.__class__.__qualname__}: {e}")
+            if self._initial:
+                raise e
 
         return {}
 
@@ -255,7 +261,9 @@ $toreturn["real"] = json_encode($toreturn_real);
                         f"Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Response {response.status}: {response.reason}"
                     )
         except aiohttp.ClientError as e:
-            _LOGGER.error(f"Client error: {str(e)}")
+            _LOGGER.error(f"Client error. {e.__class__.__qualname__}: {e}")
+            if self._initial:
+                raise e
 
         return {}
 
@@ -287,7 +295,9 @@ $toreturn["real"] = json_encode($toreturn_real);
                         f"Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Response {response.status}: {response.reason}"
                     )
         except aiohttp.ClientError as e:
-            _LOGGER.error(f"Client error: {str(e)}")
+            _LOGGER.error(f"Client error. {e.__class__.__qualname__}: {e}")
+            if self._initial:
+                raise e
 
         return {}
 
