@@ -1,9 +1,9 @@
 """Support for OPNsense."""
 
+import logging
 from collections.abc import Mapping
 from datetime import timedelta
-import logging
-from typing import Any, Callable
+from typing import Any
 
 import awesomeversion
 from homeassistant.config_entries import ConfigEntry
@@ -14,11 +14,9 @@ from homeassistant.const import (
     CONF_USERNAME,
     CONF_VERIFY_SSL,
 )
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.entity_registry import async_get
 from homeassistant.helpers.issue_registry import IssueSeverity, async_create_issue
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -203,61 +201,6 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
     return True
 
 
-class CoordinatorEntityManager:
-
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        coordinator: OPNsenseDataUpdateCoordinator,
-        config_entry: ConfigEntry,
-        process_entities_callback: Callable,
-        async_add_entities: AddEntitiesCallback,
-    ) -> None:
-        self.hass = hass
-        self.coordinator: OPNsenseDataUpdateCoordinator = coordinator
-        self.config_entry = config_entry
-        self.process_entities_callback = process_entities_callback
-        self.async_add_entities = async_add_entities
-        hass.data[DOMAIN][config_entry.entry_id][UNDO_UPDATE_LISTENER].append(
-            coordinator.async_add_listener(self.process_entities)
-        )
-        self.entity_unique_ids = set()
-        self.entities = {}
-
-    @callback
-    def process_entities(self):
-        entities = self.process_entities_callback(self.hass, self.config_entry)
-        i_entity_unique_ids = set()
-        for entity in entities:
-            unique_id = entity.unique_id
-            if unique_id is None:
-                raise ValueError("unique_id is missing from entity")
-            i_entity_unique_ids.add(unique_id)
-            if unique_id not in self.entity_unique_ids:
-                self.async_add_entities([entity])
-                self.entity_unique_ids.add(unique_id)
-                self.entities[unique_id] = entity
-                # print(f"{unique_id} registered")
-            else:
-                # print(f"{unique_id} already registered")
-                pass
-
-        # check for missing entities
-        for entity_unique_id in self.entity_unique_ids:
-            if entity_unique_id not in i_entity_unique_ids:
-                pass
-                # print("should remove entity: " + str(self.entities[entity_unique_id].entry_id))
-                # print("candidate to remove entity: " + str(entity_unique_id))
-                # self.async_remove_entity(self.entities[entity_unique_id])
-                # self.entity_unique_ids.remove(entity_unique_id)
-                # del self.entities[entity_unique_id]
-
-    async def async_remove_entity(self, entity):
-        registry = await async_get(self.hass)
-        if entity.entity_id in registry.entities:
-            registry.async_remove(entity.entity_id)
-
-
 class OPNsenseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
     """Base entity for OPNsense"""
 
@@ -265,20 +208,27 @@ class OPNsenseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
         self,
         config_entry: ConfigEntry,
         coordinator: OPNsenseDataUpdateCoordinator,
-        unique_id_suffix: str,
+        unique_id_suffix: str | None = None,
         name_suffix: str | None = None,
     ) -> None:
         self.config_entry: ConfigEntry = config_entry
         self.coordinator: OPNsenseDataUpdateCoordinator = coordinator
-        self._attr_unique_id: str = slugify(
-            f"{self.opnsense_device_unique_id}_{unique_id_suffix}"
-        )
+        if unique_id_suffix:
+            self._attr_unique_id: str = slugify(
+                f"{self.opnsense_device_unique_id}_{unique_id_suffix}"
+            )
         if name_suffix:
             self._attr_name: str = (
                 f"{self.opnsense_device_name or 'OPNsense'} {name_suffix}"
             )
         self._client: OPNsenseClient | None = None
+        self._attr_extra_state_attributes: Mapping[str, Any] = {}
+        self._available: bool = False
         super().__init__(self.coordinator, self._attr_unique_id)
+
+    @property
+    def available(self) -> bool:
+        return self._available
 
     @property
     def device_info(self) -> Mapping[str, Any]:
@@ -330,3 +280,4 @@ class OPNsenseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
             self._client: OPNsenseClient = self._get_opnsense_client()
         if self._client is None:
             _LOGGER.error("Unable to get client in async_added_to_hass.")
+        self._handle_coordinator_update()

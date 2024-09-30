@@ -35,7 +35,7 @@ def dict_get(data: Mapping[str, Any], path: str, default=None):
         try:
             key = int(key) if key.isnumeric() else key
             result = result[key]
-        except:
+        except (TypeError, KeyError, AttributeError):
             result = default
             break
 
@@ -329,7 +329,7 @@ $toreturn = [
             if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
                 "24.7"
             ):
-                _LOGGER.info(f"Using legacy get_system_info method for OPNsense < 24.7")
+                _LOGGER.info("Using legacy get_system_info method for OPNsense < 24.7")
                 return await self._get_system_info_legacy()
         except awesomeversion.exceptions.AwesomeVersionCompareException:
             pass
@@ -383,7 +383,8 @@ $toreturn = [
         # {'status_msg': 'Firmware status check was aborted internally. Please try again.', 'status': 'error'}
         # error could be because data has not been refreshed at all OR an upgrade is currently in progress
         if (
-            status["status"] == "error"
+            not isinstance(status, Mapping)
+            or status.get("status", None) == "error"
             or "last_check" not in status.keys()
             or not isinstance(dict_get(status, "product.product_check"), dict)
             or dict_get(status, "product.product_check") is None
@@ -409,13 +410,13 @@ $toreturn = [
             if stale:
                 upgradestatus = await self._get("/api/core/firmware/upgradestatus")
                 # print(upgradestatus)
-                if "status" in upgradestatus.keys():
+                if "status" in upgradestatus:
                     # status = running (package refresh in progress OR upgrade in progress)
                     # status = done (refresh/upgrade done)
                     if upgradestatus["status"] == "done":
                         # tigger repo update
                         # should this be /api/core/firmware/upgrade
-                        check = await self._post("/api/core/firmware/check")
+                        # check = await self._post("/api/core/firmware/check")
                         # print(check)
                         refresh_triggered = True
                     else:
@@ -781,7 +782,7 @@ $toreturn = [
             if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
                 "24.7"
             ):
-                _LOGGER.info(f"Using legacy get_telemetry method for OPNsense < 24.7")
+                _LOGGER.info("Using legacy get_telemetry method for OPNsense < 24.7")
                 return await self._get_telemetry_legacy()
         except awesomeversion.exceptions.AwesomeVersionCompareException:
             pass
@@ -1373,7 +1374,7 @@ foreach ($ovpn_servers as $server) {
         response: Mapping[str, Any] | list = await self._get(
             "/api/unbound/settings/get"
         )
-        if response is None or not isinstance(response, Mapping):
+        if not isinstance(response, Mapping):
             _LOGGER.error("Invalid data returned from get_unbound_blocklist")
             return {}
         # _LOGGER.debug(f"[get_unbound_blocklist] response: {response}")
@@ -1385,7 +1386,7 @@ foreach ($ovpn_servers as $server) {
         for attr in ["enabled", "safesearch", "nxdomain", "address"]:
             dnsbl[attr] = dnsbl_settings.get(attr, "")
         for attr in ["type", "lists", "whitelists", "blocklists", "wildcards"]:
-            if isinstance(dnsbl_settings[attr], Mapping):
+            if isinstance(dnsbl_settings.get(attr, None), Mapping):
                 dnsbl[attr] = ",".join(
                     [
                         key

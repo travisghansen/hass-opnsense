@@ -19,7 +19,6 @@ from homeassistant.const import (  # ENTITY_CATEGORY_DIAGNOSTIC,
     UnitOfInformation,
     UnitOfTemperature,
     UnitOfTime,
-    __version__,
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_platform
@@ -425,20 +424,6 @@ class OPNsenseSensor(OPNsenseEntity, SensorEntity):
         self._attr_entity_registry_enabled_default: bool = enabled_default
         self._previous_value = None
         self._attr_native_value = None
-        self._attr_extra_state_attributes: Mapping[str, Any] = {}
-        self._available: bool = (
-            False  # Move this to OPNsenseEntity once all entity-types are updated
-        )
-
-    # Move this to OPNsenseEntity once all entity-types are updated
-    @property
-    def available(self) -> bool:
-        return self._available
-
-    # Move this to OPNsenseEntity once all entity-types are updated
-    async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
-        self._handle_coordinator_update()
 
 
 class OPNsenseStaticKeySensor(OPNsenseSensor):
@@ -510,7 +495,7 @@ class OPNsenseFilesystemSensor(OPNsenseSensor):
         filesystem = self._opnsense_get_filesystem()
         try:
             self._attr_native_value = filesystem["capacity"].strip("%")
-        except (TypeError, KeyError):
+        except (TypeError, KeyError, AttributeError):
             self._available = False
             return
         self._available = True
