@@ -1,14 +1,16 @@
 """Config flow for OPNsense integration."""
 
-from collections.abc import Mapping
 import ipaddress
 import logging
 import socket
-from typing import Any
-from urllib.parse import quote_plus, urlparse
 import xmlrpc
+from collections.abc import Mapping
+from typing import Any
+from urllib.parse import ParseResult, quote_plus, urlparse
 
 import aiohttp
+import homeassistant.helpers.config_validation as cv
+import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import (
     CONF_NAME,
@@ -20,14 +22,12 @@ from homeassistant.const import (
 )
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
-import homeassistant.helpers.config_validation as cv
-from homeassistant.util import slugify
-import voluptuous as vol
 
 from .const import (
     CONF_DEVICE_TRACKER_CONSIDER_HOME,
     CONF_DEVICE_TRACKER_ENABLED,
     CONF_DEVICE_TRACKER_SCAN_INTERVAL,
+    CONF_DEVICE_UNIQUE_ID,
     CONF_DEVICES,
     DEFAULT_DEVICE_TRACKER_CONSIDER_HOME,
     DEFAULT_DEVICE_TRACKER_ENABLED,
@@ -77,18 +77,20 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 # ParseResult(
                 #     scheme='', netloc='', path='f', params='', query='', fragment=''
                 # )
-                url_parts = urlparse(url)
-                if len(url_parts.scheme) < 1:
-                    raise InvalidURL()
+                url_parts: ParseResult = urlparse(url)
+                if not url_parts.scheme and not url_parts.netloc:
+                    # raise InvalidURL()
+                    url: str = "https://" + url
+                    url_parts = urlparse(url)
 
-                if len(url_parts.netloc) < 1:
+                if not url_parts.netloc:
                     raise InvalidURL()
 
                 # remove any path etc details
                 url = f"{url_parts.scheme}://{url_parts.netloc}"
-                username = user_input.get(CONF_USERNAME, DEFAULT_USERNAME)
-                password = user_input[CONF_PASSWORD]
-                verify_ssl = user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
+                username: str = user_input.get(CONF_USERNAME, DEFAULT_USERNAME)
+                password: str = user_input[CONF_PASSWORD]
+                verify_ssl: bool = user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
 
                 client = OPNsenseClient(
                     url=url,
@@ -103,12 +105,20 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 system_info: Mapping[str, Any] = await client.get_system_info()
 
                 if name is None:
-                    name: str = system_info["name"]
+                    name: str = system_info.get("name") or "OPNsense"
 
+                device_unique_id: str | None = await client.get_device_unique_id()
+                if not device_unique_id:
+                    raise MissingDeviceUniqueID()
                 # https://developers.home-assistant.io/docs/config_entries_config_flow_handler#unique-ids
-                await self.async_set_unique_id(slugify(system_info["device_id"]))
+                await self.async_set_unique_id(device_unique_id)
                 self._abort_if_unique_id_configured()
 
+            except MissingDeviceUniqueID as err:
+                errors["base"] = "missing_device_unique_id"
+                _LOGGER.error(
+                    f"Missing Device Unique ID Error. {err.__class__.__qualname__}: {err}"
+                )
             except (aiohttp.InvalidURL, InvalidURL) as err:
                 errors["base"] = "invalid_url_format"
                 _LOGGER.error(f"InvalidURL Error. {err.__class__.__qualname__}: {err}")
@@ -154,10 +164,10 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         [username, password],
                     )
                 )
-            except (aiohttp.TooManyRedirects, aiohttp.RedirectClientError):
+            except (aiohttp.TooManyRedirects, aiohttp.RedirectClientError) as err:
                 _LOGGER.error(f"Redirect Error. {err.__class__.__qualname__}: {err}")
                 errors["base"] = "url_redirect"
-            except (TimeoutError, aiohttp.ServerTimeoutError):
+            except (TimeoutError, aiohttp.ServerTimeoutError) as err:
                 _LOGGER.error(f"Timeout Error. {err.__class__.__qualname__}: {err}")
                 errors["base"] = "connect_timeout"
             except OSError as err:
@@ -195,6 +205,7 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_PASSWORD: password,
                         CONF_USERNAME: username,
                         CONF_VERIFY_SSL: verify_ssl,
+                        CONF_DEVICE_UNIQUE_ID: device_unique_id,
                     },
                 )
 
@@ -345,3 +356,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
 class InvalidURL(Exception):
     """InavlidURL."""
+
+
+class MissingDeviceUniqueID(Exception):
+    pass

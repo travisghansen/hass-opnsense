@@ -25,6 +25,7 @@ from homeassistant.util import slugify
 from .const import (
     CONF_DEVICE_TRACKER_ENABLED,
     CONF_DEVICE_TRACKER_SCAN_INTERVAL,
+    CONF_DEVICE_UNIQUE_ID,
     CONF_TLS_INSECURE,
     COORDINATOR,
     DEFAULT_DEVICE_TRACKER_ENABLED,
@@ -76,6 +77,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     device_tracker_enabled: bool = options.get(
         CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED
     )
+    device_unique_id = config[CONF_DEVICE_UNIQUE_ID]
+
     client = OPNsenseClient(
         url=url,
         username=username,
@@ -92,6 +95,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         name=f"{entry.title} state",
         update_interval=timedelta(seconds=scan_interval),
         client=client,
+        device_unique_id=device_unique_id,
     )
 
     platforms: list = PLATFORMS.copy()
@@ -120,6 +124,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         OPNSENSE_CLIENT: client,
         UNDO_UPDATE_LISTENER: [undo_listener],
         LOADED_PLATFORMS: platforms,
+        CONF_DEVICE_UNIQUE_ID: device_unique_id,
     }
 
     # Fetch initial data so we have data when entities subscribe
@@ -213,9 +218,10 @@ class OPNsenseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
     ) -> None:
         self.config_entry: ConfigEntry = config_entry
         self.coordinator: OPNsenseDataUpdateCoordinator = coordinator
+        self._device_unique_id: str = config_entry.get(CONF_DEVICE_UNIQUE_ID)
         if unique_id_suffix:
             self._attr_unique_id: str = slugify(
-                f"{self.opnsense_device_unique_id}_{unique_id_suffix}"
+                f"{self._device_unique_id}_{unique_id_suffix}"
             )
         if name_suffix:
             self._attr_name: str = (
@@ -242,7 +248,7 @@ class OPNsenseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
             firmware: str | None = state.get("host_firmware_version", None)
 
         device_info: Mapping[str, Any] = {
-            "identifiers": {(DOMAIN, self.opnsense_device_unique_id)},
+            "identifiers": {(DOMAIN, self._device_unique_id)},
             "name": self.opnsense_device_name,
             "configuration_url": self.config_entry.data.get("url", None),
         }
@@ -258,10 +264,6 @@ class OPNsenseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
         if self.config_entry.title and len(self.config_entry.title) > 0:
             return self.config_entry.title
         return self._get_opnsense_state_value("system_info.name")
-
-    @property
-    def opnsense_device_unique_id(self) -> str | None:
-        return self._get_opnsense_state_value("system_info.device_id")
 
     def _get_opnsense_state_value(self, path, default=None):
         state = self.coordinator.data

@@ -12,7 +12,8 @@
       "connect_timeout": "Connection timeout",
       "cannot_connect_ssl": "SSL Failure",
       "plugin_missing": "os-homeassistant-maxit plugin not installed",
-      "url_redirect": "Incorrect URL (redirect)"
+      "url_redirect": "Incorrect URL (redirect)",
+      "missing_device_unique_id": "Unable to get MAC addresses from OPNsense to use as Device Unique ID"
     },
     "step": {
       "user": {

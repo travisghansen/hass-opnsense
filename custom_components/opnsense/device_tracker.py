@@ -137,7 +137,7 @@ class OPNsenseScannerEntity(OPNsenseEntity, ScannerEntity, RestoreEntity):
         hostname: str | None,
     ) -> None:
         """Set up the OPNsense scanner entity."""
-        super().__init__(config_entry, coordinator)
+        super().__init__(config_entry, coordinator, unique_id_suffix=f"mac_{mac}")
         self._mac_vendor: str | None = mac_vendor
         self._attr_name: str | None = f"{self.opnsense_device_name} {hostname or mac}"
         self._last_known_ip: str | None = None
@@ -172,7 +172,7 @@ class OPNsenseScannerEntity(OPNsenseEntity, ScannerEntity, RestoreEntity):
 
     @property
     def unique_id(self) -> str | None:
-        return self._attr_mac_address
+        return self._attr_unique_id
 
     @property
     def entity_registry_enabled_default(self) -> bool:
@@ -312,7 +312,7 @@ class OPNsenseScannerEntity(OPNsenseEntity, ScannerEntity, RestoreEntity):
             connections={(CONNECTION_NETWORK_MAC, self.mac_address)},
             default_manufacturer=self._mac_vendor,
             default_name=self.name,
-            via_device=(DOMAIN, self.opnsense_device_unique_id),
+            via_device=(DOMAIN, self._device_unique_id),
         )
 
     async def _restore_last_state(self) -> None:
