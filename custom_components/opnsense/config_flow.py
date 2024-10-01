@@ -9,6 +9,7 @@ from typing import Any
 from urllib.parse import ParseResult, quote_plus, urlparse
 
 import aiohttp
+import awesomeversion
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 from homeassistant import config_entries
@@ -36,6 +37,7 @@ from .const import (
     DEFAULT_USERNAME,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
+    OPNSENSE_MIN_FIRMWARE,
 )
 from .pyopnsense import OPNsenseClient
 
@@ -102,6 +104,16 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     opts={"verify_ssl": verify_ssl},
                     initial=True,
                 )
+
+                firmware: str = await client.get_host_firmware_version()
+                try:
+                    if awesomeversion.AwesomeVersion(
+                        firmware
+                    ) < awesomeversion.AwesomeVersion(OPNSENSE_MIN_FIRMWARE):
+                        raise BelowMinFirmware()
+                except awesomeversion.exceptions.AwesomeVersionCompareException:
+                    raise UnknownFirmware()
+
                 system_info: Mapping[str, Any] = await client.get_system_info()
 
                 if name is None:
@@ -114,6 +126,14 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(device_unique_id)
                 self._abort_if_unique_id_configured()
 
+            except BelowMinFirmware:
+                _LOGGER.error(
+                    f"OPNsense Firmware of {firmware} is below the minimum supported version of {OPNSENSE_MIN_FIRMWARE}"
+                )
+                errors["base"] = "below_min_firmware"
+            except UnknownFirmware:
+                _LOGGER.error("Unable to get OPNsense Firmware version")
+                errors["base"] = "unknown_firmware"
             except MissingDeviceUniqueID as err:
                 errors["base"] = "missing_device_unique_id"
                 _LOGGER.error(
@@ -229,7 +249,15 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
 
-        return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+        return self.async_show_form(
+            step_id="user",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={
+                "firmware": firmware,
+                "min_firmware": OPNSENSE_MIN_FIRMWARE,
+            },
+        )
 
     async def async_step_import(self, user_input):
         """Handle import."""
@@ -359,4 +387,12 @@ class InvalidURL(Exception):
 
 
 class MissingDeviceUniqueID(Exception):
+    pass
+
+
+class BelowMinFirmware(Exception):
+    pass
+
+
+class UnknownFirmware(Exception):
     pass

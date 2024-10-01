@@ -37,7 +37,7 @@ from .const import (
     DOMAIN,
     LOADED_PLATFORMS,
     OPNSENSE_CLIENT,
-    OPNSENSE_MIN_FIRMWARE,
+    OPNSENSE_LTD_FIRMWARE,
     PLATFORMS,
     SHOULD_RELOAD,
     UNDO_UPDATE_LISTENER,
@@ -137,20 +137,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info(f"OPNsense Firmware {firmware}")
     try:
         if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
-            OPNSENSE_MIN_FIRMWARE
+            OPNSENSE_LTD_FIRMWARE
         ):
             async_create_issue(
                 hass,
                 DOMAIN,
-                f"opnsense_{firmware}_below_min_firmware_{OPNSENSE_MIN_FIRMWARE}",
+                f"opnsense_{firmware}_below_ltd_firmware_{OPNSENSE_LTD_FIRMWARE}",
                 is_fixable=False,
                 is_persistent=False,
                 issue_domain=DOMAIN,
                 severity=IssueSeverity.WARNING,
-                translation_key="below_min_firmware",
+                translation_key="below_ltd_firmware",
                 translation_placeholders={
                     "version": VERSION,
-                    "min_firmware": OPNSENSE_MIN_FIRMWARE,
+                    "ltd_firmware": OPNSENSE_LTD_FIRMWARE,
                     "firmware": firmware,
                 },
             )
