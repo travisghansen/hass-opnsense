@@ -10,7 +10,7 @@ def dict_get(data: Mapping[str, Any], path: str, default=None):
         try:
             key: int | str = int(key) if key.isnumeric() else key
             result = result[key]
-        except:
+        except (TypeError, KeyError, AttributeError):
             result = default
             break
 

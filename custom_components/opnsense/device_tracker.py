@@ -1,8 +1,8 @@
 """Support for tracking for OPNsense devices."""
 
-from datetime import datetime, timedelta
 import logging
 import time
+from datetime import datetime, timedelta
 from typing import Any, Mapping
 
 from homeassistant.components.device_tracker import SourceType
@@ -12,6 +12,8 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_platform
 from homeassistant.helpers.device_registry import (
     CONNECTION_NETWORK_MAC,
+)
+from homeassistant.helpers.device_registry import (
     async_get as async_get_dev_reg,
 )
 from homeassistant.helpers.entity import DeviceInfo
@@ -135,7 +137,7 @@ class OPNsenseScannerEntity(OPNsenseEntity, ScannerEntity, RestoreEntity):
         hostname: str | None,
     ) -> None:
         """Set up the OPNsense scanner entity."""
-        super().__init__(config_entry, coordinator, unique_id_suffix=f"mac_{mac}")
+        super().__init__(config_entry, coordinator)
         self._mac_vendor: str | None = mac_vendor
         self._attr_name: str | None = f"{self.opnsense_device_name} {hostname or mac}"
         self._last_known_ip: str | None = None
@@ -143,19 +145,10 @@ class OPNsenseScannerEntity(OPNsenseEntity, ScannerEntity, RestoreEntity):
         self._is_connected: bool = False
         self._last_known_connected_time: str | None = None
         self._attr_entity_registry_enabled_default: bool = enabled_default
-        self._attr_extra_state_attributes: Mapping[str, Any] = {}
         self._attr_hostname: str | None = hostname
         self._attr_ip_address: str | None = None
         self._attr_mac_address: str | None = mac
         self._attr_source_type: SourceType = SourceType.ROUTER
-        self._available: bool = (
-            False  # Move this to OPNsenseEntity once all entity-types are updated
-        )
-
-    # Move this to OPNsenseEntity once all entity-types are updated
-    @property
-    def available(self) -> bool:
-        return self._available
 
     @property
     def source_type(self) -> SourceType:
@@ -179,7 +172,7 @@ class OPNsenseScannerEntity(OPNsenseEntity, ScannerEntity, RestoreEntity):
 
     @property
     def unique_id(self) -> str | None:
-        return self._attr_unique_id
+        return self._attr_mac_address
 
     @property
     def entity_registry_enabled_default(self) -> bool:
@@ -346,6 +339,5 @@ class OPNsenseScannerEntity(OPNsenseEntity, ScannerEntity, RestoreEntity):
                 pass
 
     async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
         await self._restore_last_state()
-        self._handle_coordinator_update()
+        await super().async_added_to_hass()

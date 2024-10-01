@@ -262,20 +262,6 @@ class OPNsenseSwitch(OPNsenseEntity, SwitchEntity):
         )
         self.entity_description = entity_description
         self._attr_is_on: bool = False
-        self._attr_extra_state_attributes: Mapping[str, Any] = {}
-        self._available: bool = (
-            False  # Move this to OPNsenseEntity once all entity-types are updated
-        )
-
-    # Move this to OPNsenseEntity once all entity-types are updated
-    @property
-    def available(self) -> bool:
-        return self._available
-
-    # Move this to OPNsenseEntity once all entity-types are updated
-    async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
-        self._handle_coordinator_update()
 
 
 class OPNsenseFilterSwitch(OPNsenseSwitch):
@@ -315,7 +301,7 @@ class OPNsenseFilterSwitch(OPNsenseSwitch):
         self._rule = self._opnsense_get_rule()
         try:
             self._attr_is_on = bool(self._rule.get("disabled", "0") != "1")
-        except (TypeError, KeyError):
+        except (TypeError, KeyError, AttributeError):
             self._available = False
             return
         self._available = True
@@ -390,7 +376,7 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
         self._rule = self._opnsense_get_rule()
         try:
             self._attr_is_on = "disabled" not in self._rule
-        except (TypeError, KeyError):
+        except (TypeError, KeyError, AttributeError):
             self._available = False
             return
         self._available = True
@@ -464,7 +450,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         self._service = self._opnsense_get_service()
         try:
             self._attr_is_on = self._service[self._prop_name]
-        except (TypeError, KeyError):
+        except (TypeError, KeyError, AttributeError):
             self._available = False
             return
         self._available = True

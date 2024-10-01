@@ -1,7 +1,6 @@
 """OPNsense integration."""
 
 import asyncio
-from collections.abc import Mapping
 import logging
 from typing import Any
 
@@ -79,20 +78,6 @@ class OPNsenseUpdate(OPNsenseEntity, UpdateEntity):
         self._attr_latest_version: str | None = None
         self._attr_release_url: str | None = None
         self._release_notes: str | None = None
-        self._attr_extra_state_attributes: Mapping[str, Any] = {}
-        self._available: bool = (
-            False  # Move this to OPNsenseEntity once all entity-types are updated
-        )
-
-    # Move this to OPNsenseEntity once all entity-types are updated
-    @property
-    def available(self) -> bool:
-        return self._available
-
-    # Move this to OPNsenseEntity once all entity-types are updated
-    async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
-        self._handle_coordinator_update()
 
 
 class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
@@ -104,7 +89,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
             if state["firmware_update_info"]["status"] == "error":
                 self._available = False
                 return
-        except (TypeError, KeyError):
+        except (TypeError, KeyError, AttributeError):
             self._available = False
             return
         self._available = True
@@ -113,7 +98,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
             self._attr_installed_version = dict_get(
                 state, "firmware_update_info.product.product_version"
             )
-        except (TypeError, KeyError):
+        except (TypeError, KeyError, AttributeError):
             self._attr_installed_version = None
 
         try:
@@ -138,7 +123,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
                 )
 
             self._attr_latest_version = product_latest
-        except (TypeError, KeyError):
+        except (TypeError, KeyError, AttributeError):
             self._attr_latest_version = None
 
         self._attr_release_url = (
@@ -218,7 +203,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
 
 - reboot needed: {upgrade_needs_reboot}
 """
-        except (TypeError, KeyError):
+        except (TypeError, KeyError, AttributeError):
             self._release_notes = None
         self._release_notes = summary
 
