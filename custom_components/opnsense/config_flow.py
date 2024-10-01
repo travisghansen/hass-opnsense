@@ -3,6 +3,7 @@
 from collections.abc import Mapping
 import ipaddress
 import logging
+import socket
 from typing import Any
 from urllib.parse import quote_plus, urlparse
 import xmlrpc
@@ -94,9 +95,10 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     username=username,
                     password=password,
                     session=async_create_clientsession(
-                        self.hass, raise_for_status=False
+                        self.hass, raise_for_status=True
                     ),
                     opts={"verify_ssl": verify_ssl},
+                    initial=True,
                 )
                 system_info: Mapping[str, Any] = await client.get_system_info()
 
@@ -107,8 +109,9 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(slugify(system_info["device_id"]))
                 self._abort_if_unique_id_configured()
 
-            except (aiohttp.InvalidURL, InvalidURL):
+            except (aiohttp.InvalidURL, InvalidURL) as err:
                 errors["base"] = "invalid_url_format"
+                _LOGGER.error(f"InvalidURL Error. {err.__class__.__qualname__}: {err}")
             except xmlrpc.client.Fault as err:
                 if "Invalid username or password" in str(err):
                     errors["base"] = "invalid_auth"
@@ -117,25 +120,45 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 elif "opnsense.exec_php does not exist" in str(err):
                     errors["base"] = "plugin_missing"
                 else:
-                    message = cleanse_sensitive_data(
-                        f"Unexpected {err=}, {type(err)=}", [username, password]
-                    )
-                    _LOGGER.error(message)
                     errors["base"] = "cannot_connect"
+                _LOGGER.error(
+                    cleanse_sensitive_data(
+                        f"XMLRPC Error. {err.__class__.__qualname__}: {err}",
+                        [username, password],
+                    )
+                )
+            except (
+                aiohttp.ClientResponseError,
+                aiohttp.ClientError,
+                aiohttp.ClientConnectorError,
+                socket.gaierror,
+            ) as err:
+                errors["base"] = "cannot_connect"
+                _LOGGER.error(f"Aiohttp Error. {err.__class__.__qualname__}: {err}")
+            except (aiohttp.ClientResponseError,) as err:
+                if err.status == 401 or err.status == 403:
+                    errors["base"] = "invalid_auth"
+                else:
+                    errors["base"] = "cannot_connect"
+                _LOGGER.error(f"Aiohttp Error. {err.__class__.__qualname__}: {err}")
             except xmlrpc.client.ProtocolError as err:
                 if "307 Temporary Redirect" in str(err):
                     errors["base"] = "url_redirect"
                 elif "301 Moved Permanently" in str(err):
                     errors["base"] = "url_redirect"
                 else:
-                    message = cleanse_sensitive_data(
-                        f"Unexpected {err=}, {type(err)=}", [username, password]
-                    )
-                    _LOGGER.error(message)
                     errors["base"] = "cannot_connect"
+                _LOGGER.error(
+                    cleanse_sensitive_data(
+                        f"XMLRPC Error. {err.__class__.__qualname__}: {err}",
+                        [username, password],
+                    )
+                )
             except (aiohttp.TooManyRedirects, aiohttp.RedirectClientError):
+                _LOGGER.error(f"Redirect Error. {err.__class__.__qualname__}: {err}")
                 errors["base"] = "url_redirect"
             except (TimeoutError, aiohttp.ServerTimeoutError):
+                _LOGGER.error(f"Timeout Error. {err.__class__.__qualname__}: {err}")
                 errors["base"] = "connect_timeout"
             except OSError as err:
                 # bad response from OPNsense when creds are valid but authorization is
@@ -149,16 +172,20 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     """OSError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1129)"""
                     errors["base"] = "cannot_connect_ssl"
                 else:
-                    message = cleanse_sensitive_data(
-                        f"Unexpected {err=}, {type(err)=}", [username, password]
-                    )
-                    _LOGGER.error(message)
                     errors["base"] = "unknown"
-            except Exception as err:
-                message = cleanse_sensitive_data(
-                    f"Unexpected {err=}, {type(err)=}", [username, password]
+                _LOGGER.error(
+                    cleanse_sensitive_data(
+                        f"Error. {err.__class__.__qualname__}: {err}",
+                        [username, password],
+                    )
                 )
-                _LOGGER.error(message)
+            except Exception as err:
+                _LOGGER.error(
+                    cleanse_sensitive_data(
+                        f"Other Error. {err.__class__.__qualname__}: {err}",
+                        [username, password],
+                    )
+                )
                 errors["base"] = "unknown"
             else:
                 return self.async_create_entry(
