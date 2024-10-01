@@ -1,3 +1,20 @@
+<a name="v0.3.4"></a>
+# [v0.3.4](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.4) - 01 Oct 2024
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🎉 Enhancements & New Features 🎉
+* Improve config_flow error handling by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/225
+### Other Changes
+* Optimize entities final cleanup by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/226
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.3...v0.3.4
+
+[Changes][v0.3.4]
+
+
 <a name="v0.3.3"></a>
 # [v0.3.3](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.3) - 30 Sep 2024
 
@@ -480,6 +497,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.3.4]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.3...v0.3.4
 [v0.3.3]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.2...v0.3.3
 [v0.3.2]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.2-beta.1...v0.3.2
 [v0.3.2-beta.1]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.1...v0.3.2-beta.1
