@@ -64,7 +64,7 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for OPNsense."""
 
     # bumping this is what triggers async_migrate_entry for the component
-    VERSION = 2
+    VERSION = 3
 
     # gets invoked without user input initially
     # when user submits has user_input

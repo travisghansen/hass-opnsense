@@ -15,7 +15,15 @@ from homeassistant.const import (
     CONF_VERIFY_SSL,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import (
+    config_validation as cv,
+)
+from homeassistant.helpers import (
+    device_registry as dr,
+)
+from homeassistant.helpers import (
+    entity_registry as er,
+)
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.issue_registry import IssueSeverity, async_create_issue
 from homeassistant.helpers.typing import ConfigType
@@ -112,6 +120,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             name=f"{entry.title} Device Tracker state",
             update_interval=timedelta(seconds=device_tracker_scan_interval),
             client=client,
+            device_unique_id=device_unique_id,
             device_tracker_coordinator=True,
         )
 
@@ -180,11 +189,15 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
     """Migrate an old config entry."""
     version = config_entry.version
 
+    if version > 3:
+        # This means the user has downgraded from a future version
+        return False
+
     _LOGGER.debug("Migrating from version %s", version)
 
     # 1 -> 2: tls_insecure to verify_ssl
     if version == 1:
-        version = config_entry.version = 2
+
         tls_insecure = config_entry.data.get(CONF_TLS_INSECURE, DEFAULT_TLS_INSECURE)
         data = dict(config_entry.data)
 
@@ -196,13 +209,96 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
         if CONF_VERIFY_SSL not in data.keys():
             data[CONF_VERIFY_SSL] = not tls_insecure
 
-        hass.config_entries.async_update_entry(
-            config_entry,
-            data=data,
+        hass.config_entries.async_update_entry(config_entry, data=data, version=2)
+        version = 2
+
+    # 2 -> 3: Change unique device id to use lowest MAC address
+    if version == 2:
+        _LOGGER.debug(f"[async_migrate_entry] Initial Version: {config_entry.version}")
+        entity_registry = er.async_get(hass)
+        device_registry = dr.async_get(hass)
+
+        config = config_entry.data
+        url: str = config[CONF_URL]
+        username: str = config[CONF_USERNAME]
+        password: str = config[CONF_PASSWORD]
+        verify_ssl: bool = config.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
+
+        client = OPNsenseClient(
+            url=url,
+            username=username,
+            password=password,
+            session=async_create_clientsession(hass, raise_for_status=False),
+            opts={"verify_ssl": verify_ssl},
+        )
+        new_device_unique_id: str | None = await client.get_device_unique_id()
+        if not new_device_unique_id:
+            _LOGGER.error("Missing Device Unique ID for Migration to Version 3")
+            return False
+        _LOGGER.debug(
+            f"[async_migrate_entry] new_device_unique_id: {new_device_unique_id}"
         )
 
-        _LOGGER.info("Migration to version %s successful", version)
+        for dev in dr.async_entries_for_config_entry(
+            device_registry, config_entry_id=config_entry.entry_id
+        ):
+            _LOGGER.debug(f"[async_migrate_entry] dev: {dev}")
+            is_main_dev: bool = any(t[0] == "opnsense" for t in dev.identifiers)
+            if is_main_dev:
+                new_identifiers = {
+                    (t[0], new_device_unique_id) if t[0] == "opnsense" else t
+                    for t in dev.identifiers
+                }
+                # new_connections = {
+                #     (dr.CONNECTION_NETWORK_MAC, new_device_unique_id.replace("_", ":"))
+                # }
+                _LOGGER.debug(
+                    f"[async_migrate_entry] dev.identifiers: {dev.identifiers}, new_identifiers: {new_identifiers}"
+                )
+                new_dev = device_registry.async_update_device(
+                    dev.id, new_identifiers=new_identifiers
+                )
+                _LOGGER.debug(f"[async_migrate_entry] new_main_dev: {new_dev}")
 
+        for ent in er.async_entries_for_config_entry(
+            entity_registry, config_entry.entry_id
+        ):
+            # _LOGGER.debug(f"[async_migrate_entry] ent: {ent}")
+            platform = ent.entity_id.split(".")[0]
+            try:
+                _, unique_id_suffix = ent.unique_id.split("_", 1)
+            except ValueError:
+                unique_id_suffix: str = f"mac_{ent.unique_id}"
+            new_unique_id: str = (
+                (f"{new_device_unique_id}_{unique_id_suffix}").replace(":", "_").strip()
+            )
+            _LOGGER.debug(
+                f"[async_migrate_entry] ent: {ent.entity_id}, platform: {platform}, unique_id: {ent.unique_id}, new_unique_id: {new_unique_id}"
+            )
+            new_ent = entity_registry.async_update_entity(
+                ent.entity_id, new_unique_id=new_unique_id
+            )
+            _LOGGER.debug(
+                f"[async_migrate_entry] new_ent: {new_ent.entity_id}, unique_id: {new_ent.unique_id}"
+            )
+
+        new_data: Mapping[str, Any] = dict(config_entry.data)
+        new_data.update({CONF_DEVICE_UNIQUE_ID: new_device_unique_id})
+        _LOGGER.debug(
+            f"[async_migrate_entry] data: {config_entry.data}, new_data: {new_data}, unique_id: {config_entry.unique_id}, new_unique_id: {new_device_unique_id}"
+        )
+        new_entry_bool = hass.config_entries.async_update_entry(
+            config_entry, data=new_data, unique_id=new_device_unique_id, version=3
+        )
+        if new_entry_bool:
+            _LOGGER.debug("[async_migrate_entry] config_entry update sucessful")
+        else:
+            _LOGGER.error("Migration of config_entry to version 3 unsucessful")
+            return False
+
+        version = 3
+
+    _LOGGER.info("Migration to version %s successful", version)
     return True
 
 
@@ -218,7 +314,7 @@ class OPNsenseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
     ) -> None:
         self.config_entry: ConfigEntry = config_entry
         self.coordinator: OPNsenseDataUpdateCoordinator = coordinator
-        self._device_unique_id: str = config_entry.get(CONF_DEVICE_UNIQUE_ID)
+        self._device_unique_id: str = config_entry.data.get(CONF_DEVICE_UNIQUE_ID)
         if unique_id_suffix:
             self._attr_unique_id: str = slugify(
                 f"{self._device_unique_id}_{unique_id_suffix}"
