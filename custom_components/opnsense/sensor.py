@@ -1,9 +1,10 @@
 """Provides sensors to track various status aspects of OPNsense."""
 
 import asyncio
-from collections.abc import Mapping
 import logging
 import re
+import traceback
+from collections.abc import Mapping
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -393,7 +394,7 @@ async def async_setup_entry(
             entities += result
         else:
             _LOGGER.error(
-                f"Error in sensor async_setup_entry. {result.__class__.__qualname__}: {result}"
+                f"Error in sensor async_setup_entry. {result.__class__.__qualname__}: {result}\n{''.join(traceback.format_tb(result.__traceback__))}"
             )
     _LOGGER.debug(f"[sensor async_setup_entry] entities: {len(entities)}")
     async_add_entities(entities)
