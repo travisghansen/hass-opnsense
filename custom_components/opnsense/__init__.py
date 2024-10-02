@@ -24,8 +24,10 @@ from homeassistant.helpers import (
 from homeassistant.helpers import (
     entity_registry as er,
 )
+from homeassistant.helpers import (
+    issue_registry as ir,
+)
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
-from homeassistant.helpers.issue_registry import IssueSeverity, async_create_issue
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import slugify
@@ -46,6 +48,7 @@ from .const import (
     LOADED_PLATFORMS,
     OPNSENSE_CLIENT,
     OPNSENSE_LTD_FIRMWARE,
+    OPNSENSE_MIN_FIRMWARE,
     PLATFORMS,
     SHOULD_RELOAD,
     UNDO_UPDATE_LISTENER,
@@ -106,6 +109,64 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         device_unique_id=device_unique_id,
     )
 
+    await coordinator.async_config_entry_first_refresh()
+
+    firmware: str | None = coordinator.data.get("host_firmware_version", None)
+    _LOGGER.info(f"OPNsense Firmware {firmware}")
+    try:
+        if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
+            OPNSENSE_MIN_FIRMWARE
+        ):
+            ir.async_create_issue(
+                hass,
+                DOMAIN,
+                f"opnsense_{firmware}_below_min_firmware_{OPNSENSE_MIN_FIRMWARE}",
+                is_fixable=False,
+                is_persistent=False,
+                issue_domain=DOMAIN,
+                severity=ir.IssueSeverity.ERROR,
+                translation_key="below_min_firmware",
+                translation_placeholders={
+                    "version": VERSION,
+                    "ltd_firmware": OPNSENSE_MIN_FIRMWARE,
+                    "firmware": firmware,
+                },
+            )
+            await coordinator.async_shutdown()
+            return False
+        if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
+            OPNSENSE_LTD_FIRMWARE
+        ):
+            ir.async_create_issue(
+                hass,
+                DOMAIN,
+                f"opnsense_{firmware}_below_ltd_firmware_{OPNSENSE_LTD_FIRMWARE}",
+                is_fixable=False,
+                is_persistent=False,
+                issue_domain=DOMAIN,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key="below_ltd_firmware",
+                translation_placeholders={
+                    "version": VERSION,
+                    "ltd_firmware": OPNSENSE_LTD_FIRMWARE,
+                    "firmware": firmware,
+                },
+            )
+        else:
+            ir.async_delete_issue(
+                hass,
+                DOMAIN,
+                f"opnsense_{firmware}_below_min_firmware_{OPNSENSE_MIN_FIRMWARE}",
+            )
+            ir.async_delete_issue(
+                hass,
+                DOMAIN,
+                f"opnsense_{firmware}_below_ltd_firmware_{OPNSENSE_LTD_FIRMWARE}",
+            )
+    except awesomeversion.exceptions.AwesomeVersionCompareException:
+        _LOGGER.warning("Unable to confirm OPNsense Firmware version")
+        pass
+
     platforms: list = PLATFORMS.copy()
     device_tracker_coordinator = None
     if not device_tracker_enabled and "device_tracker" in platforms:
@@ -136,35 +197,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         CONF_DEVICE_UNIQUE_ID: device_unique_id,
     }
 
-    # Fetch initial data so we have data when entities subscribe
-    await coordinator.async_config_entry_first_refresh()
     if device_tracker_enabled:
         # Fetch initial data so we have data when entities subscribe
         await device_tracker_coordinator.async_config_entry_first_refresh()
-
-    firmware: str | None = coordinator.data.get("host_firmware_version", None)
-    _LOGGER.info(f"OPNsense Firmware {firmware}")
-    try:
-        if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
-            OPNSENSE_LTD_FIRMWARE
-        ):
-            async_create_issue(
-                hass,
-                DOMAIN,
-                f"opnsense_{firmware}_below_ltd_firmware_{OPNSENSE_LTD_FIRMWARE}",
-                is_fixable=False,
-                is_persistent=False,
-                issue_domain=DOMAIN,
-                severity=IssueSeverity.WARNING,
-                translation_key="below_ltd_firmware",
-                translation_placeholders={
-                    "version": VERSION,
-                    "ltd_firmware": OPNSENSE_LTD_FIRMWARE,
-                    "firmware": firmware,
-                },
-            )
-    except awesomeversion.exceptions.AwesomeVersionCompareException:
-        pass
 
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
 

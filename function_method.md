@@ -11,7 +11,6 @@
 | Get DHCP Leases | Yes | Yes | Currently not in use, but desired feature. Will need to handle both the legacy DHCP and Kea endpoints. |
 | Get Carp Status | Yes | Yes | |
 | Get Carp Interfaces | Yes | Yes | |
-| Delete ARP Entry | Yes | | |
 
 # REST API Functions
 
