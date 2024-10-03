@@ -206,6 +206,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, config_entry: ConfigEntry, device_entry: dr.DeviceEntry
+) -> bool:
+    """Allows removing OPNsense Devices that aren't Device Tracker Devices and without any linked entities"""
+
+    if device_entry.via_device_id:
+        _LOGGER.error(
+            "Remove OPNsense Device Tracker Devices via the Integration Configuration"
+        )
+        return False
+    entity_registry = er.async_get(hass)
+    for ent in er.async_entries_for_config_entry(
+        entity_registry, config_entry.entry_id
+    ):
+        if ent.device_id == device_entry.id:
+            _LOGGER.error(
+                "Cannot remove OPNsense Devices with linked entities at this time"
+            )
+            return False
+    return True
+
+
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     platforms = hass.data[DOMAIN][entry.entry_id][LOADED_PLATFORMS]
