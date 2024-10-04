@@ -1,0 +1,28 @@
+name: Feature Request
+description: Request a new feature or enhancement.
+title: "[FR]: "
+labels: ["feature request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        We will evaluate all Feature Requests, but some may not be feasible or aligned with what we want for the integration.
+  - type: textarea
+    id: what-do-you-want
+    attributes:
+      label: Describe the new feature or enhancement idea
+      description: The more detail the better
+      placeholder: What do you want?
+    validations:
+      required: true
+  - type: checkboxes
+    id: i-will-implement
+    attributes:
+      label: Will you be building this?
+      options:
+        - label: I intend to submit a PR to implement this
+  - type: textarea
+    id: additional-details
+    attributes:
+      label: Additional Details
+      description: Anything else we need to know?
