@@ -34,7 +34,6 @@ from .const import (
     DEFAULT_DEVICE_TRACKER_ENABLED,
     DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
-    DEFAULT_USERNAME,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
     OPNSENSE_MIN_FIRMWARE,
@@ -90,7 +89,7 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
                 # remove any path etc details
                 url = f"{url_parts.scheme}://{url_parts.netloc}"
-                username: str = user_input.get(CONF_USERNAME, DEFAULT_USERNAME)
+                username: str = user_input[CONF_USERNAME]
                 password: str = user_input[CONF_PASSWORD]
                 verify_ssl: bool = user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
 
@@ -157,19 +156,21 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         [username, password],
                     )
                 )
-            except (
-                aiohttp.ClientResponseError,
-                aiohttp.ClientError,
-                aiohttp.ClientConnectorError,
-                socket.gaierror,
-            ) as err:
-                errors["base"] = "cannot_connect"
+            except aiohttp.ClientConnectorSSLError as err:
+                errors["base"] = "cannot_connect_ssl"
                 _LOGGER.error(f"Aiohttp Error. {err.__class__.__qualname__}: {err}")
             except (aiohttp.ClientResponseError,) as err:
                 if err.status == 401 or err.status == 403:
                     errors["base"] = "invalid_auth"
                 else:
                     errors["base"] = "cannot_connect"
+                _LOGGER.error(f"Aiohttp Error. {err.__class__.__qualname__}: {err}")
+            except (
+                aiohttp.ClientError,
+                aiohttp.ClientConnectorError,
+                socket.gaierror,
+            ) as err:
+                errors["base"] = "cannot_connect"
                 _LOGGER.error(f"Aiohttp Error. {err.__class__.__qualname__}: {err}")
             except xmlrpc.client.ProtocolError as err:
                 if "307 Temporary Redirect" in str(err):
@@ -233,14 +234,16 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             user_input = {}
         schema = vol.Schema(
             {
-                vol.Required(CONF_URL, default=user_input.get(CONF_URL, "")): str,
+                vol.Required(
+                    CONF_URL, default=user_input.get(CONF_URL, "https://")
+                ): str,
                 vol.Optional(
                     CONF_VERIFY_SSL,
                     default=user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
                 ): bool,
-                vol.Optional(
+                vol.Required(
                     CONF_USERNAME,
-                    default=user_input.get(CONF_USERNAME, DEFAULT_USERNAME),
+                    default=user_input.get(CONF_USERNAME, ""),
                 ): str,
                 vol.Required(
                     CONF_PASSWORD, default=user_input.get(CONF_PASSWORD, "")
@@ -254,7 +257,7 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=schema,
             errors=errors,
             description_placeholders={
-                "firmware": firmware,
+                "firmware": firmware if "firmware" in locals() else "Unknown",
                 "min_firmware": OPNSENSE_MIN_FIRMWARE,
             },
         )
@@ -320,7 +323,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_device_tracker(self, user_input=None):
         """Handle device tracker list step."""
         url = self.config_entry.data[CONF_URL].strip()
-        username: str = self.config_entry.data.get(CONF_USERNAME, DEFAULT_USERNAME)
+        username: str = self.config_entry.data[CONF_USERNAME]
         password: str = self.config_entry.data[CONF_PASSWORD]
         verify_ssl: bool = self.config_entry.data.get(
             CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL

@@ -128,7 +128,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 translation_key="below_min_firmware",
                 translation_placeholders={
                     "version": VERSION,
-                    "ltd_firmware": OPNSENSE_MIN_FIRMWARE,
+                    "min_firmware": OPNSENSE_MIN_FIRMWARE,
                     "firmware": firmware,
                 },
             )
