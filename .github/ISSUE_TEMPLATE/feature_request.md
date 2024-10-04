@@ -1,5 +1,5 @@
 name: Feature Request
-description: Request a new feature or enhancement.
+about: Request a new feature or enhancement.
 title: "[FR]: "
 labels: ["feature request"]
 body:
@@ -15,7 +15,7 @@ body:
       placeholder: What do you want?
     validations:
       required: true
-  - type: checkbox
+  - type: checkboxes
     id: i-will-implement
     attributes:
       label: Will you be building this?
