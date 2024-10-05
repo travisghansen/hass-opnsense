@@ -124,17 +124,18 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 },
             ]
             self._state.update(await self._get_states(categories))
+            if self._state.get("device_unique_id") is None:
+                _LOGGER.warning(
+                    "Coordinator failed to confirm OPNsense Router Unique ID. Will retry"
+                )
+                return {}
             if self._state.get("device_unique_id") != self._device_unique_id:
                 _LOGGER.error(
-                    "Coordinator error. OPNsense Router Device ID differs from the one saved in hass-opnsense."
+                    f"Coordinator error. OPNsense Router Device ID ({self._state.get('device_unique_id')}) differs from the one saved in hass-opnsense ({self._device_unique_id})"
                 )
                 # Create repair task here
                 return {}
-            if self._state.get("device_unique_id") is None:
-                _LOGGER.warning(
-                    "Coordinator failed to confirm OPNsense Router Unique ID"
-                )
-                return {}
+
             return self._state
 
         categories: list = [
