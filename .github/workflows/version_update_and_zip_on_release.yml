@@ -40,6 +40,25 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           branch: ${{ github.event.release.target_commitish }}
           message: 'Updating to version ${{ github.ref_name }}'
+
+      - name: Extract variables from const.py
+        if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
+        id: extract_variables
+        run: |
+          OPNSENSE_LTD_FIRMWARE=$(grep 'OPNSENSE_LTD_FIRMWARE' custom_components/opnsense/const.py | cut -d '"' -f2)
+          OPNSENSE_MIN_FIRMWARE=$(grep 'OPNSENSE_MIN_FIRMWARE' custom_components/opnsense/const.py | cut -d '"' -f2)
+          echo "OPNSENSE_LTD_FIRMWARE=$OPNSENSE_LTD_FIRMWARE" >> $GITHUB_ENV
+          echo "OPNSENSE_MIN_FIRMWARE=$OPNSENSE_MIN_FIRMWARE" >> $GITHUB_ENV
+
+      - name: Update release notes with firmware information
+        if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
+        run: |
+          echo "Updating release with tag: ${{ github.ref_name }}"
+          gh release edit ${{ github.ref_name }} \
+          --notes "<h3>OPNsense Minimum Firmware Required: ${{ env.OPNSENSE_MIN_FIRMWARE }}</h3><h4>OPNsense Recommended Firmware: ${{ env.OPNSENSE_LTD_FIRMWARE }}</h4><p>$(gh release view ${{ github.ref_name }} --json body -q .body)<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
       - name: Create Zip
         uses: thedoctor0/zip-release@0.7.6
         with:
@@ -47,7 +66,7 @@ jobs:
           filename: 'opnsense.zip'
           directory: ./custom_components/opnsense
       - name: Upload Zip to Release
-        if: ${{ github.event_name == 'release' }}
+        if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
         uses: Roang-zero1/github-upload-release-artifacts-action@v3.0.0
         with:
           args: ./custom_components/opnsense/opnsense.zip
