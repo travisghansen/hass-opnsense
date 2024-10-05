@@ -9,7 +9,6 @@
 | Enable/Disable NAT Port Forward Rule | N/A | No as of 24.7 | Uses Get Config, Filter Configure and Restore Config Section. |
 | Enable/Disable NAT Outbound Rule | N/A | No as of 24.7 | Uses Get Config, Filter Configure and Restore Config Section. |
 | Get DHCP Leases | Yes | Yes | Currently not in use, but desired feature. Will need to handle both the legacy DHCP and Kea endpoints. |
-| Get Carp Status | Yes | Yes | |
 | Get Carp Interfaces | Yes | Yes | |
 
 # REST API Functions
@@ -41,3 +40,4 @@
 | Start Service | /api/core/service/start | 2023 | |
 | Stop Service | /api/core/service/stop | 2023 | |
 | Restart Service | /api/core/service/restart | 2023 | |
+| Get Carp Status | /api/diagnostics/interface/get_vip_status | 2022 | |

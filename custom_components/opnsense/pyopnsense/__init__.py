@@ -665,26 +665,15 @@ $toreturn = [
         return response.get("data", {}).get("lease", [])
 
     @_log_errors
-    async def get_carp_status(self) -> Mapping[str, Any]:
-        # carp enabled or not
-        # readonly attribute, cannot be set directly
-        # function get_carp_status()
-        script: str = r"""
-function get_carp_status() {
-        /* grab the current status of carp */
-        $status = get_single_sysctl('net.inet.carp.allow');
-        return (intval($status) > 0);
-}
-
-$toreturn = [
-  "data" => get_carp_status(),
-];
-"""
-        response: Mapping[str, Any] = await self._exec_php(script)
+    async def get_carp_status(self) -> bool:
+        response: Mapping[str, Any] | list = await self._get(
+            "/api/diagnostics/interface/get_vip_status"
+        )
         if response is None or not isinstance(response, Mapping):
             _LOGGER.error("Invalid data returned from get_carp_status")
-            return {}
-        return response.get("data", {})
+            return False
+        # _LOGGER.debug(f"[get_carp_status] response: {response}")
+        return response.get("carp", {}).get("allow", "0") == "1"
 
     @_log_errors
     async def get_carp_interfaces(self) -> Mapping[str, Any]:
