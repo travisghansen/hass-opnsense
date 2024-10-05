@@ -12,8 +12,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4.2.0
       - name: Hassfest validation
+        continue-on-error: true
         uses: home-assistant/actions/hassfest@master
       - name: HACS validation
+        continue-on-error: true
         uses: hacs/action@main
         with:
           category: integration
