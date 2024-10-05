@@ -61,7 +61,7 @@ async def _compile_static_sensors(
             "telemetry.system.temp",
             "telemetry.system.boottime",
             # "dhcp_stats.leases.total",
-            "dhcp_stats.leases.online",
+            # "dhcp_stats.leases.online",
             # "dhcp_stats.leases.offline",
         ]:
             enabled_default = True
@@ -365,6 +365,49 @@ async def _compile_temperature_sensors(
     return entities
 
 
+async def _compile_dhcp_leases_sensors(
+    config_entry: ConfigEntry,
+    coordinator: OPNsenseDataUpdateCoordinator,
+    state: Mapping[str, Any],
+) -> list:
+    entities: list = []
+    # interfaces
+    for interface, interface_name in dict_get(
+        state, "dhcp_leases.lease_interfaces", {}
+    ).items():
+        entity = OPNsenseDHCPLeasesSensor(
+            config_entry=config_entry,
+            coordinator=coordinator,
+            entity_description=SensorEntityDescription(
+                key=f"dhcp_leases.{interface}",
+                name=f"DHCP Leases {interface_name}",
+                native_unit_of_measurement="leases",
+                icon="mdi:devices",
+                state_class=SensorStateClass.MEASUREMENT,
+                # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+            ),
+            enabled_default=False,
+        )
+        entities.append(entity)
+
+    entity = OPNsenseDHCPLeasesSensor(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=SensorEntityDescription(
+            key="dhcp_leases.all",
+            name="DHCP Leases All",
+            native_unit_of_measurement="leases",
+            icon="mdi:devices",
+            state_class=SensorStateClass.MEASUREMENT,
+            # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+        ),
+        enabled_default=True,
+    )
+    entities.append(entity)
+
+    return entities
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -385,6 +428,7 @@ async def async_setup_entry(
         _compile_carp_interface_sensors(config_entry, coordinator, state),
         _compile_filesystem_sensors(config_entry, coordinator, state),
         _compile_temperature_sensors(config_entry, coordinator, state),
+        _compile_dhcp_leases_sensors(config_entry, coordinator, state),
         return_exceptions=True,
     )
 
@@ -531,7 +575,7 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
         prop_name: str = self._opnsense_get_interface_property_name()
         try:
             self._attr_native_value = interface[prop_name]
-        except (KeyError, TypeError):
+        except (TypeError, KeyError, ZeroDivisionError):
             self._available = False
             return
         self._available = True
@@ -565,7 +609,7 @@ class OPNsenseCarpInterfaceSensor(OPNsenseSensor):
         carp_interface: Mapping[str, Any] = self._opnsense_get_carp_interface()
         try:
             self._attr_native_value = carp_interface["status"]
-        except (KeyError, TypeError):
+        except (TypeError, KeyError, ZeroDivisionError):
             self._available = False
             return
         self._available = True
@@ -625,7 +669,7 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
                 return
 
             self._attr_native_value = value
-        except (KeyError, TypeError):
+        except (TypeError, KeyError, ZeroDivisionError):
             self._available = False
             return
         self._available = True
@@ -670,7 +714,7 @@ class OPNsenseOpenVPNServerSensor(OPNsenseSensor):
         prop_name: str = self._opnsense_get_server_property_name()
         try:
             self._attr_native_value = server[prop_name]
-        except (KeyError, TypeError):
+        except (TypeError, KeyError, ZeroDivisionError):
             self._available = False
             return
         self._available = True
@@ -698,7 +742,7 @@ class OPNsenseTempSensor(OPNsenseSensor):
         temp: Mapping[str, Any] = self._opnsense_get_temp()
         try:
             self._attr_native_value = temp["temperature"]
-        except (KeyError, TypeError):
+        except (TypeError, KeyError, ZeroDivisionError):
             self._available = False
             return
         self._available = True
@@ -706,4 +750,60 @@ class OPNsenseTempSensor(OPNsenseSensor):
         self._attr_extra_state_attributes = {}
         for attr in ["device_id"]:
             self._attr_extra_state_attributes[attr] = temp.get(attr, None)
+        self.async_write_ha_state()
+
+
+class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        state = self.coordinator.data
+        if_name: str = self.entity_description.key.split(".")[1].strip()
+        _LOGGER.debug(
+            f"[OPNsenseDHCPLeasesSensor handle_coordinator_update] if_name: {if_name}"
+        )
+        if if_name.lower() == "all":
+            leases = state.get("dhcp_leases", {}).get("leases", {})
+            lease_interfaces = state.get("dhcp_leases", {}).get("lease_interfaces", {})
+            _LOGGER.debug(
+                f"[OPNsenseDHCPLeasesSensor handle_coordinator_update] lease_interfaces: {lease_interfaces}"
+            )
+            _LOGGER.debug(
+                f"[OPNsenseDHCPLeasesSensor handle_coordinator_update] leases: {leases}"
+            )
+            if not isinstance(leases, Mapping) or not isinstance(
+                lease_interfaces, Mapping
+            ):
+                self._available = False
+                return
+            self._available = True
+            total_lease_count: int = 0
+            lease_counts: Mapping[str, Any] = {}
+            try:
+                for ifn, if_descr in lease_interfaces.items():
+                    lease_counts[if_descr] = f"{len(leases.get(ifn,[]))} leases"
+                    total_lease_count += len(leases.get(ifn, []))
+                    _LOGGER.debug(
+                        f"[OPNsenseDHCPLeasesSensor handle_coordinator_update] if_descr: {if_descr}, lease_count: {len(leases.get(ifn,[]))}"
+                    )
+            except (TypeError, KeyError, ZeroDivisionError):
+                self._available = False
+                return
+            sorted_lease_counts: Mapping[str, Any] = {
+                key: lease_counts[key] for key in sorted(lease_counts)
+            }
+            self._attr_extra_state_attributes = sorted_lease_counts
+            self._attr_native_value = total_lease_count
+
+        else:
+            interface = state.get("dhcp_leases", {}).get("leases", {}).get(if_name, [])
+            if not isinstance(interface, list):
+                self._available = False
+                return
+            try:
+                self._attr_native_value = len(interface)
+            except (TypeError, KeyError, ZeroDivisionError):
+                self._available = False
+                return
+            self._available = True
+            self._attr_extra_state_attributes = {"Leases": interface}
         self.async_write_ha_state()

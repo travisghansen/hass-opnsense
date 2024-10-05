@@ -79,6 +79,8 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _get_dhcp_stats(self, leases: list) -> Mapping[str, Any]:
         lease_stats: Mapping[str, Any] = {"total": 0, "online": 0, "offline": 0}
+        if not isinstance(leases, list):
+            return lease_stats
         for lease in leases:
             if not isinstance(lease, Mapping) or lease.get("act", "") == "expired":
                 continue
@@ -136,8 +138,6 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 return {}
             return self._state
 
-        self._state["dhcp_leases"] = await self._client.get_dhcp_leases()
-
         categories: list = [
             {"function": "get_device_unique_id", "state_key": "device_unique_id"},
             {"function": "get_system_info", "state_key": "system_info"},
@@ -159,6 +159,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 "function": "get_unbound_blocklist",
                 "state_key": ATTR_UNBOUND_BLOCKLIST,
             },
+            {"function": "get_dhcp_leases", "state_key": "dhcp_leases"},
         ]
 
         self._state.update(await self._get_states(categories))
@@ -172,11 +173,13 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.warning("Coordinator failed to confirm OPNsense Router Unique ID")
             return {}
 
-        # self._state["dhcp_leases"] = []
-        self._state["dhcp_stats"] = {}
-        self._state["dhcp_stats"]["leases"] = await self._get_dhcp_stats(
-            self._state.get("dhcp_leases", [])
+        _LOGGER.debug(
+            f"[async_update_data] dhcp_leases: {self._state.get('dhcp_leases', {})}"
         )
+        # self._state["dhcp_stats"] = {}
+        # self._state["dhcp_stats"]["leases"] = await self._get_dhcp_stats(
+        #     self._state.get("dhcp_leases", [])
+        # )
 
         # calcule pps and kbps
         update_time = dict_get(self._state, "update_time")
