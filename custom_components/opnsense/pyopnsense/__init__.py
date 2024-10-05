@@ -327,7 +327,9 @@ clear_subsystem_dirty('filter');
         ]
 
         unique_mac_addresses: list = sorted(set(mac_addresses))
-        device_unique_id: str | None = unique_mac_addresses[0] if unique_mac_addresses else None
+        device_unique_id: str | None = (
+            unique_mac_addresses[0] if unique_mac_addresses else None
+        )
         if device_unique_id:
             return device_unique_id.replace(":", "_").strip()
         return None
@@ -720,6 +722,67 @@ $toreturn = [
         if response is None or not isinstance(response, Mapping):
             _LOGGER.error("Invalid data returned from get_carp_interfaces")
             return {}
+        _LOGGER.debug(f"[get_carp_interfaces] exec_php response: {response}")
+        get_vip_status_response: Mapping[str, Any] | list = await self._get(
+            "/api/diagnostics/interface/get_vip_status"
+        )
+        vip_settings_response: Mapping[str, Any] | list = await self._get(
+            "/api/interfaces/vip_settings/get"
+        )
+        vip_search_item_response: Mapping[str, Any] | list = await self._get(
+            "/api/interfaces/vip_settings/searchItem"
+        )
+        lagg_settings_response: Mapping[str, Any] | list = await self._get(
+            "/api/interfaces/lagg_settings/get"
+        )
+        lagg_search_item_response: Mapping[str, Any] | list = await self._get(
+            "/api/interfaces/lagg_settings/searchItem"
+        )
+        vlan_settings_response: Mapping[str, Any] | list = await self._get(
+            "/api/interfaces/vlan_settings/get"
+        )
+        vlan_search_item_response: Mapping[str, Any] | list = await self._get(
+            "/api/interfaces/vlan_settings/searchItem"
+        )
+        vxlan_settings_response: Mapping[str, Any] | list = await self._get(
+            "/api/interfaces/vxlan_settings/get"
+        )
+        vxlan_search_item_response: Mapping[str, Any] | list = await self._get(
+            "/api/interfaces/vxlan_settings/searchItem"
+        )
+        interfaces_export_response: Mapping[str, Any] | list = await self._get(
+            "/api/interfaces/overview/export"
+        )
+        _LOGGER.debug(
+            f"[get_carp_interfaces] get_vip_status_response: {get_vip_status_response}"
+        )
+        _LOGGER.debug(
+            f"[get_carp_interfaces] vip_settings_response: {vip_settings_response}"
+        )
+        _LOGGER.debug(
+            f"[get_carp_interfaces] vip_search_item_response: {vip_search_item_response}"
+        )
+        _LOGGER.debug(
+            f"[get_carp_interfaces] lagg_settings_response: {lagg_settings_response}"
+        )
+        _LOGGER.debug(
+            f"[get_carp_interfaces] lagg_search_item_response: {lagg_search_item_response}"
+        )
+        _LOGGER.debug(
+            f"[get_carp_interfaces] vlan_settings_response: {vlan_settings_response}"
+        )
+        _LOGGER.debug(
+            f"[get_carp_interfaces] vlan_search_item_response: {vlan_search_item_response}"
+        )
+        _LOGGER.debug(
+            f"[get_carp_interfaces] vxlan_settings_response: {vxlan_settings_response}"
+        )
+        _LOGGER.debug(
+            f"[get_carp_interfaces] vxlan_search_item_response: {vxlan_search_item_response}"
+        )
+        _LOGGER.debug(
+            f"[get_carp_interfaces] interfaces_export_response: {interfaces_export_response}"
+        )
         return response.get("data", {})
 
     @_log_errors
@@ -812,7 +875,7 @@ $toreturn = [
 
     @_log_errors
     async def _get_telemetry_interfaces(self) -> Mapping[str, Any]:
-        interface_info: Mapping[str, Any] | list = await self._post(
+        interface_info: Mapping[str, Any] | list = await self._get(
             "/api/interfaces/overview/export"
         )
         # _LOGGER.debug(f"[get_telemetry_interfaces] interface_info: {interface_info}")
