@@ -240,18 +240,23 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
         if upgrade_type not in ["update", "upgrade"]:
             return
 
+        upgrade_details = await self._client.upgrade_firmware(upgrade_type)
+        _LOGGER.debug(
+            f"[async_install] Starting Firmware {upgrade_type}. upgrade_details: {upgrade_details}"
+        )
         sleep_time = 10
         exceptions = 0
         running = True
         while running:
             await asyncio.sleep(sleep_time)
             try:
-                response = self._client.upgrade_status()
+                response = await self._client.upgrade_status()
+                _LOGGER.debug(f"[async_install] upgrade_status: {response}")
                 # after finished status is "done"
                 running: bool = response["status"] == "running"
             except Exception as e:
                 exceptions += 1
-                _LOGGER.debug(
+                _LOGGER.warning(
                     f"Error #{exceptions} while getting upgrade_status. {e.__class__.__qualname__}: {e}"
                 )
                 if exceptions > 3:
@@ -261,10 +266,11 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
                 exceptions = 0
 
         # check needs_reboot, if yes trigger reboot
-        response = self._client.get_firmware_update_info()
+        response = await self._client.get_firmware_update_info()
+        _LOGGER.debug(f"[async_install] firmware_update_info: {response}")
 
         upgrade_needs_reboot: bool = (
-            dict_get(response, "needs_reboot") == "1"
+            dict_get(response, "upgrade_needs_reboot") == "1"
             if dict_get(response, "upgrade_needs_reboot")
             else False
         )
@@ -275,4 +281,5 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
         )
 
         if upgrade_needs_reboot or needs_reboot:
-            self._client.system_reboot()
+            _LOGGER.debug("[async_install] Rebooting")
+            await self._client.system_reboot()
