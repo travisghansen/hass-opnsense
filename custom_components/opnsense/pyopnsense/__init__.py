@@ -1,7 +1,4 @@
-from abc import ABC
 import asyncio
-from collections.abc import Mapping
-from datetime import datetime, timedelta
 import inspect
 import json
 import logging
@@ -9,13 +6,16 @@ import re
 import socket
 import ssl
 import time
+import xmlrpc.client
+from abc import ABC
+from collections.abc import Mapping
+from datetime import datetime, timedelta
 from typing import Any
 from urllib.parse import quote_plus, urlparse
-import xmlrpc.client
-import zoneinfo
 
 import aiohttp
 import awesomeversion
+import zoneinfo
 from dateutil.parser import parse
 
 # value to set as the socket timeout
@@ -96,9 +96,11 @@ class OPNsenseClient(ABC):
             except asyncio.CancelledError as e:
                 raise e
             except Exception as e:
+                redacted_message = re.sub(
+                    r"(\w+):(\w+)@", "<redacted>:<redacted>@", str(e)
+                )
                 _LOGGER.error(
-                    f"Error in {func.__name__.strip('_')}. {e.__class__.__qualname__}: "
-                    f"{re.sub(r'(\w+):(\w+)@', '<redacted>:<redacted>@', str(e))}"
+                    f"Error in {func.__name__.strip('_')}. {e.__class__.__qualname__}: {redacted_message}"
                 )
                 if self._initial:
                     raise e
@@ -311,25 +313,24 @@ clear_subsystem_dirty('filter');
         await self._exec_php(script)
 
     @_log_errors
-    async def _get_device_id(self) -> str | None:
-        script: str = r"""
-$file = "/conf/hassid";
-$id;
-if (!file_exists($file)) {
-    $id = bin2hex(openssl_random_pseudo_bytes(10));
-    file_put_contents($file, $id);
-} else {
-    $id = file_get_contents($file);
-}
-$toreturn = [
-  "data" => $id,
-];
-"""
-        response: Mapping[str, Any] = await self._exec_php(script)
-        if response is None or not isinstance(response, Mapping):
-            _LOGGER.error("Invalid data returned from get_device_id")
-            return {}
-        return response.get("data", None)
+    async def get_device_unique_id(self) -> str | None:
+        instances: Mapping[str, Any] | list = await self._post(
+            "/api/interfaces/overview/export"
+        )
+        if not isinstance(instances, list):
+            return None
+
+        mac_addresses = [
+            d.get("macaddr_hw")
+            for d in instances
+            if d.get("is_physical") and "macaddr_hw" in d
+        ]
+
+        unique_mac_addresses: list = sorted(set(mac_addresses))
+        device_unique_id: str | None = unique_mac_addresses[0] if unique_mac_addresses else None
+        if device_unique_id:
+            return device_unique_id.replace(":", "_").strip()
+        return None
 
     @_log_errors
     async def get_system_info(self) -> Mapping[str, Any]:
@@ -344,7 +345,6 @@ $toreturn = [
         except awesomeversion.exceptions.AwesomeVersionCompareException:
             pass
         system_info: Mapping[str, Any] = {}
-        system_info["device_id"] = await self._get_device_id()
         response: Mapping[str, Any] | list = await self._get(
             "/api/diagnostics/system/systemInformation"
         )

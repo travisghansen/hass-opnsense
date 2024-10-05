@@ -1,14 +1,17 @@
 """Config flow for OPNsense integration."""
 
-from collections.abc import Mapping
 import ipaddress
 import logging
 import socket
-from typing import Any
-from urllib.parse import quote_plus, urlparse
 import xmlrpc
+from collections.abc import Mapping
+from typing import Any
+from urllib.parse import ParseResult, quote_plus, urlparse
 
 import aiohttp
+import awesomeversion
+import homeassistant.helpers.config_validation as cv
+import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import (
     CONF_NAME,
@@ -20,22 +23,20 @@ from homeassistant.const import (
 )
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
-import homeassistant.helpers.config_validation as cv
-from homeassistant.util import slugify
-import voluptuous as vol
 
 from .const import (
     CONF_DEVICE_TRACKER_CONSIDER_HOME,
     CONF_DEVICE_TRACKER_ENABLED,
     CONF_DEVICE_TRACKER_SCAN_INTERVAL,
+    CONF_DEVICE_UNIQUE_ID,
     CONF_DEVICES,
     DEFAULT_DEVICE_TRACKER_CONSIDER_HOME,
     DEFAULT_DEVICE_TRACKER_ENABLED,
     DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
-    DEFAULT_USERNAME,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
+    OPNSENSE_MIN_FIRMWARE,
 )
 from .pyopnsense import OPNsenseClient
 
@@ -62,7 +63,7 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for OPNsense."""
 
     # bumping this is what triggers async_migrate_entry for the component
-    VERSION = 2
+    VERSION = 3
 
     # gets invoked without user input initially
     # when user submits has user_input
@@ -77,18 +78,20 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 # ParseResult(
                 #     scheme='', netloc='', path='f', params='', query='', fragment=''
                 # )
-                url_parts = urlparse(url)
-                if len(url_parts.scheme) < 1:
-                    raise InvalidURL()
+                url_parts: ParseResult = urlparse(url)
+                if not url_parts.scheme and not url_parts.netloc:
+                    # raise InvalidURL()
+                    url: str = "https://" + url
+                    url_parts = urlparse(url)
 
-                if len(url_parts.netloc) < 1:
+                if not url_parts.netloc:
                     raise InvalidURL()
 
                 # remove any path etc details
                 url = f"{url_parts.scheme}://{url_parts.netloc}"
-                username = user_input.get(CONF_USERNAME, DEFAULT_USERNAME)
-                password = user_input[CONF_PASSWORD]
-                verify_ssl = user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
+                username: str = user_input[CONF_USERNAME]
+                password: str = user_input[CONF_PASSWORD]
+                verify_ssl: bool = user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
 
                 client = OPNsenseClient(
                     url=url,
@@ -100,15 +103,41 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     opts={"verify_ssl": verify_ssl},
                     initial=True,
                 )
+
+                firmware: str = await client.get_host_firmware_version()
+                try:
+                    if awesomeversion.AwesomeVersion(
+                        firmware
+                    ) < awesomeversion.AwesomeVersion(OPNSENSE_MIN_FIRMWARE):
+                        raise BelowMinFirmware()
+                except awesomeversion.exceptions.AwesomeVersionCompareException:
+                    raise UnknownFirmware()
+
                 system_info: Mapping[str, Any] = await client.get_system_info()
 
                 if name is None:
-                    name: str = system_info["name"]
+                    name: str = system_info.get("name") or "OPNsense"
 
+                device_unique_id: str | None = await client.get_device_unique_id()
+                if not device_unique_id:
+                    raise MissingDeviceUniqueID()
                 # https://developers.home-assistant.io/docs/config_entries_config_flow_handler#unique-ids
-                await self.async_set_unique_id(slugify(system_info["device_id"]))
+                await self.async_set_unique_id(device_unique_id)
                 self._abort_if_unique_id_configured()
 
+            except BelowMinFirmware:
+                _LOGGER.error(
+                    f"OPNsense Firmware of {firmware} is below the minimum supported version of {OPNSENSE_MIN_FIRMWARE}"
+                )
+                errors["base"] = "below_min_firmware"
+            except UnknownFirmware:
+                _LOGGER.error("Unable to get OPNsense Firmware version")
+                errors["base"] = "unknown_firmware"
+            except MissingDeviceUniqueID as err:
+                errors["base"] = "missing_device_unique_id"
+                _LOGGER.error(
+                    f"Missing Device Unique ID Error. {err.__class__.__qualname__}: {err}"
+                )
             except (aiohttp.InvalidURL, InvalidURL) as err:
                 errors["base"] = "invalid_url_format"
                 _LOGGER.error(f"InvalidURL Error. {err.__class__.__qualname__}: {err}")
@@ -127,19 +156,21 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         [username, password],
                     )
                 )
-            except (
-                aiohttp.ClientResponseError,
-                aiohttp.ClientError,
-                aiohttp.ClientConnectorError,
-                socket.gaierror,
-            ) as err:
-                errors["base"] = "cannot_connect"
+            except aiohttp.ClientConnectorSSLError as err:
+                errors["base"] = "cannot_connect_ssl"
                 _LOGGER.error(f"Aiohttp Error. {err.__class__.__qualname__}: {err}")
             except (aiohttp.ClientResponseError,) as err:
                 if err.status == 401 or err.status == 403:
                     errors["base"] = "invalid_auth"
                 else:
                     errors["base"] = "cannot_connect"
+                _LOGGER.error(f"Aiohttp Error. {err.__class__.__qualname__}: {err}")
+            except (
+                aiohttp.ClientError,
+                aiohttp.ClientConnectorError,
+                socket.gaierror,
+            ) as err:
+                errors["base"] = "cannot_connect"
                 _LOGGER.error(f"Aiohttp Error. {err.__class__.__qualname__}: {err}")
             except xmlrpc.client.ProtocolError as err:
                 if "307 Temporary Redirect" in str(err):
@@ -154,10 +185,10 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         [username, password],
                     )
                 )
-            except (aiohttp.TooManyRedirects, aiohttp.RedirectClientError):
+            except (aiohttp.TooManyRedirects, aiohttp.RedirectClientError) as err:
                 _LOGGER.error(f"Redirect Error. {err.__class__.__qualname__}: {err}")
                 errors["base"] = "url_redirect"
-            except (TimeoutError, aiohttp.ServerTimeoutError):
+            except (TimeoutError, aiohttp.ServerTimeoutError) as err:
                 _LOGGER.error(f"Timeout Error. {err.__class__.__qualname__}: {err}")
                 errors["base"] = "connect_timeout"
             except OSError as err:
@@ -195,6 +226,7 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_PASSWORD: password,
                         CONF_USERNAME: username,
                         CONF_VERIFY_SSL: verify_ssl,
+                        CONF_DEVICE_UNIQUE_ID: device_unique_id,
                     },
                 )
 
@@ -202,14 +234,16 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             user_input = {}
         schema = vol.Schema(
             {
-                vol.Required(CONF_URL, default=user_input.get(CONF_URL, "")): str,
+                vol.Required(
+                    CONF_URL, default=user_input.get(CONF_URL, "https://")
+                ): str,
                 vol.Optional(
                     CONF_VERIFY_SSL,
                     default=user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
                 ): bool,
-                vol.Optional(
+                vol.Required(
                     CONF_USERNAME,
-                    default=user_input.get(CONF_USERNAME, DEFAULT_USERNAME),
+                    default=user_input.get(CONF_USERNAME, ""),
                 ): str,
                 vol.Required(
                     CONF_PASSWORD, default=user_input.get(CONF_PASSWORD, "")
@@ -218,7 +252,15 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
 
-        return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+        return self.async_show_form(
+            step_id="user",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={
+                "firmware": firmware if "firmware" in locals() else "Unknown",
+                "min_firmware": OPNSENSE_MIN_FIRMWARE,
+            },
+        )
 
     async def async_step_import(self, user_input):
         """Handle import."""
@@ -281,7 +323,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_device_tracker(self, user_input=None):
         """Handle device tracker list step."""
         url = self.config_entry.data[CONF_URL].strip()
-        username: str = self.config_entry.data.get(CONF_USERNAME, DEFAULT_USERNAME)
+        username: str = self.config_entry.data[CONF_USERNAME]
         password: str = self.config_entry.data[CONF_PASSWORD]
         verify_ssl: bool = self.config_entry.data.get(
             CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL
@@ -345,3 +387,15 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
 class InvalidURL(Exception):
     """InavlidURL."""
+
+
+class MissingDeviceUniqueID(Exception):
+    pass
+
+
+class BelowMinFirmware(Exception):
+    pass
+
+
+class UnknownFirmware(Exception):
+    pass

@@ -1,8 +1,9 @@
 import asyncio
-from collections.abc import Mapping
 import copy
 import logging
 import time
+from collections.abc import Mapping
+from datetime import timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -22,7 +23,8 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         hass: HomeAssistant,
         client: OPNsenseClient,
         name: str,
-        update_interval,
+        update_interval: timedelta,
+        device_unique_id: str,
         device_tracker_coordinator: bool = False,
     ) -> None:
         """Initialize the data object."""
@@ -32,6 +34,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         self._client: OPNsenseClient = client
         self._state: Mapping[str, Any] = {}
         self._device_tracker_coordinator: bool = device_tracker_coordinator
+        self._device_unique_id: str = device_unique_id
         super().__init__(
             hass,
             _LOGGER,
@@ -109,6 +112,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         if self._device_tracker_coordinator:
 
             categories: list = [
+                {"function": "get_device_unique_id", "state_key": "device_unique_id"},
                 {"function": "get_system_info", "state_key": "system_info"},
                 {
                     "function": "get_host_firmware_version",
@@ -120,9 +124,21 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 },
             ]
             self._state.update(await self._get_states(categories))
+            if self._state.get("device_unique_id") != self._device_unique_id:
+                _LOGGER.error(
+                    "Coordinator error. OPNsense Router Device ID differs from the one saved in hass-opnsense."
+                )
+                # Create repair task here
+                return {}
+            if self._state.get("device_unique_id") is None:
+                _LOGGER.warning(
+                    "Coordinator failed to confirm OPNsense Router Unique ID"
+                )
+                return {}
             return self._state
 
         categories: list = [
+            {"function": "get_device_unique_id", "state_key": "device_unique_id"},
             {"function": "get_system_info", "state_key": "system_info"},
             {
                 "function": "get_host_firmware_version",
@@ -145,6 +161,15 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         ]
 
         self._state.update(await self._get_states(categories))
+        if self._state.get("device_unique_id") != self._device_unique_id:
+            _LOGGER.error(
+                "Coordinator error. OPNsense Router Device ID differs from the one saved in hass-opnsense."
+            )
+            # Create repair task here
+            return {}
+        if self._state.get("device_unique_id") is None:
+            _LOGGER.warning("Coordinator failed to confirm OPNsense Router Unique ID")
+            return {}
 
         # self._state["dhcp_leases"] = []
         self._state["dhcp_stats"] = {}

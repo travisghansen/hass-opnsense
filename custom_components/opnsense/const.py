@@ -10,13 +10,13 @@ from homeassistant.components.sensor import (
 from homeassistant.const import PERCENTAGE, UnitOfInformation, UnitOfTime
 
 VERSION = "v0.3.4"
-DEFAULT_USERNAME = ""
 DOMAIN = "opnsense"
-OPNSENSE_MIN_FIRMWARE = "24.7"
+OPNSENSE_LTD_FIRMWARE = "24.7"  # Some functions may not work but the integration in general should work. Show repair warning.
+OPNSENSE_MIN_FIRMWARE = "24.1"  # Don't allow install, will not work.
 
 UNDO_UPDATE_LISTENER = "undo_update_listener"
 
-PLATFORMS = ["sensor", "switch", "device_tracker", "binary_sensor", "update"]
+PLATFORMS: list = ["sensor", "switch", "device_tracker", "binary_sensor", "update"]
 LOADED_PLATFORMS = "loaded_platforms"
 
 OPNSENSE_CLIENT = "opnsense_client"
@@ -37,6 +37,8 @@ DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL = 150
 
 CONF_DEVICE_TRACKER_CONSIDER_HOME = "device_tracker_consider_home"
 DEFAULT_DEVICE_TRACKER_CONSIDER_HOME = 0
+
+CONF_DEVICE_UNIQUE_ID = "device_unique_id"
 
 CONF_DEVICES = "devices"
 
