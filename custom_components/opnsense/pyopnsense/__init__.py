@@ -95,6 +95,12 @@ class OPNsenseClient(ABC):
                 return await func(self, *args, **kwargs)
             except asyncio.CancelledError as e:
                 raise e
+            except (TimeoutError, aiohttp.ServerTimeoutError) as e:
+                _LOGGER.warning(
+                    f"Timeout Error in {func.__name__.strip('_')}. Will retry. {e}"
+                )
+                if self._initial:
+                    raise e
             except Exception as e:
                 redacted_message = re.sub(
                     r"(\w+):(\w+)@", "<redacted>:<redacted>@", str(e)
