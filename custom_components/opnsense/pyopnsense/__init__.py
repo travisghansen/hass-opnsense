@@ -1,5 +1,6 @@
 import asyncio
 import inspect
+import ipaddress
 import json
 import logging
 import re
@@ -26,6 +27,14 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 tzinfos: Mapping[str, Any] = {}
 for tname in zoneinfo.available_timezones():
     tzinfos[tname] = zoneinfo.ZoneInfo(tname)
+
+
+def normalize_ip(ip):
+    ip_obj = ipaddress.ip_address(ip)
+    # If it's an IPv4 address, convert it to its IPv6-mapped equivalent
+    if isinstance(ip_obj, ipaddress.IPv4Address):
+        return ipaddress.IPv6Address(f"::ffff:{ip}")
+    return ip_obj
 
 
 def dict_get(data: Mapping[str, Any], path: str, default=None):
@@ -649,26 +658,216 @@ $toreturn = [
         return True
 
     @_log_errors
-    async def get_dhcp_leases(self):
-        # function system_get_dhcpleases()
-        # {'lease': [], 'failover': []}
-        # {"lease":[{"ip":"<ip>","type":"static","mac":"<mac>","if":"lan","starts":"","ends":"","hostname":"<hostname>","descr":"","act":"static","online":"online","staticmap_array_index":48} ...
-        script: str = r"""
-require_once '/usr/local/etc/inc/plugins.inc.d/dhcpd.inc';
+    async def get_dhcp_leases(self) -> list:
+        leases_raw: list = (
+            await self._get_kea_dhcpv4_leases()
+            + await self._get_isc_dhcpv4_leases()
+            + await self._get_isc_dhcpv6_leases()
+        )
 
-$toreturn = [
-  "data" => dhcpd_leases(4),
-];
-"""
-        response: Mapping[str, Any] = await self._exec_php(script)
-        if (
-            response is None
-            or not isinstance(response, Mapping)
-            or not isinstance(response.get("data", None), Mapping)
-        ):
-            _LOGGER.error("Invalid data returned from get_dhcp_leases")
+        # _LOGGER.debug(f"[get_dhcp_leases] leases_raw: {leases_raw}")
+        leases: Mapping[str, Any] = {}
+        lease_interfaces: Mapping[str, Any] = {}
+        for lease in leases_raw:
+            if (
+                not isinstance(lease, Mapping)
+                or not isinstance(lease.get("if_name", None), str)
+                or len(lease.get("if_name", "")) == 0
+            ):
+                continue
+            if_name = lease.pop("if_name", None)
+            if_descr = lease.pop("if_descr", None)
+            if if_name not in leases:
+                lease_interfaces.update({if_name: if_descr})
+                leases[if_name] = []
+            leases[if_name].append(lease)
+
+        sorted_lease_interfaces: Mapping[str, Any] = {
+            key: lease_interfaces[key] for key in sorted(lease_interfaces)
+        }
+        sorted_leases: Mapping[str, Any] = {key: leases[key] for key in sorted(leases)}
+        for if_subnet in sorted_leases.values():
+            sorted_if: list = sorted(
+                if_subnet, key=lambda x: normalize_ip(x["address"])
+            )
+            if_subnet: list = sorted_if
+
+        dhcp_leases: Mapping[str, Any] = {
+            "lease_interfaces": sorted_lease_interfaces,
+            "leases": sorted_leases,
+        }
+        _LOGGER.debug(f"[get_dhcp_leases] dhcp_leases: {dhcp_leases}")
+
+        return dhcp_leases
+
+    async def _get_kea_dhcpv4_leases(self) -> list:
+        response: Mapping[str, Any] | list = await self._get("/api/kea/leases4/search")
+        if response is None or not isinstance(response, Mapping):
             return []
-        return response.get("data", {}).get("lease", [])
+        leases_info: list = response.get("rows", [])
+        # _LOGGER.debug(f"[get_kea_dhcpv4_leases] leases_info: {leases_info}")
+        leases: list = []
+        for lease_info in leases_info:
+            if lease_info is None or not isinstance(lease_info, Mapping):
+                continue
+            lease: Mapping[str, Any] = {}
+            lease["address"] = lease_info.get("address", None)
+            lease["hostname"] = (
+                lease_info.get("hostname", None).strip(".")
+                if isinstance(lease_info.get("hostname", None), str)
+                and len(lease_info.get("hostname", "")) > 0
+                else None
+            )
+            lease["if_descr"] = lease_info.get("if_descr", None)
+            lease["if_name"] = lease_info.get("if_name", None)
+            lease["mac"] = lease_info.get("hwaddr", None)
+            if self._try_to_int(lease_info.get("expire", None)):
+                lease["expires"] = datetime.fromtimestamp(
+                    self._try_to_int(lease_info.get("expire", None)),
+                    tz=datetime.now().astimezone().tzinfo,
+                )
+            else:
+                lease["expires"] = lease_info.get("expire", None)
+            leases.append(lease)
+        # _LOGGER.debug(f"[get_kea_dhcpv4_leases] leases: {leases}")
+        return leases
+
+    # Kea DHCPv4
+    # {
+    #     "if": "vlan03",
+    #     "address": "10.100.50.5",
+    #     "hwaddr": "34:98:7a:5e:ae:b4",
+    #     "client_id": "01:34:98:7a:5e:ae:b4",
+    #     "valid_lifetime": "86400",
+    #     "expire": "1727487541",
+    #     "subnet_id": "3",
+    #     "fqdn_fwd": "0",
+    #     "fqdn_rev": "0",
+    #     "hostname": "keepconnect",
+    #     "state": "0",
+    #     "user_context": "",
+    #     "pool_id": "0",
+    #     "if_descr": "IOT_50",
+    #     "if_name": "opt5"
+    # },
+
+    async def _get_isc_dhcpv4_leases(self) -> list:
+        response: Mapping[str, Any] | list = await self._get(
+            "/api/dhcpv4/leases/searchLease"
+        )
+        if not isinstance(response, Mapping):
+            return []
+        leases_info: list = response.get("rows", [])
+        if not isinstance(leases_info, list):
+            return []
+        # _LOGGER.debug(f"[get_isc_dhcpv4_leases] leases_info: {leases_info}")
+        leases: list = []
+        for lease_info in leases_info:
+            # _LOGGER.debug(f"[get_isc_dhcpv4_leases] lease_info: {lease_info}")
+            if (
+                not isinstance(lease_info, Mapping)
+                or lease_info.get("state", "") != "active"
+            ):
+                continue
+            lease: Mapping[str, Any] = {}
+            lease["address"] = lease_info.get("address", None)
+            lease["hostname"] = (
+                lease_info.get("hostname", None)
+                if isinstance(lease_info.get("hostname", None), str)
+                and len(lease_info.get("hostname", "")) > 0
+                else None
+            )
+            lease["if_descr"] = lease_info.get("if_descr", None)
+            lease["if_name"] = lease_info.get("if", None)
+            lease["mac"] = lease_info.get("mac", None)
+            if lease_info.get("ends", None):
+                dt: datetime = datetime.strptime(
+                    lease_info.get("ends", None), "%Y/%m/%d %H:%M:%S"
+                )
+                lease["expires"] = dt.replace(tzinfo=datetime.now().astimezone().tzinfo)
+            else:
+                lease["expires"] = lease_info.get("ends", None)
+            leases.append(lease)
+        # _LOGGER.debug(f"[get_isc_dhcpv4_leases] leases: {leases}")
+        return leases
+
+    # Legacy DHCPv4
+    # {
+    #     "address": "10.100.150.100",
+    #     "starts": "2024/10/05 18:42:57",
+    #     "ends": "2024/10/05 20:42:57",
+    #     "cltt": 1728168177,
+    #     "binding": "active",
+    #     "uid": "\\001^v#\\342Z\\277",
+    #     "type": "dynamic",
+    #     "status": "online",
+    #     "descr": "",
+    #     "mac": "5e:76:23:e2:5a:bf",
+    #     "hostname": "",
+    #     "state": "active",
+    #     "man": "",
+    #     "if": "opt8",
+    #     "if_descr": "Guest_150"
+    # }
+
+    async def _get_isc_dhcpv6_leases(self) -> list:
+        response: Mapping[str, Any] | list = await self._get(
+            "/api/dhcpv6/leases/searchLease"
+        )
+        if not isinstance(response, Mapping):
+            return []
+        leases_info: list = response.get("rows", [])
+        if not isinstance(leases_info, list):
+            return []
+        # _LOGGER.debug(f"[get_isc_dhcpv6_leases] leases_info: {leases_info}")
+        leases: list = []
+        for lease_info in leases_info:
+            # _LOGGER.debug(f"[get_isc_dhcpv6_leases] lease_info: {lease_info}")
+            if (
+                not isinstance(lease_info, Mapping)
+                or lease_info.get("state", "") != "active"
+            ):
+                continue
+            lease: Mapping[str, Any] = {}
+            lease["address"] = lease_info.get("address", None)
+            lease["hostname"] = (
+                lease_info.get("hostname", None)
+                if isinstance(lease_info.get("hostname", None), str)
+                and len(lease_info.get("hostname", "")) > 0
+                else None
+            )
+            lease["if_descr"] = lease_info.get("if_descr", None)
+            lease["if_name"] = lease_info.get("if", None)
+            lease["mac"] = lease_info.get("mac", None)
+            if lease_info.get("ends", None):
+                dt: datetime = datetime.strptime(
+                    lease_info.get("ends", None), "%Y/%m/%d %H:%M:%S"
+                )
+                lease["expires"] = dt.replace(tzinfo=datetime.now().astimezone().tzinfo)
+            else:
+                lease["expires"] = lease_info.get("ends", None)
+            leases.append(lease)
+        # _LOGGER.debug(f"[get_isc_dhcpv6_leases] leases: {leases}")
+        return leases
+
+    # Legacy DHCPv6
+    # {
+    #     "type": "dynamic",
+    #     "lease_type": "ia-na",
+    #     "iaid": 0,
+    #     "duid": "00:01:00:01:20:44:59:47:ac:bc:32:75:d6:af",
+    #     "iaid_duid": "00:00:00:00:00:01:00:01:20:44:59:47:ac:bc:32:75:d6:af",
+    #     "descr": "",
+    #     "if": "opt5",
+    #     "cltt": "2024/09/26 22:05:30",
+    #     "state": "active",
+    #     "ends": "2024/09/27 00:05:30",
+    #     "address": "2600:4040:a506:ce32::1764",
+    #     "status": "online",
+    #     "man": "Apple, Inc.",
+    #     "mac": "ac:bc:32:75:d6:ad",
+    #     "if_descr": "IOT_50",
+    # },
 
     @_log_errors
     async def get_carp_status(self) -> bool:
