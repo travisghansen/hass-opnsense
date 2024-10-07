@@ -1677,13 +1677,23 @@ foreach ($ovpn_servers as $server) {
         response: Mapping[str, Any] | list = await self._post(
             "/api/unbound/settings/set", payload=payload
         )
+        dnsbl_resp: Mapping[str, Any] | list = await self._get(
+            "/api/unbound/service/dnsbl"
+        )
+        restart_resp: Mapping[str, Any] | list = await self._post(
+            "/api/unbound/service/restart"
+        )
         _LOGGER.debug(
-            f"[set_unbound_blocklist] set_state: {'On' if set_state else 'Off'}, payload: {payload}, response: {response}"
+            f"[set_unbound_blocklist] set_state: {'On' if set_state else 'Off'}, payload: {payload}, response: {response}, dnsbl_resp: {dnsbl_resp}, restart_resp: {restart_resp}"
         )
         return not (
             response is None
             or not isinstance(response, Mapping)
+            or not isinstance(dnsbl_resp, Mapping)
+            or not isinstance(restart_resp, Mapping)
             or response.get("result", "failed") != "saved"
+            or not dnsbl_resp.get("status", "failed").startswith("OK")
+            or restart_resp.get("response", "failed") != "OK"
         )
 
     @_log_errors
