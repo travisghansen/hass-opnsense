@@ -754,6 +754,8 @@ class OPNsenseTempSensor(OPNsenseSensor):
 
 
 class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
+    _unrecorded_attributes = frozenset({"Leases"})
+
     @callback
     def _handle_coordinator_update(self) -> None:
         state = self.coordinator.data
@@ -780,10 +782,15 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
             lease_counts: Mapping[str, Any] = {}
             try:
                 for ifn, if_descr in lease_interfaces.items():
-                    lease_counts[if_descr] = f"{len(leases.get(ifn,[]))} leases"
-                    total_lease_count += len(leases.get(ifn, []))
+                    if_count: int = sum(
+                        1
+                        for d in leases.get(ifn, [])
+                        if d.get("address") not in (None, "")
+                    )
+                    lease_counts[if_descr] = f"{if_count} leases"
+                    total_lease_count += if_count
                     _LOGGER.debug(
-                        f"[OPNsenseDHCPLeasesSensor handle_coordinator_update] if_descr: {if_descr}, lease_count: {len(leases.get(ifn,[]))}"
+                        f"[OPNsenseDHCPLeasesSensor handle_coordinator_update] if_descr: {if_descr}, lease_count: {if_count}"
                     )
             except (TypeError, KeyError, ZeroDivisionError):
                 self._available = False
@@ -800,7 +807,9 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
                 self._available = False
                 return
             try:
-                self._attr_native_value = len(interface)
+                self._attr_native_value = sum(
+                    1 for d in interface if d.get("address") not in (None, "")
+                )
             except (TypeError, KeyError, ZeroDivisionError):
                 self._available = False
                 return
