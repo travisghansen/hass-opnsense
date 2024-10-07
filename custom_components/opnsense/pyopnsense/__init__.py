@@ -29,12 +29,20 @@ for tname in zoneinfo.available_timezones():
     tzinfos[tname] = zoneinfo.ZoneInfo(tname)
 
 
-def normalize_ip(ip):
-    ip_obj = ipaddress.ip_address(ip)
-    # If it's an IPv4 address, convert it to its IPv6-mapped equivalent
-    if isinstance(ip_obj, ipaddress.IPv4Address):
-        return ipaddress.IPv6Address(f"::ffff:{ip}")
-    return ip_obj
+def get_ip_key(item) -> tuple:
+    address = item.get("address", None)
+
+    if not address:
+        # If the address is empty, place it at the end
+        return (3, "")
+    try:
+        ip_obj: ipaddress.IPv4Address | ipaddress.IPv6Address = ipaddress.ip_address(
+            address
+        )
+        # Sort by IP version (IPv4 first, IPv6 second), then by numerical value
+        return (0 if ip_obj.version == 4 else 1, ip_obj)
+    except ValueError:
+        return (2, "")
 
 
 def dict_get(data: Mapping[str, Any], path: str, default=None):
@@ -687,9 +695,7 @@ $toreturn = [
         }
         sorted_leases: Mapping[str, Any] = {key: leases[key] for key in sorted(leases)}
         for if_subnet in sorted_leases.values():
-            sorted_if: list = sorted(
-                if_subnet, key=lambda x: normalize_ip(x["address"])
-            )
+            sorted_if: list = sorted(if_subnet, key=get_ip_key)
             if_subnet: list = sorted_if
 
         dhcp_leases: Mapping[str, Any] = {
@@ -702,13 +708,32 @@ $toreturn = [
 
     async def _get_kea_dhcpv4_leases(self) -> list:
         response: Mapping[str, Any] | list = await self._get("/api/kea/leases4/search")
-        if response is None or not isinstance(response, Mapping):
+        if not isinstance(response, Mapping) or not isinstance(
+            response.get("rows", None), list
+        ):
             return []
+        res_resp = await self._get("/api/kea/dhcpv4/searchReservation")
+        if not isinstance(res_resp, Mapping) or not isinstance(
+            res_resp.get("rows", None), list
+        ):
+            res_info = []
+        else:
+            res_info = res_resp.get("rows", [])
+        reservations = {}
+        for res in res_info:
+            if res.get("hw_address", None):
+                reservations.update({res.get("hw_address"): res.get("ip_address", "")})
+        # _LOGGER.debug(f"[get_kea_dhcpv4_leases] reservations: {reservations}")
         leases_info: list = response.get("rows", [])
         # _LOGGER.debug(f"[get_kea_dhcpv4_leases] leases_info: {leases_info}")
         leases: list = []
         for lease_info in leases_info:
-            if lease_info is None or not isinstance(lease_info, Mapping):
+            if (
+                lease_info is None
+                or not isinstance(lease_info, Mapping)
+                or lease_info.get("state", "0") != "0"
+                or not lease_info.get("hwaddr", None)
+            ):
                 continue
             lease: Mapping[str, Any] = {}
             lease["address"] = lease_info.get("address", None)
@@ -720,12 +745,23 @@ $toreturn = [
             )
             lease["if_descr"] = lease_info.get("if_descr", None)
             lease["if_name"] = lease_info.get("if_name", None)
+            if (
+                lease_info.get("hwaddr", None)
+                and lease_info.get("hwaddr") in reservations
+                and reservations[lease_info.get("hwaddr")]
+                == lease_info.get("address", None)
+            ):
+                lease["type"] = "static"
+            else:
+                lease["type"] = "dynamic"
             lease["mac"] = lease_info.get("hwaddr", None)
             if self._try_to_int(lease_info.get("expire", None)):
                 lease["expires"] = datetime.fromtimestamp(
                     self._try_to_int(lease_info.get("expire", None)),
                     tz=datetime.now().astimezone().tzinfo,
                 )
+                if lease["expires"] < datetime.now().astimezone():
+                    continue
             else:
                 lease["expires"] = lease_info.get("expire", None)
             leases.append(lease)
@@ -767,6 +803,7 @@ $toreturn = [
             if (
                 not isinstance(lease_info, Mapping)
                 or lease_info.get("state", "") != "active"
+                or not lease_info.get("mac", None)
             ):
                 continue
             lease: Mapping[str, Any] = {}
@@ -779,12 +816,15 @@ $toreturn = [
             )
             lease["if_descr"] = lease_info.get("if_descr", None)
             lease["if_name"] = lease_info.get("if", None)
+            lease["type"] = lease_info.get("type", None)
             lease["mac"] = lease_info.get("mac", None)
             if lease_info.get("ends", None):
                 dt: datetime = datetime.strptime(
                     lease_info.get("ends", None), "%Y/%m/%d %H:%M:%S"
                 )
                 lease["expires"] = dt.replace(tzinfo=datetime.now().astimezone().tzinfo)
+                if lease["expires"] < datetime.now().astimezone():
+                    continue
             else:
                 lease["expires"] = lease_info.get("ends", None)
             leases.append(lease)
@@ -826,6 +866,7 @@ $toreturn = [
             if (
                 not isinstance(lease_info, Mapping)
                 or lease_info.get("state", "") != "active"
+                or not lease_info.get("mac", None)
             ):
                 continue
             lease: Mapping[str, Any] = {}
@@ -838,12 +879,15 @@ $toreturn = [
             )
             lease["if_descr"] = lease_info.get("if_descr", None)
             lease["if_name"] = lease_info.get("if", None)
+            lease["type"] = lease_info.get("type", None)
             lease["mac"] = lease_info.get("mac", None)
             if lease_info.get("ends", None):
                 dt: datetime = datetime.strptime(
                     lease_info.get("ends", None), "%Y/%m/%d %H:%M:%S"
                 )
                 lease["expires"] = dt.replace(tzinfo=datetime.now().astimezone().tzinfo)
+                if lease["expires"] < datetime.now().astimezone():
+                    continue
             else:
                 lease["expires"] = lease_info.get("ends", None)
             leases.append(lease)
