@@ -760,18 +760,12 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
     def _handle_coordinator_update(self) -> None:
         state = self.coordinator.data
         if_name: str = self.entity_description.key.split(".")[1].strip()
-        _LOGGER.debug(
-            f"[OPNsenseDHCPLeasesSensor handle_coordinator_update] if_name: {if_name}"
-        )
+        # _LOGGER.debug(f"[OPNsenseDHCPLeasesSensor handle_coordinator_update] if_name: {if_name}")
         if if_name.lower() == "all":
             leases = state.get("dhcp_leases", {}).get("leases", {})
             lease_interfaces = state.get("dhcp_leases", {}).get("lease_interfaces", {})
-            _LOGGER.debug(
-                f"[OPNsenseDHCPLeasesSensor handle_coordinator_update] lease_interfaces: {lease_interfaces}"
-            )
-            _LOGGER.debug(
-                f"[OPNsenseDHCPLeasesSensor handle_coordinator_update] leases: {leases}"
-            )
+            # _LOGGER.debug(f"[OPNsenseDHCPLeasesSensor handle_coordinator_update] lease_interfaces: {lease_interfaces}")
+            # _LOGGER.debug(f"[OPNsenseDHCPLeasesSensor handle_coordinator_update] leases: {leases}")
             if not isinstance(leases, Mapping) or not isinstance(
                 lease_interfaces, Mapping
             ):
