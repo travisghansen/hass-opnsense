@@ -81,6 +81,8 @@ async def _compile_filesystem_sensors(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: Mapping[str, Any],
 ) -> list:
+    if not isinstance(state, Mapping):
+        return []
     entities: list = []
 
     for filesystem in dict_get(state, "telemetry.filesystems", []):
@@ -111,6 +113,8 @@ async def _compile_carp_interface_sensors(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: Mapping[str, Any],
 ) -> list:
+    if not isinstance(state, Mapping):
+        return []
     entities: list = []
 
     for interface in state.get("carp_interfaces", []):
@@ -136,7 +140,10 @@ async def _compile_interface_sensors(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: Mapping[str, Any],
 ) -> list:
+    if not isinstance(state, Mapping):
+        return []
     entities: list = []
+
     # interfaces
     for interface_name, interface in dict_get(
         state, "telemetry.interfaces", {}
@@ -241,6 +248,8 @@ async def _compile_gateway_sensors(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: Mapping[str, Any],
 ) -> list:
+    if not isinstance(state, Mapping):
+        return []
     entities: list = []
 
     for gateway in dict_get(state, "telemetry.gateways", {}).values():
@@ -280,6 +289,8 @@ async def _compile_openvpn_server_sensors(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: Mapping[str, Any],
 ) -> list:
+    if not isinstance(state, Mapping):
+        return []
     entities: list = []
 
     for vpnid, server in dict_get(state, "telemetry.openvpn.servers", {}).items():
@@ -342,6 +353,8 @@ async def _compile_temperature_sensors(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: Mapping[str, Any],
 ) -> list:
+    if not isinstance(state, Mapping):
+        return []
     entities: list = []
 
     # temperatures
@@ -370,7 +383,10 @@ async def _compile_dhcp_leases_sensors(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: Mapping[str, Any],
 ) -> list:
+    if not isinstance(state, Mapping):
+        return []
     entities: list = []
+
     # interfaces
     for interface, interface_name in dict_get(
         state, "dhcp_leases.lease_interfaces", {}
@@ -419,7 +435,9 @@ async def async_setup_entry(
         config_entry.entry_id
     ][COORDINATOR]
     state: Mapping[str, Any] = coordinator.data
-
+    if not isinstance(state, Mapping):
+        _LOGGER.error("Missing state data in sensor async_setup_entry")
+        return
     results: list = await asyncio.gather(
         _compile_static_sensors(config_entry, coordinator),
         _compile_openvpn_server_sensors(config_entry, coordinator, state),
@@ -528,7 +546,9 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
 class OPNsenseFilesystemSensor(OPNsenseSensor):
 
     def _opnsense_get_filesystem(self) -> Mapping[str, Any]:
-        state = self.coordinator.data
+        state: Mapping[str, Any] = self.coordinator.data
+        if not isinstance(state, Mapping):
+            return {}
         for filesystem in state.get("telemetry", {}).get("filesystems", []):
             device_clean: str = normalize_filesystem_device_name(filesystem["device"])
             if self.entity_description.key == f"telemetry.filesystems.{device_clean}":
@@ -560,7 +580,9 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
         return self.entity_description.key.split(".")[2]
 
     def _opnsense_get_interface(self) -> Mapping[str, Any]:
-        state = self.coordinator.data
+        state: Mapping[str, Any] = self.coordinator.data
+        if not isinstance(state, Mapping):
+            return {}
         interface_name: str = self._opnsense_get_interface_name()
         for i_interface_name, interface in (
             state.get("telemetry", {}).get("interfaces", {}).items()
@@ -597,7 +619,9 @@ class OPNsenseCarpInterfaceSensor(OPNsenseSensor):
         return self.entity_description.key.split(".")[2]
 
     def _opnsense_get_carp_interface(self) -> Mapping[str, Any]:
-        state = self.coordinator.data
+        state: Mapping[str, Any] = self.coordinator.data
+        if not isinstance(state, Mapping):
+            return {}
         carp_interface_name = self._opnsense_get_carp_interface_name()
         for i_interface in state.get("carp_interfaces", []):
             if slugify(i_interface["subnet"]) == carp_interface_name:
@@ -643,7 +667,9 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
         return self.entity_description.key.split(".")[2]
 
     def _opnsense_get_gateway(self) -> Mapping[str, Any]:
-        state = self.coordinator.data
+        state: Mapping[str, Any] = self.coordinator.data
+        if not isinstance(state, Mapping):
+            return {}
         gateway_name: str = self._opnsense_get_gateway_name()
         for i_gateway_name, gateway in (
             state.get("telemetry", {}).get("gateways", {}).items()
@@ -698,15 +724,17 @@ class OPNsenseOpenVPNServerSensor(OPNsenseSensor):
     def _opnsense_get_server_vpnid(self) -> str:
         return self.entity_description.key.split(".")[3]
 
-    def _opnsense_get_server(self) -> Mapping[str, Any] | None:
-        state = self.coordinator.data
+    def _opnsense_get_server(self) -> Mapping[str, Any]:
+        state: Mapping[str, Any] = self.coordinator.data
+        if not isinstance(state, Mapping):
+            return {}
         vpnid: str = self._opnsense_get_server_vpnid()
         for server_vpnid, server in dict_get(
             state, "telemetry.openvpn.servers", {}
         ).items():
             if vpnid == server_vpnid:
                 return server
-        return None
+        return {}
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -730,7 +758,9 @@ class OPNsenseTempSensor(OPNsenseSensor):
         return self.entity_description.key.split(".")[2]
 
     def _opnsense_get_temp(self) -> Mapping[str, Any]:
-        state = self.coordinator.data
+        state: Mapping[str, Any] = self.coordinator.data
+        if not isinstance(state, Mapping):
+            return {}
         sensor_temp_device: str = self._opnsense_get_temp_device()
         for temp_device, temp in state.get("telemetry", {}).get("temps", {}).items():
             if temp_device == sensor_temp_device:
@@ -758,7 +788,9 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        state = self.coordinator.data
+        state: Mapping[str, Any] = self.coordinator.data
+        if not isinstance(state, Mapping):
+            return
         if_name: str = self.entity_description.key.split(".")[1].strip()
         _LOGGER.debug(
             f"[OPNsenseDHCPLeasesSensor handle_coordinator_update] if_name: {if_name}"

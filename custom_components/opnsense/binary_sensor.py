@@ -1,6 +1,8 @@
 """OPNsense integration."""
 
 import logging
+from collections.abc import Mapping
+from typing import Any
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -84,7 +86,7 @@ class OPNsenseCarpStatusBinarySensor(OPNsenseBinarySensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        state = self.coordinator.data
+        state: Mapping[str, Any] = self.coordinator.data
         try:
             self._attr_is_on = state["carp_status"]
         except (TypeError, KeyError, ZeroDivisionError):
@@ -96,7 +98,7 @@ class OPNsenseCarpStatusBinarySensor(OPNsenseBinarySensor):
 class OPNsensePendingNoticesPresentBinarySensor(OPNsenseBinarySensor):
     @callback
     def _handle_coordinator_update(self) -> None:
-        state = self.coordinator.data
+        state: Mapping[str, Any] = self.coordinator.data
         try:
             self._attr_is_on = state["notices"]["pending_notices_present"]
         except (TypeError, KeyError, ZeroDivisionError):
