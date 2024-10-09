@@ -297,15 +297,15 @@ class OPNsenseScannerEntity(OPNsenseEntity, ScannerEntity, RestoreEntity):
             self._attr_icon = "mdi:lan-disconnect"
 
         self.async_write_ha_state()
-        _LOGGER.debug(
-            f"[OPNsenseScannerEntity handle_coordinator_update] Name: {self.name}, "
-            f"unique_id: {self.unique_id}, attr_unique_id: {self._attr_unique_id}, "
-            f"available: {self.available}, is_connected: {self.is_connected}, "
-            f"hostname: {self.hostname}, ip_address: {self.ip_address}, "
-            f"last_known_hostname: {self._last_known_hostname}, last_known_ip: {self._last_known_ip}, "
-            f"last_known_connected_time: {self._last_known_connected_time}, icon: {self.icon}, "
-            f"extra_state_atrributes: {self.extra_state_attributes}"
-        )
+        # _LOGGER.debug(
+        #     f"[OPNsenseScannerEntity handle_coordinator_update] Name: {self.name}, "
+        #     f"unique_id: {self.unique_id}, attr_unique_id: {self._attr_unique_id}, "
+        #     f"available: {self.available}, is_connected: {self.is_connected}, "
+        #     f"hostname: {self.hostname}, ip_address: {self.ip_address}, "
+        #     f"last_known_hostname: {self._last_known_hostname}, last_known_ip: {self._last_known_ip}, "
+        #     f"last_known_connected_time: {self._last_known_connected_time}, icon: {self.icon}, "
+        #     f"extra_state_atrributes: {self.extra_state_attributes}"
+        # )
 
     @property
     def device_info(self) -> DeviceInfo:

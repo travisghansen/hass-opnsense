@@ -292,9 +292,7 @@ class OPNsenseFilterSwitch(OPNsenseSwitch):
         )
         self._tracker: str = self._opnsense_get_tracker()
         self._rule: Mapping[str, Any] | None = None
-        _LOGGER.debug(
-            f"[OPNsenseFilterSwitch init] Name: {self.name}, tracker: {self._tracker}"
-        )
+        # _LOGGER.debug(f"[OPNsenseFilterSwitch init] Name: {self.name}, tracker: {self._tracker}")
 
     def _opnsense_get_tracker(self) -> str:
         parts = self.entity_description.key.split(".")
@@ -356,9 +354,7 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
         self._rule_type: str = self._opnsense_get_rule_type()
         self._tracker: str = self._opnsense_get_tracker()
         self._rule: Mapping[str, Any] | None = None
-        _LOGGER.debug(
-            f"[OPNsenseNatSwitch init] Name: {self.name}, tracker: {self._tracker}, rule_type: {self._rule_type}"
-        )
+        # _LOGGER.debug(f"[OPNsenseNatSwitch init] Name: {self.name}, tracker: {self._tracker}, rule_type: {self._rule_type}")
 
     def _opnsense_get_rule_type(self) -> str:
         return self.entity_description.key.split(".")[0]
@@ -444,9 +440,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         )
         self._service: Mapping[str, Any] | None = None
         self._prop_name: str = self._opnsense_get_property_name()
-        _LOGGER.debug(
-            f"[OPNsenseServiceSwitch init] Name: {self.name}, prop_name: {self._prop_name}"
-        )
+        # _LOGGER.debug(f"[OPNsenseServiceSwitch init] Name: {self.name}, prop_name: {self._prop_name}")
 
     def _opnsense_get_property_name(self) -> str:
         return self.entity_description.key.split(".")[2]

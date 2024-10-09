@@ -1,14 +1,16 @@
-from collections.abc import Mapping
 import logging
+from collections.abc import Mapping
 
+import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import (
     config_validation as cv,
+)
+from homeassistant.helpers import (
     device_registry,
     entity_registry,
 )
-import voluptuous as vol
 
 from .const import (
     DOMAIN,
@@ -38,7 +40,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         first_entry_id = next(iter(hass.data[DOMAIN]))
         if len(hass.data[DOMAIN]) == 1:
             if OPNSENSE_CLIENT in hass.data[DOMAIN][first_entry_id]:
-                _LOGGER.debug(f"[get_clients] Only 1 entry. entry_id: {first_entry_id}")
+                # _LOGGER.debug(f"[get_clients] Only 1 entry. entry_id: {first_entry_id}")
                 return [hass.data[DOMAIN][first_entry_id][OPNSENSE_CLIENT]]
             return []
 
@@ -68,7 +70,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         clients: list = []
         # _LOGGER.debug(f"[get_clients] entry_ids: {entry_ids}")
         for entry_id, entry in hass.data[DOMAIN].items():
-            # _LOGGER.debug(f"[get_clients] entry_id: {entry_id}")
             if (
                 len(entry_ids) == 0 or entry_id in entry_ids
             ) and OPNSENSE_CLIENT in entry:
@@ -80,7 +81,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         clients: list = await _get_clients(
             call.data.get("device_id", []), call.data.get("entity_id", [])
         )
-        # _LOGGER.debug(f"[service_close_notice] clients: {clients}")
         for client in clients:
             _LOGGER.debug(
                 f"[service_close_notice] Calling stop_service for {call.data.get('id')}"
@@ -91,7 +91,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         clients: list = await _get_clients(
             call.data.get("device_id", []), call.data.get("entity_id", [])
         )
-        # _LOGGER.debug(f"[service_start_service] clients: {clients}")
         success = None
         for client in clients:
             _LOGGER.debug(
@@ -111,7 +110,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         clients: list = await _get_clients(
             call.data.get("device_id", []), call.data.get("entity_id", [])
         )
-        # _LOGGER.debug(f"[service_stop_service] clients: {clients}")
         success = None
         for client in clients:
             _LOGGER.debug(
@@ -131,7 +129,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         clients: list = await _get_clients(
             call.data.get("device_id", []), call.data.get("entity_id", [])
         )
-        # _LOGGER.debug(f"[service_restart_service] clients: {clients}")
         success = None
         if call.data.get("only_if_running"):
             for client in clients:
@@ -168,7 +165,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         clients: list = await _get_clients(
             call.data.get("device_id", []), call.data.get("entity_id", [])
         )
-        # _LOGGER.debug(f"[service_system_halt] clients: {clients}")
         for client in clients:
             _LOGGER.debug("[service_system_halt] Calling System Halt")
             await client.system_halt()
@@ -177,7 +173,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         clients: list = await _get_clients(
             call.data.get("device_id", []), call.data.get("entity_id", [])
         )
-        # _LOGGER.debug(f"[service_system_reboot] clients: {clients}")
         for client in clients:
             _LOGGER.debug("[service_system_reboot] Calling System Reboot")
             await client.system_reboot()
@@ -186,7 +181,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         clients: list = await _get_clients(
             call.data.get("device_id", []), call.data.get("entity_id", [])
         )
-        # _LOGGER.debug(f"[service_send_wol] clients: {clients}")
         for client in clients:
             _LOGGER.debug(
                 f"[service_send_wol] Calling WOL. interface: {call.data.get('interface')}, mac: {call.data.get('mac')}"
