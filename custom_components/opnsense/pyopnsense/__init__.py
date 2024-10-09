@@ -1637,3 +1637,184 @@ $toreturn = [
     @_log_errors
     async def disable_unbound_blocklist(self) -> bool:
         return await self._set_unbound_blocklist(set_state=False)
+
+    @_log_errors
+    async def get_wireguard(self) -> Mapping[str, Any]:
+        summary_raw: Mapping[str, Any] | list = await self._get(
+            "/api/wireguard/service/show"
+        )
+        clients_raw: Mapping[str, Any] | list = await self._get(
+            "/api/wireguard/client/get"
+        )
+        servers_raw: Mapping[str, Any] | list = await self._get(
+            "/api/wireguard/server/get"
+        )
+        if (
+            not isinstance(summary_raw, Mapping)
+            or not isinstance(clients_raw, Mapping)
+            or not isinstance(servers_raw, Mapping)
+        ):
+            return {}
+        summary = summary_raw.get("rows", [])
+        client_summ = clients_raw.get("client", {}).get("clients", {}).get("client", {})
+        server_summ = servers_raw.get("server", {}).get("servers", {}).get("server", {})
+        if (
+            not isinstance(summary, list)
+            or not isinstance(client_summ, Mapping)
+            or not isinstance(server_summ, Mapping)
+        ):
+            return {}
+        servers = {}
+        clients = {}
+
+        for uid, srv in server_summ.items():
+            if not isinstance(srv, Mapping):
+                continue
+            server = {}
+            for attr in ["name", "pubkey", "port", "endpoint", "peer_dns"]:
+                if srv.get(attr, None):
+                    server.update({attr: srv.get(attr)})
+            server.update({"enabled": bool(srv.get("enabled", "") == "1")})
+            server.update({"interface": f"wg{srv.get('instance','')}"})
+            server["tunnel_addresses"] = []
+            for addr in srv.get("tunneladdress", {}).values():
+                if addr.get("selected", 0) == 1 and addr.get("value", None):
+                    server["tunnel_addresses"].append(addr.get("value"))
+            server["clients"] = {}
+            for peer_id, peer in srv.get("peers", {}).items():
+                if peer.get("selected", 0) == 1 and peer.get("value", None):
+                    server["clients"][peer_id] = {"name": peer.get("value")}
+            server["total_bytes_recv"] = 0
+            server["total_bytes_sent"] = 0
+            servers[uid] = server
+
+        for uid, clnt in client_summ.items():
+            if not isinstance(clnt, Mapping):
+                continue
+            client = {}
+            for attr in ["name", "pubkey"]:
+                if clnt.get(attr, None):
+                    client[attr] = clnt.get(attr, None)
+            client["enabled"] = bool(clnt.get("enabled", "0") == "1")
+            client["tunnel_addresses"] = []
+            for addr in clnt.get("tunneladdress", {}).values():
+                if addr.get("selected", 0) == 1 and addr.get("value", None):
+                    client["tunnel_addresses"].append(addr.get("value"))
+            client["servers"] = {}
+            for srv_id, srv in clnt.get("servers", {}).items():
+                if srv.get("selected", 0) == 1 and srv.get("value", None):
+                    if servers.get(srv_id, None):
+                        client["servers"][srv_id] = {}
+                        for attr in ["name", "pubkey", "interface", "tunnel_addresses"]:
+                            if servers.get(srv_id, {}).get(attr, None):
+                                client["servers"][srv_id][attr] = servers[srv_id][attr]
+                    else:
+                        client["servers"][srv_id] = {"name": peer.get("value")}
+            for server in servers.values():
+                if (
+                    isinstance(server, Mapping)
+                    and isinstance(server.get("clients", None), Mapping)
+                    and uid in server.get("clients")
+                ):
+                    for attr in ["name", "enabled", "pubkey", "tunnel_addresses"]:
+                        if client.get(attr, None):
+                            server["clients"][uid][attr] = client.get(attr)
+            client["total_bytes_recv"] = 0
+            client["total_bytes_sent"] = 0
+            clients[uid] = client
+
+        for entry in summary:
+            if isinstance(entry, Mapping) and entry.get("type", "") == "interface":
+                for server in servers.values():
+                    if (
+                        isinstance(server, Mapping)
+                        and server.get("pubkey", "") == entry.get("public-key", "-")
+                        and entry.get("status", None)
+                    ):
+                        server["status"] = entry.get("status")
+            elif isinstance(entry, Mapping) and entry.get("type", "") == "peer":
+                for client in clients.values():
+                    if (
+                        isinstance(client, Mapping)
+                        and client.get("pubkey", "") == entry.get("public-key", "-")
+                        and isinstance(client.get("servers", None), Mapping)
+                    ):
+                        for srv in client.get("servers").values():
+                            if isinstance(srv, Mapping) and srv.get(
+                                "interface", ""
+                            ) == entry.get("if", "-"):
+                                if (
+                                    entry.get("endpoint", None)
+                                    and entry.get("endpoint", None) != "(none)"
+                                ):
+                                    srv["endpoint"] = entry.get("endpoint")
+                                if entry.get("transfer-rx", None):
+                                    srv["bytes_recv"] = entry.get("transfer-rx")
+                                    client["total_bytes_recv"] = int(
+                                        client.get("total_bytes_recv", 0)
+                                    ) + int(entry.get("transfer-rx"))
+                                if entry.get("transfer-tx", None):
+                                    srv["bytes_sent"] = entry.get("transfer-tx")
+                                    client["total_bytes_sent"] = int(
+                                        client.get("total_bytes_sent", 0)
+                                    ) + int(entry.get("transfer-tx"))
+                                if entry.get("latest-handshake", None):
+                                    srv["latest-handshake"] = datetime.fromtimestamp(
+                                        int(entry.get("latest-handshake")),
+                                        tz=datetime.now().astimezone().tzinfo,
+                                    )
+                                    if client.get(
+                                        "latest-handshake", None
+                                    ) is None or client.get(
+                                        "latest-handshake"
+                                    ) < srv.get(
+                                        "latest-handshake"
+                                    ):
+                                        client["latest-handshake"] = srv.get(
+                                            "latest-handshake"
+                                        )
+
+                for server in servers.values():
+                    if (
+                        isinstance(server, Mapping)
+                        and server.get("interface", "") == entry.get("if", "-")
+                        and isinstance(server.get("clients", None), Mapping)
+                    ):
+                        for clnt in server.get("clients").values():
+                            if isinstance(clnt, Mapping) and clnt.get(
+                                "pubkey", ""
+                            ) == entry.get("public-key", "-"):
+                                if (
+                                    entry.get("endpoint", None)
+                                    and entry.get("endpoint", None) != "(none)"
+                                ):
+                                    clnt["endpoint"] = entry.get("endpoint")
+                                if entry.get("transfer-rx", None):
+                                    clnt["bytes_recv"] = entry.get("transfer-rx")
+                                    server["total_bytes_recv"] = int(
+                                        server.get("total_bytes_recv", 0)
+                                    ) + int(entry.get("transfer-rx"))
+                                if entry.get("transfer-tx", None):
+                                    clnt["bytes_sent"] = entry.get("transfer-tx")
+                                    server["total_bytes_sent"] = int(
+                                        server.get("total_bytes_sent", 0)
+                                    ) + int(entry.get("transfer-tx"))
+                                if entry.get("latest-handshake", None):
+                                    clnt["latest-handshake"] = datetime.fromtimestamp(
+                                        int(entry.get("latest-handshake")),
+                                        tz=datetime.now().astimezone().tzinfo,
+                                    )
+                                    if server.get(
+                                        "latest-handshake", None
+                                    ) is None or server.get(
+                                        "latest-handshake"
+                                    ) < clnt.get(
+                                        "latest-handshake"
+                                    ):
+                                        server["latest-handshake"] = clnt.get(
+                                            "latest-handshake"
+                                        )
+
+        _LOGGER.debug(f"[get_wireguard] servers: {servers}")
+        _LOGGER.debug(f"[get_wireguard] clients: {clients}")
+        return {"servers": servers, "clients": clients}
