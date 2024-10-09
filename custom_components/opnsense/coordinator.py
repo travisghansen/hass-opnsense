@@ -77,22 +77,6 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 )
         return state
 
-    async def _get_dhcp_stats(self, leases: list) -> Mapping[str, Any]:
-        lease_stats: Mapping[str, Any] = {"total": 0, "online": 0, "offline": 0}
-        if not isinstance(leases, list):
-            return lease_stats
-        for lease in leases:
-            if not isinstance(lease, Mapping) or lease.get("act", "") == "expired":
-                continue
-
-            lease_stats["total"] += 1
-            if "online" in lease:
-                if lease["online"] == "online":
-                    lease_stats["online"] += 1
-                if lease["online"] == "offline":
-                    lease_stats["offline"] += 1
-        return lease_stats
-
     @_log_timing
     async def _async_update_data(self) -> Mapping[str, Any]:
         """Fetch the latest state from OPNsense."""
@@ -164,23 +148,19 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         ]
 
         self._state.update(await self._get_states(categories))
+        if self._state.get("device_unique_id") is None:
+            _LOGGER.warning(
+                "Coordinator failed to confirm OPNsense Router Unique ID. Will retry"
+            )
+            return {}
         if self._state.get("device_unique_id") != self._device_unique_id:
             _LOGGER.error(
-                "Coordinator error. OPNsense Router Device ID differs from the one saved in hass-opnsense."
+                f"Coordinator error. OPNsense Router Device ID ({self._state.get('device_unique_id')}) differs from the one saved in hass-opnsense ({self._device_unique_id})"
             )
             # Create repair task here
             return {}
-        if self._state.get("device_unique_id") is None:
-            _LOGGER.warning("Coordinator failed to confirm OPNsense Router Unique ID")
-            return {}
 
-        _LOGGER.debug(
-            f"[async_update_data] dhcp_leases: {self._state.get('dhcp_leases', {})}"
-        )
-        # self._state["dhcp_stats"] = {}
-        # self._state["dhcp_stats"]["leases"] = await self._get_dhcp_stats(
-        #     self._state.get("dhcp_leases", [])
-        # )
+        # _LOGGER.debug(f"[async_update_data] dhcp_leases: {self._state.get('dhcp_leases', {})}")
 
         # calcule pps and kbps
         update_time = dict_get(self._state, "update_time")

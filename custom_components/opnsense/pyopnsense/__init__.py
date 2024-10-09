@@ -7,6 +7,7 @@ import re
 import socket
 import ssl
 import time
+import traceback
 import xmlrpc.client
 from abc import ABC
 from collections.abc import Mapping
@@ -123,7 +124,7 @@ class OPNsenseClient(ABC):
                     r"(\w+):(\w+)@", "<redacted>:<redacted>@", str(e)
                 )
                 _LOGGER.error(
-                    f"Error in {func.__name__.strip('_')}. {e.__class__.__qualname__}: {redacted_message}"
+                    f"Error in {func.__name__.strip('_')}. {e.__class__.__qualname__}: {redacted_message}\n{''.join(traceback.format_tb(e.__traceback__))}"
                 )
                 if self._initial:
                     raise e
@@ -188,12 +189,17 @@ $toreturn["real"] = json_encode($toreturn_real);
             return response_json
         except TypeError as e:
             _LOGGER.error(
-                f"Invalid data returned from exec_php for {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. {e.__class__.__qualname__}: {e}. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'XMLRPC Library' privilege."
+                f"Invalid data returned from exec_php for {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. {e.__class__.__qualname__}: {e}. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'XMLRPC Library' privilege"
             )
             return {}
         except xmlrpc.client.Fault as e:
             _LOGGER.error(
-                f"Error running exec_php script for {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. {e.__class__.__qualname__}: {e}. Ensure the 'os-homeassistant-maxit' plugin has been installed on OPNsense ."
+                f"Error running exec_php script for {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. {e.__class__.__qualname__}: {e}. Ensure the 'os-homeassistant-maxit' plugin has been installed on OPNsense"
+            )
+            return {}
+        except socket.gaierror as e:
+            _LOGGER.warning(
+                f"Connection Error running exec_php script for {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. {e.__class__.__qualname__}: {e}. Will retry"
             )
             return {}
 
@@ -279,7 +285,7 @@ $toreturn["real"] = json_encode($toreturn_real);
                     return response_json
                 if response.status == 403:
                     _LOGGER.error(
-                        f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Ensure the OPNsense user connected to HA has full Admin access."
+                        f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Ensure the OPNsense user connected to HA has full Admin access"
                     )
                 else:
                     _LOGGER.error(
@@ -313,7 +319,7 @@ $toreturn["real"] = json_encode($toreturn_real);
                     return response_json
                 elif response.status == 403:
                     _LOGGER.error(
-                        f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Ensure the OPNsense user connected to HA has full Admin access."
+                        f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Ensure the OPNsense user connected to HA has full Admin access"
                     )
                 else:
                     _LOGGER.error(
