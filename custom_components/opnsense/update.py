@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 from homeassistant.components.update import (
@@ -84,7 +85,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        state = self.coordinator.data
+        state: Mapping[str, Any] = self.coordinator.data
         try:
             if state["firmware_update_info"]["status"] == "error":
                 self._available = False
@@ -235,7 +236,10 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
         self, version: str | None = None, backup: bool = False, **kwargs: Any
     ) -> None:
         """Install an update."""
-        state = self.coordinator.data
+        state: Mapping[str, Any] = self.coordinator.data
+        if not isinstance(state, Mapping):
+            _LOGGER.error("Cannot update firmware, state data is missing")
+            return
         upgrade_type = dict_get(state, "firmware_update_info.status")
         if upgrade_type not in ["update", "upgrade"]:
             return

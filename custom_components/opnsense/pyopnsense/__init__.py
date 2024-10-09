@@ -398,6 +398,8 @@ $toreturn = [
 ];
 """
         response: Mapping[str, Any] = await self._exec_php(script)
+        if not isinstance(response, Mapping):
+            return {}
         response["name"] = f"{response.pop('hostname','')}.{response.pop('domain','')}"
         return response
 
@@ -495,9 +497,12 @@ $toreturn = [
 ];
 """
         response: Mapping[str, Any] = await self._exec_php(script)
-        if response is None or not isinstance(response, Mapping):
+        if not isinstance(response, Mapping):
             return {}
-        return response.get("data", {})
+        ret_data = response.get("data", {})
+        if not isinstance(ret_data, Mapping):
+            return {}
+        return ret_data
 
     @_log_errors
     async def enable_filter_rule_by_created_time(self, created_time) -> None:
@@ -957,7 +962,7 @@ $toreturn = [
 ];
 """
         response: Mapping[str, Any] = await self._exec_php(script)
-        if response is None or not isinstance(response, Mapping):
+        if not isinstance(response, Mapping):
             _LOGGER.error("Invalid data returned from get_carp_interfaces")
             return {}
         _LOGGER.debug(f"[get_carp_interfaces] exec_php response: {response}")
@@ -1023,27 +1028,27 @@ $toreturn = [
         )
         return response.get("data", {})
 
-    @_log_errors
-    async def delete_arp_entry(self, ip) -> None:
-        if len(ip) < 1:
-            return
-        script: str = (
-            r"""
-$data = json_decode('{}', true);
-$ip = trim($data["ip"]);
-$ret = mwexec("arp -d " . $ip, true);
-$toreturn = [
-  "data" => $ret,
-];
-""".format(
-                json.dumps(
-                    {
-                        "ip": ip,
-                    }
-                )
-            )
-        )
-        await self._exec_php(script)
+    #     @_log_errors
+    #     async def delete_arp_entry(self, ip) -> None:
+    #         if len(ip) < 1:
+    #             return
+    #         script: str = (
+    #             r"""
+    # $data = json_decode('{}', true);
+    # $ip = trim($data["ip"]);
+    # $ret = mwexec("arp -d " . $ip, true);
+    # $toreturn = [
+    #   "data" => $ret,
+    # ];
+    # """.format(
+    #                 json.dumps(
+    #                     {
+    #                         "ip": ip,
+    #                     }
+    #                 )
+    #             )
+    #         )
+    #         await self._exec_php(script)
 
     @_log_errors
     async def system_reboot(self) -> bool:
@@ -1608,7 +1613,7 @@ foreach ($ovpn_servers as $server) {
 
 """
         telemetry: Mapping[str, Any] = await self._exec_php(script)
-        if telemetry is None or not isinstance(telemetry, Mapping):
+        if not isinstance(telemetry, Mapping):
             _LOGGER.error("Invalid data returned from get_telemetry_legacy")
             return {}
         if isinstance(telemetry.get("gateways", []), list):

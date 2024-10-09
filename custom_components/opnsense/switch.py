@@ -34,6 +34,8 @@ async def _compile_filter_switches(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: Mapping[str, Any],
 ) -> list:
+    if not isinstance(state, Mapping):
+        return []
     entities: list = []
     # filter rules
     if "filter" in state["config"]:
@@ -82,6 +84,8 @@ async def _compile_port_forward_switches(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: Mapping[str, Any],
 ) -> list:
+    if not isinstance(state, Mapping):
+        return []
     entities: list = []
     # nat port forward rules
     if "nat" in state.get("config", {}):
@@ -121,6 +125,8 @@ async def _compile_nat_outbound_switches(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: Mapping[str, Any],
 ) -> list:
+    if not isinstance(state, Mapping):
+        return []
     entities: list = []
     # nat outbound rules
     if "nat" in state.get("config", {}):
@@ -164,6 +170,8 @@ async def _compile_service_switches(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: Mapping[str, Any],
 ) -> list:
+    if not isinstance(state, Mapping):
+        return []
     entities: list = []
     # services
     for service in state.get("services", []):
@@ -197,6 +205,8 @@ async def _compile_static_switches(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: Mapping[str, Any],
 ) -> list:
+    if not isinstance(state, Mapping):
+        return []
     entities: list = []
     entity = OPNsenseUnboundBlocklistSwitch(
         config_entry=config_entry,
@@ -225,7 +235,9 @@ async def async_setup_entry(
         config_entry.entry_id
     ][COORDINATOR]
     state: Mapping[str, Any] = coordinator.data
-
+    if not isinstance(state, Mapping):
+        _LOGGER.error("Missing state data in switch async_setup_entry")
+        return
     results: list = await asyncio.gather(
         _compile_filter_switches(config_entry, coordinator, state),
         _compile_port_forward_switches(config_entry, coordinator, state),
@@ -292,6 +304,8 @@ class OPNsenseFilterSwitch(OPNsenseSwitch):
     def _opnsense_get_rule(self):
         state: Mapping[str, Any] = self.coordinator.data
         tracker: str = self._opnsense_get_tracker()
+        if not isinstance(state, Mapping):
+            return None
         for rule in state.get("config", {}).get("filter", {}).get("rule", []):
             if dict_get(rule, "created.time") == tracker:
                 return rule
@@ -356,6 +370,8 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
 
     def _opnsense_get_rule(self):
         state: Mapping[str, Any] = self.coordinator.data
+        if not isinstance(state, Mapping):
+            return None
         rules: list = []
         if self._rule_type == ATTR_NAT_PORT_FORWARD:
             rules = state.get("config", {}).get("nat", {}).get("rule", [])
@@ -440,6 +456,8 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
 
     def _opnsense_get_service(self) -> Mapping[str, Any] | None:
         state: Mapping[str, Any] = self.coordinator.data
+        if not isinstance(state, Mapping):
+            return None
         service_id: str = self._opnsense_get_service_id()
         for service in state.get("services", []):
             if service.get("id", None) == service_id:

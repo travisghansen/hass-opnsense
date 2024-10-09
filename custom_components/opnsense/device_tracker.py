@@ -49,8 +49,10 @@ async def async_setup_entry(
     data = hass.data[DOMAIN][config_entry.entry_id]
     previous_mac_addresses: list = config_entry.data.get(TRACKED_MACS, [])
     coordinator: OPNsenseDataUpdateCoordinator = data[DEVICE_TRACKER_COORDINATOR]
-    state = coordinator.data
-
+    state: Mapping[str, Any] = coordinator.data
+    if not isinstance(state, Mapping):
+        _LOGGER.error("Missing state data in device tracker async_setup_entry")
+        return
     enabled_default = False
     entities: list = []
     mac_addresses: list = []
@@ -180,9 +182,9 @@ class OPNsenseScannerEntity(OPNsenseEntity, ScannerEntity, RestoreEntity):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        state = self.coordinator.data
+        state: Mapping[str, Any] = self.coordinator.data
         arp_table = dict_get(state, "arp_table")
-        if not isinstance(arp_table, list):
+        if not isinstance(arp_table, list) or not isinstance(state, Mapping):
             self._available = False
             return
         self._available = True
