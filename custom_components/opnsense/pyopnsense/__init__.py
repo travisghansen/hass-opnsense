@@ -618,7 +618,7 @@ $toreturn = [
             return []
         # _LOGGER.debug(f"[get_arp_table] arp_table_info: {arp_table_info}")
         arp_table: list = arp_table_info.get("rows", [])
-        _LOGGER.debug(f"[get_arp_table] arp_table: {arp_table}")
+        # _LOGGER.debug(f"[get_arp_table] arp_table: {arp_table}")
         return arp_table
 
     @_log_errors
@@ -631,7 +631,7 @@ $toreturn = [
         services: list = response.get("rows", [])
         for service in services:
             service["status"] = service.get("running", 0) == 1
-        _LOGGER.debug(f"[get_services] services: {services}")
+        # _LOGGER.debug(f"[get_services] services: {services}")
         return services
 
     @_log_errors
@@ -713,7 +713,7 @@ $toreturn = [
             "lease_interfaces": sorted_lease_interfaces,
             "leases": sorted_leases,
         }
-        _LOGGER.debug(f"[get_dhcp_leases] dhcp_leases: {dhcp_leases}")
+        # _LOGGER.debug(f"[get_dhcp_leases] dhcp_leases: {dhcp_leases}")
 
         return dhcp_leases
 
@@ -1119,7 +1119,7 @@ $toreturn = [
         telemetry["openvpn"] = await self._get_telemetry_openvpn()
         telemetry["gateways"] = await self._get_telemetry_gateways()
         telemetry["temps"] = await self._get_telemetry_temps()
-        _LOGGER.debug(f"[get_telemetry] telemetry: {telemetry}")
+        # _LOGGER.debug(f"[get_telemetry] telemetry: {telemetry}")
         return telemetry
 
     @_log_errors
