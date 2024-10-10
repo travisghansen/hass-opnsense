@@ -1109,7 +1109,6 @@ $toreturn = [
         except awesomeversion.exceptions.AwesomeVersionCompareException:
             pass
         telemetry: Mapping[str, Any] = {}
-        telemetry["interfaces"] = await self._get_telemetry_interfaces()
         telemetry["mbuf"] = await self._get_telemetry_mbuf()
         telemetry["pfstate"] = await self._get_telemetry_pfstate()
         telemetry["memory"] = await self._get_telemetry_memory()
@@ -1123,21 +1122,17 @@ $toreturn = [
         return telemetry
 
     @_log_errors
-    async def _get_telemetry_interfaces(self) -> Mapping[str, Any]:
+    async def get_interfaces(self) -> Mapping[str, Any]:
         interface_info: Mapping[str, Any] | list = await self._get(
             "/api/interfaces/overview/export"
         )
-        # _LOGGER.debug(f"[get_telemetry_interfaces] interface_info: {interface_info}")
+        # _LOGGER.debug(f"[get_interfaces] interface_info: {interface_info}")
         if not isinstance(interface_info, list) or not len(interface_info) > 0:
             return {}
         interfaces: Mapping[str, Any] = {}
         for ifinfo in interface_info:
             interface: Mapping[str, Any] = {}
-            if (
-                ifinfo is None
-                or not isinstance(ifinfo, Mapping)
-                or ifinfo.get("identifier", "") == ""
-            ):
+            if not isinstance(ifinfo, Mapping) or ifinfo.get("identifier", "") == "":
                 continue
             interface["inpkts"] = self._try_to_int(
                 ifinfo.get("statistics", {}).get("packets received", None)
@@ -1176,7 +1171,7 @@ $toreturn = [
             interface["ipaddr"] = ifinfo.get("addr4", "")
             interface["media"] = ifinfo.get("media", "")
             interfaces[ifinfo.get("identifier", "")] = interface
-        # _LOGGER.debug(f"[get_telemetry_interfaces] interfaces: {interfaces}")
+        # _LOGGER.debug(f"[get_interfaces] interfaces: {interfaces}")
         return interfaces
 
     @_log_errors
@@ -1440,7 +1435,6 @@ $toreturn = [
     async def _get_telemetry_legacy(self) -> Mapping[str, Any]:
         script: str = r"""
 require_once '/usr/local/www/widgets/api/plugins/system.inc';
-include_once '/usr/local/www/widgets/api/plugins/interfaces.inc';
 require_once '/usr/local/www/widgets/api/plugins/temperature.inc';
 require_once '/usr/local/etc/inc/plugins.inc.d/openvpn.inc';
 
@@ -1449,58 +1443,6 @@ global $g;
 
 function stripalpha($s) {
   return preg_replace("/\D/", "", $s);
-}
-
-// OPNsense 24.1 removed /usr/local/www/widgets/api/plugins/interfaces.inc to replace with new api endpoint
-if (!function_exists('interfaces_api')) {
-    function interfaces_api() {
-        global $config;
-        $result = array();
-        $oc = new OPNsense\Interfaces\Api\OverviewController();
-        foreach (get_configured_interface_with_descr() as $ifdescr => $ifname) {
-            $ifinfo = $oc->getInterfaceAction($config["interfaces"][$ifdescr]["if"])["message"];
-            // if interfaces is disabled returns message => "failed"
-            if (!is_array($ifinfo)) {
-                continue;
-            }
-            $interfaceItem = array();
-            $interfaceItem['inpkts'] = $ifinfo["packets received"]["value"];
-            $interfaceItem['outpkts'] = $ifinfo["packets transmitted"]["value"];
-            $interfaceItem['inbytes'] = $ifinfo["bytes received"]["value"];
-            $interfaceItem['outbytes'] = $ifinfo["bytes transmitted"]["value"];
-            $interfaceItem['inbytes_frmt'] = format_bytes($interfaceItem['inbytes']);
-            $interfaceItem['outbytes_frmt'] = format_bytes($interfaceItem['outbytes']);
-            $interfaceItem['inerrs'] = $ifinfo["input errors"]["value"];
-            $interfaceItem['outerrs'] = $ifinfo["output errors"]["value"];
-            $interfaceItem['collisions'] = $ifinfo["collisions"]["value"];
-            $interfaceItem['descr'] = $ifdescr;
-            $interfaceItem['name'] = $ifname;
-            switch ($ifinfo["status"]["value"]) {
-                case 'down':
-                case 'no carrier':
-                case 'up':
-                    $interfaceItem['status'] = $ifinfo["status"]["value"];
-                    break;
-                case 'associated':
-                    $interfaceItem['status'] = 'up';
-                    break;
-                default:
-                    $interfaceItem['status'] = '';
-                    break;
-            }
-            //$interfaceItem['ipaddr'] = empty($ifinfo['ipaddr']) ? "" : $ifinfo['ipaddr'];
-            $interfaceItem['ipaddr'] = isset($ifinfo["ipv4"]["value"][0]["ipaddr"]) ? $ifinfo["ipv4"]["value"][0]["ipaddr"] : "";
-            $interfaceItem['media'] = $ifinfo["media"]["value"];
-
-            $result[] = $interfaceItem;
-        }
-        return $result;
-    }
-}
-
-$interfaces_api_data = interfaces_api();
-if (!is_iterable($interfaces_api_data)) {
-    $interfaces_api_data = [];
 }
 
 $system_api_data = system_api();
@@ -1569,8 +1511,6 @@ $toreturn = [
 
     "filesystems" => $system_api_data["disk"]["devices"],
 
-    "interfaces" => [],
-
     "openvpn" => [],
     
     "gateways" => return_gateways_status(true),
@@ -1586,17 +1526,6 @@ foreach ($toreturn["gateways"] as $key => $gw) {
     }
     $gw["status"] = $status;
     $toreturn["gateways"][$key] = $gw;
-}
-
-foreach ($interfaces_api_data as $if) {
-    $if["inpkts"] = (int) $if["inpkts"];
-    $if["outpkts"] = (int) $if["outpkts"];
-    $if["inbytes"] = (int) $if["inbytes"];
-    $if["outbytes"] = (int) $if["outbytes"];
-    $if["inerrs"] = (int) $if["inerrs"];
-    $if["outerrs"] = (int) $if["outerrs"];
-    $if["collisions"] = (int) $if["collisions"];
-    $toreturn["interfaces"][$if["descr"]] = $if;
 }
 
 foreach ($ovpn_servers as $server) {

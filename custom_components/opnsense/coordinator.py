@@ -135,6 +135,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 "state_key": "firmware_update_info",
             },
             {"function": "get_telemetry", "state_key": "telemetry"},
+            {"function": "get_interfaces", "state_key": "interfaces"},
             {"function": "get_config", "state_key": "config"},
             {"function": "get_services", "state_key": "services"},
             {"function": "get_carp_interfaces", "state_key": "carp_interfaces"},
@@ -170,11 +171,11 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             elapsed_time = update_time - previous_update_time
 
             for interface_name, interface in dict_get(
-                self._state, "telemetry.interfaces", {}
+                self._state, "interfaces", {}
             ).items():
                 previous_interface = dict_get(
                     self._state,
-                    f"previous_state.telemetry.interfaces.{interface_name}",
+                    f"previous_state.interfaces.{interface_name}",
                 )
                 if previous_interface is None:
                     continue

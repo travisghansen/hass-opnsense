@@ -145,9 +145,7 @@ async def _compile_interface_sensors(
     entities: list = []
 
     # interfaces
-    for interface_name, interface in dict_get(
-        state, "telemetry.interfaces", {}
-    ).items():
+    for interface_name, interface in dict_get(state, "interfaces", {}).items():
         for prop_name in [
             "status",
             "inerrs",
@@ -229,7 +227,7 @@ async def _compile_interface_sensors(
                 config_entry=config_entry,
                 coordinator=coordinator,
                 entity_description=SensorEntityDescription(
-                    key=f"telemetry.interface.{interface_name}.{prop_name}",
+                    key=f"telemetry.interface.{interface_name}.{prop_name}",  # TODO: Remove telemetry and migrate unique_id
                     name=f"Interface {interface.get('name', interface_name)} {prop_name}",
                     native_unit_of_measurement=native_unit_of_measurement,
                     icon=icon,
@@ -576,24 +574,19 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
     def _opnsense_get_interface_property_name(self) -> str:
         return self.entity_description.key.split(".")[3]
 
-    def _opnsense_get_interface_name(self) -> str:
-        return self.entity_description.key.split(".")[2]
-
-    def _opnsense_get_interface(self) -> Mapping[str, Any]:
+    @callback
+    def _handle_coordinator_update(self) -> None:
         state: Mapping[str, Any] = self.coordinator.data
         if not isinstance(state, Mapping):
             return {}
-        interface_name: str = self._opnsense_get_interface_name()
-        for i_interface_name, interface in (
-            state.get("telemetry", {}).get("interfaces", {}).items()
-        ):
+        interface_name: str = self.entity_description.key.split(".")[2]
+        interface: Mapping[str, Any] = {}
+        for i_interface_name, iface in state.get("interfaces", {}).items():
             if i_interface_name == interface_name:
-                return interface
-        return {}
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        interface: Mapping[str, Any] = self._opnsense_get_interface()
+                interface = iface
+        if not interface:
+            self._available = False
+            return
         prop_name: str = self._opnsense_get_interface_property_name()
         try:
             self._attr_native_value = interface[prop_name]
