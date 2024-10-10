@@ -1,4 +1,3 @@
-import asyncio
 import copy
 import logging
 import time
@@ -57,24 +56,13 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _get_states(self, categories: list) -> Mapping[str, Any]:
         state: Mapping[str, Any] = {}
-        tasks: list = []
         for cat in categories:
             method = getattr(self._client, cat.get("function", ""), None)
             if method:
-                tasks.append(method())
+                state[cat.get("state_key")] = await method()
             else:
                 _LOGGER.error(f"Method {cat.get('function','')} not found.")
 
-        results: list = await asyncio.gather(*tasks, return_exceptions=True)
-
-        for i, cat in enumerate(categories):
-            if not isinstance(results[i], Exception):
-                state[cat.get("state_key")] = results[i]
-            else:
-                _LOGGER.error(
-                    f"Error getting {cat.get('state_key')}. "
-                    f"{results[i].__class__.__qualname__}: {results[i]}"
-                )
         return state
 
     @_log_timing
