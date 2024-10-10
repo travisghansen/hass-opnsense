@@ -10,6 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Pull Request Labeler
-      uses: srvaroa/labeler@v1.11.0
+      uses: srvaroa/labeler@v1.11.1
       env:
         GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
