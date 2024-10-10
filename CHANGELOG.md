@@ -1,3 +1,87 @@
+<a name="v0.3.5"></a>
+# [v0.3.5](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.5) - 10 Oct 2024
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## ATTENTION: We need debug logs from those with CARP Interfaces! [See this discussion for details.](https://github.com/travisghansen/hass-opnsense/discussions/250)
+
+## What's Changed
+### 🎉 Enhancements & New Features 🎉
+* Change unique device ID to lowest MAC address by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/227
+* Move get_carp_status to REST API by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/232
+* DHCP Leases sensors by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/236
+### 🕷️ Bug Fixes 🕷️
+* Fix update firmware by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/230
+* Refine Device ID Discrepancy Logging by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/234
+* Restart unbound on blocklist toggle by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/241
+* DHCP Lease Sensors fixes by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/238
+* More graceful error handling by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/245
+### Other Changes
+* Add debug logging for Carp Interfaces by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/231
+* Logging refinements by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/244
+* Turn down more debug logging by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/247
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.4...v0.3.5
+
+[Changes][v0.3.5]
+
+
+<a name="v0.3.5-beta.3"></a>
+# [v0.3.5-beta.3](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.5-beta.3) - 09 Oct 2024
+
+<h3>OPNsense Minimum Firmware Required: 24.1</h3><h4>OPNsense Recommended Firmware: 24.7</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🕷️ Bug Fixes 🕷️
+* More graceful error handling by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/245
+### Other Changes
+* Logging refinements by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/244
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.5-beta.2...v0.3.5-beta.3<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
+
+[Changes][v0.3.5-beta.3]
+
+
+<a name="v0.3.5-beta.2"></a>
+# [v0.3.5-beta.2](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.5-beta.2) - 07 Oct 2024
+
+<h3>OPNsense Minimum Firmware Required: 24.1</h3><h4>OPNsense Recommended Firmware: 24.7</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🕷️ Bug Fixes 🕷️
+* Restart unbound on blocklist toggle by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/241
+* DHCP Lease Sensors fixes by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/238
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.5-beta.1...v0.3.5-beta.2<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
+
+[Changes][v0.3.5-beta.2]
+
+
+<a name="v0.3.5-beta.1"></a>
+# [v0.3.5-beta.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.5-beta.1) - 06 Oct 2024
+
+<h3>OPNsense Minimum Firmware Required: 24.1</h3><h4>OPNsense Recommended Firmware: 24.7</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🎉 Enhancements & New Features 🎉
+* Change unique device ID to lowest MAC address by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/227
+* Move get_carp_status to REST API by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/232
+* DHCP Leases sensors by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/236
+### 🕷️ Bug Fixes 🕷️
+* Fix update firmware by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/230
+* Refine Device ID Discrepancy Logging by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/234
+### Other Changes
+* Add debug logging for Carp Interfaces by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/231
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.4...v0.3.5-beta.1<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
+
+[Changes][v0.3.5-beta.1]
+
+
 <a name="v0.3.4"></a>
 # [v0.3.4](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.4) - 01 Oct 2024
 
@@ -497,6 +581,10 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.3.5]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.5-beta.3...v0.3.5
+[v0.3.5-beta.3]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.5-beta.2...v0.3.5-beta.3
+[v0.3.5-beta.2]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.5-beta.1...v0.3.5-beta.2
+[v0.3.5-beta.1]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.4...v0.3.5-beta.1
 [v0.3.4]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.3...v0.3.4
 [v0.3.3]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.2...v0.3.3
 [v0.3.2]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.2-beta.1...v0.3.2
