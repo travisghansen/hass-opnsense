@@ -41,31 +41,25 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=update_interval,
         )
 
-    def _log_timing(func):
-        async def inner(self, *args, **kwargs):
-            begin: float = time.time()
-            response = await func(self, *args, **kwargs)
-            end: float = time.time()
-            elapsed: float = round((end - begin), 3)
-            _LOGGER.debug(
-                f"[{'DT ' if self._device_tracker_coordinator else ''}Coordinator Timing] {func.__name__.strip('_')}: {elapsed} seconds"
-            )
-            return response
-
-        return inner
-
     async def _get_states(self, categories: list) -> Mapping[str, Any]:
         state: Mapping[str, Any] = {}
+        total_time: float = 0
         for cat in categories:
             method = getattr(self._client, cat.get("function", ""), None)
             if method:
+                start_time: float = time.perf_counter()
                 state[cat.get("state_key")] = await method()
+                end_time: float = time.perf_counter()
+                elapsed_time: float = end_time - start_time
+                total_time += elapsed_time
+                _LOGGER.debug(
+                    f"[{'DT ' if self._device_tracker_coordinator else ''}Coordinator Timing] {cat.get('function','')}: {elapsed_time:.4f} seconds"
+                )
             else:
                 _LOGGER.error(f"Method {cat.get('function','')} not found.")
 
         return state
 
-    @_log_timing
     async def _async_update_data(self) -> Mapping[str, Any]:
         """Fetch the latest state from OPNsense."""
         _LOGGER.info(
