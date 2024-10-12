@@ -80,11 +80,11 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         if self._device_tracker_coordinator:
             categories: list = [
                 {"function": "get_device_unique_id", "state_key": "device_unique_id"},
-                {"function": "get_system_info", "state_key": "system_info"},
                 {
                     "function": "get_host_firmware_version",
                     "state_key": "host_firmware_version",
                 },
+                {"function": "get_system_info", "state_key": "system_info"},
                 {
                     "function": "get_arp_table",
                     "state_key": "arp_table",
@@ -107,11 +107,11 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
 
         categories: list = [
             {"function": "get_device_unique_id", "state_key": "device_unique_id"},
-            {"function": "get_system_info", "state_key": "system_info"},
             {
                 "function": "get_host_firmware_version",
                 "state_key": "host_firmware_version",
             },
+            {"function": "get_system_info", "state_key": "system_info"},
             {
                 "function": "get_firmware_update_info",
                 "state_key": "firmware_update_info",
