@@ -53,7 +53,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 elapsed_time: float = end_time - start_time
                 total_time += elapsed_time
                 _LOGGER.debug(
-                    f"[{'DT ' if self._device_tracker_coordinator else ''}Coordinator Timing] {cat.get('function','')}: {elapsed_time:.4f} seconds"
+                    f"[{'DT ' if self._device_tracker_coordinator else ''}Coordinator Timing] {cat.get('function','')}: {elapsed_time:.3f} seconds"
                 )
             else:
                 _LOGGER.error(f"Method {cat.get('function','')} not found.")
@@ -65,6 +65,8 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         _LOGGER.info(
             f"{'DT ' if self._device_tracker_coordinator else ''}Updating Data"
         )
+        await self._client.reset_query_counts()
+
         # copy the old data to have around
         current_time: float = time.time()
 
@@ -102,7 +104,10 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 )
                 # Create repair task here
                 return {}
-
+            restapi_count, xmlrpc_count = await self._client.get_query_counts()
+            _LOGGER.debug(
+                f"DT Update Complete. REST API Queries: {restapi_count}. XMLRPC Queries: {xmlrpc_count}"
+            )
             return self._state
 
         categories: list = [
@@ -252,5 +257,9 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                         continue
 
                     new_property: str = f"{prop_name}_{label}"
-                    server[new_property] = int(round(value, 0))
+                    server[new_property] = round(value)
+        restapi_count, xmlrpc_count = await self._client.get_query_counts()
+        _LOGGER.debug(
+            f"Update Complete. REST API Queries: {restapi_count}. XMLRPC Queries: {xmlrpc_count}"
+        )
         return self._state

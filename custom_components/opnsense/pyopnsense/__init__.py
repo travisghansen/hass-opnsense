@@ -82,6 +82,8 @@ class OPNsenseClient(ABC):
         self._session: aiohttp.ClientSession = session
         self._initial = initial
         self._firmware_version = None
+        self._xmlrpc_query_count = 0
+        self._rest_api_query_count = 0
         try:
             self._loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -126,6 +128,13 @@ class OPNsenseClient(ABC):
 
         return inner
 
+    async def reset_query_counts(self):
+        self._xmlrpc_query_count = 0
+        self._rest_api_query_count = 0
+
+    async def get_query_counts(self) -> tuple:
+        return self._rest_api_query_count, self._xmlrpc_query_count
+
     # https://stackoverflow.com/questions/64983392/python-multiple-patch-gives-http-client-cannotsendrequest-request-sent
     def _get_proxy(self) -> xmlrpc.client.ServerProxy:
         # https://docs.python.org/3/library/xmlrpc.client.html#module-xmlrpc.client
@@ -161,6 +170,7 @@ class OPNsenseClient(ABC):
 
     @_xmlrpc_timeout
     async def _exec_php(self, script) -> Mapping[str, Any]:
+        self._xmlrpc_query_count += 1
         script: str = (
             r"""
 ini_set('display_errors', 0);
@@ -211,6 +221,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         return firmware
 
     async def _get_from_stream(self, path: str) -> Mapping[str, Any] | list:
+        self._rest_api_query_count += 1
         url: str = f"{self._url}{path}"
         _LOGGER.debug(f"[get_from_stream] url: {url}")
         try:
@@ -264,6 +275,7 @@ $toreturn["real"] = json_encode($toreturn_real);
 
     async def _get(self, path: str) -> Mapping[str, Any] | list:
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
+        self._rest_api_query_count += 1
         url: str = f"{self._url}{path}"
         _LOGGER.debug(f"[get] url: {url}")
         try:
@@ -296,6 +308,7 @@ $toreturn["real"] = json_encode($toreturn_real);
 
     async def _post(self, path: str, payload=None) -> Mapping[str, Any] | list:
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
+        self._rest_api_query_count += 1
         url: str = f"{self._url}{path}"
         _LOGGER.debug(f"[post] url: {url}")
         _LOGGER.debug(f"[post] payload: {payload}")
@@ -1033,28 +1046,6 @@ $toreturn = [
             f"[get_carp_interfaces] interfaces_export_response: {interfaces_export_response}"
         )
         return response.get("data", {})
-
-    #     @_log_errors
-    #     async def delete_arp_entry(self, ip) -> None:
-    #         if len(ip) < 1:
-    #             return
-    #         script: str = (
-    #             r"""
-    # $data = json_decode('{}', true);
-    # $ip = trim($data["ip"]);
-    # $ret = mwexec("arp -d " . $ip, true);
-    # $toreturn = [
-    #   "data" => $ret,
-    # ];
-    # """.format(
-    #                 json.dumps(
-    #                     {
-    #                         "ip": ip,
-    #                     }
-    #                 )
-    #             )
-    #         )
-    #         await self._exec_php(script)
 
     @_log_errors
     async def system_reboot(self) -> bool:
