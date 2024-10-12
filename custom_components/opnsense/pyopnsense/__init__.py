@@ -264,7 +264,7 @@ $toreturn["real"] = json_encode($toreturn_real);
             if self._initial:
                 raise e
 
-        return {}
+        return None
 
     async def _get(self, path: str) -> Mapping[str, Any] | list:
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
@@ -296,7 +296,7 @@ $toreturn["real"] = json_encode($toreturn_real);
             if self._initial:
                 raise e
 
-        return {}
+        return None
 
     async def _post(self, path: str, payload=None) -> Mapping[str, Any] | list:
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
@@ -330,7 +330,7 @@ $toreturn["real"] = json_encode($toreturn_real);
             if self._initial:
                 raise e
 
-        return {}
+        return None
 
     @_log_errors
     async def _filter_configure(self) -> None:
@@ -379,7 +379,8 @@ clear_subsystem_dirty('filter');
         response: Mapping[str, Any] | list = await self._get(
             "/api/diagnostics/system/systemInformation"
         )
-        system_info["name"] = response.get("name", None)
+        if isinstance(response, Mapping):
+            system_info["name"] = response.get("name", None)
         return system_info
 
     @_log_errors
@@ -453,10 +454,10 @@ $toreturn = [
             if stale:
                 upgradestatus = await self._get("/api/core/firmware/upgradestatus")
                 # print(upgradestatus)
-                if "status" in upgradestatus:
+                if isinstance(upgradestatus, Mapping):
                     # status = running (package refresh in progress OR upgrade in progress)
                     # status = done (refresh/upgrade done)
-                    if upgradestatus["status"] == "done":
+                    if upgradestatus.get("status", None) == "done":
                         # tigger repo update
                         # should this be /api/core/firmware/upgrade
                         # check = await self._post("/api/core/firmware/check")
@@ -624,7 +625,7 @@ $toreturn = [
     @_log_errors
     async def get_services(self) -> list:
         response: Mapping[str, Any] | list = await self._get("/api/core/service/search")
-        if response is None or not isinstance(response, Mapping):
+        if not isinstance(response, Mapping):
             _LOGGER.error("Invalid data returned from get_services")
             return []
         # _LOGGER.debug(f"[get_services] response: {response}")
@@ -652,10 +653,8 @@ $toreturn = [
         api_addr: str = f"/api/core/service/{action}/{service}"
         response: Mapping[str, Any] | list = await self._post(api_addr)
         _LOGGER.debug(f"[{action}_service] service: {service}, response: {response}")
-        return not (
-            response is None
-            or not isinstance(response, Mapping)
-            or response.get("result", "failed") != "ok"
+        return (
+            isinstance(response, Mapping) and response.get("result", "failed") == "ok"
         )
 
     @_log_errors
@@ -929,7 +928,7 @@ $toreturn = [
         response: Mapping[str, Any] | list = await self._get(
             "/api/diagnostics/interface/get_vip_status"
         )
-        if response is None or not isinstance(response, Mapping):
+        if not isinstance(response, Mapping):
             _LOGGER.error("Invalid data returned from get_carp_status")
             return False
         # _LOGGER.debug(f"[get_carp_status] response: {response}")
@@ -1285,17 +1284,19 @@ $toreturn = [
         system: Mapping[str, Any] = {}
         pattern = re.compile(r"^(?:(\d+)\s+days?,\s+)?(\d{2}):(\d{2}):(\d{2})$")
         match = pattern.match(time_info.get("uptime", ""))
-        if not match:
-            raise ValueError("Invalid uptime format")
-        days_str, hours_str, minutes_str, seconds_str = match.groups()
-        days: int = self._try_to_int(days_str, 0)
-        hours: int = self._try_to_int(hours_str, 0)
-        minutes: int = self._try_to_int(minutes_str, 0)
-        seconds: int = self._try_to_int(seconds_str, 0)
-        system["uptime"] = days * 86400 + hours * 3600 + minutes * 60 + seconds
+        if match:
+            days_str, hours_str, minutes_str, seconds_str = match.groups()
+            days: int = self._try_to_int(days_str, 0)
+            hours: int = self._try_to_int(hours_str, 0)
+            minutes: int = self._try_to_int(minutes_str, 0)
+            seconds: int = self._try_to_int(seconds_str, 0)
+            system["uptime"] = days * 86400 + hours * 3600 + minutes * 60 + seconds
 
-        boottime: datetime = datetime.now() - timedelta(seconds=system["uptime"])
-        system["boottime"] = boottime.timestamp()
+            boottime: datetime = datetime.now() - timedelta(seconds=system["uptime"])
+            system["boottime"] = boottime.timestamp()
+        else:
+            _LOGGER.warning("Invalid uptime format")
+
         load_str: str = time_info.get("loadavg", "")
         load_list: list[str] = load_str.split(", ")
         if len(load_list) == 3:
@@ -1722,9 +1723,12 @@ foreach ($ovpn_servers as $server) {
         return dnsbl
 
     async def _set_unbound_blocklist(self, set_state: bool) -> bool:
-        payload = {}
+        payload: Mapping[str, Any] = {}
         payload["unbound"] = {}
         payload["unbound"]["dnsbl"] = await self.get_unbound_blocklist()
+        if not payload["unbound"]["dnsbl"]:
+            _LOGGER.error("Unable to get Unbound Blocklist Status")
+            return False
         if set_state:
             payload["unbound"]["dnsbl"]["enabled"] = "1"
         else:
@@ -1741,14 +1745,13 @@ foreach ($ovpn_servers as $server) {
         _LOGGER.debug(
             f"[set_unbound_blocklist] set_state: {'On' if set_state else 'Off'}, payload: {payload}, response: {response}, dnsbl_resp: {dnsbl_resp}, restart_resp: {restart_resp}"
         )
-        return not (
-            response is None
-            or not isinstance(response, Mapping)
-            or not isinstance(dnsbl_resp, Mapping)
-            or not isinstance(restart_resp, Mapping)
-            or response.get("result", "failed") != "saved"
-            or not dnsbl_resp.get("status", "failed").startswith("OK")
-            or restart_resp.get("response", "failed") != "OK"
+        return (
+            isinstance(response, Mapping)
+            and isinstance(dnsbl_resp, Mapping)
+            and isinstance(restart_resp, Mapping)
+            and response.get("result", "failed") == "saved"
+            and dnsbl_resp.get("status", "failed").startswith("OK")
+            and restart_resp.get("response", "failed") == "OK"
         )
 
     @_log_errors
