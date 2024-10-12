@@ -6,7 +6,6 @@ import logging
 import re
 import socket
 import ssl
-import time
 import traceback
 import xmlrpc.client
 from abc import ABC
@@ -17,17 +16,12 @@ from urllib.parse import quote_plus, urlparse
 
 import aiohttp
 import awesomeversion
-import zoneinfo
 from dateutil.parser import parse
 
 # value to set as the socket timeout
 DEFAULT_TIMEOUT = 60
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
-
-tzinfos: Mapping[str, Any] = {}
-for tname in zoneinfo.available_timezones():
-    tzinfos[tname] = zoneinfo.ZoneInfo(tname)
 
 
 def get_ip_key(item) -> tuple:
@@ -87,6 +81,9 @@ class OPNsenseClient(ABC):
         self._scheme: str = parts.scheme
         self._session: aiohttp.ClientSession = session
         self._initial = initial
+        self._firmware_version = None
+        self._xmlrpc_query_count = 0
+        self._rest_api_query_count = 0
         try:
             self._loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -131,6 +128,13 @@ class OPNsenseClient(ABC):
 
         return inner
 
+    async def reset_query_counts(self):
+        self._xmlrpc_query_count = 0
+        self._rest_api_query_count = 0
+
+    async def get_query_counts(self) -> tuple:
+        return self._rest_api_query_count, self._xmlrpc_query_count
+
     # https://stackoverflow.com/questions/64983392/python-multiple-patch-gives-http-client-cannotsendrequest-request-sent
     def _get_proxy(self) -> xmlrpc.client.ServerProxy:
         # https://docs.python.org/3/library/xmlrpc.client.html#module-xmlrpc.client
@@ -166,6 +170,7 @@ class OPNsenseClient(ABC):
 
     @_xmlrpc_timeout
     async def _exec_php(self, script) -> Mapping[str, Any]:
+        self._xmlrpc_query_count += 1
         script: str = (
             r"""
 ini_set('display_errors', 0);
@@ -212,9 +217,11 @@ $toreturn["real"] = json_encode($toreturn_real);
             return None
         firmware: str | None = firmware_info.get("product_version", None)
         _LOGGER.debug(f"[get_host_firmware_version] firmware: {firmware}")
+        self._firmware_version = firmware
         return firmware
 
     async def _get_from_stream(self, path: str) -> Mapping[str, Any] | list:
+        self._rest_api_query_count += 1
         url: str = f"{self._url}{path}"
         _LOGGER.debug(f"[get_from_stream] url: {url}")
         try:
@@ -268,6 +275,7 @@ $toreturn["real"] = json_encode($toreturn_real);
 
     async def _get(self, path: str) -> Mapping[str, Any] | list:
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
+        self._rest_api_query_count += 1
         url: str = f"{self._url}{path}"
         _LOGGER.debug(f"[get] url: {url}")
         try:
@@ -300,6 +308,7 @@ $toreturn["real"] = json_encode($toreturn_real);
 
     async def _post(self, path: str, payload=None) -> Mapping[str, Any] | list:
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
+        self._rest_api_query_count += 1
         url: str = f"{self._url}{path}"
         _LOGGER.debug(f"[post] url: {url}")
         _LOGGER.debug(f"[post] payload: {payload}")
@@ -366,11 +375,12 @@ clear_subsystem_dirty('filter');
     @_log_errors
     async def get_system_info(self) -> Mapping[str, Any]:
         # TODO: add bios details here
-        firmware: str | None = await self.get_host_firmware_version()
+        if not self._firmware_version:
+            await self.get_host_firmware_version()
         try:
-            if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
-                "24.7"
-            ):
+            if awesomeversion.AwesomeVersion(
+                self._firmware_version
+            ) < awesomeversion.AwesomeVersion("24.7"):
                 _LOGGER.info("Using legacy get_system_info method for OPNsense < 24.7")
                 return await self._get_system_info_legacy()
         except awesomeversion.exceptions.AwesomeVersionCompareException:
@@ -412,7 +422,6 @@ $toreturn = [
 
     @_log_errors
     async def get_firmware_update_info(self):
-        current_time = time.time()
         refresh_triggered = False
         refresh_interval = 2 * 60 * 60  # 2 hours
 
@@ -429,28 +438,32 @@ $toreturn = [
         if (
             not isinstance(status, Mapping)
             or status.get("status", None) == "error"
-            or "last_check" not in status.keys()
+            or "last_check" not in status
             or not isinstance(dict_get(status, "product.product_check"), dict)
-            or dict_get(status, "product.product_check") is None
-            or dict_get(status, "product.product_check") == ""
+            or not dict_get(status, "product.product_check")
         ):
             await self._post("/api/core/firmware/check")
             refresh_triggered = True
-        elif "last_check" in status.keys():
+        elif "last_check" in status:
             # "last_check": "Wed Dec 22 16:56:20 UTC 2021"
             # "last_check": "Mon Jan 16 00:08:28 CET 2023"
             # "last_check": "Sun Jan 15 22:05:55 UTC 2023"
-            last_check = status["last_check"]
-            last_check_timestamp = parse(last_check, tzinfos=tzinfos).timestamp()
-
-            # https://bugs.python.org/issue22377
             # format = "%a %b %d %H:%M:%S %Z %Y"
-            # last_check_timestamp = int(
-            #    calendar.timegm(time.strptime(last_check, format))
-            # )
+            try:
+                last_check: datetime = parse(status.get("last_check"))
+                if last_check.tzinfo is None:
+                    last_check = last_check.replace(
+                        tzinfo=datetime.now().astimezone().tzinfo
+                    )
 
-            stale = (current_time - last_check_timestamp) > refresh_interval
-            # stale = True
+                last_check_timestamp: float = last_check.timestamp()
+
+            except (ValueError, TypeError):
+                last_check_timestamp: float = 0
+
+            stale: bool = (
+                datetime.now().astimezone().timestamp() - last_check_timestamp
+            ) > refresh_interval
             if stale:
                 upgradestatus = await self._get("/api/core/firmware/upgradestatus")
                 # print(upgradestatus)
@@ -1033,28 +1046,6 @@ $toreturn = [
         )
         return response.get("data", {})
 
-    #     @_log_errors
-    #     async def delete_arp_entry(self, ip) -> None:
-    #         if len(ip) < 1:
-    #             return
-    #         script: str = (
-    #             r"""
-    # $data = json_decode('{}', true);
-    # $ip = trim($data["ip"]);
-    # $ret = mwexec("arp -d " . $ip, true);
-    # $toreturn = [
-    #   "data" => $ret,
-    # ];
-    # """.format(
-    #                 json.dumps(
-    #                     {
-    #                         "ip": ip,
-    #                     }
-    #                 )
-    #             )
-    #         )
-    #         await self._exec_php(script)
-
     @_log_errors
     async def system_reboot(self) -> bool:
         response: Mapping[str, Any] | list = await self._post("/api/core/system/reboot")
@@ -1098,11 +1089,12 @@ $toreturn = [
 
     @_log_errors
     async def get_telemetry(self) -> Mapping[str, Any]:
-        firmware: str | None = await self.get_host_firmware_version()
+        if not self._firmware_version:
+            await self.get_host_firmware_version()
         try:
-            if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
-                "24.7"
-            ):
+            if awesomeversion.AwesomeVersion(
+                self._firmware_version
+            ) < awesomeversion.AwesomeVersion("24.7"):
                 _LOGGER.info("Using legacy get_telemetry method for OPNsense < 24.7")
                 return await self._get_telemetry_legacy()
         except awesomeversion.exceptions.AwesomeVersionCompareException:
