@@ -291,7 +291,7 @@ async def _compile_openvpn_server_sensors(
         return []
     entities: list = []
 
-    for vpnid, server in dict_get(state, "telemetry.openvpn.servers", {}).items():
+    for vpnid, server in dict_get(state, "openvpn.servers", {}).items():
         if not isinstance(server, Mapping) or len(server) == 0:
             continue
         for prop_name in [
@@ -333,7 +333,7 @@ async def _compile_openvpn_server_sensors(
                 config_entry=config_entry,
                 coordinator=coordinator,
                 entity_description=SensorEntityDescription(
-                    key=f"telemetry.openvpn.servers.{vpnid}.{prop_name}",
+                    key=f"telemetry.openvpn.servers.{vpnid}.{prop_name}",  # TODO: Migrate and remove telemetry from key
                     name=f"OpenVPN Server {server['name']} {prop_name}",
                     native_unit_of_measurement=native_unit_of_measurement,
                     icon=icon,
@@ -722,9 +722,7 @@ class OPNsenseOpenVPNServerSensor(OPNsenseSensor):
         if not isinstance(state, Mapping):
             return {}
         vpnid: str = self._opnsense_get_server_vpnid()
-        for server_vpnid, server in dict_get(
-            state, "telemetry.openvpn.servers", {}
-        ).items():
+        for server_vpnid, server in dict_get(state, "openvpn.servers", {}).items():
             if vpnid == server_vpnid:
                 return server
         return {}

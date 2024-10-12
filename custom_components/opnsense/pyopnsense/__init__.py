@@ -1115,7 +1115,6 @@ $toreturn = [
         telemetry["system"] = await self._get_telemetry_system()
         telemetry["cpu"] = await self._get_telemetry_cpu()
         telemetry["filesystems"] = await self._get_telemetry_filesystems()
-        telemetry["openvpn"] = await self._get_telemetry_openvpn()
         telemetry["gateways"] = await self._get_telemetry_gateways()
         telemetry["temps"] = await self._get_telemetry_temps()
         # _LOGGER.debug(f"[get_telemetry] telemetry: {telemetry}")
@@ -1353,11 +1352,11 @@ $toreturn = [
         return filesystems
 
     @_log_errors
-    async def _get_telemetry_openvpn(self) -> Mapping[str, Any]:
+    async def get_openvpn(self) -> Mapping[str, Any]:
         openvpn_info: Mapping[str, Any] | list = await self._post(
             "/api/openvpn/export/providers"
         )
-        # _LOGGER.debug(f"[get_telemetry_openvpn] openvpn_info: {openvpn_info}")
+        # _LOGGER.debug(f"[get_openvpn] openvpn_info: {openvpn_info}")
         if not isinstance(openvpn_info, Mapping):
             return {}
         openvpn: Mapping[str, Any] = {}
@@ -1365,7 +1364,7 @@ $toreturn = [
         connection_info: Mapping[str, Any] = await self._post(
             "/api/openvpn/service/searchSessions"
         )
-        # _LOGGER.debug(f"[get_telemetry_openvpn] connection_info: {connection_info}")
+        # _LOGGER.debug(f"[get_openvpn] connection_info: {connection_info}")
         if connection_info is None or not isinstance(connection_info, Mapping):
             return {}
         for vpnid, vpn_info in openvpn_info.items():
@@ -1389,7 +1388,7 @@ $toreturn = [
             # Missing connected_client_count
             # vpn["connected_client_count"] =
             openvpn["servers"][vpnid] = vpn
-        # _LOGGER.debug(f"[get_telemetry_openvpn] openvpn: {openvpn}")
+        # _LOGGER.debug(f"[get_openvpn] openvpn: {openvpn}")
         return openvpn
 
     @_log_errors
@@ -1436,7 +1435,6 @@ $toreturn = [
         script: str = r"""
 require_once '/usr/local/www/widgets/api/plugins/system.inc';
 require_once '/usr/local/www/widgets/api/plugins/temperature.inc';
-require_once '/usr/local/etc/inc/plugins.inc.d/openvpn.inc';
 
 global $config;
 global $g;
@@ -1460,13 +1458,6 @@ preg_match("/sec = [0-9]*/", $boottime, $matches);
 $boottime = $matches[0];
 $boottime = explode("=", $boottime)[1];
 $boottime = (int) trim($boottime);
-
-// Fix for 23.1.4 (https://forum.opnsense.org/index.php?topic=33144.0)
-if (function_exists('openvpn_get_active_servers')) {
-    $ovpn_servers = openvpn_get_active_servers();
-} else {
-    $ovpn_servers = [];
-}
 
 $toreturn = [
     "pfstate" => [
@@ -1493,7 +1484,6 @@ $toreturn = [
     "system" => [
         "boottime" => $boottime,
         "uptime" => (int) $system_api_data["uptime"],
-        //"temp" => 0,
         "load_average" => [
             "one_minute" => floatval(trim($system_api_data["cpu"]["load"][0])),
             "five_minute" => floatval(trim($system_api_data["cpu"]["load"][1])),
@@ -1510,8 +1500,6 @@ $toreturn = [
     ],
 
     "filesystems" => $system_api_data["disk"]["devices"],
-
-    "openvpn" => [],
     
     "gateways" => return_gateways_status(true),
 ];
@@ -1526,24 +1514,6 @@ foreach ($toreturn["gateways"] as $key => $gw) {
     }
     $gw["status"] = $status;
     $toreturn["gateways"][$key] = $gw;
-}
-
-foreach ($ovpn_servers as $server) {
-    $vpnid = $server["vpnid"];
-    $name = $server["name"];
-    $conn_count = count($server["conns"]);
-    $total_bytes_recv = 0;
-    $total_bytes_sent = 0;
-    foreach ($server["conns"] as $conn) {
-        $total_bytes_recv += $conn["bytes_recv"];
-        $total_bytes_sent += $conn["bytes_sent"];
-    }
-    
-    $toreturn["openvpn"]["servers"][$vpnid]["name"] = $name;
-    $toreturn["openvpn"]["servers"][$vpnid]["vpnid"] = $vpnid;
-    $toreturn["openvpn"]["servers"][$vpnid]["connected_client_count"] = $conn_count;
-    $toreturn["openvpn"]["servers"][$vpnid]["total_bytes_recv"] = $total_bytes_recv;
-    $toreturn["openvpn"]["servers"][$vpnid]["total_bytes_sent"] = $total_bytes_sent;
 }
 
 """

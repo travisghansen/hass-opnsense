@@ -136,6 +136,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             },
             {"function": "get_telemetry", "state_key": "telemetry"},
             {"function": "get_interfaces", "state_key": "interfaces"},
+            {"function": "get_openvpn", "state_key": "openvpn"},
             {"function": "get_config", "state_key": "config"},
             {"function": "get_services", "state_key": "services"},
             {"function": "get_carp_interfaces", "state_key": "carp_interfaces"},
@@ -221,22 +222,20 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                     new_property = f"{prop_name}_{label}"
                     interface[new_property] = int(round(value, 0))
 
-            for server_name in dict_get(self._state, "telemetry.openvpn.servers", {}):
+            for server_name in dict_get(self._state, "openvpn.servers", {}):
 
                 if server_name not in dict_get(
-                    self._state, "previous_state.telemetry.openvpn.servers", {}
+                    self._state, "previous_state.openvpn.servers", {}
                 ):
                     continue
 
                 server: Mapping[str, Any] = (
-                    self._state.get("telemetry", {})
-                    .get("openvpn", {})
+                    self._state.get("openvpn", {})
                     .get("servers", {})
                     .get(server_name, {})
                 )
                 previous_server: Mapping[str, Any] = (
                     self._state.get("previous_state", {})
-                    .get("telemetry", {})
                     .get("openvpn", {})
                     .get("servers", {})
                     .get(server_name, {})
