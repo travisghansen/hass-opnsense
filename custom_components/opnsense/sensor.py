@@ -53,7 +53,6 @@ async def _compile_static_sensors(
             "telemetry.mbuf.used_percent",
             "telemetry.memory.swap_used_percent",
             "telemetry.memory.used_percent",
-            "telemetry.cpu.frequency.current",
             "telemetry.cpu.usage_total",
             "telemetry.system.load_average.one_minute",
             "telemetry.system.load_average.five_minute",
@@ -503,11 +502,7 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
         if (
             value == 0
             and self._previous_value is None
-            and self.entity_description.key
-            in (
-                "telemetry.cpu.frequency.current",
-                "telemetry.cpu.usage_total",
-            )
+            and self.entity_description.key in ("telemetry.cpu.usage_total",)
         ):
             self._available = False
             return
@@ -515,10 +510,7 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
         if self.entity_description.key == "telemetry.system.boottime":
             value = utc_from_timestamp(value) if value else None
 
-        elif self.entity_description.key in (
-            "telemetry.cpu.frequency.current",
-            "telemetry.cpu.usage_total",
-        ):
+        elif self.entity_description.key in ("telemetry.cpu.usage_total",):
             if value == 0 and self._previous_value is not None:
                 value = self._previous_value
 

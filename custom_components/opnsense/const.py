@@ -155,22 +155,6 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
         state_class=SensorStateClass.MEASUREMENT,
         # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
-    # cpu
-    # "telemetry.cpu.frequency.current": SensorEntityDescription(
-    #     key="telemetry.cpu.frequency.current",
-    #     name="CPU Frequency Current",
-    #     native_unit_of_measurement=UnitOfFrequency.HERTZ,
-    #     icon="mdi:speedometer-medium",
-    #     state_class=SensorStateClass.MEASUREMENT,
-    #     # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
-    # ),
-    # "telemetry.cpu.frequency.max": SensorEntityDescription(
-    #     key="telemetry.cpu.frequency.max",
-    #     name="CPU Frequency Max",
-    #     native_unit_of_measurement=UnitOfFrequency.HERTZ,
-    #     icon="mdi:speedometer",
-    #     # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
-    # ),
     "telemetry.cpu.count": SensorEntityDescription(
         key="telemetry.cpu.count",
         name="CPU Count",

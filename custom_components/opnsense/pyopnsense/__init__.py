@@ -1492,10 +1492,6 @@ $toreturn = [
     ],
 
     "cpu" => [
-        "frequency" => [
-            "current" => (int) stripalpha($system_api_data["cpu"]["cur.freq"]),
-            "max" => (int) stripalpha($system_api_data["cpu"]["max.freq"]),
-        ],
         "count" => (int) $system_api_data["cpu"]["cur.freq"],
     ],
 
