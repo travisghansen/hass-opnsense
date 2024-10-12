@@ -388,19 +388,9 @@ clear_subsystem_dirty('filter');
         script: str = r"""
 global $config;
 
-$file = "/conf/hassid";
-$id;
-if (!file_exists($file)) {
-    $id = bin2hex(openssl_random_pseudo_bytes(10));
-    file_put_contents($file, $id);
-} else {
-    $id = file_get_contents($file);
-}
-
 $toreturn = [
   "hostname" => $config["system"]["hostname"],
   "domain" => $config["system"]["domain"],
-  "device_id" => $id,
 ];
 """
         response: Mapping[str, Any] = await self._exec_php(script)
@@ -1434,7 +1424,6 @@ $toreturn = [
     async def _get_telemetry_legacy(self) -> Mapping[str, Any]:
         script: str = r"""
 require_once '/usr/local/www/widgets/api/plugins/system.inc';
-require_once '/usr/local/www/widgets/api/plugins/temperature.inc';
 
 global $config;
 global $g;
@@ -1444,7 +1433,6 @@ function stripalpha($s) {
 }
 
 $system_api_data = system_api();
-$temperature_api_data = temperature_api();
 
 // OPNsense 23.1.1: replaced single exec_command() with new shell_safe() wrapper
 if (function_exists('exec_command')) {

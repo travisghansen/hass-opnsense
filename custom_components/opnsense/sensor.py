@@ -57,11 +57,7 @@ async def _compile_static_sensors(
             "telemetry.system.load_average.one_minute",
             "telemetry.system.load_average.five_minute",
             "telemetry.system.load_average.fifteen_minute",
-            "telemetry.system.temp",
             "telemetry.system.boottime",
-            # "dhcp_stats.leases.total",
-            # "dhcp_stats.leases.online",
-            # "dhcp_stats.leases.offline",
         ]:
             enabled_default = True
 
@@ -492,10 +488,6 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
     def _handle_coordinator_update(self) -> None:
         value = self._get_opnsense_state_value(self.entity_description.key)
         if value is None:
-            self._available = False
-            return
-
-        if value == 0 and self.entity_description.key == "telemetry.system.temp":
             self._available = False
             return
 
