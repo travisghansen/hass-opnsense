@@ -137,6 +137,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             {"function": "get_telemetry", "state_key": "telemetry"},
             {"function": "get_interfaces", "state_key": "interfaces"},
             {"function": "get_openvpn", "state_key": "openvpn"},
+            {"function": "get_gateways", "state_key": "gateways"},
             {"function": "get_config", "state_key": "config"},
             {"function": "get_services", "state_key": "services"},
             {"function": "get_carp_interfaces", "state_key": "carp_interfaces"},

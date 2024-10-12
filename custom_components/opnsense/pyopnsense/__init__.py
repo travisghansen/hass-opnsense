@@ -1105,7 +1105,6 @@ $toreturn = [
         telemetry["system"] = await self._get_telemetry_system()
         telemetry["cpu"] = await self._get_telemetry_cpu()
         telemetry["filesystems"] = await self._get_telemetry_filesystems()
-        telemetry["gateways"] = await self._get_telemetry_gateways()
         telemetry["temps"] = await self._get_telemetry_temps()
         # _LOGGER.debug(f"[get_telemetry] telemetry: {telemetry}")
         return telemetry
@@ -1382,11 +1381,11 @@ $toreturn = [
         return openvpn
 
     @_log_errors
-    async def _get_telemetry_gateways(self) -> Mapping[str, Any]:
+    async def get_gateways(self) -> Mapping[str, Any]:
         gateways_info: Mapping[str, Any] | list = await self._post(
             "/api/routes/gateway/status"
         )
-        # _LOGGER.debug(f"[get_telemetry_gateways] gateways_info: {gateways_info}")
+        # _LOGGER.debug(f"[get_gateways] gateways_info: {gateways_info}")
         if not isinstance(gateways_info, Mapping):
             return {}
         gateways: Mapping[str, Any] = {}
@@ -1397,7 +1396,7 @@ $toreturn = [
             gateway["status"] = gateway.pop(
                 "status_translated", gateway.get("status", "")
             ).lower()
-        # _LOGGER.debug(f"[get_telemetry_gateways] gateways: {gateways}")
+        # _LOGGER.debug(f"[get_gateways] gateways: {gateways}")
         return gateways
 
     @_log_errors
@@ -1424,13 +1423,6 @@ $toreturn = [
     async def _get_telemetry_legacy(self) -> Mapping[str, Any]:
         script: str = r"""
 require_once '/usr/local/www/widgets/api/plugins/system.inc';
-
-global $config;
-global $g;
-
-function stripalpha($s) {
-  return preg_replace("/\D/", "", $s);
-}
 
 $system_api_data = system_api();
 
@@ -1484,21 +1476,8 @@ $toreturn = [
     ],
 
     "filesystems" => $system_api_data["disk"]["devices"],
-    
-    "gateways" => return_gateways_status(true),
-];
 
-if (!is_iterable($toreturn["gateways"])) {
-    $toreturn["gateways"] = [];
-}
-foreach ($toreturn["gateways"] as $key => $gw) {
-    $status = $gw["status"];
-    if ($status == "none") {
-        $status = "online";
-    }
-    $gw["status"] = $status;
-    $toreturn["gateways"][$key] = $gw;
-}
+];
 
 """
         telemetry: Mapping[str, Any] = await self._exec_php(script)

@@ -245,7 +245,7 @@ async def _compile_gateway_sensors(
         return []
     entities: list = []
 
-    for gateway in dict_get(state, "telemetry.gateways", {}).values():
+    for gateway in dict_get(state, "gateways", {}).values():
         for prop_name in ["status", "delay", "stddev", "loss"]:
             native_unit_of_measurement = None
             icon = "mdi:router-network"
@@ -263,7 +263,7 @@ async def _compile_gateway_sensors(
                 config_entry=config_entry,
                 coordinator=coordinator,
                 entity_description=SensorEntityDescription(
-                    key=f"telemetry.gateway.{gateway['name']}.{prop_name}",
+                    key=f"telemetry.gateway.{gateway['name']}.{prop_name}",  # TODO: Remove telemetry and migrate key
                     name=f"Gateway {gateway['name']} {prop_name}",
                     native_unit_of_measurement=native_unit_of_measurement,
                     icon=icon,
@@ -640,24 +640,20 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
     def _opnsense_get_gateway_property_name(self) -> str:
         return self.entity_description.key.split(".")[3]
 
-    def _opnsense_get_gateway_name(self) -> str:
-        return self.entity_description.key.split(".")[2]
-
-    def _opnsense_get_gateway(self) -> Mapping[str, Any]:
-        state: Mapping[str, Any] = self.coordinator.data
-        if not isinstance(state, Mapping):
-            return {}
-        gateway_name: str = self._opnsense_get_gateway_name()
-        for i_gateway_name, gateway in (
-            state.get("telemetry", {}).get("gateways", {}).items()
-        ):
-            if i_gateway_name == gateway_name:
-                return gateway
-        return {}
-
     @callback
     def _handle_coordinator_update(self) -> None:
-        gateway: Mapping[str, Any] = self._opnsense_get_gateway()
+        state: Mapping[str, Any] = self.coordinator.data
+        if not isinstance(state, Mapping):
+            self._available = False
+            return
+        gateway: Mapping[str, Any] = {}
+        gateway_name: str = self.entity_description.key.split(".")[2]
+        for i_gateway_name, gway in state.get("gateways", {}).items():
+            if i_gateway_name == gateway_name:
+                gateway = gway
+        if not gateway:
+            self._available = False
+            return
         prop_name: str = self._opnsense_get_gateway_property_name()
         try:
             value = gateway[prop_name]
@@ -676,14 +672,7 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
             self._available = False
             return
         self._available = True
-
         self._attr_extra_state_attributes = {}
-        gateway = self._opnsense_get_gateway()
-        # for attr in ["monitorip", "srcip", "status"]:
-        #    value = gateway[attr]
-        #    if attr == "substatus" and gateway[attr] == "none":
-        #        value = None
-        #    self._attr_extra_state_attributes[attr] = value
         self.async_write_ha_state()
 
     @property
