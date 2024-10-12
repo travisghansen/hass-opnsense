@@ -38,7 +38,7 @@ async def _compile_filter_switches(
         return []
     entities: list = []
     # filter rules
-    if "filter" in state["config"]:
+    if "filter" in state.get("config", {}):
         rules = dict_get(state, "config.filter.rule")
         if isinstance(rules, list):
             for rule in rules:
