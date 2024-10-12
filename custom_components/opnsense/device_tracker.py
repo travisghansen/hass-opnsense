@@ -1,7 +1,6 @@
 """Support for tracking for OPNsense devices."""
 
 import logging
-import time
 from datetime import datetime, timedelta
 from typing import Any, Mapping
 
@@ -217,38 +216,37 @@ class OPNsenseScannerEntity(OPNsenseEntity, ScannerEntity, RestoreEntity):
         if self._attr_hostname:
             self._last_known_hostname = self._attr_hostname
 
-        update_time = state["update_time"]
-        if entry is None:
+        if entry is None or (
+            isinstance(self._attr_extra_state_attributes.get("expires", None), datetime)
+            and self._attr_extra_state_attributes.get("expires")
+            > datetime.now().astimezone()
+        ):
             if self._last_known_ip:
                 # force a ping to _last_known_ip to possibly recreate arp entry?
                 pass
 
+            self._is_connected = False
             device_tracker_consider_home = self.config_entry.options.get(
                 CONF_DEVICE_TRACKER_CONSIDER_HOME, DEFAULT_DEVICE_TRACKER_CONSIDER_HOME
             )
-            if (
-                device_tracker_consider_home > 0
-                and self._last_known_connected_time is not None
+            if device_tracker_consider_home > 0 and isinstance(
+                self._last_known_connected_time, datetime
             ):
-                current_time = int(time.time())
-                elapsed = current_time - self._last_known_connected_time
-                if elapsed < device_tracker_consider_home:
+                elapsed: timedelta = (
+                    datetime.now().astimezone() - self._last_known_connected_time
+                )
+                if elapsed.total_seconds() < device_tracker_consider_home:
                     self._is_connected = True
 
-            self._is_connected = False
         else:
-            # TODO: check "expires" here to add more honed in logic?
             # TODO: clear cache under certain scenarios?
 
-            # Why was this being done? Remove it?
-            # ip_address = entry.get("ip")
-            # if ip_address is not None and len(ip_address) > 0:
-            #     self.hass.add_job(self._client.delete_arp_entry, ip_address)
-
-            self._last_known_connected_time = datetime.fromtimestamp(
-                int(update_time),
-                tz=datetime.now().astimezone().tzinfo,
-            )
+            update_time: float | None = state.get("update_time", None)
+            if isinstance(update_time, float):
+                self._last_known_connected_time = datetime.fromtimestamp(
+                    int(update_time),
+                    tz=datetime.now().astimezone().tzinfo,
+                )
             self._is_connected = True
 
         ha_to_opnsense: Mapping[str, Any] = {
@@ -331,13 +329,22 @@ class OPNsenseScannerEntity(OPNsenseEntity, ScannerEntity, RestoreEntity):
             "interface",
             "expires",
             "type",
-            "last_known_connected_time",
         ]:
             try:
                 value = state.get(attr, None)
                 if value:
                     self._attr_extra_state_attributes[attr] = value
             except (TypeError, KeyError, AttributeError):
+                pass
+        lkct = state.get("last_known_connected_time", None)
+        if isinstance(lkct, datetime):
+            self._attr_extra_state_attributes["last_known_connected_time"] = lkct
+        elif isinstance(lkct, str):
+            try:
+                self._attr_extra_state_attributes["last_known_connected_time"] = (
+                    datetime.fromisoformat(lkct)
+                )
+            except ValueError:
                 pass
 
     async def async_added_to_hass(self) -> None:
