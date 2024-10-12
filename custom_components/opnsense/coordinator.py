@@ -163,8 +163,6 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             # Create repair task here
             return {}
 
-        # _LOGGER.debug(f"[async_update_data] dhcp_leases: {self._state.get('dhcp_leases', {})}")
-
         # calcule pps and kbps
         update_time = dict_get(self._state, "update_time")
         previous_update_time = dict_get(self._state, "previous_state.update_time")

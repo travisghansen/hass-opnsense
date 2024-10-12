@@ -222,7 +222,7 @@ async def _compile_interface_sensors(
                 config_entry=config_entry,
                 coordinator=coordinator,
                 entity_description=SensorEntityDescription(
-                    key=f"telemetry.interface.{interface_name}.{prop_name}",  # TODO: Remove telemetry and migrate unique_id
+                    key=f"interface.{interface_name}.{prop_name}",
                     name=f"Interface {interface.get('name', interface_name)} {prop_name}",
                     native_unit_of_measurement=native_unit_of_measurement,
                     icon=icon,
@@ -263,7 +263,7 @@ async def _compile_gateway_sensors(
                 config_entry=config_entry,
                 coordinator=coordinator,
                 entity_description=SensorEntityDescription(
-                    key=f"telemetry.gateway.{gateway['name']}.{prop_name}",  # TODO: Remove telemetry and migrate key
+                    key=f"gateway.{gateway['name']}.{prop_name}",
                     name=f"Gateway {gateway['name']} {prop_name}",
                     native_unit_of_measurement=native_unit_of_measurement,
                     icon=icon,
@@ -328,7 +328,7 @@ async def _compile_openvpn_server_sensors(
                 config_entry=config_entry,
                 coordinator=coordinator,
                 entity_description=SensorEntityDescription(
-                    key=f"telemetry.openvpn.servers.{vpnid}.{prop_name}",  # TODO: Migrate and remove telemetry from key
+                    key=f"openvpn.servers.{vpnid}.{prop_name}",
                     name=f"OpenVPN Server {server['name']} {prop_name}",
                     native_unit_of_measurement=native_unit_of_measurement,
                     icon=icon,
@@ -527,19 +527,20 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
 
 class OPNsenseFilesystemSensor(OPNsenseSensor):
 
-    def _opnsense_get_filesystem(self) -> Mapping[str, Any]:
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        filesystem: Mapping[str, Any] = {}
         state: Mapping[str, Any] = self.coordinator.data
         if not isinstance(state, Mapping):
             return {}
-        for filesystem in state.get("telemetry", {}).get("filesystems", []):
-            device_clean: str = normalize_filesystem_device_name(filesystem["device"])
+        for fsystem in state.get("telemetry", {}).get("filesystems", []):
+            device_clean: str = normalize_filesystem_device_name(fsystem["device"])
             if self.entity_description.key == f"telemetry.filesystems.{device_clean}":
-                return filesystem
-        return {}
+                filesystem = fsystem
+        if not filesystem:
+            self._available = False
+            return
 
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        filesystem = self._opnsense_get_filesystem()
         try:
             self._attr_native_value = filesystem["capacity"].strip("%")
         except (TypeError, KeyError, AttributeError):
@@ -556,14 +557,14 @@ class OPNsenseFilesystemSensor(OPNsenseSensor):
 
 class OPNsenseInterfaceSensor(OPNsenseSensor):
     def _opnsense_get_interface_property_name(self) -> str:
-        return self.entity_description.key.split(".")[3]
+        return self.entity_description.key.split(".")[2]
 
     @callback
     def _handle_coordinator_update(self) -> None:
         state: Mapping[str, Any] = self.coordinator.data
         if not isinstance(state, Mapping):
             return {}
-        interface_name: str = self.entity_description.key.split(".")[2]
+        interface_name: str = self.entity_description.key.split(".")[1]
         interface: Mapping[str, Any] = {}
         for i_interface_name, iface in state.get("interfaces", {}).items():
             if i_interface_name == interface_name:
@@ -592,22 +593,21 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
 
 
 class OPNsenseCarpInterfaceSensor(OPNsenseSensor):
-    def _opnsense_get_carp_interface_name(self) -> str:
-        return self.entity_description.key.split(".")[2]
-
-    def _opnsense_get_carp_interface(self) -> Mapping[str, Any]:
-        state: Mapping[str, Any] = self.coordinator.data
-        if not isinstance(state, Mapping):
-            return {}
-        carp_interface_name = self._opnsense_get_carp_interface_name()
-        for i_interface in state.get("carp_interfaces", []):
-            if slugify(i_interface["subnet"]) == carp_interface_name:
-                return i_interface
-        return {}
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        carp_interface: Mapping[str, Any] = self._opnsense_get_carp_interface()
+        carp_interface: Mapping[str, Any] = {}
+        state: Mapping[str, Any] = self.coordinator.data
+        if not isinstance(state, Mapping):
+            return {}
+        carp_interface_name: str = self.entity_description.key.split(".")[2]
+        for i_interface in state.get("carp_interfaces", []):
+            if slugify(i_interface["subnet"]) == carp_interface_name:
+                carp_interface = i_interface
+        if not carp_interface:
+            self._available = False
+            return
+
         try:
             self._attr_native_value = carp_interface["status"]
         except (TypeError, KeyError, ZeroDivisionError):
@@ -638,7 +638,7 @@ class OPNsenseCarpInterfaceSensor(OPNsenseSensor):
 
 class OPNsenseGatewaySensor(OPNsenseSensor):
     def _opnsense_get_gateway_property_name(self) -> str:
-        return self.entity_description.key.split(".")[3]
+        return self.entity_description.key.split(".")[2]
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -647,7 +647,7 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
             self._available = False
             return
         gateway: Mapping[str, Any] = {}
-        gateway_name: str = self.entity_description.key.split(".")[2]
+        gateway_name: str = self.entity_description.key.split(".")[1]
         for i_gateway_name, gway in state.get("gateways", {}).items():
             if i_gateway_name == gateway_name:
                 gateway = gway
@@ -684,26 +684,22 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
 
 
 class OPNsenseOpenVPNServerSensor(OPNsenseSensor):
-    def _opnsense_get_server_property_name(self) -> str:
-        return self.entity_description.key.split(".")[4]
-
-    def _opnsense_get_server_vpnid(self) -> str:
-        return self.entity_description.key.split(".")[3]
-
-    def _opnsense_get_server(self) -> Mapping[str, Any]:
-        state: Mapping[str, Any] = self.coordinator.data
-        if not isinstance(state, Mapping):
-            return {}
-        vpnid: str = self._opnsense_get_server_vpnid()
-        for server_vpnid, server in dict_get(state, "openvpn.servers", {}).items():
-            if vpnid == server_vpnid:
-                return server
-        return {}
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        state: Mapping[str, Any] = self.coordinator.data
+        if not isinstance(state, Mapping):
+            return {}
+        vpnid: str = self.entity_description.key.split(".")[2]
+        server: Mapping[str, Any] = {}
+        for server_vpnid, srv in dict_get(state, "openvpn.servers", {}).items():
+            if vpnid == server_vpnid:
+                server = srv
+        if not server:
+            self._available = False
+            return
         server: Mapping[str, Any] | None = self._opnsense_get_server()
-        prop_name: str = self._opnsense_get_server_property_name()
+        prop_name: str = self.entity_description.key.split(".")[3]
         try:
             self._attr_native_value = server[prop_name]
         except (TypeError, KeyError, ZeroDivisionError):
