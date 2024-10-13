@@ -306,16 +306,19 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
                     (t[0], new_device_unique_id) if t[0] == "opnsense" else t
                     for t in dev.identifiers
                 }
-                # new_connections = {
-                #     (dr.CONNECTION_NETWORK_MAC, new_device_unique_id.replace("_", ":"))
-                # }
+
                 _LOGGER.debug(
                     f"[async_migrate_entry] dev.identifiers: {dev.identifiers}, new_identifiers: {new_identifiers}"
                 )
-                new_dev = device_registry.async_update_device(
-                    dev.id, new_identifiers=new_identifiers
-                )
-                _LOGGER.debug(f"[async_migrate_entry] new_main_dev: {new_dev}")
+                try:
+                    new_dev = device_registry.async_update_device(
+                        dev.id, new_identifiers=new_identifiers
+                    )
+                    _LOGGER.debug(f"[async_migrate_entry] new_main_dev: {new_dev}")
+                except dr.DeviceIdentifierCollisionError as e:
+                    _LOGGER.error(
+                        f"Error migrating device: {dev.identifiers}. {e.__class__.__qualname__}: {e}"
+                    )
 
         for ent in er.async_entries_for_config_entry(
             entity_registry, config_entry.entry_id
@@ -332,12 +335,17 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
             _LOGGER.debug(
                 f"[async_migrate_entry] ent: {ent.entity_id}, platform: {platform}, unique_id: {ent.unique_id}, new_unique_id: {new_unique_id}"
             )
-            new_ent = entity_registry.async_update_entity(
-                ent.entity_id, new_unique_id=new_unique_id
-            )
-            _LOGGER.debug(
-                f"[async_migrate_entry] new_ent: {new_ent.entity_id}, unique_id: {new_ent.unique_id}"
-            )
+            try:
+                new_ent = entity_registry.async_update_entity(
+                    ent.entity_id, new_unique_id=new_unique_id
+                )
+                _LOGGER.debug(
+                    f"[async_migrate_entry] new_ent: {new_ent.entity_id}, unique_id: {new_ent.unique_id}"
+                )
+            except ValueError as e:
+                _LOGGER.error(
+                    f"Error migrating entity: {ent.entity_id}. {e.__class__.__qualname__}: {e}"
+                )
 
         new_data: Mapping[str, Any] = dict(config_entry.data)
         new_data.update({CONF_DEVICE_UNIQUE_ID: new_device_unique_id})
