@@ -1,7 +1,34 @@
+<a name="v0.3.6"></a>
+# [v0.3.6](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.6) - 14 Oct 2024
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🎉 Enhancements & New Features 🎉
+* Improve some more Error Handling by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/257
+* Remove concurrency from coordinator by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/256
+### 🕷️ Bug Fixes 🕷️
+* Fix TypeError in device_tracker by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/255
+* Handle migration errors by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/260
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.5...v0.3.6
+
+[Changes][v0.3.6]
+
+
+<a name="v0.3.6-alpha.1"></a>
+# [Testing without Concurrency (v0.3.6-alpha.1)](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.6-alpha.1) - 11 Oct 2024
+
+<h3>OPNsense Minimum Firmware Required: 24.1</h3><h4>OPNsense Recommended Firmware: 24.7</h4><p>## Not for general testing. Setup to test removing concurrency from the coordinator.<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
+
+[Changes][v0.3.6-alpha.1]
+
+
 <a name="v0.3.5"></a>
 # [v0.3.5](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.5) - 10 Oct 2024
 
-<!-- Release notes generated using configuration in .github/release.yml at main -->
+<h3>OPNsense Minimum Firmware Required: 24.1</h3><h4>OPNsense Recommended Firmware: 24.7</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
 ## ATTENTION: We need debug logs from those with CARP Interfaces! [See this discussion for details.](https://github.com/travisghansen/hass-opnsense/discussions/250)
 
@@ -22,7 +49,7 @@
 * Turn down more debug logging by [@Snuffy2](https://github.com/Snuffy2) in https://github.com/travisghansen/hass-opnsense/pull/247
 
 
-**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.4...v0.3.5
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.4...v0.3.5<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
 
 [Changes][v0.3.5]
 
@@ -581,6 +608,8 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.3.6]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.6-alpha.1...v0.3.6
+[v0.3.6-alpha.1]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.5...v0.3.6-alpha.1
 [v0.3.5]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.5-beta.3...v0.3.5
 [v0.3.5-beta.3]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.5-beta.2...v0.3.5-beta.3
 [v0.3.5-beta.2]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.5-beta.1...v0.3.5-beta.2
