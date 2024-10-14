@@ -305,7 +305,7 @@ async def _migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
                 _LOGGER.error(
                     f"Error migrating device: {dev.identifiers}. {e.__class__.__qualname__}: {e}"
                 )
-                
+
     for ent in er.async_entries_for_config_entry(
         entity_registry, config_entry.entry_id
     ):
@@ -387,8 +387,14 @@ async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
                 _LOGGER.error(
                     f"Error migrating entity: {ent.entity_id}. {e.__class__.__qualname__}: {e}"
                 )
-    hass.config_entries.async_update_entry(config_entry, version=4)
+    new_entry_bool = hass.config_entries.async_update_entry(config_entry, version=4)
+    if new_entry_bool:
+        _LOGGER.debug("[migrate_3_to_4] config_entry update sucessful")
+    else:
+        _LOGGER.error("Migration of config_entry to version 4 unsucessful")
+        return False
     return True
+
 
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Migrate an old config entry."""
@@ -396,6 +402,9 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
 
     if version > 4:
         # This means the user has downgraded from a future version
+        _LOGGER.error(
+            "hass-opnsense downgraded and current config not compatible with earlier versions. Integration mut be removed and reinstalled."
+        )
         return False
 
     _LOGGER.debug("Migrating from version %s", version)
