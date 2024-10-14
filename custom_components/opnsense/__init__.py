@@ -305,7 +305,7 @@ async def _migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
                 _LOGGER.error(
                     f"Error migrating device: {dev.identifiers}. {e.__class__.__qualname__}: {e}"
                 )
-
+                
     for ent in er.async_entries_for_config_entry(
         entity_registry, config_entry.entry_id
     ):
@@ -389,7 +389,6 @@ async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
                 )
     hass.config_entries.async_update_entry(config_entry, version=4)
     return True
-
 
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Migrate an old config entry."""

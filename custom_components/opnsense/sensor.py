@@ -776,7 +776,7 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
                     lease_counts[if_descr] = f"{if_count} leases"
                     total_lease_count += if_count
                     _LOGGER.debug(
-                        f"[OPNsenseDHCPLeasesSensor handle_coordinator_update] if_descr: {if_descr}, lease_count: {if_count}"
+                        f"[OPNsenseDHCPLeasesSensor handle_coordinator_update] {if_descr}: lease_count: {if_count}"
                     )
             except (TypeError, KeyError, ZeroDivisionError):
                 self._available = False

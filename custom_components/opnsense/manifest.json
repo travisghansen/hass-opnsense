@@ -8,5 +8,5 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/travisghansen/hass-opnsense/issues",
   "requirements": ["python-dateutil", "awesomeversion"],
-  "version":"v0.3.5"
+  "version":"v0.3.6"
 }
