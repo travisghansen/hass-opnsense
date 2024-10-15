@@ -155,22 +155,6 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
         state_class=SensorStateClass.MEASUREMENT,
         # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
-    # cpu
-    # "telemetry.cpu.frequency.current": SensorEntityDescription(
-    #     key="telemetry.cpu.frequency.current",
-    #     name="CPU Frequency Current",
-    #     native_unit_of_measurement=UnitOfFrequency.HERTZ,
-    #     icon="mdi:speedometer-medium",
-    #     state_class=SensorStateClass.MEASUREMENT,
-    #     # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
-    # ),
-    # "telemetry.cpu.frequency.max": SensorEntityDescription(
-    #     key="telemetry.cpu.frequency.max",
-    #     name="CPU Frequency Max",
-    #     native_unit_of_measurement=UnitOfFrequency.HERTZ,
-    #     icon="mdi:speedometer",
-    #     # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
-    # ),
     "telemetry.cpu.count": SensorEntityDescription(
         key="telemetry.cpu.count",
         name="CPU Count",
@@ -209,16 +193,6 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
         state_class=SensorStateClass.MEASUREMENT,
         # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
-    # system
-    # "telemetry.system.temp": SensorEntityDescription(
-    #    key="telemetry.system.temp",
-    #    name="System Temperature",
-    #    native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-    #    device_class=SensorDeviceClass.TEMPERATURE,
-    #    icon="mdi:thermometer",
-    #    state_class=SensorStateClass.MEASUREMENT,
-    #    # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
-    # ),
     "telemetry.system.boottime": SensorEntityDescription(
         key="telemetry.system.boottime",
         name="System Boottime",
@@ -227,31 +201,6 @@ SENSOR_TYPES: Final[dict[str, SensorEntityDescription]] = {
         icon="mdi:clock-outline",
         # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
-    # dhcp
-    # "dhcp_stats.leases.total": SensorEntityDescription(
-    #    key="dhcp_stats.leases.total",
-    #    name="DHCP Leases Total",
-    #    native_unit_of_measurement="clients",
-    #    icon="mdi:ip-network-outline",
-    #    state_class=SensorStateClass.MEASUREMENT,
-    #    # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
-    # ),
-    # "dhcp_stats.leases.online": SensorEntityDescription(
-    #    key="dhcp_stats.leases.online",
-    #    name="DHCP Leases Online",
-    #    native_unit_of_measurement="clients",
-    #    icon="mdi:ip-network-outline",
-    #    state_class=SensorStateClass.MEASUREMENT,
-    #    # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
-    # ),
-    # "dhcp_stats.leases.offline": SensorEntityDescription(
-    #    key="dhcp_stats.leases.offline",
-    #    name="DHCP Leases Offline",
-    #    native_unit_of_measurement="clients",
-    #    icon="mdi:ip-network-outline",
-    #    state_class=SensorStateClass.MEASUREMENT,
-    #    # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
-    # ),
 }
 
 SERVICE_CLOSE_NOTICE = "close_notice"

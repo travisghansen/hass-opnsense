@@ -399,19 +399,9 @@ clear_subsystem_dirty('filter');
         script: str = r"""
 global $config;
 
-$file = "/conf/hassid";
-$id;
-if (!file_exists($file)) {
-    $id = bin2hex(openssl_random_pseudo_bytes(10));
-    file_put_contents($file, $id);
-} else {
-    $id = file_get_contents($file);
-}
-
 $toreturn = [
   "hostname" => $config["system"]["hostname"],
   "domain" => $config["system"]["domain"],
-  "device_id" => $id,
 ];
 """
         response: Mapping[str, Any] = await self._exec_php(script)
@@ -1100,35 +1090,28 @@ $toreturn = [
         except awesomeversion.exceptions.AwesomeVersionCompareException:
             pass
         telemetry: Mapping[str, Any] = {}
-        telemetry["interfaces"] = await self._get_telemetry_interfaces()
         telemetry["mbuf"] = await self._get_telemetry_mbuf()
         telemetry["pfstate"] = await self._get_telemetry_pfstate()
         telemetry["memory"] = await self._get_telemetry_memory()
         telemetry["system"] = await self._get_telemetry_system()
         telemetry["cpu"] = await self._get_telemetry_cpu()
         telemetry["filesystems"] = await self._get_telemetry_filesystems()
-        telemetry["openvpn"] = await self._get_telemetry_openvpn()
-        telemetry["gateways"] = await self._get_telemetry_gateways()
         telemetry["temps"] = await self._get_telemetry_temps()
         # _LOGGER.debug(f"[get_telemetry] telemetry: {telemetry}")
         return telemetry
 
     @_log_errors
-    async def _get_telemetry_interfaces(self) -> Mapping[str, Any]:
+    async def get_interfaces(self) -> Mapping[str, Any]:
         interface_info: Mapping[str, Any] | list = await self._get(
             "/api/interfaces/overview/export"
         )
-        # _LOGGER.debug(f"[get_telemetry_interfaces] interface_info: {interface_info}")
+        # _LOGGER.debug(f"[get_interfaces] interface_info: {interface_info}")
         if not isinstance(interface_info, list) or not len(interface_info) > 0:
             return {}
         interfaces: Mapping[str, Any] = {}
         for ifinfo in interface_info:
             interface: Mapping[str, Any] = {}
-            if (
-                ifinfo is None
-                or not isinstance(ifinfo, Mapping)
-                or ifinfo.get("identifier", "") == ""
-            ):
+            if not isinstance(ifinfo, Mapping) or ifinfo.get("identifier", "") == "":
                 continue
             interface["inpkts"] = self._try_to_int(
                 ifinfo.get("statistics", {}).get("packets received", None)
@@ -1167,7 +1150,7 @@ $toreturn = [
             interface["ipaddr"] = ifinfo.get("addr4", "")
             interface["media"] = ifinfo.get("media", "")
             interfaces[ifinfo.get("identifier", "")] = interface
-        # _LOGGER.debug(f"[get_telemetry_interfaces] interfaces: {interfaces}")
+        # _LOGGER.debug(f"[get_interfaces] interfaces: {interfaces}")
         return interfaces
 
     @_log_errors
@@ -1351,11 +1334,11 @@ $toreturn = [
         return filesystems
 
     @_log_errors
-    async def _get_telemetry_openvpn(self) -> Mapping[str, Any]:
+    async def get_openvpn(self) -> Mapping[str, Any]:
         openvpn_info: Mapping[str, Any] | list = await self._post(
             "/api/openvpn/export/providers"
         )
-        # _LOGGER.debug(f"[get_telemetry_openvpn] openvpn_info: {openvpn_info}")
+        # _LOGGER.debug(f"[get_openvpn] openvpn_info: {openvpn_info}")
         if not isinstance(openvpn_info, Mapping):
             return {}
         openvpn: Mapping[str, Any] = {}
@@ -1363,7 +1346,7 @@ $toreturn = [
         connection_info: Mapping[str, Any] = await self._post(
             "/api/openvpn/service/searchSessions"
         )
-        # _LOGGER.debug(f"[get_telemetry_openvpn] connection_info: {connection_info}")
+        # _LOGGER.debug(f"[get_openvpn] connection_info: {connection_info}")
         if connection_info is None or not isinstance(connection_info, Mapping):
             return {}
         for vpnid, vpn_info in openvpn_info.items():
@@ -1387,15 +1370,15 @@ $toreturn = [
             # Missing connected_client_count
             # vpn["connected_client_count"] =
             openvpn["servers"][vpnid] = vpn
-        # _LOGGER.debug(f"[get_telemetry_openvpn] openvpn: {openvpn}")
+        # _LOGGER.debug(f"[get_openvpn] openvpn: {openvpn}")
         return openvpn
 
     @_log_errors
-    async def _get_telemetry_gateways(self) -> Mapping[str, Any]:
+    async def get_gateways(self) -> Mapping[str, Any]:
         gateways_info: Mapping[str, Any] | list = await self._post(
             "/api/routes/gateway/status"
         )
-        # _LOGGER.debug(f"[get_telemetry_gateways] gateways_info: {gateways_info}")
+        # _LOGGER.debug(f"[get_gateways] gateways_info: {gateways_info}")
         if not isinstance(gateways_info, Mapping):
             return {}
         gateways: Mapping[str, Any] = {}
@@ -1406,7 +1389,7 @@ $toreturn = [
             gateway["status"] = gateway.pop(
                 "status_translated", gateway.get("status", "")
             ).lower()
-        # _LOGGER.debug(f"[get_telemetry_gateways] gateways: {gateways}")
+        # _LOGGER.debug(f"[get_gateways] gateways: {gateways}")
         return gateways
 
     @_log_errors
@@ -1433,71 +1416,8 @@ $toreturn = [
     async def _get_telemetry_legacy(self) -> Mapping[str, Any]:
         script: str = r"""
 require_once '/usr/local/www/widgets/api/plugins/system.inc';
-include_once '/usr/local/www/widgets/api/plugins/interfaces.inc';
-require_once '/usr/local/www/widgets/api/plugins/temperature.inc';
-require_once '/usr/local/etc/inc/plugins.inc.d/openvpn.inc';
-
-global $config;
-global $g;
-
-function stripalpha($s) {
-  return preg_replace("/\D/", "", $s);
-}
-
-// OPNsense 24.1 removed /usr/local/www/widgets/api/plugins/interfaces.inc to replace with new api endpoint
-if (!function_exists('interfaces_api')) {
-    function interfaces_api() {
-        global $config;
-        $result = array();
-        $oc = new OPNsense\Interfaces\Api\OverviewController();
-        foreach (get_configured_interface_with_descr() as $ifdescr => $ifname) {
-            $ifinfo = $oc->getInterfaceAction($config["interfaces"][$ifdescr]["if"])["message"];
-            // if interfaces is disabled returns message => "failed"
-            if (!is_array($ifinfo)) {
-                continue;
-            }
-            $interfaceItem = array();
-            $interfaceItem['inpkts'] = $ifinfo["packets received"]["value"];
-            $interfaceItem['outpkts'] = $ifinfo["packets transmitted"]["value"];
-            $interfaceItem['inbytes'] = $ifinfo["bytes received"]["value"];
-            $interfaceItem['outbytes'] = $ifinfo["bytes transmitted"]["value"];
-            $interfaceItem['inbytes_frmt'] = format_bytes($interfaceItem['inbytes']);
-            $interfaceItem['outbytes_frmt'] = format_bytes($interfaceItem['outbytes']);
-            $interfaceItem['inerrs'] = $ifinfo["input errors"]["value"];
-            $interfaceItem['outerrs'] = $ifinfo["output errors"]["value"];
-            $interfaceItem['collisions'] = $ifinfo["collisions"]["value"];
-            $interfaceItem['descr'] = $ifdescr;
-            $interfaceItem['name'] = $ifname;
-            switch ($ifinfo["status"]["value"]) {
-                case 'down':
-                case 'no carrier':
-                case 'up':
-                    $interfaceItem['status'] = $ifinfo["status"]["value"];
-                    break;
-                case 'associated':
-                    $interfaceItem['status'] = 'up';
-                    break;
-                default:
-                    $interfaceItem['status'] = '';
-                    break;
-            }
-            //$interfaceItem['ipaddr'] = empty($ifinfo['ipaddr']) ? "" : $ifinfo['ipaddr'];
-            $interfaceItem['ipaddr'] = isset($ifinfo["ipv4"]["value"][0]["ipaddr"]) ? $ifinfo["ipv4"]["value"][0]["ipaddr"] : "";
-            $interfaceItem['media'] = $ifinfo["media"]["value"];
-
-            $result[] = $interfaceItem;
-        }
-        return $result;
-    }
-}
-
-$interfaces_api_data = interfaces_api();
-if (!is_iterable($interfaces_api_data)) {
-    $interfaces_api_data = [];
-}
 
 $system_api_data = system_api();
-$temperature_api_data = temperature_api();
 
 // OPNsense 23.1.1: replaced single exec_command() with new shell_safe() wrapper
 if (function_exists('exec_command')) {
@@ -1511,13 +1431,6 @@ preg_match("/sec = [0-9]*/", $boottime, $matches);
 $boottime = $matches[0];
 $boottime = explode("=", $boottime)[1];
 $boottime = (int) trim($boottime);
-
-// Fix for 23.1.4 (https://forum.opnsense.org/index.php?topic=33144.0)
-if (function_exists('openvpn_get_active_servers')) {
-    $ovpn_servers = openvpn_get_active_servers();
-} else {
-    $ovpn_servers = [];
-}
 
 $toreturn = [
     "pfstate" => [
@@ -1544,7 +1457,6 @@ $toreturn = [
     "system" => [
         "boottime" => $boottime,
         "uptime" => (int) $system_api_data["uptime"],
-        //"temp" => 0,
         "load_average" => [
             "one_minute" => floatval(trim($system_api_data["cpu"]["load"][0])),
             "five_minute" => floatval(trim($system_api_data["cpu"]["load"][1])),
@@ -1553,62 +1465,12 @@ $toreturn = [
     ],
 
     "cpu" => [
-        "frequency" => [
-            "current" => (int) stripalpha($system_api_data["cpu"]["cur.freq"]),
-            "max" => (int) stripalpha($system_api_data["cpu"]["max.freq"]),
-        ],
         "count" => (int) $system_api_data["cpu"]["cur.freq"],
     ],
 
     "filesystems" => $system_api_data["disk"]["devices"],
 
-    "interfaces" => [],
-
-    "openvpn" => [],
-    
-    "gateways" => return_gateways_status(true),
 ];
-
-if (!is_iterable($toreturn["gateways"])) {
-    $toreturn["gateways"] = [];
-}
-foreach ($toreturn["gateways"] as $key => $gw) {
-    $status = $gw["status"];
-    if ($status == "none") {
-        $status = "online";
-    }
-    $gw["status"] = $status;
-    $toreturn["gateways"][$key] = $gw;
-}
-
-foreach ($interfaces_api_data as $if) {
-    $if["inpkts"] = (int) $if["inpkts"];
-    $if["outpkts"] = (int) $if["outpkts"];
-    $if["inbytes"] = (int) $if["inbytes"];
-    $if["outbytes"] = (int) $if["outbytes"];
-    $if["inerrs"] = (int) $if["inerrs"];
-    $if["outerrs"] = (int) $if["outerrs"];
-    $if["collisions"] = (int) $if["collisions"];
-    $toreturn["interfaces"][$if["descr"]] = $if;
-}
-
-foreach ($ovpn_servers as $server) {
-    $vpnid = $server["vpnid"];
-    $name = $server["name"];
-    $conn_count = count($server["conns"]);
-    $total_bytes_recv = 0;
-    $total_bytes_sent = 0;
-    foreach ($server["conns"] as $conn) {
-        $total_bytes_recv += $conn["bytes_recv"];
-        $total_bytes_sent += $conn["bytes_sent"];
-    }
-    
-    $toreturn["openvpn"]["servers"][$vpnid]["name"] = $name;
-    $toreturn["openvpn"]["servers"][$vpnid]["vpnid"] = $vpnid;
-    $toreturn["openvpn"]["servers"][$vpnid]["connected_client_count"] = $conn_count;
-    $toreturn["openvpn"]["servers"][$vpnid]["total_bytes_recv"] = $total_bytes_recv;
-    $toreturn["openvpn"]["servers"][$vpnid]["total_bytes_sent"] = $total_bytes_sent;
-}
 
 """
         telemetry: Mapping[str, Any] = await self._exec_php(script)

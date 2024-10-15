@@ -53,16 +53,11 @@ async def _compile_static_sensors(
             "telemetry.mbuf.used_percent",
             "telemetry.memory.swap_used_percent",
             "telemetry.memory.used_percent",
-            "telemetry.cpu.frequency.current",
             "telemetry.cpu.usage_total",
             "telemetry.system.load_average.one_minute",
             "telemetry.system.load_average.five_minute",
             "telemetry.system.load_average.fifteen_minute",
-            "telemetry.system.temp",
             "telemetry.system.boottime",
-            # "dhcp_stats.leases.total",
-            # "dhcp_stats.leases.online",
-            # "dhcp_stats.leases.offline",
         ]:
             enabled_default = True
 
@@ -145,9 +140,7 @@ async def _compile_interface_sensors(
     entities: list = []
 
     # interfaces
-    for interface_name, interface in dict_get(
-        state, "telemetry.interfaces", {}
-    ).items():
+    for interface_name, interface in dict_get(state, "interfaces", {}).items():
         for prop_name in [
             "status",
             "inerrs",
@@ -229,7 +222,7 @@ async def _compile_interface_sensors(
                 config_entry=config_entry,
                 coordinator=coordinator,
                 entity_description=SensorEntityDescription(
-                    key=f"telemetry.interface.{interface_name}.{prop_name}",
+                    key=f"interface.{interface_name}.{prop_name}",
                     name=f"Interface {interface.get('name', interface_name)} {prop_name}",
                     native_unit_of_measurement=native_unit_of_measurement,
                     icon=icon,
@@ -252,7 +245,7 @@ async def _compile_gateway_sensors(
         return []
     entities: list = []
 
-    for gateway in dict_get(state, "telemetry.gateways", {}).values():
+    for gateway in dict_get(state, "gateways", {}).values():
         for prop_name in ["status", "delay", "stddev", "loss"]:
             native_unit_of_measurement = None
             icon = "mdi:router-network"
@@ -270,7 +263,7 @@ async def _compile_gateway_sensors(
                 config_entry=config_entry,
                 coordinator=coordinator,
                 entity_description=SensorEntityDescription(
-                    key=f"telemetry.gateway.{gateway['name']}.{prop_name}",
+                    key=f"gateway.{gateway['name']}.{prop_name}",
                     name=f"Gateway {gateway['name']} {prop_name}",
                     native_unit_of_measurement=native_unit_of_measurement,
                     icon=icon,
@@ -293,7 +286,7 @@ async def _compile_openvpn_server_sensors(
         return []
     entities: list = []
 
-    for vpnid, server in dict_get(state, "telemetry.openvpn.servers", {}).items():
+    for vpnid, server in dict_get(state, "openvpn.servers", {}).items():
         if not isinstance(server, Mapping) or len(server) == 0:
             continue
         for prop_name in [
@@ -335,7 +328,7 @@ async def _compile_openvpn_server_sensors(
                 config_entry=config_entry,
                 coordinator=coordinator,
                 entity_description=SensorEntityDescription(
-                    key=f"telemetry.openvpn.servers.{vpnid}.{prop_name}",
+                    key=f"openvpn.servers.{vpnid}.{prop_name}",
                     name=f"OpenVPN Server {server['name']} {prop_name}",
                     native_unit_of_measurement=native_unit_of_measurement,
                     icon=icon,
@@ -498,18 +491,10 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
             self._available = False
             return
 
-        if value == 0 and self.entity_description.key == "telemetry.system.temp":
-            self._available = False
-            return
-
         if (
             value == 0
             and self._previous_value is None
-            and self.entity_description.key
-            in (
-                "telemetry.cpu.frequency.current",
-                "telemetry.cpu.usage_total",
-            )
+            and self.entity_description.key in ("telemetry.cpu.usage_total",)
         ):
             self._available = False
             return
@@ -517,10 +502,7 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
         if self.entity_description.key == "telemetry.system.boottime":
             value = utc_from_timestamp(value) if value else None
 
-        elif self.entity_description.key in (
-            "telemetry.cpu.frequency.current",
-            "telemetry.cpu.usage_total",
-        ):
+        elif self.entity_description.key in ("telemetry.cpu.usage_total",):
             if value == 0 and self._previous_value is not None:
                 value = self._previous_value
 
@@ -545,19 +527,20 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
 
 class OPNsenseFilesystemSensor(OPNsenseSensor):
 
-    def _opnsense_get_filesystem(self) -> Mapping[str, Any]:
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        filesystem: Mapping[str, Any] = {}
         state: Mapping[str, Any] = self.coordinator.data
         if not isinstance(state, Mapping):
             return {}
-        for filesystem in state.get("telemetry", {}).get("filesystems", []):
-            device_clean: str = normalize_filesystem_device_name(filesystem["device"])
+        for fsystem in state.get("telemetry", {}).get("filesystems", []):
+            device_clean: str = normalize_filesystem_device_name(fsystem["device"])
             if self.entity_description.key == f"telemetry.filesystems.{device_clean}":
-                return filesystem
-        return {}
+                filesystem = fsystem
+        if not filesystem:
+            self._available = False
+            return
 
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        filesystem = self._opnsense_get_filesystem()
         try:
             self._attr_native_value = filesystem["capacity"].strip("%")
         except (TypeError, KeyError, AttributeError):
@@ -574,26 +557,21 @@ class OPNsenseFilesystemSensor(OPNsenseSensor):
 
 class OPNsenseInterfaceSensor(OPNsenseSensor):
     def _opnsense_get_interface_property_name(self) -> str:
-        return self.entity_description.key.split(".")[3]
-
-    def _opnsense_get_interface_name(self) -> str:
         return self.entity_description.key.split(".")[2]
-
-    def _opnsense_get_interface(self) -> Mapping[str, Any]:
-        state: Mapping[str, Any] = self.coordinator.data
-        if not isinstance(state, Mapping):
-            return {}
-        interface_name: str = self._opnsense_get_interface_name()
-        for i_interface_name, interface in (
-            state.get("telemetry", {}).get("interfaces", {}).items()
-        ):
-            if i_interface_name == interface_name:
-                return interface
-        return {}
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        interface: Mapping[str, Any] = self._opnsense_get_interface()
+        state: Mapping[str, Any] = self.coordinator.data
+        if not isinstance(state, Mapping):
+            return {}
+        interface_name: str = self.entity_description.key.split(".")[1]
+        interface: Mapping[str, Any] = {}
+        for i_interface_name, iface in state.get("interfaces", {}).items():
+            if i_interface_name == interface_name:
+                interface = iface
+        if not interface:
+            self._available = False
+            return
         prop_name: str = self._opnsense_get_interface_property_name()
         try:
             self._attr_native_value = interface[prop_name]
@@ -615,22 +593,21 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
 
 
 class OPNsenseCarpInterfaceSensor(OPNsenseSensor):
-    def _opnsense_get_carp_interface_name(self) -> str:
-        return self.entity_description.key.split(".")[2]
-
-    def _opnsense_get_carp_interface(self) -> Mapping[str, Any]:
-        state: Mapping[str, Any] = self.coordinator.data
-        if not isinstance(state, Mapping):
-            return {}
-        carp_interface_name = self._opnsense_get_carp_interface_name()
-        for i_interface in state.get("carp_interfaces", []):
-            if slugify(i_interface["subnet"]) == carp_interface_name:
-                return i_interface
-        return {}
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        carp_interface: Mapping[str, Any] = self._opnsense_get_carp_interface()
+        carp_interface: Mapping[str, Any] = {}
+        state: Mapping[str, Any] = self.coordinator.data
+        if not isinstance(state, Mapping):
+            return {}
+        carp_interface_name: str = self.entity_description.key.split(".")[2]
+        for i_interface in state.get("carp_interfaces", []):
+            if slugify(i_interface["subnet"]) == carp_interface_name:
+                carp_interface = i_interface
+        if not carp_interface:
+            self._available = False
+            return
+
         try:
             self._attr_native_value = carp_interface["status"]
         except (TypeError, KeyError, ZeroDivisionError):
@@ -661,26 +638,22 @@ class OPNsenseCarpInterfaceSensor(OPNsenseSensor):
 
 class OPNsenseGatewaySensor(OPNsenseSensor):
     def _opnsense_get_gateway_property_name(self) -> str:
-        return self.entity_description.key.split(".")[3]
-
-    def _opnsense_get_gateway_name(self) -> str:
         return self.entity_description.key.split(".")[2]
-
-    def _opnsense_get_gateway(self) -> Mapping[str, Any]:
-        state: Mapping[str, Any] = self.coordinator.data
-        if not isinstance(state, Mapping):
-            return {}
-        gateway_name: str = self._opnsense_get_gateway_name()
-        for i_gateway_name, gateway in (
-            state.get("telemetry", {}).get("gateways", {}).items()
-        ):
-            if i_gateway_name == gateway_name:
-                return gateway
-        return {}
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        gateway: Mapping[str, Any] = self._opnsense_get_gateway()
+        state: Mapping[str, Any] = self.coordinator.data
+        if not isinstance(state, Mapping):
+            self._available = False
+            return
+        gateway: Mapping[str, Any] = {}
+        gateway_name: str = self.entity_description.key.split(".")[1]
+        for i_gateway_name, gway in state.get("gateways", {}).items():
+            if i_gateway_name == gateway_name:
+                gateway = gway
+        if not gateway:
+            self._available = False
+            return
         prop_name: str = self._opnsense_get_gateway_property_name()
         try:
             value = gateway[prop_name]
@@ -699,14 +672,7 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
             self._available = False
             return
         self._available = True
-
         self._attr_extra_state_attributes = {}
-        gateway = self._opnsense_get_gateway()
-        # for attr in ["monitorip", "srcip", "status"]:
-        #    value = gateway[attr]
-        #    if attr == "substatus" and gateway[attr] == "none":
-        #        value = None
-        #    self._attr_extra_state_attributes[attr] = value
         self.async_write_ha_state()
 
     @property
@@ -718,28 +684,22 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
 
 
 class OPNsenseOpenVPNServerSensor(OPNsenseSensor):
-    def _opnsense_get_server_property_name(self) -> str:
-        return self.entity_description.key.split(".")[4]
-
-    def _opnsense_get_server_vpnid(self) -> str:
-        return self.entity_description.key.split(".")[3]
-
-    def _opnsense_get_server(self) -> Mapping[str, Any]:
-        state: Mapping[str, Any] = self.coordinator.data
-        if not isinstance(state, Mapping):
-            return {}
-        vpnid: str = self._opnsense_get_server_vpnid()
-        for server_vpnid, server in dict_get(
-            state, "telemetry.openvpn.servers", {}
-        ).items():
-            if vpnid == server_vpnid:
-                return server
-        return {}
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        state: Mapping[str, Any] = self.coordinator.data
+        if not isinstance(state, Mapping):
+            return {}
+        vpnid: str = self.entity_description.key.split(".")[2]
+        server: Mapping[str, Any] = {}
+        for server_vpnid, srv in dict_get(state, "openvpn.servers", {}).items():
+            if vpnid == server_vpnid:
+                server = srv
+        if not server:
+            self._available = False
+            return
         server: Mapping[str, Any] | None = self._opnsense_get_server()
-        prop_name: str = self._opnsense_get_server_property_name()
+        prop_name: str = self.entity_description.key.split(".")[3]
         try:
             self._attr_native_value = server[prop_name]
         except (TypeError, KeyError, ZeroDivisionError):
