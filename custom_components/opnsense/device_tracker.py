@@ -216,11 +216,7 @@ class OPNsenseScannerEntity(OPNsenseEntity, ScannerEntity, RestoreEntity):
         if self._attr_hostname:
             self._last_known_hostname = self._attr_hostname
 
-        if entry is None or (
-            isinstance(self._attr_extra_state_attributes.get("expires", None), datetime)
-            and self._attr_extra_state_attributes.get("expires")
-            > datetime.now().astimezone()
-        ):
+        if not isinstance(entry, Mapping) or not entry or entry.get("expired", False):
             if self._last_known_ip:
                 # force a ping to _last_known_ip to possibly recreate arp entry?
                 pass
