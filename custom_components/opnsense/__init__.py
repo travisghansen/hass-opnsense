@@ -353,12 +353,27 @@ async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
     _LOGGER.debug(f"[migrate_3_to_4] Initial Version: {config_entry.version}")
     entity_registry = er.async_get(hass)
 
+    config = config_entry.data
+    url: str = config[CONF_URL]
+    username: str = config[CONF_USERNAME]
+    password: str = config[CONF_PASSWORD]
+    verify_ssl: bool = config.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
+
+    client = OPNsenseClient(
+        url=url,
+        username=username,
+        password=password,
+        session=async_create_clientsession(hass, raise_for_status=False),
+        opts={"verify_ssl": verify_ssl},
+    )
+    telemetry: str | None = await client.get_telemetry()
+
     for ent in er.async_entries_for_config_entry(
         entity_registry, config_entry.entry_id
     ):
-        # _LOGGER.debug(f"[migrate_3_to_4] ent: {ent}")
         platform = ent.entity_id.split(".")[0]
         if platform == Platform.SENSOR:
+            # _LOGGER.debug(f"[migrate_3_to_4] ent: {ent}")
             if "_telemetry_interface_" in ent.unique_id:
                 new_unique_id: str = ent.unique_id.replace(
                     "_telemetry_interface_", "_interface_"
@@ -371,6 +386,25 @@ async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
                 new_unique_id: str = ent.unique_id.replace(
                     "_telemetry_openvpn_", "_openvpn_"
                 )
+            elif "_telemetry_filesystems_" in ent.unique_id:
+                new_unique_id = None
+                for filesystem in telemetry.get("filesystems", []):
+                    device_name: str = (
+                        filesystem.get("device", "").replace("/", "_slash_").strip("_")
+                    ).lower()
+                    unique_id_device_name: str = (
+                        ent.unique_id.split("_telemetry_filesystems_")[1]
+                    ).lower()
+                    if device_name == unique_id_device_name:
+                        mpoint: str = filesystem.get("mountpoint", "")
+                        if mpoint == "/":
+                            mountpoint = "root"
+                        else:
+                            mountpoint = mpoint.replace("/", "_").strip("_")
+                        new_unique_id = ent.unique_id.replace(device_name, mountpoint)
+                        break
+                if not new_unique_id or ent.unique_id == new_unique_id:
+                    continue
             else:
                 continue
             _LOGGER.debug(

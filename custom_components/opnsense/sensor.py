@@ -81,22 +81,25 @@ async def _compile_filesystem_sensors(
     entities: list = []
 
     for filesystem in dict_get(state, "telemetry.filesystems", []):
-        device_clean: str = normalize_filesystem_device_name(filesystem["device"])
-        mountpoint_clean: str = normalize_filesystem_device_name(
-            filesystem["mountpoint"]
+        filesystem_slug: str = slugify_filesystem_mountpoint(
+            filesystem.get("mountpoint", None)
         )
+        if filesystem_slug == "root":
+            enabled_default = True
+        else:
+            enabled_default = False
         entity = OPNsenseFilesystemSensor(
             config_entry=config_entry,
             coordinator=coordinator,
             entity_description=SensorEntityDescription(
-                key=f"telemetry.filesystems.{device_clean}",
-                name=f"Filesystem Used Percentage {mountpoint_clean}",
+                key=f"telemetry.filesystems.{filesystem_slug}",
+                name=f"Filesystem Used Percentage {normalize_filesystem_mountpoint(filesystem.get('mountpoint', None))}",
                 native_unit_of_measurement=PERCENTAGE,
                 icon="mdi:harddisk",
                 state_class=SensorStateClass.MEASUREMENT,
                 # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
-            enabled_default=True,
+            enabled_default=enabled_default,
         )
         entities.append(entity)
 
@@ -455,8 +458,20 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-def normalize_filesystem_device_name(device_name):
-    return device_name.replace("/", "_slash_").strip("_")
+def slugify_filesystem_mountpoint(mountpoint) -> str:
+    if not mountpoint:
+        return ""
+    if mountpoint == "/":
+        return "root"
+    return mountpoint.replace("/", "_").strip("_")
+
+
+def normalize_filesystem_mountpoint(mountpoint) -> str:
+    if not mountpoint:
+        return ""
+    if mountpoint == "/":
+        return "root"
+    return mountpoint.rstrip("/")
 
 
 class OPNsenseSensor(OPNsenseEntity, SensorEntity):
@@ -534,23 +549,24 @@ class OPNsenseFilesystemSensor(OPNsenseSensor):
         if not isinstance(state, Mapping):
             return {}
         for fsystem in state.get("telemetry", {}).get("filesystems", []):
-            device_clean: str = normalize_filesystem_device_name(fsystem["device"])
-            if self.entity_description.key == f"telemetry.filesystems.{device_clean}":
+            if (
+                self.entity_description.key
+                == f"telemetry.filesystems.{slugify_filesystem_mountpoint(fsystem.get('mountpoint', None))}"
+            ):
                 filesystem = fsystem
         if not filesystem:
             self._available = False
             return
 
         try:
-            self._attr_native_value = filesystem["capacity"].strip("%")
+            self._attr_native_value = filesystem["used_pct"]
         except (TypeError, KeyError, AttributeError):
             self._available = False
             return
         self._available = True
 
         self._attr_extra_state_attributes = {}
-        # TODO: convert total_size to bytes?
-        for attr in ["device", "type", "size", "mountpoint", "used", "available"]:
+        for attr in ["mountpoint", "device", "type", "blocks", "used", "available"]:
             self._attr_extra_state_attributes[attr] = filesystem[attr]
         self.async_write_ha_state()
 
