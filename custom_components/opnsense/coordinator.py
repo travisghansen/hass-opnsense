@@ -151,7 +151,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             # Create repair task here
             return {}
 
-        # calcule pps and kbps
+        # calculate pps and kbps
         update_time = dict_get(self._state, "update_time")
         previous_update_time = dict_get(self._state, "previous_state.update_time")
 
@@ -182,32 +182,15 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                     # "inpktsblock",
                     # "outpktsblock",
                 ]:
-                    try:
-                        current_parent_value: float = interface[prop_name]
-                        previous_parent_value: float = previous_interface[prop_name]
-                        change: float = abs(
-                            current_parent_value - previous_parent_value
+                    if "pkts" in prop_name or "bytes" in prop_name:
+                        new_property, value = self._calculate_speed(
+                            prop_name=prop_name,
+                            elapsed_time=elapsed_time,
+                            current_parent_value=interface[prop_name],
+                            previous_parent_value=previous_interface[prop_name],
                         )
-                        rate: float = change / elapsed_time
-                    except (TypeError, KeyError, ZeroDivisionError):
-                        rate: float = 0
 
-                    value: float = 0
-                    if "pkts" in prop_name:
-                        label = "packets_per_second"
-                        value = rate
-                    elif "bytes" in prop_name:
-                        label = "kilobytes_per_second"
-                        # 1 Byte = 8 bits
-                        # 1 byte is equal to 0.001 kilobytes
-                        KBs: float = rate / 1000
-                        # Kbs = KBs * 8
-                        value = KBs
-                    else:
-                        continue
-
-                    new_property = f"{prop_name}_{label}"
-                    interface[new_property] = int(round(value, 0))
+                    interface[new_property] = value
 
             for server_name in dict_get(self._state, "openvpn.servers", {}):
 
@@ -232,34 +215,79 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                     "total_bytes_recv",
                     "total_bytes_sent",
                 ]:
-                    try:
-                        current_parent_value: float = server[prop_name]
-                        previous_parent_value: float = previous_server[prop_name]
-                        change: float = abs(
-                            current_parent_value - previous_parent_value
+                    if "pkts" in prop_name or "bytes" in prop_name:
+                        new_property, value = self._calculate_speed(
+                            prop_name=prop_name,
+                            elapsed_time=elapsed_time,
+                            current_parent_value=server[prop_name],
+                            previous_parent_value=previous_server[prop_name],
                         )
-                        rate: float = change / elapsed_time
-                    except (TypeError, KeyError, ZeroDivisionError):
-                        rate: float = 0
 
-                    value: float = 0
-                    if "pkts" in prop_name:
-                        label = "packets_per_second"
-                        value = rate
-                    elif "bytes" in prop_name:
-                        label = "kilobytes_per_second"
-                        # 1 Byte = 8 bits
-                        # 1 byte is equal to 0.001 kilobytes
-                        KBs: float = rate / 1000
-                        # Kbs = KBs * 8
-                        value = KBs
-                    else:
-                        continue
+                    server[new_property] = value
 
-                    new_property: str = f"{prop_name}_{label}"
-                    server[new_property] = round(value)
+            for server_name in dict_get(self._state, "wireguard.servers", {}):
+
+                if server_name not in dict_get(
+                    self._state, "previous_state.wireguard.servers", {}
+                ):
+                    continue
+
+                server: Mapping[str, Any] = (
+                    self._state.get("wireguard", {})
+                    .get("servers", {})
+                    .get(server_name, {})
+                )
+                previous_server: Mapping[str, Any] = (
+                    self._state.get("previous_state", {})
+                    .get("wireguard", {})
+                    .get("servers", {})
+                    .get(server_name, {})
+                )
+
+                for prop_name in [
+                    "total_bytes_recv",
+                    "total_bytes_sent",
+                ]:
+                    if "pkts" in prop_name or "bytes" in prop_name:
+                        new_property, value = self._calculate_speed(
+                            prop_name=prop_name,
+                            elapsed_time=elapsed_time,
+                            current_parent_value=server[prop_name],
+                            previous_parent_value=previous_server[prop_name],
+                        )
+
+                    server[new_property] = value
+
         restapi_count, xmlrpc_count = await self._client.get_query_counts()
         _LOGGER.debug(
             f"Update Complete. REST API Queries: {restapi_count}. XMLRPC Queries: {xmlrpc_count}"
         )
         return self._state
+
+    async def _calculate_speed(
+        self,
+        prop_name: str,
+        elapsed_time,
+        current_parent_value: float,
+        previous_parent_value: float,
+    ):
+        try:
+            change: float = abs(current_parent_value - previous_parent_value)
+            rate: float = change / elapsed_time
+        except (TypeError, KeyError, ZeroDivisionError):
+            rate: float = 0
+
+        value: float = 0
+        if "pkts" in prop_name:
+            label = "packets_per_second"
+            value = rate
+        elif "bytes" in prop_name:
+            label = "kilobytes_per_second"
+            # 1 Byte = 8 bits
+            # 1 byte is equal to 0.001 kilobytes
+            KBs: float = rate / 1000
+            # Kbs = KBs * 8
+            value = KBs
+        new_property: str = f"{prop_name}_{label}"
+        value = round(value)
+        return new_property, value
