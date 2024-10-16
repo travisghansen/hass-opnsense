@@ -1359,7 +1359,7 @@ $toreturn = [
             for connect in connection_info.get("rows", {}):
                 id = connect.get("id", None)
                 vpn_id = vpn.get("vpnid", None)
-                if id and ((isinstance(id, int) and id == vpn_id) or (isinstance(id, str) and id.startswith(vpn_id + "_"))):
+                if id and (id == vpn_id or (isinstance(id, str) and id.startswith(vpn_id + "_"))):
                     total_bytes_recv += self._try_to_int(
                         connect.get("bytes_received", 0), 0
                     )
