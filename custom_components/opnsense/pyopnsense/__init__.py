@@ -1326,10 +1326,6 @@ $toreturn = [
             return []
         # _LOGGER.debug(f"[get_telemetry_filesystems] filesystems_info: {filesystems_info}")
         filesystems: list = filesystems_info.get("devices", [])
-        # To conform to the previous data being returned
-        for filesystem in filesystems:
-            filesystem["size"] = filesystem.pop("blocks", None)
-            filesystem["capacity"] = f"{filesystem.pop('used_pct','')}%"
         # _LOGGER.debug(f"[get_telemetry_filesystems] filesystems: {filesystems}")
         return filesystems
 
@@ -1479,6 +1475,15 @@ $toreturn = [
             return {}
         if isinstance(telemetry.get("gateways", []), list):
             telemetry["gateways"] = {}
+        if isinstance(telemetry.get("filesystems", []), list):
+            for filesystem in telemetry.get("filesystems", []):
+                filesystem["blocks"] = filesystem.pop("size", None)
+                try:
+                    filesystem["used_pct"] = int(
+                        filesystem.pop("capacity", "").strip("%")
+                    )
+                except ValueError:
+                    filesystem.pop("capacity", None)
         # _LOGGER.debug(f"[get_telemetry_legacy] telemetry: {telemetry}")
         return telemetry
 
