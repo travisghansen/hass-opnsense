@@ -183,7 +183,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                     # "outpktsblock",
                 ]:
                     if "pkts" in prop_name or "bytes" in prop_name:
-                        new_property, value = self._calculate_speed(
+                        new_property, value = await self._calculate_speed(
                             prop_name=prop_name,
                             elapsed_time=elapsed_time,
                             current_parent_value=interface[prop_name],
@@ -216,7 +216,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                     "total_bytes_sent",
                 ]:
                     if "pkts" in prop_name or "bytes" in prop_name:
-                        new_property, value = self._calculate_speed(
+                        new_property, value = await self._calculate_speed(
                             prop_name=prop_name,
                             elapsed_time=elapsed_time,
                             current_parent_value=server[prop_name],
@@ -249,7 +249,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                     "total_bytes_sent",
                 ]:
                     if "pkts" in prop_name or "bytes" in prop_name:
-                        new_property, value = self._calculate_speed(
+                        new_property, value = await self._calculate_speed(
                             prop_name=prop_name,
                             elapsed_time=elapsed_time,
                             current_parent_value=server[prop_name],
@@ -259,6 +259,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                     server[new_property] = value
 
         restapi_count, xmlrpc_count = await self._client.get_query_counts()
+        _LOGGER.debug(f"[async_update_data] wireguard: {self._state.get('wireguard')}")
         _LOGGER.debug(
             f"Update Complete. REST API Queries: {restapi_count}. XMLRPC Queries: {xmlrpc_count}"
         )
@@ -270,7 +271,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         elapsed_time,
         current_parent_value: float,
         previous_parent_value: float,
-    ):
+    ) -> tuple[str, int]:
         try:
             change: float = abs(current_parent_value - previous_parent_value)
             rate: float = change / elapsed_time
