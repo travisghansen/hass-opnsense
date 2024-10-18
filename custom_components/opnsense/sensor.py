@@ -714,7 +714,6 @@ class OPNsenseOpenVPNServerSensor(OPNsenseSensor):
         if not server:
             self._available = False
             return
-        server: Mapping[str, Any] | None = self._opnsense_get_server()
         prop_name: str = self.entity_description.key.split(".")[3]
         try:
             self._attr_native_value = server[prop_name]

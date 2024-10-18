@@ -688,7 +688,7 @@ $toreturn = [
 
         # _LOGGER.debug(f"[get_dhcp_leases] leases_raw: {leases_raw}")
         leases: Mapping[str, Any] = {}
-        lease_interfaces: Mapping[str, Any] = {}
+        lease_interfaces: Mapping[str, Any] = await self._get_kea_interfaces()
         for lease in leases_raw:
             if (
                 not isinstance(lease, Mapping)
@@ -699,7 +699,7 @@ $toreturn = [
             if_name = lease.pop("if_name", None)
             if_descr = lease.pop("if_descr", None)
             if if_name not in leases:
-                lease_interfaces.update({if_name: if_descr})
+                lease_interfaces[if_name] = if_descr
                 leases[if_name] = []
             leases[if_name].append(lease)
 
@@ -718,6 +718,22 @@ $toreturn = [
         # _LOGGER.debug(f"[get_dhcp_leases] dhcp_leases: {dhcp_leases}")
 
         return dhcp_leases
+
+    async def _get_kea_interfaces(self) -> Mapping[str, Any]:
+        response: Mapping[str, Any] | list = await self._get("/api/kea/dhcpv4/get")
+        if not isinstance(response, Mapping):
+            return {}
+        lease_interfaces: Mapping[str, Any] = {}
+        general: Mapping[str, Any] = response.get("dhcpv4", {}).get("general", {})
+        if general.get("enabled", "0") != "1":
+            return {}
+        for if_name, iface in general.get("interfaces", {}).items():
+            if not isinstance(iface, Mapping):
+                continue
+            if iface.get("selected", 0) == 1 and iface.get("value", None):
+                lease_interfaces[if_name] = iface.get("value")
+        # _LOGGER.debug(f"[get_kea_interfaces] lease_interfaces: {lease_interfaces}")
+        return lease_interfaces
 
     async def _get_kea_dhcpv4_leases(self) -> list:
         response: Mapping[str, Any] | list = await self._get("/api/kea/leases4/search")
