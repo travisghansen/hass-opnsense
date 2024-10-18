@@ -1383,7 +1383,7 @@ $toreturn = [
             vpn["total_bytes_recv"] = total_bytes_recv
             vpn["total_bytes_sent"] = total_bytes_sent
             openvpn["servers"][vpnid] = vpn
-        # _LOGGER.debug(f"[get_openvpn] openvpn: {openvpn}")
+        _LOGGER.debug(f"[get_openvpn] openvpn: {openvpn}")
         return openvpn
 
     @_log_errors
@@ -1664,18 +1664,19 @@ $toreturn = [
             or not isinstance(server_summ, Mapping)
         ):
             return {}
-        servers = {}
-        clients = {}
+        servers: Mapping[str, Any] = {}
+        clients: Mapping[str, Any] = {}
 
         for uid, srv in server_summ.items():
             if not isinstance(srv, Mapping):
                 continue
-            server = {}
+            server: Mapping[str, Any] = {}
             for attr in ["name", "pubkey", "port", "endpoint", "peer_dns"]:
                 if srv.get(attr, None):
-                    server.update({attr: srv.get(attr)})
-            server.update({"enabled": bool(srv.get("enabled", "") == "1")})
-            server.update({"interface": f"wg{srv.get('instance','')}"})
+                    server[attr] = srv.get(attr)
+            server["vpnid"] = uid
+            server["enabled"] = bool(srv.get("enabled", "") == "1")
+            server["interface"] = f"wg{srv.get('instance','')}"
             server["tunnel_addresses"] = []
             for addr in srv.get("tunneladdress", {}).values():
                 if addr.get("selected", 0) == 1 and addr.get("value", None):
@@ -1691,10 +1692,11 @@ $toreturn = [
         for uid, clnt in client_summ.items():
             if not isinstance(clnt, Mapping):
                 continue
-            client = {}
+            client: Mapping[str, Any] = {}
             for attr in ["name", "pubkey"]:
                 if clnt.get(attr, None):
                     client[attr] = clnt.get(attr, None)
+            client["vpnid"] = uid
             client["enabled"] = bool(clnt.get("enabled", "0") == "1")
             client["tunnel_addresses"] = []
             for addr in clnt.get("tunneladdress", {}).values():

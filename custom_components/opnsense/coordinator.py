@@ -192,71 +192,49 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
 
                     interface[new_property] = value
 
-            for server_name in dict_get(self._state, "openvpn.servers", {}):
+            for vpn_type in ["openvpn", "wireguard"]:
+                cs: list[str] = ["servers"]
+                if vpn_type == "wireguard":
+                    cs = ["clients", "servers"]
+                for clients_servers in cs:
+                    for instance_name in dict_get(
+                        self._state, f"{vpn_type}.{clients_servers}", {}
+                    ):
 
-                if server_name not in dict_get(
-                    self._state, "previous_state.openvpn.servers", {}
-                ):
-                    continue
+                        if instance_name not in dict_get(
+                            self._state,
+                            f"previous_state.{vpn_type}.{clients_servers}",
+                            {},
+                        ):
+                            continue
 
-                server: Mapping[str, Any] = (
-                    self._state.get("openvpn", {})
-                    .get("servers", {})
-                    .get(server_name, {})
-                )
-                previous_server: Mapping[str, Any] = (
-                    self._state.get("previous_state", {})
-                    .get("openvpn", {})
-                    .get("servers", {})
-                    .get(server_name, {})
-                )
-
-                for prop_name in [
-                    "total_bytes_recv",
-                    "total_bytes_sent",
-                ]:
-                    if "pkts" in prop_name or "bytes" in prop_name:
-                        new_property, value = await self._calculate_speed(
-                            prop_name=prop_name,
-                            elapsed_time=elapsed_time,
-                            current_parent_value=server[prop_name],
-                            previous_parent_value=previous_server[prop_name],
+                        instance: Mapping[str, Any] = (
+                            self._state.get(vpn_type, {})
+                            .get(clients_servers, {})
+                            .get(instance_name, {})
+                        )
+                        previous_instance: Mapping[str, Any] = (
+                            self._state.get("previous_state", {})
+                            .get(vpn_type, {})
+                            .get(clients_servers, {})
+                            .get(instance_name, {})
                         )
 
-                    server[new_property] = value
+                        for prop_name in [
+                            "total_bytes_recv",
+                            "total_bytes_sent",
+                        ]:
+                            if "pkts" in prop_name or "bytes" in prop_name:
+                                new_property, value = await self._calculate_speed(
+                                    prop_name=prop_name,
+                                    elapsed_time=elapsed_time,
+                                    current_parent_value=instance.get(prop_name),
+                                    previous_parent_value=previous_instance.get(
+                                        prop_name
+                                    ),
+                                )
 
-            for server_name in dict_get(self._state, "wireguard.servers", {}):
-
-                if server_name not in dict_get(
-                    self._state, "previous_state.wireguard.servers", {}
-                ):
-                    continue
-
-                server: Mapping[str, Any] = (
-                    self._state.get("wireguard", {})
-                    .get("servers", {})
-                    .get(server_name, {})
-                )
-                previous_server: Mapping[str, Any] = (
-                    self._state.get("previous_state", {})
-                    .get("wireguard", {})
-                    .get("servers", {})
-                    .get(server_name, {})
-                )
-
-                for prop_name in [
-                    "total_bytes_recv",
-                    "total_bytes_sent",
-                ]:
-                    if "pkts" in prop_name or "bytes" in prop_name:
-                        new_property, value = await self._calculate_speed(
-                            prop_name=prop_name,
-                            elapsed_time=elapsed_time,
-                            current_parent_value=server[prop_name],
-                            previous_parent_value=previous_server[prop_name],
-                        )
-
-                    server[new_property] = value
+                            instance[new_property] = value
 
         restapi_count, xmlrpc_count = await self._client.get_query_counts()
         _LOGGER.debug(f"[async_update_data] wireguard: {self._state.get('wireguard')}")
