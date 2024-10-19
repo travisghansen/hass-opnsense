@@ -1426,7 +1426,12 @@ $toreturn = [
                 openvpn["servers"][id]["total_bytes_sent"] = self._try_to_int(
                     connect.get("bytes_sent", 0), 0
                 )
-        for vpnid, server in openvpn["servers"]:
+
+        for vpnid, server in openvpn["servers"].items():
+            if server.get("total_bytes_sent", None) is None:
+                server["total_bytes_sent"] = 0
+            if server.get("total_bytes_recv", None) is None:
+                server["total_bytes_recv"] = 0
             details_info: Mapping[str, Any] = await self._get(
                 f"/api/openvpn/instances/get/{vpnid}"
             )
@@ -1461,13 +1466,18 @@ $toreturn = [
             if isinstance(id, str) and "_" in id:
                 id = id.split("_")[0]
             if id and id in openvpn["clients"]:
-                openvpn["clientss"][id]["total_bytes_recv"] = self._try_to_int(
+                openvpn["clients"][id]["total_bytes_recv"] = self._try_to_int(
                     connect.get("bytes_received", 0), 0
                 )
-                openvpn["clientss"][id]["total_bytes_sent"] = self._try_to_int(
+                openvpn["clients"][id]["total_bytes_sent"] = self._try_to_int(
                     connect.get("bytes_sent", 0), 0
                 )
 
+        for vpnid, client in openvpn["clients"].items():
+            if client.get("total_bytes_sent", None) is None:
+                client["total_bytes_sent"] = 0
+            if client.get("total_bytes_recv", None) is None:
+                client["total_bytes_recv"] = 0
         _LOGGER.debug(f"[get_openvpn] openvpn: {openvpn}")
         return openvpn
 

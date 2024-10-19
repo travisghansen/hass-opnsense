@@ -383,26 +383,29 @@ async def _compile_vpn_sensors(
                 for prop_name in properties:
                     state_class = None
                     native_unit_of_measurement = None
+                    device_class = None
                     enabled_default = False
-                    if prop_name in ["status"]:
-                        enabled_default = True
+                    suggested_display_precision = None
+                    suggested_unit_of_measurement = None
 
-                    # state class
-                    if "_kilobytes_per_second" in prop_name:
-                        state_class = SensorStateClass.MEASUREMENT
-
-                    # native_unit_of_measurement
                     if "_kilobytes_per_second" in prop_name:
                         native_unit_of_measurement = UnitOfDataRate.KILOBYTES_PER_SECOND
+                        device_class = SensorDeviceClass.DATA_RATE
+                        state_class = SensorStateClass.MEASUREMENT
 
                     if native_unit_of_measurement is None and "bytes" in prop_name:
                         native_unit_of_measurement = UnitOfInformation.BYTES
+                        device_class = SensorDeviceClass.DATA_SIZE
+                        state_class = SensorStateClass.TOTAL_INCREASING
+                        suggested_display_precision = 1
+                        suggested_unit_of_measurement = UnitOfInformation.MEGABYTES
 
                     # icon
                     if "bytes" in prop_name:
                         icon = "mdi:server-network"
                     elif prop_name == "status":
-                        icon = "mdi:check-network-outline"
+                        icon = "mdi:check-network"
+                        enabled_default = True
                     else:
                         icon = "mdi:gauge"
 
@@ -413,11 +416,14 @@ async def _compile_vpn_sensors(
                             key=f"{vpn_type}.{clients_servers}.{vpnid}.{prop_name}",
                             name=f"{"OpenVPN" if vpn_type == "openvpn" else vpn_type.title()} {clients_servers.title().rstrip('s')} {instance['name']} {prop_name}",
                             native_unit_of_measurement=native_unit_of_measurement,
+                            device_class=device_class,
                             icon=icon,
                             state_class=state_class,
+                            suggested_display_precision=suggested_display_precision,
+                            suggested_unit_of_measurement=suggested_unit_of_measurement,
+                            entity_registry_enabled_default=enabled_default,
                             # entity_category=entity_category,
                         ),
-                        enabled_default=enabled_default,
                     )
                     entities.append(entity)
     return entities
@@ -724,29 +730,36 @@ class OPNsenseVPNSensor(OPNsenseSensor):
         clients_servers: str = self.entity_description.key.split(".")[1]
         state: Mapping[str, Any] = self.coordinator.data
         if not isinstance(state, Mapping):
-            return {}
-        vpnid: str = self.entity_description.key.split(".")[2]
-        server: Mapping[str, Any] = {}
-        for server_vpnid, srv in dict_get(
-            state, f"{vpn_type}.{clients_servers}", {}
-        ).items():
-            if vpnid == server_vpnid:
-                server = srv
-                break
-        if not server:
             self._available = False
             self.async_write_ha_state()
             return
+        vpnid: str = self.entity_description.key.split(".")[2]
+        instance: Mapping[str, Any] = {}
+        for instance_vpnid, ins in dict_get(
+            state, f"{vpn_type}.{clients_servers}", {}
+        ).items():
+            if vpnid == instance_vpnid:
+                instance = ins
+                break
         prop_name: str = self._get_property_name()
+        if not instance or (
+            prop_name != "status"
+            and instance.get("enabled", None) is not None
+            and not instance.get("enabled")
+        ):
+            self._available = False
+            self.async_write_ha_state()
+            return
+
         try:
             if (
                 prop_name == "status"
-                and not server.get(prop_name, None)
-                and not server.get("enabled", False)
+                and not instance.get(prop_name, None)
+                and not instance.get("enabled", True)
             ):
                 self._attr_native_value = "disabled"
             else:
-                self._attr_native_value = server.get(prop_name)
+                self._attr_native_value = instance.get(prop_name)
         except (TypeError, KeyError, ZeroDivisionError):
             self._available = False
             self.async_write_ha_state()
@@ -787,8 +800,8 @@ class OPNsenseVPNSensor(OPNsenseSensor):
         else:
             properties: list = ["vpnid", "name"]
         for attr in properties:
-            if server.get(attr, None):
-                self._attr_extra_state_attributes[attr] = server.get(attr)
+            if instance.get(attr, None):
+                self._attr_extra_state_attributes[attr] = instance.get(attr)
         self.async_write_ha_state()
 
     @property

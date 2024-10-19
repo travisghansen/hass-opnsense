@@ -192,15 +192,13 @@ async def _compile_vpn_switches(
     for vpn_type in ["openvpn", "wireguard"]:
         for clients_servers in ["clients", "servers"]:
             for vpnid, instance in (
-                state.get(vpn_type, {}).get(clients_servers, {}).items()
-            ):
+                state.get(vpn_type, {}).get(clients_servers, {}) or {}
+            ).items():
                 if (
                     not isinstance(instance, Mapping)
                     or instance.get("enabled", None) is None
                 ):
                     continue
-
-                icon = "mdi:application-cog-outline"
 
                 entity = OPNsenseVPNSwitch(
                     config_entry=config_entry,
@@ -208,7 +206,7 @@ async def _compile_vpn_switches(
                     entity_description=SwitchEntityDescription(
                         key=f"{vpn_type}.{clients_servers}.{vpnid}",
                         name=f"{"OpenVPN" if vpn_type == "openvpn" else vpn_type.title()} {clients_servers.title().rstrip('s')} {instance['name']}",
-                        icon=icon,
+                        icon="mdi:folder-key-network-outline",
                         # entity_category=ENTITY_CATEGORY_CONFIG,
                         device_class=SwitchDeviceClass.SWITCH,
                         entity_registry_enabled_default=False,
@@ -605,19 +603,22 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
         state: Mapping[str, Any] = self.coordinator.data
         if not isinstance(state, Mapping):
             self._available = False
+            self.async_write_ha_state()
             return
-        instance = (
+        instance: Mapping[str, Any] = (
             state.get(self._vpn_type, {})
             .get(self._clients_servers, {})
             .get(self._vpnid, {})
         )
         if not isinstance(instance, Mapping):
             self._available = False
+            self.async_write_ha_state()
             return
         try:
             self._attr_is_on = instance["enabled"]
         except (TypeError, KeyError, AttributeError):
             self._available = False
+            self.async_write_ha_state()
             return
         self._available = True
         self._attr_extra_state_attributes = {}
@@ -648,9 +649,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
             if instance.get(attr, None):
                 self._attr_extra_state_attributes[attr] = instance.get(attr)
         self.async_write_ha_state()
-        _LOGGER.debug(
-            f"[OPNsenseVPNSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}"
-        )
+        # _LOGGER.debug(f"[OPNsenseVPNSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the entity on."""
@@ -675,3 +674,9 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
         )
         if result:
             await self.coordinator.async_refresh()
+
+    @property
+    def icon(self) -> str:
+        if self.available and self.is_on:
+            return "mdi:folder-key-network"
+        return super().icon
