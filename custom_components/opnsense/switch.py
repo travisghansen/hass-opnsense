@@ -181,6 +181,43 @@ async def _compile_service_switches(
     return entities
 
 
+async def _compile_vpn_switches(
+    config_entry: ConfigEntry,
+    coordinator: OPNsenseDataUpdateCoordinator,
+    state: Mapping[str, Any],
+) -> list:
+    if not isinstance(state, Mapping):
+        return []
+    entities: list = []
+    for vpn_type in ["openvpn", "wireguard"]:
+        for clients_servers in ["clients", "servers"]:
+            for vpnid, instance in (
+                state.get(vpn_type, {}).get(clients_servers, {}).items()
+            ):
+                if (
+                    not isinstance(instance, Mapping)
+                    or instance.get("enabled", None) is None
+                ):
+                    continue
+
+                icon = "mdi:application-cog-outline"
+
+                entity = OPNsenseVPNSwitch(
+                    config_entry=config_entry,
+                    coordinator=coordinator,
+                    entity_description=SwitchEntityDescription(
+                        key=f"{vpn_type}.{clients_servers}.{vpnid}",
+                        name=f"{"OpenVPN" if vpn_type == "openvpn" else vpn_type.title()} {clients_servers.title().rstrip('s')} {instance['name']}",
+                        icon=icon,
+                        # entity_category=ENTITY_CATEGORY_CONFIG,
+                        device_class=SwitchDeviceClass.SWITCH,
+                        entity_registry_enabled_default=False,
+                    ),
+                )
+                entities.append(entity)
+    return entities
+
+
 async def _compile_static_switches(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
@@ -224,6 +261,7 @@ async def async_setup_entry(
         _compile_port_forward_switches(config_entry, coordinator, state),
         _compile_nat_outbound_switches(config_entry, coordinator, state),
         _compile_service_switches(config_entry, coordinator, state),
+        _compile_vpn_switches(config_entry, coordinator, state),
         _compile_static_switches(config_entry, coordinator, state),
         return_exceptions=True,
     )
@@ -540,5 +578,100 @@ class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the entity off."""
         result: bool = await self._client.disable_unbound_blocklist()
+        if result:
+            await self.coordinator.async_refresh()
+
+
+class OPNsenseVPNSwitch(OPNsenseSwitch):
+
+    def __init__(
+        self,
+        config_entry: ConfigEntry,
+        coordinator: OPNsenseDataUpdateCoordinator,
+        entity_description: SwitchEntityDescription,
+    ) -> None:
+        super().__init__(
+            config_entry=config_entry,
+            coordinator=coordinator,
+            entity_description=entity_description,
+        )
+        self._vpn_type = self.entity_description.key.split(".")[0]
+        self._clients_servers = self.entity_description.key.split(".")[1]
+        self._vpnid = self.entity_description.key.split(".")[2]
+        # _LOGGER.debug(f"[OPNsenseVPNSwitch init] Name: {self.name}")
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        state: Mapping[str, Any] = self.coordinator.data
+        if not isinstance(state, Mapping):
+            self._available = False
+            return
+        instance = (
+            state.get(self._vpn_type, {})
+            .get(self._clients_servers, {})
+            .get(self._vpnid, {})
+        )
+        if not isinstance(instance, Mapping):
+            self._available = False
+            return
+        try:
+            self._attr_is_on = instance["enabled"]
+        except (TypeError, KeyError, AttributeError):
+            self._available = False
+            return
+        self._available = True
+        self._attr_extra_state_attributes = {}
+        if self._vpn_type == "wireguard" and self._clients_servers == "servers":
+            properties: list = [
+                "vpnid",
+                "name",
+                "endpoint",
+                "interface",
+                "pubkey",
+                "tunnel_addresses",
+                "dns_servers",
+                "clients",
+            ]
+        elif self._vpn_type == "openvpn" and self._clients_servers == "servers":
+            properties: list = [
+                "vpnid",
+                "name",
+                "endpoint",
+                "dev_type",
+                "tunnel_addresses",
+                "dns_servers",
+            ]
+        else:
+            properties: list = ["vpnid", "name"]
+
+        for attr in properties:
+            if instance.get(attr, None):
+                self._attr_extra_state_attributes[attr] = instance.get(attr)
+        self.async_write_ha_state()
+        _LOGGER.debug(
+            f"[OPNsenseVPNSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}"
+        )
+
+    async def async_turn_on(self, **kwargs) -> None:
+        """Turn the entity on."""
+
+        if self.is_on:
+            return
+
+        result: bool = await self._client.toggle_vpn_instance(
+            self._vpn_type, self._clients_servers, self._vpnid
+        )
+        if result:
+            await self.coordinator.async_refresh()
+
+    async def async_turn_off(self, **kwargs) -> None:
+        """Turn the entity off."""
+
+        if not self.is_on:
+            return
+
+        result: bool = await self._client.toggle_vpn_instance(
+            self._vpn_type, self._clients_servers, self._vpnid
+        )
         if result:
             await self.coordinator.async_refresh()

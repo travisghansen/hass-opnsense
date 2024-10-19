@@ -1876,3 +1876,35 @@ $toreturn = [
         _LOGGER.debug(f"[get_wireguard] servers: {servers}")
         _LOGGER.debug(f"[get_wireguard] clients: {clients}")
         return {"servers": servers, "clients": clients}
+
+    async def toggle_vpn_instance(
+        self, vpn_type: str, clients_servers: str, vpnid: str
+    ) -> bool:
+        if vpn_type == "openvpn":
+            success: Mapping[str, Any] | list = await self._post(
+                f"/api/openvpn/instances/toggle/{vpnid}"
+            )
+            if not isinstance(success, Mapping) or not success.get("changed", False):
+                return False
+            reconfigure: Mapping[str, Any] | list = await self._post(
+                "/api/openvpn/service/reconfigure"
+            )
+            if isinstance(reconfigure, Mapping):
+                return reconfigure.get("result", "") == "ok"
+        elif vpn_type == "wireguard":
+            if clients_servers == "clients":
+                success: Mapping[str, Any] | list = await self._post(
+                    f"/api/wireguard/client/toggleClient/{vpnid}"
+                )
+            elif clients_servers == "servers":
+                success: Mapping[str, Any] | list = await self._post(
+                    f"/api/wireguard/server/toggleServer/{vpnid}"
+                )
+            if not isinstance(success, Mapping) or not success.get("changed", False):
+                return False
+            reconfigure: Mapping[str, Any] | list = await self._post(
+                "/api/wireguard/service/reconfigure"
+            )
+            if isinstance(reconfigure, Mapping):
+                return reconfigure.get("result", "") == "ok"
+        return False
