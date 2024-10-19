@@ -91,6 +91,7 @@ class OPNsenseCarpStatusBinarySensor(OPNsenseBinarySensor):
             self._attr_is_on = state["carp_status"]
         except (TypeError, KeyError, ZeroDivisionError):
             self._available = False
+            self.async_write_ha_state()
             return
         self._available = True
 
@@ -103,6 +104,7 @@ class OPNsensePendingNoticesPresentBinarySensor(OPNsenseBinarySensor):
             self._attr_is_on = state["notices"]["pending_notices_present"]
         except (TypeError, KeyError, ZeroDivisionError):
             self._available = False
+            self.async_write_ha_state()
             return
         self._available = True
         self._attr_extra_state_attributes = {}

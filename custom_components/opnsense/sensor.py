@@ -504,6 +504,7 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
         value = self._get_opnsense_state_value(self.entity_description.key)
         if value is None:
             self._available = False
+            self.async_write_ha_state()
             return
 
         if (
@@ -512,6 +513,7 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
             and self.entity_description.key in ("telemetry.cpu.usage_total",)
         ):
             self._available = False
+            self.async_write_ha_state()
             return
 
         if self.entity_description.key == "telemetry.system.boottime":
@@ -523,6 +525,7 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
 
             if value == 0:
                 self._available = False
+                self.async_write_ha_state()
                 return
 
         self._available = True
@@ -556,12 +559,14 @@ class OPNsenseFilesystemSensor(OPNsenseSensor):
                 filesystem = fsystem
         if not filesystem:
             self._available = False
+            self.async_write_ha_state()
             return
 
         try:
             self._attr_native_value = filesystem["used_pct"]
         except (TypeError, KeyError, AttributeError):
             self._available = False
+            self.async_write_ha_state()
             return
         self._available = True
 
@@ -587,12 +592,14 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
                 interface = iface
         if not interface:
             self._available = False
+            self.async_write_ha_state()
             return
         prop_name: str = self._opnsense_get_interface_property_name()
         try:
             self._attr_native_value = interface[prop_name]
         except (TypeError, KeyError, ZeroDivisionError):
             self._available = False
+            self.async_write_ha_state()
             return
         self._available = True
         self._attr_extra_state_attributes = {}
@@ -622,12 +629,14 @@ class OPNsenseCarpInterfaceSensor(OPNsenseSensor):
                 carp_interface = i_interface
         if not carp_interface:
             self._available = False
+            self.async_write_ha_state()
             return
 
         try:
             self._attr_native_value = carp_interface["status"]
         except (TypeError, KeyError, ZeroDivisionError):
             self._available = False
+            self.async_write_ha_state()
             return
         self._available = True
         self._attr_extra_state_attributes = {}
@@ -661,6 +670,7 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
         state: Mapping[str, Any] = self.coordinator.data
         if not isinstance(state, Mapping):
             self._available = False
+            self.async_write_ha_state()
             return
         gateway: Mapping[str, Any] = {}
         gateway_name: str = self.entity_description.key.split(".")[1]
@@ -669,6 +679,7 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
                 gateway = gway
         if not gateway:
             self._available = False
+            self.async_write_ha_state()
             return
         prop_name: str = self._opnsense_get_gateway_property_name()
         try:
@@ -681,11 +692,13 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
 
             if isinstance(value, str) and len(value) < 1:
                 self._available = False
+                self.async_write_ha_state()
                 return
 
             self._attr_native_value = value
         except (TypeError, KeyError, ZeroDivisionError):
             self._available = False
+            self.async_write_ha_state()
             return
         self._available = True
         self._attr_extra_state_attributes = {}
@@ -713,6 +726,7 @@ class OPNsenseOpenVPNServerSensor(OPNsenseSensor):
                 server = srv
         if not server:
             self._available = False
+            self.async_write_ha_state()
             return
         server: Mapping[str, Any] | None = self._opnsense_get_server()
         prop_name: str = self.entity_description.key.split(".")[3]
@@ -720,6 +734,7 @@ class OPNsenseOpenVPNServerSensor(OPNsenseSensor):
             self._attr_native_value = server[prop_name]
         except (TypeError, KeyError, ZeroDivisionError):
             self._available = False
+            self.async_write_ha_state()
             return
         self._available = True
 
@@ -750,6 +765,7 @@ class OPNsenseTempSensor(OPNsenseSensor):
             self._attr_native_value = temp["temperature"]
         except (TypeError, KeyError, ZeroDivisionError):
             self._available = False
+            self.async_write_ha_state()
             return
         self._available = True
 
@@ -778,6 +794,7 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
                 lease_interfaces, Mapping
             ):
                 self._available = False
+                self.async_write_ha_state()
                 return
             self._available = True
             total_lease_count: int = 0
@@ -796,6 +813,7 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
                     )
             except (TypeError, KeyError, ZeroDivisionError):
                 self._available = False
+                self.async_write_ha_state()
                 return
             sorted_lease_counts: Mapping[str, Any] = {
                 key: lease_counts[key] for key in sorted(lease_counts)
@@ -807,6 +825,7 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
             interface = state.get("dhcp_leases", {}).get("leases", {}).get(if_name, [])
             if not isinstance(interface, list):
                 self._available = False
+                self.async_write_ha_state()
                 return
             try:
                 self._attr_native_value = sum(
@@ -814,6 +833,7 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
                 )
             except (TypeError, KeyError, ZeroDivisionError):
                 self._available = False
+                self.async_write_ha_state()
                 return
             self._available = True
             self._attr_extra_state_attributes = {"Leases": interface}

@@ -89,9 +89,11 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
         try:
             if state["firmware_update_info"]["status"] == "error":
                 self._available = False
+                self.async_write_ha_state()
                 return
         except (TypeError, KeyError, AttributeError):
             self._available = False
+            self.async_write_ha_state()
             return
         self._available = True
 

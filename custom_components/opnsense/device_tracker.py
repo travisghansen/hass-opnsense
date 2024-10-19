@@ -185,6 +185,7 @@ class OPNsenseScannerEntity(OPNsenseEntity, ScannerEntity, RestoreEntity):
         arp_table = dict_get(state, "arp_table")
         if not isinstance(arp_table, list) or not isinstance(state, Mapping):
             self._available = False
+            self.async_write_ha_state()
             return
         self._available = True
         entry: Mapping[str:Any] | None = None

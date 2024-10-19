@@ -316,6 +316,7 @@ class OPNsenseFilterSwitch(OPNsenseSwitch):
             self._attr_is_on = bool(self._rule.get("disabled", "0") != "1")
         except (TypeError, KeyError, AttributeError):
             self._available = False
+            self.async_write_ha_state()
             return
         self._available = True
         self.async_write_ha_state()
@@ -391,6 +392,7 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
             self._attr_is_on = "disabled" not in self._rule
         except (TypeError, KeyError, AttributeError):
             self._available = False
+            self.async_write_ha_state()
             return
         self._available = True
         self.async_write_ha_state()
@@ -465,6 +467,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
             self._attr_is_on = self._service[self._prop_name]
         except (TypeError, KeyError, AttributeError):
             self._available = False
+            self.async_write_ha_state()
             return
         self._available = True
         self._attr_extra_state_attributes = {}
@@ -508,6 +511,7 @@ class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
         dnsbl = self.coordinator.data.get(ATTR_UNBOUND_BLOCKLIST, {})
         if not isinstance(dnsbl, Mapping) or len(dnsbl) == 0:
             self._available = False
+            self.async_write_ha_state()
             return
         self._available = True
         self._attr_is_on = dnsbl.get("enabled", "0") == "1"
