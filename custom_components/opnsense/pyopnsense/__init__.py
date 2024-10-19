@@ -1355,6 +1355,7 @@ $toreturn = [
             return {}
         openvpn: Mapping[str, Any] = {}
         openvpn["servers"] = {}
+        openvpn["clients"] = {}
         connection_info: Mapping[str, Any] = await self._get(
             "/api/openvpn/service/searchSessions"
         )
@@ -1380,8 +1381,6 @@ $toreturn = [
                     f"{vpn_info.get('hostname')}:{vpn_info.get('local_port')}"
                 )
             vpn["status"] = "down"
-            total_bytes_recv = 0
-            total_bytes_sent = 0
             for connect in connection_info.get("rows", []):
                 id = connect.get("id", None)
                 vpn_id = vpn.get("vpnid", None)
@@ -1391,12 +1390,13 @@ $toreturn = [
                 ):
                     vpn["name"] = connect.get("description", vpn.get("name"))
                     vpn["status"] = connect.get("status", "down")
-                    total_bytes_recv += self._try_to_int(
+                    vpn["total_bytes_recv"] = self._try_to_int(
                         connect.get("bytes_received", 0), 0
                     )
-                    total_bytes_sent += self._try_to_int(
+                    vpn["total_bytes_sent"] = self._try_to_int(
                         connect.get("bytes_sent", 0), 0
                     )
+                    break
             if vpn["status"] == "ok":
                 vpn["status"] = "up"
             for instance in instances:
@@ -1418,9 +1418,24 @@ $toreturn = [
                 for dns in details.get("dns_servers", {}).values():
                     if dns.get("selected", 0) == 1 and dns.get("value", None):
                         vpn["dns_servers"].append(dns.get("value"))
-            vpn["total_bytes_recv"] = total_bytes_recv
-            vpn["total_bytes_sent"] = total_bytes_sent
             openvpn["servers"][vpnid] = vpn
+        for instance in instances:
+            if instance.get("role", "").lower() != "client":
+                continue
+            client: Mapping[str, Any] = {}
+            client["name"] = instance.get("description", None)
+            client["vpnid"] = instance.get("uuid", None)
+            client["enabled"] = instance.get("enabled", "0") == "1"
+            for connect in connection_info.get("rows", []):
+                if connect.get("id", "") == client.get("vpnid", "-"):
+                    client["total_bytes_recv"] = self._try_to_int(
+                        connect.get("bytes_received", 0), 0
+                    )
+                    client["total_bytes_sent"] = self._try_to_int(
+                        connect.get("bytes_sent", 0), 0
+                    )
+                    break
+            openvpn["clients"][client["vpnid"]] = client
         _LOGGER.debug(f"[get_openvpn] openvpn: {openvpn}")
         return openvpn
 

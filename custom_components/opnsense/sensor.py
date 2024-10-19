@@ -366,10 +366,7 @@ async def _compile_vpn_sensors(
     entities: list = []
 
     for vpn_type in ["openvpn", "wireguard"]:
-        cs: list[str] = ["servers"]
-        if vpn_type == "wireguard":
-            cs = ["clients", "servers"]
-        for clients_servers in cs:
+        for clients_servers in ["clients", "servers"]:
             for vpnid, instance in dict_get(
                 state, f"{vpn_type}.{clients_servers}", {}
             ).items():

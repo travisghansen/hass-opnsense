@@ -193,10 +193,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                     interface[new_property] = value
 
             for vpn_type in ["openvpn", "wireguard"]:
-                cs: list[str] = ["servers"]
-                if vpn_type == "wireguard":
-                    cs = ["clients", "servers"]
-                for clients_servers in cs:
+                for clients_servers in ["clients", "servers"]:
                     for instance_name in dict_get(
                         self._state, f"{vpn_type}.{clients_servers}", {}
                     ):
