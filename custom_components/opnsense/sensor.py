@@ -381,7 +381,7 @@ async def _compile_vpn_sensors(
                     "total_bytes_recv_kilobytes_per_second",
                     "total_bytes_sent_kilobytes_per_second",
                 ]
-                if vpn_type == "wireguard" and clients_servers == "servers":
+                if clients_servers == "servers":
                     properties.append("status")
                 for prop_name in properties:
                     state_class = None
@@ -770,12 +770,28 @@ class OPNsenseVPNSensor(OPNsenseSensor):
                 "interface",
                 "pubkey",
                 "tunnel_addresses",
+                "dns_servers",
                 "clients",
+            ]
+        elif (
+            vpn_type == "openvpn"
+            and clients_servers == "servers"
+            and prop_name == "status"
+        ):
+            properties: list = [
+                "vpnid",
+                "name",
+                "enabled",
+                "endpoint",
+                "dev_type",
+                "tunnel_addresses",
+                "dns_servers",
             ]
         else:
             properties: list = ["vpnid", "name"]
         for attr in properties:
-            self._attr_extra_state_attributes[attr] = server.get(attr)
+            if server.get(attr, None):
+                self._attr_extra_state_attributes[attr] = server.get(attr)
         self.async_write_ha_state()
 
     @property

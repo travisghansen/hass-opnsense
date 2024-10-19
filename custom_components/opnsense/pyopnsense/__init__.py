@@ -1347,7 +1347,7 @@ $toreturn = [
 
     @_log_errors
     async def get_openvpn(self) -> Mapping[str, Any]:
-        openvpn_info: Mapping[str, Any] | list = await self._post(
+        openvpn_info: Mapping[str, Any] | list = await self._get(
             "/api/openvpn/export/providers"
         )
         # _LOGGER.debug(f"[get_openvpn] openvpn_info: {openvpn_info}")
@@ -1355,31 +1355,69 @@ $toreturn = [
             return {}
         openvpn: Mapping[str, Any] = {}
         openvpn["servers"] = {}
-        connection_info: Mapping[str, Any] = await self._post(
+        connection_info: Mapping[str, Any] = await self._get(
             "/api/openvpn/service/searchSessions"
         )
         # _LOGGER.debug(f"[get_openvpn] connection_info: {connection_info}")
-        if connection_info is None or not isinstance(connection_info, Mapping):
+        if not isinstance(connection_info, Mapping):
             return {}
+        instances_info: Mapping[str, Any] = await self._get(
+            "/api/openvpn/instances/search"
+        )
+        # _LOGGER.debug(f"[get_openvpn] instances_info: {instances_info}")
+        instances: list = []
+        if isinstance(instances_info, Mapping) and isinstance(
+            instances_info.get("rows", None), list
+        ):
+            instances = instances_info.get("rows", [])
+
         for vpnid, vpn_info in openvpn_info.items():
             vpn: Mapping[str, Any] = {}
             vpn["vpnid"] = vpn_info.get("vpnid", "")
             vpn["name"] = vpn_info.get("name", "")
+            if vpn_info.get("hostname", None) and vpn_info.get("local_port", None):
+                vpn["endpoint"] = (
+                    f"{vpn_info.get('hostname')}:{vpn_info.get('local_port')}"
+                )
+            vpn["status"] = "down"
             total_bytes_recv = 0
             total_bytes_sent = 0
-            for connect in connection_info.get("rows", {}):
+            for connect in connection_info.get("rows", []):
                 id = connect.get("id", None)
                 vpn_id = vpn.get("vpnid", None)
                 if id and (
                     id == vpn_id
                     or (isinstance(id, str) and id.startswith(vpn_id + "_"))
                 ):
+                    vpn["name"] = connect.get("description", vpn.get("name"))
+                    vpn["status"] = connect.get("status", "down")
                     total_bytes_recv += self._try_to_int(
                         connect.get("bytes_received", 0), 0
                     )
                     total_bytes_sent += self._try_to_int(
                         connect.get("bytes_sent", 0), 0
                     )
+            if vpn["status"] == "ok":
+                vpn["status"] = "up"
+            for instance in instances:
+                if vpn.get("vpnid", "") == instance.get("uuid", "-"):
+                    if instance.get("dev_type", None):
+                        vpn["dev_type"] = instance.get("dev_type", None)
+                    if instance.get("enabled", None):
+                        vpn["enabled"] = bool(instance.get("enabled", "0") == "1")
+            details_info: Mapping[str, Any] = await self._get(
+                f"/api/openvpn/instances/get/{vpnid}"
+            )
+            if isinstance(details_info, Mapping) and isinstance(
+                details_info.get("instance", None), Mapping
+            ):
+                details: Mapping[str, Any] = details_info.get("instance")
+                if details.get("server", None):
+                    vpn["tunnel_addresses"] = [details.get("server")]
+                vpn["dns_servers"] = []
+                for dns in details.get("dns_servers", {}).values():
+                    if dns.get("selected", 0) == 1 and dns.get("value", None):
+                        vpn["dns_servers"].append(dns.get("value"))
             vpn["total_bytes_recv"] = total_bytes_recv
             vpn["total_bytes_sent"] = total_bytes_sent
             openvpn["servers"][vpnid] = vpn
@@ -1671,9 +1709,12 @@ $toreturn = [
             if not isinstance(srv, Mapping):
                 continue
             server: Mapping[str, Any] = {}
-            for attr in ["name", "pubkey", "port", "endpoint", "peer_dns"]:
+            for attr in ["name", "pubkey", "endpoint", "peer_dns"]:
                 if srv.get(attr, None):
-                    server[attr] = srv.get(attr)
+                    if attr == "peer_dns":
+                        server["dns_servers"] = [srv.get(attr)]
+                    else:
+                        server[attr] = srv.get(attr)
             server["vpnid"] = uid
             server["enabled"] = bool(srv.get("enabled", "") == "1")
             server["interface"] = f"wg{srv.get('instance','')}"
