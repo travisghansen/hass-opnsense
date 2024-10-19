@@ -728,7 +728,6 @@ class OPNsenseOpenVPNServerSensor(OPNsenseSensor):
             self._available = False
             self.async_write_ha_state()
             return
-        server: Mapping[str, Any] | None = self._opnsense_get_server()
         prop_name: str = self.entity_description.key.split(".")[3]
         try:
             self._attr_native_value = server[prop_name]

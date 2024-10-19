@@ -44,11 +44,6 @@ async def _compile_filter_switches(
             for rule in rules:
                 if not isinstance(rule, dict):
                     continue
-                icon = "mdi:security-network"
-                # likely only want very specific rules to manipulate from actions
-                enabled_default = False
-                # entity_category = ENTITY_CATEGORY_CONFIG
-                device_class = SwitchDeviceClass.SWITCH
 
                 # do NOT add rules that are NAT rules
                 if "associated-rule-id" in rule:
@@ -69,10 +64,10 @@ async def _compile_filter_switches(
                     entity_description=SwitchEntityDescription(
                         key=f"filter.{tracker}",
                         name=f"Filter Rule {tracker} ({rule.get('descr', '')})",
-                        icon=icon,
+                        icon="mdi:play-network-outline",
                         # entity_category=entity_category,
-                        device_class=device_class,
-                        entity_registry_enabled_default=enabled_default,
+                        device_class=SwitchDeviceClass.SWITCH,
+                        entity_registry_enabled_default=False,
                     ),
                 )
                 entities.append(entity)
@@ -94,11 +89,7 @@ async def _compile_port_forward_switches(
             for rule in rules:
                 if not isinstance(rule, dict):
                     continue
-                icon = "mdi:network"
-                # likely only want very specific rules to manipulate from actions
-                enabled_default = False
-                # entity_category = ENTITY_CATEGORY_CONFIG
-                device_class = SwitchDeviceClass.SWITCH
+
                 tracker = dict_get(rule, "created.time")
                 # we use tracker as the unique id
                 if tracker is None or len(tracker) < 1:
@@ -110,10 +101,10 @@ async def _compile_port_forward_switches(
                     entity_description=SwitchEntityDescription(
                         key=f"nat_port_forward.{tracker}".format(tracker),
                         name=f"NAT Port Forward Rule {tracker} ({rule.get('descr','')})",
-                        icon=icon,
-                        # entity_category=entity_category,
-                        device_class=device_class,
-                        entity_registry_enabled_default=enabled_default,
+                        icon="mdi:network-outline",
+                        # entity_category=ENTITY_CATEGORY_CONFIG,
+                        device_class=SwitchDeviceClass.SWITCH,
+                        entity_registry_enabled_default=False,
                     ),
                 )
                 entities.append(entity)
@@ -136,11 +127,7 @@ async def _compile_nat_outbound_switches(
             for rule in rules:
                 if not isinstance(rule, dict):
                     continue
-                icon = "mdi:network"
-                # likely only want very specific rules to manipulate from actions
-                enabled_default = False
-                # entity_category = ENTITY_CATEGORY_CONFIG
-                device_class = SwitchDeviceClass.SWITCH
+
                 tracker = dict_get(rule, "created.time")
                 # we use tracker as the unique id
                 if tracker is None or len(tracker) < 1:
@@ -155,10 +142,10 @@ async def _compile_nat_outbound_switches(
                     entity_description=SwitchEntityDescription(
                         key=f"nat_outbound.{tracker}",
                         name=f"NAT Outbound Rule {tracker} ({rule.get('descr','')})",
-                        icon=icon,
-                        # entity_category=entity_category,
-                        device_class=device_class,
-                        entity_registry_enabled_default=enabled_default,
+                        icon="mdi:network-outline",
+                        # entity_category=ENTITY_CATEGORY_CONFIG,
+                        device_class=SwitchDeviceClass.SWITCH,
+                        entity_registry_enabled_default=False,
                     ),
                 )
                 entities.append(entity)
@@ -178,22 +165,16 @@ async def _compile_service_switches(
         if service.get("locked", 1) == 1:
             continue
         for prop_name in ["status"]:
-            icon = "mdi:application-cog-outline"
-            # likely only want very specific services to manipulate from actions
-            enabled_default = False
-            # entity_category = ENTITY_CATEGORY_CONFIG
-            device_class = SwitchDeviceClass.SWITCH
-
             entity = OPNsenseServiceSwitch(
                 config_entry=config_entry,
                 coordinator=coordinator,
                 entity_description=SwitchEntityDescription(
                     key=f"service.{service.get('id', service.get('name', 'unknown'))}.{prop_name}",
                     name=f"Service {service.get('description', service.get('name', 'Unknown'))} {prop_name}",
-                    icon=icon,
-                    # entity_category=entity_category,
-                    device_class=device_class,
-                    entity_registry_enabled_default=enabled_default,
+                    icon="mdi:application-cog-outline",
+                    # entity_category=ENTITY_CATEGORY_CONFIG,
+                    device_class=SwitchDeviceClass.SWITCH,
+                    entity_registry_enabled_default=False,
                 ),
             )
             entities.append(entity)
@@ -338,6 +319,12 @@ class OPNsenseFilterSwitch(OPNsenseSwitch):
         await self._client.disable_filter_rule_by_created_time(self._tracker)
         await self.coordinator.async_refresh()
 
+    @property
+    def icon(self) -> str:
+        if self.available and self.is_on:
+            return "mdi:play-network"
+        return super().icon
+
 
 class OPNsenseNatSwitch(OPNsenseSwitch):
 
@@ -426,6 +413,12 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
         await method(self._tracker)
         await self.coordinator.async_refresh()
 
+    @property
+    def icon(self) -> str:
+        if self.available and self.is_on:
+            return "mdi:network"
+        return super().icon
+
 
 class OPNsenseServiceSwitch(OPNsenseSwitch):
 
@@ -501,6 +494,12 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         )
         if result:
             await self.coordinator.async_refresh()
+
+    @property
+    def icon(self) -> str:
+        if self.available and self.is_on:
+            return "mdi:application-cog"
+        return super().icon
 
 
 class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
