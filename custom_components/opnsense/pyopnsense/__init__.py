@@ -1352,8 +1352,11 @@ $toreturn = [
             total_bytes_recv = 0
             total_bytes_sent = 0
             for connect in connection_info.get("rows", {}):
-                if connect.get("id", None) and connect.get("id", None) == vpn.get(
-                    "vpnid", None
+                id = connect.get("id", None)
+                vpn_id = vpn.get("vpnid", None)
+                if id and (
+                    id == vpn_id
+                    or (isinstance(id, str) and id.startswith(vpn_id + "_"))
                 ):
                     total_bytes_recv += self._try_to_int(
                         connect.get("bytes_received", 0), 0
@@ -1363,8 +1366,6 @@ $toreturn = [
                     )
             vpn["total_bytes_recv"] = total_bytes_recv
             vpn["total_bytes_sent"] = total_bytes_sent
-            # Missing connected_client_count
-            # vpn["connected_client_count"] =
             openvpn["servers"][vpnid] = vpn
         # _LOGGER.debug(f"[get_openvpn] openvpn: {openvpn}")
         return openvpn
