@@ -173,8 +173,6 @@ async def _compile_interface_sensors(
                 "status",
                 "inbytes_kilobytes_per_second",
                 "outbytes_kilobytes_per_second",
-                "inpkts_packets_per_second",
-                "outpkts_packets_per_second",
             ]:
                 enabled_default = True
 
@@ -192,7 +190,7 @@ async def _compile_interface_sensors(
                     device_class = SensorDeviceClass.DATA_SIZE
                     state_class = SensorStateClass.TOTAL_INCREASING
                     suggested_display_precision = 1
-                    suggested_unit_of_measurement = UnitOfInformation.MEGABYTES
+                    suggested_unit_of_measurement = UnitOfInformation.GIGABYTES
                 if "pkts" in prop_name:
                     native_unit_of_measurement = DATA_PACKETS
                     state_class = SensorStateClass.TOTAL_INCREASING
@@ -244,6 +242,7 @@ async def _compile_gateway_sensors(
             native_unit_of_measurement = None
             device_class = None
             state_class = SensorStateClass.MEASUREMENT
+            enabled_default = False
             icon = "mdi:router-network"
 
             if prop_name == "loss":
@@ -256,6 +255,7 @@ async def _compile_gateway_sensors(
             if prop_name == "status":
                 icon = "mdi:check-network"
                 state_class = None
+                enabled_default = True
 
             entity = OPNsenseGatewaySensor(
                 config_entry=config_entry,
@@ -267,7 +267,7 @@ async def _compile_gateway_sensors(
                     device_class=device_class,
                     icon=icon,
                     state_class=state_class,
-                    entity_registry_enabled_default=True,
+                    entity_registry_enabled_default=enabled_default,
                     # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
                 ),
             )
