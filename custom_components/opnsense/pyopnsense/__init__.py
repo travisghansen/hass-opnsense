@@ -1347,43 +1347,138 @@ $toreturn = [
 
     @_log_errors
     async def get_openvpn(self) -> Mapping[str, Any]:
-        openvpn_info: Mapping[str, Any] | list = await self._post(
+        openvpn_info: Mapping[str, Any] | list = await self._get(
             "/api/openvpn/export/providers"
         )
-        # _LOGGER.debug(f"[get_openvpn] openvpn_info: {openvpn_info}")
-        if not isinstance(openvpn_info, Mapping):
-            return {}
-        openvpn: Mapping[str, Any] = {}
-        openvpn["servers"] = {}
-        connection_info: Mapping[str, Any] = await self._post(
+        connection_info: Mapping[str, Any] = await self._get(
             "/api/openvpn/service/searchSessions"
         )
+        instances_info: Mapping[str, Any] = await self._get(
+            "/api/openvpn/instances/search"
+        )
+        # _LOGGER.debug(f"[get_openvpn] openvpn_info: {openvpn_info}")
         # _LOGGER.debug(f"[get_openvpn] connection_info: {connection_info}")
-        if connection_info is None or not isinstance(connection_info, Mapping):
-            return {}
-        for vpnid, vpn_info in openvpn_info.items():
-            vpn: Mapping[str, Any] = {}
-            vpn["vpnid"] = vpn_info.get("vpnid", "")
-            vpn["name"] = vpn_info.get("name", "")
-            total_bytes_recv = 0
-            total_bytes_sent = 0
-            for connect in connection_info.get("rows", {}):
-                id = connect.get("id", None)
-                vpn_id = vpn.get("vpnid", None)
-                if id and (
-                    id == vpn_id
-                    or (isinstance(id, str) and id.startswith(vpn_id + "_"))
-                ):
-                    total_bytes_recv += self._try_to_int(
-                        connect.get("bytes_received", 0), 0
-                    )
-                    total_bytes_sent += self._try_to_int(
-                        connect.get("bytes_sent", 0), 0
-                    )
-            vpn["total_bytes_recv"] = total_bytes_recv
-            vpn["total_bytes_sent"] = total_bytes_sent
-            openvpn["servers"][vpnid] = vpn
-        # _LOGGER.debug(f"[get_openvpn] openvpn: {openvpn}")
+        # _LOGGER.debug(f"[get_openvpn] instances_info: {instances_info}")
+        if not isinstance(openvpn_info, Mapping):
+            openvpn_info = {}
+        if not isinstance(connection_info, Mapping):
+            connection_info = {}
+        if not isinstance(instances_info, Mapping):
+            instances_info = {}
+
+        openvpn: Mapping[str, Any] = {}
+        openvpn["servers"] = {}
+        openvpn["clients"] = {}
+
+        # Servers
+        for instance in instances_info.get("rows", []):
+            if (
+                not isinstance(instance, Mapping)
+                or instance.get("role", "").lower() != "server"
+            ):
+                continue
+            if (
+                instance.get("uuid", None)
+                and instance.get("uuid", None) not in openvpn["servers"]
+            ):
+                openvpn["servers"][instance.get("uuid")] = {
+                    "uuid": instance.get("uuid"),
+                    "name": instance.get("description"),
+                }
+            if instance.get("dev_type", None):
+                openvpn["servers"][instance.get("uuid")]["dev_type"] = instance.get(
+                    "dev_type", None
+                )
+            if instance.get("enabled", None):
+                openvpn["servers"][instance.get("uuid")]["enabled"] = bool(
+                    instance.get("enabled", "0") == "1"
+                )
+
+        for uuid, vpn_info in openvpn_info.items():
+            if not uuid or not isinstance(vpn_info, Mapping):
+                continue
+            if uuid not in openvpn["servers"]:
+                openvpn["servers"][uuid] = {
+                    "uuid": uuid,
+                    "name": vpn_info.get("name"),
+                }
+            if vpn_info.get("hostname", None) and vpn_info.get("local_port", None):
+                openvpn["servers"][uuid][
+                    "endpoint"
+                ] = f"{vpn_info.get('hostname')}:{vpn_info.get('local_port')}"
+
+        for connect in connection_info.get("rows", []):
+            if not isinstance(connect, Mapping) or not connect:
+                continue
+            id: str | int | None = connect.get("id", None)
+            if isinstance(id, str) and "_" in id:
+                id = id.split("_")[0]
+            if id and id in openvpn["servers"]:
+                if connect.get("description", None):
+                    openvpn["servers"][id]["name"] = connect.get("description")
+                openvpn["servers"][id]["status"] = connect.get("status", "down")
+                if openvpn["servers"][id]["status"] == "ok":
+                    openvpn["servers"][id]["status"] = "up"
+
+                openvpn["servers"][id]["total_bytes_recv"] = self._try_to_int(
+                    connect.get("bytes_received", 0), 0
+                )
+                openvpn["servers"][id]["total_bytes_sent"] = self._try_to_int(
+                    connect.get("bytes_sent", 0), 0
+                )
+
+        for uuid, server in openvpn["servers"].items():
+            if server.get("total_bytes_sent", None) is None:
+                server["total_bytes_sent"] = 0
+            if server.get("total_bytes_recv", None) is None:
+                server["total_bytes_recv"] = 0
+            details_info: Mapping[str, Any] = await self._get(
+                f"/api/openvpn/instances/get/{uuid}"
+            )
+            if isinstance(details_info, Mapping) and isinstance(
+                details_info.get("instance", None), Mapping
+            ):
+                details: Mapping[str, Any] = details_info.get("instance")
+                if details.get("server", None):
+                    server["tunnel_addresses"] = [details.get("server")]
+                server["dns_servers"] = []
+                for dns in details.get("dns_servers", {}).values():
+                    if dns.get("selected", 0) == 1 and dns.get("value", None):
+                        server["dns_servers"].append(dns.get("value"))
+
+        # Clients
+        for instance in instances_info.get("rows", []):
+            if (
+                not isinstance(instance, Mapping)
+                or instance.get("role", "").lower() != "client"
+            ):
+                continue
+            client: Mapping[str, Any] = {}
+            client["name"] = instance.get("description", None)
+            client["uuid"] = instance.get("uuid", None)
+            client["enabled"] = instance.get("enabled", "0") == "1"
+            openvpn["clients"][client["uuid"]] = client
+
+        for connect in connection_info.get("rows", []):
+            if not isinstance(connect, Mapping) or not connect:
+                continue
+            id: str | int | None = connect.get("id", None)
+            if isinstance(id, str) and "_" in id:
+                id = id.split("_")[0]
+            if id and id in openvpn["clients"]:
+                openvpn["clients"][id]["total_bytes_recv"] = self._try_to_int(
+                    connect.get("bytes_received", 0), 0
+                )
+                openvpn["clients"][id]["total_bytes_sent"] = self._try_to_int(
+                    connect.get("bytes_sent", 0), 0
+                )
+
+        for uuid, client in openvpn["clients"].items():
+            if client.get("total_bytes_sent", None) is None:
+                client["total_bytes_sent"] = 0
+            if client.get("total_bytes_recv", None) is None:
+                client["total_bytes_recv"] = 0
+        _LOGGER.debug(f"[get_openvpn] openvpn: {openvpn}")
         return openvpn
 
     @_log_errors
@@ -1637,3 +1732,221 @@ $toreturn = [
     @_log_errors
     async def disable_unbound_blocklist(self) -> bool:
         return await self._set_unbound_blocklist(set_state=False)
+
+    @_log_errors
+    async def get_wireguard(self) -> Mapping[str, Any]:
+        summary_raw: Mapping[str, Any] | list = await self._get(
+            "/api/wireguard/service/show"
+        )
+        clients_raw: Mapping[str, Any] | list = await self._get(
+            "/api/wireguard/client/get"
+        )
+        servers_raw: Mapping[str, Any] | list = await self._get(
+            "/api/wireguard/server/get"
+        )
+        if (
+            not isinstance(summary_raw, Mapping)
+            or not isinstance(clients_raw, Mapping)
+            or not isinstance(servers_raw, Mapping)
+        ):
+            return {}
+        summary = summary_raw.get("rows", [])
+        client_summ = clients_raw.get("client", {}).get("clients", {}).get("client", {})
+        server_summ = servers_raw.get("server", {}).get("servers", {}).get("server", {})
+        if (
+            not isinstance(summary, list)
+            or not isinstance(client_summ, Mapping)
+            or not isinstance(server_summ, Mapping)
+        ):
+            return {}
+        servers: Mapping[str, Any] = {}
+        clients: Mapping[str, Any] = {}
+
+        for uid, srv in server_summ.items():
+            if not isinstance(srv, Mapping):
+                continue
+            server: Mapping[str, Any] = {}
+            for attr in ["name", "pubkey", "endpoint", "peer_dns"]:
+                if srv.get(attr, None):
+                    if attr == "peer_dns":
+                        server["dns_servers"] = [srv.get(attr)]
+                    else:
+                        server[attr] = srv.get(attr)
+            server["uuid"] = uid
+            server["enabled"] = bool(srv.get("enabled", "") == "1")
+            server["interface"] = f"wg{srv.get('instance','')}"
+            server["tunnel_addresses"] = []
+            for addr in srv.get("tunneladdress", {}).values():
+                if addr.get("selected", 0) == 1 and addr.get("value", None):
+                    server["tunnel_addresses"].append(addr.get("value"))
+            server["clients"] = {}
+            for peer_id, peer in srv.get("peers", {}).items():
+                if peer.get("selected", 0) == 1 and peer.get("value", None):
+                    server["clients"][peer_id] = {"name": peer.get("value")}
+            server["total_bytes_recv"] = 0
+            server["total_bytes_sent"] = 0
+            servers[uid] = server
+
+        for uid, clnt in client_summ.items():
+            if not isinstance(clnt, Mapping):
+                continue
+            client: Mapping[str, Any] = {}
+            for attr in ["name", "pubkey"]:
+                if clnt.get(attr, None):
+                    client[attr] = clnt.get(attr, None)
+            client["uuid"] = uid
+            client["enabled"] = bool(clnt.get("enabled", "0") == "1")
+            client["tunnel_addresses"] = []
+            for addr in clnt.get("tunneladdress", {}).values():
+                if addr.get("selected", 0) == 1 and addr.get("value", None):
+                    client["tunnel_addresses"].append(addr.get("value"))
+            client["servers"] = {}
+            for srv_id, srv in clnt.get("servers", {}).items():
+                if srv.get("selected", 0) == 1 and srv.get("value", None):
+                    if servers.get(srv_id, None):
+                        client["servers"][srv_id] = {}
+                        for attr in ["name", "pubkey", "interface", "tunnel_addresses"]:
+                            if servers.get(srv_id, {}).get(attr, None):
+                                client["servers"][srv_id][attr] = servers[srv_id][attr]
+                    else:
+                        client["servers"][srv_id] = {"name": peer.get("value")}
+            for server in servers.values():
+                if (
+                    isinstance(server, Mapping)
+                    and isinstance(server.get("clients", None), Mapping)
+                    and uid in server.get("clients")
+                ):
+                    for attr in ["name", "enabled", "pubkey", "tunnel_addresses"]:
+                        if client.get(attr, None):
+                            server["clients"][uid][attr] = client.get(attr)
+            client["total_bytes_recv"] = 0
+            client["total_bytes_sent"] = 0
+            clients[uid] = client
+
+        for entry in summary:
+            if isinstance(entry, Mapping) and entry.get("type", "") == "interface":
+                for server in servers.values():
+                    if (
+                        isinstance(server, Mapping)
+                        and server.get("pubkey", "") == entry.get("public-key", "-")
+                        and entry.get("status", None)
+                    ):
+                        server["status"] = entry.get("status")
+            elif isinstance(entry, Mapping) and entry.get("type", "") == "peer":
+                for client in clients.values():
+                    if (
+                        isinstance(client, Mapping)
+                        and client.get("pubkey", "") == entry.get("public-key", "-")
+                        and isinstance(client.get("servers", None), Mapping)
+                    ):
+                        for srv in client.get("servers").values():
+                            if isinstance(srv, Mapping) and srv.get(
+                                "interface", ""
+                            ) == entry.get("if", "-"):
+                                if (
+                                    entry.get("endpoint", None)
+                                    and entry.get("endpoint", None) != "(none)"
+                                ):
+                                    srv["endpoint"] = entry.get("endpoint")
+                                if entry.get("transfer-rx", None):
+                                    srv["bytes_recv"] = entry.get("transfer-rx")
+                                    client["total_bytes_recv"] = int(
+                                        client.get("total_bytes_recv", 0)
+                                    ) + int(entry.get("transfer-rx"))
+                                if entry.get("transfer-tx", None):
+                                    srv["bytes_sent"] = entry.get("transfer-tx")
+                                    client["total_bytes_sent"] = int(
+                                        client.get("total_bytes_sent", 0)
+                                    ) + int(entry.get("transfer-tx"))
+                                if entry.get("latest-handshake", None):
+                                    srv["latest-handshake"] = datetime.fromtimestamp(
+                                        int(entry.get("latest-handshake")),
+                                        tz=datetime.now().astimezone().tzinfo,
+                                    )
+                                    if client.get(
+                                        "latest-handshake", None
+                                    ) is None or client.get(
+                                        "latest-handshake"
+                                    ) < srv.get(
+                                        "latest-handshake"
+                                    ):
+                                        client["latest-handshake"] = srv.get(
+                                            "latest-handshake"
+                                        )
+
+                for server in servers.values():
+                    if (
+                        isinstance(server, Mapping)
+                        and server.get("interface", "") == entry.get("if", "-")
+                        and isinstance(server.get("clients", None), Mapping)
+                    ):
+                        for clnt in server.get("clients").values():
+                            if isinstance(clnt, Mapping) and clnt.get(
+                                "pubkey", ""
+                            ) == entry.get("public-key", "-"):
+                                if (
+                                    entry.get("endpoint", None)
+                                    and entry.get("endpoint", None) != "(none)"
+                                ):
+                                    clnt["endpoint"] = entry.get("endpoint")
+                                if entry.get("transfer-rx", None):
+                                    clnt["bytes_recv"] = entry.get("transfer-rx")
+                                    server["total_bytes_recv"] = int(
+                                        server.get("total_bytes_recv", 0)
+                                    ) + int(entry.get("transfer-rx"))
+                                if entry.get("transfer-tx", None):
+                                    clnt["bytes_sent"] = entry.get("transfer-tx")
+                                    server["total_bytes_sent"] = int(
+                                        server.get("total_bytes_sent", 0)
+                                    ) + int(entry.get("transfer-tx"))
+                                if entry.get("latest-handshake", None):
+                                    clnt["latest-handshake"] = datetime.fromtimestamp(
+                                        int(entry.get("latest-handshake")),
+                                        tz=datetime.now().astimezone().tzinfo,
+                                    )
+                                    if server.get(
+                                        "latest-handshake", None
+                                    ) is None or server.get(
+                                        "latest-handshake"
+                                    ) < clnt.get(
+                                        "latest-handshake"
+                                    ):
+                                        server["latest-handshake"] = clnt.get(
+                                            "latest-handshake"
+                                        )
+
+        _LOGGER.debug(f"[get_wireguard] servers: {servers}")
+        _LOGGER.debug(f"[get_wireguard] clients: {clients}")
+        return {"servers": servers, "clients": clients}
+
+    async def toggle_vpn_instance(
+        self, vpn_type: str, clients_servers: str, uuid: str
+    ) -> bool:
+        if vpn_type == "openvpn":
+            success: Mapping[str, Any] | list = await self._post(
+                f"/api/openvpn/instances/toggle/{uuid}"
+            )
+            if not isinstance(success, Mapping) or not success.get("changed", False):
+                return False
+            reconfigure: Mapping[str, Any] | list = await self._post(
+                "/api/openvpn/service/reconfigure"
+            )
+            if isinstance(reconfigure, Mapping):
+                return reconfigure.get("result", "") == "ok"
+        elif vpn_type == "wireguard":
+            if clients_servers == "clients":
+                success: Mapping[str, Any] | list = await self._post(
+                    f"/api/wireguard/client/toggleClient/{uuid}"
+                )
+            elif clients_servers == "servers":
+                success: Mapping[str, Any] | list = await self._post(
+                    f"/api/wireguard/server/toggleServer/{uuid}"
+                )
+            if not isinstance(success, Mapping) or not success.get("changed", False):
+                return False
+            reconfigure: Mapping[str, Any] | list = await self._post(
+                "/api/wireguard/service/reconfigure"
+            )
+            if isinstance(reconfigure, Mapping):
+                return reconfigure.get("result", "") == "ok"
+        return False
