@@ -8,7 +8,6 @@
 | Enable/Disable Filter Rule | N/A | No as of 24.7 | Uses Get Config, Filter Configure and Restore Config Section. |
 | Enable/Disable NAT Port Forward Rule | N/A | No as of 24.7 | Uses Get Config, Filter Configure and Restore Config Section. |
 | Enable/Disable NAT Outbound Rule | N/A | No as of 24.7 | Uses Get Config, Filter Configure and Restore Config Section. |
-| Get Carp Interfaces | Yes | Yes | |
 
 # REST API Functions
 
@@ -45,3 +44,4 @@
 | Get Wireguard | /api/wireguard/service/show<br>/api/wireguard/client/get<br>/api/wireguard/server/get | 24.1 | |
 | Get Kea Interfaces | /api/kea/dhcpv4/get | 24.1 | |
 | Toggle VPN Instance | /api/openvpn/instances/toggle<br>/api/openvpn/service/reconfigure<br>/api/wireguard/client/toggleClient<br>/api/wireguard/server/toggleServer<br>/api/wireguard/service/reconfigure | 24.1 | |
+| Get Carp Interfaces | /api/interfaces/vip_settings/get<br>/api/diagnostics/interface/get_vip_status | 2022 | |

@@ -652,7 +652,6 @@ class OPNsenseCarpInterfaceSensor(OPNsenseSensor):
             "vhid",
             "advskew",
             "advbase",
-            "type",
             "subnet_bits",
             "subnet",
             "descr",
