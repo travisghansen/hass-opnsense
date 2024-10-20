@@ -954,103 +954,47 @@ $toreturn = [
         return response.get("carp", {}).get("allow", "0") == "1"
 
     @_log_errors
-    async def get_carp_interfaces(self) -> Mapping[str, Any]:
-        script: str = r"""
-global $config;
-
-$vips = [];
-if ($config['virtualip'] && is_iterable($config['virtualip']['vip'])) {
-    foreach ($config['virtualip']['vip'] as $vip) {
-        if ($vip["mode"] != "carp") {
-            continue;
-        }
-        $vips[] = $vip;
-    }
-}
-
-$intf_details = legacy_interfaces_details();
-
-foreach ($vips as &$vip) {
-  $intf = get_real_interface($vip['interface']);
-  if (!empty($intf_details[$intf]) && !empty($intf_details[$intf]['carp'][$vip['vhid']])) {
-    $status = $intf_details[$intf]['carp'][$vip['vhid']]['status'];
-  } else {
-    $status = "DISABLED";
-  }
-
-  $vip["status"] = $status;
-}
-
-$toreturn = [
-  "data" => $vips,
-];
-"""
-        response: Mapping[str, Any] = await self._exec_php(script)
-        if not isinstance(response, Mapping):
-            _LOGGER.error("Invalid data returned from get_carp_interfaces")
-            return {}
-        _LOGGER.debug(f"[get_carp_interfaces] exec_php response: {response}")
-        get_vip_status_response: Mapping[str, Any] | list = await self._get(
-            "/api/diagnostics/interface/get_vip_status"
-        )
-        vip_settings_response: Mapping[str, Any] | list = await self._get(
+    async def get_carp_interfaces(self) -> list:
+        vip_settings_raw: Mapping[str, Any] | list = await self._get(
             "/api/interfaces/vip_settings/get"
         )
-        vip_search_item_response: Mapping[str, Any] | list = await self._get(
-            "/api/interfaces/vip_settings/searchItem"
+        if not isinstance(vip_settings_raw, Mapping) or not isinstance(
+            vip_settings_raw.get("rows", None), list
+        ):
+            # TODO: Change this to a return [] (and turn down logging) once confirmed it is working
+            vip_settings = []
+        else:
+            vip_settings: list = vip_settings_raw.get("rows", [])
+        _LOGGER.debug(f"[get_carp_interfaces] vip_settings: {vip_settings}")
+
+        vip_status_raw: Mapping[str, Any] | list = await self._get(
+            "/api/diagnostics/interface/get_vip_status"
         )
-        lagg_settings_response: Mapping[str, Any] | list = await self._get(
-            "/api/interfaces/lagg_settings/get"
-        )
-        lagg_search_item_response: Mapping[str, Any] | list = await self._get(
-            "/api/interfaces/lagg_settings/searchItem"
-        )
-        vlan_settings_response: Mapping[str, Any] | list = await self._get(
-            "/api/interfaces/vlan_settings/get"
-        )
-        vlan_search_item_response: Mapping[str, Any] | list = await self._get(
-            "/api/interfaces/vlan_settings/searchItem"
-        )
-        vxlan_settings_response: Mapping[str, Any] | list = await self._get(
-            "/api/interfaces/vxlan_settings/get"
-        )
-        vxlan_search_item_response: Mapping[str, Any] | list = await self._get(
-            "/api/interfaces/vxlan_settings/searchItem"
-        )
-        interfaces_export_response: Mapping[str, Any] | list = await self._get(
-            "/api/interfaces/overview/export"
-        )
-        _LOGGER.debug(
-            f"[get_carp_interfaces] get_vip_status_response: {get_vip_status_response}"
-        )
-        _LOGGER.debug(
-            f"[get_carp_interfaces] vip_settings_response: {vip_settings_response}"
-        )
-        _LOGGER.debug(
-            f"[get_carp_interfaces] vip_search_item_response: {vip_search_item_response}"
-        )
-        _LOGGER.debug(
-            f"[get_carp_interfaces] lagg_settings_response: {lagg_settings_response}"
-        )
-        _LOGGER.debug(
-            f"[get_carp_interfaces] lagg_search_item_response: {lagg_search_item_response}"
-        )
-        _LOGGER.debug(
-            f"[get_carp_interfaces] vlan_settings_response: {vlan_settings_response}"
-        )
-        _LOGGER.debug(
-            f"[get_carp_interfaces] vlan_search_item_response: {vlan_search_item_response}"
-        )
-        _LOGGER.debug(
-            f"[get_carp_interfaces] vxlan_settings_response: {vxlan_settings_response}"
-        )
-        _LOGGER.debug(
-            f"[get_carp_interfaces] vxlan_search_item_response: {vxlan_search_item_response}"
-        )
-        _LOGGER.debug(
-            f"[get_carp_interfaces] interfaces_export_response: {interfaces_export_response}"
-        )
-        return response.get("data", {})
+        if not isinstance(vip_status_raw, Mapping) or not isinstance(
+            vip_status_raw.get("rows", None), list
+        ):
+            vip_status = []
+        else:
+            vip_status: list = vip_status_raw.get("rows", [])
+        _LOGGER.debug(f"[get_carp_interfaces] vip_status: {vip_status}")
+        carp = []
+        for vip in vip_settings:
+            if vip.get("mode", "").lower() != "carp":
+                continue
+
+            for status in vip_status:
+                if (
+                    vip.get("interface", "").lower()
+                    == status.get("interface", "_").lower()
+                ):
+                    vip["status"] = status.get("status", None)
+                    break
+            if "status" not in vip or not vip.get("status"):
+                vip["status"] = "DISABLED"
+
+            carp.append(vip)
+        _LOGGER.debug(f"[get_carp_interfaces] carp: {carp}")
+        return carp
 
     @_log_errors
     async def system_reboot(self) -> bool:
@@ -1483,7 +1427,7 @@ $toreturn = [
 
     @_log_errors
     async def get_gateways(self) -> Mapping[str, Any]:
-        gateways_info: Mapping[str, Any] | list = await self._post(
+        gateways_info: Mapping[str, Any] | list = await self._get(
             "/api/routes/gateway/status"
         )
         # _LOGGER.debug(f"[get_gateways] gateways_info: {gateways_info}")
@@ -1502,7 +1446,7 @@ $toreturn = [
 
     @_log_errors
     async def _get_telemetry_temps(self) -> Mapping[str, Any]:
-        temps_info: Mapping[str, Any] | list = await self._post(
+        temps_info: Mapping[str, Any] | list = await self._get(
             "/api/diagnostics/system/systemTemperature"
         )
         # _LOGGER.debug(f"[get_telemetry_temps] temps_info: {temps_info}")
