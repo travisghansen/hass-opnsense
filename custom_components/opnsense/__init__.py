@@ -382,6 +382,17 @@ async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
                 new_unique_id: str = ent.unique_id.replace(
                     "_telemetry_gateway_", "_gateway_"
                 )
+            elif "_connected_client_count" in ent.unique_id:
+                try:
+                    entity_registry.async_remove(ent.entity_id)
+                    _LOGGER.debug(
+                        f"[migrate_3_to_4] removed_entity_id: {ent.entity_id}"
+                    )
+                except (KeyError, ValueError) as e:
+                    _LOGGER.error(
+                        f"Error removing entity: {ent.entity_id}. {e.__class__.__qualname__}: {e}"
+                    )
+                continue
             elif "_telemetry_openvpn_" in ent.unique_id:
                 new_unique_id: str = ent.unique_id.replace(
                     "_telemetry_openvpn_", "_openvpn_"
