@@ -16,6 +16,7 @@ from .const import (
     DOMAIN,
     OPNSENSE_CLIENT,
     SERVICE_CLOSE_NOTICE,
+    SERVICE_RELOAD_INTERFACE,
     SERVICE_RESTART_SERVICE,
     SERVICE_SEND_WOL,
     SERVICE_START_SERVICE,
@@ -83,7 +84,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         )
         for client in clients:
             _LOGGER.debug(
-                f"[service_close_notice] Calling stop_service for {call.data.get('id')}"
+                f"[service_close_notice] client: {client.name}, service: {call.data.get('id')}"
             )
             await client.close_notice(call.data.get("id"))
 
@@ -93,17 +94,17 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         )
         success = None
         for client in clients:
-            _LOGGER.debug(
-                f"[service_start_service] Calling start_service for {call.data.get('service_id', call.data.get('service_name'))}"
-            )
             response = await client.start_service(
                 call.data.get("service_id", call.data.get("service_name"))
+            )
+            _LOGGER.debug(
+                f"[service_start_service] client: {client.name}, service: {call.data.get('service_id', call.data.get('service_name'))}, response: {response}"
             )
             if success is None or success:
                 success = response
         if success is None or not success:
             raise ServiceValidationError(
-                f"Start Service Failed: {call.data.get('service_id', call.data.get('service_name'))}"
+                f"Start Service Failed. client: {client.name}, service: {call.data.get('service_id', call.data.get('service_name'))}"
             )
 
     async def service_stop_service(call: ServiceCall) -> None:
@@ -112,17 +113,17 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         )
         success = None
         for client in clients:
-            _LOGGER.debug(
-                f"[service_stop_service] Calling stop_service for {call.data.get('service_id', call.data.get('service_name'))}"
-            )
             response = await client.stop_service(
                 call.data.get("service_id", call.data.get("service_name"))
+            )
+            _LOGGER.debug(
+                f"[service_stop_service] client: {client.name}, service: {call.data.get('service_id', call.data.get('service_name'))}, response: {response}"
             )
             if success is None or success:
                 success = response
         if success is None or not success:
             raise ServiceValidationError(
-                f"Stop Service Failed: {call.data.get('service_id', call.data.get('service_name'))}"
+                f"Stop Service Failed. client: {client.name}, service: {call.data.get('service_id', call.data.get('service_name'))}"
             )
 
     async def service_restart_service(call: ServiceCall) -> None:
@@ -132,33 +133,33 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         success = None
         if call.data.get("only_if_running"):
             for client in clients:
-                _LOGGER.debug(
-                    f"[service_restart_service] Calling restart_service_if_running for {call.data.get('service_id', call.data.get('service_name'))}"
-                )
                 response = await client.restart_service_if_running(
                     call.data.get(
                         "service_id",
                         call.data.get("service_name"),
                     )
                 )
+                _LOGGER.debug(
+                    f"[service_restart_service] restart_service_if_running, client: {client.name}, service: {call.data.get('service_id', call.data.get('service_name'))}, response: {response}"
+                )
                 if success is None or success:
                     success = response
         else:
             for client in clients:
-                _LOGGER.debug(
-                    f"[service_restart_service] Calling restart_service for {call.data.get('service_id', call.data.get('service_name'))}"
-                )
                 response = await client.restart_service(
                     call.data.get(
                         "service_id",
                         call.data.get("service_name"),
                     )
                 )
+                _LOGGER.debug(
+                    f"[service_restart_service] restart_service, client: {client.name}, service: {call.data.get('service_id', call.data.get('service_name'))}, response: {response}"
+                )
                 if success is None or success:
                     success = response
         if success is None or not success:
             raise ServiceValidationError(
-                f"Restart Service Failed: {call.data.get('service_id', call.data.get('service_name'))}"
+                f"Restart Service Failed. client: {client.name}, service: {call.data.get('service_id', call.data.get('service_name'))}"
             )
 
     async def service_system_halt(call: ServiceCall) -> None:
@@ -166,7 +167,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             call.data.get("device_id", []), call.data.get("entity_id", [])
         )
         for client in clients:
-            _LOGGER.debug("[service_system_halt] Calling System Halt")
+            _LOGGER.debug("[service_system_halt] client: {client.name}")
             await client.system_halt()
 
     async def service_system_reboot(call: ServiceCall) -> None:
@@ -174,7 +175,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             call.data.get("device_id", []), call.data.get("entity_id", [])
         )
         for client in clients:
-            _LOGGER.debug("[service_system_reboot] Calling System Reboot")
+            _LOGGER.debug("[service_system_reboot] client: {client.name}")
             await client.system_reboot()
 
     async def service_send_wol(call: ServiceCall) -> None:
@@ -183,9 +184,26 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         )
         for client in clients:
             _LOGGER.debug(
-                f"[service_send_wol] Calling WOL. interface: {call.data.get('interface')}, mac: {call.data.get('mac')}"
+                f"[service_send_wol] client: {client.name}, interface: {call.data.get('interface')}, mac: {call.data.get('mac')}"
             )
             await client.send_wol(call.data.get("interface"), call.data.get("mac"))
+
+    async def service_reload_interface(call: ServiceCall) -> None:
+        clients: list = await _get_clients(
+            call.data.get("device_id", []), call.data.get("entity_id", [])
+        )
+        success = None
+        for client in clients:
+            response = await client.reload_interface(call.data.get("interface"))
+            _LOGGER.debug(
+                f"[service_reload_interface] client: {client.name}, interface: {call.data.get('interface')}, response: {response}"
+            )
+            if success is None or success:
+                success = response
+        if success is None or not success:
+            raise ServiceValidationError(
+                f"Reload Interface Failed: {call.data.get('interface')}"
+            )
 
     hass.services.async_register(
         domain=DOMAIN,
@@ -303,4 +321,17 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             }
         ),
         service_func=service_send_wol,
+    )
+
+    hass.services.async_register(
+        domain=DOMAIN,
+        service=SERVICE_RELOAD_INTERFACE,
+        schema=vol.Schema(
+            {
+                vol.Required("interface"): vol.Any(cv.string),
+                vol.Optional("device_id"): vol.Any(cv.string),
+                vol.Optional("entity_id"): vol.Any(cv.string),
+            }
+        ),
+        service_func=service_reload_interface,
     )

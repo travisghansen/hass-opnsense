@@ -97,6 +97,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         password=password,
         session=async_create_clientsession(hass, raise_for_status=False),
         opts={"verify_ssl": verify_ssl},
+        name=entry.title,
     )
 
     scan_interval: int = options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
