@@ -263,3 +263,41 @@ send_wol:
               filter:
                 - integration: opnsense
                   domain: sensor
+
+reload_interface:
+  name: Reload an Interface
+  fields:
+    interface:
+      name: Interface Name
+      description: "The name of the interface. Like: wan|lan|opt1|opt2|.."
+      required: true
+      advanced: false
+      example: ""
+      selector:
+        text:
+    multiple_opnsense:
+      name: Only needed if there is more than one OPNsense Router
+      collapsed: true
+      fields:
+        device_id:
+          name: OPNsense Device
+          description: Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers.
+          required: false
+          selector:
+            device:
+              multiple: false
+              filter:
+                - integration: opnsense
+              entity:
+                - domain: sensor
+        entity_id:
+          name: OPNsense Entity
+          description: Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers.
+          example: "sensor.opnsense_interface_lan_status"
+          required: false
+          selector:
+            entity:
+              multiple: false
+              filter:
+                - integration: opnsense
+                  domain: sensor

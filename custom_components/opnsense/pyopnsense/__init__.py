@@ -65,11 +65,13 @@ class OPNsenseClient(ABC):
         session: aiohttp.ClientSession,
         opts: Mapping[str, Any] = None,
         initial: bool = False,
+        name: str = "OPNsense",
     ) -> None:
         """OPNsense Client initializer."""
 
         self._username: str = username
         self._password: str = password
+        self._name: str = name
 
         self._opts: Mapping[str, Any] = opts or {}
         self._verify_ssl: bool = self._opts.get("verify_ssl", True)
@@ -89,6 +91,10 @@ class OPNsenseClient(ABC):
         except RuntimeError:
             self._loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self._loop)
+
+    @property
+    def name(self) -> str:
+        return self._name
 
     def _xmlrpc_timeout(func):
         async def inner(self, *args, **kwargs):
@@ -1894,3 +1900,11 @@ $toreturn = [
             if isinstance(reconfigure, Mapping):
                 return reconfigure.get("result", "") == "ok"
         return False
+
+    async def reload_interface(self, if_name: str) -> bool:
+        reload: Mapping[str, Any] | list = await self._post(
+            f"/api/interfaces/overview/reloadInterface/{if_name}"
+        )
+        if not isinstance(reload, Mapping):
+            return False
+        return reload.get("message", "").startswith("OK")
