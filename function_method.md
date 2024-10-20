@@ -2,7 +2,7 @@
 
 | Function | Uses Plugin | Possible in REST API | Comments |
 | ----- | ----- | ----- | ----- |
-| Get Config | Yes | No as of 24.7 | Returns a __large__ dictionary of elements used for multiple functions. Some can be replaced, others cannot. More details in the other functions. |
+| Get Config | Yes | No as of 24.7 | Returns a __large__ dictionary of elements used for multiple functions. More details in the other functions. |
 | Restore Config Section | No | No as of 24.7 | |
 | Filter Configure | Yes | No as of 24.7 | Used by the Filter and NAT functions |
 | Enable/Disable Filter Rule | N/A | No as of 24.7 | Uses Get Config, Filter Configure and Restore Config Section. |
