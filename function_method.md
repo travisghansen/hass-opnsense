@@ -14,15 +14,15 @@
 
 | Function | Endpoints | Min OPNsense Version | Comments |
 | ----- | ----- | ----- | ----- |
-| Get Interfaces<br>Get Device Unique ID | /api/interfaces/overview/export | 24.1 | Get Interfaces is part of Telemetry: Uses legacy function if <24.7 |
+| Get Interfaces<br>Get Device Unique ID | /api/interfaces/overview/export | 24.1 | |
 | Get mbuf | /api/diagnostics/system/system_mbuf | 24.7 | Part of Telemetry: Uses legacy function if <24.7 |
 | Get pfstates | /api/diagnostics/firewall/pf_states | 24.7 | Part of Telemetry: Uses legacy function if <24.7 |
 | Get Memory | /api/diagnostics/system/systemResources<br>/api/diagnostics/system/system_swap | 24.7 | Part of Telemetry: Uses legacy function if <24.7 |
 | Get System Time | /api/diagnostics/system/systemTime | 24.7 | Part of Telemetry: Uses legacy function if <24.7 |
 | Get CPU | /api/diagnostics/cpu_usage/getCPUType<br>/api/diagnostics/cpu_usage/stream | 24.7 | Part of Telemetry: Uses legacy function if <24.7 |
 | Get Filesystem | /api/diagnostics/system/systemDisk | 24.7 | Part of Telemetry: Uses legacy function if <24.7 |
-| Get OpenVPN | /api/openvpn/export/providers | 20.1 | Part of Telemetry: Uses legacy function if <24.7 |
-| Get Gateways | /api/routes/gateway/status | 2021 | Part of Telemetry: Uses legacy function if <24.7 |
+| Get OpenVPN | /api/openvpn/export/providers<br>/api/openvpn/service/searchSessions<br>/api/openvpn/instances/search<br>/api/openvpn/instances/get | 20.1 | |
+| Get Gateways | /api/routes/gateway/status | 2021 | |
 | Get Temperatures | /api/diagnostics/system/systemTemperature | 24.7 | Part of Telemetry |
 | Get Firmware Update Info<br>Get Firmware Version | /api/core/firmware/status | 2018 | |
 | Upgrade Firmware | /api/core/firmware/update<br>/api/core/firmware/upgrade | 2018 | |
@@ -42,3 +42,6 @@
 | Get Carp Status | /api/diagnostics/interface/get_vip_status | 2022 | |
 | Get DHCP Leases | /api/kea/leases4/search<br>/api/kea/dhcpv4/searchReservation<br>/api/dhcpv4/leases/searchLease<br>/api/dhcpv6/leases/searchLease | 24.1 | |
 | Get Unbound Blocklist | /api/unbound/settings/get<br>/api/unbound/settings/set<br>/api/unbound/service/dnsbl<br>/api/unbound/service/restart | 21.7 | |
+| Get Wireguard | /api/wireguard/service/show<br>/api/wireguard/client/get<br>/api/wireguard/server/get | 24.1 | |
+| Get Kea Interfaces | /api/kea/dhcpv4/get | 24.1 | |
+| Toggle VPN Instance | /api/openvpn/instances/toggle<br>/api/openvpn/service/reconfigure<br>/api/wireguard/client/toggleClient<br>/api/wireguard/server/toggleServer<br>/api/wireguard/service/reconfigure | 24.1 | |
