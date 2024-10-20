@@ -10,10 +10,9 @@
 
 Join `OPNsense` with `Home Assistant`!
 
-`hass-opnsense` uses the built-in `xmlrpc` service and `OPNsense` [REST API](https://docs.opnsense.org/development/api.html)) to integrate OPNsense with Home Assistant. This project is currently a proof-of-concept and may fail to work
-at any time.
+`hass-opnsense` uses the `OPNsense` [REST API](https://docs.opnsense.org/development/api.html)) built-in `xmlrpc` service to integrate OPNsense with Home Assistant. __A [plugin](#opnsense-plugin) is currently required to be installed in OPNsense for this to work properly.__
 
-Initial development was done againt `OPNsense` `21.7` and `Home Assistant` `2021.10`.
+Initial development was done against `OPNsense` `21.7` and `Home Assistant` `2021.10`.
 
 A Discord server to discuss the integration is available, please click the Discord badge at the beginning of the page for the invite link.
 
@@ -85,10 +84,12 @@ Once the integration is installed be sure to restart `Home Assistant`. Restart o
 | ------ | ------ |
 | ![image](https://github.com/user-attachments/assets/95c324e5-73cb-42f9-8cd2-c4acc35c9711) | ![image](https://github.com/user-attachments/assets/bbb0ac00-1709-4206-9d59-eb47ca40390b) |
 
-
-### Manual Installation
+<details>
+<summary><h3>Manual Installation</h3></summary>
 
 Copy the contents of the custom_components folder to your `Home Assistant` config/custom_components folder and restart `Home Assistant`.
+
+</details>
 
 # Configuration
 
@@ -98,8 +99,12 @@ Configuration is managed entirely from the UI using `config_flow` semantics. Sim
 
 The official recommendation is that the service user to be created has the admin role.
 
-- Create a new admin role user (or choose an existing admin user), and create an API key associated to the user. When creating the API key, `OPNsense` will push the API file containing the API key and API secret to your browser, you'll find it in the download folder.
-- If you don't want to user an `admin` user account, you can try assigning the following privileges, but this is not guaranteed to work and could lead to potential issues, so we still recommend using an admin user:
+Create a new admin role user (or choose an existing admin user), and create an API key associated to the user. When creating the API key, `OPNsense` will push the API file containing the API key and API secret to your browser, you'll find it in the download folder.
+
+<details>
+<summary><h4>Unsupported Alternative</h4></summary>
+
+If you don't want to user an `admin` user account, you can try assigning the following privileges, but this is not guaranteed to work and could lead to potential issues, so we still recommend using an admin user:
   - `Dashboard (all)`
   - `Lobby: Login / Logout / Dashboard`
   - `Status: Interfaces`
@@ -108,6 +113,8 @@ The official recommendation is that the service user to be created has the admin
   - `VPN: OpenVPN: Client Export Utility`
   - `XMLRPC Library` (note that this privilege effectively gives the user complete access to
     the system via the `xmlrpc` feature)
+
+</details>
 
 ## Config
 
@@ -136,7 +143,7 @@ Many `entities` are created by `hass-opnsense` for stats etc. Due to to volume o
 ## Binary Sensor
 
 - carp status (enabled/disabled)
-- system notices present (the bell icon in the upper right of the UI)
+- system notices present (the circle icon in the upper right of the UI)
 - firmware updates available
 
 ## Device Tracker
@@ -145,13 +152,13 @@ Many `entities` are created by `hass-opnsense` for stats etc. Due to to volume o
 
 Note that by default `FreeBSD`/`OPNsense` use a max age of 20 minutes for arp entries (sysctl `net.link.ether.inet.max_age`). You may lower that using `System -> Advanced -> System Tunables` if desired.
 
-Also note that if you are running `AdGuardHome` DNS queries may get throttled causing issues with the tracker. See #22 for details.
+Also note that if you are running `AdGuardHome` DNS queries may get throttled causing issues with the tracker. See [below](#adguardhome) for details.
 
 ## Sensor
 
-- system details (name, version, ~~temp~~, boottime, etc)
-- pfstate details (used, max, etc)
-- cpu details (average load, frequency, etc)
+- system details (name, version, temp, boottime, etc)
+- pfstate details
+- cpu details (usage, load, cores)
 - mbuf details
 - memory details
 - filesystem usage
@@ -159,57 +166,53 @@ Also note that if you are running `AdGuardHome` DNS queries may get throttled ca
   `Scan Interval (seconds)` config option))
 - gateways details (status, delay, stddev, loss)
 - carp interface status
-- ~~dhcp stats (total, online, and offline clients)~~
-- OpenVPN server stats (per-server basis - connected client count, bytes
-  sent/received, kB/s sent/received)
+- dhcp leases
+- OpenVPN & Wireguard server and client stats
 
 ## Switch
 
 All of the switches below are disabled by default.
 
-- filter rules - enable/disable rules
-- nat port forward rules - enable/disable rules
-- nat outbound rules - enable/disable rules
-- services - start/stop services (note that services must be enabled before they can be started)
+- Filter Rules - enable/disable rules
+- NAT Port Forward Rules - enable/disable rules
+- NAT Outbound Rules - enable/disable rules
+- Services - start/stop services (note that services must be enabled before they can be started)
+- VPN Servers and Clients - enable/disable instances
 
 # Services
 
 ```
 service: opnsense.close_notice
 data:
-  entity_id: binary_sensor.opnsense_localdomain_pending_notices_present
   # default is to clear all notices
   # id: <some id>
 
 service: opnsense.system_halt
-data:
-  entity_id: binary_sensor.opnsense_localdomain_pending_notices_present
 
 service: opnsense.system_reboot
-data:
-  entity_id: binary_sensor.opnsense_localdomain_pending_notices_present
 
 service: opnsense.start_service
 data:
-  entity_id: binary_sensor.opnsense_localdomain_pending_notices_present
   service_name: "dpinger"
 
 service: opnsense.stop_service
 data:
-  entity_id: binary_sensor.opnsense_localdomain_pending_notices_present
   service_name: "dpinger"
 
 service: opnsense.restart_service
 data:
-  entity_id: binary_sensor.opnsense_localdomain_pending_notices_present
   service_name: "dpinger"
   # only_if_running: false
 
 service: opnsense.send_wol
 data:
-  entity_id: binary_sensor.opnsense_localdomain_pending_notices_present
   interface: lan
   mac: "B9:7B:A6:46:B3:8B"
+
+service: opnsense.reload_interface
+data:
+  interface: wan
+
 ```
 
 # Known Issues
