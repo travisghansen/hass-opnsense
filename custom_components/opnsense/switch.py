@@ -191,7 +191,7 @@ async def _compile_vpn_switches(
     entities: list = []
     for vpn_type in ["openvpn", "wireguard"]:
         for clients_servers in ["clients", "servers"]:
-            for vpnid, instance in (
+            for uuid, instance in (
                 state.get(vpn_type, {}).get(clients_servers, {}) or {}
             ).items():
                 if (
@@ -204,7 +204,7 @@ async def _compile_vpn_switches(
                     config_entry=config_entry,
                     coordinator=coordinator,
                     entity_description=SwitchEntityDescription(
-                        key=f"{vpn_type}.{clients_servers}.{vpnid}",
+                        key=f"{vpn_type}.{clients_servers}.{uuid}",
                         name=f"{"OpenVPN" if vpn_type == "openvpn" else vpn_type.title()} {clients_servers.title().rstrip('s')} {instance['name']}",
                         icon="mdi:folder-key-network-outline",
                         # entity_category=ENTITY_CATEGORY_CONFIG,
@@ -595,7 +595,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
         )
         self._vpn_type = self.entity_description.key.split(".")[0]
         self._clients_servers = self.entity_description.key.split(".")[1]
-        self._vpnid = self.entity_description.key.split(".")[2]
+        self._uuid = self.entity_description.key.split(".")[2]
         # _LOGGER.debug(f"[OPNsenseVPNSwitch init] Name: {self.name}")
 
     @callback
@@ -608,7 +608,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
         instance: Mapping[str, Any] = (
             state.get(self._vpn_type, {})
             .get(self._clients_servers, {})
-            .get(self._vpnid, {})
+            .get(self._uuid, {})
         )
         if not isinstance(instance, Mapping):
             self._available = False
@@ -624,7 +624,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
         self._attr_extra_state_attributes = {}
         if self._vpn_type == "wireguard" and self._clients_servers == "servers":
             properties: list = [
-                "vpnid",
+                "uuid",
                 "name",
                 "endpoint",
                 "interface",
@@ -635,7 +635,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
             ]
         elif self._vpn_type == "openvpn" and self._clients_servers == "servers":
             properties: list = [
-                "vpnid",
+                "uuid",
                 "name",
                 "endpoint",
                 "dev_type",
@@ -643,7 +643,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
                 "dns_servers",
             ]
         else:
-            properties: list = ["vpnid", "name"]
+            properties: list = ["uuid", "name"]
 
         for attr in properties:
             if instance.get(attr, None):
@@ -658,7 +658,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
             return
 
         result: bool = await self._client.toggle_vpn_instance(
-            self._vpn_type, self._clients_servers, self._vpnid
+            self._vpn_type, self._clients_servers, self._uuid
         )
         if result:
             await self.coordinator.async_refresh()
@@ -670,7 +670,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
             return
 
         result: bool = await self._client.toggle_vpn_instance(
-            self._vpn_type, self._clients_servers, self._vpnid
+            self._vpn_type, self._clients_servers, self._uuid
         )
         if result:
             await self.coordinator.async_refresh()

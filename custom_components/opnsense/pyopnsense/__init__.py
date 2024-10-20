@@ -1382,7 +1382,7 @@ $toreturn = [
                 and instance.get("uuid", None) not in openvpn["servers"]
             ):
                 openvpn["servers"][instance.get("uuid")] = {
-                    "vpnid": instance.get("uuid"),
+                    "uuid": instance.get("uuid"),
                     "name": instance.get("description"),
                 }
             if instance.get("dev_type", None):
@@ -1394,16 +1394,16 @@ $toreturn = [
                     instance.get("enabled", "0") == "1"
                 )
 
-        for vpnid, vpn_info in openvpn_info.items():
-            if not vpnid or not isinstance(vpn_info, Mapping):
+        for uuid, vpn_info in openvpn_info.items():
+            if not uuid or not isinstance(vpn_info, Mapping):
                 continue
-            if vpnid not in openvpn["servers"]:
-                openvpn["servers"][vpnid] = {
-                    "vpnid": vpnid,
+            if uuid not in openvpn["servers"]:
+                openvpn["servers"][uuid] = {
+                    "uuid": uuid,
                     "name": vpn_info.get("name"),
                 }
             if vpn_info.get("hostname", None) and vpn_info.get("local_port", None):
-                openvpn["servers"][vpnid][
+                openvpn["servers"][uuid][
                     "endpoint"
                 ] = f"{vpn_info.get('hostname')}:{vpn_info.get('local_port')}"
 
@@ -1427,13 +1427,13 @@ $toreturn = [
                     connect.get("bytes_sent", 0), 0
                 )
 
-        for vpnid, server in openvpn["servers"].items():
+        for uuid, server in openvpn["servers"].items():
             if server.get("total_bytes_sent", None) is None:
                 server["total_bytes_sent"] = 0
             if server.get("total_bytes_recv", None) is None:
                 server["total_bytes_recv"] = 0
             details_info: Mapping[str, Any] = await self._get(
-                f"/api/openvpn/instances/get/{vpnid}"
+                f"/api/openvpn/instances/get/{uuid}"
             )
             if isinstance(details_info, Mapping) and isinstance(
                 details_info.get("instance", None), Mapping
@@ -1455,9 +1455,9 @@ $toreturn = [
                 continue
             client: Mapping[str, Any] = {}
             client["name"] = instance.get("description", None)
-            client["vpnid"] = instance.get("uuid", None)
+            client["uuid"] = instance.get("uuid", None)
             client["enabled"] = instance.get("enabled", "0") == "1"
-            openvpn["clients"][client["vpnid"]] = client
+            openvpn["clients"][client["uuid"]] = client
 
         for connect in connection_info.get("rows", []):
             if not isinstance(connect, Mapping) or not connect:
@@ -1473,7 +1473,7 @@ $toreturn = [
                     connect.get("bytes_sent", 0), 0
                 )
 
-        for vpnid, client in openvpn["clients"].items():
+        for uuid, client in openvpn["clients"].items():
             if client.get("total_bytes_sent", None) is None:
                 client["total_bytes_sent"] = 0
             if client.get("total_bytes_recv", None) is None:
@@ -1772,7 +1772,7 @@ $toreturn = [
                         server["dns_servers"] = [srv.get(attr)]
                     else:
                         server[attr] = srv.get(attr)
-            server["vpnid"] = uid
+            server["uuid"] = uid
             server["enabled"] = bool(srv.get("enabled", "") == "1")
             server["interface"] = f"wg{srv.get('instance','')}"
             server["tunnel_addresses"] = []
@@ -1794,7 +1794,7 @@ $toreturn = [
             for attr in ["name", "pubkey"]:
                 if clnt.get(attr, None):
                     client[attr] = clnt.get(attr, None)
-            client["vpnid"] = uid
+            client["uuid"] = uid
             client["enabled"] = bool(clnt.get("enabled", "0") == "1")
             client["tunnel_addresses"] = []
             for addr in clnt.get("tunneladdress", {}).values():
@@ -1920,11 +1920,11 @@ $toreturn = [
         return {"servers": servers, "clients": clients}
 
     async def toggle_vpn_instance(
-        self, vpn_type: str, clients_servers: str, vpnid: str
+        self, vpn_type: str, clients_servers: str, uuid: str
     ) -> bool:
         if vpn_type == "openvpn":
             success: Mapping[str, Any] | list = await self._post(
-                f"/api/openvpn/instances/toggle/{vpnid}"
+                f"/api/openvpn/instances/toggle/{uuid}"
             )
             if not isinstance(success, Mapping) or not success.get("changed", False):
                 return False
@@ -1936,11 +1936,11 @@ $toreturn = [
         elif vpn_type == "wireguard":
             if clients_servers == "clients":
                 success: Mapping[str, Any] | list = await self._post(
-                    f"/api/wireguard/client/toggleClient/{vpnid}"
+                    f"/api/wireguard/client/toggleClient/{uuid}"
                 )
             elif clients_servers == "servers":
                 success: Mapping[str, Any] | list = await self._post(
-                    f"/api/wireguard/server/toggleServer/{vpnid}"
+                    f"/api/wireguard/server/toggleServer/{uuid}"
                 )
             if not isinstance(success, Mapping) or not success.get("changed", False):
                 return False

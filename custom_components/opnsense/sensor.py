@@ -367,7 +367,7 @@ async def _compile_vpn_sensors(
 
     for vpn_type in ["openvpn", "wireguard"]:
         for clients_servers in ["clients", "servers"]:
-            for vpnid, instance in dict_get(
+            for uuid, instance in dict_get(
                 state, f"{vpn_type}.{clients_servers}", {}
             ).items():
                 if not isinstance(instance, Mapping) or len(instance) == 0:
@@ -413,7 +413,7 @@ async def _compile_vpn_sensors(
                         config_entry=config_entry,
                         coordinator=coordinator,
                         entity_description=SensorEntityDescription(
-                            key=f"{vpn_type}.{clients_servers}.{vpnid}.{prop_name}",
+                            key=f"{vpn_type}.{clients_servers}.{uuid}.{prop_name}",
                             name=f"{"OpenVPN" if vpn_type == "openvpn" else vpn_type.title()} {clients_servers.title().rstrip('s')} {instance['name']} {prop_name}",
                             native_unit_of_measurement=native_unit_of_measurement,
                             device_class=device_class,
@@ -733,12 +733,12 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             self._available = False
             self.async_write_ha_state()
             return
-        vpnid: str = self.entity_description.key.split(".")[2]
+        uuid: str = self.entity_description.key.split(".")[2]
         instance: Mapping[str, Any] = {}
-        for instance_vpnid, ins in dict_get(
+        for instance_uuid, ins in dict_get(
             state, f"{vpn_type}.{clients_servers}", {}
         ).items():
-            if vpnid == instance_vpnid:
+            if uuid == instance_uuid:
                 instance = ins
                 break
         prop_name: str = self._get_property_name()
@@ -773,7 +773,7 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             and prop_name == "status"
         ):
             properties: list = [
-                "vpnid",
+                "uuid",
                 "name",
                 "enabled",
                 "endpoint",
@@ -789,7 +789,7 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             and prop_name == "status"
         ):
             properties: list = [
-                "vpnid",
+                "uuid",
                 "name",
                 "enabled",
                 "endpoint",
@@ -798,7 +798,7 @@ class OPNsenseVPNSensor(OPNsenseSensor):
                 "dns_servers",
             ]
         else:
-            properties: list = ["vpnid", "name"]
+            properties: list = ["uuid", "name"]
         for attr in properties:
             if instance.get(attr, None):
                 self._attr_extra_state_attributes[attr] = instance.get(attr)
