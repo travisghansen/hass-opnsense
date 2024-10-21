@@ -41,6 +41,7 @@ DEFAULT_DEVICE_TRACKER_CONSIDER_HOME = 0
 CONF_DEVICE_UNIQUE_ID = "device_unique_id"
 
 CONF_DEVICES = "devices"
+CONF_MANUAL_DEVICES = "manual_devices"
 
 COUNT = "count"
 
