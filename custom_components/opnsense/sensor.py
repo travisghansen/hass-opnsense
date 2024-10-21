@@ -610,8 +610,24 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
             return
         self._available = True
         self._attr_extra_state_attributes = {}
-        for attr in ["ipaddr", "media"]:
-            self._attr_extra_state_attributes[attr] = interface[attr]
+        if prop_name == "status":
+            properties: list = [
+                "enabled",
+                "interface",
+                "device",
+                "ipv4",
+                "ipv6",
+                "mac",
+                "routes",
+                "gateways",
+                "media",
+                "vlan_tag",
+            ]
+        else:
+            properties = ["interface", "device", "ipv4", "ipv6"]
+        for attr in properties:
+            if interface.get(attr, None):
+                self._attr_extra_state_attributes[attr] = interface[attr]
         self.async_write_ha_state()
 
     @property
