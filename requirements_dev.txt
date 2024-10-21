@@ -1,4 +1,0 @@
-black
-homeassistant
-isort
-python-dateutil
