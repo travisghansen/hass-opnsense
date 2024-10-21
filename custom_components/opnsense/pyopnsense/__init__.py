@@ -1106,15 +1106,26 @@ $toreturn = [
             interface["collisions"] = self._try_to_int(
                 ifinfo.get("statistics", {}).get("collisions", None)
             )
-            interface["descr"] = ifinfo.get("identifier", "")
+            interface["interface"] = ifinfo.get("identifier", "")
             interface["name"] = ifinfo.get("description", "")
             interface["status"] = ""
             if ifinfo.get("status", "") in ("down", "no carrier", "up"):
                 interface["status"] = ifinfo.get("status", "")
             elif ifinfo.get("status", "") in ("associated"):
                 interface["status"] = "up"
-            interface["ipaddr"] = ifinfo.get("addr4", "")
-            interface["media"] = ifinfo.get("media", "")
+            interface["ipv4"] = ifinfo.get("addr4", None)
+            interface["ipv6"] = ifinfo.get("addr6", None)
+            interface["media"] = ifinfo.get("media", None)
+            interface["gateways"] = ifinfo.get("gateways", [])
+            interface["routes"] = ifinfo.get("routes", [])
+            interface["device"] = ifinfo.get("device", None)
+            if (
+                ifinfo.get("macaddr", None)
+                and ifinfo.get("macaddr", None) != "00:00:00:00:00:00"
+            ):
+                interface["mac"] = ifinfo.get("macaddr", None)
+            interface["enabled"] = ifinfo.get("enabled", None)
+            interface["vlan_tag"] = ifinfo.get("vlan_tag", None)
             interfaces[ifinfo.get("identifier", "")] = interface
         # _LOGGER.debug(f"[get_interfaces] interfaces: {interfaces}")
         return interfaces
