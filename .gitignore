@@ -1,7 +1,19 @@
 /bin
 /lib
 /pyvenv.cfg
-/.env
 *.pyc
-venv
 .vscode
+.DS_Store
+Thumbs.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
