@@ -2,6 +2,7 @@
 
 import ipaddress
 import logging
+import re
 import socket
 import xmlrpc
 from collections.abc import Mapping
@@ -22,6 +23,7 @@ from homeassistant.const import (
     CONF_VERIFY_SSL,
 )
 from homeassistant.core import callback
+from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
 from .const import (
@@ -30,6 +32,7 @@ from .const import (
     CONF_DEVICE_TRACKER_SCAN_INTERVAL,
     CONF_DEVICE_UNIQUE_ID,
     CONF_DEVICES,
+    CONF_MANUAL_DEVICES,
     DEFAULT_DEVICE_TRACKER_CONSIDER_HOME,
     DEFAULT_DEVICE_TRACKER_ENABLED,
     DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
@@ -41,6 +44,11 @@ from .const import (
 from .pyopnsense import OPNsenseClient
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def is_valid_mac_address(mac: str) -> bool:
+    mac_regex = re.compile(r"^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$")
+    return bool(mac_regex.match(mac))
 
 
 def is_ip_address(value) -> bool:
@@ -377,11 +385,28 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                         vol.Optional(
                             CONF_DEVICES, default=selected_devices
                         ): cv.multi_select(sorted_entries),
+                        vol.Optional(CONF_MANUAL_DEVICES): selector.TextSelector(
+                            selector.TextSelectorConfig()
+                        ),
                     }
                 ),
             )
         if user_input:
-            self.new_options[CONF_DEVICES] = user_input[CONF_DEVICES]
+            macs: list = []
+            if isinstance(
+                user_input.get(CONF_MANUAL_DEVICES, None), str
+            ) and user_input.get(CONF_MANUAL_DEVICES, None):
+                for item in user_input[CONF_MANUAL_DEVICES].split(","):
+                    if not isinstance(item, str) or not item:
+                        continue
+                    item = item.strip()
+                    if is_valid_mac_address(item):
+                        macs.append(item)
+                _LOGGER.debug(f"[async_step_device_tracker] Manual Devices: {macs}")
+            _LOGGER.debug(
+                f"[async_step_device_tracker] Devices: {user_input[CONF_DEVICES]}"
+            )
+            self.new_options[CONF_DEVICES] = user_input[CONF_DEVICES] + macs
         return self.async_create_entry(title="", data=self.new_options)
 
 

@@ -48,7 +48,11 @@
       "device_tracker": {
         "description": "Choose which devices you want to track. If you don't select any devices, all devices will be tracked but will be disabled by default. If you do select any devices, only those devices will be tracked and will be enabled by default.",
         "data": {
-          "devices": "Devices to Track"
+          "devices": "Devices to Track",
+          "manual_devices": "Manual MAC Addresses to Track"
+        },
+        "data_description": {
+          "manual_devices": "Separate multiple MAC Addresses with a comma. Invalid MAC Addresses will be ignored. ex. 00:00:00:00:00:00, 11:11:11:11:11:11"
         }
       }
     }
