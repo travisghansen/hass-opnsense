@@ -24,6 +24,10 @@ DEFAULT_TIMEOUT = 60
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
+def wireguard_is_connected(past_time: datetime) -> bool:
+    return datetime.now().astimezone() - past_time <= timedelta(minutes=3)
+
+
 def get_ip_key(item) -> tuple:
     address = item.get("address", None)
 
@@ -1743,7 +1747,11 @@ $toreturn = [
             server["clients"] = {}
             for peer_id, peer in srv.get("peers", {}).items():
                 if peer.get("selected", 0) == 1 and peer.get("value", None):
-                    server["clients"][peer_id] = {"name": peer.get("value")}
+                    server["clients"][peer_id] = {
+                        "name": peer.get("value"),
+                        "connected": False,
+                    }
+            server["connected_clients"] = 0
             server["total_bytes_recv"] = 0
             server["total_bytes_sent"] = 0
             servers[uid] = server
@@ -1765,12 +1773,15 @@ $toreturn = [
             for srv_id, srv in clnt.get("servers", {}).items():
                 if srv.get("selected", 0) == 1 and srv.get("value", None):
                     if servers.get(srv_id, None):
-                        client["servers"][srv_id] = {}
+                        client["servers"][srv_id] = {"connected": False}
                         for attr in ["name", "pubkey", "interface", "tunnel_addresses"]:
                             if servers.get(srv_id, {}).get(attr, None):
                                 client["servers"][srv_id][attr] = servers[srv_id][attr]
                     else:
-                        client["servers"][srv_id] = {"name": peer.get("value")}
+                        client["servers"][srv_id] = {
+                            "name": peer.get("value"),
+                            "connected": False,
+                        }
             for server in servers.values():
                 if (
                     isinstance(server, Mapping)
@@ -1780,6 +1791,7 @@ $toreturn = [
                     for attr in ["name", "enabled", "pubkey", "tunnel_addresses"]:
                         if client.get(attr, None):
                             server["clients"][uid][attr] = client.get(attr)
+            client["connected_servers"] = 0
             client["total_bytes_recv"] = 0
             client["total_bytes_sent"] = 0
             clients[uid] = client
@@ -1800,6 +1812,7 @@ $toreturn = [
                         and client.get("pubkey", "") == entry.get("public-key", "-")
                         and isinstance(client.get("servers", None), Mapping)
                     ):
+                        client["connected_servers"] = 0
                         for srv in client.get("servers").values():
                             if isinstance(srv, Mapping) and srv.get(
                                 "interface", ""
@@ -1824,6 +1837,11 @@ $toreturn = [
                                         int(entry.get("latest-handshake")),
                                         tz=datetime.now().astimezone().tzinfo,
                                     )
+                                    srv["connected"] = wireguard_is_connected(
+                                        srv.get("latest-handshake")
+                                    )
+                                    if srv["connected"]:
+                                        client["connected_servers"] += 1
                                     if client.get(
                                         "latest-handshake", None
                                     ) is None or client.get(
@@ -1834,6 +1852,8 @@ $toreturn = [
                                         client["latest-handshake"] = srv.get(
                                             "latest-handshake"
                                         )
+                                else:
+                                    srv["connected"] = False
 
                 for server in servers.values():
                     if (
@@ -1841,6 +1861,7 @@ $toreturn = [
                         and server.get("interface", "") == entry.get("if", "-")
                         and isinstance(server.get("clients", None), Mapping)
                     ):
+                        server["connected_clients"] = 0
                         for clnt in server.get("clients").values():
                             if isinstance(clnt, Mapping) and clnt.get(
                                 "pubkey", ""
@@ -1865,6 +1886,11 @@ $toreturn = [
                                         int(entry.get("latest-handshake")),
                                         tz=datetime.now().astimezone().tzinfo,
                                     )
+                                    clnt["connected"] = wireguard_is_connected(
+                                        clnt.get("latest-handshake")
+                                    )
+                                    if clnt["connected"]:
+                                        server["connected_clients"] += 1
                                     if server.get(
                                         "latest-handshake", None
                                     ) is None or server.get(
@@ -1875,6 +1901,8 @@ $toreturn = [
                                         server["latest-handshake"] = clnt.get(
                                             "latest-handshake"
                                         )
+                                else:
+                                    clnt["connected"] = False
 
         _LOGGER.debug(f"[get_wireguard] servers: {servers}")
         _LOGGER.debug(f"[get_wireguard] clients: {clients}")
