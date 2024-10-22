@@ -380,6 +380,11 @@ async def _compile_vpn_sensors(
                 ]
                 if clients_servers == "servers":
                     properties.append("status")
+                if vpn_type == "wireguard":
+                    if clients_servers == "servers":
+                        properties.append("connected_clients")
+                    elif clients_servers == "clients":
+                        properties.append("connected_servers")
                 for prop_name in properties:
                     state_class = None
                     native_unit_of_measurement = None
@@ -400,12 +405,19 @@ async def _compile_vpn_sensors(
                         suggested_display_precision = 1
                         suggested_unit_of_measurement = UnitOfInformation.MEGABYTES
 
+                    if prop_name in ["connected_clients", "connected_servers"]:
+                        state_class = SensorStateClass.MEASUREMENT
+
                     # icon
                     if "bytes" in prop_name:
                         icon = "mdi:server-network"
                     elif prop_name == "status":
                         icon = "mdi:check-network"
                         enabled_default = True
+                    elif prop_name == "connected_servers":
+                        icon = "mdi:router-network"
+                    elif prop_name == "connected_clients":
+                        icon = "mdi:account-network"
                     else:
                         icon = "mdi:gauge"
 
@@ -414,7 +426,7 @@ async def _compile_vpn_sensors(
                         coordinator=coordinator,
                         entity_description=SensorEntityDescription(
                             key=f"{vpn_type}.{clients_servers}.{uuid}.{prop_name}",
-                            name=f"{"OpenVPN" if vpn_type == "openvpn" else vpn_type.title()} {clients_servers.title().rstrip('s')} {instance['name']} {prop_name}",
+                            name=f"{'OpenVPN' if vpn_type == 'openvpn' else vpn_type.title()} {clients_servers.title().rstrip('s')} {instance['name']} {prop_name}",
                             native_unit_of_measurement=native_unit_of_measurement,
                             device_class=device_class,
                             icon=icon,
@@ -790,12 +802,14 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             properties: list = [
                 "uuid",
                 "name",
+                "connected_clients",
                 "enabled",
                 "endpoint",
                 "interface",
                 "pubkey",
                 "tunnel_addresses",
                 "dns_servers",
+                "latest-handshake",
                 "clients",
             ]
         elif (
@@ -812,10 +826,34 @@ class OPNsenseVPNSensor(OPNsenseSensor):
                 "tunnel_addresses",
                 "dns_servers",
             ]
+        elif prop_name == "connected_clients":
+            properties: list = [
+                "uuid",
+                "name",
+                "status",
+                "enabled",
+                "endpoint",
+                "interface",
+                "pubkey",
+                "tunnel_addresses",
+                "dns_servers",
+                "latest-handshake",
+                "clients",
+            ]
+        elif prop_name == "connected_servers":
+            properties: list = [
+                "uuid",
+                "name",
+                "enabled",
+                "pubkey",
+                "tunnel_addresses",
+                "latest-handshake",
+                "servers",
+            ]
         else:
             properties: list = ["uuid", "name"]
         for attr in properties:
-            if instance.get(attr, None):
+            if instance.get(attr, None) is not None:
                 self._attr_extra_state_attributes[attr] = instance.get(attr)
         self.async_write_ha_state()
 
