@@ -426,7 +426,7 @@ async def _compile_vpn_sensors(
                         coordinator=coordinator,
                         entity_description=SensorEntityDescription(
                             key=f"{vpn_type}.{clients_servers}.{uuid}.{prop_name}",
-                            name=f"{"OpenVPN" if vpn_type == "openvpn" else vpn_type.title()} {clients_servers.title().rstrip('s')} {instance['name']} {prop_name}",
+                            name=f"{'OpenVPN' if vpn_type == 'openvpn' else vpn_type.title()} {clients_servers.title().rstrip('s')} {instance['name']} {prop_name}",
                             native_unit_of_measurement=native_unit_of_measurement,
                             device_class=device_class,
                             icon=icon,
@@ -853,7 +853,7 @@ class OPNsenseVPNSensor(OPNsenseSensor):
         else:
             properties: list = ["uuid", "name"]
         for attr in properties:
-            if instance.get(attr, None):
+            if instance.get(attr, None) is not None:
                 self._attr_extra_state_attributes[attr] = instance.get(attr)
         self.async_write_ha_state()
 
