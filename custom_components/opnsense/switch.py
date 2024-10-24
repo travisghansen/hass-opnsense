@@ -622,25 +622,32 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
             return
         self._available = True
         self._attr_extra_state_attributes = {}
-        if self._vpn_type == "wireguard" and self._clients_servers == "servers":
+        if self._clients_servers == "servers":
             properties: list = [
                 "uuid",
                 "name",
+                "status",
+                "connected_clients",
                 "endpoint",
                 "interface",
+                "dev_type",
                 "pubkey",
                 "tunnel_addresses",
                 "dns_servers",
+                "latest_handshake",
                 "clients",
             ]
-        elif self._vpn_type == "openvpn" and self._clients_servers == "servers":
+        elif self._clients_servers == "clients":
             properties: list = [
                 "uuid",
                 "name",
+                "connected_servers",
                 "endpoint",
-                "dev_type",
+                "iterface",
+                "pubkey",
                 "tunnel_addresses",
-                "dns_servers",
+                "latest_handshake",
+                "servers",
             ]
         else:
             properties: list = ["uuid", "name"]
