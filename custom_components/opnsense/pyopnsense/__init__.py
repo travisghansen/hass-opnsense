@@ -217,7 +217,7 @@ $toreturn["real"] = json_encode($toreturn_real);
     @_log_errors
     async def get_host_firmware_version(self) -> None | str:
         firmware_info: Mapping[str, Any] | list = await self._get(
-            "/api/core/firmware/status"
+            "/api/core/firmware/info"
         )
         if not isinstance(firmware_info, Mapping):
             return None
@@ -225,6 +225,19 @@ $toreturn["real"] = json_encode($toreturn_real);
         _LOGGER.debug(f"[get_host_firmware_version] firmware: {firmware}")
         self._firmware_version = firmware
         return firmware
+
+    async def is_plugin_installed(self) -> bool:
+        firmware_info: Mapping[str, Any] | list = await self._get(
+            "/api/core/firmware/info"
+        )
+        if not isinstance(firmware_info, Mapping) or not isinstance(
+            firmware_info.get("package"), list
+        ):
+            return False
+        for pkg in firmware_info.get("package"):
+            if pkg.get("name", None) == "os-homeassistant-maxit":
+                return True
+        return False
 
     async def _get_from_stream(self, path: str) -> Mapping[str, Any] | list:
         self._rest_api_query_count += 1

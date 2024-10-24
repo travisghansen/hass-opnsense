@@ -77,7 +77,7 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     # when user submits has user_input
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
-        errors = {}
+        errors: Mapping[str, Any] = {}
         if user_input is not None:
             try:
                 name = user_input.get(CONF_NAME, False) or None
@@ -121,8 +121,10 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 except awesomeversion.exceptions.AwesomeVersionCompareException:
                     raise UnknownFirmware()
 
-                system_info: Mapping[str, Any] = await client.get_system_info()
+                if not await client.is_plugin_installed():
+                    raise PluginMissing()
 
+                system_info: Mapping[str, Any] = await client.get_system_info()
                 if name is None:
                     name: str = system_info.get("name") or "OPNsense"
 
@@ -146,6 +148,9 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.error(
                     f"Missing Device Unique ID Error. {err.__class__.__qualname__}: {err}"
                 )
+            except PluginMissing:
+                errors["base"] = "plugin_missing"
+                _LOGGER.error("OPNsense Plugin Missing")
             except (aiohttp.InvalidURL, InvalidURL) as err:
                 errors["base"] = "invalid_url_format"
                 _LOGGER.error(f"InvalidURL Error. {err.__class__.__qualname__}: {err}")
@@ -423,4 +428,8 @@ class BelowMinFirmware(Exception):
 
 
 class UnknownFirmware(Exception):
+    pass
+
+
+class PluginMissing(Exception):
     pass
