@@ -366,7 +366,10 @@ async def _compile_vpn_sensors(
     entities: list = []
 
     for vpn_type in ["openvpn", "wireguard"]:
-        for clients_servers in ["clients", "servers"]:
+        cs = ["servers"]
+        if vpn_type == "wireguard":
+            cs = ["clients", "servers"]
+        for clients_servers in cs:
             for uuid, instance in dict_get(
                 state, f"{vpn_type}.{clients_servers}", {}
             ).items():
@@ -380,11 +383,9 @@ async def _compile_vpn_sensors(
                 ]
                 if clients_servers == "servers":
                     properties.append("status")
-                if vpn_type == "wireguard":
-                    if clients_servers == "servers":
-                        properties.append("connected_clients")
-                    elif clients_servers == "clients":
-                        properties.append("connected_servers")
+                    properties.append("connected_clients")
+                if vpn_type == "wireguard" and clients_servers == "clients":
+                    properties.append("connected_servers")
                 for prop_name in properties:
                     state_class = None
                     native_unit_of_measurement = None
@@ -794,37 +795,20 @@ class OPNsenseVPNSensor(OPNsenseSensor):
         self._available = True
 
         self._attr_extra_state_attributes = {}
-        if (
-            vpn_type == "wireguard"
-            and clients_servers == "servers"
-            and prop_name == "status"
-        ):
+        if clients_servers == "servers" and prop_name == "status":
             properties: list = [
                 "uuid",
                 "name",
-                "connected_clients",
                 "enabled",
+                "connected_clients",
                 "endpoint",
                 "interface",
+                "dev_type",
                 "pubkey",
                 "tunnel_addresses",
                 "dns_servers",
-                "latest-handshake",
+                "latest_handshake",
                 "clients",
-            ]
-        elif (
-            vpn_type == "openvpn"
-            and clients_servers == "servers"
-            and prop_name == "status"
-        ):
-            properties: list = [
-                "uuid",
-                "name",
-                "enabled",
-                "endpoint",
-                "dev_type",
-                "tunnel_addresses",
-                "dns_servers",
             ]
         elif prop_name == "connected_clients":
             properties: list = [
@@ -834,10 +818,11 @@ class OPNsenseVPNSensor(OPNsenseSensor):
                 "enabled",
                 "endpoint",
                 "interface",
+                "dev_type",
                 "pubkey",
                 "tunnel_addresses",
                 "dns_servers",
-                "latest-handshake",
+                "latest_handshake",
                 "clients",
             ]
         elif prop_name == "connected_servers":
@@ -845,9 +830,12 @@ class OPNsenseVPNSensor(OPNsenseSensor):
                 "uuid",
                 "name",
                 "enabled",
+                "connected_servers",
+                "endpoint",
+                "iterface",
                 "pubkey",
                 "tunnel_addresses",
-                "latest-handshake",
+                "latest_handshake",
                 "servers",
             ]
         else:

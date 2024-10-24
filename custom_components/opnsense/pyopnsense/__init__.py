@@ -1312,22 +1312,24 @@ $toreturn = [
 
     @_log_errors
     async def get_openvpn(self) -> Mapping[str, Any]:
-        openvpn_info: Mapping[str, Any] | list = await self._get(
-            "/api/openvpn/export/providers"
-        )
-        connection_info: Mapping[str, Any] = await self._get(
+        sessions_info: Mapping[str, Any] = await self._get(
             "/api/openvpn/service/searchSessions"
         )
+
+        providers_info: Mapping[str, Any] | list = await self._get(
+            "/api/openvpn/export/providers"
+        )
+
         instances_info: Mapping[str, Any] = await self._get(
             "/api/openvpn/instances/search"
         )
-        # _LOGGER.debug(f"[get_openvpn] openvpn_info: {openvpn_info}")
-        # _LOGGER.debug(f"[get_openvpn] connection_info: {connection_info}")
+        # _LOGGER.debug(f"[get_openvpn] providers_info: {providers_info}")
+        # _LOGGER.debug(f"[get_openvpn] sessions_info: {sessions_info}")
         # _LOGGER.debug(f"[get_openvpn] instances_info: {instances_info}")
-        if not isinstance(openvpn_info, Mapping):
-            openvpn_info = {}
-        if not isinstance(connection_info, Mapping):
-            connection_info = {}
+        if not isinstance(providers_info, Mapping):
+            providers_info = {}
+        if not isinstance(sessions_info, Mapping):
+            sessions_info = {}
         if not isinstance(instances_info, Mapping):
             instances_info = {}
 
@@ -1349,54 +1351,81 @@ $toreturn = [
                 openvpn["servers"][instance.get("uuid")] = {
                     "uuid": instance.get("uuid"),
                     "name": instance.get("description"),
+                    "connected_clients": 0,
+                    "enabled": bool(instance.get("enabled", "0") == "1"),
+                    "dev_type": instance.get("dev_type", None),
                 }
-            if instance.get("dev_type", None):
-                openvpn["servers"][instance.get("uuid")]["dev_type"] = instance.get(
-                    "dev_type", None
-                )
-            if instance.get("enabled", None):
-                openvpn["servers"][instance.get("uuid")]["enabled"] = bool(
-                    instance.get("enabled", "0") == "1"
-                )
 
-        for uuid, vpn_info in openvpn_info.items():
+        for uuid, vpn_info in providers_info.items():
             if not uuid or not isinstance(vpn_info, Mapping):
                 continue
             if uuid not in openvpn["servers"]:
                 openvpn["servers"][uuid] = {
                     "uuid": uuid,
                     "name": vpn_info.get("name"),
+                    "connected_clients": 0,
                 }
             if vpn_info.get("hostname", None) and vpn_info.get("local_port", None):
                 openvpn["servers"][uuid][
                     "endpoint"
                 ] = f"{vpn_info.get('hostname')}:{vpn_info.get('local_port')}"
 
-        for connect in connection_info.get("rows", []):
-            if not isinstance(connect, Mapping) or not connect:
+        for session in sessions_info.get("rows", []):
+            if session.get("type", None) != "server":
                 continue
-            id: str | int | None = connect.get("id", None)
-            if isinstance(id, str) and "_" in id:
-                id = id.split("_")[0]
-            if id and id in openvpn["servers"]:
-                if connect.get("description", None):
-                    openvpn["servers"][id]["name"] = connect.get("description")
-                openvpn["servers"][id]["status"] = connect.get("status", "down")
-                if openvpn["servers"][id]["status"] == "ok":
-                    openvpn["servers"][id]["status"] = "up"
+            server_id = str(session["id"]).split("_")[0]
 
-                openvpn["servers"][id]["total_bytes_recv"] = self._try_to_int(
-                    connect.get("bytes_received", 0), 0
-                )
-                openvpn["servers"][id]["total_bytes_sent"] = self._try_to_int(
-                    connect.get("bytes_sent", 0), 0
-                )
+            if server_id not in openvpn["servers"]:
+                openvpn["servers"][server_id] = {
+                    "uuid": server_id,
+                    "connected_clients": 0,
+                }
+            openvpn["servers"][server_id].update(
+                {
+                    "name": session.get("description", ""),
+                    "status": (
+                        "up"
+                        if session.get("status", None) == "ok"
+                        else session.get("status", "down")
+                    ),
+                    "clients": [],
+                }
+            )
+
+            if not session.get("is_client", False):
+                openvpn["servers"][server_id]["clients"] = []
+            else:
+                openvpn["servers"][server_id]["connected_clients"] += 1
+                client = {
+                    "common_name": session.get("common_name", None),
+                    "endpoint": session.get("real_address", None),
+                    "bytes_recv": self._try_to_int(session.get("bytes_received", 0), 0),
+                    "bytes_sent": self._try_to_int(session.get("bytes_sent", 0), 0),
+                }
+                tunnel_addresses: list = []
+                for addr in ["virtual_address", "virtual_ipv6_address"]:
+                    if session.get(addr, None):
+                        tunnel_addresses.append(session.get(addr))
+                client.update({"tunnel_addresses": tunnel_addresses})
+                if session.get("connected_since__time_t_", None):
+                    client.update(
+                        {
+                            "latest_handshake": datetime.fromtimestamp(
+                                int(session.get("connected_since__time_t_")),
+                                tz=datetime.now().astimezone().tzinfo,
+                            )
+                        }
+                    )
+                openvpn["servers"][server_id]["clients"].append(client)
 
         for uuid, server in openvpn["servers"].items():
-            if server.get("total_bytes_sent", None) is None:
-                server["total_bytes_sent"] = 0
-            if server.get("total_bytes_recv", None) is None:
-                server["total_bytes_recv"] = 0
+            server["total_bytes_sent"] = 0
+            server["total_bytes_recv"] = 0
+            if isinstance(server.get("clients", None), list):
+                for client in server.get("clients", []):
+                    server["total_bytes_sent"] += client.get("bytes_sent", 0)
+                    server["total_bytes_recv"] += client.get("bytes_recv", 0)
+
             details_info: Mapping[str, Any] = await self._get(
                 f"/api/openvpn/instances/get/{uuid}"
             )
@@ -1418,31 +1447,31 @@ $toreturn = [
                 or instance.get("role", "").lower() != "client"
             ):
                 continue
-            client: Mapping[str, Any] = {}
-            client["name"] = instance.get("description", None)
-            client["uuid"] = instance.get("uuid", None)
-            client["enabled"] = instance.get("enabled", "0") == "1"
-            openvpn["clients"][client["uuid"]] = client
+            openvpn["clients"][client["uuid"]] = {
+                "name": instance.get("description", None),
+                "uuid": instance.get("uuid", None),
+                "enabled": bool(instance.get("enabled", "0") == "1"),
+            }
 
-        for connect in connection_info.get("rows", []):
-            if not isinstance(connect, Mapping) or not connect:
-                continue
-            id: str | int | None = connect.get("id", None)
-            if isinstance(id, str) and "_" in id:
-                id = id.split("_")[0]
-            if id and id in openvpn["clients"]:
-                openvpn["clients"][id]["total_bytes_recv"] = self._try_to_int(
-                    connect.get("bytes_received", 0), 0
-                )
-                openvpn["clients"][id]["total_bytes_sent"] = self._try_to_int(
-                    connect.get("bytes_sent", 0), 0
-                )
+        # for connect in sessions_info.get("rows", []):
+        #     if not isinstance(connect, Mapping) or not connect:
+        #         continue
+        #     id: str | int | None = connect.get("id", None)
+        #     if isinstance(id, str) and "_" in id:
+        #         id = id.split("_")[0]
+        #     if id and id in openvpn["clients"]:
+        #         openvpn["clients"][id]["total_bytes_recv"] = self._try_to_int(
+        #             connect.get("bytes_received", 0), 0
+        #         )
+        #         openvpn["clients"][id]["total_bytes_sent"] = self._try_to_int(
+        #             connect.get("bytes_sent", 0), 0
+        #         )
 
-        for uuid, client in openvpn["clients"].items():
-            if client.get("total_bytes_sent", None) is None:
-                client["total_bytes_sent"] = 0
-            if client.get("total_bytes_recv", None) is None:
-                client["total_bytes_recv"] = 0
+        # for uuid, client in openvpn["clients"].items():
+        #     if client.get("total_bytes_sent", None) is None:
+        #         client["total_bytes_sent"] = 0
+        #     if client.get("total_bytes_recv", None) is None:
+        #         client["total_bytes_recv"] = 0
         _LOGGER.debug(f"[get_openvpn] openvpn: {openvpn}")
         return openvpn
 
@@ -1744,13 +1773,16 @@ $toreturn = [
             for addr in srv.get("tunneladdress", {}).values():
                 if addr.get("selected", 0) == 1 and addr.get("value", None):
                     server["tunnel_addresses"].append(addr.get("value"))
-            server["clients"] = {}
+            server["clients"] = []
             for peer_id, peer in srv.get("peers", {}).items():
                 if peer.get("selected", 0) == 1 and peer.get("value", None):
-                    server["clients"][peer_id] = {
-                        "name": peer.get("value"),
-                        "connected": False,
-                    }
+                    server["clients"].append(
+                        {
+                            "name": peer.get("value"),
+                            "uuid": peer_id,
+                            "connected": False,
+                        }
+                    )
             server["connected_clients"] = 0
             server["total_bytes_recv"] = 0
             server["total_bytes_sent"] = 0
@@ -1769,28 +1801,40 @@ $toreturn = [
             for addr in clnt.get("tunneladdress", {}).values():
                 if addr.get("selected", 0) == 1 and addr.get("value", None):
                     client["tunnel_addresses"].append(addr.get("value"))
-            client["servers"] = {}
+            client["servers"] = []
             for srv_id, srv in clnt.get("servers", {}).items():
                 if srv.get("selected", 0) == 1 and srv.get("value", None):
                     if servers.get(srv_id, None):
-                        client["servers"][srv_id] = {"connected": False}
-                        for attr in ["name", "pubkey", "interface", "tunnel_addresses"]:
-                            if servers.get(srv_id, {}).get(attr, None):
-                                client["servers"][srv_id][attr] = servers[srv_id][attr]
-                    else:
-                        client["servers"][srv_id] = {
-                            "name": peer.get("value"),
+                        add_srv: Mapping[str, Any] = {
+                            "name": servers[srv_id]["name"],
+                            "uuid": srv_id,
                             "connected": False,
                         }
+                        for attr in ["pubkey", "interface", "tunnel_addresses"]:
+                            if servers.get(srv_id, {}).get(attr, None):
+                                add_srv[attr] = servers[srv_id][attr]
+                        client["servers"].append(add_srv)
+                    else:
+                        client["servers"].append(
+                            {
+                                "name": peer.get("value"),
+                                "uuid": srv_id,
+                                "connected": False,
+                            }
+                        )
             for server in servers.values():
-                if (
-                    isinstance(server, Mapping)
-                    and isinstance(server.get("clients", None), Mapping)
-                    and uid in server.get("clients")
+                if isinstance(server, Mapping) and isinstance(
+                    server.get("clients", None), list
                 ):
-                    for attr in ["name", "enabled", "pubkey", "tunnel_addresses"]:
-                        if client.get(attr, None):
-                            server["clients"][uid][attr] = client.get(attr)
+                    match_cl: Mapping[str, Any] = {}
+                    for cl in server.get("clients"):
+                        if isinstance(cl, Mapping) and cl.get("uuid", None) == uid:
+                            match_cl = cl
+                            break
+                    if match_cl:
+                        for attr in ["name", "enabled", "pubkey", "tunnel_addresses"]:
+                            if client.get(attr, None):
+                                match_cl[attr] = client.get(attr)
             client["connected_servers"] = 0
             client["total_bytes_recv"] = 0
             client["total_bytes_sent"] = 0
@@ -1810,10 +1854,10 @@ $toreturn = [
                     if (
                         isinstance(client, Mapping)
                         and client.get("pubkey", "") == entry.get("public-key", "-")
-                        and isinstance(client.get("servers", None), Mapping)
+                        and isinstance(client.get("servers", None), list)
                     ):
                         client["connected_servers"] = 0
-                        for srv in client.get("servers").values():
+                        for srv in client.get("servers"):
                             if isinstance(srv, Mapping) and srv.get(
                                 "interface", ""
                             ) == entry.get("if", "-"):
@@ -1833,24 +1877,24 @@ $toreturn = [
                                         client.get("total_bytes_sent", 0)
                                     ) + int(entry.get("transfer-tx"))
                                 if entry.get("latest-handshake", None):
-                                    srv["latest-handshake"] = datetime.fromtimestamp(
+                                    srv["latest_handshake"] = datetime.fromtimestamp(
                                         int(entry.get("latest-handshake")),
                                         tz=datetime.now().astimezone().tzinfo,
                                     )
                                     srv["connected"] = wireguard_is_connected(
-                                        srv.get("latest-handshake")
+                                        srv.get("latest_handshake")
                                     )
                                     if srv["connected"]:
                                         client["connected_servers"] += 1
                                     if client.get(
-                                        "latest-handshake", None
+                                        "latest_handshake", None
                                     ) is None or client.get(
-                                        "latest-handshake"
+                                        "latest_handshake"
                                     ) < srv.get(
-                                        "latest-handshake"
+                                        "latest_handshake"
                                     ):
-                                        client["latest-handshake"] = srv.get(
-                                            "latest-handshake"
+                                        client["latest_handshake"] = srv.get(
+                                            "latest_handshake"
                                         )
                                 else:
                                     srv["connected"] = False
@@ -1859,10 +1903,9 @@ $toreturn = [
                     if (
                         isinstance(server, Mapping)
                         and server.get("interface", "") == entry.get("if", "-")
-                        and isinstance(server.get("clients", None), Mapping)
+                        and isinstance(server.get("clients", None), list)
                     ):
-                        server["connected_clients"] = 0
-                        for clnt in server.get("clients").values():
+                        for clnt in server.get("clients"):
                             if isinstance(clnt, Mapping) and clnt.get(
                                 "pubkey", ""
                             ) == entry.get("public-key", "-"):
@@ -1882,31 +1925,31 @@ $toreturn = [
                                         server.get("total_bytes_sent", 0)
                                     ) + int(entry.get("transfer-tx"))
                                 if entry.get("latest-handshake", None):
-                                    clnt["latest-handshake"] = datetime.fromtimestamp(
+                                    clnt["latest_handshake"] = datetime.fromtimestamp(
                                         int(entry.get("latest-handshake")),
                                         tz=datetime.now().astimezone().tzinfo,
                                     )
                                     clnt["connected"] = wireguard_is_connected(
-                                        clnt.get("latest-handshake")
+                                        clnt.get("latest_handshake")
                                     )
                                     if clnt["connected"]:
                                         server["connected_clients"] += 1
                                     if server.get(
-                                        "latest-handshake", None
+                                        "latest_handshake", None
                                     ) is None or server.get(
-                                        "latest-handshake"
+                                        "latest_handshake"
                                     ) < clnt.get(
-                                        "latest-handshake"
+                                        "latest_handshake"
                                     ):
-                                        server["latest-handshake"] = clnt.get(
-                                            "latest-handshake"
+                                        server["latest_handshake"] = clnt.get(
+                                            "latest_handshake"
                                         )
                                 else:
                                     clnt["connected"] = False
 
-        _LOGGER.debug(f"[get_wireguard] servers: {servers}")
-        _LOGGER.debug(f"[get_wireguard] clients: {clients}")
-        return {"servers": servers, "clients": clients}
+        wireguard: Mapping[str, Any] = {"servers": servers, "clients": clients}
+        _LOGGER.debug(f"[get_wireguard] wireguard: {wireguard}")
+        return wireguard
 
     async def toggle_vpn_instance(
         self, vpn_type: str, clients_servers: str, uuid: str
