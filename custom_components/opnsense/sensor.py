@@ -808,7 +808,6 @@ class OPNsenseVPNSensor(OPNsenseSensor):
                 "tunnel_addresses",
                 "dns_servers",
                 "latest_handshake",
-                "clients",
             ]
         elif prop_name == "connected_clients":
             properties: list = [
@@ -823,7 +822,6 @@ class OPNsenseVPNSensor(OPNsenseSensor):
                 "tunnel_addresses",
                 "dns_servers",
                 "latest_handshake",
-                "clients",
             ]
         elif prop_name == "connected_servers":
             properties: list = [
@@ -843,6 +841,27 @@ class OPNsenseVPNSensor(OPNsenseSensor):
         for attr in properties:
             if instance.get(attr, None) is not None:
                 self._attr_extra_state_attributes[attr] = instance.get(attr)
+
+        if (
+            isinstance(instance.get("clients", None), list)
+            and clients_servers == "servers"
+            and prop_name in ["connected_clients", "status"]
+        ):
+            self._attr_extra_state_attributes["clients"] = []
+            for clnt in instance.get("clients"):
+                client: Mapping[str, Any] = {}
+                for client_attr in [
+                    "common_name",
+                    "status",
+                    "endpoint",
+                    "tunnel_addresses",
+                    "latest_handshake",
+                    "byes_sent",
+                    "bytes_recv",
+                ]:
+                    if clnt.get(client_attr, None) is not None:
+                        client[client_attr] = clnt.get(client_attr)
+                self._attr_extra_state_attributes["clients"].append(client)
         self.async_write_ha_state()
 
     @property
