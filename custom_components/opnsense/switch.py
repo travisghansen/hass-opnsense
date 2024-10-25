@@ -186,14 +186,14 @@ async def _compile_vpn_switches(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: Mapping[str, Any],
 ) -> list:
-    if not isinstance(state, Mapping):
-        return []
     entities: list = []
     for vpn_type in ["openvpn", "wireguard"]:
         for clients_servers in ["clients", "servers"]:
+            if not isinstance(state, Mapping):
+                return []
             for uuid, instance in (
-                state.get(vpn_type, {}).get(clients_servers, {}) or {}
-            ).items():
+                state.get(vpn_type, {}).get(clients_servers, {}).items()
+            ):
                 if (
                     not isinstance(instance, Mapping)
                     or instance.get("enabled", None) is None

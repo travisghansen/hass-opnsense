@@ -1460,11 +1460,12 @@ $toreturn = [
                 or instance.get("role", "").lower() != "client"
             ):
                 continue
-            openvpn["clients"][client["uuid"]] = {
-                "name": instance.get("description", None),
-                "uuid": instance.get("uuid", None),
-                "enabled": bool(instance.get("enabled", "0") == "1"),
-            }
+            if instance.get("uuid", None):
+                openvpn["clients"][instance.get("uuid")] = {
+                    "name": instance.get("description", None),
+                    "uuid": instance.get("uuid", None),
+                    "enabled": bool(instance.get("enabled", "0") == "1"),
+                }
 
         # for connect in sessions_info.get("rows", []):
         #     if not isinstance(connect, Mapping) or not connect:
