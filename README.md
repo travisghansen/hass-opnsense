@@ -156,18 +156,18 @@ Also note that if you are running `AdGuardHome` DNS queries may get throttled ca
 
 ## Sensor
 
-- system details (name, version, temp, boottime, etc)
+- System details (name, version, temp, boottime, etc)
 - pfstate details
-- cpu details (usage, load, cores)
+- CPU details (usage, load, cores)
 - mbuf details
-- memory details
-- filesystem usage
-- interface details (status, stats, pps, kbs (time samples are based on the
-  `Scan Interval (seconds)` config option))
-- gateways details (status, delay, stddev, loss)
-- carp interface status
-- dhcp leases
+- Memory details
+- Filesystem usage
+- Interface details (status, stats, pps, kbs (time samples are based on the `Scan Interval (seconds)` config option))
+- Gateways details (status, delay, stddev, loss)
+- Carp Interface status
+- DHCP Leases
 - OpenVPN & Wireguard server and client stats
+- Certificates
 
 ## Switch
 
