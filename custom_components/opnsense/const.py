@@ -259,6 +259,15 @@ STATIC_SENSORS: Final[dict[str, SensorEntityDescription]] = {
         entity_registry_enabled_default=True,
         # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
+    "certificates": SensorEntityDescription(
+        key="certificates",
+        name="Certificates",
+        device_class=None,
+        icon="mdi:certificate-outline",
+        state_class=None,
+        entity_registry_enabled_default=False,
+        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
 }
 
 SERVICE_CLOSE_NOTICE = "close_notice"

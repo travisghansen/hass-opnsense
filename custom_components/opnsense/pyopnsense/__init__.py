@@ -2004,3 +2004,29 @@ $toreturn = [
         if not isinstance(reload, Mapping):
             return False
         return reload.get("message", "").startswith("OK")
+
+    async def get_certificates(self) -> Mapping[str, Any]:
+        certs_raw: Mapping[str, Any] | list = await self._get("/api/trust/cert/search")
+        if not isinstance(certs_raw, Mapping) or not isinstance(
+            certs_raw.get("rows", None), list
+        ):
+            return {}
+        certs: Mapping[str, Any] = {}
+        for cert in certs_raw.get("rows", None):
+            if cert.get("descr", None):
+                certs[cert.get("descr")] = {
+                    "uuid": cert.get("uuid", None),
+                    "issuer": cert.get("caref", None),
+                    "purpose": cert.get("rfc3280_purpose", None),
+                    "in_use": bool(cert.get("in_use", "0") == "1"),
+                    "valid_from": datetime.fromtimestamp(
+                        self._try_to_int(cert.get("valid_from", None)),
+                        tz=datetime.now().astimezone().tzinfo,
+                    ),
+                    "valid_to": datetime.fromtimestamp(
+                        self._try_to_int(cert.get("valid_to", None)),
+                        tz=datetime.now().astimezone().tzinfo,
+                    ),
+                }
+        _LOGGER.debug(f"[get_certificates] certs: {certs}")
+        return certs

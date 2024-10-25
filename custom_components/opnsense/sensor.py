@@ -530,7 +530,7 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
         if (
             value == 0
             and self._previous_value is None
-            and self.entity_description.key in ("telemetry.cpu.usage_total",)
+            and self.entity_description.key in ["telemetry.cpu.usage_total"]
         ):
             self._available = False
             self.async_write_ha_state()
@@ -539,7 +539,7 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
         if self.entity_description.key == "telemetry.system.boottime":
             value = utc_from_timestamp(value) if value else None
 
-        elif self.entity_description.key in ("telemetry.cpu.usage_total",):
+        elif self.entity_description.key in ["telemetry.cpu.usage_total"]:
             if value == 0 and self._previous_value is not None:
                 value = self._previous_value
 
@@ -547,19 +547,26 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
                 self._available = False
                 self.async_write_ha_state()
                 return
+        elif self.entity_description.key == "certificates":
+            value = len(value)
 
         self._available = True
         self._previous_value = value
         self._attr_native_value = value
 
         self._attr_extra_state_attributes = {}
-        if self.entity_description.key in ("telemetry.cpu.usage_total"):
+        if self.entity_description.key in ["telemetry.cpu.usage_total"]:
             temp_attr = self._get_opnsense_state_value("telemetry.cpu")
             # _LOGGER.debug(f"[extra_state_attributes] temp_attr: {temp_attr}")
             for k, v in temp_attr.items():
                 if k.startswith("usage_") and k != "usage_total":
                     self._attr_extra_state_attributes[k.replace("usage_", "")] = f"{v}%"
             # _LOGGER.debug(f"[extra_state_attributes] attributes: {attributes}")
+        elif self.entity_description.key == "certificates":
+            self._attr_extra_state_attributes = self._get_opnsense_state_value(
+                self.entity_description.key
+            )
+
         self.async_write_ha_state()
 
 
