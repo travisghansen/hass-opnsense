@@ -136,6 +136,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             },
             {"function": "get_dhcp_leases", "state_key": "dhcp_leases"},
             {"function": "get_wireguard", "state_key": "wireguard"},
+            {"function": "get_certificates", "state_key": "certificates"},
         ]
 
         self._state.update(await self._get_states(categories))
