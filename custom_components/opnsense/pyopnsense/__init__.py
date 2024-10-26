@@ -1325,6 +1325,10 @@ $toreturn = [
 
     @_log_errors
     async def get_openvpn(self) -> Mapping[str, Any]:
+        # https://docs.opnsense.org/development/api/core/openvpn.html
+        # https://github.com/opnsense/core/blob/master/src/opnsense/www/js/widgets/OpenVPNClients.js
+        # https://github.com/opnsense/core/blob/master/src/opnsense/www/js/widgets/OpenVPNServers.js
+
         sessions_info: Mapping[str, Any] = await self._get(
             "/api/openvpn/service/searchSessions"
         )
@@ -1396,20 +1400,28 @@ $toreturn = [
             openvpn["servers"][server_id].update(
                 {
                     "name": session.get("description", ""),
-                    "status": (
-                        "up"
-                        if session.get("status", None) == "ok"
-                        else session.get("status", "down")
-                    ),
                     "clients": [],
                 }
             )
 
             if not session.get("is_client", False):
+                if openvpn["servers"][server_id].get("enabled", True) is False:
+                    openvpn["servers"][server_id].update({"status": "disabled"})
+                elif session.get("status", None) in ["connected", "ok"]:
+                    openvpn["servers"][server_id].update({"status": "up"})
+                elif session.get("status", None) in ["failed"]:
+                    openvpn["servers"][server_id].update({"status": "failed"})
+                elif isinstance(session.get("status", None), str):
+                    openvpn["servers"][server_id].update(
+                        {"status": session.get("status")}
+                    )
+                else:
+                    openvpn["servers"][server_id].update({"status": "down"})
                 openvpn["servers"][server_id]["clients"] = []
             else:
+                openvpn["servers"][server_id].update({"status": "up"})
                 openvpn["servers"][server_id]["connected_clients"] += 1
-                client = {
+                client: Mapping[str, Any] = {
                     "common_name": session.get("common_name", None),
                     "endpoint": session.get("real_address", None),
                     "bytes_recv": self._try_to_int(session.get("bytes_received", 0), 0),
@@ -1429,6 +1441,14 @@ $toreturn = [
                             )
                         }
                     )
+                if session.get("status", None) in ["connected", "ok"]:
+                    client.update({"status": "connected"})
+                elif session.get("status", None) in ["failed"]:
+                    client.update({"status": "failed"})
+                elif isinstance(session.get("status", None), str):
+                    client.update({"status": session.get("status")})
+                else:
+                    client.update({"status": "disabled"})
                 openvpn["servers"][server_id]["clients"].append(client)
 
         for uuid, server in openvpn["servers"].items():
@@ -1466,6 +1486,29 @@ $toreturn = [
                     "uuid": instance.get("uuid", None),
                     "enabled": bool(instance.get("enabled", "0") == "1"),
                 }
+                if (
+                    openvpn["clients"][instance.get("uuid")].get("enabled", True)
+                    is False
+                ):
+                    openvpn["clients"][instance.get("uuid")].update(
+                        {"status": "disabled"}
+                    )
+                elif instance.get("status", None) in ["connected", "ok"]:
+                    openvpn["clients"][instance.get("uuid")].update(
+                        {"status": "connected"}
+                    )
+                elif instance.get("status", None) in ["failed"]:
+                    openvpn["clients"][instance.get("uuid")].update(
+                        {"status": "failed"}
+                    )
+                elif isinstance(instance.get("status", None), str):
+                    openvpn["clients"][instance.get("uuid")].update(
+                        {"status": instance.get("status")}
+                    )
+                else:
+                    openvpn["clients"][instance.get("uuid")].update(
+                        {"status": "stopped"}
+                    )
 
         # for connect in sessions_info.get("rows", []):
         #     if not isinstance(connect, Mapping) or not connect:
