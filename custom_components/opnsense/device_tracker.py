@@ -1,7 +1,7 @@
 """Support for tracking for OPNsense devices."""
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Mapping
 
 from homeassistant.components.device_tracker import SourceType
@@ -9,12 +9,8 @@ from homeassistant.components.device_tracker.config_entry import ScannerEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_platform
-from homeassistant.helpers.device_registry import (
-    CONNECTION_NETWORK_MAC,
-)
-from homeassistant.helpers.device_registry import (
-    async_get as async_get_dev_reg,
-)
+from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC
+from homeassistant.helpers.device_registry import async_get as async_get_dev_reg
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.restore_state import RestoreEntity
 
@@ -242,7 +238,7 @@ class OPNsenseScannerEntity(OPNsenseEntity, ScannerEntity, RestoreEntity):
             if isinstance(update_time, float):
                 self._last_known_connected_time = datetime.fromtimestamp(
                     int(update_time),
-                    tz=datetime.now().astimezone().tzinfo,
+                    tz=timezone(datetime.now().astimezone().utcoffset()),
                 )
             self._is_connected = True
 

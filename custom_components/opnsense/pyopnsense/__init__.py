@@ -10,7 +10,7 @@ import traceback
 import xmlrpc.client
 from abc import ABC
 from collections.abc import Mapping
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import quote_plus, urlparse
 
@@ -466,7 +466,7 @@ $toreturn = [
                 last_check: datetime = parse(status.get("last_check"))
                 if last_check.tzinfo is None:
                     last_check = last_check.replace(
-                        tzinfo=datetime.now().astimezone().tzinfo
+                        tzinfo=timezone(datetime.now().astimezone().utcoffset())
                     )
 
                 last_check_timestamp: float = last_check.timestamp()
@@ -810,7 +810,7 @@ $toreturn = [
             if self._try_to_int(lease_info.get("expire", None)):
                 lease["expires"] = datetime.fromtimestamp(
                     self._try_to_int(lease_info.get("expire", None)),
-                    tz=datetime.now().astimezone().tzinfo,
+                    tz=timezone(datetime.now().astimezone().utcoffset()),
                 )
                 if lease["expires"] < datetime.now().astimezone():
                     continue
@@ -874,7 +874,9 @@ $toreturn = [
                 dt: datetime = datetime.strptime(
                     lease_info.get("ends", None), "%Y/%m/%d %H:%M:%S"
                 )
-                lease["expires"] = dt.replace(tzinfo=datetime.now().astimezone().tzinfo)
+                lease["expires"] = dt.replace(
+                    tzinfo=timezone(datetime.now().astimezone().utcoffset())
+                )
                 if lease["expires"] < datetime.now().astimezone():
                     continue
             else:
@@ -937,7 +939,9 @@ $toreturn = [
                 dt: datetime = datetime.strptime(
                     lease_info.get("ends", None), "%Y/%m/%d %H:%M:%S"
                 )
-                lease["expires"] = dt.replace(tzinfo=datetime.now().astimezone().tzinfo)
+                lease["expires"] = dt.replace(
+                    tzinfo=timezone(datetime.now().astimezone().utcoffset())
+                )
                 if lease["expires"] < datetime.now().astimezone():
                     continue
             else:
@@ -1425,7 +1429,7 @@ $toreturn = [
                         {
                             "latest_handshake": datetime.fromtimestamp(
                                 int(session.get("connected_since__time_t_")),
-                                tz=datetime.now().astimezone().tzinfo,
+                                tz=timezone(datetime.now().astimezone().utcoffset()),
                             )
                         }
                     )
@@ -1893,7 +1897,9 @@ $toreturn = [
                                 if entry.get("latest-handshake", None):
                                     srv["latest_handshake"] = datetime.fromtimestamp(
                                         int(entry.get("latest-handshake")),
-                                        tz=datetime.now().astimezone().tzinfo,
+                                        tz=timezone(
+                                            datetime.now().astimezone().utcoffset()
+                                        ),
                                     )
                                     srv["connected"] = wireguard_is_connected(
                                         srv.get("latest_handshake")
@@ -1941,7 +1947,9 @@ $toreturn = [
                                 if entry.get("latest-handshake", None):
                                     clnt["latest_handshake"] = datetime.fromtimestamp(
                                         int(entry.get("latest-handshake")),
-                                        tz=datetime.now().astimezone().tzinfo,
+                                        tz=timezone(
+                                            datetime.now().astimezone().utcoffset()
+                                        ),
                                     )
                                     clnt["connected"] = wireguard_is_connected(
                                         clnt.get("latest_handshake")
