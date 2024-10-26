@@ -16,7 +16,9 @@ from urllib.parse import quote_plus, urlparse
 
 import aiohttp
 import awesomeversion
-from dateutil.parser import parse
+from dateutil.parser import UnknownTimezoneWarning, parse
+
+from .const import AMBIGUOUS_TZINFOS
 
 # value to set as the socket timeout
 DEFAULT_TIMEOUT = 60
@@ -463,7 +465,9 @@ $toreturn = [
             # "last_check": "Sun Jan 15 22:05:55 UTC 2023"
             # format = "%a %b %d %H:%M:%S %Z %Y"
             try:
-                last_check: datetime = parse(status.get("last_check"))
+                last_check: datetime = parse(
+                    status.get("last_check"), tzinfos=AMBIGUOUS_TZINFOS
+                )
                 if last_check.tzinfo is None:
                     last_check = last_check.replace(
                         tzinfo=timezone(datetime.now().astimezone().utcoffset())
@@ -471,7 +475,7 @@ $toreturn = [
 
                 last_check_timestamp: float = last_check.timestamp()
 
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, UnknownTimezoneWarning):
                 last_check_timestamp: float = 0
 
             stale: bool = (
