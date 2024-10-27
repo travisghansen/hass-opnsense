@@ -210,6 +210,11 @@ service: opnsense.reload_interface
 data:
   interface: wan
 
+service: opnsense.kill_states
+data:
+  ip_address: 192.168.0.100
+# Will optionally return the number of states dropped for each client
+
 action: opnsense.generate_vouchers
 data:
   validity: "14400"  # seconds
