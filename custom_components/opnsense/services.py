@@ -3,7 +3,12 @@ from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
+from homeassistant.core import (
+    HomeAssistant,
+    ServiceCall,
+    ServiceResponse,
+    SupportsResponse,
+)
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry, entity_registry
@@ -13,6 +18,7 @@ from .const import (
     OPNSENSE_CLIENT,
     SERVICE_CLOSE_NOTICE,
     SERVICE_GENERATE_VOUCHERS,
+    SERVICE_KILL_STATES,
     SERVICE_RELOAD_INTERFACE,
     SERVICE_RESTART_SERVICE,
     SERVICE_SEND_WOL,
@@ -190,7 +196,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         clients: list = await _get_clients(
             call.data.get("device_id", []), call.data.get("entity_id", [])
         )
-        success = None
+        success: bool | None = None
         for client in clients:
             response = await client.reload_interface(call.data.get("interface"))
             _LOGGER.debug(
@@ -203,7 +209,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 f"Reload Interface Failed: {call.data.get('interface')}"
             )
 
-    async def service_generate_vouchers(call: ServiceCall) -> Mapping[str, Any]:
+    async def service_generate_vouchers(call: ServiceCall) -> ServiceResponse:
         clients: list = await _get_clients(
             call.data.get("device_id", []), call.data.get("entity_id", [])
         )
@@ -230,6 +236,37 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         final_vouchers: Mapping[str, Any] = {"vouchers": voucher_list}
         _LOGGER.debug(f"[service_generate_vouchers] vouchers: {final_vouchers}")
         return final_vouchers
+
+    async def service_kill_states(call: ServiceCall) -> ServiceResponse:
+        clients: list = await _get_clients(
+            call.data.get("device_id", []), call.data.get("entity_id", [])
+        )
+        success: bool | None = None
+        response_list: list = []
+        for client in clients:
+            response: Mapping[str, Any] = await client.kill_states(
+                call.data.get("ip_addr")
+            )
+            _LOGGER.debug(
+                f"[service_kill_states] client: {client.name}, ip_addr: {call.data.get('ip_addr')}, response: {response}"
+            )
+            if response.get("success", False):
+                response_list.append(
+                    {
+                        "client_name": client.name,
+                        "dropped_states": response.get("dropped_states", 0),
+                    }
+                )
+            if success is None or success:
+                success = response.get("success", False)
+        if success is None or not success:
+            raise ServiceValidationError(
+                f"Kill States Failed: {call.data.get('ip_addr')}"
+            )
+        return_response: Mapping[str, Any] = {"dropped_states": response_list}
+        _LOGGER.debug(f"[service_kill_states] return_response: {return_response}")
+        if call.return_response:
+            return return_response
 
     hass.services.async_register(
         domain=DOMAIN,
@@ -378,4 +415,18 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         ),
         service_func=service_generate_vouchers,
         supports_response=SupportsResponse.ONLY,
+    )
+
+    hass.services.async_register(
+        domain=DOMAIN,
+        service=SERVICE_KILL_STATES,
+        schema=vol.Schema(
+            {
+                vol.Required("ip_addr"): vol.Any(cv.string),
+                vol.Optional("device_id"): vol.Any(cv.string),
+                vol.Optional("entity_id"): vol.Any(cv.string),
+            }
+        ),
+        service_func=service_kill_states,
+        supports_response=SupportsResponse.OPTIONAL,
     )
