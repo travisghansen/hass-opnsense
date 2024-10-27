@@ -1,7 +1,36 @@
+<a id="v0.3.8"></a>
+# [v0.3.8](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.8) - 2024-10-27
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🎉 Enhancements & New Features 🎉
+* Add additional details to Interfaces by [@Snuffy2](https://github.com/Snuffy2) in [#280](https://github.com/travisghansen/hass-opnsense/pull/280)
+* Manually add MAC addresses as Device Trackers by [@Snuffy2](https://github.com/Snuffy2) in [#281](https://github.com/travisghansen/hass-opnsense/pull/281)
+* Improve firmware check by [@Snuffy2](https://github.com/Snuffy2) in [#288](https://github.com/travisghansen/hass-opnsense/pull/288)
+* VPN connected instance indicators and fixing OpenVPN server logic by [@Snuffy2](https://github.com/Snuffy2) in [#292](https://github.com/travisghansen/hass-opnsense/pull/292)
+* Create Certificate Sensor by [@Snuffy2](https://github.com/Snuffy2) in [#294](https://github.com/travisghansen/hass-opnsense/pull/294)
+* Further OpenVPN Server Refinements by [@Snuffy2](https://github.com/Snuffy2) in [#297](https://github.com/travisghansen/hass-opnsense/pull/297)
+* Generate Captive Portal Vouchers Action by [@Snuffy2](https://github.com/Snuffy2) in [#302](https://github.com/travisghansen/hass-opnsense/pull/302)
+* Further VPN Refinements by [@Snuffy2](https://github.com/Snuffy2) in [#300](https://github.com/travisghansen/hass-opnsense/pull/300)
+* Kill States Action by [@Snuffy2](https://github.com/Snuffy2) in [#304](https://github.com/travisghansen/hass-opnsense/pull/304)
+### 🕷️ Bug Fixes 🕷️
+* Fix OpenVPN Client Error in v0.3.8-beta.1 by [@Snuffy2](https://github.com/Snuffy2) in [#293](https://github.com/travisghansen/hass-opnsense/pull/293)
+* Change from tzinfo to utcoffset by [@Snuffy2](https://github.com/Snuffy2) in [#298](https://github.com/travisghansen/hass-opnsense/pull/298)
+* Fix more timezone issues by [@Snuffy2](https://github.com/Snuffy2) in [#301](https://github.com/travisghansen/hass-opnsense/pull/301)
+### Other Changes
+* Create LICENSE by [@Snuffy2](https://github.com/Snuffy2) in [#286](https://github.com/travisghansen/hass-opnsense/pull/286)
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.7...v0.3.8
+
+[Changes][v0.3.8]
+
+
 <a id="v0.3.7"></a>
 # [v0.3.7](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.7) - 2024-10-20
 
-<!-- Release notes generated using configuration in .github/release.yml at main -->
+<h3>OPNsense Minimum Firmware Required: 24.1</h3><h4>OPNsense Recommended Firmware: 24.7</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
 ## What's Changed
 ### 🎉 Enhancements & New Features 🎉
@@ -23,7 +52,7 @@
 ## New Contributors
 * [@jesmak](https://github.com/jesmak) made their first contribution in [#265](https://github.com/travisghansen/hass-opnsense/pull/265)
 
-**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.6...v0.3.7
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.6...v0.3.7<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
 
 [Changes][v0.3.7]
 
@@ -429,6 +458,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.3.8]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.7...v0.3.8
 [v0.3.7]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.6...v0.3.7
 [v0.3.6]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.5...v0.3.6
 [v0.3.5]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.4...v0.3.5
