@@ -1,21 +1,18 @@
 import logging
 from collections.abc import Mapping
+from typing import Any
 
 import voluptuous as vol
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
-from homeassistant.helpers import (
-    config_validation as cv,
-)
-from homeassistant.helpers import (
-    device_registry,
-    entity_registry,
-)
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import device_registry, entity_registry
 
 from .const import (
     DOMAIN,
     OPNSENSE_CLIENT,
     SERVICE_CLOSE_NOTICE,
+    SERVICE_GENERATE_VOUCHERS,
     SERVICE_RELOAD_INTERFACE,
     SERVICE_RESTART_SERVICE,
     SERVICE_SEND_WOL,
@@ -24,6 +21,7 @@ from .const import (
     SERVICE_SYSTEM_HALT,
     SERVICE_SYSTEM_REBOOT,
 )
+from .pyopnsense import VoucherServerError
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -205,6 +203,34 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 f"Reload Interface Failed: {call.data.get('interface')}"
             )
 
+    async def service_generate_vouchers(call: ServiceCall) -> Mapping[str, Any]:
+        clients: list = await _get_clients(
+            call.data.get("device_id", []), call.data.get("entity_id", [])
+        )
+        voucher_list: list = []
+        for client in clients:
+            try:
+                vouchers: list = await client.generate_vouchers(call.data)
+            except VoucherServerError as e:
+                _LOGGER.error(f"Error getting vouchers from {client.name}. {e}")
+                raise ServiceValidationError(
+                    f"Error getting vouchers from {client.name}. {e}"
+                ) from e
+            _LOGGER.debug(
+                f"[service_generate_vouchers] client: {client.name}, data: {call.data}, vouchers: {vouchers}"
+            )
+            if isinstance(vouchers, list):
+                for voucher in vouchers:
+                    if isinstance(voucher, Mapping):
+                        new_voucher: Mapping[str, Any] = {"client": client.name}
+                        new_voucher.update(voucher)
+                        voucher.clear()
+                        voucher.update(new_voucher)
+                voucher_list = voucher_list + vouchers
+        final_vouchers: Mapping[str, Any] = {"vouchers": voucher_list}
+        _LOGGER.debug(f"[service_generate_vouchers] vouchers: {final_vouchers}")
+        return final_vouchers
+
     hass.services.async_register(
         domain=DOMAIN,
         service=SERVICE_CLOSE_NOTICE,
@@ -334,4 +360,22 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             }
         ),
         service_func=service_reload_interface,
+    )
+
+    hass.services.async_register(
+        domain=DOMAIN,
+        service=SERVICE_GENERATE_VOUCHERS,
+        schema=vol.Schema(
+            {
+                vol.Required("validity"): vol.Any(cv.string),
+                vol.Required("expirytime"): vol.Any(cv.string),
+                vol.Required("count"): vol.Any(cv.string),
+                vol.Required("vouchergroup"): vol.Any(cv.string),
+                vol.Optional("voucher_server"): vol.Any(cv.string),
+                vol.Optional("device_id"): vol.Any(cv.string),
+                vol.Optional("entity_id"): vol.Any(cv.string),
+            }
+        ),
+        service_func=service_generate_vouchers,
+        supports_response=SupportsResponse.ONLY,
     )
