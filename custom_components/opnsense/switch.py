@@ -337,9 +337,7 @@ class OPNsenseFilterSwitch(OPNsenseSwitch):
             return
         self._available = True
         self.async_write_ha_state()
-        _LOGGER.debug(
-            f"[OPNsenseFilterSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}"
-        )
+        # _LOGGER.debug(f"[OPNsenseFilterSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the entity on."""
@@ -419,9 +417,7 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
             return
         self._available = True
         self.async_write_ha_state()
-        _LOGGER.debug(
-            f"[OPNsenseNatSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}"
-        )
+        # _LOGGER.debug(f"[OPNsenseNatSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the entity on."""
@@ -505,9 +501,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
                 attr, None
             )
         self.async_write_ha_state()
-        _LOGGER.debug(
-            f"[OPNsenseServiceSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}"
-        )
+        # _LOGGER.debug(f"[OPNsenseServiceSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the entity on."""
@@ -563,9 +557,7 @@ class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
             "Return NXDOMAIN": (True if dnsbl.get("nxdomain", "0") == "1" else False),
         }
         self.async_write_ha_state()
-        _LOGGER.debug(
-            f"[OPNsenseUnboundBlocklistSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}"
-        )
+        # _LOGGER.debug(f"[OPNsenseUnboundBlocklistSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the entity on."""

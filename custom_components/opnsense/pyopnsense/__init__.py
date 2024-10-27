@@ -1026,7 +1026,7 @@ $toreturn = [
             vip_settings = []
         else:
             vip_settings: list = vip_settings_raw.get("rows", [])
-        _LOGGER.debug(f"[get_carp_interfaces] vip_settings: {vip_settings}")
+        # _LOGGER.debug(f"[get_carp_interfaces] vip_settings: {vip_settings}")
 
         vip_status_raw: Mapping[str, Any] | list = await self._get(
             "/api/diagnostics/interface/get_vip_status"
@@ -1037,7 +1037,7 @@ $toreturn = [
             vip_status = []
         else:
             vip_status: list = vip_status_raw.get("rows", [])
-        _LOGGER.debug(f"[get_carp_interfaces] vip_status: {vip_status}")
+        # _LOGGER.debug(f"[get_carp_interfaces] vip_status: {vip_status}")
         carp = []
         for vip in vip_settings:
             if vip.get("mode", "").lower() != "carp":
@@ -1371,6 +1371,10 @@ $toreturn = [
             "/api/openvpn/service/searchSessions"
         )
 
+        routes_info: Mapping[str, Any] = await self._get(
+            "/api/openvpn/service/searchRoutes"
+        )
+
         providers_info: Mapping[str, Any] | list = await self._get(
             "/api/openvpn/export/providers"
         )
@@ -1378,13 +1382,16 @@ $toreturn = [
         instances_info: Mapping[str, Any] = await self._get(
             "/api/openvpn/instances/search"
         )
-        # _LOGGER.debug(f"[get_openvpn] providers_info: {providers_info}")
         # _LOGGER.debug(f"[get_openvpn] sessions_info: {sessions_info}")
+        # _LOGGER.debug(f"[get_openvpn] routes_info: {routes_info}")
+        # _LOGGER.debug(f"[get_openvpn] providers_info: {providers_info}")
         # _LOGGER.debug(f"[get_openvpn] instances_info: {instances_info}")
-        if not isinstance(providers_info, Mapping):
-            providers_info = {}
         if not isinstance(sessions_info, Mapping):
             sessions_info = {}
+        if not isinstance(routes_info, Mapping):
+            routes_info = {}
+        if not isinstance(providers_info, Mapping):
+            providers_info = {}
         if not isinstance(instances_info, Mapping):
             instances_info = {}
 
@@ -1406,9 +1413,9 @@ $toreturn = [
                 openvpn["servers"][instance.get("uuid")] = {
                     "uuid": instance.get("uuid"),
                     "name": instance.get("description"),
-                    "connected_clients": 0,
                     "enabled": bool(instance.get("enabled", "0") == "1"),
                     "dev_type": instance.get("dev_type", None),
+                    "clients": [],
                 }
 
         for uuid, vpn_info in providers_info.items():
@@ -1418,7 +1425,7 @@ $toreturn = [
                 openvpn["servers"][uuid] = {
                     "uuid": uuid,
                     "name": vpn_info.get("name"),
-                    "connected_clients": 0,
+                    "clients": [],
                 }
             if vpn_info.get("hostname", None) and vpn_info.get("local_port", None):
                 openvpn["servers"][uuid][
@@ -1433,14 +1440,9 @@ $toreturn = [
             if server_id not in openvpn["servers"]:
                 openvpn["servers"][server_id] = {
                     "uuid": server_id,
-                    "connected_clients": 0,
-                }
-            openvpn["servers"][server_id].update(
-                {
-                    "name": session.get("description", ""),
                     "clients": [],
                 }
-            )
+            openvpn["servers"][server_id]["name"] = session.get("description", "")
 
             if not session.get("is_client", False):
                 if openvpn["servers"][server_id].get("enabled", True) is False:
@@ -1455,48 +1457,48 @@ $toreturn = [
                     )
                 else:
                     openvpn["servers"][server_id].update({"status": "down"})
-                openvpn["servers"][server_id]["clients"] = []
             else:
-                openvpn["servers"][server_id].update({"status": "up"})
-                openvpn["servers"][server_id]["connected_clients"] += 1
-                client: Mapping[str, Any] = {
-                    "common_name": session.get("common_name", None),
-                    "endpoint": session.get("real_address", None),
-                    "bytes_recv": self._try_to_int(session.get("bytes_received", 0), 0),
-                    "bytes_sent": self._try_to_int(session.get("bytes_sent", 0), 0),
+                openvpn["servers"][server_id].update(
+                    {
+                        "status": "up",
+                        "latest_handshake": datetime.fromtimestamp(
+                            int(session.get("connected_since__time_t_")),
+                            tz=timezone(datetime.now().astimezone().utcoffset()),
+                        ),
+                        "total_bytes_recv": self._try_to_int(
+                            session.get("bytes_received", 0), 0
+                        ),
+                        "total_bytes_sent": self._try_to_int(
+                            session.get("bytes_sent", 0), 0
+                        ),
+                    }
+                )
+
+        for route in routes_info.get("rows", []):
+            if (
+                not isinstance(route, Mapping)
+                or route.get("id", None) is None
+                or route.get("id") not in openvpn.get("servers", {})
+            ):
+                continue
+            openvpn["servers"][route.get("id")]["clients"].append(
+                {
+                    "name": route.get("common_name", None),
+                    "endpoint": route.get("real_address", None),
+                    "tunnel_addresses": [route.get("virtual_address")],
+                    "latest_handshake": datetime.fromtimestamp(
+                        int(route.get("last_ref__time_t_")),
+                        tz=timezone(datetime.now().astimezone().utcoffset()),
+                    ),
                 }
-                tunnel_addresses: list = []
-                for addr in ["virtual_address", "virtual_ipv6_address"]:
-                    if session.get(addr, None):
-                        tunnel_addresses.append(session.get(addr))
-                client.update({"tunnel_addresses": tunnel_addresses})
-                if session.get("connected_since__time_t_", None):
-                    client.update(
-                        {
-                            "latest_handshake": datetime.fromtimestamp(
-                                int(session.get("connected_since__time_t_")),
-                                tz=timezone(datetime.now().astimezone().utcoffset()),
-                            )
-                        }
-                    )
-                if session.get("status", None) in ["connected", "ok"]:
-                    client.update({"status": "connected"})
-                elif session.get("status", None) in ["failed"]:
-                    client.update({"status": "failed"})
-                elif isinstance(session.get("status", None), str):
-                    client.update({"status": session.get("status")})
-                else:
-                    client.update({"status": "disabled"})
-                openvpn["servers"][server_id]["clients"].append(client)
+            )
 
         for uuid, server in openvpn["servers"].items():
-            server["total_bytes_sent"] = 0
-            server["total_bytes_recv"] = 0
-            if isinstance(server.get("clients", None), list):
-                for client in server.get("clients", []):
-                    server["total_bytes_sent"] += client.get("bytes_sent", 0)
-                    server["total_bytes_recv"] += client.get("bytes_recv", 0)
-
+            if "total_bytes_sent" not in server:
+                server["total_bytes_sent"] = 0
+            if "total_bytes_recv" not in server:
+                server["total_bytes_recv"] = 0
+            server["connected_clients"] = len(server.get("clients", []))
             details_info: Mapping[str, Any] = await self._get(
                 f"/api/openvpn/instances/get/{uuid}"
             )
@@ -1524,49 +1526,7 @@ $toreturn = [
                     "uuid": instance.get("uuid", None),
                     "enabled": bool(instance.get("enabled", "0") == "1"),
                 }
-                if (
-                    openvpn["clients"][instance.get("uuid")].get("enabled", True)
-                    is False
-                ):
-                    openvpn["clients"][instance.get("uuid")].update(
-                        {"status": "disabled"}
-                    )
-                elif instance.get("status", None) in ["connected", "ok"]:
-                    openvpn["clients"][instance.get("uuid")].update(
-                        {"status": "connected"}
-                    )
-                elif instance.get("status", None) in ["failed"]:
-                    openvpn["clients"][instance.get("uuid")].update(
-                        {"status": "failed"}
-                    )
-                elif isinstance(instance.get("status", None), str):
-                    openvpn["clients"][instance.get("uuid")].update(
-                        {"status": instance.get("status")}
-                    )
-                else:
-                    openvpn["clients"][instance.get("uuid")].update(
-                        {"status": "stopped"}
-                    )
 
-        # for connect in sessions_info.get("rows", []):
-        #     if not isinstance(connect, Mapping) or not connect:
-        #         continue
-        #     id: str | int | None = connect.get("id", None)
-        #     if isinstance(id, str) and "_" in id:
-        #         id = id.split("_")[0]
-        #     if id and id in openvpn["clients"]:
-        #         openvpn["clients"][id]["total_bytes_recv"] = self._try_to_int(
-        #             connect.get("bytes_received", 0), 0
-        #         )
-        #         openvpn["clients"][id]["total_bytes_sent"] = self._try_to_int(
-        #             connect.get("bytes_sent", 0), 0
-        #         )
-
-        # for uuid, client in openvpn["clients"].items():
-        #     if client.get("total_bytes_sent", None) is None:
-        #         client["total_bytes_sent"] = 0
-        #     if client.get("total_bytes_recv", None) is None:
-        #         client["total_bytes_recv"] = 0
         _LOGGER.debug(f"[get_openvpn] openvpn: {openvpn}")
         return openvpn
 
@@ -1711,7 +1671,7 @@ $toreturn = [
         notices: Mapping[str, Any] = {}
         notices["pending_notices_present"] = pending_notices_present
         notices["pending_notices"] = pending_notices
-        _LOGGER.debug(f"[get_notices] notices: {notices}")
+        # _LOGGER.debug(f"[get_notices] notices: {notices}")
         return notices
 
     @_log_errors
@@ -1724,7 +1684,7 @@ $toreturn = [
             notices: Mapping[str, Any] | list = await self._get(
                 "/api/core/system/status"
             )
-            _LOGGER.debug(f"[close_notice] notices: {notices}")
+            # _LOGGER.debug(f"[close_notice] notices: {notices}")
 
             if not isinstance(notices, Mapping):
                 return False
@@ -1733,7 +1693,7 @@ $toreturn = [
                     dismiss: Mapping[str, Any] | list = await self._post(
                         "/api/core/system/dismissStatus", payload={"subject": key}
                     )
-                    _LOGGER.debug(f"[close_notice] id: {key}, dismiss: {dismiss}")
+                    # _LOGGER.debug(f"[close_notice] id: {key}, dismiss: {dismiss}")
                     if (
                         not isinstance(dismiss, Mapping)
                         or dismiss.get("status", "failed") != "ok"
@@ -1779,7 +1739,7 @@ $toreturn = [
                 )
             else:
                 dnsbl[attr] = ""
-        _LOGGER.debug(f"[get_unbound_blocklist] dnsbl: {dnsbl}")
+        # _LOGGER.debug(f"[get_unbound_blocklist] dnsbl: {dnsbl}")
         return dnsbl
 
     async def _set_unbound_blocklist(self, set_state: bool) -> bool:

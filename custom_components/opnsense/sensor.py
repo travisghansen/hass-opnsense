@@ -858,12 +858,12 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             for clnt in instance.get("clients"):
                 client: Mapping[str, Any] = {}
                 for client_attr in [
-                    "common_name",
+                    "name",
                     "status",
                     "endpoint",
                     "tunnel_addresses",
                     "latest_handshake",
-                    "byes_sent",
+                    "bytes_sent",
                     "bytes_recv",
                 ]:
                     if clnt.get(client_attr, None) is not None:
