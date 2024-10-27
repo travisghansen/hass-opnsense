@@ -12,7 +12,7 @@ from abc import ABC
 from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from urllib.parse import quote_plus, urlparse
+from urllib.parse import quote, quote_plus, urlparse
 
 import aiohttp
 import awesomeversion
@@ -26,6 +26,32 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 def wireguard_is_connected(past_time: datetime) -> bool:
     return datetime.now().astimezone() - past_time <= timedelta(minutes=3)
+
+
+def human_friendly_duration(seconds) -> str:
+    months, seconds = divmod(
+        seconds, 2419200
+    )  # 28 days in a month (28 * 24 * 60 * 60 = 2419200 seconds)
+    weeks, seconds = divmod(seconds, 604800)  # 604800 seconds in a week
+    days, seconds = divmod(seconds, 86400)  # 86400 seconds in a day
+    hours, seconds = divmod(seconds, 3600)  # 3600 seconds in an hour
+    minutes, seconds = divmod(seconds, 60)  # 60 seconds in a minute
+
+    duration: list = []
+    if months > 0:
+        duration.append(f"{months} month{'s' if months > 1 else ''}")
+    if weeks > 0:
+        duration.append(f"{weeks} week{'s' if weeks > 1 else ''}")
+    if days > 0:
+        duration.append(f"{days} day{'s' if days > 1 else ''}")
+    if hours > 0:
+        duration.append(f"{hours} hour{'s' if hours > 1 else ''}")
+    if minutes > 0:
+        duration.append(f"{minutes} minute{'s' if minutes > 1 else ''}")
+    if seconds > 0 or not duration:
+        duration.append(f"{seconds} second{'s' if seconds != 1 else ''}")
+
+    return ", ".join(duration)
 
 
 def get_ip_key(item) -> tuple:
@@ -56,6 +82,10 @@ def dict_get(data: Mapping[str, Any], path: str, default=None):
             break
 
     return result
+
+
+class VoucherServerError(Exception):
+    pass
 
 
 class OPNsenseClient(ABC):
@@ -2081,3 +2111,61 @@ $toreturn = [
                 }
         _LOGGER.debug(f"[get_certificates] certs: {certs}")
         return certs
+
+    async def generate_vouchers(self, data: Mapping[str, Any]) -> list:
+        if data.get("voucher_server", None):
+            server = data.get("voucher_server")
+        else:
+            servers = await self._get("/api/captiveportal/voucher/listProviders")
+            if not isinstance(servers, list):
+                raise VoucherServerError(
+                    f"Error getting list of voucher servers: {servers}"
+                )
+            if len(servers) == 0:
+                raise VoucherServerError("No voucher servers exist")
+            if len(servers) != 1:
+                raise VoucherServerError(
+                    "More than one voucher server. Must specify voucher server name"
+                )
+            server: str = servers[0]
+        server_slug: str = quote(server)
+        payload: Mapping[str, Any] = data.copy()
+        payload.pop("voucher_server", None)
+        voucher_url: str = f"/api/captiveportal/voucher/generateVouchers/{server_slug}/"
+        _LOGGER.debug(f"[generate_vouchers] url: {voucher_url}, payload: {payload}")
+        vouchers: Mapping[str, Any] | list = await self._post(
+            voucher_url,
+            payload=payload,
+        )
+        if not isinstance(vouchers, list):
+            raise VoucherServerError(f"Error returned requesting vouchers: {vouchers}")
+        ordered_keys: list = [
+            "username",
+            "password",
+            "vouchergroup",
+            "starttime",
+            "expirytime",
+            "expiry_timestamp",
+            "validity_str",
+            "validity",
+        ]
+        for voucher in vouchers:
+            if voucher.get("validity", None):
+                voucher["validity_str"] = human_friendly_duration(
+                    voucher.get("validity")
+                )
+            if voucher.get("expirytime", None):
+                voucher["expiry_timestamp"] = voucher.get("expirytime")
+                voucher["expirytime"] = datetime.fromtimestamp(
+                    self._try_to_int(voucher.get("expirytime")),
+                    tz=timezone(datetime.now().astimezone().utcoffset()),
+                )
+
+            rearranged_voucher: Mapping[str, Any] = {
+                key: voucher[key] for key in ordered_keys if key in voucher
+            }
+            voucher.clear()
+            voucher.update(rearranged_voucher)
+
+        _LOGGER.debug(f"[generate_vouchers] vouchers: {vouchers}")
+        return vouchers

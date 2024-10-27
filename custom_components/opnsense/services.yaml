@@ -301,3 +301,138 @@ reload_interface:
               filter:
                 - integration: opnsense
                   domain: sensor
+
+generate_vouchers:
+  name: Generate Captive Portal Vouchers
+  fields:
+    validity:
+      name: Validity
+      description: "If manually entering a duration, enter in seconds"
+      required: true
+      advanced: false
+      example: ""
+      default: "14400"
+      selector:
+        select:
+          multiple: false
+          custom_value: true
+          mode: dropdown
+          options:
+            - label: "4 hours"
+              value: "14400"
+            - label: "8 hours"
+              value: "28800"
+            - label: "1 day"
+              value: "86400"
+            - label: "2 days"
+              value": "172800"
+            - label: "3 days"
+              value: "259200"
+            - label: "4 days"
+              value: "345600"
+            - label: "5 days"
+              value: "432000"
+            - label: "6 days"
+              value: "518400"
+            - label: "1 week"
+              value: "604800"
+            - label: "2 weeks"
+              value: "1209600"
+    expirytime:
+      name: Expires in
+      description: "If manually entering a duration, enter in seconds"
+      required: true
+      advanced: false
+      example: ""
+      default: "0"
+      selector:
+        select:
+          multiple: false
+          custom_value: true
+          mode: dropdown
+          options:
+            - label: "never"
+              value: "0"
+            - label: "6 hours"
+              value: "21600"
+            - label: "12 hours"
+              value: "43200"
+            - label: "1 day"
+              value: "86400"
+            - label: "2 days"
+              value: "172800"
+            - label: "3 days"
+              value: "259200"
+            - label: "4 days"
+              value: "345600"
+            - label: "5 days"
+              value: "432000"
+            - label: "6 days"
+              value: "518400"
+            - label: "1 week"
+              value: "604800"
+            - label: "2 weeks"
+              value: "1209600"
+            - label : "3 weeks"
+              value: "1814400"
+            - label: "1 month"
+              value: "2419200"
+            - label: "2 months"
+              value: "4838400"
+            - label: "3 months"
+              value: "7257600"
+    count:
+      name: Number of vouchers
+      description: ""
+      required: true
+      advanced: false
+      default: 1
+      example: ""
+      selector:
+        number:
+          min: 1
+          step: 1
+          mode: box
+    vouchergroup:
+      name: Groupname
+      description: ""
+      required: true
+      advanced: false
+      default: "Home Assistant"
+      example: ""
+      selector:
+        text:
+    voucher_server:
+      name: Captive Portal Voucher Server
+      description: "OPTIONAL: Only needed if there is more than one Captive Portal Voucher Server"
+      required: false
+      advanced: false
+      example: ""
+      selector:
+        text:        
+    multiple_opnsense:
+      name: Only needed if there is more than one OPNsense Router
+      collapsed: true
+      fields:
+        device_id:
+          name: OPNsense Device
+          description: Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers.
+          required: false
+          selector:
+            device:
+              multiple: false
+              filter:
+                - integration: opnsense
+              entity:
+                - domain: sensor
+        entity_id:
+          name: OPNsense Entity
+          description: Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers.
+          example: "sensor.opnsense_interface_lan_status"
+          required: false
+          selector:
+            entity:
+              multiple: false
+              filter:
+                - integration: opnsense
+                  domain: sensor
