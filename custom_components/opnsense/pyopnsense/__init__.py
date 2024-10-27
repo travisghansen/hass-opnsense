@@ -2133,3 +2133,17 @@ $toreturn = [
 
         _LOGGER.debug(f"[generate_vouchers] vouchers: {vouchers}")
         return vouchers
+
+    async def kill_states(self, ip_addr) -> Mapping[str, Any]:
+        payload: Mapping[str, Any] = {"filter": ip_addr}
+        response: Mapping[str, Any] | list = await self._post(
+            "/api/diagnostics/firewall/kill_states/",
+            payload=payload,
+        )
+        _LOGGER.debug(f"[kill_states] ip_addr: {ip_addr}, response: {response}")
+        if not isinstance(response, Mapping):
+            return {"success": False, "dropped_states": 0}
+        return {
+            "success": bool(response.get("result", None) == "ok"),
+            "dropped_states": response.get("dropped_states", 0),
+        }
