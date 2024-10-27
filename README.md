@@ -44,9 +44,9 @@ The installation requires a plugin on `OPNsense` and a custom integration in `Ho
 
 ## OPNsense Plugin
 
-To use the integration you need to install an `OPNsense` plugin made available on mimugmail repository: `https://www.routerperformance.net/opnsense-repo/`
+Use of the integration requires an `OPNsense` plugin made available on mimugmail repository: `https://www.routerperformance.net/opnsense-repo/`
 
-First you need to install the repository:
+First, install the repository:
 
 - open an SSH session on `OPNsense` and issue the following commands:
 
@@ -55,14 +55,14 @@ fetch -o /usr/local/etc/pkg/repos/mimugmail.conf https://www.routerperformance.n
 pkg update
 ```
 
-Now you need to install the plugin, you have two ways to do it:
+Then, install the plugin. There are two ways to do it:
 
 - In `OPNsense` web UI, go to System:Firmware:Plugins and install plugin `os-homeassistant-maxit`
 - From SSH shell: `pkg install os-homeassistant-maxit`
 
 ## HomeAssistant Integration
 
-In `Home Assistant`, add this repository to your `HACS` installation or clone the directory manually.
+In `Home Assistant`, add this repository to the `HACS` installation or clone the directory manually.
 
 ### HACS Installation
 
@@ -87,72 +87,69 @@ Once the integration is installed be sure to restart `Home Assistant`. Restart o
 <details>
 <summary><h3>Manual Installation</h3></summary>
 
-Copy the contents of the custom_components folder to your `Home Assistant` config/custom_components folder and restart `Home Assistant`.
+Copy the contents of the custom_components folder to the `Home Assistant` config/custom_components folder and restart `Home Assistant`.
 
 </details>
 
 # Configuration
 
-Configuration is managed entirely from the UI using `config_flow` semantics. Simply go to `Configuration -> Integrations -> Add Integration` and search for `OPNsense` in the search box. If you can't find it in the list (well-known HA issue) you need to do a 'hard-refresh' of the browser (ctrl-F5) then open the list again, you'll find it there.
+Configuration is managed entirely from the UI using `config_flow` semantics. Simply go to `Configuration -> Integrations -> Add Integration` and search for `OPNsense` in the search box. If it isn't in the list (well-known HA issue), do a 'hard-refresh' of the browser (ctrl-F5) then open the list again.
 
 ## OPNsense
 
 The official recommendation is that the service user to be created has the admin role.
 
-Create a new admin role user (or choose an existing admin user), and create an API key associated to the user. When creating the API key, `OPNsense` will push the API file containing the API key and API secret to your browser, you'll find it in the download folder.
+Create a new admin role user (or choose an existing admin user) and create an API key associated to the user. When creating the API key, `OPNsense` will push the file containing the API key and API secret to the browser. It will be in the download folder.
 
 <details>
 <summary><h4>Unsupported Alternative</h4></summary>
 
-If you don't want to user an `admin` user account, you can try assigning the following privileges, but this is not guaranteed to work and could lead to potential issues, so we still recommend using an admin user:
+Alternatively, multiple individual permissions can be added for a user. However, it is likely that not all functions will work and there will be errors in the log. This option is unsupported. Identified permissions (very likely incomplete):
   - `Dashboard (all)`
   - `Lobby: Login / Logout / Dashboard`
   - `Status: Interfaces`
   - `Status: OpenVPN`
   - `System: Firmware`
   - `VPN: OpenVPN: Client Export Utility`
-  - `XMLRPC Library` (note that this privilege effectively gives the user complete access to
-    the system via the `xmlrpc` feature)
+  - `XMLRPC Library` (note that this privilege effectively gives the user complete access to the system via the `xmlrpc` feature)
 
 </details>
 
 ## Config
 
-- `URL` - the full URL to your `OPNsense` UI (ie: `https://192.168.1.1`),
+- `URL` - the full URL to the `OPNsense` UI (ie: `https://192.168.1.1`),
   supported format is `<scheme>://<ip or host>[:<port>]`
-- `Verify SSL Certificate` - if the SSL certificate should be verified or not
-  (if you get an SSL error try unchecking this)
+- `Verify SSL Certificate` - if the SSL certificate should be verified or not (if receiving an SSL error, try unchecking this)
 - `API Key` - the API key created previously
 - `API Secret` - the API secret of the API key
-- `Firewall Name` - a custom name to be used for `entity` naming (default: use
-  the `OPNsense` `hostname`)
+- `Firewall Name` - a custom name to be used for `entity` naming (default: use the `OPNsense hostname`)
 
 ## Options
 
 - `Scan Interval (seconds)` - scan interval to use for state polling (default: `30`)
-- `Enable Device Tracker` - turn on the device tracker integration using `OPNsense` arp table (default: `false`)
-- `Device Tracker Scan Interval (seconds)` - scan interval to use for arp updates (default: `60`)
+- `Enable Device Tracker` - turn on the device tracker integration using `OPNsense` ARP table (default: `false`)
+- `Device Tracker Scan Interval (seconds)` - scan interval to use for ARP updates (default: `60`)
 - `Device Tracker Consider Home (seconds)` - seconds to wait until marking a device as not home after not being seen. (default: `0`)
   - `0` - disabled (if device is not present during any given scan interval it is considered away)
   - `> 0` - generally should be a multiple of the configured scan interval
 
 # Entities
 
-Many `entities` are created by `hass-opnsense` for stats etc. Due to to volume of entities many are disabled by default. If something is missing be sure to review the disabled entities as what you're looking for is probably there.
+Many `entities` are created by `hass-opnsense` for stats etc. Due to to volume of entities many are disabled by default. If something is missing be sure to review the disabled entities as it is probably there.
 
 ## Binary Sensor
 
-- carp status (enabled/disabled)
-- system notices present (the circle icon in the upper right of the UI)
-- firmware updates available
+- CARP Status (enabled/disabled)
+- System Notices present (the circle icon in the upper right of the UI)
+- Firmware updates available
 
 ## Device Tracker
 
-`ScannerEntity` entries are created for the `OPNsense` arp table. Disabled by default. Not only is the feature disabled by default but created entities are currently disabled by default as well. Search the disabled entity list for the relevant mac addresses and enable as desired.
+`ScannerEntity` entries are created for the `OPNsense` ARP table. Disabled by default. Not only is the feature disabled by default but created entities are currently disabled by default as well. Search the disabled entity list for the relevant mac addresses and enable as desired.
 
-Note that by default `FreeBSD`/`OPNsense` use a max age of 20 minutes for arp entries (sysctl `net.link.ether.inet.max_age`). You may lower that using `System -> Advanced -> System Tunables` if desired.
+Note that by default `FreeBSD`/`OPNsense`, uses a max age of 20 minutes for ARP entries (sysctl `net.link.ether.inet.max_age`). This can be lowered in OPNsense from `System -> Advanced -> System Tunables` if desired.
 
-Also note that if you are running `AdGuardHome` DNS queries may get throttled causing issues with the tracker. See [below](#adguardhome) for details.
+Also note that if `AdGuardHome` is being used, DNS queries may get throttled causing issues with the tracker. See [below](#adguardhome) for details.
 
 ## Sensor
 
@@ -164,9 +161,9 @@ Also note that if you are running `AdGuardHome` DNS queries may get throttled ca
 - Filesystem usage
 - Interface details (status, stats, pps, kbs (time samples are based on the `Scan Interval (seconds)` config option))
 - Gateways details (status, delay, stddev, loss)
-- Carp Interface status
+- CARP Interface status
 - DHCP Leases
-- OpenVPN & Wireguard server and client stats
+- VPN server stats and Wireguard client stats
 - Certificates
 
 ## Switch
@@ -176,7 +173,7 @@ All of the switches below are disabled by default.
 - Filter Rules - enable/disable rules
 - NAT Port Forward Rules - enable/disable rules
 - NAT Outbound Rules - enable/disable rules
-- Services - start/stop services (note that services must be enabled before they can be started)
+- Services - start/stop services (services must be enabled before they can be started)
 - VPN Servers and Clients - enable/disable instances
 
 # Services
@@ -213,7 +210,16 @@ service: opnsense.reload_interface
 data:
   interface: wan
 
+action: opnsense.generate_vouchers
+data:
+  validity: "14400"  # seconds
+  expirytime: "2419200" # seconds. 0 for never
+  count: 1
+  vouchergroup: Home Assistant
+  voucher_server: Voucher Server # Only needed if more than 1 Voucher Server
+# Returns the vouchers as action response data
 ```
+### [How to use `action response data` in an HA script or automation](https://www.home-assistant.io/docs/scripts/perform-actions/#use-templates-to-handle-response-data)
 
 # Known Issues
 
