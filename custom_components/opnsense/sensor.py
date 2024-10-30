@@ -250,7 +250,7 @@ async def _compile_gateway_sensors(
 
             if prop_name in ["delay", "stddev"]:
                 native_unit_of_measurement = UnitOfTime.MILLISECONDS
-                device_class = SensorDeviceClass.DURATION
+                # device_class = SensorDeviceClass.DURATION
 
             if prop_name == "status":
                 icon = "mdi:check-network"
