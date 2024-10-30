@@ -83,10 +83,13 @@ class OPNsenseBinarySensor(OPNsenseEntity, BinarySensorEntity):
 
 
 class OPNsenseCarpStatusBinarySensor(OPNsenseBinarySensor):
-
     @callback
     def _handle_coordinator_update(self) -> None:
         state: Mapping[str, Any] = self.coordinator.data
+        if not isinstance(state, Mapping):
+            self._available = False
+            self.async_write_ha_state()
+            return
         try:
             self._attr_is_on = state["carp_status"]
         except (TypeError, KeyError, ZeroDivisionError):
@@ -94,20 +97,27 @@ class OPNsenseCarpStatusBinarySensor(OPNsenseBinarySensor):
             self.async_write_ha_state()
             return
         self._available = True
+        self._attr_extra_state_attributes = {}
+        self.async_write_ha_state()
 
 
 class OPNsensePendingNoticesPresentBinarySensor(OPNsenseBinarySensor):
     @callback
     def _handle_coordinator_update(self) -> None:
         state: Mapping[str, Any] = self.coordinator.data
+        if not isinstance(state, Mapping):
+            self._available = False
+            self.async_write_ha_state()
+            return
         try:
             self._attr_is_on = state["notices"]["pending_notices_present"]
         except (TypeError, KeyError, ZeroDivisionError):
             self._available = False
             self.async_write_ha_state()
             return
-        self._available = True
-        self._attr_extra_state_attributes = {}
 
-        notices = dict_get(state, "notices.pending_notices", [])
-        self._attr_extra_state_attributes["pending_notices"] = notices
+        self._available = True
+        self._attr_extra_state_attributes["pending_notices"] = dict_get(
+            state, "notices.pending_notices", []
+        )
+        self.async_write_ha_state()

@@ -1660,17 +1660,27 @@ $toreturn = [
         pending_notices_present = False
         pending_notices: list = []
         for key, notice in notices_info.items():
-            if isinstance(notices_info, Mapping) and notice.get("statusCode", 2) != 2:
+            if isinstance(notice, Mapping) and notice.get("statusCode", 2) != 2:
                 pending_notices_present = True
-                real_notice: Mapping[str, Any] = {}
-                real_notice["notice"] = notice.get("message", None)
-                real_notice["id"] = key
-                real_notice["created_at"] = notice.get("timestamp", None)
-                pending_notices.append(real_notice)
+                pending_notices.append(
+                    {
+                        "notice": notice.get("message", None),
+                        "id": key,
+                        "created_at": (
+                            datetime.fromtimestamp(
+                                int(notice.get("timestamp")),
+                                tz=timezone(datetime.now().astimezone().utcoffset()),
+                            )
+                            if notice.get("timestamp", None)
+                            else None
+                        ),
+                    }
+                )
 
-        notices: Mapping[str, Any] = {}
-        notices["pending_notices_present"] = pending_notices_present
-        notices["pending_notices"] = pending_notices
+        notices: Mapping[str, Any] = {
+            "pending_notices_present": pending_notices_present,
+            "pending_notices": pending_notices,
+        }
         # _LOGGER.debug(f"[get_notices] notices: {notices}")
         return notices
 
