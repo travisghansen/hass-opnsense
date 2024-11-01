@@ -1,7 +1,25 @@
+<a id="v0.3.9"></a>
+# [v0.3.9](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.9) - 2024-11-01
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🕷️ Bug Fixes 🕷️
+* Revert device class duration for Gateway sensors by [@Snuffy2](https://github.com/Snuffy2) in [#306](https://github.com/travisghansen/hass-opnsense/pull/306)
+* Fix intermittent get_notices issue by [@Snuffy2](https://github.com/Snuffy2) in [#307](https://github.com/travisghansen/hass-opnsense/pull/307)
+### Other Changes
+* Minor sensor cleanup by [@Snuffy2](https://github.com/Snuffy2) in [#308](https://github.com/travisghansen/hass-opnsense/pull/308)
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.8...v0.3.9
+
+[Changes][v0.3.9]
+
+
 <a id="v0.3.8"></a>
 # [v0.3.8](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.8) - 2024-10-27
 
-<!-- Release notes generated using configuration in .github/release.yml at main -->
+<h3>OPNsense Minimum Firmware Required: 24.1</h3><h4>OPNsense Recommended Firmware: 24.7</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
 ## What's Changed
 ### 🎉 Enhancements & New Features 🎉
@@ -22,7 +40,7 @@
 * Create LICENSE by [@Snuffy2](https://github.com/Snuffy2) in [#286](https://github.com/travisghansen/hass-opnsense/pull/286)
 
 
-**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.7...v0.3.8
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.7...v0.3.8<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
 
 [Changes][v0.3.8]
 
@@ -458,6 +476,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.3.9]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.8...v0.3.9
 [v0.3.8]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.7...v0.3.8
 [v0.3.7]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.6...v0.3.7
 [v0.3.6]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.5...v0.3.6
