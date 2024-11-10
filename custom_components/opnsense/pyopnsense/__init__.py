@@ -249,6 +249,11 @@ $toreturn["real"] = json_encode($toreturn_real);
                 f"Connection Error running exec_php script for {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. {e.__class__.__qualname__}: {e}. Will retry"
             )
             return {}
+        except ssl.SSLError as e:
+            _LOGGER.warning(
+                f"SSL Connection Error running exec_php script for {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. {e.__class__.__qualname__}: {e}. Will retry"
+            )
+            return {}
 
     @_log_errors
     async def get_host_firmware_version(self) -> None | str:

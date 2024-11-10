@@ -34,7 +34,7 @@ async def _compile_filter_switches(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: Mapping[str, Any],
 ) -> list:
-    if not isinstance(state, Mapping):
+    if not isinstance(state, Mapping) or not isinstance(state.get("config"), Mapping):
         return []
     entities: list = []
     # filter rules
@@ -79,8 +79,9 @@ async def _compile_port_forward_switches(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: Mapping[str, Any],
 ) -> list:
-    if not isinstance(state, Mapping):
+    if not isinstance(state, Mapping) or not isinstance(state.get("config"), Mapping):
         return []
+
     entities: list = []
     # nat port forward rules
     if "nat" in state.get("config", {}):
@@ -116,7 +117,7 @@ async def _compile_nat_outbound_switches(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: Mapping[str, Any],
 ) -> list:
-    if not isinstance(state, Mapping):
+    if not isinstance(state, Mapping) or not isinstance(state.get("config"), Mapping):
         return []
     entities: list = []
     # nat outbound rules
@@ -157,8 +158,9 @@ async def _compile_service_switches(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: Mapping[str, Any],
 ) -> list:
-    if not isinstance(state, Mapping):
+    if not isinstance(state, Mapping) or not isinstance(state.get("services"), list):
         return []
+
     entities: list = []
     # services
     for service in state.get("services", []):
