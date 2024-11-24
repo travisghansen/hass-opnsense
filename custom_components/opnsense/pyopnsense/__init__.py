@@ -412,7 +412,7 @@ clear_subsystem_dirty('filter');
 
     @_log_errors
     async def get_device_unique_id(self) -> str | None:
-        instances: Mapping[str, Any] | list = await self._post(
+        instances: Mapping[str, Any] | list = await self._get(
             "/api/interfaces/overview/export"
         )
         if not isinstance(instances, list):
@@ -429,7 +429,12 @@ clear_subsystem_dirty('filter');
             unique_mac_addresses[0] if unique_mac_addresses else None
         )
         if device_unique_id:
-            return device_unique_id.replace(":", "_").strip()
+            device_unique_id_fmt = device_unique_id.replace(":", "_").strip()
+            _LOGGER.debug(
+                f"[get_device_unique_id] device_unique_id: {device_unique_id_fmt}"
+            )
+            return device_unique_id_fmt
+        _LOGGER.debug("[get_device_unique_id] device_unique_id: None")
         return None
 
     @_log_errors

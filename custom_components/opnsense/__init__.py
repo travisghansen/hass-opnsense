@@ -16,18 +16,10 @@ from homeassistant.const import (
     Platform,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import (
-    config_validation as cv,
-)
-from homeassistant.helpers import (
-    device_registry as dr,
-)
-from homeassistant.helpers import (
-    entity_registry as er,
-)
-from homeassistant.helpers import (
-    issue_registry as ir,
-)
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -89,7 +81,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     device_tracker_enabled: bool = options.get(
         CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED
     )
-    device_unique_id = config[CONF_DEVICE_UNIQUE_ID]
+    config_device_id: str = config[CONF_DEVICE_UNIQUE_ID]
 
     client = OPNsenseClient(
         url=url,
@@ -108,12 +100,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         name=f"{entry.title} state",
         update_interval=timedelta(seconds=scan_interval),
         client=client,
-        device_unique_id=device_unique_id,
+        device_unique_id=config_device_id,
     )
 
-    await coordinator.async_config_entry_first_refresh()
+    # Trigger repair task and shutdown if device id has changed
+    router_device_id: str = await client.get_device_unique_id()
+    _LOGGER.debug(
+        f"[init async_setup_entry]: config device id: {config_device_id}, router device id: {router_device_id}"
+    )
+    if router_device_id != config_device_id and router_device_id:
+        ir.async_create_issue(
+            hass=hass,
+            domain=DOMAIN,
+            issue_id=f"{config_device_id}_device_id_mismatched",
+            is_fixable=False,
+            is_persistent=False,
+            severity=ir.IssueSeverity.ERROR,
+            translation_key="device_id_mismatched",
+        )
+        _LOGGER.error(
+            "OPNsense Device ID has changed which indicates new or changed hardware. "
+            "In order to accomodate this, hass-opnsense needs to be removed and reinstalled for this router. "
+            "hass-opnsense is shutting down."
+        )
+        await coordinator.async_shutdown()
+        return False
 
-    firmware: str | None = coordinator.data.get("host_firmware_version", None)
+    firmware: str | None = await client.get_host_firmware_version()
     _LOGGER.info(f"OPNsense Firmware {firmware}")
     try:
         if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
@@ -169,6 +182,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.warning("Unable to confirm OPNsense Firmware version")
         pass
 
+    await coordinator.async_config_entry_first_refresh()
+
     platforms: list = PLATFORMS.copy()
     device_tracker_coordinator = None
     if not device_tracker_enabled and "device_tracker" in platforms:
@@ -183,7 +198,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             name=f"{entry.title} Device Tracker state",
             update_interval=timedelta(seconds=device_tracker_scan_interval),
             client=client,
-            device_unique_id=device_unique_id,
+            device_unique_id=config_device_id,
             device_tracker_coordinator=True,
         )
 
@@ -196,7 +211,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         OPNSENSE_CLIENT: client,
         UNDO_UPDATE_LISTENER: [undo_listener],
         LOADED_PLATFORMS: platforms,
-        CONF_DEVICE_UNIQUE_ID: device_unique_id,
+        CONF_DEVICE_UNIQUE_ID: config_device_id,
     }
 
     if device_tracker_enabled:
