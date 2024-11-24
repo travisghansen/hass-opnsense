@@ -474,3 +474,57 @@ kill_states:
               filter:
                 - integration: opnsense
                   domain: sensor
+
+toggle_alias:
+  name: Toggle Alias
+  fields:
+    alias:
+      name: Alias Name
+      required: true
+      advanced: false
+      example: "iphones"
+      selector:
+        text:
+    toggle_on_off:
+      name: Alias Action
+      required: true
+      advanced: false
+      default: "toggle"
+      selector:
+        select:
+          multiple: false
+          custom_value: false
+          mode: list
+          options:
+            - label: "Toggle"
+              value: "toggle"
+            - label: "On"
+              value: "on"
+            - label: "Off"
+              value: "off"      
+    multiple_opnsense:
+      name: Only needed if there is more than one OPNsense Router
+      collapsed: true
+      fields:
+        device_id:
+          name: OPNsense Device
+          description: Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers.
+          required: false
+          selector:
+            device:
+              multiple: false
+              filter:
+                - integration: opnsense
+              entity:
+                - domain: sensor
+        entity_id:
+          name: OPNsense Entity
+          description: Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers.
+          example: "sensor.opnsense_interface_lan_status"
+          required: false
+          selector:
+            entity:
+              multiple: false
+              filter:
+                - integration: opnsense
+                  domain: sensor
