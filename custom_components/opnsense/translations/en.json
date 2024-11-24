@@ -27,8 +27,17 @@
           "verify_ssl": "Verify SSL certificate"
         },
         "title": "Connect to the OPNsense firewall / router"
+      },
+      "reconfigure": {
+        "data": {
+          "url": "URL",
+          "username": "API Key",
+          "password": "API Secret",
+          "verify_ssl": "Verify SSL certificate"
+        },
+        "title": "Update connection to the OPNsense firewall / router"
       }
-    }
+    }    
   },
   "options": {
     "error": {

@@ -39,6 +39,7 @@ CONF_DEVICE_TRACKER_CONSIDER_HOME = "device_tracker_consider_home"
 DEFAULT_DEVICE_TRACKER_CONSIDER_HOME = 0
 
 CONF_DEVICE_UNIQUE_ID = "device_unique_id"
+CONF_FIRMWARE_VERSION = "firmware_version"
 
 CONF_DEVICES = "devices"
 CONF_MANUAL_DEVICES = "manual_devices"
