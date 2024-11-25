@@ -2162,3 +2162,58 @@ $toreturn = [
             "success": bool(response.get("result", None) == "ok"),
             "dropped_states": response.get("dropped_states", 0),
         }
+
+    async def toggle_alias(self, alias, toggle_on_off) -> bool:
+
+        alias_list_resp: Mapping[str, Any] | list = await self._get(
+            "/api/firewall/alias/searchItem"
+        )
+        if not isinstance(alias_list_resp, Mapping):
+            return False
+        alias_list: list = alias_list_resp.get("rows", [])
+        if not isinstance(alias_list, list):
+            return False
+        uuid: str | None = None
+        for item in alias_list:
+            if not isinstance(item, Mapping):
+                continue
+            if item.get("name") == alias:
+                uuid = item.get("uuid")
+                break
+        if not uuid:
+            return False
+        payload: Mapping[str, Any] = {}
+        url: str = f"/api/firewall/alias/toggleItem/{uuid}"
+        if toggle_on_off == "on":
+            url = url + "/1"
+        elif toggle_on_off == "off":
+            url = url + "/0"
+        response: Mapping[str, Any] | list = await self._post(
+            url,
+            payload=payload,
+        )
+        _LOGGER.debug(
+            f"[toggle_alias] alias: {alias}, uuid: {uuid}, action: {toggle_on_off}, "
+            f"url: {url}, response: {response}"
+        )
+        if (
+            not isinstance(response, Mapping)
+            or "result" not in response
+            or response.get("result") == "failed"
+        ):
+            return False
+
+        set_resp: Mapping[str, Any] | list = await self._post("/api/firewall/alias/set")
+        if not isinstance(set_resp, Mapping) or set_resp.get("result") != "saved":
+            return False
+
+        reconfigure_resp: Mapping[str, Any] | list = await self._post(
+            "/api/firewall/alias/reconfigure"
+        )
+        if (
+            not isinstance(reconfigure_resp, Mapping)
+            or reconfigure_resp.get("status") != "ok"
+        ):
+            return False
+
+        return True

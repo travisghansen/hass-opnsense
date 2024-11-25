@@ -26,6 +26,7 @@ from .const import (
     SERVICE_STOP_SERVICE,
     SERVICE_SYSTEM_HALT,
     SERVICE_SYSTEM_REBOOT,
+    SERVICE_TOGGLE_ALIAS,
 )
 from .pyopnsense import VoucherServerError
 
@@ -268,6 +269,25 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         if call.return_response:
             return return_response
 
+    async def service_toggle_alias(call: ServiceCall) -> None:
+        clients: list = await _get_clients(
+            call.data.get("device_id", []), call.data.get("entity_id", [])
+        )
+        success = None
+        for client in clients:
+            response = await client.toggle_alias(
+                call.data.get("alias"), call.data.get("toggle_on_off")
+            )
+            _LOGGER.debug(
+                f"[service_toggle_alias] client: {client.name}, alias: {call.data.get("alias")}, response: {response}"
+            )
+            if success is None or success:
+                success = response
+        if success is None or not success:
+            raise ServiceValidationError(
+                f"Toggle Alias Failed. client: {client.name}, alias: {call.data.get("alias")}, action: {call.data.get("toggle_on_off")}"
+            )
+
     hass.services.async_register(
         domain=DOMAIN,
         service=SERVICE_CLOSE_NOTICE,
@@ -429,4 +449,20 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         ),
         service_func=service_kill_states,
         supports_response=SupportsResponse.OPTIONAL,
+    )
+
+    hass.services.async_register(
+        domain=DOMAIN,
+        service=SERVICE_TOGGLE_ALIAS,
+        schema=vol.Schema(
+            {
+                vol.Required("alias"): vol.Any(cv.string),
+                vol.Required("toggle_on_off", default="toggle"): vol.In(
+                    {"toggle": "Toggle", "on": "On", "off": "Off"}
+                ),
+                vol.Optional("device_id"): vol.Any(cv.string),
+                vol.Optional("entity_id"): vol.Any(cv.string),
+            }
+        ),
+        service_func=service_toggle_alias,
     )
