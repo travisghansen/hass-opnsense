@@ -6,9 +6,10 @@ from datetime import timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .const import ATTR_UNBOUND_BLOCKLIST
+from .const import ATTR_UNBOUND_BLOCKLIST, DOMAIN
 from .helpers import dict_get
 from .pyopnsense import OPNsenseClient
 
@@ -33,6 +34,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         self._client: OPNsenseClient = client
         self._state: Mapping[str, Any] = {}
         self._device_tracker_coordinator: bool = device_tracker_coordinator
+        self._mismatched_count = 0
         self._device_unique_id: str = device_unique_id
         super().__init__(
             hass,
@@ -146,11 +148,35 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             )
             return {}
         if self._state.get("device_unique_id") != self._device_unique_id:
-            _LOGGER.error(
-                f"Coordinator error. OPNsense Router Device ID ({self._state.get('device_unique_id')}) differs from the one saved in hass-opnsense ({self._device_unique_id})"
+            _LOGGER.debug(
+                f"[Coordinator async_update_data]: config device id: {self._device_unique_id}, "
+                f"router device id: {self._state.get('device_unique_id')}"
             )
-            # Create repair task here
+            if self._state.get("device_unique_id"):
+                _LOGGER.error(
+                    f"Coordinator error. OPNsense Router Device ID ({self._state.get('device_unique_id')}) differs from the one saved in hass-opnsense ({self._device_unique_id})"
+                )
+                self._mismatched_count += 1
+                # Trigger repair task and shutdown if this happens 3 times in a row
+                if self._mismatched_count == 3:
+                    ir.async_create_issue(
+                        hass=self.hass,
+                        domain=DOMAIN,
+                        issue_id=f"{self._device_unique_id}_device_id_mismatched",
+                        is_fixable=False,
+                        is_persistent=False,
+                        severity=ir.IssueSeverity.ERROR,
+                        translation_key="device_id_mismatched",
+                    )
+                    _LOGGER.error(
+                        "OPNsense Device ID has changed which indicates new or changed hardware. "
+                        "In order to accomodate this, hass-opnsense needs to be removed and reinstalled for this router. "
+                        "hass-opnsense is shutting down."
+                    )
+                    await self.async_shutdown()
             return {}
+        else:
+            self._mismatched_count = 0
 
         # calculate pps and kbps
         update_time = dict_get(self._state, "update_time")

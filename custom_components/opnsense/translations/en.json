@@ -74,6 +74,10 @@
     "below_ltd_firmware": {
       "title": "OPNsense Firmware below Recommended Version",
       "description": "Some hass-opnsense {version} functions require OPNsense firmware {ltd_firmware} or later. With firmware {firmware}, some functions may not work and there may be errors in the logs."
+    },
+    "device_id_mismatched": {
+      "title": "OPNsense Hardware Has Changed",
+      "description": "OPNsense Device ID has changed which indicates new or changed hardware. In order to accomodate this, hass-opnsense needs to be removed and reinstalled for this router. hass-opnsense is shutting down."
     }
   },  
   "title": "OPNsense"

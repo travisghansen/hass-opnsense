@@ -34,6 +34,7 @@ A Discord server to discuss the integration is available, please click the Disco
   - [Switch](#switch)
   - [Services](#services)
 - [Known Issues](#known-issues)
+  - [Hardware Changes](#hardware-changes)
   - [AdGuardHome](#adguardhome)
 
 # Installation
@@ -223,10 +224,20 @@ data:
   vouchergroup: Home Assistant
   voucher_server: Voucher Server # Only needed if more than 1 Voucher Server
 # Returns the vouchers as action response data
+
+action: opnsense.toggle_alias
+data:
+  alias: "iphones"
+  toggle_on_off: "toggle"
+
 ```
 ### [How to use `action response data` in an HA script or automation](https://www.home-assistant.io/docs/scripts/perform-actions/#use-templates-to-handle-response-data)
 
 # Known Issues
+
+## Hardware Changes
+
+If you partially or fully change the OPNsense Hardware, it will require a removal and reinstall of this integration. This is to ensure changed interfaces, services, gateways, etc. are accounted for and don't leave duplicate or non-functioning entities. 
 
 ## AdGuardHome
 
