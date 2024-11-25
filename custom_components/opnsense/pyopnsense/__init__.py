@@ -258,12 +258,22 @@ $toreturn["real"] = json_encode($toreturn_real);
     @_log_errors
     async def get_host_firmware_version(self) -> None | str:
         firmware_info: Mapping[str, Any] | list = await self._get(
-            "/api/core/firmware/info"
+            "/api/core/firmware/status"
         )
         if not isinstance(firmware_info, Mapping):
             return None
-        firmware: str | None = firmware_info.get("product_version", None)
-        _LOGGER.debug(f"[get_host_firmware_version] firmware: {firmware}")
+        firmware: str | None = firmware_info.get("product", {}).get("product_version")
+        if not firmware or not awesomeversion.AwesomeVersion(firmware).valid:
+            old = firmware
+            firmware: str | None = firmware_info.get("product", {}).get(
+                "product_series", old
+            )
+            if firmware != old:
+                _LOGGER.debug(
+                    f"[get_host_firmware_version] firmware: {old} not valid SemVer, using {firmware}"
+                )
+        else:
+            _LOGGER.debug(f"[get_host_firmware_version] firmware: {firmware}")
         self._firmware_version = firmware
         return firmware
 
