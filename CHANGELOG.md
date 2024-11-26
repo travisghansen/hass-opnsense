@@ -1,7 +1,28 @@
+<a id="v0.3.10"></a>
+# [v0.3.10](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.10) - 2024-11-26
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🎉 Enhancements & New Features 🎉
+* Add reconfigure by [@Snuffy2](https://github.com/Snuffy2) in [#325](https://github.com/travisghansen/hass-opnsense/pull/325)
+* Alias Toggle Action/Service by [@Snuffy2](https://github.com/Snuffy2) in [#326](https://github.com/travisghansen/hass-opnsense/pull/326)
+* Show repair and shutdown integration if new device id detected by [@Snuffy2](https://github.com/Snuffy2) in [#327](https://github.com/travisghansen/hass-opnsense/pull/327)
+### 🕷️ Bug Fixes 🕷️
+* Change firmware endpoint and handle non-SemVer firware by [@Snuffy2](https://github.com/Snuffy2) in [#324](https://github.com/travisghansen/hass-opnsense/pull/324)
+### Other Changes
+* Handle edge TypeError: argument of type 'NoneType' is not iterable errors by [@Snuffy2](https://github.com/Snuffy2) in [#314](https://github.com/travisghansen/hass-opnsense/pull/314)
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.9...v0.3.10
+
+[Changes][v0.3.10]
+
+
 <a id="v0.3.9"></a>
 # [v0.3.9](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.9) - 2024-11-01
 
-<!-- Release notes generated using configuration in .github/release.yml at main -->
+<h3>OPNsense Minimum Firmware Required: 24.1</h3><h4>OPNsense Recommended Firmware: 24.7</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
 ## What's Changed
 ### 🕷️ Bug Fixes 🕷️
@@ -11,7 +32,7 @@
 * Minor sensor cleanup by [@Snuffy2](https://github.com/Snuffy2) in [#308](https://github.com/travisghansen/hass-opnsense/pull/308)
 
 
-**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.8...v0.3.9
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.8...v0.3.9<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
 
 [Changes][v0.3.9]
 
@@ -476,6 +497,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.3.10]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.9...v0.3.10
 [v0.3.9]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.8...v0.3.9
 [v0.3.8]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.7...v0.3.8
 [v0.3.7]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.6...v0.3.7

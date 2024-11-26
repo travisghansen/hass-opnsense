@@ -9,7 +9,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import PERCENTAGE, UnitOfInformation, UnitOfTime
 
-VERSION = "v0.3.9"
+VERSION = "v0.3.10"
 DOMAIN = "opnsense"
 OPNSENSE_LTD_FIRMWARE = "24.7"  # Some functions may not work but the integration in general should work. Show repair warning.
 OPNSENSE_MIN_FIRMWARE = "24.1"  # Don't allow install, will not work.
@@ -39,7 +39,7 @@ CONF_DEVICE_TRACKER_CONSIDER_HOME = "device_tracker_consider_home"
 DEFAULT_DEVICE_TRACKER_CONSIDER_HOME = 0
 
 CONF_DEVICE_UNIQUE_ID = "device_unique_id"
-CONF_FIRMWARE_VERSION = "firmware_version"
+CONF_FIRMWARE_VERSION = "v0.3.10"
 
 CONF_DEVICES = "devices"
 CONF_MANUAL_DEVICES = "manual_devices"
