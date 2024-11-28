@@ -25,7 +25,7 @@ jobs:
       - name: Update Version in const.py
         if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
         run: |
-          sed -i 's/VERSION \= \".*\"/VERSION \= \"${{ github.ref_name }}\"/' ./custom_components/opnsense/const.py
+          sed -i 's/^VERSION \= \".*\"/VERSION \= \"${{ github.ref_name }}\"/' ./custom_components/opnsense/const.py
       - name: Update Changelog
         if: ${{ github.event_name == 'release' && github.event.release.draft == false && github.event.release.prerelease == false  }}
         uses: rhysd/changelog-from-release/action@v3
