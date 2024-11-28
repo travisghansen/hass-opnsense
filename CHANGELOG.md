@@ -1,7 +1,22 @@
+<a id="v0.3.11"></a>
+# [v0.3.11](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.11) - 2024-11-28
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🕷️ Bug Fixes 🕷️
+* Fix version update of const.py by [@Snuffy2](https://github.com/Snuffy2) in [#331](https://github.com/travisghansen/hass-opnsense/pull/331)
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.10...v0.3.11
+
+[Changes][v0.3.11]
+
+
 <a id="v0.3.10"></a>
 # [v0.3.10](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.10) - 2024-11-26
 
-<!-- Release notes generated using configuration in .github/release.yml at main -->
+<h3>OPNsense Minimum Firmware Required: 24.1</h3><h4>OPNsense Recommended Firmware: 24.7</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
 ## What's Changed
 ### 🎉 Enhancements & New Features 🎉
@@ -14,7 +29,7 @@
 * Handle edge TypeError: argument of type 'NoneType' is not iterable errors by [@Snuffy2](https://github.com/Snuffy2) in [#314](https://github.com/travisghansen/hass-opnsense/pull/314)
 
 
-**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.9...v0.3.10
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.9...v0.3.10<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
 
 [Changes][v0.3.10]
 
@@ -497,6 +512,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.3.11]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.10...v0.3.11
 [v0.3.10]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.9...v0.3.10
 [v0.3.9]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.8...v0.3.9
 [v0.3.8]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.7...v0.3.8
