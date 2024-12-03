@@ -327,15 +327,23 @@ $toreturn["real"] = json_encode($toreturn_real);
 
                                         # _LOGGER.debug(f"[get_from_stream] response_json ({type(response_json).__name__}): {response_json}")
                                         return response_json  # Exit after processing the second message
-
-                elif response.status == 403:
-                    _LOGGER.error(
-                        f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Ensure the OPNsense user connected to HA has full Admin access."
-                    )
                 else:
-                    _LOGGER.error(
-                        f"Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Response {response.status}: {response.reason}"
-                    )
+                    if response.status == 403:
+                        _LOGGER.error(
+                            f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Ensure the OPNsense user connected to HA has full Admin access."
+                        )
+                    else:
+                        _LOGGER.error(
+                            f"Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Response {response.status}: {response.reason}"
+                        )
+                    if self._initial:
+                        raise aiohttp.ClientResponseError(
+                            request_info=response.request_info,
+                            history=response.history,
+                            status=response.status,
+                            message=f"HTTP Status Error: {response.status} {response.reason}",
+                            headers=response.headers,
+                        )
         except aiohttp.ClientError as e:
             _LOGGER.error(f"Client error. {e.__class__.__qualname__}: {e}")
             if self._initial:
@@ -369,6 +377,14 @@ $toreturn["real"] = json_encode($toreturn_real);
                     _LOGGER.error(
                         f"Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Response {response.status}: {response.reason}"
                     )
+                if self._initial:
+                    raise aiohttp.ClientResponseError(
+                        request_info=response.request_info,
+                        history=response.history,
+                        status=response.status,
+                        message=f"HTTP Status Error: {response.status} {response.reason}",
+                        headers=response.headers,
+                    )
         except aiohttp.ClientError as e:
             _LOGGER.error(f"Client error. {e.__class__.__qualname__}: {e}")
             if self._initial:
@@ -396,13 +412,21 @@ $toreturn["real"] = json_encode($toreturn_real);
                         content_type=None
                     )
                     return response_json
-                elif response.status == 403:
+                if response.status == 403:
                     _LOGGER.error(
                         f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Ensure the OPNsense user connected to HA has full Admin access"
                     )
                 else:
                     _LOGGER.error(
                         f"Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Response {response.status}: {response.reason}"
+                    )
+                if self._initial:
+                    raise aiohttp.ClientResponseError(
+                        request_info=response.request_info,
+                        history=response.history,
+                        status=response.status,
+                        message=f"HTTP Status Error: {response.status} {response.reason}",
+                        headers=response.headers,
                     )
         except aiohttp.ClientError as e:
             _LOGGER.error(f"Client error. {e.__class__.__qualname__}: {e}")
