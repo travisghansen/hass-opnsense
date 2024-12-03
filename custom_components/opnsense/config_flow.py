@@ -44,7 +44,7 @@ from .const import (
 )
 from .pyopnsense import OPNsenseClient
 
-_LOGGER = logging.getLogger(__name__)
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 def is_valid_mac_address(mac: str) -> bool:
@@ -72,7 +72,7 @@ async def validate_input(
     hass: HomeAssistant, user_input: Mapping[str, Any], errors: Mapping[str, Any]
 ):
     try:
-        fix_url = user_input[CONF_URL].strip()
+        fix_url = user_input.get(CONF_URL, "").strip()
         # ParseResult(
         #     scheme='', netloc='', path='f', params='', query='', fragment=''
         # )
@@ -88,18 +88,18 @@ async def validate_input(
         user_input[CONF_URL] = f"{url_parts.scheme}://{url_parts.netloc}"
 
         client = OPNsenseClient(
-            url=user_input[CONF_URL],
-            username=user_input[CONF_USERNAME],
-            password=user_input[CONF_PASSWORD],
+            url=user_input.get(CONF_URL),
+            username=user_input.get(CONF_USERNAME),
+            password=user_input.get(CONF_PASSWORD),
             session=async_create_clientsession(hass, raise_for_status=True),
-            opts={"verify_ssl": user_input[CONF_VERIFY_SSL]},
+            opts={"verify_ssl": user_input.get(CONF_VERIFY_SSL)},
             initial=True,
         )
 
         user_input[CONF_FIRMWARE_VERSION] = await client.get_host_firmware_version()
         try:
             if awesomeversion.AwesomeVersion(
-                user_input[CONF_FIRMWARE_VERSION]
+                user_input.get(CONF_FIRMWARE_VERSION)
             ) < awesomeversion.AwesomeVersion(OPNSENSE_MIN_FIRMWARE):
                 raise BelowMinFirmware()
         except awesomeversion.exceptions.AwesomeVersionCompareException:
@@ -113,12 +113,12 @@ async def validate_input(
             user_input[CONF_NAME] = system_info.get("name") or "OPNsense"
 
         user_input[CONF_DEVICE_UNIQUE_ID] = await client.get_device_unique_id()
-        if not user_input[CONF_DEVICE_UNIQUE_ID]:
+        if not user_input.get(CONF_DEVICE_UNIQUE_ID):
             raise MissingDeviceUniqueID()
 
     except BelowMinFirmware:
         _LOGGER.error(
-            f"OPNsense Firmware of {user_input[CONF_FIRMWARE_VERSION]} is below the minimum supported version of {OPNSENSE_MIN_FIRMWARE}"
+            f"OPNsense Firmware of {user_input.get(CONF_FIRMWARE_VERSION)} is below the minimum supported version of {OPNSENSE_MIN_FIRMWARE}"
         )
         errors["base"] = "below_min_firmware"
     except UnknownFirmware:
@@ -147,7 +147,7 @@ async def validate_input(
         _LOGGER.error(
             cleanse_sensitive_data(
                 f"XMLRPC Error. {err.__class__.__qualname__}: {err}",
-                [user_input[CONF_USERNAME], user_input[CONF_PASSWORD]],
+                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
             )
         )
     except aiohttp.ClientConnectorSSLError as err:
@@ -176,7 +176,7 @@ async def validate_input(
         _LOGGER.error(
             cleanse_sensitive_data(
                 f"XMLRPC Error. {err.__class__.__qualname__}: {err}",
-                [user_input[CONF_USERNAME], user_input[CONF_PASSWORD]],
+                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
             )
         )
     except (aiohttp.TooManyRedirects, aiohttp.RedirectClientError) as err:
@@ -201,14 +201,14 @@ async def validate_input(
         _LOGGER.error(
             cleanse_sensitive_data(
                 f"Error. {err.__class__.__qualname__}: {err}",
-                [user_input[CONF_USERNAME], user_input[CONF_PASSWORD]],
+                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
             )
         )
     except Exception as err:
         _LOGGER.error(
             cleanse_sensitive_data(
                 f"Other Error. {err.__class__.__qualname__}: {err}",
-                [user_input[CONF_USERNAME], user_input[CONF_PASSWORD]],
+                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
             )
         )
         errors["base"] = "unknown"
@@ -231,20 +231,20 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             errors = await validate_input(
                 hass=self.hass, user_input=user_input, errors=errors
             )
-            firmware = user_input[CONF_FIRMWARE_VERSION]
+            firmware = user_input.get(CONF_FIRMWARE_VERSION)
             if not errors:
                 # https://developers.home-assistant.io/docs/config_entries_config_flow_handler#unique-ids
-                await self.async_set_unique_id(user_input[CONF_DEVICE_UNIQUE_ID])
+                await self.async_set_unique_id(user_input.get(CONF_DEVICE_UNIQUE_ID))
                 self._abort_if_unique_id_configured()
 
                 return self.async_create_entry(
-                    title=user_input[CONF_NAME],
+                    title=user_input.get(CONF_NAME),
                     data={
-                        CONF_URL: user_input[CONF_URL],
-                        CONF_PASSWORD: user_input[CONF_PASSWORD],
-                        CONF_USERNAME: user_input[CONF_USERNAME],
-                        CONF_VERIFY_SSL: user_input[CONF_VERIFY_SSL],
-                        CONF_DEVICE_UNIQUE_ID: user_input[CONF_DEVICE_UNIQUE_ID],
+                        CONF_URL: user_input.get(CONF_URL),
+                        CONF_PASSWORD: user_input.get(CONF_PASSWORD),
+                        CONF_USERNAME: user_input.get(CONF_USERNAME),
+                        CONF_VERIFY_SSL: user_input.get(CONF_VERIFY_SSL),
+                        CONF_DEVICE_UNIQUE_ID: user_input.get(CONF_DEVICE_UNIQUE_ID),
                     },
                 )
 
@@ -290,20 +290,20 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             errors = await validate_input(
                 hass=self.hass, user_input=user_input, errors=errors
             )
-            firmware = user_input[CONF_FIRMWARE_VERSION]
+            firmware = user_input.get(CONF_FIRMWARE_VERSION)
             if not errors:
                 # https://developers.home-assistant.io/docs/config_entries_config_flow_handler#unique-ids
-                await self.async_set_unique_id(user_input[CONF_DEVICE_UNIQUE_ID])
+                await self.async_set_unique_id(user_input.get(CONF_DEVICE_UNIQUE_ID))
                 self._abort_if_unique_id_mismatch()
 
                 return self.async_create_entry(
-                    title=user_input[CONF_NAME],
+                    title=user_input.get(CONF_NAME),
                     data={
-                        CONF_URL: user_input[CONF_URL],
-                        CONF_PASSWORD: user_input[CONF_PASSWORD],
-                        CONF_USERNAME: user_input[CONF_USERNAME],
-                        CONF_VERIFY_SSL: user_input[CONF_VERIFY_SSL],
-                        CONF_DEVICE_UNIQUE_ID: user_input[CONF_DEVICE_UNIQUE_ID],
+                        CONF_URL: user_input.get(CONF_URL),
+                        CONF_PASSWORD: user_input.get(CONF_PASSWORD),
+                        CONF_USERNAME: user_input.get(CONF_USERNAME),
+                        CONF_VERIFY_SSL: user_input.get(CONF_VERIFY_SSL),
+                        CONF_DEVICE_UNIQUE_ID: user_input.get(CONF_DEVICE_UNIQUE_ID),
                     },
                 )
 
@@ -475,7 +475,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             if isinstance(
                 user_input.get(CONF_MANUAL_DEVICES, None), str
             ) and user_input.get(CONF_MANUAL_DEVICES, None):
-                for item in user_input[CONF_MANUAL_DEVICES].split(","):
+                for item in user_input.get(CONF_MANUAL_DEVICES).split(","):
                     if not isinstance(item, str) or not item:
                         continue
                     item = item.strip()
@@ -483,9 +483,9 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                         macs.append(item)
                 _LOGGER.debug(f"[async_step_device_tracker] Manual Devices: {macs}")
             _LOGGER.debug(
-                f"[async_step_device_tracker] Devices: {user_input[CONF_DEVICES]}"
+                f"[async_step_device_tracker] Devices: {user_input.get(CONF_DEVICES)}"
             )
-            self.new_options[CONF_DEVICES] = user_input[CONF_DEVICES] + macs
+            self.new_options[CONF_DEVICES] = user_input.get(CONF_DEVICES) + macs
         return self.async_create_entry(title="", data=self.new_options)
 
 
