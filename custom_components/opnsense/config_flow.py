@@ -70,7 +70,13 @@ def cleanse_sensitive_data(message, secrets=[]):
 
 async def validate_input(
     hass: HomeAssistant, user_input: Mapping[str, Any], errors: Mapping[str, Any]
-):
+) -> Mapping[str, Any]:
+    filtered_user_input: Mapping[str, Any] = {
+        key: value for key, value in user_input.items() if key != CONF_PASSWORD
+    }
+
+    _LOGGER.debug("[config_flow] user_input: %s", filtered_user_input)
+
     try:
         fix_url = user_input.get(CONF_URL, "").strip()
         # ParseResult(
@@ -86,6 +92,7 @@ async def validate_input(
 
         # remove any path etc details
         user_input[CONF_URL] = f"{url_parts.scheme}://{url_parts.netloc}"
+        _LOGGER.debug("[config_flow] Cleaned URL: %s", user_input[CONF_URL])
 
         client = OPNsenseClient(
             url=user_input.get(CONF_URL),
@@ -97,6 +104,9 @@ async def validate_input(
         )
 
         user_input[CONF_FIRMWARE_VERSION] = await client.get_host_firmware_version()
+        _LOGGER.debug(
+            "[config_flow] Firmware Version: %s", user_input[CONF_FIRMWARE_VERSION]
+        )
         try:
             if awesomeversion.AwesomeVersion(
                 user_input.get(CONF_FIRMWARE_VERSION)
@@ -109,16 +119,22 @@ async def validate_input(
             raise PluginMissing()
 
         system_info: Mapping[str, Any] = await client.get_system_info()
+        _LOGGER.debug("[config_flow] system_info: %s", system_info)
         if not user_input.get(CONF_NAME):
             user_input[CONF_NAME] = system_info.get("name") or "OPNsense"
 
         user_input[CONF_DEVICE_UNIQUE_ID] = await client.get_device_unique_id()
+        _LOGGER.debug(
+            "[config_flow] Device Unique ID: %s", user_input[CONF_DEVICE_UNIQUE_ID]
+        )
         if not user_input.get(CONF_DEVICE_UNIQUE_ID):
             raise MissingDeviceUniqueID()
 
     except BelowMinFirmware:
         _LOGGER.error(
-            f"OPNsense Firmware of {user_input.get(CONF_FIRMWARE_VERSION)} is below the minimum supported version of {OPNSENSE_MIN_FIRMWARE}"
+            "OPNsense Firmware of %s is below the minimum supported version of %s",
+            user_input.get(CONF_FIRMWARE_VERSION),
+            OPNSENSE_MIN_FIRMWARE,
         )
         errors["base"] = "below_min_firmware"
     except UnknownFirmware:
@@ -127,14 +143,14 @@ async def validate_input(
     except MissingDeviceUniqueID as err:
         errors["base"] = "missing_device_unique_id"
         _LOGGER.error(
-            f"Missing Device Unique ID Error. {err.__class__.__qualname__}: {err}"
+            "Missing Device Unique ID Error. %s: %s", err.__class__.__qualname__, err
         )
     except PluginMissing:
         errors["base"] = "plugin_missing"
         _LOGGER.error("OPNsense Plugin Missing")
     except (aiohttp.InvalidURL, InvalidURL) as err:
         errors["base"] = "invalid_url_format"
-        _LOGGER.error(f"InvalidURL Error. {err.__class__.__qualname__}: {err}")
+        _LOGGER.error("InvalidURL Error. %s: %s", err.__class__.__qualname__, err)
     except xmlrpc.client.Fault as err:
         if "Invalid username or password" in str(err):
             errors["base"] = "invalid_auth"
@@ -152,20 +168,20 @@ async def validate_input(
         )
     except aiohttp.ClientConnectorSSLError as err:
         errors["base"] = "cannot_connect_ssl"
-        _LOGGER.error(f"Aiohttp Error. {err.__class__.__qualname__}: {err}")
+        _LOGGER.error("Aiohttp Error. %s: %s", err.__class__.__qualname__, err)
     except (aiohttp.ClientResponseError,) as err:
         if err.status == 401 or err.status == 403:
             errors["base"] = "invalid_auth"
         else:
             errors["base"] = "cannot_connect"
-        _LOGGER.error(f"Aiohttp Error. {err.__class__.__qualname__}: {err}")
+        _LOGGER.error("Aiohttp Error. %s: %s", err.__class__.__qualname__, err)
     except (
         aiohttp.ClientError,
         aiohttp.ClientConnectorError,
         socket.gaierror,
     ) as err:
         errors["base"] = "cannot_connect"
-        _LOGGER.error(f"Aiohttp Error. {err.__class__.__qualname__}: {err}")
+        _LOGGER.error("Aiohttp Error. %s: %s", err.__class__.__qualname__, err)
     except xmlrpc.client.ProtocolError as err:
         if "307 Temporary Redirect" in str(err):
             errors["base"] = "url_redirect"
@@ -180,10 +196,10 @@ async def validate_input(
             )
         )
     except (aiohttp.TooManyRedirects, aiohttp.RedirectClientError) as err:
-        _LOGGER.error(f"Redirect Error. {err.__class__.__qualname__}: {err}")
+        _LOGGER.error("Redirect Error. %s: %s", err.__class__.__qualname__, err)
         errors["base"] = "url_redirect"
     except (TimeoutError, aiohttp.ServerTimeoutError) as err:
-        _LOGGER.error(f"Timeout Error. {err.__class__.__qualname__}: {err}")
+        _LOGGER.error("Timeout Error. %s: %s", err.__class__.__qualname__, err)
         errors["base"] = "connect_timeout"
     except OSError as err:
         # bad response from OPNsense when creds are valid but authorization is
@@ -371,6 +387,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(self, user_input=None):
         """Handle options flow"""
         if user_input is not None:
+            _LOGGER.debug("[options_flow init] user_input: %s", user_input)
             if user_input.get(CONF_DEVICE_TRACKER_ENABLED):
                 self.new_options = user_input
                 return await self.async_step_device_tracker()
@@ -471,6 +488,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 ),
             )
         if user_input:
+            _LOGGER.debug("[options_flow device_tracker] user_input: %s", user_input)
             macs: list = []
             if isinstance(
                 user_input.get(CONF_MANUAL_DEVICES, None), str
@@ -481,16 +499,16 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     item = item.strip()
                     if is_valid_mac_address(item):
                         macs.append(item)
-                _LOGGER.debug(f"[async_step_device_tracker] Manual Devices: {macs}")
+                _LOGGER.debug("[async_step_device_tracker] Manual Devices: %s", macs)
             _LOGGER.debug(
-                f"[async_step_device_tracker] Devices: {user_input.get(CONF_DEVICES)}"
+                "[async_step_device_tracker] Devices: %s", user_input.get(CONF_DEVICES)
             )
             self.new_options[CONF_DEVICES] = user_input.get(CONF_DEVICES) + macs
         return self.async_create_entry(title="", data=self.new_options)
 
 
 class InvalidURL(Exception):
-    """InavlidURL"""
+    """InvalidURL"""
 
 
 class MissingDeviceUniqueID(Exception):
