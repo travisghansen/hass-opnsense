@@ -2,7 +2,7 @@
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://github.com/hacs/integration)
 [![][discord-shield]][discord]
 
-[discord]: https://discord.gg/MXV7DgsaEQ
+[discord]: https://discord.gg/bfF47sBw6A
 [discord-shield]: https://img.shields.io/discord/1283169313653526559?style=for-the-badge&label=Discord&logo=discord&&logoColor=lightcyan&logoSize=auto&color=white
 
 
