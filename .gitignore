@@ -17,3 +17,8 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+.tox
+custom_components/*/__pycache__/
+*.pyc
+.coverage
+coverage.xml
