@@ -1,9 +1,11 @@
-from collections.abc import Mapping
+"""Constants for pyopnsense."""
+
+from collections.abc import MutableMapping
 from typing import Any
 
 from dateutil.tz import gettz
 
-AMBIGUOUS_TZINFOS: Mapping[str, Any] = {
+AMBIGUOUS_TZINFOS: MutableMapping[str, Any] = {
     "ACST": gettz("Australia/Darwin"),  # Australian Central Standard Time
     "ACT": gettz("America/Rio_Branco"),  # Acre Time (Brazil)
     "AEST": gettz("Australia/Sydney"),  # Australian Eastern Standard Time

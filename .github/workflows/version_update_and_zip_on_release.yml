@@ -17,7 +17,7 @@ jobs:
             echo "github.event.repository.default_branch: ${{ github.event.repository.default_branch }}"
             echo "github.event.release.target_commitish: ${{ github.event.release.target_commitish }}"
             echo "github.event.release.prerelease: ${{ github.event.release.prerelease }}"
-            echo "github.event.release.draft: ${{ github.event.release.draft }}"      
+            echo "github.event.release.draft: ${{ github.event.release.draft }}"
       - name: Update Version in Manifest
         if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
         run: |
@@ -32,7 +32,7 @@ jobs:
         with:
           file: CHANGELOG.md
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          commit: false        
+          commit: false
       - name: Commit & Push Version Changes
         if: ${{ github.event_name == 'release' && github.event.release.draft == false && github.event.release.prerelease == false  }}
         uses: actions-js/push@master
@@ -45,10 +45,10 @@ jobs:
         if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
         id: extract_variables
         run: |
-          OPNSENSE_LTD_FIRMWARE=$(grep 'OPNSENSE_LTD_FIRMWARE' custom_components/opnsense/const.py | cut -d '"' -f2)
-          OPNSENSE_MIN_FIRMWARE=$(grep 'OPNSENSE_MIN_FIRMWARE' custom_components/opnsense/const.py | cut -d '"' -f2)
-          echo "OPNSENSE_LTD_FIRMWARE=$OPNSENSE_LTD_FIRMWARE" >> $GITHUB_ENV
-          echo "OPNSENSE_MIN_FIRMWARE=$OPNSENSE_MIN_FIRMWARE" >> $GITHUB_ENV
+          OPNSENSE_LTD_FIRMWARE="$(grep 'OPNSENSE_LTD_FIRMWARE' custom_components/opnsense/const.py | cut -d '"' -f2)"
+          OPNSENSE_MIN_FIRMWARE="$(grep 'OPNSENSE_MIN_FIRMWARE' custom_components/opnsense/const.py | cut -d '"' -f2)"
+          echo "OPNSENSE_LTD_FIRMWARE=$OPNSENSE_LTD_FIRMWARE" >> "$GITHUB_ENV"
+          echo "OPNSENSE_MIN_FIRMWARE=$OPNSENSE_MIN_FIRMWARE" >> "$GITHUB_ENV"
 
       - name: Update release notes with firmware information
         if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
@@ -58,7 +58,7 @@ jobs:
           --notes "<h3>OPNsense Minimum Firmware Required: ${{ env.OPNSENSE_MIN_FIRMWARE }}</h3><h4>OPNsense Recommended Firmware: ${{ env.OPNSENSE_LTD_FIRMWARE }}</h4><p>$(gh release view ${{ github.ref_name }} --json body -q .body)<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        
+
       - name: Create Zip
         uses: thedoctor0/zip-release@0.7.6
         with:

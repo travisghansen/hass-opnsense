@@ -1,11 +1,12 @@
 """Support for OPNsense."""
 
-import logging
-from collections.abc import Mapping
+from collections.abc import MutableMapping
 from datetime import timedelta
+import logging
 from typing import Any
 
 import awesomeversion
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     CONF_PASSWORD,
@@ -16,14 +17,14 @@ from homeassistant.const import (
     Platform,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers import (
+    config_validation as cv,
+    device_registry as dr,
+    entity_registry as er,
+    issue_registry as ir,
+)
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.typing import ConfigType
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.util import slugify
 
 from .const import (
     CONF_DEVICE_TRACKER_ENABLED,
@@ -48,7 +49,6 @@ from .const import (
     VERSION,
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
-from .helpers import dict_get
 from .pyopnsense import OPNsenseClient
 from .services import async_setup_services
 
@@ -65,6 +65,7 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Call the method to setup the integration-level services."""
     await async_setup_services(hass)
     return True
 
@@ -93,7 +94,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     scan_interval: int = options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-    _LOGGER.info(f"Starting hass-opnsense {VERSION}")
+    _LOGGER.info("Starting hass-opnsense %s", VERSION)
 
     coordinator = OPNsenseDataUpdateCoordinator(
         hass=hass,
@@ -106,7 +107,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Trigger repair task and shutdown if device id has changed
     router_device_id: str = await client.get_device_unique_id()
     _LOGGER.debug(
-        f"[init async_setup_entry]: config device id: {config_device_id}, router device id: {router_device_id}"
+        "[init async_setup_entry]: config device id: %s, router device id: %s",
+        config_device_id,
+        router_device_id,
     )
     if router_device_id != config_device_id and router_device_id:
         ir.async_create_issue(
@@ -127,7 +130,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return False
 
     firmware: str | None = await client.get_host_firmware_version()
-    _LOGGER.info(f"OPNsense Firmware {firmware}")
+    _LOGGER.info("OPNsense Firmware %s", firmware)
     try:
         if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
             OPNSENSE_MIN_FIRMWARE
@@ -142,9 +145,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 severity=ir.IssueSeverity.ERROR,
                 translation_key="below_min_firmware",
                 translation_placeholders={
-                    "version": VERSION,
-                    "min_firmware": OPNSENSE_MIN_FIRMWARE,
-                    "firmware": firmware,
+                    "version": str(VERSION),
+                    "min_firmware": str(OPNSENSE_MIN_FIRMWARE),
+                    "firmware": firmware or "Unknown",
                 },
             )
             await coordinator.async_shutdown()
@@ -162,9 +165,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 severity=ir.IssueSeverity.WARNING,
                 translation_key="below_ltd_firmware",
                 translation_placeholders={
-                    "version": VERSION,
-                    "ltd_firmware": OPNSENSE_LTD_FIRMWARE,
-                    "firmware": firmware,
+                    "version": str(VERSION),
+                    "ltd_firmware": str(OPNSENSE_LTD_FIRMWARE),
+                    "firmware": firmware or "Unknown",
                 },
             )
         else:
@@ -180,7 +183,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
     except awesomeversion.exceptions.AwesomeVersionCompareException:
         _LOGGER.warning("Unable to confirm OPNsense Firmware version")
-        pass
 
     await coordinator.async_config_entry_first_refresh()
 
@@ -214,7 +216,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         CONF_DEVICE_UNIQUE_ID: config_device_id,
     }
 
-    if device_tracker_enabled:
+    if device_tracker_enabled and device_tracker_coordinator:
         # Fetch initial data so we have data when entities subscribe
         await device_tracker_coordinator.async_config_entry_first_refresh()
 
@@ -226,7 +228,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_remove_config_entry_device(
     hass: HomeAssistant, config_entry: ConfigEntry, device_entry: dr.DeviceEntry
 ) -> bool:
-    """Allows removing OPNsense Devices that aren't Device Tracker Devices and without any linked entities"""
+    """Remove OPNsense Devices that aren't Device Tracker Devices and without any linked entities."""
 
     if device_entry.via_device_id:
         _LOGGER.error(
@@ -264,11 +266,11 @@ async def _migrate_1_to_2(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
     data = dict(config_entry.data)
 
     # remove tls_insecure
-    if CONF_TLS_INSECURE in data.keys():
+    if CONF_TLS_INSECURE in data:
         del data[CONF_TLS_INSECURE]
 
     # add verify_ssl
-    if CONF_VERIFY_SSL not in data.keys():
+    if CONF_VERIFY_SSL not in data:
         data[CONF_VERIFY_SSL] = not tls_insecure
 
     hass.config_entries.async_update_entry(config_entry, data=data, version=2)
@@ -276,7 +278,7 @@ async def _migrate_1_to_2(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
 
 
 async def _migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    _LOGGER.debug(f"[migrate_2_to_3] Initial Version: {config_entry.version}")
+    _LOGGER.debug("[migrate_2_to_3] Initial Version: %s", config_entry.version)
     entity_registry = er.async_get(hass)
     device_registry = dr.async_get(hass)
 
@@ -297,12 +299,12 @@ async def _migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
     if not new_device_unique_id:
         _LOGGER.error("Missing Device Unique ID for Migration to Version 3")
         return False
-    _LOGGER.debug(f"[migrate_2_to_3] new_device_unique_id: {new_device_unique_id}")
+    _LOGGER.debug("[migrate_2_to_3] new_device_unique_id: %s", new_device_unique_id)
 
     for dev in dr.async_entries_for_config_entry(
         device_registry, config_entry_id=config_entry.entry_id
     ):
-        _LOGGER.debug(f"[migrate_2_to_3] dev: {dev}")
+        _LOGGER.debug("[migrate_2_to_3] dev: %s", dev)
         is_main_dev: bool = any(t[0] == "opnsense" for t in dev.identifiers)
         if is_main_dev:
             new_identifiers = {
@@ -310,16 +312,21 @@ async def _migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
                 for t in dev.identifiers
             }
             _LOGGER.debug(
-                f"[migrate_2_to_3] dev.identifiers: {dev.identifiers}, new_identifiers: {new_identifiers}"
+                "[migrate_2_to_3] dev.identifiers: %s, new_identifiers: %s",
+                dev.identifiers,
+                new_identifiers,
             )
             try:
                 new_dev = device_registry.async_update_device(
                     dev.id, new_identifiers=new_identifiers
                 )
-                _LOGGER.debug(f"[migrate_2_to_3] new_main_dev: {new_dev}")
+                _LOGGER.debug("[migrate_2_to_3] new_main_dev: %s", new_dev)
             except dr.DeviceIdentifierCollisionError as e:
                 _LOGGER.error(
-                    f"Error migrating device: {dev.identifiers}. {e.__class__.__qualname__}: {e}"
+                    "Error migrating device: %s. %s: %s",
+                    dev.identifiers,
+                    e.__class__.__qualname__,
+                    e,
                 )
 
     for ent in er.async_entries_for_config_entry(
@@ -330,29 +337,42 @@ async def _migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
         try:
             _, unique_id_suffix = ent.unique_id.split("_", 1)
         except ValueError:
-            unique_id_suffix: str = f"mac_{ent.unique_id}"
+            unique_id_suffix = f"mac_{ent.unique_id}"
         new_unique_id: str = (
             (f"{new_device_unique_id}_{unique_id_suffix}").replace(":", "_").strip()
         )
         _LOGGER.debug(
-            f"[migrate_2_to_3] ent: {ent.entity_id}, platform: {platform}, unique_id: {ent.unique_id}, new_unique_id: {new_unique_id}"
+            "[migrate_2_to_3] ent: %s, platform: %s, unique_id: %s, new_unique_id: %s",
+            ent.entity_id,
+            platform,
+            ent.unique_id,
+            new_unique_id,
         )
         try:
             new_ent = entity_registry.async_update_entity(
                 ent.entity_id, new_unique_id=new_unique_id
             )
             _LOGGER.debug(
-                f"[migrate_2_to_3] new_ent: {new_ent.entity_id}, unique_id: {new_ent.unique_id}"
+                "[migrate_2_to_3] new_ent: %s, unique_id: %s",
+                new_ent.entity_id,
+                new_ent.unique_id,
             )
         except ValueError as e:
             _LOGGER.error(
-                f"Error migrating entity: {ent.entity_id}. {e.__class__.__qualname__}: {e}"
+                "Error migrating entity: %s. %s: %s",
+                ent.entity_id,
+                e.__class__.__qualname__,
+                e,
             )
 
-    new_data: Mapping[str, Any] = dict(config_entry.data)
+    new_data: MutableMapping[str, Any] = dict(config_entry.data)
     new_data.update({CONF_DEVICE_UNIQUE_ID: new_device_unique_id})
     _LOGGER.debug(
-        f"[migrate_2_to_3] data: {config_entry.data}, new_data: {new_data}, unique_id: {config_entry.unique_id}, new_unique_id: {new_device_unique_id}"
+        "[migrate_2_to_3] data: %s, new_data: %s, unique_id: %s, new_unique_id: %s",
+        config_entry.data,
+        new_data,
+        config_entry.unique_id,
+        new_device_unique_id,
     )
     new_entry_bool = hass.config_entries.async_update_entry(
         config_entry, data=new_data, unique_id=new_device_unique_id, version=3
@@ -366,7 +386,7 @@ async def _migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
 
 
 async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    _LOGGER.debug(f"[migrate_3_to_4] Initial Version: {config_entry.version}")
+    _LOGGER.debug("[migrate_3_to_4] Initial Version: %s", config_entry.version)
     entity_registry = er.async_get(hass)
 
     config = config_entry.data
@@ -382,7 +402,7 @@ async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
         session=async_create_clientsession(hass, raise_for_status=False),
         opts={"verify_ssl": verify_ssl},
     )
-    telemetry: str | None = await client.get_telemetry()
+    telemetry = await client.get_telemetry()
 
     for ent in er.async_entries_for_config_entry(
         entity_registry, config_entry.entry_id
@@ -391,26 +411,29 @@ async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
         if platform == Platform.SENSOR:
             # _LOGGER.debug(f"[migrate_3_to_4] ent: {ent}")
             if "_telemetry_interface_" in ent.unique_id:
-                new_unique_id: str = ent.unique_id.replace(
+                new_unique_id: str | None = ent.unique_id.replace(
                     "_telemetry_interface_", "_interface_"
                 )
             elif "_telemetry_gateway_" in ent.unique_id:
-                new_unique_id: str = ent.unique_id.replace(
+                new_unique_id = ent.unique_id.replace(
                     "_telemetry_gateway_", "_gateway_"
                 )
             elif "_connected_client_count" in ent.unique_id:
                 try:
                     entity_registry.async_remove(ent.entity_id)
                     _LOGGER.debug(
-                        f"[migrate_3_to_4] removed_entity_id: {ent.entity_id}"
+                        "[migrate_3_to_4] removed_entity_id: %s", ent.entity_id
                     )
                 except (KeyError, ValueError) as e:
                     _LOGGER.error(
-                        f"Error removing entity: {ent.entity_id}. {e.__class__.__qualname__}: {e}"
+                        "Error removing entity: %s. %s: %s",
+                        ent.entity_id,
+                        e.__class__.__qualname__,
+                        e,
                     )
                 continue
             elif "_telemetry_openvpn_" in ent.unique_id:
-                new_unique_id: str = ent.unique_id.replace(
+                new_unique_id = ent.unique_id.replace(
                     "_telemetry_openvpn_", "_openvpn_"
                 )
             elif "_telemetry_filesystems_" in ent.unique_id:
@@ -435,18 +458,30 @@ async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
             else:
                 continue
             _LOGGER.debug(
-                f"[migrate_3_to_4] ent: {ent.entity_id}, platform: {platform}, unique_id: {ent.unique_id}, new_unique_id: {new_unique_id}"
+                "[migrate_3_to_4] ent: %s, platform: %s, unique_id: %s, new_unique_id: %s",
+                ent.entity_id,
+                platform,
+                ent.unique_id,
+                new_unique_id,
             )
+            if not new_unique_id:
+                _LOGGER.error("Error migrating entity: %s", ent.entity_id)
+                continue
             try:
                 updated_ent = entity_registry.async_update_entity(
                     ent.entity_id, new_unique_id=new_unique_id
                 )
                 _LOGGER.debug(
-                    f"[migrate_3_to_4] updated_entity_id: {updated_ent.entity_id}, updated_unique_id: {updated_ent.unique_id}"
+                    "[migrate_3_to_4] updated_entity_id: %s, updated_unique_id: %s",
+                    updated_ent.entity_id,
+                    updated_ent.unique_id,
                 )
             except ValueError as e:
                 _LOGGER.error(
-                    f"Error migrating entity: {ent.entity_id}. {e.__class__.__qualname__}: {e}"
+                    "Error migrating entity: %s. %s: %s",
+                    ent.entity_id,
+                    e.__class__.__qualname__,
+                    e,
                 )
     new_entry_bool = hass.config_entries.async_update_entry(config_entry, version=4)
     if new_entry_bool:
@@ -493,82 +528,3 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
 
     _LOGGER.info("Migration to version %s successful", version)
     return True
-
-
-class OPNsenseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
-    """Base entity for OPNsense"""
-
-    def __init__(
-        self,
-        config_entry: ConfigEntry,
-        coordinator: OPNsenseDataUpdateCoordinator,
-        unique_id_suffix: str | None = None,
-        name_suffix: str | None = None,
-    ) -> None:
-        self.config_entry: ConfigEntry = config_entry
-        self.coordinator: OPNsenseDataUpdateCoordinator = coordinator
-        self._device_unique_id: str = config_entry.data.get(CONF_DEVICE_UNIQUE_ID)
-        if unique_id_suffix:
-            self._attr_unique_id: str = slugify(
-                f"{self._device_unique_id}_{unique_id_suffix}"
-            )
-        if name_suffix:
-            self._attr_name: str = (
-                f"{self.opnsense_device_name or 'OPNsense'} {name_suffix}"
-            )
-        self._client: OPNsenseClient | None = None
-        self._attr_extra_state_attributes: Mapping[str, Any] = {}
-        self._available: bool = False
-        super().__init__(self.coordinator, self._attr_unique_id)
-
-    @property
-    def available(self) -> bool:
-        return self._available
-
-    @property
-    def device_info(self) -> Mapping[str, Any]:
-        """Device info for the firewall."""
-        state: Mapping[str, Any] = self.coordinator.data
-        model: str = "OPNsense"
-        manufacturer: str = "Deciso B.V."
-        if state is None:
-            firmware: str | None = None
-        else:
-            firmware: str | None = state.get("host_firmware_version", None)
-
-        device_info: Mapping[str, Any] = {
-            "identifiers": {(DOMAIN, self._device_unique_id)},
-            "name": self.opnsense_device_name,
-            "configuration_url": self.config_entry.data.get("url", None),
-        }
-
-        device_info["model"] = model
-        device_info["manufacturer"] = manufacturer
-        device_info["sw_version"] = firmware
-
-        return device_info
-
-    @property
-    def opnsense_device_name(self) -> str:
-        if self.config_entry.title and len(self.config_entry.title) > 0:
-            return self.config_entry.title
-        return self._get_opnsense_state_value("system_info.name")
-
-    def _get_opnsense_state_value(self, path, default=None):
-        state = self.coordinator.data
-        value = dict_get(state, path, default)
-
-        return value
-
-    def _get_opnsense_client(self) -> OPNsenseClient | None:
-        if self.hass is None:
-            return None
-        return self.hass.data[DOMAIN][self.config_entry.entry_id][OPNSENSE_CLIENT]
-
-    async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
-        if self._client is None:
-            self._client: OPNsenseClient = self._get_opnsense_client()
-        if self._client is None:
-            _LOGGER.error("Unable to get client in async_added_to_hass.")
-        self._handle_coordinator_update()
