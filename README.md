@@ -121,7 +121,7 @@ Alternatively, multiple individual permissions can be added for a user. However,
 - `URL` - the full URL to the `OPNsense` UI (ie: `https://192.168.1.1`),
   supported format is `<scheme>://<ip or host>[:<port>]`  
 > [!CAUTION]
-> Specifying a hostname (eg. `opnsense.home.lan`) rather than IP is advised.  Using an IP will cause creation of a new PHP session in OPNsense on every query made by this plugin - this can quickly create mount up, per [#339](https://github.com/travisghansen/hass-opnsense/issues/339).
+> Specifying a hostname (eg. `opnsense.mydomain.home.arpa` or `opnsense.mydomain.lan`) rather than IP is advised.  Using an IP will cause creation of a new PHP session in OPNsense on every query made by this plugin - this can quickly create mount up, per [#339](https://github.com/travisghansen/hass-opnsense/issues/339).
 - `Verify SSL Certificate` - if the SSL certificate should be verified or not (if receiving an SSL error, try unchecking this)
 - `API Key` - the API key created previously
 - `API Secret` - the API secret of the API key
