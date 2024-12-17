@@ -1,4 +1,10 @@
+"""pyopnsense to manage OPNsense from HA."""
+
+from abc import ABC
 import asyncio
+from collections.abc import MutableMapping
+from datetime import datetime, timedelta, timezone
+from functools import partial
 import inspect
 import ipaddress
 import json
@@ -7,12 +13,9 @@ import re
 import socket
 import ssl
 import traceback
-import xmlrpc.client
-from abc import ABC
-from collections.abc import Mapping
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import quote, quote_plus, urlparse
+import xmlrpc.client
 
 import aiohttp
 import awesomeversion
@@ -26,11 +29,55 @@ DEFAULT_TIMEOUT = 60
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
+def _log_errors(func: Callable):
+    async def inner(self, *args, **kwargs):
+        try:
+            return await func(self, *args, **kwargs)
+        except asyncio.CancelledError:
+            raise
+        except (TimeoutError, aiohttp.ServerTimeoutError) as e:
+            _LOGGER.warning(
+                "Timeout Error in %s. Will retry. %s", func.__name__.strip("_"), e
+            )
+            if self._initial:
+                raise
+        except Exception as e:
+            redacted_message = re.sub(r"(\w+):(\w+)@", "<redacted>:<redacted>@", str(e))
+            _LOGGER.error(
+                "Error in %s. %s: %s\n%s",
+                func.__name__.strip("_"),
+                e.__class__.__qualname__,
+                redacted_message,
+                "".join(traceback.format_tb(e.__traceback__)),
+            )
+            if self._initial:
+                raise
+
+    return inner
+
+
+def _xmlrpc_timeout(func: Callable):
+    async def inner(self, *args, **kwargs):
+        response = None
+        # timout applies to each recv() call, not the whole request
+        default_timeout = socket.getdefaulttimeout()
+        try:
+            socket.setdefaulttimeout(DEFAULT_TIMEOUT)
+            response = await func(self, *args, **kwargs)
+        finally:
+            socket.setdefaulttimeout(default_timeout)
+        return response
+
+    return inner
+
+
 def wireguard_is_connected(past_time: datetime) -> bool:
+    """Return if Wireguard client is still connected."""
     return datetime.now().astimezone() - past_time <= timedelta(minutes=3)
 
 
 def human_friendly_duration(seconds) -> str:
+    """Convert the duration in seconds to human friendly."""
     months, seconds = divmod(
         seconds, 2419200
     )  # 28 days in a month (28 * 24 * 60 * 60 = 2419200 seconds)
@@ -57,6 +104,7 @@ def human_friendly_duration(seconds) -> str:
 
 
 def get_ip_key(item) -> tuple:
+    """Use to sort the DHCP Lease IPs."""
     address = item.get("address", None)
 
     if not address:
@@ -66,20 +114,23 @@ def get_ip_key(item) -> tuple:
         ip_obj: ipaddress.IPv4Address | ipaddress.IPv6Address = ipaddress.ip_address(
             address
         )
-        # Sort by IP version (IPv4 first, IPv6 second), then by numerical value
-        return (0 if ip_obj.version == 4 else 1, ip_obj)
     except ValueError:
         return (2, "")
+    else:
+        # Sort by IP version (IPv4 first, IPv6 second), then by numerical value
+        return (0 if ip_obj.version == 4 else 1, ip_obj)
 
 
-def dict_get(data: Mapping[str, Any], path: str, default=None):
+def dict_get(data: MutableMapping[str, Any], path: str, default=None):
+    """Parse the path to get the desired value out of the data."""
     pathList = re.split(r"\.", path, flags=re.IGNORECASE)
     result = data
     for key in pathList:
-        try:
-            key = int(key) if key.isnumeric() else key
+        if key.isnumeric():
+            key = int(key)
+        if isinstance(result, (MutableMapping, list)) and key in result:
             result = result[key]
-        except (TypeError, KeyError, AttributeError):
+        else:
             result = default
             break
 
@@ -87,11 +138,11 @@ def dict_get(data: Mapping[str, Any], path: str, default=None):
 
 
 class VoucherServerError(Exception):
-    pass
+    """Error from Voucher Server."""
 
 
 class OPNsenseClient(ABC):
-    """OPNsense Client"""
+    """OPNsense Client."""
 
     def __init__(
         self,
@@ -99,7 +150,7 @@ class OPNsenseClient(ABC):
         username: str,
         password: str,
         session: aiohttp.ClientSession,
-        opts: Mapping[str, Any] = None,
+        opts: MutableMapping[str, Any] | None = None,
         initial: bool = False,
         name: str = "OPNsense",
     ) -> None:
@@ -109,17 +160,15 @@ class OPNsenseClient(ABC):
         self._password: str = password
         self._name: str = name
 
-        self._opts: Mapping[str, Any] = opts or {}
+        self._opts: MutableMapping[str, Any] = opts or {}
         self._verify_ssl: bool = self._opts.get("verify_ssl", True)
         parts = urlparse(url.rstrip("/"))
         self._url: str = f"{parts.scheme}://{parts.netloc}"
-        self._xmlrpc_url: str = (
-            f"{parts.scheme}://{quote_plus(username)}:{quote_plus(password)}@{parts.netloc}"
-        )
+        self._xmlrpc_url: str = f"{parts.scheme}://{quote_plus(username)}:{quote_plus(password)}@{parts.netloc}"
         self._scheme: str = parts.scheme
         self._session: aiohttp.ClientSession = session
         self._initial = initial
-        self._firmware_version = None
+        self._firmware_version: str | None = None
         self._xmlrpc_query_count = 0
         self._rest_api_query_count = 0
         try:
@@ -130,51 +179,16 @@ class OPNsenseClient(ABC):
 
     @property
     def name(self) -> str:
+        """Return the name of the client."""
         return self._name
 
-    def _xmlrpc_timeout(func):
-        async def inner(self, *args, **kwargs):
-            response = None
-            # timout applies to each recv() call, not the whole request
-            default_timeout = socket.getdefaulttimeout()
-            try:
-                socket.setdefaulttimeout(DEFAULT_TIMEOUT)
-                response = await func(self, *args, **kwargs)
-            finally:
-                socket.setdefaulttimeout(default_timeout)
-            return response
-
-        return inner
-
-    def _log_errors(func):
-        async def inner(self, *args, **kwargs):
-            try:
-                return await func(self, *args, **kwargs)
-            except asyncio.CancelledError as e:
-                raise e
-            except (TimeoutError, aiohttp.ServerTimeoutError) as e:
-                _LOGGER.warning(
-                    f"Timeout Error in {func.__name__.strip('_')}. Will retry. {e}"
-                )
-                if self._initial:
-                    raise e
-            except Exception as e:
-                redacted_message = re.sub(
-                    r"(\w+):(\w+)@", "<redacted>:<redacted>@", str(e)
-                )
-                _LOGGER.error(
-                    f"Error in {func.__name__.strip('_')}. {e.__class__.__qualname__}: {redacted_message}\n{''.join(traceback.format_tb(e.__traceback__))}"
-                )
-                if self._initial:
-                    raise e
-
-        return inner
-
-    async def reset_query_counts(self):
+    async def reset_query_counts(self) -> None:
+        """Reset the number of queries counter."""
         self._xmlrpc_query_count = 0
         self._rest_api_query_count = 0
 
     async def get_query_counts(self) -> tuple:
+        """Return the number of REST and XMLRPC queries."""
         return self._rest_api_query_count, self._xmlrpc_query_count
 
     # https://stackoverflow.com/questions/64983392/python-multiple-patch-gives-http-client-cannotsendrequest-request-sent
@@ -184,116 +198,139 @@ class OPNsenseClient(ABC):
         context = None
 
         if self._scheme == "https" and not self._verify_ssl:
-            context = ssl._create_unverified_context()
+            context = ssl._create_unverified_context()  # noqa: SLF001
 
         # set to True if necessary during development
         verbose = False
 
-        proxy = xmlrpc.client.ServerProxy(
+        return xmlrpc.client.ServerProxy(
             f"{self._xmlrpc_url}/xmlrpc.php", context=context, verbose=verbose
         )
-        return proxy
 
     # @_xmlrpc_timeout
-    async def _get_config_section(self, section) -> Mapping[str, Any]:
-        config: Mapping[str, Any] = await self.get_config()
-        if config is None or not isinstance(config, Mapping):
+    async def _get_config_section(self, section) -> MutableMapping[str, Any]:
+        config: MutableMapping[str, Any] = await self.get_config()
+        if config is None or not isinstance(config, MutableMapping):
             _LOGGER.error("Invalid data returned from get_config_section")
             return {}
         return config.get(section, {})
 
     @_xmlrpc_timeout
     async def _restore_config_section(self, section_name, data):
-        params: Mapping[str, Any] = {section_name: data}
-        response = await self._loop.run_in_executor(
-            None, self._get_proxy().opnsense.restore_config_section, params
+        params = {section_name: data}
+        proxy_method = partial(
+            self._get_proxy().opnsense.restore_config_section, params
         )
-        return response
+        return await self._loop.run_in_executor(None, proxy_method)
 
     @_xmlrpc_timeout
-    async def _exec_php(self, script) -> Mapping[str, Any]:
+    async def _exec_php(self, script) -> MutableMapping[str, Any]:
         self._xmlrpc_query_count += 1
-        script: str = (
-            r"""
+        script = rf"""
 ini_set('display_errors', 0);
 
-{}
+{script}
 
 // wrapping this in json_encode and then unwrapping in python prevents funny XMLRPC NULL encoding errors
 // https://github.com/travisghansen/hass-pfsense/issues/35
 $toreturn_real = $toreturn;
 $toreturn = [];
 $toreturn["real"] = json_encode($toreturn_real);
-""".format(
-                script
-            )
-        )
+"""
         try:
             response = await self._loop.run_in_executor(
                 None, self._get_proxy().opnsense.exec_php, script
             )
-            response_json = json.loads(response["real"])
-            return response_json
+            if not isinstance(response, MutableMapping):
+                return {}
+            if response.get("real"):
+                return json.loads(response.get("real", ""))
         except TypeError as e:
-            _LOGGER.error(
-                f"Invalid data returned from exec_php for {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. {e.__class__.__qualname__}: {e}. Ensure the OPNsense user connected to HA either has full Admin access or specifically has the 'XMLRPC Library' privilege"
+            stack = inspect.stack()
+            calling_function = (
+                stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
             )
-            return {}
+            _LOGGER.error(
+                "Invalid data returned from exec_php for %s. %s: %s. Called from %s",
+                calling_function,
+                e.__class__.__qualname__,
+                e,
+                calling_function,
+            )
         except xmlrpc.client.Fault as e:
+            stack = inspect.stack()
+            calling_function = (
+                stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
+            )
             _LOGGER.error(
-                f"Error running exec_php script for {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. {e.__class__.__qualname__}: {e}. Ensure the 'os-homeassistant-maxit' plugin has been installed on OPNsense"
+                "Error running exec_php script for %s. %s: %s. Ensure the 'os-homeassistant-maxit' plugin has been installed on OPNsense",
+                calling_function,
+                e.__class__.__qualname__,
+                e,
             )
-            return {}
         except socket.gaierror as e:
-            _LOGGER.warning(
-                f"Connection Error running exec_php script for {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. {e.__class__.__qualname__}: {e}. Will retry"
+            stack = inspect.stack()
+            calling_function = (
+                stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
             )
-            return {}
+            _LOGGER.warning(
+                "Connection Error running exec_php script for %s. %s: %s. Will retry",
+                calling_function,
+                e.__class__.__qualname__,
+                e,
+            )
         except ssl.SSLError as e:
-            _LOGGER.warning(
-                f"SSL Connection Error running exec_php script for {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. {e.__class__.__qualname__}: {e}. Will retry"
+            stack = inspect.stack()
+            calling_function = (
+                stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
             )
-            return {}
+            _LOGGER.warning(
+                "SSL Connection Error running exec_php script for %s. %s: %s. Will retry",
+                calling_function,
+                e.__class__.__qualname__,
+                e,
+            )
+        return {}
 
     @_log_errors
     async def get_host_firmware_version(self) -> None | str:
-        firmware_info: Mapping[str, Any] | list = await self._get(
-            "/api/core/firmware/status"
-        )
-        if not isinstance(firmware_info, Mapping):
+        """Return the OPNsense Firmware version."""
+        firmware_info = await self._get("/api/core/firmware/status")
+        if not isinstance(firmware_info, MutableMapping):
             return None
         firmware: str | None = firmware_info.get("product", {}).get("product_version")
         if not firmware or not awesomeversion.AwesomeVersion(firmware).valid:
             old = firmware
-            firmware: str | None = firmware_info.get("product", {}).get(
-                "product_series", old
-            )
+            firmware = firmware_info.get("product", {}).get("product_series", old)
             if firmware != old:
                 _LOGGER.debug(
-                    f"[get_host_firmware_version] firmware: {old} not valid SemVer, using {firmware}"
+                    "[get_host_firmware_version] firmware: %s not valid SemVer, using %s",
+                    old,
+                    firmware,
                 )
         else:
-            _LOGGER.debug(f"[get_host_firmware_version] firmware: {firmware}")
+            _LOGGER.debug("[get_host_firmware_version] firmware: %s", firmware)
         self._firmware_version = firmware
         return firmware
 
     async def is_plugin_installed(self) -> bool:
-        firmware_info: Mapping[str, Any] | list = await self._get(
-            "/api/core/firmware/info"
-        )
-        if not isinstance(firmware_info, Mapping) or not isinstance(
+        """Retun whether OPNsense plugin is installed or not."""
+        firmware_info = await self._get("/api/core/firmware/info")
+        if not isinstance(firmware_info, MutableMapping) or not isinstance(
             firmware_info.get("package"), list
         ):
             return False
-        for pkg in firmware_info.get("package"):
-            if pkg.get("name", None) == "os-homeassistant-maxit":
+        for pkg in firmware_info.get("package", []):
+            if pkg.get("name") == "os-homeassistant-maxit":
                 return True
         return False
 
-    async def _get_from_stream(self, path: str) -> Mapping[str, Any] | list:
+    async def _get_from_stream(
+        self, path: str
+    ) -> MutableMapping[str, Any] | list | None:
         self._rest_api_query_count += 1
         url: str = f"{self._url}{path}"
-        _LOGGER.debug(f"[get_from_stream] url: {url}")
+        _LOGGER.debug("[get_from_stream] url: %s", url)
         try:
             async with self._session.get(
                 url,
@@ -302,7 +339,9 @@ $toreturn["real"] = json_encode($toreturn_real);
                 ssl=self._verify_ssl,
             ) as response:
                 _LOGGER.debug(
-                    f"[get_from_stream] Response {response.status}: {response.reason}"
+                    "[get_from_stream] Response %s: %s",
+                    response.status,
+                    response.reason,
                 )
 
                 if response.ok:
@@ -321,20 +360,38 @@ $toreturn["real"] = json_encode($toreturn_real);
                                     message_count += 1
                                     if message_count == 2:
                                         response_str: str = line[len("data:") :].strip()
-                                        response_json: Mapping[str, Any] | list = (
-                                            json.loads(response_str)
-                                        )
+                                        response_json: (
+                                            MutableMapping[str, Any] | list
+                                        ) = json.loads(response_str)
 
                                         # _LOGGER.debug(f"[get_from_stream] response_json ({type(response_json).__name__}): {response_json}")
                                         return response_json  # Exit after processing the second message
                 else:
                     if response.status == 403:
+                        stack = inspect.stack()
+                        calling_function = (
+                            stack[1].function.strip("_")
+                            if len(stack) > 1
+                            else "Unknown"
+                        )
                         _LOGGER.error(
-                            f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Ensure the OPNsense user connected to HA has full Admin access."
+                            "Permission Error in %s. Path: %s. Ensure the OPNsense user connected to HA has full Admin access",
+                            calling_function,
+                            url,
                         )
                     else:
+                        stack = inspect.stack()
+                        calling_function = (
+                            stack[1].function.strip("_")
+                            if len(stack) > 1
+                            else "Unknown"
+                        )
                         _LOGGER.error(
-                            f"Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Response {response.status}: {response.reason}"
+                            "Error in %s. Path: %s. Response %s: %s",
+                            calling_function,
+                            url,
+                            response.status,
+                            response.reason,
                         )
                     if self._initial:
                         raise aiohttp.ClientResponseError(
@@ -345,17 +402,17 @@ $toreturn["real"] = json_encode($toreturn_real);
                             headers=response.headers,
                         )
         except aiohttp.ClientError as e:
-            _LOGGER.error(f"Client error. {e.__class__.__qualname__}: {e}")
+            _LOGGER.error("Client error. %s: %s", e.__class__.__qualname__, e)
             if self._initial:
-                raise e
+                raise
 
         return None
 
-    async def _get(self, path: str) -> Mapping[str, Any] | list:
+    async def _get(self, path: str) -> MutableMapping[str, Any] | list | None:
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
         self._rest_api_query_count += 1
         url: str = f"{self._url}{path}"
-        _LOGGER.debug(f"[get] url: {url}")
+        _LOGGER.debug("[get] url: %s", url)
         try:
             async with self._session.get(
                 url,
@@ -363,19 +420,33 @@ $toreturn["real"] = json_encode($toreturn_real);
                 timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
                 ssl=self._verify_ssl,
             ) as response:
-                _LOGGER.debug(f"[get] Response {response.status}: {response.reason}")
+                _LOGGER.debug("[get] Response %s: %s", response.status, response.reason)
                 if response.ok:
-                    response_json: Mapping[str, Any] | list = await response.json(
-                        content_type=None
-                    )
+                    response_json: (
+                        MutableMapping[str, Any] | list
+                    ) = await response.json(content_type=None)
                     return response_json
                 if response.status == 403:
+                    stack = inspect.stack()
+                    calling_function = (
+                        stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
+                    )
                     _LOGGER.error(
-                        f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Ensure the OPNsense user connected to HA has full Admin access"
+                        "Permission Error in %s. Path: %s. Ensure the OPNsense user connected to HA has full Admin access",
+                        calling_function,
+                        url,
                     )
                 else:
+                    stack = inspect.stack()
+                    calling_function = (
+                        stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
+                    )
                     _LOGGER.error(
-                        f"Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Response {response.status}: {response.reason}"
+                        "Error in %s. Path: %s. Response %s: %s",
+                        calling_function,
+                        url,
+                        response.status,
+                        response.reason,
                     )
                 if self._initial:
                     raise aiohttp.ClientResponseError(
@@ -386,18 +457,20 @@ $toreturn["real"] = json_encode($toreturn_real);
                         headers=response.headers,
                     )
         except aiohttp.ClientError as e:
-            _LOGGER.error(f"Client error. {e.__class__.__qualname__}: {e}")
+            _LOGGER.error("Client error. %s: %s", e.__class__.__qualname__, e)
             if self._initial:
-                raise e
+                raise
 
         return None
 
-    async def _post(self, path: str, payload=None) -> Mapping[str, Any] | list:
+    async def _post(
+        self, path: str, payload=None
+    ) -> MutableMapping[str, Any] | list | None:
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
         self._rest_api_query_count += 1
         url: str = f"{self._url}{path}"
-        _LOGGER.debug(f"[post] url: {url}")
-        _LOGGER.debug(f"[post] payload: {payload}")
+        _LOGGER.debug("[post] url: %s", url)
+        _LOGGER.debug("[post] payload: %s", payload)
         try:
             async with self._session.post(
                 url,
@@ -406,19 +479,35 @@ $toreturn["real"] = json_encode($toreturn_real);
                 timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
                 ssl=self._verify_ssl,
             ) as response:
-                _LOGGER.debug(f"[post] Response {response.status}: {response.reason}")
+                _LOGGER.debug(
+                    "[post] Response %s: %s", response.status, response.reason
+                )
                 if response.ok:
-                    response_json: Mapping[str, Any] | list = await response.json(
-                        content_type=None
-                    )
+                    response_json: (
+                        MutableMapping[str, Any] | list
+                    ) = await response.json(content_type=None)
                     return response_json
                 if response.status == 403:
+                    stack = inspect.stack()
+                    calling_function = (
+                        stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
+                    )
                     _LOGGER.error(
-                        f"Permission Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Ensure the OPNsense user connected to HA has full Admin access"
+                        "Permission Error in %s. Path: %s. Ensure the OPNsense user connected to HA has full Admin access",
+                        calling_function,
+                        url,
                     )
                 else:
+                    stack = inspect.stack()
+                    calling_function = (
+                        stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
+                    )
                     _LOGGER.error(
-                        f"Error in {inspect.currentframe().f_back.f_code.co_qualname.strip('_')}. Path: {url}. Response {response.status}: {response.reason}"
+                        "Error in %s. Path: %s. Response %s: %s",
+                        calling_function,
+                        url,
+                        response.status,
+                        response.reason,
                     )
                 if self._initial:
                     raise aiohttp.ClientResponseError(
@@ -429,9 +518,9 @@ $toreturn["real"] = json_encode($toreturn_real);
                         headers=response.headers,
                     )
         except aiohttp.ClientError as e:
-            _LOGGER.error(f"Client error. {e.__class__.__qualname__}: {e}")
+            _LOGGER.error("Client error. %s: %s", e.__class__.__qualname__, e)
             if self._initial:
-                raise e
+                raise
 
         return None
 
@@ -446,9 +535,8 @@ clear_subsystem_dirty('filter');
 
     @_log_errors
     async def get_device_unique_id(self) -> str | None:
-        instances: Mapping[str, Any] | list = await self._get(
-            "/api/interfaces/overview/export"
-        )
+        """Get the OPNsense Unique ID."""
+        instances = await self._get("/api/interfaces/overview/export")
         if not isinstance(instances, list):
             return None
 
@@ -465,14 +553,15 @@ clear_subsystem_dirty('filter');
         if device_unique_id:
             device_unique_id_fmt = device_unique_id.replace(":", "_").strip()
             _LOGGER.debug(
-                f"[get_device_unique_id] device_unique_id: {device_unique_id_fmt}"
+                "[get_device_unique_id] device_unique_id: %s", device_unique_id_fmt
             )
             return device_unique_id_fmt
         _LOGGER.debug("[get_device_unique_id] device_unique_id: None")
         return None
 
     @_log_errors
-    async def get_system_info(self) -> Mapping[str, Any]:
+    async def get_system_info(self) -> MutableMapping[str, Any]:
+        """Return the system info from OPNsense."""
         # TODO: add bios details here
         if not self._firmware_version:
             await self.get_host_firmware_version()
@@ -484,16 +573,14 @@ clear_subsystem_dirty('filter');
                 return await self._get_system_info_legacy()
         except awesomeversion.exceptions.AwesomeVersionCompareException:
             pass
-        system_info: Mapping[str, Any] = {}
-        response: Mapping[str, Any] | list = await self._get(
-            "/api/diagnostics/system/systemInformation"
-        )
-        if isinstance(response, Mapping):
+        system_info: MutableMapping[str, Any] = {}
+        response = await self._get("/api/diagnostics/system/systemInformation")
+        if isinstance(response, MutableMapping):
             system_info["name"] = response.get("name", None)
         return system_info
 
     @_log_errors
-    async def _get_system_info_legacy(self) -> Mapping[str, Any]:
+    async def _get_system_info_legacy(self) -> MutableMapping[str, Any]:
         # TODO: add bios details here
         script: str = r"""
 global $config;
@@ -503,14 +590,17 @@ $toreturn = [
   "domain" => $config["system"]["domain"],
 ];
 """
-        response: Mapping[str, Any] = await self._exec_php(script)
-        if not isinstance(response, Mapping):
+        response: MutableMapping[str, Any] = await self._exec_php(script)
+        if not isinstance(response, MutableMapping):
             return {}
-        response["name"] = f"{response.pop('hostname','')}.{response.pop('domain','')}"
+        response["name"] = (
+            f"{response.pop('hostname', '')}.{response.pop('domain', '')}"
+        )
         return response
 
     @_log_errors
     async def get_firmware_update_info(self):
+        """Get the details of available firmware updates."""
         refresh_triggered = False
         refresh_interval = 2 * 60 * 60  # 2 hours
 
@@ -525,7 +615,7 @@ $toreturn = [
         # {'status_msg': 'Firmware status check was aborted internally. Please try again.', 'status': 'error'}
         # error could be because data has not been refreshed at all OR an upgrade is currently in progress
         if (
-            not isinstance(status, Mapping)
+            not isinstance(status, MutableMapping)
             or status.get("status", None) == "error"
             or "last_check" not in status
             or not isinstance(dict_get(status, "product.product_check"), dict)
@@ -540,17 +630,19 @@ $toreturn = [
             # format = "%a %b %d %H:%M:%S %Z %Y"
             try:
                 last_check: datetime = parse(
-                    status.get("last_check"), tzinfos=AMBIGUOUS_TZINFOS
+                    status.get("last_check", 0), tzinfos=AMBIGUOUS_TZINFOS
                 )
                 if last_check.tzinfo is None:
                     last_check = last_check.replace(
-                        tzinfo=timezone(datetime.now().astimezone().utcoffset())
+                        tzinfo=timezone(
+                            datetime.now().astimezone().utcoffset() or timedelta()
+                        )
                     )
 
                 last_check_timestamp: float = last_check.timestamp()
 
             except (ValueError, TypeError, UnknownTimezoneWarning):
-                last_check_timestamp: float = 0
+                last_check_timestamp = 0
 
             stale: bool = (
                 datetime.now().astimezone().timestamp() - last_check_timestamp
@@ -558,7 +650,7 @@ $toreturn = [
             if stale:
                 upgradestatus = await self._get("/api/core/firmware/upgradestatus")
                 # print(upgradestatus)
-                if isinstance(upgradestatus, Mapping):
+                if isinstance(upgradestatus, MutableMapping):
                     # status = running (package refresh in progress OR upgrade in progress)
                     # status = done (refresh/upgrade done)
                     if upgradestatus.get("status", None) == "done":
@@ -580,6 +672,7 @@ $toreturn = [
 
     @_log_errors
     async def upgrade_firmware(self, type="update"):
+        """Trigger a firmware upgrade."""
         # minor updates of the same opnsense version
         if type == "update":
             # can watch the progress on the 'Updates' tab in the UI
@@ -589,17 +682,21 @@ $toreturn = [
         if type == "upgrade":
             # can watch the progress on the 'Updates' tab in the UI
             return await self._post("/api/core/firmware/upgrade")
+        return None
 
     @_log_errors
     async def upgrade_status(self):
+        """Return the status of the firmware upgrade."""
         return await self._post("/api/core/firmware/upgradestatus")
 
     @_log_errors
     async def firmware_changelog(self, version):
+        """Return the changelog for the firmware upgrade."""
         return await self._post("/api/core/firmware/changelog/" + version)
 
     @_log_errors
-    async def get_config(self) -> Mapping[str, Any]:
+    async def get_config(self) -> MutableMapping[str, Any]:
+        """XMLRPC call to return all the config settings."""
         script: str = r"""
 global $config;
 
@@ -607,43 +704,45 @@ $toreturn = [
   "data" => $config,
 ];
 """
-        response: Mapping[str, Any] = await self._exec_php(script)
-        if not isinstance(response, Mapping):
+        response: MutableMapping[str, Any] = await self._exec_php(script)
+        if not isinstance(response, MutableMapping):
             return {}
         ret_data = response.get("data", {})
-        if not isinstance(ret_data, Mapping):
+        if not isinstance(ret_data, MutableMapping):
             return {}
         return ret_data
 
     @_log_errors
     async def enable_filter_rule_by_created_time(self, created_time) -> None:
+        """Enable a filter rule."""
         config = await self.get_config()
         for rule in config["filter"]["rule"]:
-            if "created" not in rule.keys():
+            if "created" not in rule:
                 continue
-            if "time" not in rule["created"].keys():
+            if "time" not in rule["created"]:
                 continue
             if rule["created"]["time"] != created_time:
                 continue
 
-            if "disabled" in rule.keys():
+            if "disabled" in rule:
                 del rule["disabled"]
                 await self._restore_config_section("filter", config["filter"])
                 await self._filter_configure()
 
     @_log_errors
     async def disable_filter_rule_by_created_time(self, created_time) -> None:
-        config: Mapping[str, Any] = await self.get_config()
+        """Disable a filter rule."""
+        config: MutableMapping[str, Any] = await self.get_config()
 
         for rule in config.get("filter", {}).get("rule", []):
-            if "created" not in rule.keys():
+            if "created" not in rule:
                 continue
-            if "time" not in rule["created"].keys():
+            if "time" not in rule["created"]:
                 continue
             if rule["created"]["time"] != created_time:
                 continue
 
-            if "disabled" not in rule.keys():
+            if "disabled" not in rule:
                 rule["disabled"] = "1"
                 await self._restore_config_section("filter", config["filter"])
                 await self._filter_configure()
@@ -651,16 +750,17 @@ $toreturn = [
     # use created_time as a unique_id since none other exists
     @_log_errors
     async def enable_nat_port_forward_rule_by_created_time(self, created_time) -> None:
-        config: Mapping[str, Any] = await self.get_config()
+        """Enable a NAT Port Forward rule."""
+        config: MutableMapping[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("rule", []):
-            if "created" not in rule.keys():
+            if "created" not in rule:
                 continue
-            if "time" not in rule["created"].keys():
+            if "time" not in rule["created"]:
                 continue
             if rule["created"]["time"] != created_time:
                 continue
 
-            if "disabled" in rule.keys():
+            if "disabled" in rule:
                 del rule["disabled"]
                 await self._restore_config_section("nat", config["nat"])
                 await self._filter_configure()
@@ -668,16 +768,17 @@ $toreturn = [
     # use created_time as a unique_id since none other exists
     @_log_errors
     async def disable_nat_port_forward_rule_by_created_time(self, created_time) -> None:
-        config: Mapping[str, Any] = await self.get_config()
+        """Disable a NAT Port Forward rule."""
+        config: MutableMapping[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("rule", []):
-            if "created" not in rule.keys():
+            if "created" not in rule:
                 continue
-            if "time" not in rule["created"].keys():
+            if "time" not in rule["created"]:
                 continue
             if rule["created"]["time"] != created_time:
                 continue
 
-            if "disabled" not in rule.keys():
+            if "disabled" not in rule:
                 rule["disabled"] = "1"
                 await self._restore_config_section("nat", config["nat"])
                 await self._filter_configure()
@@ -685,16 +786,17 @@ $toreturn = [
     # use created_time as a unique_id since none other exists
     @_log_errors
     async def enable_nat_outbound_rule_by_created_time(self, created_time) -> None:
-        config: Mapping[str, Any] = await self.get_config()
+        """Enable NAT Outbound rule."""
+        config: MutableMapping[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("outbound", {}).get("rule", []):
-            if "created" not in rule.keys():
+            if "created" not in rule:
                 continue
-            if "time" not in rule["created"].keys():
+            if "time" not in rule["created"]:
                 continue
             if rule["created"]["time"] != created_time:
                 continue
 
-            if "disabled" in rule.keys():
+            if "disabled" in rule:
                 del rule["disabled"]
                 await self._restore_config_section("nat", config["nat"])
                 await self._filter_configure()
@@ -702,24 +804,26 @@ $toreturn = [
     # use created_time as a unique_id since none other exists
     @_log_errors
     async def disable_nat_outbound_rule_by_created_time(self, created_time) -> None:
-        config: Mapping[str, Any] = await self.get_config()
+        """Disable NAT Outbound Rule."""
+        config: MutableMapping[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("outbound", {}).get("rule", []):
             if rule["created"]["time"] != created_time:
                 continue
 
-            if "disabled" not in rule.keys():
+            if "disabled" not in rule:
                 rule["disabled"] = "1"
                 await self._restore_config_section("nat", config["nat"])
                 await self._filter_configure()
 
     @_log_errors
-    async def get_arp_table(self, resolve_hostnames=False) -> Mapping[str, Any]:
+    async def get_arp_table(self, resolve_hostnames=False) -> list:
+        """Return the active ARP table."""
         # [{'hostname': '?', 'ip-address': '<ip>', 'mac-address': '<mac>', 'interface': 'em0', 'expires': 1199, 'type': 'ethernet'}, ...]
-        request_body: Mapping[str, Any] = {"resolve": "yes"}
-        arp_table_info: Mapping[str, Any] | list = await self._post(
+        request_body: MutableMapping[str, Any] = {"resolve": "yes"}
+        arp_table_info = await self._post(
             "/api/diagnostics/interface/search_arp", payload=request_body
         )
-        if not isinstance(arp_table_info, Mapping):
+        if not isinstance(arp_table_info, MutableMapping):
             return []
         # _LOGGER.debug(f"[get_arp_table] arp_table_info: {arp_table_info}")
         arp_table: list = arp_table_info.get("rows", [])
@@ -728,8 +832,9 @@ $toreturn = [
 
     @_log_errors
     async def get_services(self) -> list:
-        response: Mapping[str, Any] | list = await self._get("/api/core/service/search")
-        if not isinstance(response, Mapping):
+        """Get the list of OPNsense services."""
+        response = await self._get("/api/core/service/search")
+        if not isinstance(response, MutableMapping):
             _LOGGER.error("Invalid data returned from get_services")
             return []
         # _LOGGER.debug(f"[get_services] response: {response}")
@@ -741,6 +846,7 @@ $toreturn = [
 
     @_log_errors
     async def get_service_is_running(self, service: str) -> bool:
+        """Return if the OPNsense service is running."""
         services: list = await self.get_services()
         if services is None or not isinstance(services, list):
             return False
@@ -755,32 +861,40 @@ $toreturn = [
         if not service:
             return False
         api_addr: str = f"/api/core/service/{action}/{service}"
-        response: Mapping[str, Any] | list = await self._post(api_addr)
-        _LOGGER.debug(f"[{action}_service] service: {service}, response: {response}")
+        response = await self._post(api_addr)
+        _LOGGER.debug(
+            "[%s_service] service: %s, response: %s", action, service, response
+        )
         return (
-            isinstance(response, Mapping) and response.get("result", "failed") == "ok"
+            isinstance(response, MutableMapping)
+            and response.get("result", "failed") == "ok"
         )
 
     @_log_errors
     async def start_service(self, service: str) -> bool:
+        """Start OPNsense service."""
         return await self._manage_service("start", service)
 
     @_log_errors
     async def stop_service(self, service: str) -> bool:
+        """Stop OPNsense service."""
         return await self._manage_service("stop", service)
 
     @_log_errors
     async def restart_service(self, service: str) -> bool:
+        """Restart OPNsense service."""
         return await self._manage_service("restart", service)
 
     @_log_errors
     async def restart_service_if_running(self, service: str) -> bool:
+        """Restart OPNsense service only if it is running."""
         if await self.get_service_is_running(service):
             return await self.restart_service(service)
         return True
 
     @_log_errors
-    async def get_dhcp_leases(self) -> list:
+    async def get_dhcp_leases(self) -> MutableMapping[str, Any]:
+        """Return list of DHCP leases."""
         leases_raw: list = (
             await self._get_kea_dhcpv4_leases()
             + await self._get_isc_dhcpv4_leases()
@@ -788,11 +902,11 @@ $toreturn = [
         )
 
         # _LOGGER.debug(f"[get_dhcp_leases] leases_raw: {leases_raw}")
-        leases: Mapping[str, Any] = {}
-        lease_interfaces: Mapping[str, Any] = await self._get_kea_interfaces()
+        leases: MutableMapping[str, Any] = {}
+        lease_interfaces: MutableMapping[str, Any] = await self._get_kea_interfaces()
         for lease in leases_raw:
             if (
-                not isinstance(lease, Mapping)
+                not isinstance(lease, MutableMapping)
                 or not isinstance(lease.get("if_name", None), str)
                 or len(lease.get("if_name", "")) == 0
             ):
@@ -804,15 +918,17 @@ $toreturn = [
                 leases[if_name] = []
             leases[if_name].append(lease)
 
-        sorted_lease_interfaces: Mapping[str, Any] = {
+        sorted_lease_interfaces: MutableMapping[str, Any] = {
             key: lease_interfaces[key] for key in sorted(lease_interfaces)
         }
-        sorted_leases: Mapping[str, Any] = {key: leases[key] for key in sorted(leases)}
+        sorted_leases: MutableMapping[str, Any] = {
+            key: leases[key] for key in sorted(leases)
+        }
         for if_subnet in sorted_leases.values():
             sorted_if: list = sorted(if_subnet, key=get_ip_key)
-            if_subnet: list = sorted_if
+            if_subnet = sorted_if
 
-        dhcp_leases: Mapping[str, Any] = {
+        dhcp_leases: MutableMapping[str, Any] = {
             "lease_interfaces": sorted_lease_interfaces,
             "leases": sorted_leases,
         }
@@ -820,16 +936,19 @@ $toreturn = [
 
         return dhcp_leases
 
-    async def _get_kea_interfaces(self) -> Mapping[str, Any]:
-        response: Mapping[str, Any] | list = await self._get("/api/kea/dhcpv4/get")
-        if not isinstance(response, Mapping):
+    async def _get_kea_interfaces(self) -> MutableMapping[str, Any]:
+        """Return interfaces setup for Kea."""
+        response = await self._get("/api/kea/dhcpv4/get")
+        if not isinstance(response, MutableMapping):
             return {}
-        lease_interfaces: Mapping[str, Any] = {}
-        general: Mapping[str, Any] = response.get("dhcpv4", {}).get("general", {})
+        lease_interfaces: MutableMapping[str, Any] = {}
+        general: MutableMapping[str, Any] = response.get("dhcpv4", {}).get(
+            "general", {}
+        )
         if general.get("enabled", "0") != "1":
             return {}
         for if_name, iface in general.get("interfaces", {}).items():
-            if not isinstance(iface, Mapping):
+            if not isinstance(iface, MutableMapping):
                 continue
             if iface.get("selected", 0) == 1 and iface.get("value", None):
                 lease_interfaces[if_name] = iface.get("value")
@@ -837,13 +956,14 @@ $toreturn = [
         return lease_interfaces
 
     async def _get_kea_dhcpv4_leases(self) -> list:
-        response: Mapping[str, Any] | list = await self._get("/api/kea/leases4/search")
-        if not isinstance(response, Mapping) or not isinstance(
+        """Return IPv4 DHCP Leases by Kea."""
+        response = await self._get("/api/kea/leases4/search")
+        if not isinstance(response, MutableMapping) or not isinstance(
             response.get("rows", None), list
         ):
             return []
         res_resp = await self._get("/api/kea/dhcpv4/searchReservation")
-        if not isinstance(res_resp, Mapping) or not isinstance(
+        if not isinstance(res_resp, MutableMapping) or not isinstance(
             res_resp.get("rows", None), list
         ):
             res_info = []
@@ -860,12 +980,12 @@ $toreturn = [
         for lease_info in leases_info:
             if (
                 lease_info is None
-                or not isinstance(lease_info, Mapping)
+                or not isinstance(lease_info, MutableMapping)
                 or lease_info.get("state", "0") != "0"
                 or not lease_info.get("hwaddr", None)
             ):
                 continue
-            lease: Mapping[str, Any] = {}
+            lease: MutableMapping[str, Any] = {}
             lease["address"] = lease_info.get("address", None)
             lease["hostname"] = (
                 lease_info.get("hostname", None).strip(".")
@@ -885,10 +1005,10 @@ $toreturn = [
             else:
                 lease["type"] = "dynamic"
             lease["mac"] = lease_info.get("hwaddr", None)
-            if self._try_to_int(lease_info.get("expire", None)):
+            if OPNsenseClient._try_to_int(lease_info.get("expire", None)):
                 lease["expires"] = datetime.fromtimestamp(
-                    self._try_to_int(lease_info.get("expire", None)),
-                    tz=timezone(datetime.now().astimezone().utcoffset()),
+                    OPNsenseClient._try_to_int(lease_info.get("expire", None)) or 0,
+                    tz=timezone(datetime.now().astimezone().utcoffset() or timedelta()),
                 )
                 if lease["expires"] < datetime.now().astimezone():
                     continue
@@ -898,30 +1018,10 @@ $toreturn = [
         # _LOGGER.debug(f"[get_kea_dhcpv4_leases] leases: {leases}")
         return leases
 
-    # Kea DHCPv4
-    # {
-    #     "if": "vlan03",
-    #     "address": "10.100.50.5",
-    #     "hwaddr": "34:98:7a:5e:ae:b4",
-    #     "client_id": "01:34:98:7a:5e:ae:b4",
-    #     "valid_lifetime": "86400",
-    #     "expire": "1727487541",
-    #     "subnet_id": "3",
-    #     "fqdn_fwd": "0",
-    #     "fqdn_rev": "0",
-    #     "hostname": "keepconnect",
-    #     "state": "0",
-    #     "user_context": "",
-    #     "pool_id": "0",
-    #     "if_descr": "IOT_50",
-    #     "if_name": "opt5"
-    # },
-
     async def _get_isc_dhcpv4_leases(self) -> list:
-        response: Mapping[str, Any] | list = await self._get(
-            "/api/dhcpv4/leases/searchLease"
-        )
-        if not isinstance(response, Mapping):
+        """Return IPv4 DHCP Leases by ISC."""
+        response = await self._get("/api/dhcpv4/leases/searchLease")
+        if not isinstance(response, MutableMapping):
             return []
         leases_info: list = response.get("rows", [])
         if not isinstance(leases_info, list):
@@ -931,12 +1031,12 @@ $toreturn = [
         for lease_info in leases_info:
             # _LOGGER.debug(f"[get_isc_dhcpv4_leases] lease_info: {lease_info}")
             if (
-                not isinstance(lease_info, Mapping)
+                not isinstance(lease_info, MutableMapping)
                 or lease_info.get("state", "") != "active"
                 or not lease_info.get("mac", None)
             ):
                 continue
-            lease: Mapping[str, Any] = {}
+            lease: MutableMapping[str, Any] = {}
             lease["address"] = lease_info.get("address", None)
             lease["hostname"] = (
                 lease_info.get("hostname", None)
@@ -953,7 +1053,9 @@ $toreturn = [
                     lease_info.get("ends", None), "%Y/%m/%d %H:%M:%S"
                 )
                 lease["expires"] = dt.replace(
-                    tzinfo=timezone(datetime.now().astimezone().utcoffset())
+                    tzinfo=timezone(
+                        datetime.now().astimezone().utcoffset() or timedelta()
+                    )
                 )
                 if lease["expires"] < datetime.now().astimezone():
                     continue
@@ -963,30 +1065,10 @@ $toreturn = [
         # _LOGGER.debug(f"[get_isc_dhcpv4_leases] leases: {leases}")
         return leases
 
-    # Legacy DHCPv4
-    # {
-    #     "address": "10.100.150.100",
-    #     "starts": "2024/10/05 18:42:57",
-    #     "ends": "2024/10/05 20:42:57",
-    #     "cltt": 1728168177,
-    #     "binding": "active",
-    #     "uid": "\\001^v#\\342Z\\277",
-    #     "type": "dynamic",
-    #     "status": "online",
-    #     "descr": "",
-    #     "mac": "5e:76:23:e2:5a:bf",
-    #     "hostname": "",
-    #     "state": "active",
-    #     "man": "",
-    #     "if": "opt8",
-    #     "if_descr": "Guest_150"
-    # }
-
     async def _get_isc_dhcpv6_leases(self) -> list:
-        response: Mapping[str, Any] | list = await self._get(
-            "/api/dhcpv6/leases/searchLease"
-        )
-        if not isinstance(response, Mapping):
+        """Return IPv6 DHCP Leases by ISC."""
+        response = await self._get("/api/dhcpv6/leases/searchLease")
+        if not isinstance(response, MutableMapping):
             return []
         leases_info: list = response.get("rows", [])
         if not isinstance(leases_info, list):
@@ -996,12 +1078,12 @@ $toreturn = [
         for lease_info in leases_info:
             # _LOGGER.debug(f"[get_isc_dhcpv6_leases] lease_info: {lease_info}")
             if (
-                not isinstance(lease_info, Mapping)
+                not isinstance(lease_info, MutableMapping)
                 or lease_info.get("state", "") != "active"
                 or not lease_info.get("mac", None)
             ):
                 continue
-            lease: Mapping[str, Any] = {}
+            lease: MutableMapping[str, Any] = {}
             lease["address"] = lease_info.get("address", None)
             lease["hostname"] = (
                 lease_info.get("hostname", None)
@@ -1018,7 +1100,9 @@ $toreturn = [
                     lease_info.get("ends", None), "%Y/%m/%d %H:%M:%S"
                 )
                 lease["expires"] = dt.replace(
-                    tzinfo=timezone(datetime.now().astimezone().utcoffset())
+                    tzinfo=timezone(
+                        datetime.now().astimezone().utcoffset() or timedelta()
+                    )
                 )
                 if lease["expires"] < datetime.now().astimezone():
                     continue
@@ -1028,31 +1112,11 @@ $toreturn = [
         # _LOGGER.debug(f"[get_isc_dhcpv6_leases] leases: {leases}")
         return leases
 
-    # Legacy DHCPv6
-    # {
-    #     "type": "dynamic",
-    #     "lease_type": "ia-na",
-    #     "iaid": 0,
-    #     "duid": "00:01:00:01:20:44:59:47:ac:bc:32:75:d6:af",
-    #     "iaid_duid": "00:00:00:00:00:01:00:01:20:44:59:47:ac:bc:32:75:d6:af",
-    #     "descr": "",
-    #     "if": "opt5",
-    #     "cltt": "2024/09/26 22:05:30",
-    #     "state": "active",
-    #     "ends": "2024/09/27 00:05:30",
-    #     "address": "2600:4040:a506:ce32::1764",
-    #     "status": "online",
-    #     "man": "Apple, Inc.",
-    #     "mac": "ac:bc:32:75:d6:ad",
-    #     "if_descr": "IOT_50",
-    # },
-
     @_log_errors
     async def get_carp_status(self) -> bool:
-        response: Mapping[str, Any] | list = await self._get(
-            "/api/diagnostics/interface/get_vip_status"
-        )
-        if not isinstance(response, Mapping):
+        """Return the Carp status."""
+        response = await self._get("/api/diagnostics/interface/get_vip_status")
+        if not isinstance(response, MutableMapping):
             _LOGGER.error("Invalid data returned from get_carp_status")
             return False
         # _LOGGER.debug(f"[get_carp_status] response: {response}")
@@ -1060,27 +1124,23 @@ $toreturn = [
 
     @_log_errors
     async def get_carp_interfaces(self) -> list:
-        vip_settings_raw: Mapping[str, Any] | list = await self._get(
-            "/api/interfaces/vip_settings/get"
-        )
-        if not isinstance(vip_settings_raw, Mapping) or not isinstance(
+        """Return the interfaces used by Carp."""
+        vip_settings_raw = await self._get("/api/interfaces/vip_settings/get")
+        if not isinstance(vip_settings_raw, MutableMapping) or not isinstance(
             vip_settings_raw.get("rows", None), list
         ):
-            # TODO: Change this to a return [] (and turn down logging) once confirmed it is working
-            vip_settings = []
+            vip_settings: list = []
         else:
-            vip_settings: list = vip_settings_raw.get("rows", [])
+            vip_settings = vip_settings_raw.get("rows", [])
         # _LOGGER.debug(f"[get_carp_interfaces] vip_settings: {vip_settings}")
 
-        vip_status_raw: Mapping[str, Any] | list = await self._get(
-            "/api/diagnostics/interface/get_vip_status"
-        )
-        if not isinstance(vip_status_raw, Mapping) or not isinstance(
+        vip_status_raw = await self._get("/api/diagnostics/interface/get_vip_status")
+        if not isinstance(vip_status_raw, MutableMapping) or not isinstance(
             vip_status_raw.get("rows", None), list
         ):
-            vip_status = []
+            vip_status: list = []
         else:
-            vip_status: list = vip_status_raw.get("rows", [])
+            vip_status = vip_status_raw.get("rows", [])
         # _LOGGER.debug(f"[get_carp_interfaces] vip_status: {vip_status}")
         carp = []
         for vip in vip_settings:
@@ -1098,52 +1158,63 @@ $toreturn = [
                 vip["status"] = "DISABLED"
 
             carp.append(vip)
-        _LOGGER.debug(f"[get_carp_interfaces] carp: {carp}")
+        _LOGGER.debug("[get_carp_interfaces] carp: %s", carp)
         return carp
 
     @_log_errors
     async def system_reboot(self) -> bool:
-        response: Mapping[str, Any] | list = await self._post("/api/core/system/reboot")
-        _LOGGER.debug(f"[system_reboot] response: {response}")
-        if isinstance(response, Mapping) and response.get("status", "") == "ok":
+        """Reboot OPNsense."""
+        response = await self._post("/api/core/system/reboot")
+        _LOGGER.debug("[system_reboot] response: %s", response)
+        if isinstance(response, MutableMapping) and response.get("status", "") == "ok":
             return True
         return False
 
     @_log_errors
     async def system_halt(self) -> None:
-        response: Mapping[str, Any] | list = await self._post("/api/core/system/halt")
-        _LOGGER.debug(f"[system_halt] response: {response}")
-        if isinstance(response, Mapping) and response.get("status", "") == "ok":
-            return True
-        return False
+        """Shutdown OPNsense."""
+        response = await self._post("/api/core/system/halt")
+        _LOGGER.debug("[system_halt] response: %s", response)
+        if isinstance(response, MutableMapping) and response.get("status", "") == "ok":
+            return
+        return
 
     @_log_errors
     async def send_wol(self, interface, mac) -> bool:
-        """
-        interface should be wan, lan, opt1, opt2 etc, not the description
-        """
-        payload: Mapping[str, Any] = {"wake": {"interface": interface, "mac": mac}}
-        _LOGGER.debug(f"[send_wol] payload: {payload}")
+        """Send a wake on lan packet to the specified MAC address."""
+        payload: MutableMapping[str, Any] = {
+            "wake": {"interface": interface, "mac": mac}
+        }
+        _LOGGER.debug("[send_wol] payload: %s", payload)
         response = await self._post("/api/wol/wol/set", payload)
-        _LOGGER.debug(f"[send_wol] response: {response}")
-        if isinstance(response, Mapping) and response.get("status", "") == "ok":
+        _LOGGER.debug("[send_wol] response: %s", response)
+        if isinstance(response, MutableMapping) and response.get("status", "") == "ok":
             return True
         return False
 
-    def _try_to_int(self, input, retval=None) -> int | None:
+    @staticmethod
+    def _try_to_int(input: Any | None, retval: int | None = None) -> int | None:
+        """Return field to int."""
+        if input is None:
+            return retval
         try:
             return int(input)
         except (ValueError, TypeError):
             return retval
 
-    def _try_to_float(self, input, retval=None) -> int | None:
+    @staticmethod
+    def _try_to_float(input: Any | None, retval: float | None = None) -> float | None:
+        """Return field to float."""
+        if input is None:
+            return retval
         try:
             return float(input)
         except (ValueError, TypeError):
             return retval
 
     @_log_errors
-    async def get_telemetry(self) -> Mapping[str, Any]:
+    async def get_telemetry(self) -> MutableMapping[str, Any]:
+        """Get telemetry data from OPNsense."""
         if not self._firmware_version:
             await self.get_host_firmware_version()
         try:
@@ -1154,7 +1225,7 @@ $toreturn = [
                 return await self._get_telemetry_legacy()
         except awesomeversion.exceptions.AwesomeVersionCompareException:
             pass
-        telemetry: Mapping[str, Any] = {}
+        telemetry: MutableMapping[str, Any] = {}
         telemetry["mbuf"] = await self._get_telemetry_mbuf()
         telemetry["pfstate"] = await self._get_telemetry_pfstate()
         telemetry["memory"] = await self._get_telemetry_memory()
@@ -1166,49 +1237,51 @@ $toreturn = [
         return telemetry
 
     @_log_errors
-    async def get_interfaces(self) -> Mapping[str, Any]:
-        interface_info: Mapping[str, Any] | list = await self._get(
-            "/api/interfaces/overview/export"
-        )
+    async def get_interfaces(self) -> MutableMapping[str, Any]:
+        """Return all OPNsense interfaces."""
+        interface_info = await self._get("/api/interfaces/overview/export")
         # _LOGGER.debug(f"[get_interfaces] interface_info: {interface_info}")
         if not isinstance(interface_info, list) or not len(interface_info) > 0:
             return {}
-        interfaces: Mapping[str, Any] = {}
+        interfaces: MutableMapping[str, Any] = {}
         for ifinfo in interface_info:
-            interface: Mapping[str, Any] = {}
-            if not isinstance(ifinfo, Mapping) or ifinfo.get("identifier", "") == "":
+            interface: MutableMapping[str, Any] = {}
+            if (
+                not isinstance(ifinfo, MutableMapping)
+                or ifinfo.get("identifier", "") == ""
+            ):
                 continue
-            interface["inpkts"] = self._try_to_int(
+            interface["inpkts"] = OPNsenseClient._try_to_int(
                 ifinfo.get("statistics", {}).get("packets received", None)
             )
-            interface["outpkts"] = self._try_to_int(
+            interface["outpkts"] = OPNsenseClient._try_to_int(
                 ifinfo.get("statistics", {}).get("packets transmitted", None)
             )
-            interface["inbytes"] = self._try_to_int(
+            interface["inbytes"] = OPNsenseClient._try_to_int(
                 ifinfo.get("statistics", {}).get("bytes received", None)
             )
-            interface["outbytes"] = self._try_to_int(
+            interface["outbytes"] = OPNsenseClient._try_to_int(
                 ifinfo.get("statistics", {}).get("bytes transmitted", None)
             )
-            interface["inbytes_frmt"] = self._try_to_int(
+            interface["inbytes_frmt"] = OPNsenseClient._try_to_int(
                 ifinfo.get("statistics", {}).get("bytes received", None)
             )
-            interface["outbytes_frmt"] = self._try_to_int(
+            interface["outbytes_frmt"] = OPNsenseClient._try_to_int(
                 ifinfo.get("statistics", {}).get("bytes transmitted", None)
             )
-            interface["inerrs"] = self._try_to_int(
+            interface["inerrs"] = OPNsenseClient._try_to_int(
                 ifinfo.get("statistics", {}).get("input errors", None)
             )
-            interface["outerrs"] = self._try_to_int(
+            interface["outerrs"] = OPNsenseClient._try_to_int(
                 ifinfo.get("statistics", {}).get("output errors", None)
             )
-            interface["collisions"] = self._try_to_int(
+            interface["collisions"] = OPNsenseClient._try_to_int(
                 ifinfo.get("statistics", {}).get("collisions", None)
             )
             interface["interface"] = ifinfo.get("identifier", "")
             interface["name"] = ifinfo.get("description", "")
             interface["status"] = ""
-            if ifinfo.get("status", "") in ("down", "no carrier", "up"):
+            if ifinfo.get("status", "") in {"down", "no carrier", "up"}:
                 interface["status"] = ifinfo.get("status", "")
             elif ifinfo.get("status", "") in ("associated"):
                 interface["status"] = "up"
@@ -1230,18 +1303,16 @@ $toreturn = [
         return interfaces
 
     @_log_errors
-    async def _get_telemetry_mbuf(self) -> Mapping[str, Any]:
-        mbuf_info: Mapping[str, Any] | list = await self._post(
-            "/api/diagnostics/system/system_mbuf"
-        )
+    async def _get_telemetry_mbuf(self) -> MutableMapping[str, Any]:
+        mbuf_info = await self._post("/api/diagnostics/system/system_mbuf")
         # _LOGGER.debug(f"[get_telemetry_mbuf] mbuf_info: {mbuf_info}")
-        if not isinstance(mbuf_info, Mapping):
+        if not isinstance(mbuf_info, MutableMapping):
             return {}
-        mbuf: Mapping[str, Any] = {}
-        mbuf["used"] = self._try_to_int(
+        mbuf: MutableMapping[str, Any] = {}
+        mbuf["used"] = OPNsenseClient._try_to_int(
             mbuf_info.get("mbuf-statistics", {}).get("mbuf-current", None)
         )
-        mbuf["total"] = self._try_to_int(
+        mbuf["total"] = OPNsenseClient._try_to_int(
             mbuf_info.get("mbuf-statistics", {}).get("mbuf-total", None)
         )
         mbuf["used_percent"] = (
@@ -1255,16 +1326,14 @@ $toreturn = [
         return mbuf
 
     @_log_errors
-    async def _get_telemetry_pfstate(self) -> Mapping[str, Any]:
-        pfstate_info: Mapping[str, Any] | list = await self._post(
-            "/api/diagnostics/firewall/pf_states"
-        )
+    async def _get_telemetry_pfstate(self) -> MutableMapping[str, Any]:
+        pfstate_info = await self._post("/api/diagnostics/firewall/pf_states")
         # _LOGGER.debug(f"[get_telemetry_pfstate] pfstate_info: {pfstate_info}")
-        if not isinstance(pfstate_info, Mapping):
+        if not isinstance(pfstate_info, MutableMapping):
             return {}
-        pfstate: Mapping[str, Any] = {}
-        pfstate["used"] = self._try_to_int(pfstate_info.get("current", None))
-        pfstate["total"] = self._try_to_int(pfstate_info.get("limit", None))
+        pfstate: MutableMapping[str, Any] = {}
+        pfstate["used"] = OPNsenseClient._try_to_int(pfstate_info.get("current", None))
+        pfstate["total"] = OPNsenseClient._try_to_int(pfstate_info.get("limit", None))
         pfstate["used_percent"] = (
             round(pfstate["used"] / pfstate["total"] * 100)
             if isinstance(pfstate["used"], int)
@@ -1276,18 +1345,16 @@ $toreturn = [
         return pfstate
 
     @_log_errors
-    async def _get_telemetry_memory(self) -> Mapping[str, Any]:
-        memory_info: Mapping[str, Any] | list = await self._post(
-            "/api/diagnostics/system/systemResources"
-        )
+    async def _get_telemetry_memory(self) -> MutableMapping[str, Any]:
+        memory_info = await self._post("/api/diagnostics/system/systemResources")
         # _LOGGER.debug(f"[get_telemetry_memory] memory_info: {memory_info}")
-        if not isinstance(memory_info, Mapping):
+        if not isinstance(memory_info, MutableMapping):
             return {}
-        memory: Mapping[str, Any] = {}
-        memory["physmem"] = self._try_to_int(
+        memory: MutableMapping[str, Any] = {}
+        memory["physmem"] = OPNsenseClient._try_to_int(
             memory_info.get("memory", {}).get("total", None)
         )
-        memory["used"] = self._try_to_int(
+        memory["used"] = OPNsenseClient._try_to_int(
             memory_info.get("memory", {}).get("used", None)
         )
         memory["used_percent"] = (
@@ -1297,21 +1364,19 @@ $toreturn = [
             and memory["physmem"] > 0
             else None
         )
-        swap_info: Mapping[str, Any] = await self._post(
-            "/api/diagnostics/system/system_swap"
-        )
+        swap_info = await self._post("/api/diagnostics/system/system_swap")
         if (
-            not isinstance(swap_info, Mapping)
+            not isinstance(swap_info, MutableMapping)
             or not isinstance(swap_info.get("swap", None), list)
             or not len(swap_info.get("swap", [])) > 0
-            or not isinstance(swap_info.get("swap", [])[0], Mapping)
+            or not isinstance(swap_info.get("swap", [])[0], MutableMapping)
         ):
             return memory
         # _LOGGER.debug(f"[get_telemetry_memory] swap_info: {swap_info}")
-        memory["swap_total"] = self._try_to_int(
+        memory["swap_total"] = OPNsenseClient._try_to_int(
             swap_info.get("swap", [])[0].get("total", None)
         )
-        memory["swap_reserved"] = self._try_to_int(
+        memory["swap_reserved"] = OPNsenseClient._try_to_int(
             swap_info["swap"][0].get("used", None)
         )
         memory["swap_used_percent"] = (
@@ -1325,22 +1390,20 @@ $toreturn = [
         return memory
 
     @_log_errors
-    async def _get_telemetry_system(self) -> Mapping[str, Any]:
-        time_info: Mapping[str, Any] | list = await self._post(
-            "/api/diagnostics/system/systemTime"
-        )
+    async def _get_telemetry_system(self) -> MutableMapping[str, Any]:
+        time_info = await self._post("/api/diagnostics/system/systemTime")
         # _LOGGER.debug(f"[get_telemetry_system] time_info: {time_info}")
-        if not isinstance(time_info, Mapping):
+        if not isinstance(time_info, MutableMapping):
             return {}
-        system: Mapping[str, Any] = {}
+        system: MutableMapping[str, Any] = {}
         pattern = re.compile(r"^(?:(\d+)\s+days?,\s+)?(\d{2}):(\d{2}):(\d{2})$")
         match = pattern.match(time_info.get("uptime", ""))
         if match:
             days_str, hours_str, minutes_str, seconds_str = match.groups()
-            days: int = self._try_to_int(days_str, 0)
-            hours: int = self._try_to_int(hours_str, 0)
-            minutes: int = self._try_to_int(minutes_str, 0)
-            seconds: int = self._try_to_int(seconds_str, 0)
+            days = OPNsenseClient._try_to_int(days_str, 0) or 0
+            hours = OPNsenseClient._try_to_int(hours_str, 0) or 0
+            minutes = OPNsenseClient._try_to_int(minutes_str, 0) or 0
+            seconds = OPNsenseClient._try_to_int(seconds_str, 0) or 0
             system["uptime"] = days * 86400 + hours * 3600 + minutes * 60 + seconds
 
             boottime: datetime = datetime.now() - timedelta(seconds=system["uptime"])
@@ -1366,39 +1429,43 @@ $toreturn = [
         return system
 
     @_log_errors
-    async def _get_telemetry_cpu(self) -> Mapping[str, Any]:
-        cputype_info: Mapping[str, Any] | list = await self._post(
-            "/api/diagnostics/cpu_usage/getCPUType"
-        )
+    async def _get_telemetry_cpu(self) -> MutableMapping[str, Any]:
+        cputype_info = await self._post("/api/diagnostics/cpu_usage/getCPUType")
         # _LOGGER.debug(f"[get_telemetry_cpu] cputype_info: {cputype_info}")
         if not isinstance(cputype_info, list) or not len(cputype_info) > 0:
             return {}
-        cpu: Mapping[str, Any] = {}
+        cpu: MutableMapping[str, Any] = {}
         cores_match = re.search(r"\((\d+) cores", cputype_info[0])
-        cpu["count"] = self._try_to_int(cores_match.group(1)) if cores_match else 0
+        cpu["count"] = (
+            OPNsenseClient._try_to_int(cores_match.group(1)) if cores_match else 0
+        )
 
-        cpustream_info: Mapping[str, Any] | list = await self._get_from_stream(
+        cpustream_info = await self._get_from_stream(
             "/api/diagnostics/cpu_usage/stream"
         )
         # {"total":29,"user":2,"nice":0,"sys":27,"intr":0,"idle":70}
         # _LOGGER.debug(f"[get_telemetry_cpu] cpustream_info: {cpustream_info}")
-        if not isinstance(cpustream_info, Mapping):
+        if not isinstance(cpustream_info, MutableMapping):
             return cpu
-        cpu["usage_total"] = self._try_to_int(cpustream_info.get("total", None))
-        cpu["usage_user"] = self._try_to_int(cpustream_info.get("user", None))
-        cpu["usage_nice"] = self._try_to_int(cpustream_info.get("nice", None))
-        cpu["usage_system"] = self._try_to_int(cpustream_info.get("sys", None))
-        cpu["usage_interrupt"] = self._try_to_int(cpustream_info.get("intr", None))
-        cpu["usage_idle"] = self._try_to_int(cpustream_info.get("idle", None))
+        cpu["usage_total"] = OPNsenseClient._try_to_int(
+            cpustream_info.get("total", None)
+        )
+        cpu["usage_user"] = OPNsenseClient._try_to_int(cpustream_info.get("user", None))
+        cpu["usage_nice"] = OPNsenseClient._try_to_int(cpustream_info.get("nice", None))
+        cpu["usage_system"] = OPNsenseClient._try_to_int(
+            cpustream_info.get("sys", None)
+        )
+        cpu["usage_interrupt"] = OPNsenseClient._try_to_int(
+            cpustream_info.get("intr", None)
+        )
+        cpu["usage_idle"] = OPNsenseClient._try_to_int(cpustream_info.get("idle", None))
         # _LOGGER.debug(f"[get_telemetry_cpu] cpu: {cpu}")
         return cpu
 
     @_log_errors
     async def _get_telemetry_filesystems(self) -> list:
-        filesystems_info: Mapping[str, Any] | list = await self._post(
-            "/api/diagnostics/system/systemDisk"
-        )
-        if not isinstance(filesystems_info, Mapping):
+        filesystems_info = await self._post("/api/diagnostics/system/systemDisk")
+        if not isinstance(filesystems_info, MutableMapping):
             return []
         # _LOGGER.debug(f"[get_telemetry_filesystems] filesystems_info: {filesystems_info}")
         filesystems: list = filesystems_info.get("devices", [])
@@ -1406,47 +1473,40 @@ $toreturn = [
         return filesystems
 
     @_log_errors
-    async def get_openvpn(self) -> Mapping[str, Any]:
+    async def get_openvpn(self) -> MutableMapping[str, Any]:
+        """Return OpenVPN information."""
         # https://docs.opnsense.org/development/api/core/openvpn.html
         # https://github.com/opnsense/core/blob/master/src/opnsense/www/js/widgets/OpenVPNClients.js
         # https://github.com/opnsense/core/blob/master/src/opnsense/www/js/widgets/OpenVPNServers.js
 
-        sessions_info: Mapping[str, Any] = await self._get(
-            "/api/openvpn/service/searchSessions"
-        )
+        sessions_info = await self._get("/api/openvpn/service/searchSessions")
 
-        routes_info: Mapping[str, Any] = await self._get(
-            "/api/openvpn/service/searchRoutes"
-        )
+        routes_info = await self._get("/api/openvpn/service/searchRoutes")
 
-        providers_info: Mapping[str, Any] | list = await self._get(
-            "/api/openvpn/export/providers"
-        )
+        providers_info = await self._get("/api/openvpn/export/providers")
 
-        instances_info: Mapping[str, Any] = await self._get(
-            "/api/openvpn/instances/search"
-        )
+        instances_info = await self._get("/api/openvpn/instances/search")
         # _LOGGER.debug(f"[get_openvpn] sessions_info: {sessions_info}")
         # _LOGGER.debug(f"[get_openvpn] routes_info: {routes_info}")
         # _LOGGER.debug(f"[get_openvpn] providers_info: {providers_info}")
         # _LOGGER.debug(f"[get_openvpn] instances_info: {instances_info}")
-        if not isinstance(sessions_info, Mapping):
+        if not isinstance(sessions_info, MutableMapping):
             sessions_info = {}
-        if not isinstance(routes_info, Mapping):
+        if not isinstance(routes_info, MutableMapping):
             routes_info = {}
-        if not isinstance(providers_info, Mapping):
+        if not isinstance(providers_info, MutableMapping):
             providers_info = {}
-        if not isinstance(instances_info, Mapping):
+        if not isinstance(instances_info, MutableMapping):
             instances_info = {}
 
-        openvpn: Mapping[str, Any] = {}
+        openvpn: MutableMapping[str, Any] = {}
         openvpn["servers"] = {}
         openvpn["clients"] = {}
 
         # Servers
         for instance in instances_info.get("rows", []):
             if (
-                not isinstance(instance, Mapping)
+                not isinstance(instance, MutableMapping)
                 or instance.get("role", "").lower() != "server"
             ):
                 continue
@@ -1463,7 +1523,7 @@ $toreturn = [
                 }
 
         for uuid, vpn_info in providers_info.items():
-            if not uuid or not isinstance(vpn_info, Mapping):
+            if not uuid or not isinstance(vpn_info, MutableMapping):
                 continue
             if uuid not in openvpn["servers"]:
                 openvpn["servers"][uuid] = {
@@ -1472,14 +1532,14 @@ $toreturn = [
                     "clients": [],
                 }
             if vpn_info.get("hostname", None) and vpn_info.get("local_port", None):
-                openvpn["servers"][uuid][
-                    "endpoint"
-                ] = f"{vpn_info.get('hostname')}:{vpn_info.get('local_port')}"
+                openvpn["servers"][uuid]["endpoint"] = (
+                    f"{vpn_info.get('hostname')}:{vpn_info.get('local_port')}"
+                )
 
         for session in sessions_info.get("rows", []):
             if session.get("type", None) != "server":
                 continue
-            server_id = str(session["id"]).split("_")[0]
+            server_id = str(session["id"]).split("_", maxsplit=1)[0]
 
             if server_id not in openvpn["servers"]:
                 openvpn["servers"][server_id] = {
@@ -1491,9 +1551,9 @@ $toreturn = [
             if not session.get("is_client", False):
                 if openvpn["servers"][server_id].get("enabled", True) is False:
                     openvpn["servers"][server_id].update({"status": "disabled"})
-                elif session.get("status", None) in ["connected", "ok"]:
+                elif session.get("status", None) in {"connected", "ok"}:
                     openvpn["servers"][server_id].update({"status": "up"})
-                elif session.get("status", None) in ["failed"]:
+                elif session.get("status", None) == "failed":
                     openvpn["servers"][server_id].update({"status": "failed"})
                 elif isinstance(session.get("status", None), str):
                     openvpn["servers"][server_id].update(
@@ -1507,12 +1567,14 @@ $toreturn = [
                         "status": "up",
                         "latest_handshake": datetime.fromtimestamp(
                             int(session.get("connected_since__time_t_")),
-                            tz=timezone(datetime.now().astimezone().utcoffset()),
+                            tz=timezone(
+                                datetime.now().astimezone().utcoffset() or timedelta()
+                            ),
                         ),
-                        "total_bytes_recv": self._try_to_int(
+                        "total_bytes_recv": OPNsenseClient._try_to_int(
                             session.get("bytes_received", 0), 0
                         ),
-                        "total_bytes_sent": self._try_to_int(
+                        "total_bytes_sent": OPNsenseClient._try_to_int(
                             session.get("bytes_sent", 0), 0
                         ),
                     }
@@ -1520,7 +1582,7 @@ $toreturn = [
 
         for route in routes_info.get("rows", []):
             if (
-                not isinstance(route, Mapping)
+                not isinstance(route, MutableMapping)
                 or route.get("id", None) is None
                 or route.get("id") not in openvpn.get("servers", {})
             ):
@@ -1531,8 +1593,10 @@ $toreturn = [
                     "endpoint": route.get("real_address", None),
                     "tunnel_addresses": [route.get("virtual_address")],
                     "latest_handshake": datetime.fromtimestamp(
-                        int(route.get("last_ref__time_t_")),
-                        tz=timezone(datetime.now().astimezone().utcoffset()),
+                        int(route.get("last_ref__time_t_", 0)),
+                        tz=timezone(
+                            datetime.now().astimezone().utcoffset() or timedelta()
+                        ),
                     ),
                 }
             )
@@ -1543,13 +1607,11 @@ $toreturn = [
             if "total_bytes_recv" not in server:
                 server["total_bytes_recv"] = 0
             server["connected_clients"] = len(server.get("clients", []))
-            details_info: Mapping[str, Any] = await self._get(
-                f"/api/openvpn/instances/get/{uuid}"
-            )
-            if isinstance(details_info, Mapping) and isinstance(
-                details_info.get("instance", None), Mapping
+            details_info = await self._get(f"/api/openvpn/instances/get/{uuid}")
+            if isinstance(details_info, MutableMapping) and isinstance(
+                details_info.get("instance", None), MutableMapping
             ):
-                details: Mapping[str, Any] = details_info.get("instance")
+                details = details_info.get("instance", {})
                 if details.get("server", None):
                     server["tunnel_addresses"] = [details.get("server")]
                 server["dns_servers"] = []
@@ -1560,7 +1622,7 @@ $toreturn = [
         # Clients
         for instance in instances_info.get("rows", []):
             if (
-                not isinstance(instance, Mapping)
+                not isinstance(instance, MutableMapping)
                 or instance.get("role", "").lower() != "client"
             ):
                 continue
@@ -1571,20 +1633,19 @@ $toreturn = [
                     "enabled": bool(instance.get("enabled", "0") == "1"),
                 }
 
-        _LOGGER.debug(f"[get_openvpn] openvpn: {openvpn}")
+        _LOGGER.debug("[get_openvpn] openvpn: %s", openvpn)
         return openvpn
 
     @_log_errors
-    async def get_gateways(self) -> Mapping[str, Any]:
-        gateways_info: Mapping[str, Any] | list = await self._get(
-            "/api/routes/gateway/status"
-        )
+    async def get_gateways(self) -> MutableMapping[str, Any]:
+        """Return OPNsense Gateway details."""
+        gateways_info = await self._get("/api/routes/gateway/status")
         # _LOGGER.debug(f"[get_gateways] gateways_info: {gateways_info}")
-        if not isinstance(gateways_info, Mapping):
+        if not isinstance(gateways_info, MutableMapping):
             return {}
-        gateways: Mapping[str, Any] = {}
+        gateways: MutableMapping[str, Any] = {}
         for gw_info in gateways_info.get("items", []):
-            if isinstance(gw_info, Mapping) and "name" in gw_info:
+            if isinstance(gw_info, MutableMapping) and "name" in gw_info:
                 gateways[gw_info["name"]] = gw_info
         for gateway in gateways.values():
             gateway["status"] = gateway.pop(
@@ -1594,17 +1655,17 @@ $toreturn = [
         return gateways
 
     @_log_errors
-    async def _get_telemetry_temps(self) -> Mapping[str, Any]:
-        temps_info: Mapping[str, Any] | list = await self._get(
-            "/api/diagnostics/system/systemTemperature"
-        )
+    async def _get_telemetry_temps(self) -> MutableMapping[str, Any]:
+        temps_info = await self._get("/api/diagnostics/system/systemTemperature")
         # _LOGGER.debug(f"[get_telemetry_temps] temps_info: {temps_info}")
         if not isinstance(temps_info, list) or not len(temps_info) > 0:
             return {}
-        temps: Mapping[str, Any] = {}
+        temps: MutableMapping[str, Any] = {}
         for i, temp_info in enumerate(temps_info):
-            temp: Mapping[str, Any] = {}
-            temp["temperature"] = self._try_to_float(temp_info.get("temperature", 0), 0)
+            temp: MutableMapping[str, Any] = {}
+            temp["temperature"] = OPNsenseClient._try_to_float(
+                temp_info.get("temperature", 0), 0
+            )
             temp["name"] = (
                 f"{temp_info.get('type_translated', 'Num')} {temp_info.get('device_seq', i)}"
             )
@@ -1614,7 +1675,7 @@ $toreturn = [
         return temps
 
     @_log_errors
-    async def _get_telemetry_legacy(self) -> Mapping[str, Any]:
+    async def _get_telemetry_legacy(self) -> MutableMapping[str, Any]:
         script: str = r"""
 require_once '/usr/local/www/widgets/api/plugins/system.inc';
 
@@ -1674,8 +1735,8 @@ $toreturn = [
 ];
 
 """
-        telemetry: Mapping[str, Any] = await self._exec_php(script)
-        if not isinstance(telemetry, Mapping):
+        telemetry: MutableMapping[str, Any] = await self._exec_php(script)
+        if not isinstance(telemetry, MutableMapping):
             _LOGGER.error("Invalid data returned from get_telemetry_legacy")
             return {}
         if isinstance(telemetry.get("gateways", []), list):
@@ -1693,18 +1754,17 @@ $toreturn = [
         return telemetry
 
     @_log_errors
-    async def get_notices(self) -> list:
-        notices_info: Mapping[str, Any] | list = await self._get(
-            "/api/core/system/status"
-        )
+    async def get_notices(self) -> MutableMapping[str, Any]:
+        """Get active OPNsense notices."""
+        notices_info = await self._get("/api/core/system/status")
         # _LOGGER.debug(f"[get_notices] notices_info: {notices_info}")
 
-        if not isinstance(notices_info, Mapping):
-            return []
+        if not isinstance(notices_info, MutableMapping):
+            return {}
         pending_notices_present = False
         pending_notices: list = []
         for key, notice in notices_info.items():
-            if isinstance(notice, Mapping) and notice.get("statusCode", 2) != 2:
+            if isinstance(notice, MutableMapping) and notice.get("statusCode", 2) != 2:
                 pending_notices_present = True
                 pending_notices.append(
                     {
@@ -1712,8 +1772,11 @@ $toreturn = [
                         "id": key,
                         "created_at": (
                             datetime.fromtimestamp(
-                                int(notice.get("timestamp")),
-                                tz=timezone(datetime.now().astimezone().utcoffset()),
+                                int(notice.get("timestamp", 0)),
+                                tz=timezone(
+                                    datetime.now().astimezone().utcoffset()
+                                    or timedelta()
+                                ),
                             )
                             if notice.get("timestamp", None)
                             else None
@@ -1721,74 +1784,71 @@ $toreturn = [
                     }
                 )
 
-        notices: Mapping[str, Any] = {
+        return {
             "pending_notices_present": pending_notices_present,
             "pending_notices": pending_notices,
         }
         # _LOGGER.debug(f"[get_notices] notices: {notices}")
-        return notices
 
     @_log_errors
     async def close_notice(self, id) -> bool:
-        """
-        id = "all" to wipe everything
-        """
+        """Close selected notices."""
+
+        # id = "all" to close all notices
         success = True
         if id.lower() == "all":
-            notices: Mapping[str, Any] | list = await self._get(
-                "/api/core/system/status"
-            )
+            notices = await self._get("/api/core/system/status")
             # _LOGGER.debug(f"[close_notice] notices: {notices}")
 
-            if not isinstance(notices, Mapping):
+            if not isinstance(notices, MutableMapping):
                 return False
             for key, notice in notices.items():
                 if "statusCode" in notice:
-                    dismiss: Mapping[str, Any] | list = await self._post(
+                    dismiss = await self._post(
                         "/api/core/system/dismissStatus", payload={"subject": key}
                     )
                     # _LOGGER.debug(f"[close_notice] id: {key}, dismiss: {dismiss}")
                     if (
-                        not isinstance(dismiss, Mapping)
+                        not isinstance(dismiss, MutableMapping)
                         or dismiss.get("status", "failed") != "ok"
                     ):
                         success = False
         else:
-            dismiss: Mapping[str, Any] | list = await self._post(
+            dismiss = await self._post(
                 "/api/core/system/dismissStatus", payload={"subject": id}
             )
-            _LOGGER.debug(f"[close_notice] id: {id}, dismiss: {dismiss}")
+            _LOGGER.debug("[close_notice] id: %s, dismiss: %s", id, dismiss)
             if (
-                not isinstance(dismiss, Mapping)
+                not isinstance(dismiss, MutableMapping)
                 or dismiss.get("status", "failed") != "ok"
             ):
                 success = False
-        _LOGGER.debug(f"[close_notice] success: {success}")
+        _LOGGER.debug("[close_notice] success: %s", success)
         return success
 
     @_log_errors
-    async def get_unbound_blocklist(self) -> Mapping[str, Any]:
-        response: Mapping[str, Any] | list = await self._get(
-            "/api/unbound/settings/get"
-        )
-        if not isinstance(response, Mapping):
+    async def get_unbound_blocklist(self) -> MutableMapping[str, Any]:
+        """Return the Unbound Blocklist details."""
+        response = await self._get("/api/unbound/settings/get")
+        if not isinstance(response, MutableMapping):
             _LOGGER.error("Invalid data returned from get_unbound_blocklist")
             return {}
         # _LOGGER.debug(f"[get_unbound_blocklist] response: {response}")
         dnsbl_settings = response.get("unbound", {}).get("dnsbl", {})
         # _LOGGER.debug(f"[get_unbound_blocklist] dnsbl_settings: {dnsbl_settings}")
-        if not isinstance(dnsbl_settings, Mapping):
+        if not isinstance(dnsbl_settings, MutableMapping):
             return {}
         dnsbl = {}
-        for attr in ["enabled", "safesearch", "nxdomain", "address"]:
+        for attr in ("enabled", "safesearch", "nxdomain", "address"):
             dnsbl[attr] = dnsbl_settings.get(attr, "")
-        for attr in ["type", "lists", "whitelists", "blocklists", "wildcards"]:
-            if isinstance(dnsbl_settings.get(attr, None), Mapping):
+        for attr in ("type", "lists", "whitelists", "blocklists", "wildcards"):
+            if isinstance(dnsbl_settings.get(attr, None), MutableMapping):
                 dnsbl[attr] = ",".join(
                     [
                         key
                         for key, value in dnsbl_settings.get(attr, {}).items()
-                        if isinstance(value, Mapping) and value.get("selected", 0) == 1
+                        if isinstance(value, MutableMapping)
+                        and value.get("selected", 0) == 1
                     ]
                 )
             else:
@@ -1797,7 +1857,7 @@ $toreturn = [
         return dnsbl
 
     async def _set_unbound_blocklist(self, set_state: bool) -> bool:
-        payload: Mapping[str, Any] = {}
+        payload: MutableMapping[str, Any] = {}
         payload["unbound"] = {}
         payload["unbound"]["dnsbl"] = await self.get_unbound_blocklist()
         if not payload["unbound"]["dnsbl"]:
@@ -1807,22 +1867,21 @@ $toreturn = [
             payload["unbound"]["dnsbl"]["enabled"] = "1"
         else:
             payload["unbound"]["dnsbl"]["enabled"] = "0"
-        response: Mapping[str, Any] | list = await self._post(
-            "/api/unbound/settings/set", payload=payload
-        )
-        dnsbl_resp: Mapping[str, Any] | list = await self._get(
-            "/api/unbound/service/dnsbl"
-        )
-        restart_resp: Mapping[str, Any] | list = await self._post(
-            "/api/unbound/service/restart"
-        )
+        response = await self._post("/api/unbound/settings/set", payload=payload)
+        dnsbl_resp = await self._get("/api/unbound/service/dnsbl")
+        restart_resp = await self._post("/api/unbound/service/restart")
         _LOGGER.debug(
-            f"[set_unbound_blocklist] set_state: {'On' if set_state else 'Off'}, payload: {payload}, response: {response}, dnsbl_resp: {dnsbl_resp}, restart_resp: {restart_resp}"
+            "[set_unbound_blocklist] set_state: %s, payload: %s, response: %s, dnsbl_resp: %s, restart_resp: %s",
+            "On" if set_state else "Off",
+            payload,
+            response,
+            dnsbl_resp,
+            restart_resp,
         )
         return (
-            isinstance(response, Mapping)
-            and isinstance(dnsbl_resp, Mapping)
-            and isinstance(restart_resp, Mapping)
+            isinstance(response, MutableMapping)
+            and isinstance(dnsbl_resp, MutableMapping)
+            and isinstance(restart_resp, MutableMapping)
             and response.get("result", "failed") == "saved"
             and dnsbl_resp.get("status", "failed").startswith("OK")
             and restart_resp.get("response", "failed") == "OK"
@@ -1830,27 +1889,24 @@ $toreturn = [
 
     @_log_errors
     async def enable_unbound_blocklist(self) -> bool:
+        """Enable the unbound blocklist."""
         return await self._set_unbound_blocklist(set_state=True)
 
     @_log_errors
     async def disable_unbound_blocklist(self) -> bool:
+        """Disable the unbound blocklist."""
         return await self._set_unbound_blocklist(set_state=False)
 
     @_log_errors
-    async def get_wireguard(self) -> Mapping[str, Any]:
-        summary_raw: Mapping[str, Any] | list = await self._get(
-            "/api/wireguard/service/show"
-        )
-        clients_raw: Mapping[str, Any] | list = await self._get(
-            "/api/wireguard/client/get"
-        )
-        servers_raw: Mapping[str, Any] | list = await self._get(
-            "/api/wireguard/server/get"
-        )
+    async def get_wireguard(self) -> MutableMapping[str, Any]:
+        """Get the details of the wireguard services."""
+        summary_raw = await self._get("/api/wireguard/service/show")
+        clients_raw = await self._get("/api/wireguard/client/get")
+        servers_raw = await self._get("/api/wireguard/server/get")
         if (
-            not isinstance(summary_raw, Mapping)
-            or not isinstance(clients_raw, Mapping)
-            or not isinstance(servers_raw, Mapping)
+            not isinstance(summary_raw, MutableMapping)
+            or not isinstance(clients_raw, MutableMapping)
+            or not isinstance(servers_raw, MutableMapping)
         ):
             return {}
         summary = summary_raw.get("rows", [])
@@ -1858,18 +1914,18 @@ $toreturn = [
         server_summ = servers_raw.get("server", {}).get("servers", {}).get("server", {})
         if (
             not isinstance(summary, list)
-            or not isinstance(client_summ, Mapping)
-            or not isinstance(server_summ, Mapping)
+            or not isinstance(client_summ, MutableMapping)
+            or not isinstance(server_summ, MutableMapping)
         ):
             return {}
-        servers: Mapping[str, Any] = {}
-        clients: Mapping[str, Any] = {}
+        servers: MutableMapping[str, Any] = {}
+        clients: MutableMapping[str, Any] = {}
 
         for uid, srv in server_summ.items():
-            if not isinstance(srv, Mapping):
+            if not isinstance(srv, MutableMapping):
                 continue
-            server: Mapping[str, Any] = {}
-            for attr in ["name", "pubkey", "endpoint", "peer_dns"]:
+            server: MutableMapping[str, Any] = {}
+            for attr in ("name", "pubkey", "endpoint", "peer_dns"):
                 if srv.get(attr, None):
                     if attr == "peer_dns":
                         server["dns_servers"] = [srv.get(attr)]
@@ -1877,7 +1933,7 @@ $toreturn = [
                         server[attr] = srv.get(attr)
             server["uuid"] = uid
             server["enabled"] = bool(srv.get("enabled", "") == "1")
-            server["interface"] = f"wg{srv.get('instance','')}"
+            server["interface"] = f"wg{srv.get('instance', '')}"
             server["tunnel_addresses"] = []
             for addr in srv.get("tunneladdress", {}).values():
                 if addr.get("selected", 0) == 1 and addr.get("value", None):
@@ -1898,10 +1954,10 @@ $toreturn = [
             servers[uid] = server
 
         for uid, clnt in client_summ.items():
-            if not isinstance(clnt, Mapping):
+            if not isinstance(clnt, MutableMapping):
                 continue
-            client: Mapping[str, Any] = {}
-            for attr in ["name", "pubkey"]:
+            client: MutableMapping[str, Any] = {}
+            for attr in ("name", "pubkey"):
                 if clnt.get(attr, None):
                     client[attr] = clnt.get(attr, None)
             client["uuid"] = uid
@@ -1914,34 +1970,37 @@ $toreturn = [
             for srv_id, srv in clnt.get("servers", {}).items():
                 if srv.get("selected", 0) == 1 and srv.get("value", None):
                     if servers.get(srv_id, None):
-                        add_srv: Mapping[str, Any] = {
+                        add_srv: MutableMapping[str, Any] = {
                             "name": servers[srv_id]["name"],
                             "uuid": srv_id,
                             "connected": False,
                         }
-                        for attr in ["pubkey", "interface", "tunnel_addresses"]:
+                        for attr in ("pubkey", "interface", "tunnel_addresses"):
                             if servers.get(srv_id, {}).get(attr, None):
                                 add_srv[attr] = servers[srv_id][attr]
                         client["servers"].append(add_srv)
                     else:
                         client["servers"].append(
                             {
-                                "name": peer.get("value"),
+                                "name": srv.get("value"),
                                 "uuid": srv_id,
                                 "connected": False,
                             }
                         )
             for server in servers.values():
-                if isinstance(server, Mapping) and isinstance(
+                if isinstance(server, MutableMapping) and isinstance(
                     server.get("clients", None), list
                 ):
-                    match_cl: Mapping[str, Any] = {}
-                    for cl in server.get("clients"):
-                        if isinstance(cl, Mapping) and cl.get("uuid", None) == uid:
+                    match_cl: MutableMapping[str, Any] = {}
+                    for cl in server.get("clients", {}):
+                        if (
+                            isinstance(cl, MutableMapping)
+                            and cl.get("uuid", None) == uid
+                        ):
                             match_cl = cl
                             break
                     if match_cl:
-                        for attr in ["name", "enabled", "pubkey", "tunnel_addresses"]:
+                        for attr in ("name", "enabled", "pubkey", "tunnel_addresses"):
                             if client.get(attr, None):
                                 match_cl[attr] = client.get(attr)
             client["connected_servers"] = 0
@@ -1950,24 +2009,27 @@ $toreturn = [
             clients[uid] = client
 
         for entry in summary:
-            if isinstance(entry, Mapping) and entry.get("type", "") == "interface":
+            if (
+                isinstance(entry, MutableMapping)
+                and entry.get("type", "") == "interface"
+            ):
                 for server in servers.values():
                     if (
-                        isinstance(server, Mapping)
+                        isinstance(server, MutableMapping)
                         and server.get("pubkey", "") == entry.get("public-key", "-")
                         and entry.get("status", None)
                     ):
                         server["status"] = entry.get("status")
-            elif isinstance(entry, Mapping) and entry.get("type", "") == "peer":
+            elif isinstance(entry, MutableMapping) and entry.get("type", "") == "peer":
                 for client in clients.values():
                     if (
-                        isinstance(client, Mapping)
+                        isinstance(client, MutableMapping)
                         and client.get("pubkey", "") == entry.get("public-key", "-")
                         and isinstance(client.get("servers", None), list)
                     ):
                         client["connected_servers"] = 0
-                        for srv in client.get("servers"):
-                            if isinstance(srv, Mapping) and srv.get(
+                        for srv in client.get("servers", []):
+                            if isinstance(srv, MutableMapping) and srv.get(
                                 "interface", ""
                             ) == entry.get("if", "-"):
                                 if (
@@ -1979,21 +2041,22 @@ $toreturn = [
                                     srv["bytes_recv"] = entry.get("transfer-rx")
                                     client["total_bytes_recv"] = int(
                                         client.get("total_bytes_recv", 0)
-                                    ) + int(entry.get("transfer-rx"))
+                                    ) + int(entry.get("transfer-rx", 0))
                                 if entry.get("transfer-tx", None):
                                     srv["bytes_sent"] = entry.get("transfer-tx")
                                     client["total_bytes_sent"] = int(
                                         client.get("total_bytes_sent", 0)
-                                    ) + int(entry.get("transfer-tx"))
+                                    ) + int(entry.get("transfer-tx", 0))
                                 if entry.get("latest-handshake", None):
                                     srv["latest_handshake"] = datetime.fromtimestamp(
-                                        int(entry.get("latest-handshake")),
+                                        int(entry.get("latest-handshake", 0)),
                                         tz=timezone(
                                             datetime.now().astimezone().utcoffset()
+                                            or timedelta()
                                         ),
                                     )
                                     srv["connected"] = wireguard_is_connected(
-                                        srv.get("latest_handshake")
+                                        srv.get("latest_handshake", datetime.min)
                                     )
                                     if srv["connected"]:
                                         client["connected_servers"] += 1
@@ -2001,9 +2064,7 @@ $toreturn = [
                                         "latest_handshake", None
                                     ) is None or client.get(
                                         "latest_handshake"
-                                    ) < srv.get(
-                                        "latest_handshake"
-                                    ):
+                                    ) < srv.get("latest_handshake", 0):
                                         client["latest_handshake"] = srv.get(
                                             "latest_handshake"
                                         )
@@ -2012,12 +2073,12 @@ $toreturn = [
 
                 for server in servers.values():
                     if (
-                        isinstance(server, Mapping)
+                        isinstance(server, MutableMapping)
                         and server.get("interface", "") == entry.get("if", "-")
                         and isinstance(server.get("clients", None), list)
                     ):
-                        for clnt in server.get("clients"):
-                            if isinstance(clnt, Mapping) and clnt.get(
+                        for clnt in server.get("clients", []):
+                            if isinstance(clnt, MutableMapping) and clnt.get(
                                 "pubkey", ""
                             ) == entry.get("public-key", "-"):
                                 if (
@@ -2029,21 +2090,22 @@ $toreturn = [
                                     clnt["bytes_recv"] = entry.get("transfer-rx")
                                     server["total_bytes_recv"] = int(
                                         server.get("total_bytes_recv", 0)
-                                    ) + int(entry.get("transfer-rx"))
+                                    ) + int(entry.get("transfer-rx", 0))
                                 if entry.get("transfer-tx", None):
                                     clnt["bytes_sent"] = entry.get("transfer-tx")
                                     server["total_bytes_sent"] = int(
                                         server.get("total_bytes_sent", 0)
-                                    ) + int(entry.get("transfer-tx"))
+                                    ) + int(entry.get("transfer-tx", 0))
                                 if entry.get("latest-handshake", None):
                                     clnt["latest_handshake"] = datetime.fromtimestamp(
-                                        int(entry.get("latest-handshake")),
+                                        int(entry.get("latest-handshake", 0)),
                                         tz=timezone(
                                             datetime.now().astimezone().utcoffset()
+                                            or timedelta()
                                         ),
                                     )
                                     clnt["connected"] = wireguard_is_connected(
-                                        clnt.get("latest_handshake")
+                                        clnt.get("latest_handshake", datetime.min)
                                     )
                                     if clnt["connected"]:
                                         server["connected_clients"] += 1
@@ -2051,66 +2113,59 @@ $toreturn = [
                                         "latest_handshake", None
                                     ) is None or server.get(
                                         "latest_handshake"
-                                    ) < clnt.get(
-                                        "latest_handshake"
-                                    ):
+                                    ) < clnt.get("latest_handshake", 0):
                                         server["latest_handshake"] = clnt.get(
                                             "latest_handshake"
                                         )
                                 else:
                                     clnt["connected"] = False
 
-        wireguard: Mapping[str, Any] = {"servers": servers, "clients": clients}
-        _LOGGER.debug(f"[get_wireguard] wireguard: {wireguard}")
+        wireguard: MutableMapping[str, Any] = {"servers": servers, "clients": clients}
+        _LOGGER.debug("[get_wireguard] wireguard: %s", wireguard)
         return wireguard
 
     async def toggle_vpn_instance(
         self, vpn_type: str, clients_servers: str, uuid: str
     ) -> bool:
+        """Toggle the specified VPN instance on or off."""
         if vpn_type == "openvpn":
-            success: Mapping[str, Any] | list = await self._post(
-                f"/api/openvpn/instances/toggle/{uuid}"
-            )
-            if not isinstance(success, Mapping) or not success.get("changed", False):
+            success = await self._post(f"/api/openvpn/instances/toggle/{uuid}")
+            if not isinstance(success, MutableMapping) or not success.get(
+                "changed", False
+            ):
                 return False
-            reconfigure: Mapping[str, Any] | list = await self._post(
-                "/api/openvpn/service/reconfigure"
-            )
-            if isinstance(reconfigure, Mapping):
+            reconfigure = await self._post("/api/openvpn/service/reconfigure")
+            if isinstance(reconfigure, MutableMapping):
                 return reconfigure.get("result", "") == "ok"
         elif vpn_type == "wireguard":
             if clients_servers == "clients":
-                success: Mapping[str, Any] | list = await self._post(
-                    f"/api/wireguard/client/toggleClient/{uuid}"
-                )
+                success = await self._post(f"/api/wireguard/client/toggleClient/{uuid}")
             elif clients_servers == "servers":
-                success: Mapping[str, Any] | list = await self._post(
-                    f"/api/wireguard/server/toggleServer/{uuid}"
-                )
-            if not isinstance(success, Mapping) or not success.get("changed", False):
+                success = await self._post(f"/api/wireguard/server/toggleServer/{uuid}")
+            if not isinstance(success, MutableMapping) or not success.get(
+                "changed", False
+            ):
                 return False
-            reconfigure: Mapping[str, Any] | list = await self._post(
-                "/api/wireguard/service/reconfigure"
-            )
-            if isinstance(reconfigure, Mapping):
+            reconfigure = await self._post("/api/wireguard/service/reconfigure")
+            if isinstance(reconfigure, MutableMapping):
                 return reconfigure.get("result", "") == "ok"
         return False
 
     async def reload_interface(self, if_name: str) -> bool:
-        reload: Mapping[str, Any] | list = await self._post(
-            f"/api/interfaces/overview/reloadInterface/{if_name}"
-        )
-        if not isinstance(reload, Mapping):
+        """Reload the specified interface."""
+        reload = await self._post(f"/api/interfaces/overview/reloadInterface/{if_name}")
+        if not isinstance(reload, MutableMapping):
             return False
         return reload.get("message", "").startswith("OK")
 
-    async def get_certificates(self) -> Mapping[str, Any]:
-        certs_raw: Mapping[str, Any] | list = await self._get("/api/trust/cert/search")
-        if not isinstance(certs_raw, Mapping) or not isinstance(
+    async def get_certificates(self) -> MutableMapping[str, Any]:
+        """Return the active encryption certificates."""
+        certs_raw = await self._get("/api/trust/cert/search")
+        if not isinstance(certs_raw, MutableMapping) or not isinstance(
             certs_raw.get("rows", None), list
         ):
             return {}
-        certs: Mapping[str, Any] = {}
+        certs: MutableMapping[str, Any] = {}
         for cert in certs_raw.get("rows", None):
             if cert.get("descr", None):
                 certs[cert.get("descr")] = {
@@ -2119,18 +2174,19 @@ $toreturn = [
                     "purpose": cert.get("rfc3280_purpose", None),
                     "in_use": bool(cert.get("in_use", "0") == "1"),
                     "valid_from": datetime.fromtimestamp(
-                        self._try_to_int(cert.get("valid_from", None)),
+                        OPNsenseClient._try_to_int(cert.get("valid_from", None)) or 0,
                         tz=datetime.now().astimezone().tzinfo,
                     ),
                     "valid_to": datetime.fromtimestamp(
-                        self._try_to_int(cert.get("valid_to", None)),
+                        OPNsenseClient._try_to_int(cert.get("valid_to", None)) or 0,
                         tz=datetime.now().astimezone().tzinfo,
                     ),
                 }
-        _LOGGER.debug(f"[get_certificates] certs: {certs}")
+        _LOGGER.debug("[get_certificates] certs: %s", certs)
         return certs
 
-    async def generate_vouchers(self, data: Mapping[str, Any]) -> list:
+    async def generate_vouchers(self, data: MutableMapping[str, Any]) -> list:
+        """Generate vouchers from the Voucher Server."""
         if data.get("voucher_server", None):
             server = data.get("voucher_server")
         else:
@@ -2145,13 +2201,13 @@ $toreturn = [
                 raise VoucherServerError(
                     "More than one voucher server. Must specify voucher server name"
                 )
-            server: str = servers[0]
-        server_slug: str = quote(server)
-        payload: Mapping[str, Any] = data.copy()
+            server = servers[0]
+        server_slug = quote(str(server))
+        payload: MutableMapping[str, Any] = dict(data).copy()
         payload.pop("voucher_server", None)
         voucher_url: str = f"/api/captiveportal/voucher/generateVouchers/{server_slug}/"
-        _LOGGER.debug(f"[generate_vouchers] url: {voucher_url}, payload: {payload}")
-        vouchers: Mapping[str, Any] | list = await self._post(
+        _LOGGER.debug("[generate_vouchers] url: %s, payload: %s", voucher_url, payload)
+        vouchers = await self._post(
             voucher_url,
             payload=payload,
         )
@@ -2175,27 +2231,28 @@ $toreturn = [
             if voucher.get("expirytime", None):
                 voucher["expiry_timestamp"] = voucher.get("expirytime")
                 voucher["expirytime"] = datetime.fromtimestamp(
-                    self._try_to_int(voucher.get("expirytime")),
-                    tz=timezone(datetime.now().astimezone().utcoffset()),
+                    OPNsenseClient._try_to_int(voucher.get("expirytime")) or 0,
+                    tz=timezone(datetime.now().astimezone().utcoffset() or timedelta()),
                 )
 
-            rearranged_voucher: Mapping[str, Any] = {
+            rearranged_voucher: MutableMapping[str, Any] = {
                 key: voucher[key] for key in ordered_keys if key in voucher
             }
             voucher.clear()
             voucher.update(rearranged_voucher)
 
-        _LOGGER.debug(f"[generate_vouchers] vouchers: {vouchers}")
+        _LOGGER.debug("[generate_vouchers] vouchers: %s", vouchers)
         return vouchers
 
-    async def kill_states(self, ip_addr) -> Mapping[str, Any]:
-        payload: Mapping[str, Any] = {"filter": ip_addr}
-        response: Mapping[str, Any] | list = await self._post(
+    async def kill_states(self, ip_addr) -> MutableMapping[str, Any]:
+        """Kill the active states of the IP address."""
+        payload: MutableMapping[str, Any] = {"filter": ip_addr}
+        response = await self._post(
             "/api/diagnostics/firewall/kill_states/",
             payload=payload,
         )
-        _LOGGER.debug(f"[kill_states] ip_addr: {ip_addr}, response: {response}")
-        if not isinstance(response, Mapping):
+        _LOGGER.debug("[kill_states] ip_addr: %s, response: %s", ip_addr, response)
+        if not isinstance(response, MutableMapping):
             return {"success": False, "dropped_states": 0}
         return {
             "success": bool(response.get("result", None) == "ok"),
@@ -2203,54 +2260,57 @@ $toreturn = [
         }
 
     async def toggle_alias(self, alias, toggle_on_off) -> bool:
-
-        alias_list_resp: Mapping[str, Any] | list = await self._get(
-            "/api/firewall/alias/searchItem"
-        )
-        if not isinstance(alias_list_resp, Mapping):
+        """Toggle alias on and off."""
+        alias_list_resp = await self._get("/api/firewall/alias/searchItem")
+        if not isinstance(alias_list_resp, MutableMapping):
             return False
         alias_list: list = alias_list_resp.get("rows", [])
         if not isinstance(alias_list, list):
             return False
         uuid: str | None = None
         for item in alias_list:
-            if not isinstance(item, Mapping):
+            if not isinstance(item, MutableMapping):
                 continue
             if item.get("name") == alias:
                 uuid = item.get("uuid")
                 break
         if not uuid:
             return False
-        payload: Mapping[str, Any] = {}
+        payload: MutableMapping[str, Any] = {}
         url: str = f"/api/firewall/alias/toggleItem/{uuid}"
         if toggle_on_off == "on":
-            url = url + "/1"
+            url = f"{url}/1"
         elif toggle_on_off == "off":
-            url = url + "/0"
-        response: Mapping[str, Any] | list = await self._post(
+            url = f"{url}/0"
+        response = await self._post(
             url,
             payload=payload,
         )
         _LOGGER.debug(
-            f"[toggle_alias] alias: {alias}, uuid: {uuid}, action: {toggle_on_off}, "
-            f"url: {url}, response: {response}"
+            "[toggle_alias] alias: %s, uuid: %s, action: %s, " "url: %s, response: %s",
+            alias,
+            uuid,
+            toggle_on_off,
+            url,
+            response,
         )
         if (
-            not isinstance(response, Mapping)
+            not isinstance(response, MutableMapping)
             or "result" not in response
             or response.get("result") == "failed"
         ):
             return False
 
-        set_resp: Mapping[str, Any] | list = await self._post("/api/firewall/alias/set")
-        if not isinstance(set_resp, Mapping) or set_resp.get("result") != "saved":
+        set_resp = await self._post("/api/firewall/alias/set")
+        if (
+            not isinstance(set_resp, MutableMapping)
+            or set_resp.get("result") != "saved"
+        ):
             return False
 
-        reconfigure_resp: Mapping[str, Any] | list = await self._post(
-            "/api/firewall/alias/reconfigure"
-        )
+        reconfigure_resp = await self._post("/api/firewall/alias/reconfigure")
         if (
-            not isinstance(reconfigure_resp, Mapping)
+            not isinstance(reconfigure_resp, MutableMapping)
             or reconfigure_resp.get("status") != "ok"
         ):
             return False

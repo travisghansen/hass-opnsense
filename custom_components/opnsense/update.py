@@ -1,8 +1,8 @@
 """OPNsense integration."""
 
 import asyncio
+from collections.abc import MutableMapping
 import logging
-from collections.abc import Mapping
 from typing import Any
 
 from homeassistant.components.update import (
@@ -17,9 +17,9 @@ from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.util import slugify
 
-from . import OPNsenseEntity
 from .const import COORDINATOR, DOMAIN
 from .coordinator import OPNsenseDataUpdateCoordinator
+from .entity import OPNsenseEntity
 from .helpers import dict_get
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -52,6 +52,7 @@ async def async_setup_entry(
 
 
 class OPNsenseUpdate(OPNsenseEntity, UpdateEntity):
+    """Class for OPNsense Update entitiy."""
 
     def __init__(
         self,
@@ -59,16 +60,25 @@ class OPNsenseUpdate(OPNsenseEntity, UpdateEntity):
         coordinator: OPNsenseDataUpdateCoordinator,
         entity_description: UpdateEntityDescription,
     ) -> None:
+        """Initialize update entity."""
+
+        name_suffix: str | None = (
+            entity_description.name
+            if isinstance(entity_description.name, str)
+            else None
+        )
+        unique_id_suffix: str | None = (
+            entity_description.key if isinstance(entity_description.key, str) else None
+        )
         super().__init__(
             config_entry,
             coordinator,
-            unique_id_suffix=entity_description.key,
-            name_suffix=entity_description.name,
+            unique_id_suffix=unique_id_suffix,
+            name_suffix=name_suffix,
         )
         self.entity_description: UpdateEntityDescription = entity_description
         self._attr_supported_features |= (
-            UpdateEntityFeature.INSTALL
-            | UpdateEntityFeature.RELEASE_NOTES
+            UpdateEntityFeature.INSTALL | UpdateEntityFeature.RELEASE_NOTES
             # | UpdateEntityFeature.BACKUP
             # | UpdateEntityFeature.PROGRESS
             # | UpdateEntityFeature.SPECIFIC_VERSION
@@ -82,10 +92,11 @@ class OPNsenseUpdate(OPNsenseEntity, UpdateEntity):
 
 
 class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
+    """Class for OPNsense Firmware Update entity."""
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        state: Mapping[str, Any] = self.coordinator.data
+        state: MutableMapping[str, Any] = self.coordinator.data
         try:
             if state["firmware_update_info"]["status"] == "error":
                 self._available = False
@@ -118,7 +129,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
                 dict_get(state, "firmware_update_info.status") == "update"
                 and product_version == product_latest
             ):
-                product_latest = product_latest + "+"
+                product_latest = f"{product_latest}+"
 
             if dict_get(state, "firmware_update_info.status") == "upgrade":
                 product_latest = dict_get(
@@ -133,7 +144,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
             self.config_entry.data.get("url", None) + "/ui/core/firmware#changelog"
         )
 
-        summary = None
+        summary: str | None = None
         try:
             if dict_get(state, "firmware_update_info.status") == "update":
                 product_name = dict_get(
@@ -157,22 +168,24 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
                 )
 
                 total_package_count: int = len(
-                    dict_get(state, "firmware_update_info.all_packages", {}).keys()
+                    (
+                        dict_get(state, "firmware_update_info.all_packages", {}) or {}
+                    ).keys()
                 )
                 new_package_count: int = len(
-                    dict_get(state, "firmware_update_info.new_packages", [])
+                    dict_get(state, "firmware_update_info.new_packages", []) or []
                 )
                 reinstall_package_count: int = len(
-                    dict_get(state, "firmware_update_info.reinstall_packages", [])
+                    dict_get(state, "firmware_update_info.reinstall_packages", []) or []
                 )
                 remove_package_count: int = len(
-                    dict_get(state, "firmware_update_info.remove_packages", [])
+                    dict_get(state, "firmware_update_info.remove_packages", []) or []
                 )
                 upgrade_package_count: int = len(
-                    dict_get(state, "firmware_update_info.upgrade_packages", [])
+                    dict_get(state, "firmware_update_info.upgrade_packages", []) or []
                 )
 
-                summary: str = f"""
+                summary = f"""
 ## {product_name} version {product_latest} ({product_nickname})
 
 {status_msg}
@@ -199,7 +212,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
                     else False
                 )
 
-                summary: str = f"""
+                summary = f"""
 ## {product_name} version {product_version}
 
 {status_msg}
@@ -212,7 +225,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
 
         self._attr_extra_state_attributes = {}
 
-        for key in [
+        for key in (
             "status",
             "status_msg",
             "last_check",
@@ -223,7 +236,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
             "upgrade_needs_reboot",
             "needs_reboot",
             "download_size",
-        ]:
+        ):
             slug_key = slugify(key)
             self._attr_extra_state_attributes[f"opnsense_{slug_key}"] = dict_get(
                 state, f"firmware_update_info.{key}"
@@ -238,42 +251,46 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
         self, version: str | None = None, backup: bool = False, **kwargs: Any
     ) -> None:
         """Install an update."""
-        state: Mapping[str, Any] = self.coordinator.data
-        if not isinstance(state, Mapping):
+        state: MutableMapping[str, Any] = self.coordinator.data
+        if not isinstance(state, MutableMapping):
             _LOGGER.error("Cannot update firmware, state data is missing")
             return
         upgrade_type = dict_get(state, "firmware_update_info.status")
-        if upgrade_type not in ["update", "upgrade"]:
+        if upgrade_type not in {"update", "upgrade"} or not self._client:
             return
 
         upgrade_details = await self._client.upgrade_firmware(upgrade_type)
         _LOGGER.debug(
-            f"[async_install] Starting Firmware {upgrade_type}. upgrade_details: {upgrade_details}"
+            "[async_install] Starting Firmware %s. upgrade_details: %s",
+            upgrade_type,
+            upgrade_details,
         )
         sleep_time = 10
         exceptions = 0
-        running = True
+        running: bool = True
         while running:
             await asyncio.sleep(sleep_time)
             try:
                 response = await self._client.upgrade_status()
-                _LOGGER.debug(f"[async_install] upgrade_status: {response}")
+                _LOGGER.debug("[async_install] upgrade_status: %s", response)
                 # after finished status is "done"
-                running: bool = response["status"] == "running"
-            except Exception as e:
+                running = response["status"] == "running"
+            except Exception as e:  # noqa: BLE001
                 exceptions += 1
                 _LOGGER.warning(
-                    f"Error #{exceptions} while getting upgrade_status. {e.__class__.__qualname__}: {e}"
+                    "Error #%s while getting upgrade_status. %s: %s",
+                    exceptions,
+                    e.__class__.__qualname__,
+                    e,
                 )
                 if exceptions > 3:
                     running = False
-                pass
             else:
                 exceptions = 0
 
         # check needs_reboot, if yes trigger reboot
         response = await self._client.get_firmware_update_info()
-        _LOGGER.debug(f"[async_install] firmware_update_info: {response}")
+        _LOGGER.debug("[async_install] firmware_update_info: %s", response)
 
         upgrade_needs_reboot: bool = (
             dict_get(response, "upgrade_needs_reboot") == "1"

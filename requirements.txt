@@ -1,0 +1,13 @@
+aiohttp_cors
+asyncio_mqtt
+mypy
+pydispatcher
+pytest
+pytest-homeassistant-custom-component
+ruff
+tox
+types-python-dateutil
+types-PyMySQL
+types-PyYAML
+types-pyRFC3339
+types-requests

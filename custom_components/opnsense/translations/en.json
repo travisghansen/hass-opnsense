@@ -37,7 +37,7 @@
         },
         "title": "Update connection to the OPNsense firewall / router"
       }
-    }    
+    }
   },
   "options": {
     "error": {
@@ -77,8 +77,8 @@
     },
     "device_id_mismatched": {
       "title": "OPNsense Hardware Has Changed",
-      "description": "OPNsense Device ID has changed which indicates new or changed hardware. In order to accomodate this, hass-opnsense needs to be removed and reinstalled for this router. hass-opnsense is shutting down."
+      "description": "OPNsense Device ID has changed which indicates new or changed hardware. In order to accommodate this, hass-opnsense needs to be removed and reinstalled for this router. hass-opnsense is shutting down."
     }
-  },  
+  },
   "title": "OPNsense"
 }

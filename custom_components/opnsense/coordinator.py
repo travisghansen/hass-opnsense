@@ -1,8 +1,10 @@
+"""OPNsense Coordinator."""
+
+from collections.abc import MutableMapping
 import copy
+from datetime import timedelta
 import logging
 import time
-from collections.abc import Mapping
-from datetime import timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -17,6 +19,7 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
+    """Coordinator class for OPNsense."""
 
     def __init__(
         self,
@@ -29,10 +32,11 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
     ) -> None:
         """Initialize the data object."""
         _LOGGER.info(
-            f"Initializing OPNsense Data Update Coordinator {'for Device Tracker' if device_tracker_coordinator else ''}"
+            "Initializing OPNsense Data Update Coordinator %s",
+            "for Device Tracker" if device_tracker_coordinator else "",
         )
         self._client: OPNsenseClient = client
-        self._state: Mapping[str, Any] = {}
+        self._state: MutableMapping[str, Any] = {}
         self._device_tracker_coordinator: bool = device_tracker_coordinator
         self._mismatched_count = 0
         self._device_unique_id: str = device_unique_id
@@ -43,8 +47,8 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=update_interval,
         )
 
-    async def _get_states(self, categories: list) -> Mapping[str, Any]:
-        state: Mapping[str, Any] = {}
+    async def _get_states(self, categories: list) -> MutableMapping[str, Any]:
+        state: MutableMapping[str, Any] = {}
         total_time: float = 0
         for cat in categories:
             method = getattr(self._client, cat.get("function", ""), None)
@@ -55,25 +59,29 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 elapsed_time: float = end_time - start_time
                 total_time += elapsed_time
                 _LOGGER.debug(
-                    f"[{'DT ' if self._device_tracker_coordinator else ''}Coordinator Timing] {cat.get('function','')}: {elapsed_time:.3f} seconds"
+                    "[%sCoordinator Timing] %s: %.3f seconds",
+                    "DT " if self._device_tracker_coordinator else "",
+                    cat.get("function", ""),
+                    elapsed_time,
                 )
             else:
-                _LOGGER.error(f"Method {cat.get('function','')} not found.")
+                _LOGGER.error("Method %s not found", cat.get("function", ""))
 
         return state
 
-    async def _async_update_data(self) -> Mapping[str, Any]:
+    async def _async_update_data(self):
         """Fetch the latest state from OPNsense."""
         _LOGGER.info(
-            f"{'DT ' if self._device_tracker_coordinator else ''}Updating Data"
+            "%sUpdating Data",
+            "DT " if self._device_tracker_coordinator else "",
         )
         await self._client.reset_query_counts()
 
         # copy the old data to have around
         current_time: float = time.time()
 
-        previous_state: Mapping[str, Any] = copy.deepcopy(self._state)
-        if "previous_state" in previous_state.keys():
+        previous_state: MutableMapping[str, Any] = copy.deepcopy(self._state)
+        if "previous_state" in previous_state:
             del previous_state["previous_state"]
 
         # ensure clean state each interval
@@ -102,17 +110,21 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 return {}
             if self._state.get("device_unique_id") != self._device_unique_id:
                 _LOGGER.error(
-                    f"Coordinator error. OPNsense Router Device ID ({self._state.get('device_unique_id')}) differs from the one saved in hass-opnsense ({self._device_unique_id})"
+                    "Coordinator error. OPNsense Router Device ID (%s) differs from the one saved in hass-opnsense (%s)",
+                    self._state.get("device_unique_id"),
+                    self._device_unique_id,
                 )
                 # Create repair task here
                 return {}
             restapi_count, xmlrpc_count = await self._client.get_query_counts()
             _LOGGER.debug(
-                f"DT Update Complete. REST API Queries: {restapi_count}. XMLRPC Queries: {xmlrpc_count}"
+                "DT Update Complete. REST API Queries: %s. XMLRPC Queries: %s",
+                restapi_count,
+                xmlrpc_count,
             )
             return self._state
 
-        categories: list = [
+        categories = [
             {"function": "get_device_unique_id", "state_key": "device_unique_id"},
             {
                 "function": "get_host_firmware_version",
@@ -149,12 +161,15 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             return {}
         if self._state.get("device_unique_id") != self._device_unique_id:
             _LOGGER.debug(
-                f"[Coordinator async_update_data]: config device id: {self._device_unique_id}, "
-                f"router device id: {self._state.get('device_unique_id')}"
+                "[Coordinator async_update_data]: config device id: %s, router device id: %s",
+                self._device_unique_id,
+                self._state.get("device_unique_id"),
             )
             if self._state.get("device_unique_id"):
                 _LOGGER.error(
-                    f"Coordinator error. OPNsense Router Device ID ({self._state.get('device_unique_id')}) differs from the one saved in hass-opnsense ({self._device_unique_id})"
+                    "Coordinator error. OPNsense Router Device ID (%s) differs from the one saved in hass-opnsense (%s)",
+                    self._state.get("device_unique_id"),
+                    self._device_unique_id,
                 )
                 self._mismatched_count += 1
                 # Trigger repair task and shutdown if this happens 3 times in a row
@@ -175,8 +190,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                     )
                     await self.async_shutdown()
             return {}
-        else:
-            self._mismatched_count = 0
+        self._mismatched_count = 0
 
         # calculate pps and kbps
         update_time = dict_get(self._state, "update_time")
@@ -185,8 +199,8 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         if previous_update_time is not None:
             elapsed_time = update_time - previous_update_time
 
-            for interface_name, interface in dict_get(
-                self._state, "interfaces", {}
+            for interface_name, interface in (
+                dict_get(self._state, "interfaces", {}) or {}
             ).items():
                 previous_interface = dict_get(
                     self._state,
@@ -195,7 +209,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 if previous_interface is None:
                     continue
 
-                for prop_name in [
+                for prop_name in (
                     "inbytes",
                     "outbytes",
                     # "inbytespass",
@@ -208,9 +222,12 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                     # "outpktspass",
                     # "inpktsblock",
                     # "outpktsblock",
-                ]:
+                ):
                     if "pkts" in prop_name or "bytes" in prop_name:
-                        new_property, value = await self._calculate_speed(
+                        (
+                            new_property,
+                            value,
+                        ) = await OPNsenseDataUpdateCoordinator._calculate_speed(
                             prop_name=prop_name,
                             elapsed_time=elapsed_time,
                             current_parent_value=interface[prop_name],
@@ -219,59 +236,65 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
 
                     interface[new_property] = value
 
-            for vpn_type in ["openvpn", "wireguard"]:
+            for vpn_type in ("openvpn", "wireguard"):
                 cs = ["servers"]
                 if vpn_type == "wireguard":
                     cs = ["clients", "servers"]
                 for clients_servers in cs:
-                    for instance_name in dict_get(
-                        self._state, f"{vpn_type}.{clients_servers}", {}
+                    for instance_name in (
+                        dict_get(self._state, f"{vpn_type}.{clients_servers}", {}) or {}
                     ):
-
-                        if instance_name not in dict_get(
+                        previous_clients_servers = dict_get(
                             self._state,
                             f"previous_state.{vpn_type}.{clients_servers}",
                             {},
+                        )
+                        if (
+                            not isinstance(previous_clients_servers, MutableMapping)
+                            or instance_name not in previous_clients_servers
                         ):
                             continue
 
-                        instance: Mapping[str, Any] = (
+                        instance: MutableMapping[str, Any] = (
                             self._state.get(vpn_type, {})
                             .get(clients_servers, {})
                             .get(instance_name, {})
                         )
-                        previous_instance: Mapping[str, Any] = (
+                        previous_instance: MutableMapping[str, Any] = (
                             self._state.get("previous_state", {})
                             .get(vpn_type, {})
                             .get(clients_servers, {})
                             .get(instance_name, {})
                         )
 
-                        for prop_name in [
+                        for prop_name in (
                             "total_bytes_recv",
                             "total_bytes_sent",
-                        ]:
+                        ):
                             if "pkts" in prop_name or "bytes" in prop_name:
-                                new_property, value = await self._calculate_speed(
+                                (
+                                    new_property,
+                                    value,
+                                ) = await OPNsenseDataUpdateCoordinator._calculate_speed(
                                     prop_name=prop_name,
                                     elapsed_time=elapsed_time,
-                                    current_parent_value=instance.get(prop_name),
-                                    previous_parent_value=previous_instance.get(
-                                        prop_name
-                                    ),
+                                    current_parent_value=instance[prop_name],
+                                    previous_parent_value=previous_instance[prop_name],
                                 )
 
                             instance[new_property] = value
 
         restapi_count, xmlrpc_count = await self._client.get_query_counts()
-        _LOGGER.debug(f"[async_update_data] wireguard: {self._state.get('wireguard')}")
+        _LOGGER.debug("[async_update_data] wireguard: %s", self._state.get("wireguard"))
         _LOGGER.debug(
-            f"Update Complete. REST API Queries: {restapi_count}. XMLRPC Queries: {xmlrpc_count}"
+            "Update Complete. REST API Queries: %s. XMLRPC Queries: %s",
+            restapi_count,
+            xmlrpc_count,
         )
         return self._state
 
+    @staticmethod
     async def _calculate_speed(
-        self,
         prop_name: str,
         elapsed_time,
         current_parent_value: float,
@@ -281,7 +304,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             change: float = abs(current_parent_value - previous_parent_value)
             rate: float = change / elapsed_time
         except (TypeError, KeyError, ZeroDivisionError):
-            rate: float = 0
+            rate = 0
 
         value: float = 0
         if "pkts" in prop_name:

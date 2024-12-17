@@ -6,7 +6,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  ha_and_hacs_validation:
+  ha_validation:
+    name: Hassfest Validation
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -14,6 +15,12 @@ jobs:
       - name: Hassfest validation
         continue-on-error: true
         uses: home-assistant/actions/hassfest@master
+  hacs_validation:
+    name: HACS Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
       - name: HACS validation
         continue-on-error: true
         uses: hacs/action@main
