@@ -13,7 +13,12 @@ import aiohttp
 import awesomeversion
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
 from homeassistant.const import (
     CONF_NAME,
     CONF_PASSWORD,
@@ -64,7 +69,7 @@ def is_ip_address(value) -> bool:
         return True
 
 
-def cleanse_sensitive_data(message, secrets=None):
+def cleanse_sensitive_data(message: str, secrets: list | None = None) -> str:
     """Remove sensitive data from logging messages."""
     secrets = secrets or []
     for secret in secrets:
@@ -278,17 +283,17 @@ def _log_and_set_error(
     errors["base"] = key
 
 
-class ConfigFlowHandler(ConfigFlow):
+class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for OPNsense."""
-
-    domain = DOMAIN
 
     # bumping this is what triggers async_migrate_entry for the component
     VERSION = 4
 
     # gets invoked without user input initially
     # when user submits has user_input
-    async def async_step_user(self, user_input: MutableMapping[str, Any] | None = None):
+    async def async_step_user(
+        self, user_input: MutableMapping[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Handle the initial step."""
         errors: MutableMapping[str, Any] = {}
         firmware: str = "Unknown"
@@ -347,7 +352,7 @@ class ConfigFlowHandler(ConfigFlow):
 
     async def async_step_reconfigure(
         self, user_input: MutableMapping[str, Any] | None = None
-    ):
+    ) -> ConfigFlowResult:
         """Config flow reconfigure step."""
         reconfigure_entry = self._get_reconfigure_entry()
         prev_data = reconfigure_entry.data
@@ -417,7 +422,7 @@ class ConfigFlowHandler(ConfigFlow):
             },
         )
 
-    async def async_step_import(self, user_input):
+    async def async_step_import(self, user_input) -> ConfigFlowResult:
         """Handle import."""
         return await self.async_step_user(user_input)
 
@@ -425,10 +430,10 @@ class ConfigFlowHandler(ConfigFlow):
     @callback
     def async_get_options_flow(config_entry):
         """Get the options flow for this handler."""
-        return OptionsFlowHandler(config_entry)
+        return OPNsenseOptionsFlow(config_entry)
 
 
-class OptionsFlowHandler(OptionsFlow):
+class OPNsenseOptionsFlow(OptionsFlow):
     """Handle option flow for OPNsense."""
 
     def __init__(self, config_entry: ConfigEntry) -> None:
@@ -436,7 +441,7 @@ class OptionsFlowHandler(OptionsFlow):
         self.new_options: MutableMapping[str, Any] = {}
         self.config_entry = config_entry
 
-    async def async_step_init(self, user_input=None):
+    async def async_step_init(self, user_input=None) -> ConfigFlowResult:
         """Handle options flow."""
         if user_input is not None:
             _LOGGER.debug("[options_flow init] user_input: %s", user_input)
@@ -475,7 +480,7 @@ class OptionsFlowHandler(OptionsFlow):
 
         return self.async_show_form(step_id="init", data_schema=vol.Schema(base_schema))
 
-    async def async_step_device_tracker(self, user_input=None):
+    async def async_step_device_tracker(self, user_input=None) -> ConfigFlowResult:
         """Handle device tracker list step."""
         url = self.config_entry.data[CONF_URL].strip()
         username: str = self.config_entry.data[CONF_USERNAME]
