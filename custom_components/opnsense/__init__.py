@@ -5,6 +5,7 @@ from datetime import timedelta
 import logging
 from typing import Any
 
+import aiohttp
 import awesomeversion
 
 from homeassistant.config_entries import ConfigEntry
@@ -88,7 +89,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         url=url,
         username=username,
         password=password,
-        session=async_create_clientsession(hass, raise_for_status=False),
+        session=async_create_clientsession(
+            hass=hass, raise_for_status=False, cookie_jar=aiohttp.CookieJar(unsafe=True)
+        ),
         opts={"verify_ssl": verify_ssl},
         name=entry.title,
     )
@@ -292,7 +295,9 @@ async def _migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
         url=url,
         username=username,
         password=password,
-        session=async_create_clientsession(hass, raise_for_status=False),
+        session=async_create_clientsession(
+            hass=hass, raise_for_status=False, cookie_jar=aiohttp.CookieJar(unsafe=True)
+        ),
         opts={"verify_ssl": verify_ssl},
     )
     new_device_unique_id: str | None = await client.get_device_unique_id()
@@ -399,7 +404,9 @@ async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
         url=url,
         username=username,
         password=password,
-        session=async_create_clientsession(hass, raise_for_status=False),
+        session=async_create_clientsession(
+            hass=hass, raise_for_status=False, cookie_jar=aiohttp.CookieJar(unsafe=True)
+        ),
         opts={"verify_ssl": verify_ssl},
     )
     telemetry = await client.get_telemetry()
