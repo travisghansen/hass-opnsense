@@ -290,7 +290,7 @@ async def _service_start_service(hass: HomeAssistant, call: ServiceCall) -> None
         opndevice_id=call.data.get("device_id", []),
         opnentity_id=call.data.get("entity_id", []),
     )
-    success = None
+    success: bool | None = None
     for client in clients:
         response = await client.start_service(
             call.data.get("service_id", call.data.get("service_name"))
@@ -315,7 +315,7 @@ async def _service_stop_service(hass: HomeAssistant, call: ServiceCall) -> None:
         opndevice_id=call.data.get("device_id", []),
         opnentity_id=call.data.get("entity_id", []),
     )
-    success = None
+    success: bool | None = None
     for client in clients:
         response = await client.stop_service(
             call.data.get("service_id", call.data.get("service_name"))
@@ -340,7 +340,7 @@ async def _service_restart_service(hass: HomeAssistant, call: ServiceCall) -> No
         opndevice_id=call.data.get("device_id", []),
         opnentity_id=call.data.get("entity_id", []),
     )
-    success = None
+    success: bool | None = None
     if call.data.get("only_if_running"):
         for client in clients:
             response = await client.restart_service_if_running(
@@ -520,7 +520,7 @@ async def _service_toggle_alias(hass: HomeAssistant, call: ServiceCall) -> None:
         opndevice_id=call.data.get("device_id", []),
         opnentity_id=call.data.get("entity_id", []),
     )
-    success = None
+    success: bool | None = None
     for client in clients:
         response = await client.toggle_alias(
             call.data.get("alias"), call.data.get("toggle_on_off")
