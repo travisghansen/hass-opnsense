@@ -409,7 +409,7 @@ generate_vouchers:
       advanced: false
       example: ""
       selector:
-        text:        
+        text:
     multiple_opnsense:
       name: Only needed if there is more than one OPNsense Router
       collapsed: true
@@ -501,7 +501,7 @@ toggle_alias:
             - label: "On"
               value: "on"
             - label: "Off"
-              value: "off"      
+              value: "off"
     multiple_opnsense:
       name: Only needed if there is more than one OPNsense Router
       collapsed: true

@@ -1,9 +1,9 @@
 """OPNsense integration."""
 
 import asyncio
+from collections.abc import MutableMapping
 import logging
 import traceback
-from collections.abc import Mapping
 from typing import Any
 
 from homeassistant.components.switch import (
@@ -15,7 +15,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_platform
 
-from . import OPNsenseEntity
 from .const import (
     ATTR_NAT_OUTBOUND,
     ATTR_NAT_PORT_FORWARD,
@@ -24,6 +23,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
+from .entity import OPNsenseEntity
 from .helpers import dict_get
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -32,9 +32,11 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 async def _compile_filter_switches(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
-    state: Mapping[str, Any],
+    state: MutableMapping[str, Any],
 ) -> list:
-    if not isinstance(state, Mapping) or not isinstance(state.get("config"), Mapping):
+    if not isinstance(state, MutableMapping) or not isinstance(
+        state.get("config"), MutableMapping
+    ):
         return []
     entities: list = []
     # filter rules
@@ -77,9 +79,11 @@ async def _compile_filter_switches(
 async def _compile_port_forward_switches(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
-    state: Mapping[str, Any],
+    state: MutableMapping[str, Any],
 ) -> list:
-    if not isinstance(state, Mapping) or not isinstance(state.get("config"), Mapping):
+    if not isinstance(state, MutableMapping) or not isinstance(
+        state.get("config"), MutableMapping
+    ):
         return []
 
     entities: list = []
@@ -101,7 +105,7 @@ async def _compile_port_forward_switches(
                     coordinator=coordinator,
                     entity_description=SwitchEntityDescription(
                         key=f"nat_port_forward.{tracker}".format(tracker),
-                        name=f"NAT Port Forward Rule {tracker} ({rule.get('descr','')})",
+                        name=f"NAT Port Forward Rule {tracker} ({rule.get('descr', '')})",
                         icon="mdi:network-outline",
                         # entity_category=ENTITY_CATEGORY_CONFIG,
                         device_class=SwitchDeviceClass.SWITCH,
@@ -115,9 +119,11 @@ async def _compile_port_forward_switches(
 async def _compile_nat_outbound_switches(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
-    state: Mapping[str, Any],
+    state: MutableMapping[str, Any],
 ) -> list:
-    if not isinstance(state, Mapping) or not isinstance(state.get("config"), Mapping):
+    if not isinstance(state, MutableMapping) or not isinstance(
+        state.get("config"), MutableMapping
+    ):
         return []
     entities: list = []
     # nat outbound rules
@@ -142,7 +148,7 @@ async def _compile_nat_outbound_switches(
                     coordinator=coordinator,
                     entity_description=SwitchEntityDescription(
                         key=f"nat_outbound.{tracker}",
-                        name=f"NAT Outbound Rule {tracker} ({rule.get('descr','')})",
+                        name=f"NAT Outbound Rule {tracker} ({rule.get('descr', '')})",
                         icon="mdi:network-outline",
                         # entity_category=ENTITY_CATEGORY_CONFIG,
                         device_class=SwitchDeviceClass.SWITCH,
@@ -156,9 +162,11 @@ async def _compile_nat_outbound_switches(
 async def _compile_service_switches(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
-    state: Mapping[str, Any],
+    state: MutableMapping[str, Any],
 ) -> list:
-    if not isinstance(state, Mapping) or not isinstance(state.get("services"), list):
+    if not isinstance(state, MutableMapping) or not isinstance(
+        state.get("services"), list
+    ):
         return []
 
     entities: list = []
@@ -166,7 +174,7 @@ async def _compile_service_switches(
     for service in state.get("services", []):
         if service.get("locked", 1) == 1:
             continue
-        for prop_name in ["status"]:
+        for prop_name in "status":
             entity = OPNsenseServiceSwitch(
                 config_entry=config_entry,
                 coordinator=coordinator,
@@ -186,18 +194,18 @@ async def _compile_service_switches(
 async def _compile_vpn_switches(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
-    state: Mapping[str, Any],
+    state: MutableMapping[str, Any],
 ) -> list:
     entities: list = []
-    for vpn_type in ["openvpn", "wireguard"]:
-        for clients_servers in ["clients", "servers"]:
-            if not isinstance(state, Mapping):
+    for vpn_type in ("openvpn", "wireguard"):
+        for clients_servers in ("clients", "servers"):
+            if not isinstance(state, MutableMapping):
                 return []
             for uuid, instance in (
                 state.get(vpn_type, {}).get(clients_servers, {}).items()
             ):
                 if (
-                    not isinstance(instance, Mapping)
+                    not isinstance(instance, MutableMapping)
                     or instance.get("enabled", None) is None
                 ):
                     continue
@@ -221,9 +229,9 @@ async def _compile_vpn_switches(
 async def _compile_static_switches(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
-    state: Mapping[str, Any],
+    state: MutableMapping[str, Any],
 ) -> list:
-    if not isinstance(state, Mapping):
+    if not isinstance(state, MutableMapping):
         return []
     entities: list = []
     entity = OPNsenseUnboundBlocklistSwitch(
@@ -252,8 +260,8 @@ async def async_setup_entry(
     coordinator: OPNsenseDataUpdateCoordinator = hass.data[DOMAIN][
         config_entry.entry_id
     ][COORDINATOR]
-    state: Mapping[str, Any] = coordinator.data
-    if not isinstance(state, Mapping):
+    state: MutableMapping[str, Any] = coordinator.data
+    if not isinstance(state, MutableMapping):
         _LOGGER.error("Missing state data in switch async_setup_entry")
         return
     results: list = await asyncio.gather(
@@ -272,13 +280,17 @@ async def async_setup_entry(
             entities += result
         else:
             _LOGGER.error(
-                f"Error in switch async_setup_entry. {result.__class__.__qualname__}: {result}\n{''.join(traceback.format_tb(result.__traceback__))}"
+                "Error in switch async_setup_entry. %s: %s\n%s",
+                result.__class__.__qualname__,
+                result,
+                "".join(traceback.format_tb(result.__traceback__)),
             )
-    _LOGGER.debug(f"[switch async_setup_entry] entities: {len(entities)}")
+    _LOGGER.debug("[switch async_setup_entry] entities: %s", len(entities))
     async_add_entities(entities)
 
 
 class OPNsenseSwitch(OPNsenseEntity, SwitchEntity):
+    """Class for OPNsense Switch entities."""
 
     def __init__(
         self,
@@ -286,17 +298,27 @@ class OPNsenseSwitch(OPNsenseEntity, SwitchEntity):
         coordinator: OPNsenseDataUpdateCoordinator,
         entity_description: SwitchEntityDescription,
     ) -> None:
+        """Initialize OPNsense Switch entities."""
+        name_suffix: str | None = (
+            entity_description.name
+            if isinstance(entity_description.name, str)
+            else None
+        )
+        unique_id_suffix: str | None = (
+            entity_description.key if isinstance(entity_description.key, str) else None
+        )
         super().__init__(
             config_entry,
             coordinator,
-            unique_id_suffix=entity_description.key,
-            name_suffix=entity_description.name,
+            unique_id_suffix=unique_id_suffix,
+            name_suffix=name_suffix,
         )
         self.entity_description = entity_description
         self._attr_is_on: bool = False
 
 
 class OPNsenseFilterSwitch(OPNsenseSwitch):
+    """Class for OPNsense Filter Switch entities."""
 
     def __init__(
         self,
@@ -304,13 +326,14 @@ class OPNsenseFilterSwitch(OPNsenseSwitch):
         coordinator: OPNsenseDataUpdateCoordinator,
         entity_description: SwitchEntityDescription,
     ) -> None:
+        """Initialize switch entity."""
         super().__init__(
             config_entry=config_entry,
             coordinator=coordinator,
             entity_description=entity_description,
         )
         self._tracker: str = self._opnsense_get_tracker()
-        self._rule: Mapping[str, Any] | None = None
+        self._rule: MutableMapping[str, Any] | None = None
         # _LOGGER.debug(f"[OPNsenseFilterSwitch init] Name: {self.name}, tracker: {self._tracker}")
 
     def _opnsense_get_tracker(self) -> str:
@@ -318,12 +341,12 @@ class OPNsenseFilterSwitch(OPNsenseSwitch):
         parts.pop(0)
         return ".".join(parts)
 
-    def _opnsense_get_rule(self):
-        state: Mapping[str, Any] = self.coordinator.data
+    def _opnsense_get_rule(self) -> MutableMapping[str, Any] | None:
+        state: MutableMapping[str, Any] = self.coordinator.data
         tracker: str = self._opnsense_get_tracker()
-        if not isinstance(state, Mapping):
+        if not isinstance(state, MutableMapping):
             return None
-        for rule in state.get("config", {}).get("filter", {}).get("rule", []):
+        for rule in state.get("config", {}).get("filter", {}).get("rule", {}):
             if dict_get(rule, "created.time") == tracker:
                 return rule
         return None
@@ -331,6 +354,10 @@ class OPNsenseFilterSwitch(OPNsenseSwitch):
     @callback
     def _handle_coordinator_update(self) -> None:
         self._rule = self._opnsense_get_rule()
+        if not self._rule:
+            self._available = False
+            self.async_write_ha_state()
+            return
         try:
             self._attr_is_on = bool(self._rule.get("disabled", "0") != "1")
         except (TypeError, KeyError, AttributeError):
@@ -343,26 +370,28 @@ class OPNsenseFilterSwitch(OPNsenseSwitch):
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the entity on."""
-        if self._rule is None:
+        if self._rule is None or not self._client:
             return
         await self._client.enable_filter_rule_by_created_time(self._tracker)
         await self.coordinator.async_refresh()
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the entity off."""
-        if self._rule is None:
+        if self._rule is None or not self._client:
             return
         await self._client.disable_filter_rule_by_created_time(self._tracker)
         await self.coordinator.async_refresh()
 
     @property
-    def icon(self) -> str:
+    def icon(self) -> str | None:
+        """Return the icon for the entity."""
         if self.available and self.is_on:
             return "mdi:play-network"
         return super().icon
 
 
 class OPNsenseNatSwitch(OPNsenseSwitch):
+    """Class for OPNsense NAT Switch entities."""
 
     def __init__(
         self,
@@ -370,6 +399,7 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
         coordinator: OPNsenseDataUpdateCoordinator,
         entity_description: SwitchEntityDescription,
     ) -> None:
+        """Initialize switch entity."""
         super().__init__(
             config_entry=config_entry,
             coordinator=coordinator,
@@ -377,7 +407,7 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
         )
         self._rule_type: str = self._opnsense_get_rule_type()
         self._tracker: str = self._opnsense_get_tracker()
-        self._rule: Mapping[str, Any] | None = None
+        self._rule: MutableMapping[str, Any] | None = None
         # _LOGGER.debug(f"[OPNsenseNatSwitch init] Name: {self.name}, tracker: {self._tracker}, rule_type: {self._rule_type}")
 
     def _opnsense_get_rule_type(self) -> str:
@@ -389,8 +419,8 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
         return ".".join(parts)
 
     def _opnsense_get_rule(self):
-        state: Mapping[str, Any] = self.coordinator.data
-        if not isinstance(state, Mapping):
+        state: MutableMapping[str, Any] = self.coordinator.data
+        if not isinstance(state, MutableMapping):
             return None
         rules: list = []
         if self._rule_type == ATTR_NAT_PORT_FORWARD:
@@ -411,6 +441,8 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
     @callback
     def _handle_coordinator_update(self) -> None:
         self._rule = self._opnsense_get_rule()
+        if not isinstance(self._rule, MutableMapping):
+            return
         try:
             self._attr_is_on = "disabled" not in self._rule
         except (TypeError, KeyError, AttributeError):
@@ -423,7 +455,7 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the entity on."""
-        if not isinstance(self._rule, Mapping):
+        if not isinstance(self._rule, MutableMapping) or not self._client:
             return
         if self._rule_type == ATTR_NAT_PORT_FORWARD:
             method = self._client.enable_nat_port_forward_rule_by_created_time
@@ -436,7 +468,7 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the entity off."""
-        if not isinstance(self._rule, Mapping):
+        if not isinstance(self._rule, MutableMapping) or not self._client:
             return
         if self._rule_type == ATTR_NAT_PORT_FORWARD:
             method = self._client.disable_nat_port_forward_rule_by_created_time
@@ -448,13 +480,15 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
         await self.coordinator.async_refresh()
 
     @property
-    def icon(self) -> str:
+    def icon(self) -> str | None:
+        """Return the icon for the entity."""
         if self.available and self.is_on:
             return "mdi:network"
         return super().icon
 
 
 class OPNsenseServiceSwitch(OPNsenseSwitch):
+    """Class for OPNsense Service Switch entities."""
 
     def __init__(
         self,
@@ -462,12 +496,13 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         coordinator: OPNsenseDataUpdateCoordinator,
         entity_description: SwitchEntityDescription,
     ) -> None:
+        """Initialize switch entity."""
         super().__init__(
             config_entry=config_entry,
             coordinator=coordinator,
             entity_description=entity_description,
         )
-        self._service: Mapping[str, Any] | None = None
+        self._service: MutableMapping[str, Any] | None = None
         self._prop_name: str = self._opnsense_get_property_name()
         # _LOGGER.debug(f"[OPNsenseServiceSwitch init] Name: {self.name}, prop_name: {self._prop_name}")
 
@@ -477,9 +512,9 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
     def _opnsense_get_service_id(self) -> str:
         return self.entity_description.key.split(".")[1]
 
-    def _opnsense_get_service(self) -> Mapping[str, Any] | None:
-        state: Mapping[str, Any] = self.coordinator.data
-        if not isinstance(state, Mapping):
+    def _opnsense_get_service(self) -> MutableMapping[str, Any] | None:
+        state: MutableMapping[str, Any] = self.coordinator.data
+        if not isinstance(state, MutableMapping):
             return None
         service_id: str = self._opnsense_get_service_id()
         for service in state.get("services", []):
@@ -490,6 +525,8 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
     @callback
     def _handle_coordinator_update(self) -> None:
         self._service = self._opnsense_get_service()
+        if not isinstance(self._service, MutableMapping):
+            return
         try:
             self._attr_is_on = self._service[self._prop_name]
         except (TypeError, KeyError, AttributeError):
@@ -498,7 +535,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
             return
         self._available = True
         self._attr_extra_state_attributes = {}
-        for attr in ["id", "name"]:
+        for attr in ("id", "name"):
             self._attr_extra_state_attributes[f"service_{attr}"] = self._service.get(
                 attr, None
             )
@@ -507,7 +544,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the entity on."""
-        if not isinstance(self._service, Mapping):
+        if not isinstance(self._service, MutableMapping) or not self._client:
             return
 
         result: bool = await self._client.start_service(
@@ -518,7 +555,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the entity off."""
-        if not isinstance(self._service, Mapping):
+        if not isinstance(self._service, MutableMapping) or not self._client:
             return
 
         result: bool = await self._client.stop_service(
@@ -528,53 +565,58 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
             await self.coordinator.async_refresh()
 
     @property
-    def icon(self) -> str:
+    def icon(self) -> str | None:
+        """Return the icon for the entity."""
         if self.available and self.is_on:
             return "mdi:application-cog"
         return super().icon
 
 
 class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
+    """Class for OPNsense Unbound Blocklist Switch entities."""
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         dnsbl = self.coordinator.data.get(ATTR_UNBOUND_BLOCKLIST, {})
-        if not isinstance(dnsbl, Mapping) or len(dnsbl) == 0:
+        if not isinstance(dnsbl, MutableMapping) or len(dnsbl) == 0:
             self._available = False
             self.async_write_ha_state()
             return
         self._available = True
         self._attr_is_on = dnsbl.get("enabled", "0") == "1"
-        self._attr_extra_state_attributes: Mapping[str, Any] = {
-            "Force SafeSearch": (
-                True if dnsbl.get("safesearch", "0") == "1" else False
-            ),
+        self._attr_extra_state_attributes: dict[str, Any] = {
+            "Force SafeSearch": bool(dnsbl.get("safesearch", "0") == "1"),
             "Type of DNSBL": dnsbl.get("type", ""),
             "URLs of Blocklists": dnsbl.get("lists", ""),
             "Whitelist Domains": dnsbl.get("whitelists", ""),
             "Blocklist Domains": dnsbl.get("blocklists", ""),
             "Wildcard Domains": dnsbl.get("wildcards", ""),
             "Destination Address": dnsbl.get("address", ""),
-            "Return NXDOMAIN": (True if dnsbl.get("nxdomain", "0") == "1" else False),
+            "Return NXDOMAIN": bool(dnsbl.get("nxdomain", "0") == "1"),
         }
         self.async_write_ha_state()
         # _LOGGER.debug(f"[OPNsenseUnboundBlocklistSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the entity on."""
+        if not self._client:
+            return
         result: bool = await self._client.enable_unbound_blocklist()
         if result:
             await self.coordinator.async_refresh()
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the entity off."""
+        if not self._client:
+            return
         result: bool = await self._client.disable_unbound_blocklist()
         if result:
             await self.coordinator.async_refresh()
 
 
 class OPNsenseVPNSwitch(OPNsenseSwitch):
+    """Class for OPNsense VPN Switch entities."""
 
     def __init__(
         self,
@@ -582,6 +624,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
         coordinator: OPNsenseDataUpdateCoordinator,
         entity_description: SwitchEntityDescription,
     ) -> None:
+        """Initialize switch entity."""
         super().__init__(
             config_entry=config_entry,
             coordinator=coordinator,
@@ -594,17 +637,17 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        state: Mapping[str, Any] = self.coordinator.data
-        if not isinstance(state, Mapping):
+        state: MutableMapping[str, Any] = self.coordinator.data
+        if not isinstance(state, MutableMapping):
             self._available = False
             self.async_write_ha_state()
             return
-        instance: Mapping[str, Any] = (
+        instance: MutableMapping[str, Any] = (
             state.get(self._vpn_type, {})
             .get(self._clients_servers, {})
             .get(self._uuid, {})
         )
-        if not isinstance(instance, Mapping):
+        if not isinstance(instance, MutableMapping):
             self._available = False
             self.async_write_ha_state()
             return
@@ -632,7 +675,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
                 "clients",
             ]
         elif self._clients_servers == "clients":
-            properties: list = [
+            properties = [
                 "uuid",
                 "name",
                 "connected_servers",
@@ -644,7 +687,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
                 "servers",
             ]
         else:
-            properties: list = ["uuid", "name"]
+            properties = ["uuid", "name"]
 
         for attr in properties:
             if instance.get(attr, None):
@@ -655,7 +698,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the entity on."""
 
-        if self.is_on:
+        if self.is_on or not self._client:
             return
 
         result: bool = await self._client.toggle_vpn_instance(
@@ -667,7 +710,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the entity off."""
 
-        if not self.is_on:
+        if not self.is_on or not self._client:
             return
 
         result: bool = await self._client.toggle_vpn_instance(
@@ -677,7 +720,8 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
             await self.coordinator.async_refresh()
 
     @property
-    def icon(self) -> str:
+    def icon(self) -> str | None:
+        """Return the icon for the entity."""
         if self.available and self.is_on:
             return "mdi:folder-key-network"
         return super().icon

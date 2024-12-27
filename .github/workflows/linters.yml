@@ -1,0 +1,35 @@
+name: Linters
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  linters:
+    name: Run Linters
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.x
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+      - name: Install requirements
+        run: pip install -r requirements.txt
+      - name: Run pre-commit
+        uses: pre-commit/action@v3.0.1
+      - name: Run pre-commit.ci
+        uses: pre-commit-ci/lite-action@v1.1.0
+        if: always()
+      - name: Run mypy
+        run: mypy "./custom_components/opnsense/" --install-types --non-interactive --config-file pyproject.toml
