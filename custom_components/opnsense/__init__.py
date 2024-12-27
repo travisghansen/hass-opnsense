@@ -50,6 +50,7 @@ from .const import (
     VERSION,
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
+from .helpers import is_private_ip
 from .pyopnsense import OPNsenseClient
 from .services import async_setup_services
 
@@ -90,7 +91,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         username=username,
         password=password,
         session=async_create_clientsession(
-            hass=hass, raise_for_status=False, cookie_jar=aiohttp.CookieJar(unsafe=True)
+            hass=hass,
+            raise_for_status=False,
+            cookie_jar=aiohttp.CookieJar(unsafe=is_private_ip(url)),
         ),
         opts={"verify_ssl": verify_ssl},
         name=entry.title,
@@ -296,7 +299,9 @@ async def _migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
         username=username,
         password=password,
         session=async_create_clientsession(
-            hass=hass, raise_for_status=False, cookie_jar=aiohttp.CookieJar(unsafe=True)
+            hass=hass,
+            raise_for_status=False,
+            cookie_jar=aiohttp.CookieJar(unsafe=is_private_ip(url)),
         ),
         opts={"verify_ssl": verify_ssl},
     )
@@ -405,7 +410,9 @@ async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
         username=username,
         password=password,
         session=async_create_clientsession(
-            hass=hass, raise_for_status=False, cookie_jar=aiohttp.CookieJar(unsafe=True)
+            hass=hass,
+            raise_for_status=False,
+            cookie_jar=aiohttp.CookieJar(unsafe=is_private_ip(url)),
         ),
         opts={"verify_ssl": verify_ssl},
     )

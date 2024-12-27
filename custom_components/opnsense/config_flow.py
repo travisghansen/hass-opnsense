@@ -48,6 +48,7 @@ from .const import (
     DOMAIN,
     OPNSENSE_MIN_FIRMWARE,
 )
+from .helpers import is_private_ip
 from .pyopnsense import OPNsenseClient
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -226,7 +227,9 @@ async def _get_client(
         username=user_input[CONF_USERNAME],
         password=user_input[CONF_PASSWORD],
         session=async_create_clientsession(
-            hass=hass, raise_for_status=True, cookie_jar=aiohttp.CookieJar(unsafe=True)
+            hass=hass,
+            raise_for_status=True,
+            cookie_jar=aiohttp.CookieJar(unsafe=is_private_ip(user_input[CONF_URL])),
         ),
         opts={"verify_ssl": user_input.get(CONF_VERIFY_SSL)},
         initial=True,
@@ -497,7 +500,7 @@ class OPNsenseOptionsFlow(OptionsFlow):
             session=async_create_clientsession(
                 hass=self.hass,
                 raise_for_status=False,
-                cookie_jar=aiohttp.CookieJar(unsafe=True),
+                cookie_jar=aiohttp.CookieJar(unsafe=is_private_ip(url)),
             ),
             opts={"verify_ssl": verify_ssl},
         )
