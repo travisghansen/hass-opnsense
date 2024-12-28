@@ -14,12 +14,12 @@
 | Function | Endpoints | Min OPNsense Version | Granular Permission | Comments |
 | ----- | ----- | ----- | ----- | ----- |
 | Get Interfaces<br>Get Device Unique ID | /api/interfaces/overview/export | 24.1 | Status: Interfaces | |
-| Get mbuf | /api/diagnostics/system/system_mbuf | 24.7 | Lobby: Dashboard | Part of Telemetry: Uses legacy function if <24.7 |
-| Get pfstates | /api/diagnostics/firewall/pf_states | 24.7 | Lobby: Dashboard | Part of Telemetry: Uses legacy function if <24.7 |
-| Get Memory | /api/diagnostics/system/systemResources<br>/api/diagnostics/system/system_swap | 24.7 | Lobby: Dashboard | Part of Telemetry: Uses legacy function if <24.7 |
-| Get System Time | /api/diagnostics/system/systemTime | 24.7 | Lobby: Dashboard | Part of Telemetry: Uses legacy function if <24.7 |
-| Get CPU | /api/diagnostics/cpu_usage/getCPUType<br>/api/diagnostics/cpu_usage/stream | 24.7 | Lobby: Dashboard | Part of Telemetry: Uses legacy function if <24.7 |
-| Get Filesystem | /api/diagnostics/system/systemDisk | 24.7 | Lobby: Dashboard | Part of Telemetry: Uses legacy function if <24.7 |
+| Get mbuf | /api/diagnostics/system/system_mbuf | 24.7 | Lobby: Dashboard | Part of Telemetry: Uses XMLRPC functions if <24.7 |
+| Get pfstates | /api/diagnostics/firewall/pf_states | 24.7 | Lobby: Dashboard | Part of Telemetry: Uses XMLRPC functions if <24.7 |
+| Get Memory | /api/diagnostics/system/systemResources<br>/api/diagnostics/system/system_swap | 24.7 | Lobby: Dashboard | Part of Telemetry: Uses XMLRPC functions if <24.7 |
+| Get System Time | /api/diagnostics/system/systemTime | 24.7 | Lobby: Dashboard | Part of Telemetry: Uses XMLRPC functions if <24.7 |
+| Get CPU | /api/diagnostics/cpu_usage/getCPUType<br>/api/diagnostics/cpu_usage/stream | 24.7 | Lobby: Dashboard | Part of Telemetry: Uses XMLRPC functions if <24.7 |
+| Get Filesystem | /api/diagnostics/system/systemDisk | 24.7 | Lobby: Dashboard | Part of Telemetry: Uses XMLRPC functions if <24.7 |
 | Get OpenVPN | /api/openvpn/export/providers<br>/api/openvpn/service/searchSessions<br>/api/openvpn/instances/search<br>/api/openvpn/instances/get | 20.1 | VPN: OpenVPN: Client Export Utility<br>Status: OpenVPN<br>VPN: OpenVPN: Instances | |
 | Get Gateways | /api/routes/gateway/status | 2021 | System: Gateways | |
 | Get Temperatures | /api/diagnostics/system/systemTemperature | 24.7 | Lobby: Dashboard | Part of Telemetry |
@@ -29,11 +29,11 @@
 | Firmware Changelog | /api/core/firmware/changelog/ | 2018 | System: Firmware | |
 | System Reboot | /api/core/system/reboot | 20.1 | Diagnostics: Reboot System | |
 | System Halt | /api/core/system/halt | 20.1 | Diagnostics: Halt system | |
-| Send WOL | /api/wol/wol/set | 2018 | | |
+| Send WOL | /api/wol/wol/set | 2018 | Services: Wake on LAN | |
 | Get ARP Table | /api/diagnostics/interface/search_arp | 2022 | Diagnostics: ARP Table | |
-| Get System Info | /api/diagnostics/system/systemInformation | 24.7 | Lobby: Dashboard | Uses legacy function if <24.7 |
+| Get System Info | /api/diagnostics/system/systemInformation | 24.7 | Lobby: Dashboard | Uses XMLRPC functions if <24.7 |
 | Get Notices | /api/core/system/status | 2022 | System: Status | |
-| Close Notice | /api/core/system/status<br>/api/core/system/dismissStatus | 2022 | | |
+| Close Notice | /api/core/system/status<br>/api/core/system/dismissStatus | 2022 | System: Status | |
 | Get Services | /api/core/service/search | 2023 | System: Status | |
 | Start Service | /api/core/service/start | 2023 | Status: Services | |
 | Stop Service | /api/core/service/stop | 2023 | Status: Services | |
@@ -45,3 +45,8 @@
 | Get Kea Interfaces | /api/kea/dhcpv4/get | 24.1 | Services: DHCP: Kea(v4) | |
 | Toggle VPN Instance | /api/openvpn/instances/toggle<br>/api/openvpn/service/reconfigure<br>/api/wireguard/client/toggleClient<br>/api/wireguard/server/toggleServer<br>/api/wireguard/service/reconfigure | 24.1 | VPN: OpenVPN: Instances<br>Status: OpenVPN<br>VPN: WireGuard | |
 | Get Carp Interfaces | /api/interfaces/vip_settings/get<br>/api/diagnostics/interface/get_vip_status | 2022 | Interfaces: Virtual IPs: Settings<br>Interfaces: Virtual IPs: Status | |
+| Reload Interface | /api/interfaces/overview/reloadInterface/ | 24.1 | Status: Interfaces | |
+| Get Certificates | /api/trust/cert/search | 24.7 | System: Certificate Manager | |
+| Generate Vouchers | /api/captiveportal/voucher/listProviders<br>/api/captiveportal/voucher/generateVouchers/ | 20.1 | Services: Captive Portal | |
+| Kill States | /api/diagnostics/firewall/kill_states/ | 21.7 | Diagnostics: Show States | |
+| Toggle Alias | /api/firewall/alias/searchItem<br>/api/firewall/alias/toggleItem/<br>/api/firewall/alias/set<br>/api/firewall/alias/reconfigure| 20.1 | Firewall: Alias: Edit | |

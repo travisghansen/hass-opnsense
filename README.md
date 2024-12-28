@@ -110,11 +110,15 @@ Alternatively, multiple individual permissions can be added for a user. However,
   - Diagnostics: ARP Table
   - Diagnostics: Halt system
   - Diagnostics: Reboot System
+  - Diagnostics: Show States
+  - Firewall: Alias: Edit
   - Interfaces: Virtual IPs: Settings
   - Interfaces: Virtual IPs: Status
   - Lobby: Dashboard
+  - Services: Captive Portal
   - Services: DHCP: Kea(v4)
   - Services: Unbound (MVC)
+  - Services: Wake on LAN
   - Status: DHCP leases
   - Status: DHCPv6 leases
   - Status: Interfaces
