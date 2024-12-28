@@ -106,13 +106,32 @@ Create a new admin role user (or choose an existing admin user) and create an AP
 <summary><h4>Unsupported Alternative</h4></summary>
 
 Alternatively, multiple individual permissions can be added for a user. However, it is likely that not all functions will work and there will be errors in the log. This option is unsupported. Identified permissions (very likely incomplete):
-  - `Dashboard (all)`
-  - `Lobby: Login / Logout / Dashboard`
-  - `Status: Interfaces`
-  - `Status: OpenVPN`
-  - `System: Firmware`
-  - `VPN: OpenVPN: Client Export Utility`
-  - `XMLRPC Library` (note that this privilege effectively gives the user complete access to the system via the `xmlrpc` feature)
+
+  - Diagnostics: ARP Table
+  - Diagnostics: Halt system
+  - Diagnostics: Reboot System
+  - Diagnostics: Show States
+  - Firewall: Alias: Edit
+  - Interfaces: Virtual IPs: Settings
+  - Interfaces: Virtual IPs: Status
+  - Lobby: Dashboard
+  - Services: Captive Portal
+  - Services: DHCP: Kea(v4)
+  - Services: Unbound (MVC)
+  - Services: Wake on LAN
+  - Status: DHCP leases
+  - Status: DHCPv6 leases
+  - Status: Interfaces
+  - Status: OpenVPN
+  - Status: Services
+  - System: Certificate Manager
+  - System: Firmware
+  - System: Gateways
+  - System: Status
+  - VPN: OpenVPN: Client Export Utility
+  - VPN: OpenVPN: Instances
+  - VPN: WireGuard
+  - XMLRPC Library
 
 </details>
 
