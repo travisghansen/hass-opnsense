@@ -1,7 +1,29 @@
+<a id="v0.3.13"></a>
+# [v0.3.13](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.13) - 2024-12-28
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🎉 Enhancements & New Features 🎉
+* List granular permissions by [@V4ler1an](https://github.com/V4ler1an) and [@Snuffy2](https://github.com/Snuffy2) in [#349](https://github.com/travisghansen/hass-opnsense/pull/349)
+### 🕷️ Bug Fixes 🕷️
+* Allow unsafe cookies for Private/Internal IPs by [@Snuffy2](https://github.com/Snuffy2) in [#348](https://github.com/travisghansen/hass-opnsense/pull/348)
+* Improve Get Certificates function by [@Snuffy2](https://github.com/Snuffy2) in [#351](https://github.com/travisghansen/hass-opnsense/pull/351)
+### Other Changes
+* Implement pre-commit, pyproject, ruff, mypy by [@Snuffy2](https://github.com/Snuffy2) in [#341](https://github.com/travisghansen/hass-opnsense/pull/341)
+* mypy and config_flow fix by [@Snuffy2](https://github.com/Snuffy2) in [#347](https://github.com/travisghansen/hass-opnsense/pull/347)
+* Further linting/formatting fixes by [@Snuffy2](https://github.com/Snuffy2) in [#352](https://github.com/travisghansen/hass-opnsense/pull/352)
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.12...v0.3.13
+
+[Changes][v0.3.13]
+
+
 <a id="v0.3.12"></a>
 # [v0.3.12](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.12) - 2024-12-06
 
-<!-- Release notes generated using configuration in .github/release.yml at main -->
+<h3>OPNsense Minimum Firmware Required: 24.1</h3><h4>OPNsense Recommended Firmware: 24.7</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
 ## What's Changed
 ### 🎉 Enhancements & New Features 🎉
@@ -11,7 +33,7 @@
 * Throw ClientResponseError for HTTP Status Errors 4xx by [@Snuffy2](https://github.com/Snuffy2) in [#333](https://github.com/travisghansen/hass-opnsense/pull/333)
 
 
-**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.11...v0.3.12
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.11...v0.3.12<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
 
 [Changes][v0.3.12]
 
@@ -530,6 +552,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.3.13]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.12...v0.3.13
 [v0.3.12]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.11...v0.3.12
 [v0.3.11]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.10...v0.3.11
 [v0.3.10]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.9...v0.3.10
