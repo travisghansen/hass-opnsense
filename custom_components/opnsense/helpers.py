@@ -1,8 +1,10 @@
 """Helper methods for OPNsense."""
 
 from collections.abc import MutableMapping
+import ipaddress
 import re
 from typing import Any
+from urllib.parse import urlparse
 
 
 def dict_get(data: MutableMapping[str, Any], path: str, default=None) -> Any | None:
@@ -20,3 +22,18 @@ def dict_get(data: MutableMapping[str, Any], path: str, default=None) -> Any | N
             break
 
     return result
+
+
+def is_private_ip(url: str) -> bool:
+    """Check if the address in the given URL is a private IP address."""
+    parsed_url = urlparse(url)
+    addr = parsed_url.hostname
+    if not addr:
+        return False
+
+    try:
+        ip_obj = ipaddress.ip_address(addr)
+    except ValueError:
+        return False
+    else:
+        return ip_obj.is_private
