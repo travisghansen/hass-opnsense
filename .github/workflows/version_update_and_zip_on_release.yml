@@ -40,8 +40,12 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           branch: ${{ github.event.release.target_commitish }}
           message: 'Updating to version ${{ github.ref_name }}'
-
-      - name: Extract variables from const.py
+      - name: Update Release with Version Changes Commit
+        if: ${{ github.event_name == 'release' && github.event.release.draft == false && github.event.release.prerelease == false  }}
+        run: |
+          git tag -f ${{ github.ref_name }}
+          git push -f origin ${{ github.ref_name }}
+      - name: Extract Firmware Variables from const.py
         if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
         id: extract_variables
         run: |
