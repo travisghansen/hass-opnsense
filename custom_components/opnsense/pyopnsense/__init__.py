@@ -1156,7 +1156,7 @@ $toreturn = [
             if awesomeversion.AwesomeVersion(
                 self._firmware_version
             ) < awesomeversion.AwesomeVersion("24.7"):
-                _LOGGER.info("Using legacy get_telemetry method for OPNsense < 24.7")
+                _LOGGER.info("Using legacy Get Telemetry methods for OPNsense < 24.7")
                 return await self._get_telemetry_legacy()
         except awesomeversion.exceptions.AwesomeVersionCompareException:
             pass
@@ -1560,6 +1560,14 @@ $toreturn = [
 
     @_log_errors
     async def _get_telemetry_temps(self) -> MutableMapping[str, Any]:
+        try:
+            if awesomeversion.AwesomeVersion(
+                self._firmware_version
+            ) < awesomeversion.AwesomeVersion("24.7"):
+                _LOGGER.info("Running OPNsense < 24.7, Get Temperatures not supported")
+                return {}
+        except awesomeversion.exceptions.AwesomeVersionCompareException:
+            pass
         temps_info = await self._get("/api/diagnostics/system/systemTemperature")
         # _LOGGER.debug(f"[get_telemetry_temps] temps_info: {temps_info}")
         if not isinstance(temps_info, list) or not len(temps_info) > 0:
@@ -2029,6 +2037,14 @@ $toreturn = [
 
     async def get_certificates(self) -> MutableMapping[str, Any]:
         """Return the active encryption certificates."""
+        try:
+            if awesomeversion.AwesomeVersion(
+                self._firmware_version
+            ) < awesomeversion.AwesomeVersion("24.7"):
+                _LOGGER.info("Running OPNsense < 24.7, Get Certificates not supported")
+                return {}
+        except awesomeversion.exceptions.AwesomeVersionCompareException:
+            pass
         certs_raw = await self._get("/api/trust/cert/search")
         if not isinstance(certs_raw, MutableMapping) or not isinstance(
             certs_raw.get("rows", None), list
@@ -2044,11 +2060,11 @@ $toreturn = [
                     "in_use": bool(cert.get("in_use", "0") == "1"),
                     "valid_from": datetime.fromtimestamp(
                         OPNsenseClient._try_to_int(cert.get("valid_from", None)) or 0,
-                        tz=datetime.now().astimezone().tzinfo,
+                        tz=timezone(datetime.now().astimezone().utcoffset() or timedelta()),
                     ),
                     "valid_to": datetime.fromtimestamp(
                         OPNsenseClient._try_to_int(cert.get("valid_to", None)) or 0,
-                        tz=datetime.now().astimezone().tzinfo,
+                        tz=timezone(datetime.now().astimezone().utcoffset() or timedelta()),
                     ),
                 }
         _LOGGER.debug("[get_certificates] certs: %s", certs)
