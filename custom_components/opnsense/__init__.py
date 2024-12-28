@@ -237,18 +237,12 @@ async def async_remove_config_entry_device(
     """Remove OPNsense Devices that aren't Device Tracker Devices and without any linked entities."""
 
     if device_entry.via_device_id:
-        _LOGGER.error(
-            "Remove OPNsense Device Tracker Devices via the Integration Configuration"
-        )
+        _LOGGER.error("Remove OPNsense Device Tracker Devices via the Integration Configuration")
         return False
     entity_registry = er.async_get(hass)
-    for ent in er.async_entries_for_config_entry(
-        entity_registry, config_entry.entry_id
-    ):
+    for ent in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
         if ent.device_id == device_entry.id:
-            _LOGGER.error(
-                "Cannot remove OPNsense Devices with linked entities at this time"
-            )
+            _LOGGER.error("Cannot remove OPNsense Devices with linked entities at this time")
             return False
     return True
 
@@ -318,8 +312,7 @@ async def _migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
         is_main_dev: bool = any(t[0] == "opnsense" for t in dev.identifiers)
         if is_main_dev:
             new_identifiers = {
-                (t[0], new_device_unique_id) if t[0] == "opnsense" else t
-                for t in dev.identifiers
+                (t[0], new_device_unique_id) if t[0] == "opnsense" else t for t in dev.identifiers
             }
             _LOGGER.debug(
                 "[migrate_2_to_3] dev.identifiers: %s, new_identifiers: %s",
@@ -339,9 +332,7 @@ async def _migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
                     e,
                 )
 
-    for ent in er.async_entries_for_config_entry(
-        entity_registry, config_entry.entry_id
-    ):
+    for ent in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
         # _LOGGER.debug(f"[migrate_2_to_3] ent: {ent}")
         platform = ent.entity_id.split(".")[0]
         try:
@@ -418,9 +409,7 @@ async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
     )
     telemetry = await client.get_telemetry()
 
-    for ent in er.async_entries_for_config_entry(
-        entity_registry, config_entry.entry_id
-    ):
+    for ent in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
         platform = ent.entity_id.split(".")[0]
         if platform == Platform.SENSOR:
             # _LOGGER.debug(f"[migrate_3_to_4] ent: {ent}")
@@ -429,15 +418,11 @@ async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
                     "_telemetry_interface_", "_interface_"
                 )
             elif "_telemetry_gateway_" in ent.unique_id:
-                new_unique_id = ent.unique_id.replace(
-                    "_telemetry_gateway_", "_gateway_"
-                )
+                new_unique_id = ent.unique_id.replace("_telemetry_gateway_", "_gateway_")
             elif "_connected_client_count" in ent.unique_id:
                 try:
                     entity_registry.async_remove(ent.entity_id)
-                    _LOGGER.debug(
-                        "[migrate_3_to_4] removed_entity_id: %s", ent.entity_id
-                    )
+                    _LOGGER.debug("[migrate_3_to_4] removed_entity_id: %s", ent.entity_id)
                 except (KeyError, ValueError) as e:
                     _LOGGER.error(
                         "Error removing entity: %s. %s: %s",
@@ -447,9 +432,7 @@ async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
                     )
                 continue
             elif "_telemetry_openvpn_" in ent.unique_id:
-                new_unique_id = ent.unique_id.replace(
-                    "_telemetry_openvpn_", "_openvpn_"
-                )
+                new_unique_id = ent.unique_id.replace("_telemetry_openvpn_", "_openvpn_")
             elif "_telemetry_filesystems_" in ent.unique_id:
                 new_unique_id = None
                 for filesystem in telemetry.get("filesystems", []):

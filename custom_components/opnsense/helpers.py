@@ -15,7 +15,7 @@ def dict_get(data: MutableMapping[str, Any], path: str, default=None) -> Any | N
     for key in pathList:
         if key.isnumeric():
             key = int(key)
-        if isinstance(result, (MutableMapping, list)) and key in result:
+        if isinstance(result, MutableMapping | list) and key in result:
             result = result[key]
         else:
             result = default

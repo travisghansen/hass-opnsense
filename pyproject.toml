@@ -50,15 +50,18 @@ timeout = 30
 addopts = "-rA"
 
 [tool.ruff]
+line-length = 100
+indent-width = 4
 fix = true
 force-exclude = true
+target-version = "py313"
 required-version = ">=0.8.0"
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
-line-ending = "auto"
+line-ending = "lf"
 docstring-code-format = true
 docstring-code-line-length = "dynamic"
 
@@ -284,37 +287,3 @@ max-complexity = 25
 
 [tool.ruff.lint.pydocstyle]
 property-decorators = ["propcache.cached_property"]
-
-[tool.tox.gh-actions]
-python = """
-    3.11: py311
-    3.12: py312
-    3.13: py313, lint, mypy
-"""
-
-[tool.tox]
-skipsdist = true
-requires = ["tox>=4.19"]
-env_list = ["py313", "lint", "mypy"]
-skip_missing_interpreters = true
-
-[tool.tox.env_run_base]
-description = "Run pytest under {base_python}"
-commands = [[ "pytest", "tests", { replace = "posargs", extend = true} ]]
-deps = ["-rrequirements.txt"]
-ignore_errors = true
-
-[tool.tox.env.lint]
-description = "Lint code using ruff under {base_python}"
-ignore_errors = true
-commands = [
-    ["ruff", "check", "custom_components{/}"],
-    ["ruff", "check", "tests{/}"],
-]
-deps = ["-rrequirements.txt"]
-
-[tool.tox.env.mypy]
-description = "Run mypy for type-checking under {base_python}"
-ignore_errors = true
-commands = [["mypy", "custom_components{/}opnsense"]]
-deps = ["-rrequirements.txt"]

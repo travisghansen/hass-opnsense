@@ -2,7 +2,7 @@
 
 from abc import ABC
 import asyncio
-from collections.abc import MutableMapping
+from collections.abc import Callable, MutableMapping
 from datetime import datetime, timedelta, timezone
 from functools import partial
 import inspect
@@ -13,7 +13,7 @@ import re
 import socket
 import ssl
 import traceback
-from typing import Any, Callable
+from typing import Any
 from urllib.parse import quote, quote_plus, urlparse
 import xmlrpc.client
 
@@ -36,9 +36,7 @@ def _log_errors(func: Callable):
         except asyncio.CancelledError:
             raise
         except (TimeoutError, aiohttp.ServerTimeoutError) as e:
-            _LOGGER.warning(
-                "Timeout Error in %s. Will retry. %s", func.__name__.strip("_"), e
-            )
+            _LOGGER.warning("Timeout Error in %s. Will retry. %s", func.__name__.strip("_"), e)
             if self._initial:
                 raise
         except Exception as e:
@@ -111,9 +109,7 @@ def get_ip_key(item) -> tuple:
         # If the address is empty, place it at the end
         return (3, "")
     try:
-        ip_obj: ipaddress.IPv4Address | ipaddress.IPv6Address = ipaddress.ip_address(
-            address
-        )
+        ip_obj: ipaddress.IPv4Address | ipaddress.IPv6Address = ipaddress.ip_address(address)
     except ValueError:
         return (2, "")
     else:
@@ -128,7 +124,7 @@ def dict_get(data: MutableMapping[str, Any], path: str, default=None):
     for key in pathList:
         if key.isnumeric():
             key = int(key)
-        if isinstance(result, (MutableMapping, list)) and key in result:
+        if isinstance(result, MutableMapping | list) and key in result:
             result = result[key]
         else:
             result = default
@@ -164,7 +160,9 @@ class OPNsenseClient(ABC):
         self._verify_ssl: bool = self._opts.get("verify_ssl", True)
         parts = urlparse(url.rstrip("/"))
         self._url: str = f"{parts.scheme}://{parts.netloc}"
-        self._xmlrpc_url: str = f"{parts.scheme}://{quote_plus(username)}:{quote_plus(password)}@{parts.netloc}"
+        self._xmlrpc_url: str = (
+            f"{parts.scheme}://{quote_plus(username)}:{quote_plus(password)}@{parts.netloc}"
+        )
         self._scheme: str = parts.scheme
         self._session: aiohttp.ClientSession = session
         self._initial = initial
@@ -218,9 +216,7 @@ class OPNsenseClient(ABC):
     @_xmlrpc_timeout
     async def _restore_config_section(self, section_name, data):
         params = {section_name: data}
-        proxy_method = partial(
-            self._get_proxy().opnsense.restore_config_section, params
-        )
+        proxy_method = partial(self._get_proxy().opnsense.restore_config_section, params)
         return await self._loop.run_in_executor(None, proxy_method)
 
     @_xmlrpc_timeout
@@ -247,9 +243,7 @@ $toreturn["real"] = json_encode($toreturn_real);
                 return json.loads(response.get("real", ""))
         except TypeError as e:
             stack = inspect.stack()
-            calling_function = (
-                stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
-            )
+            calling_function = stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
             _LOGGER.error(
                 "Invalid data returned from exec_php for %s. %s: %s. Called from %s",
                 calling_function,
@@ -259,9 +253,7 @@ $toreturn["real"] = json_encode($toreturn_real);
             )
         except xmlrpc.client.Fault as e:
             stack = inspect.stack()
-            calling_function = (
-                stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
-            )
+            calling_function = stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
             _LOGGER.error(
                 "Error running exec_php script for %s. %s: %s. Ensure the 'os-homeassistant-maxit' plugin has been installed on OPNsense",
                 calling_function,
@@ -270,9 +262,7 @@ $toreturn["real"] = json_encode($toreturn_real);
             )
         except socket.gaierror as e:
             stack = inspect.stack()
-            calling_function = (
-                stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
-            )
+            calling_function = stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
             _LOGGER.warning(
                 "Connection Error running exec_php script for %s. %s: %s. Will retry",
                 calling_function,
@@ -281,9 +271,7 @@ $toreturn["real"] = json_encode($toreturn_real);
             )
         except ssl.SSLError as e:
             stack = inspect.stack()
-            calling_function = (
-                stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
-            )
+            calling_function = stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
             _LOGGER.warning(
                 "SSL Connection Error running exec_php script for %s. %s: %s. Will retry",
                 calling_function,
@@ -325,9 +313,7 @@ $toreturn["real"] = json_encode($toreturn_real);
                 return True
         return False
 
-    async def _get_from_stream(
-        self, path: str
-    ) -> MutableMapping[str, Any] | list | None:
+    async def _get_from_stream(self, path: str) -> MutableMapping[str, Any] | list | None:
         self._rest_api_query_count += 1
         url: str = f"{self._url}{path}"
         _LOGGER.debug("[get_from_stream] url: %s", url)
@@ -360,9 +346,9 @@ $toreturn["real"] = json_encode($toreturn_real);
                                     message_count += 1
                                     if message_count == 2:
                                         response_str: str = line[len("data:") :].strip()
-                                        response_json: (
-                                            MutableMapping[str, Any] | list
-                                        ) = json.loads(response_str)
+                                        response_json: MutableMapping[str, Any] | list = json.loads(
+                                            response_str
+                                        )
 
                                         # _LOGGER.debug(f"[get_from_stream] response_json ({type(response_json).__name__}): {response_json}")
                                         return response_json  # Exit after processing the second message
@@ -370,9 +356,7 @@ $toreturn["real"] = json_encode($toreturn_real);
                     if response.status == 403:
                         stack = inspect.stack()
                         calling_function = (
-                            stack[1].function.strip("_")
-                            if len(stack) > 1
-                            else "Unknown"
+                            stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
                         )
                         _LOGGER.error(
                             "Permission Error in %s. Path: %s. Ensure the OPNsense user connected to HA has full Admin access",
@@ -382,9 +366,7 @@ $toreturn["real"] = json_encode($toreturn_real);
                     else:
                         stack = inspect.stack()
                         calling_function = (
-                            stack[1].function.strip("_")
-                            if len(stack) > 1
-                            else "Unknown"
+                            stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
                         )
                         _LOGGER.error(
                             "Error in %s. Path: %s. Response %s: %s",
@@ -422,15 +404,13 @@ $toreturn["real"] = json_encode($toreturn_real);
             ) as response:
                 _LOGGER.debug("[get] Response %s: %s", response.status, response.reason)
                 if response.ok:
-                    response_json: (
-                        MutableMapping[str, Any] | list
-                    ) = await response.json(content_type=None)
+                    response_json: MutableMapping[str, Any] | list = await response.json(
+                        content_type=None
+                    )
                     return response_json
                 if response.status == 403:
                     stack = inspect.stack()
-                    calling_function = (
-                        stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
-                    )
+                    calling_function = stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
                     _LOGGER.error(
                         "Permission Error in %s. Path: %s. Ensure the OPNsense user connected to HA has full Admin access",
                         calling_function,
@@ -438,9 +418,7 @@ $toreturn["real"] = json_encode($toreturn_real);
                     )
                 else:
                     stack = inspect.stack()
-                    calling_function = (
-                        stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
-                    )
+                    calling_function = stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
                     _LOGGER.error(
                         "Error in %s. Path: %s. Response %s: %s",
                         calling_function,
@@ -463,9 +441,7 @@ $toreturn["real"] = json_encode($toreturn_real);
 
         return None
 
-    async def _post(
-        self, path: str, payload=None
-    ) -> MutableMapping[str, Any] | list | None:
+    async def _post(self, path: str, payload=None) -> MutableMapping[str, Any] | list | None:
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
         self._rest_api_query_count += 1
         url: str = f"{self._url}{path}"
@@ -479,19 +455,15 @@ $toreturn["real"] = json_encode($toreturn_real);
                 timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
                 ssl=self._verify_ssl,
             ) as response:
-                _LOGGER.debug(
-                    "[post] Response %s: %s", response.status, response.reason
-                )
+                _LOGGER.debug("[post] Response %s: %s", response.status, response.reason)
                 if response.ok:
-                    response_json: (
-                        MutableMapping[str, Any] | list
-                    ) = await response.json(content_type=None)
+                    response_json: MutableMapping[str, Any] | list = await response.json(
+                        content_type=None
+                    )
                     return response_json
                 if response.status == 403:
                     stack = inspect.stack()
-                    calling_function = (
-                        stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
-                    )
+                    calling_function = stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
                     _LOGGER.error(
                         "Permission Error in %s. Path: %s. Ensure the OPNsense user connected to HA has full Admin access",
                         calling_function,
@@ -499,9 +471,7 @@ $toreturn["real"] = json_encode($toreturn_real);
                     )
                 else:
                     stack = inspect.stack()
-                    calling_function = (
-                        stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
-                    )
+                    calling_function = stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
                     _LOGGER.error(
                         "Error in %s. Path: %s. Response %s: %s",
                         calling_function,
@@ -541,20 +511,14 @@ clear_subsystem_dirty('filter');
             return None
 
         mac_addresses = [
-            d.get("macaddr_hw")
-            for d in instances
-            if d.get("is_physical") and "macaddr_hw" in d
+            d.get("macaddr_hw") for d in instances if d.get("is_physical") and "macaddr_hw" in d
         ]
 
         unique_mac_addresses: list = sorted(set(mac_addresses))
-        device_unique_id: str | None = (
-            unique_mac_addresses[0] if unique_mac_addresses else None
-        )
+        device_unique_id: str | None = unique_mac_addresses[0] if unique_mac_addresses else None
         if device_unique_id:
             device_unique_id_fmt = device_unique_id.replace(":", "_").strip()
-            _LOGGER.debug(
-                "[get_device_unique_id] device_unique_id: %s", device_unique_id_fmt
-            )
+            _LOGGER.debug("[get_device_unique_id] device_unique_id: %s", device_unique_id_fmt)
             return device_unique_id_fmt
         _LOGGER.debug("[get_device_unique_id] device_unique_id: None")
         return None
@@ -593,9 +557,7 @@ $toreturn = [
         response: MutableMapping[str, Any] = await self._exec_php(script)
         if not isinstance(response, MutableMapping):
             return {}
-        response["name"] = (
-            f"{response.pop('hostname', '')}.{response.pop('domain', '')}"
-        )
+        response["name"] = f"{response.pop('hostname', '')}.{response.pop('domain', '')}"
         return response
 
     @_log_errors
@@ -629,14 +591,10 @@ $toreturn = [
             # "last_check": "Sun Jan 15 22:05:55 UTC 2023"
             # format = "%a %b %d %H:%M:%S %Z %Y"
             try:
-                last_check: datetime = parse(
-                    status.get("last_check", 0), tzinfos=AMBIGUOUS_TZINFOS
-                )
+                last_check: datetime = parse(status.get("last_check", 0), tzinfos=AMBIGUOUS_TZINFOS)
                 if last_check.tzinfo is None:
                     last_check = last_check.replace(
-                        tzinfo=timezone(
-                            datetime.now().astimezone().utcoffset() or timedelta()
-                        )
+                        tzinfo=timezone(datetime.now().astimezone().utcoffset() or timedelta())
                     )
 
                 last_check_timestamp: float = last_check.timestamp()
@@ -851,9 +809,9 @@ $toreturn = [
         if services is None or not isinstance(services, list):
             return False
         for svc in services:
-            if (
-                svc.get("name", None) == service or svc.get("id", None) == service
-            ) and svc.get("status", False):
+            if (svc.get("name", None) == service or svc.get("id", None) == service) and svc.get(
+                "status", False
+            ):
                 return True
         return False
 
@@ -862,13 +820,8 @@ $toreturn = [
             return False
         api_addr: str = f"/api/core/service/{action}/{service}"
         response = await self._post(api_addr)
-        _LOGGER.debug(
-            "[%s_service] service: %s, response: %s", action, service, response
-        )
-        return (
-            isinstance(response, MutableMapping)
-            and response.get("result", "failed") == "ok"
-        )
+        _LOGGER.debug("[%s_service] service: %s, response: %s", action, service, response)
+        return isinstance(response, MutableMapping) and response.get("result", "failed") == "ok"
 
     @_log_errors
     async def start_service(self, service: str) -> bool:
@@ -921,9 +874,7 @@ $toreturn = [
         sorted_lease_interfaces: MutableMapping[str, Any] = {
             key: lease_interfaces[key] for key in sorted(lease_interfaces)
         }
-        sorted_leases: MutableMapping[str, Any] = {
-            key: leases[key] for key in sorted(leases)
-        }
+        sorted_leases: MutableMapping[str, Any] = {key: leases[key] for key in sorted(leases)}
         for if_subnet in sorted_leases.values():
             sorted_if: list = sorted(if_subnet, key=get_ip_key)
             if_subnet = sorted_if
@@ -942,9 +893,7 @@ $toreturn = [
         if not isinstance(response, MutableMapping):
             return {}
         lease_interfaces: MutableMapping[str, Any] = {}
-        general: MutableMapping[str, Any] = response.get("dhcpv4", {}).get(
-            "general", {}
-        )
+        general: MutableMapping[str, Any] = response.get("dhcpv4", {}).get("general", {})
         if general.get("enabled", "0") != "1":
             return {}
         for if_name, iface in general.get("interfaces", {}).items():
@@ -998,8 +947,7 @@ $toreturn = [
             if (
                 lease_info.get("hwaddr", None)
                 and lease_info.get("hwaddr") in reservations
-                and reservations[lease_info.get("hwaddr")]
-                == lease_info.get("address", None)
+                and reservations[lease_info.get("hwaddr")] == lease_info.get("address", None)
             ):
                 lease["type"] = "static"
             else:
@@ -1049,13 +997,9 @@ $toreturn = [
             lease["type"] = lease_info.get("type", None)
             lease["mac"] = lease_info.get("mac", None)
             if lease_info.get("ends", None):
-                dt: datetime = datetime.strptime(
-                    lease_info.get("ends", None), "%Y/%m/%d %H:%M:%S"
-                )
+                dt: datetime = datetime.strptime(lease_info.get("ends", None), "%Y/%m/%d %H:%M:%S")
                 lease["expires"] = dt.replace(
-                    tzinfo=timezone(
-                        datetime.now().astimezone().utcoffset() or timedelta()
-                    )
+                    tzinfo=timezone(datetime.now().astimezone().utcoffset() or timedelta())
                 )
                 if lease["expires"] < datetime.now().astimezone():
                     continue
@@ -1096,13 +1040,9 @@ $toreturn = [
             lease["type"] = lease_info.get("type", None)
             lease["mac"] = lease_info.get("mac", None)
             if lease_info.get("ends", None):
-                dt: datetime = datetime.strptime(
-                    lease_info.get("ends", None), "%Y/%m/%d %H:%M:%S"
-                )
+                dt: datetime = datetime.strptime(lease_info.get("ends", None), "%Y/%m/%d %H:%M:%S")
                 lease["expires"] = dt.replace(
-                    tzinfo=timezone(
-                        datetime.now().astimezone().utcoffset() or timedelta()
-                    )
+                    tzinfo=timezone(datetime.now().astimezone().utcoffset() or timedelta())
                 )
                 if lease["expires"] < datetime.now().astimezone():
                     continue
@@ -1148,10 +1088,7 @@ $toreturn = [
                 continue
 
             for status in vip_status:
-                if (
-                    vip.get("interface", "").lower()
-                    == status.get("interface", "_").lower()
-                ):
+                if vip.get("interface", "").lower() == status.get("interface", "_").lower():
                     vip["status"] = status.get("status", None)
                     break
             if "status" not in vip or not vip.get("status"):
@@ -1182,9 +1119,7 @@ $toreturn = [
     @_log_errors
     async def send_wol(self, interface, mac) -> bool:
         """Send a wake on lan packet to the specified MAC address."""
-        payload: MutableMapping[str, Any] = {
-            "wake": {"interface": interface, "mac": mac}
-        }
+        payload: MutableMapping[str, Any] = {"wake": {"interface": interface, "mac": mac}}
         _LOGGER.debug("[send_wol] payload: %s", payload)
         response = await self._post("/api/wol/wol/set", payload)
         _LOGGER.debug("[send_wol] response: %s", response)
@@ -1246,10 +1181,7 @@ $toreturn = [
         interfaces: MutableMapping[str, Any] = {}
         for ifinfo in interface_info:
             interface: MutableMapping[str, Any] = {}
-            if (
-                not isinstance(ifinfo, MutableMapping)
-                or ifinfo.get("identifier", "") == ""
-            ):
+            if not isinstance(ifinfo, MutableMapping) or ifinfo.get("identifier", "") == "":
                 continue
             interface["inpkts"] = OPNsenseClient._try_to_int(
                 ifinfo.get("statistics", {}).get("packets received", None)
@@ -1291,10 +1223,7 @@ $toreturn = [
             interface["gateways"] = ifinfo.get("gateways", [])
             interface["routes"] = ifinfo.get("routes", [])
             interface["device"] = ifinfo.get("device", None)
-            if (
-                ifinfo.get("macaddr", None)
-                and ifinfo.get("macaddr", None) != "00:00:00:00:00:00"
-            ):
+            if ifinfo.get("macaddr", None) and ifinfo.get("macaddr", None) != "00:00:00:00:00:00":
                 interface["mac"] = ifinfo.get("macaddr", None)
             interface["enabled"] = ifinfo.get("enabled", None)
             interface["vlan_tag"] = ifinfo.get("vlan_tag", None)
@@ -1354,9 +1283,7 @@ $toreturn = [
         memory["physmem"] = OPNsenseClient._try_to_int(
             memory_info.get("memory", {}).get("total", None)
         )
-        memory["used"] = OPNsenseClient._try_to_int(
-            memory_info.get("memory", {}).get("used", None)
-        )
+        memory["used"] = OPNsenseClient._try_to_int(memory_info.get("memory", {}).get("used", None))
         memory["used_percent"] = (
             round(memory["used"] / memory["physmem"] * 100)
             if isinstance(memory["used"], int)
@@ -1376,9 +1303,7 @@ $toreturn = [
         memory["swap_total"] = OPNsenseClient._try_to_int(
             swap_info.get("swap", [])[0].get("total", None)
         )
-        memory["swap_reserved"] = OPNsenseClient._try_to_int(
-            swap_info["swap"][0].get("used", None)
-        )
+        memory["swap_reserved"] = OPNsenseClient._try_to_int(swap_info["swap"][0].get("used", None))
         memory["swap_used_percent"] = (
             round(memory["swap_reserved"] / memory["swap_total"] * 100)
             if isinstance(memory["swap_reserved"], int)
@@ -1436,28 +1361,18 @@ $toreturn = [
             return {}
         cpu: MutableMapping[str, Any] = {}
         cores_match = re.search(r"\((\d+) cores", cputype_info[0])
-        cpu["count"] = (
-            OPNsenseClient._try_to_int(cores_match.group(1)) if cores_match else 0
-        )
+        cpu["count"] = OPNsenseClient._try_to_int(cores_match.group(1)) if cores_match else 0
 
-        cpustream_info = await self._get_from_stream(
-            "/api/diagnostics/cpu_usage/stream"
-        )
+        cpustream_info = await self._get_from_stream("/api/diagnostics/cpu_usage/stream")
         # {"total":29,"user":2,"nice":0,"sys":27,"intr":0,"idle":70}
         # _LOGGER.debug(f"[get_telemetry_cpu] cpustream_info: {cpustream_info}")
         if not isinstance(cpustream_info, MutableMapping):
             return cpu
-        cpu["usage_total"] = OPNsenseClient._try_to_int(
-            cpustream_info.get("total", None)
-        )
+        cpu["usage_total"] = OPNsenseClient._try_to_int(cpustream_info.get("total", None))
         cpu["usage_user"] = OPNsenseClient._try_to_int(cpustream_info.get("user", None))
         cpu["usage_nice"] = OPNsenseClient._try_to_int(cpustream_info.get("nice", None))
-        cpu["usage_system"] = OPNsenseClient._try_to_int(
-            cpustream_info.get("sys", None)
-        )
-        cpu["usage_interrupt"] = OPNsenseClient._try_to_int(
-            cpustream_info.get("intr", None)
-        )
+        cpu["usage_system"] = OPNsenseClient._try_to_int(cpustream_info.get("sys", None))
+        cpu["usage_interrupt"] = OPNsenseClient._try_to_int(cpustream_info.get("intr", None))
         cpu["usage_idle"] = OPNsenseClient._try_to_int(cpustream_info.get("idle", None))
         # _LOGGER.debug(f"[get_telemetry_cpu] cpu: {cpu}")
         return cpu
@@ -1510,10 +1425,7 @@ $toreturn = [
                 or instance.get("role", "").lower() != "server"
             ):
                 continue
-            if (
-                instance.get("uuid", None)
-                and instance.get("uuid", None) not in openvpn["servers"]
-            ):
+            if instance.get("uuid", None) and instance.get("uuid", None) not in openvpn["servers"]:
                 openvpn["servers"][instance.get("uuid")] = {
                     "uuid": instance.get("uuid"),
                     "name": instance.get("description"),
@@ -1556,9 +1468,7 @@ $toreturn = [
                 elif session.get("status", None) == "failed":
                     openvpn["servers"][server_id].update({"status": "failed"})
                 elif isinstance(session.get("status", None), str):
-                    openvpn["servers"][server_id].update(
-                        {"status": session.get("status")}
-                    )
+                    openvpn["servers"][server_id].update({"status": session.get("status")})
                 else:
                     openvpn["servers"][server_id].update({"status": "down"})
             else:
@@ -1567,9 +1477,7 @@ $toreturn = [
                         "status": "up",
                         "latest_handshake": datetime.fromtimestamp(
                             int(session.get("connected_since__time_t_")),
-                            tz=timezone(
-                                datetime.now().astimezone().utcoffset() or timedelta()
-                            ),
+                            tz=timezone(datetime.now().astimezone().utcoffset() or timedelta()),
                         ),
                         "total_bytes_recv": OPNsenseClient._try_to_int(
                             session.get("bytes_received", 0), 0
@@ -1594,9 +1502,7 @@ $toreturn = [
                     "tunnel_addresses": [route.get("virtual_address")],
                     "latest_handshake": datetime.fromtimestamp(
                         int(route.get("last_ref__time_t_", 0)),
-                        tz=timezone(
-                            datetime.now().astimezone().utcoffset() or timedelta()
-                        ),
+                        tz=timezone(datetime.now().astimezone().utcoffset() or timedelta()),
                     ),
                 }
             )
@@ -1648,9 +1554,7 @@ $toreturn = [
             if isinstance(gw_info, MutableMapping) and "name" in gw_info:
                 gateways[gw_info["name"]] = gw_info
         for gateway in gateways.values():
-            gateway["status"] = gateway.pop(
-                "status_translated", gateway.get("status", "")
-            ).lower()
+            gateway["status"] = gateway.pop("status_translated", gateway.get("status", "")).lower()
         # _LOGGER.debug(f"[get_gateways] gateways: {gateways}")
         return gateways
 
@@ -1663,9 +1567,7 @@ $toreturn = [
         temps: MutableMapping[str, Any] = {}
         for i, temp_info in enumerate(temps_info):
             temp: MutableMapping[str, Any] = {}
-            temp["temperature"] = OPNsenseClient._try_to_float(
-                temp_info.get("temperature", 0), 0
-            )
+            temp["temperature"] = OPNsenseClient._try_to_float(temp_info.get("temperature", 0), 0)
             temp["name"] = (
                 f"{temp_info.get('type_translated', 'Num')} {temp_info.get('device_seq', i)}"
             )
@@ -1745,9 +1647,7 @@ $toreturn = [
             for filesystem in telemetry.get("filesystems", []):
                 filesystem["blocks"] = filesystem.pop("size", None)
                 try:
-                    filesystem["used_pct"] = int(
-                        filesystem.pop("capacity", "").strip("%")
-                    )
+                    filesystem["used_pct"] = int(filesystem.pop("capacity", "").strip("%"))
                 except ValueError:
                     filesystem.pop("capacity", None)
         # _LOGGER.debug(f"[get_telemetry_legacy] telemetry: {telemetry}")
@@ -1773,10 +1673,7 @@ $toreturn = [
                         "created_at": (
                             datetime.fromtimestamp(
                                 int(notice.get("timestamp", 0)),
-                                tz=timezone(
-                                    datetime.now().astimezone().utcoffset()
-                                    or timedelta()
-                                ),
+                                tz=timezone(datetime.now().astimezone().utcoffset() or timedelta()),
                             )
                             if notice.get("timestamp", None)
                             else None
@@ -1814,14 +1711,9 @@ $toreturn = [
                     ):
                         success = False
         else:
-            dismiss = await self._post(
-                "/api/core/system/dismissStatus", payload={"subject": id}
-            )
+            dismiss = await self._post("/api/core/system/dismissStatus", payload={"subject": id})
             _LOGGER.debug("[close_notice] id: %s, dismiss: %s", id, dismiss)
-            if (
-                not isinstance(dismiss, MutableMapping)
-                or dismiss.get("status", "failed") != "ok"
-            ):
+            if not isinstance(dismiss, MutableMapping) or dismiss.get("status", "failed") != "ok":
                 success = False
         _LOGGER.debug("[close_notice] success: %s", success)
         return success
@@ -1847,8 +1739,7 @@ $toreturn = [
                     [
                         key
                         for key, value in dnsbl_settings.get(attr, {}).items()
-                        if isinstance(value, MutableMapping)
-                        and value.get("selected", 0) == 1
+                        if isinstance(value, MutableMapping) and value.get("selected", 0) == 1
                     ]
                 )
             else:
@@ -1993,10 +1884,7 @@ $toreturn = [
                 ):
                     match_cl: MutableMapping[str, Any] = {}
                     for cl in server.get("clients", {}):
-                        if (
-                            isinstance(cl, MutableMapping)
-                            and cl.get("uuid", None) == uid
-                        ):
+                        if isinstance(cl, MutableMapping) and cl.get("uuid", None) == uid:
                             match_cl = cl
                             break
                     if match_cl:
@@ -2009,10 +1897,7 @@ $toreturn = [
             clients[uid] = client
 
         for entry in summary:
-            if (
-                isinstance(entry, MutableMapping)
-                and entry.get("type", "") == "interface"
-            ):
+            if isinstance(entry, MutableMapping) and entry.get("type", "") == "interface":
                 for server in servers.values():
                     if (
                         isinstance(server, MutableMapping)
@@ -2051,8 +1936,7 @@ $toreturn = [
                                     srv["latest_handshake"] = datetime.fromtimestamp(
                                         int(entry.get("latest-handshake", 0)),
                                         tz=timezone(
-                                            datetime.now().astimezone().utcoffset()
-                                            or timedelta()
+                                            datetime.now().astimezone().utcoffset() or timedelta()
                                         ),
                                     )
                                     srv["connected"] = wireguard_is_connected(
@@ -2060,14 +1944,10 @@ $toreturn = [
                                     )
                                     if srv["connected"]:
                                         client["connected_servers"] += 1
-                                    if client.get(
-                                        "latest_handshake", None
-                                    ) is None or client.get(
+                                    if client.get("latest_handshake", None) is None or client.get(
                                         "latest_handshake"
                                     ) < srv.get("latest_handshake", 0):
-                                        client["latest_handshake"] = srv.get(
-                                            "latest_handshake"
-                                        )
+                                        client["latest_handshake"] = srv.get("latest_handshake")
                                 else:
                                     srv["connected"] = False
 
@@ -2100,8 +1980,7 @@ $toreturn = [
                                     clnt["latest_handshake"] = datetime.fromtimestamp(
                                         int(entry.get("latest-handshake", 0)),
                                         tz=timezone(
-                                            datetime.now().astimezone().utcoffset()
-                                            or timedelta()
+                                            datetime.now().astimezone().utcoffset() or timedelta()
                                         ),
                                     )
                                     clnt["connected"] = wireguard_is_connected(
@@ -2109,14 +1988,10 @@ $toreturn = [
                                     )
                                     if clnt["connected"]:
                                         server["connected_clients"] += 1
-                                    if server.get(
-                                        "latest_handshake", None
-                                    ) is None or server.get(
+                                    if server.get("latest_handshake", None) is None or server.get(
                                         "latest_handshake"
                                     ) < clnt.get("latest_handshake", 0):
-                                        server["latest_handshake"] = clnt.get(
-                                            "latest_handshake"
-                                        )
+                                        server["latest_handshake"] = clnt.get("latest_handshake")
                                 else:
                                     clnt["connected"] = False
 
@@ -2124,15 +1999,11 @@ $toreturn = [
         _LOGGER.debug("[get_wireguard] wireguard: %s", wireguard)
         return wireguard
 
-    async def toggle_vpn_instance(
-        self, vpn_type: str, clients_servers: str, uuid: str
-    ) -> bool:
+    async def toggle_vpn_instance(self, vpn_type: str, clients_servers: str, uuid: str) -> bool:
         """Toggle the specified VPN instance on or off."""
         if vpn_type == "openvpn":
             success = await self._post(f"/api/openvpn/instances/toggle/{uuid}")
-            if not isinstance(success, MutableMapping) or not success.get(
-                "changed", False
-            ):
+            if not isinstance(success, MutableMapping) or not success.get("changed", False):
                 return False
             reconfigure = await self._post("/api/openvpn/service/reconfigure")
             if isinstance(reconfigure, MutableMapping):
@@ -2142,9 +2013,7 @@ $toreturn = [
                 success = await self._post(f"/api/wireguard/client/toggleClient/{uuid}")
             elif clients_servers == "servers":
                 success = await self._post(f"/api/wireguard/server/toggleServer/{uuid}")
-            if not isinstance(success, MutableMapping) or not success.get(
-                "changed", False
-            ):
+            if not isinstance(success, MutableMapping) or not success.get("changed", False):
                 return False
             reconfigure = await self._post("/api/wireguard/service/reconfigure")
             if isinstance(reconfigure, MutableMapping):
@@ -2192,9 +2061,7 @@ $toreturn = [
         else:
             servers = await self._get("/api/captiveportal/voucher/listProviders")
             if not isinstance(servers, list):
-                raise VoucherServerError(
-                    f"Error getting list of voucher servers: {servers}"
-                )
+                raise VoucherServerError(f"Error getting list of voucher servers: {servers}")
             if len(servers) == 0:
                 raise VoucherServerError("No voucher servers exist")
             if len(servers) != 1:
@@ -2225,9 +2092,7 @@ $toreturn = [
         ]
         for voucher in vouchers:
             if voucher.get("validity", None):
-                voucher["validity_str"] = human_friendly_duration(
-                    voucher.get("validity")
-                )
+                voucher["validity_str"] = human_friendly_duration(voucher.get("validity"))
             if voucher.get("expirytime", None):
                 voucher["expiry_timestamp"] = voucher.get("expirytime")
                 voucher["expirytime"] = datetime.fromtimestamp(
@@ -2287,7 +2152,7 @@ $toreturn = [
             payload=payload,
         )
         _LOGGER.debug(
-            "[toggle_alias] alias: %s, uuid: %s, action: %s, " "url: %s, response: %s",
+            "[toggle_alias] alias: %s, uuid: %s, action: %s, url: %s, response: %s",
             alias,
             uuid,
             toggle_on_off,
@@ -2302,10 +2167,7 @@ $toreturn = [
             return False
 
         set_resp = await self._post("/api/firewall/alias/set")
-        if (
-            not isinstance(set_resp, MutableMapping)
-            or set_resp.get("result") != "saved"
-        ):
+        if not isinstance(set_resp, MutableMapping) or set_resp.get("result") != "saved":
             return False
 
         reconfigure_resp = await self._post("/api/firewall/alias/reconfigure")

@@ -66,9 +66,7 @@ async def _compile_filesystem_sensors(
     entities: list = []
 
     for filesystem in dict_get(state, "telemetry.filesystems", []) or []:
-        filesystem_slug: str = slugify_filesystem_mountpoint(
-            filesystem.get("mountpoint", None)
-        )
+        filesystem_slug: str = slugify_filesystem_mountpoint(filesystem.get("mountpoint", None))
         enabled_default = False
         if filesystem_slug == "root":
             enabled_default = True
@@ -386,9 +384,7 @@ async def _compile_vpn_sensors(
                     properties.append("connected_servers")
                 for prop_name in properties:
                     state_class: SensorStateClass | None = None
-                    native_unit_of_measurement: (
-                        UnitOfDataRate | UnitOfInformation | None
-                    ) = None
+                    native_unit_of_measurement: UnitOfDataRate | UnitOfInformation | None = None
                     device_class: SensorDeviceClass | None = None
                     enabled_default = False
                     suggested_display_precision = None
@@ -449,9 +445,9 @@ async def async_setup_entry(
 ) -> None:
     """Set up the OPNsense sensors."""
 
-    coordinator: OPNsenseDataUpdateCoordinator = hass.data[DOMAIN][
-        config_entry.entry_id
-    ][COORDINATOR]
+    coordinator: OPNsenseDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id][
+        COORDINATOR
+    ]
     state: MutableMapping[str, Any] = coordinator.data
     if not isinstance(state, MutableMapping):
         _LOGGER.error("Missing state data in sensor async_setup_entry")
@@ -512,9 +508,7 @@ class OPNsenseSensor(OPNsenseEntity, SensorEntity):
     ) -> None:
         """Initialize the sensor."""
         name_suffix: str | None = (
-            entity_description.name
-            if isinstance(entity_description.name, str)
-            else None
+            entity_description.name if isinstance(entity_description.name, str) else None
         )
         unique_id_suffix: str | None = (
             entity_description.key if isinstance(entity_description.key, str) else None
@@ -925,9 +919,7 @@ class OPNsenseTempSensor(OPNsenseSensor):
             return
         sensor_temp_device: str = self.entity_description.key.split(".")[2]
         temp: MutableMapping[str, Any] = {}
-        for temp_device, temp_temp in (
-            state.get("telemetry", {}).get("temps", {}).items()
-        ):
+        for temp_device, temp_temp in state.get("telemetry", {}).get("temps", {}).items():
             if temp_device == sensor_temp_device:
                 temp = temp_temp
                 break
@@ -981,9 +973,7 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
             try:
                 for ifn, if_descr in lease_interfaces.items():
                     if_count: int = sum(
-                        1
-                        for d in leases.get(ifn, [])
-                        if d.get("address") not in {None, ""}
+                        1 for d in leases.get(ifn, []) if d.get("address") not in {None, ""}
                     )
                     lease_counts[if_descr] = f"{if_count} leases"
                     total_lease_count += if_count

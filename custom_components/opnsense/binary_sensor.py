@@ -28,9 +28,9 @@ async def async_setup_entry(
 ) -> None:
     """Set up the OPNsense binary sensors."""
 
-    coordinator: OPNsenseDataUpdateCoordinator = hass.data[DOMAIN][
-        config_entry.entry_id
-    ][COORDINATOR]
+    coordinator: OPNsenseDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id][
+        COORDINATOR
+    ]
 
     entities: list = []
     entities.extend(
@@ -75,9 +75,7 @@ class OPNsenseBinarySensor(OPNsenseEntity, BinarySensorEntity):
     ) -> None:
         """Initialize OPNsense Binary Sensor entity."""
         name_suffix: str | None = (
-            entity_description.name
-            if isinstance(entity_description.name, str)
-            else None
+            entity_description.name if isinstance(entity_description.name, str) else None
         )
         unique_id_suffix: str | None = (
             entity_description.key if isinstance(entity_description.key, str) else None
