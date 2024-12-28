@@ -13,12 +13,7 @@ import aiohttp
 import awesomeversion
 import voluptuous as vol
 
-from homeassistant.config_entries import (
-    ConfigEntry,
-    ConfigFlow,
-    ConfigFlowResult,
-    OptionsFlow,
-)
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import (
     CONF_NAME,
     CONF_PASSWORD,
@@ -113,9 +108,7 @@ async def validate_input(
             message=f"Missing Device Unique ID Error. {err.__class__.__qualname__}: {err}",
         )
     except PluginMissing:
-        _log_and_set_error(
-            errors=errors, key="plugin_missing", message="OPNsense Plugin Missing"
-        )
+        _log_and_set_error(errors=errors, key="plugin_missing", message="OPNsense Plugin Missing")
     except (aiohttp.InvalidURL, InvalidURL) as err:
         _log_and_set_error(
             errors=errors,
@@ -158,10 +151,7 @@ async def validate_input(
         )
     except xmlrpc.client.ProtocolError as err:
         error_message = str(err)
-        if (
-            "307 Temporary Redirect" in error_message
-            or "301 Moved Permanently" in error_message
-        ):
+        if "307 Temporary Redirect" in error_message or "301 Moved Permanently" in error_message:
             errors["base"] = "url_redirect"
         else:
             errors["base"] = "cannot_connect"
@@ -218,9 +208,7 @@ async def _clean_and_parse_url(user_input: MutableMapping[str, Any]) -> None:
     _LOGGER.debug("[config_flow] Cleaned URL: %s", user_input[CONF_URL])
 
 
-async def _get_client(
-    user_input: MutableMapping[str, Any], hass: HomeAssistant
-) -> OPNsenseClient:
+async def _get_client(user_input: MutableMapping[str, Any], hass: HomeAssistant) -> OPNsenseClient:
     """Create and return the OPNsense client."""
     return OPNsenseClient(
         url=user_input[CONF_URL],
@@ -244,18 +232,14 @@ def _validate_firmware_version(firmware_version: str) -> None:
         raise BelowMinFirmware
 
 
-async def _handle_user_input(
-    user_input: MutableMapping[str, Any], hass: HomeAssistant
-) -> None:
+async def _handle_user_input(user_input: MutableMapping[str, Any], hass: HomeAssistant) -> None:
     """Handle and validate the user input."""
     await _clean_and_parse_url(user_input)
 
     client: OPNsenseClient = await _get_client(user_input, hass)
 
     user_input[CONF_FIRMWARE_VERSION] = await client.get_host_firmware_version()
-    _LOGGER.debug(
-        "[config_flow] Firmware Version: %s", user_input[CONF_FIRMWARE_VERSION]
-    )
+    _LOGGER.debug("[config_flow] Firmware Version: %s", user_input[CONF_FIRMWARE_VERSION])
 
     try:
         _validate_firmware_version(user_input[CONF_FIRMWARE_VERSION])
@@ -272,17 +256,13 @@ async def _handle_user_input(
         user_input[CONF_NAME] = system_info.get("name") or "OPNsense"
 
     user_input[CONF_DEVICE_UNIQUE_ID] = await client.get_device_unique_id()
-    _LOGGER.debug(
-        "[config_flow] Device Unique ID: %s", user_input[CONF_DEVICE_UNIQUE_ID]
-    )
+    _LOGGER.debug("[config_flow] Device Unique ID: %s", user_input[CONF_DEVICE_UNIQUE_ID])
 
     if not user_input.get(CONF_DEVICE_UNIQUE_ID):
         raise MissingDeviceUniqueID
 
 
-def _log_and_set_error(
-    errors: MutableMapping[str, Any], key: str, message: str
-) -> None:
+def _log_and_set_error(errors: MutableMapping[str, Any], key: str, message: str) -> None:
     """Log the error and set it in the errors dictionary."""
     _LOGGER.error(message)
     errors["base"] = key
@@ -303,9 +283,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: MutableMapping[str, Any] = {}
         firmware: str = "Unknown"
         if user_input is not None:
-            errors = await validate_input(
-                hass=self.hass, user_input=user_input, errors=errors
-            )
+            errors = await validate_input(hass=self.hass, user_input=user_input, errors=errors)
             firmware = user_input.get(CONF_FIRMWARE_VERSION, "Unknown")
             if not errors:
                 # https://developers.home-assistant.io/docs/config_entries_config_flow_handler#unique-ids
@@ -327,9 +305,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
             user_input = {}
         schema = vol.Schema(
             {
-                vol.Required(
-                    CONF_URL, default=user_input.get(CONF_URL, "https://")
-                ): str,
+                vol.Required(CONF_URL, default=user_input.get(CONF_URL, "https://")): str,
                 vol.Optional(
                     CONF_VERIFY_SSL,
                     default=user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
@@ -338,9 +314,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_USERNAME,
                     default=user_input.get(CONF_USERNAME, ""),
                 ): str,
-                vol.Required(
-                    CONF_PASSWORD, default=user_input.get(CONF_PASSWORD, "")
-                ): str,
+                vol.Required(CONF_PASSWORD, default=user_input.get(CONF_PASSWORD, "")): str,
                 vol.Optional(CONF_NAME, default=user_input.get(CONF_NAME, "")): str,
             }
         )
@@ -365,9 +339,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         firmware: str = "Unknown"
         if user_input is not None:
             user_input[CONF_NAME] = prev_data.get(CONF_NAME, "")
-            errors = await validate_input(
-                hass=self.hass, user_input=user_input, errors=errors
-            )
+            errors = await validate_input(hass=self.hass, user_input=user_input, errors=errors)
             firmware = user_input.get(CONF_FIRMWARE_VERSION, "Unknown")
             if not errors:
                 # https://developers.home-assistant.io/docs/config_entries_config_flow_handler#unique-ids
@@ -391,9 +363,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
             {
                 vol.Required(
                     CONF_URL,
-                    default=user_input.get(
-                        CONF_URL, prev_data.get(CONF_URL, "https://")
-                    ),
+                    default=user_input.get(CONF_URL, prev_data.get(CONF_URL, "https://")),
                 ): str,
                 vol.Optional(
                     CONF_VERIFY_SSL,
@@ -404,15 +374,11 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
                 ): bool,
                 vol.Required(
                     CONF_USERNAME,
-                    default=user_input.get(
-                        CONF_USERNAME, prev_data.get(CONF_USERNAME, "")
-                    ),
+                    default=user_input.get(CONF_USERNAME, prev_data.get(CONF_USERNAME, "")),
                 ): str,
                 vol.Required(
                     CONF_PASSWORD,
-                    default=user_input.get(
-                        CONF_PASSWORD, prev_data.get(CONF_PASSWORD, "")
-                    ),
+                    default=user_input.get(CONF_PASSWORD, prev_data.get(CONF_PASSWORD, "")),
                 ): str,
             }
         )
@@ -455,9 +421,7 @@ class OPNsenseOptionsFlow(OptionsFlow):
                 return await self.async_step_device_tracker()
             return self.async_create_entry(title="", data=user_input)
 
-        scan_interval = self.config_entry.options.get(
-            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
-        )
+        scan_interval = self.config_entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         device_tracker_enabled = self.config_entry.options.get(
             CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED
         )
@@ -472,9 +436,7 @@ class OPNsenseOptionsFlow(OptionsFlow):
             vol.Optional(CONF_SCAN_INTERVAL, default=scan_interval): vol.All(
                 vol.Coerce(int), vol.Clamp(min=10, max=300)
             ),
-            vol.Optional(
-                CONF_DEVICE_TRACKER_ENABLED, default=device_tracker_enabled
-            ): bool,
+            vol.Optional(CONF_DEVICE_TRACKER_ENABLED, default=device_tracker_enabled): bool,
             vol.Optional(
                 CONF_DEVICE_TRACKER_SCAN_INTERVAL, default=device_tracker_scan_interval
             ): vol.All(vol.Coerce(int), vol.Clamp(min=30, max=300)),
@@ -490,9 +452,7 @@ class OPNsenseOptionsFlow(OptionsFlow):
         url = self.config_entry.data[CONF_URL].strip()
         username: str = self.config_entry.data[CONF_USERNAME]
         password: str = self.config_entry.data[CONF_PASSWORD]
-        verify_ssl: bool = self.config_entry.data.get(
-            CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL
-        )
+        verify_ssl: bool = self.config_entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
         client = OPNsenseClient(
             url=url,
             username=username,
@@ -540,9 +500,9 @@ class OPNsenseOptionsFlow(OptionsFlow):
                 step_id="device_tracker",
                 data_schema=vol.Schema(
                     {
-                        vol.Optional(
-                            CONF_DEVICES, default=selected_devices
-                        ): cv.multi_select(dict(sorted_entries)),
+                        vol.Optional(CONF_DEVICES, default=selected_devices): cv.multi_select(
+                            dict(sorted_entries)
+                        ),
                         vol.Optional(CONF_MANUAL_DEVICES): selector.TextSelector(
                             selector.TextSelectorConfig()
                         ),
@@ -552,9 +512,9 @@ class OPNsenseOptionsFlow(OptionsFlow):
         if user_input:
             _LOGGER.debug("[options_flow device_tracker] user_input: %s", user_input)
             macs: list = []
-            if isinstance(
-                user_input.get(CONF_MANUAL_DEVICES, None), str
-            ) and user_input.get(CONF_MANUAL_DEVICES, None):
+            if isinstance(user_input.get(CONF_MANUAL_DEVICES, None), str) and user_input.get(
+                CONF_MANUAL_DEVICES, None
+            ):
                 for item in user_input.get(CONF_MANUAL_DEVICES).split(","):
                     if not isinstance(item, str) or not item:
                         continue
@@ -562,9 +522,7 @@ class OPNsenseOptionsFlow(OptionsFlow):
                     if is_valid_mac_address(item):
                         macs.append(item)
                 _LOGGER.debug("[async_step_device_tracker] Manual Devices: %s", macs)
-            _LOGGER.debug(
-                "[async_step_device_tracker] Devices: %s", user_input.get(CONF_DEVICES)
-            )
+            _LOGGER.debug("[async_step_device_tracker] Devices: %s", user_input.get(CONF_DEVICES))
             self.new_options[CONF_DEVICES] = user_input.get(CONF_DEVICES) + macs
         return self.async_create_entry(title="", data=self.new_options)
 

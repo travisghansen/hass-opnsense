@@ -7,12 +7,7 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.core import (
-    HomeAssistant,
-    ServiceCall,
-    ServiceResponse,
-    SupportsResponse,
-)
+from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import (
     config_validation as cv,
@@ -213,7 +208,11 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             {
                 vol.Required("alias"): vol.Any(cv.string),
                 vol.Required("toggle_on_off", default="toggle"): vol.In(
-                    {"toggle": "Toggle", "on": "On", "off": "Off"}
+                    {
+                        "toggle": "Toggle",
+                        "on": "On",
+                        "off": "Off",
+                    }
                 ),
                 vol.Optional("device_id"): vol.Any(cv.string),
                 vol.Optional("entity_id"): vol.Any(cv.string),
@@ -435,14 +434,10 @@ async def _service_reload_interface(hass: HomeAssistant, call: ServiceCall) -> N
         if success is None or success:
             success = response
     if success is None or not success:
-        raise ServiceValidationError(
-            f"Reload Interface Failed: {call.data.get('interface')}"
-        )
+        raise ServiceValidationError(f"Reload Interface Failed: {call.data.get('interface')}")
 
 
-async def _service_generate_vouchers(
-    hass: HomeAssistant, call: ServiceCall
-) -> ServiceResponse:
+async def _service_generate_vouchers(hass: HomeAssistant, call: ServiceCall) -> ServiceResponse:
     clients: list = await _get_clients(
         hass=hass,
         opndevice_id=call.data.get("device_id", []),
@@ -454,9 +449,7 @@ async def _service_generate_vouchers(
             vouchers: list = await client.generate_vouchers(call.data)
         except VoucherServerError as e:
             _LOGGER.error("Error getting vouchers from %s. %s", client.name, e)
-            raise ServiceValidationError(
-                f"Error getting vouchers from {client.name}. {e}"
-            ) from e
+            raise ServiceValidationError(f"Error getting vouchers from {client.name}. {e}") from e
         _LOGGER.debug(
             "[service_generate_vouchers] client: %s, data: %s, vouchers: %s",
             client.name,
@@ -476,9 +469,7 @@ async def _service_generate_vouchers(
     return final_vouchers
 
 
-async def _service_kill_states(
-    hass: HomeAssistant, call: ServiceCall
-) -> ServiceResponse:
+async def _service_kill_states(hass: HomeAssistant, call: ServiceCall) -> ServiceResponse:
     clients: list = await _get_clients(
         hass=hass,
         opndevice_id=call.data.get("device_id", []),
@@ -487,9 +478,7 @@ async def _service_kill_states(
     success: bool | None = None
     response_list: list = []
     for client in clients:
-        response: MutableMapping[str, Any] = await client.kill_states(
-            call.data.get("ip_addr")
-        )
+        response: MutableMapping[str, Any] = await client.kill_states(call.data.get("ip_addr"))
         _LOGGER.debug(
             "[service_kill_states] client: %s, ip_addr: %s, response: %s",
             client.name,
@@ -522,9 +511,7 @@ async def _service_toggle_alias(hass: HomeAssistant, call: ServiceCall) -> None:
     )
     success: bool | None = None
     for client in clients:
-        response = await client.toggle_alias(
-            call.data.get("alias"), call.data.get("toggle_on_off")
-        )
+        response = await client.toggle_alias(call.data.get("alias"), call.data.get("toggle_on_off"))
         _LOGGER.debug(
             "[service_toggle_alias] client: %s, alias: %s, response: %s",
             client.name,

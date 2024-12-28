@@ -6,11 +6,7 @@ import logging
 import traceback
 from typing import Any
 
-from homeassistant.components.switch import (
-    SwitchDeviceClass,
-    SwitchEntity,
-    SwitchEntityDescription,
-)
+from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity, SwitchEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_platform
@@ -34,9 +30,7 @@ async def _compile_filter_switches(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
-    if not isinstance(state, MutableMapping) or not isinstance(
-        state.get("config"), MutableMapping
-    ):
+    if not isinstance(state, MutableMapping) or not isinstance(state.get("config"), MutableMapping):
         return []
     entities: list = []
     # filter rules
@@ -81,9 +75,7 @@ async def _compile_port_forward_switches(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
-    if not isinstance(state, MutableMapping) or not isinstance(
-        state.get("config"), MutableMapping
-    ):
+    if not isinstance(state, MutableMapping) or not isinstance(state.get("config"), MutableMapping):
         return []
 
     entities: list = []
@@ -121,9 +113,7 @@ async def _compile_nat_outbound_switches(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
-    if not isinstance(state, MutableMapping) or not isinstance(
-        state.get("config"), MutableMapping
-    ):
+    if not isinstance(state, MutableMapping) or not isinstance(state.get("config"), MutableMapping):
         return []
     entities: list = []
     # nat outbound rules
@@ -164,9 +154,7 @@ async def _compile_service_switches(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
-    if not isinstance(state, MutableMapping) or not isinstance(
-        state.get("services"), list
-    ):
+    if not isinstance(state, MutableMapping) or not isinstance(state.get("services"), list):
         return []
 
     entities: list = []
@@ -201,9 +189,7 @@ async def _compile_vpn_switches(
         for clients_servers in ("clients", "servers"):
             if not isinstance(state, MutableMapping):
                 return []
-            for uuid, instance in (
-                state.get(vpn_type, {}).get(clients_servers, {}).items()
-            ):
+            for uuid, instance in state.get(vpn_type, {}).get(clients_servers, {}).items():
                 if (
                     not isinstance(instance, MutableMapping)
                     or instance.get("enabled", None) is None
@@ -215,7 +201,7 @@ async def _compile_vpn_switches(
                     coordinator=coordinator,
                     entity_description=SwitchEntityDescription(
                         key=f"{vpn_type}.{clients_servers}.{uuid}",
-                        name=f"{"OpenVPN" if vpn_type == "openvpn" else vpn_type.title()} {clients_servers.title().rstrip('s')} {instance['name']}",
+                        name=f"{'OpenVPN' if vpn_type == 'openvpn' else vpn_type.title()} {clients_servers.title().rstrip('s')} {instance['name']}",
                         icon="mdi:folder-key-network-outline",
                         # entity_category=ENTITY_CATEGORY_CONFIG,
                         device_class=SwitchDeviceClass.SWITCH,
@@ -257,9 +243,9 @@ async def async_setup_entry(
     async_add_entities: entity_platform.AddEntitiesCallback,
 ) -> None:
     """Set up the OPNsense switches."""
-    coordinator: OPNsenseDataUpdateCoordinator = hass.data[DOMAIN][
-        config_entry.entry_id
-    ][COORDINATOR]
+    coordinator: OPNsenseDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id][
+        COORDINATOR
+    ]
     state: MutableMapping[str, Any] = coordinator.data
     if not isinstance(state, MutableMapping):
         _LOGGER.error("Missing state data in switch async_setup_entry")
@@ -300,9 +286,7 @@ class OPNsenseSwitch(OPNsenseEntity, SwitchEntity):
     ) -> None:
         """Initialize OPNsense Switch entities."""
         name_suffix: str | None = (
-            entity_description.name
-            if isinstance(entity_description.name, str)
-            else None
+            entity_description.name if isinstance(entity_description.name, str) else None
         )
         unique_id_suffix: str | None = (
             entity_description.key if isinstance(entity_description.key, str) else None
@@ -426,12 +410,7 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
         if self._rule_type == ATTR_NAT_PORT_FORWARD:
             rules = state.get("config", {}).get("nat", {}).get("rule", [])
         if self._rule_type == ATTR_NAT_OUTBOUND:
-            rules = (
-                state.get("config", {})
-                .get("nat", {})
-                .get("outbound", {})
-                .get("rule", [])
-            )
+            rules = state.get("config", {}).get("nat", {}).get("outbound", {}).get("rule", [])
 
         for rule in rules:
             if dict_get(rule, "created.time") == self._tracker:
@@ -536,9 +515,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         self._available = True
         self._attr_extra_state_attributes = {}
         for attr in ("id", "name"):
-            self._attr_extra_state_attributes[f"service_{attr}"] = self._service.get(
-                attr, None
-            )
+            self._attr_extra_state_attributes[f"service_{attr}"] = self._service.get(attr, None)
         self.async_write_ha_state()
         # _LOGGER.debug(f"[OPNsenseServiceSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
 
@@ -643,9 +620,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
             self.async_write_ha_state()
             return
         instance: MutableMapping[str, Any] = (
-            state.get(self._vpn_type, {})
-            .get(self._clients_servers, {})
-            .get(self._uuid, {})
+            state.get(self._vpn_type, {}).get(self._clients_servers, {}).get(self._uuid, {})
         )
         if not isinstance(instance, MutableMapping):
             self._available = False

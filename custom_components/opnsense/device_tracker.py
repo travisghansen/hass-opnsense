@@ -84,9 +84,7 @@ async def async_setup_entry(
                         pass
 
             devices.append(device)
-    elif config_entry.options.get(
-        CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED
-    ):
+    elif config_entry.options.get(CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED):
         for arp_entry in arp_entries:
             mac_address = arp_entry.get("mac", None)
             if mac_address and mac_address not in mac_addresses:
@@ -115,9 +113,7 @@ async def async_setup_entry(
 
     # Get the MACs that need to be removed and remove their devices
     for mac_address in list(set(previous_mac_addresses) - set(mac_addresses)):
-        rem_device = dev_reg.async_get_device(
-            connections={(CONNECTION_NETWORK_MAC, mac_address)}
-        )
+        rem_device = dev_reg.async_get_device(connections={(CONNECTION_NETWORK_MAC, mac_address)})
         if rem_device:
             dev_reg.async_remove_device(rem_device.id)
 
@@ -211,9 +207,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             entry = {}
         # _LOGGER.debug(f"[OPNsenseScannerEntity handle_coordinator_update] entry: {entry}")
         try:
-            self._attr_ip_address = (
-                entry.get("ip") if len(entry.get("ip", 0)) > 0 else None
-            )
+            self._attr_ip_address = entry.get("ip") if len(entry.get("ip", 0)) > 0 else None
         except (TypeError, KeyError, AttributeError):
             self._attr_ip_address = None
 
@@ -232,11 +226,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         if self._attr_hostname:
             self._last_known_hostname = self._attr_hostname
 
-        if (
-            not isinstance(entry, MutableMapping)
-            or not entry
-            or entry.get("expired", False)
-        ):
+        if not isinstance(entry, MutableMapping) or not entry or entry.get("expired", False):
             if self._last_known_ip:
                 # force a ping to _last_known_ip to possibly recreate arp entry?
                 pass
@@ -248,9 +238,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             if device_tracker_consider_home > 0 and isinstance(
                 self._last_known_connected_time, datetime
             ):
-                elapsed: timedelta = (
-                    datetime.now().astimezone() - self._last_known_connected_time
-                )
+                elapsed: timedelta = datetime.now().astimezone() - self._last_known_connected_time
                 if elapsed.total_seconds() < device_tracker_consider_home:
                     self._is_connected = True
 
@@ -287,9 +275,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             pass
 
         if self._attr_hostname is None and self._last_known_hostname:
-            self._attr_extra_state_attributes["last_known_hostname"] = (
-                self._last_known_hostname
-            )
+            self._attr_extra_state_attributes["last_known_hostname"] = self._last_known_hostname
         else:
             self._attr_extra_state_attributes.pop("last_known_hostname", None)
 
@@ -304,9 +290,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             )
 
         try:
-            self._attr_icon = (
-                "mdi:lan-connect" if self.is_connected else "mdi:lan-disconnect"
-            )
+            self._attr_icon = "mdi:lan-connect" if self.is_connected else "mdi:lan-disconnect"
         except (TypeError, KeyError, AttributeError):
             self._attr_icon = "mdi:lan-disconnect"
 

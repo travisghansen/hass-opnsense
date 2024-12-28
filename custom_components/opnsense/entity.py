@@ -32,13 +32,9 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
         self.coordinator: OPNsenseDataUpdateCoordinator = coordinator
         self._device_unique_id: str = config_entry.data[CONF_DEVICE_UNIQUE_ID]
         if unique_id_suffix:
-            self._attr_unique_id: str = slugify(
-                f"{self._device_unique_id}_{unique_id_suffix}"
-            )
+            self._attr_unique_id: str = slugify(f"{self._device_unique_id}_{unique_id_suffix}")
         if name_suffix:
-            self._attr_name: str | None = (
-                f"{self.opnsense_device_name or 'OPNsense'} {name_suffix}"
-            )
+            self._attr_name: str | None = f"{self.opnsense_device_name or 'OPNsense'} {name_suffix}"
         self._client: OPNsenseClient | None = None
         self._attr_extra_state_attributes: dict[str, Any] = {}
         self._available: bool = False
