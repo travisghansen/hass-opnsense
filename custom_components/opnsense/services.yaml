@@ -266,6 +266,7 @@ send_wol:
 
 reload_interface:
   name: Reload an Interface
+  description: ""
   fields:
     interface:
       name: Interface Name
@@ -304,6 +305,7 @@ reload_interface:
 
 generate_vouchers:
   name: Generate Captive Portal Vouchers
+  description: ""
   fields:
     validity:
       name: Validity
@@ -325,7 +327,7 @@ generate_vouchers:
             - label: "1 day"
               value: "86400"
             - label: "2 days"
-              value": "172800"
+              value: "172800"
             - label: "3 days"
               value: "259200"
             - label: "4 days"
@@ -439,6 +441,7 @@ generate_vouchers:
 
 kill_states:
   name: Kill States
+  description: ""
   fields:
     ip_addr:
       name: IP Address
@@ -477,9 +480,11 @@ kill_states:
 
 toggle_alias:
   name: Toggle Alias
+  description: ""
   fields:
     alias:
       name: Alias Name
+      description: ""
       required: true
       advanced: false
       example: "iphones"
@@ -487,6 +492,7 @@ toggle_alias:
         text:
     toggle_on_off:
       name: Alias Action
+      description: ""
       required: true
       advanced: false
       default: "toggle"
@@ -503,7 +509,7 @@ toggle_alias:
             - label: "Off"
               value: "off"
     multiple_opnsense:
-      name: Only needed if there is more than one OPNsense Router
+      name: "Only needed if there is more than one OPNsense Router"
       collapsed: true
       fields:
         device_id:
