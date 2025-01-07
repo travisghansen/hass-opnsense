@@ -162,7 +162,7 @@ async def _compile_service_switches(
     for service in state.get("services", []):
         if service.get("locked", 1) == 1:
             continue
-        for prop_name in "status":
+        for prop_name in ["status"]:
             entity = OPNsenseServiceSwitch(
                 config_entry=config_entry,
                 coordinator=coordinator,
