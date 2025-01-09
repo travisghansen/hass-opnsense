@@ -937,7 +937,7 @@ class OPNsenseTempSensor(OPNsenseSensor):
         self._available = True
 
         self._attr_extra_state_attributes = {}
-        for attr in "device_id":
+        for attr in ["device_id"]:
             self._attr_extra_state_attributes[attr] = temp.get(attr, None)
         self.async_write_ha_state()
 
