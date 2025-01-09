@@ -1,7 +1,26 @@
+<a id="v0.3.14"></a>
+# [v0.3.14](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.14) - 2025-01-09
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🕷️ Bug Fixes 🕷️
+* Fix single sequences being changed to strings by [@Snuffy2](https://github.com/Snuffy2) in [#359](https://github.com/travisghansen/hass-opnsense/pull/359)
+### 🔧 Maintenance 🔧
+* Incorporate the Commit that updates the version numbers into that release by [@Snuffy2](https://github.com/Snuffy2) in [#353](https://github.com/travisghansen/hass-opnsense/pull/353)
+### Other Changes
+* Enable McCabe complexity checking by [@Snuffy2](https://github.com/Snuffy2) in [#354](https://github.com/travisghansen/hass-opnsense/pull/354)
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.13...v0.3.14
+
+[Changes][v0.3.14]
+
+
 <a id="v0.3.13"></a>
 # [v0.3.13](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.13) - 2024-12-28
 
-<!-- Release notes generated using configuration in .github/release.yml at main -->
+<h3>OPNsense Minimum Firmware Required: 24.1</h3><h4>OPNsense Recommended Firmware: 24.7</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
 ## What's Changed
 ### 🎉 Enhancements & New Features 🎉
@@ -15,7 +34,7 @@
 * Further linting/formatting fixes by [@Snuffy2](https://github.com/Snuffy2) in [#352](https://github.com/travisghansen/hass-opnsense/pull/352)
 
 
-**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.12...v0.3.13
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.12...v0.3.13<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
 
 [Changes][v0.3.13]
 
@@ -552,6 +571,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.3.14]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.13...v0.3.14
 [v0.3.13]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.12...v0.3.13
 [v0.3.12]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.11...v0.3.12
 [v0.3.11]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.10...v0.3.11
