@@ -46,15 +46,15 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
         return self._available
 
     @property
-    def opnsense_device_name(self) -> str:
+    def opnsense_device_name(self) -> str | None:
         """Return the OPNsense device name."""
         if self.config_entry.title and len(self.config_entry.title) > 0:
             return self.config_entry.title
         return self._get_opnsense_state_value("system_info.name")
 
-    def _get_opnsense_state_value(self, path, default=None):
+    def _get_opnsense_state_value(self, path: str) -> Any | None:
         state = self.coordinator.data
-        return dict_get(state, path, default)
+        return dict_get(state, path)
 
     def _get_opnsense_client(self) -> OPNsenseClient | None:
         if self.hass is None:

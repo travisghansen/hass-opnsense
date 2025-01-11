@@ -352,14 +352,14 @@ class OPNsenseFilterSwitch(OPNsenseSwitch):
         self.async_write_ha_state()
         # _LOGGER.debug(f"[OPNsenseFilterSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
 
-    async def async_turn_on(self, **kwargs) -> None:
+    async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""
         if self._rule is None or not self._client:
             return
         await self._client.enable_filter_rule_by_created_time(self._tracker)
         await self.coordinator.async_refresh()
 
-    async def async_turn_off(self, **kwargs) -> None:
+    async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the entity off."""
         if self._rule is None or not self._client:
             return
@@ -402,7 +402,7 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
         parts.pop(0)
         return ".".join(parts)
 
-    def _opnsense_get_rule(self):
+    def _opnsense_get_rule(self) -> MutableMapping[str, Any] | None:
         state: MutableMapping[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             return None
@@ -432,7 +432,7 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
         self.async_write_ha_state()
         # _LOGGER.debug(f"[OPNsenseNatSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
 
-    async def async_turn_on(self, **kwargs) -> None:
+    async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""
         if not isinstance(self._rule, MutableMapping) or not self._client:
             return
@@ -445,7 +445,7 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
         await method(self._tracker)
         await self.coordinator.async_refresh()
 
-    async def async_turn_off(self, **kwargs) -> None:
+    async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the entity off."""
         if not isinstance(self._rule, MutableMapping) or not self._client:
             return
@@ -519,7 +519,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         self.async_write_ha_state()
         # _LOGGER.debug(f"[OPNsenseServiceSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
 
-    async def async_turn_on(self, **kwargs) -> None:
+    async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""
         if not isinstance(self._service, MutableMapping) or not self._client:
             return
@@ -530,7 +530,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         if result:
             await self.coordinator.async_refresh()
 
-    async def async_turn_off(self, **kwargs) -> None:
+    async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the entity off."""
         if not isinstance(self._service, MutableMapping) or not self._client:
             return
@@ -575,7 +575,7 @@ class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
         self.async_write_ha_state()
         # _LOGGER.debug(f"[OPNsenseUnboundBlocklistSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
 
-    async def async_turn_on(self, **kwargs) -> None:
+    async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""
         if not self._client:
             return
@@ -583,7 +583,7 @@ class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
         if result:
             await self.coordinator.async_refresh()
 
-    async def async_turn_off(self, **kwargs) -> None:
+    async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the entity off."""
         if not self._client:
             return
@@ -670,7 +670,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
         self.async_write_ha_state()
         # _LOGGER.debug(f"[OPNsenseVPNSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
 
-    async def async_turn_on(self, **kwargs) -> None:
+    async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""
 
         if self.is_on or not self._client:
@@ -682,7 +682,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
         if result:
             await self.coordinator.async_refresh()
 
-    async def async_turn_off(self, **kwargs) -> None:
+    async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the entity off."""
 
         if not self.is_on or not self._client:

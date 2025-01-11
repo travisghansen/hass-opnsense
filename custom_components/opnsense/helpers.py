@@ -7,10 +7,10 @@ from typing import Any
 from urllib.parse import urlparse
 
 
-def dict_get(data: MutableMapping[str, Any], path: str, default=None) -> Any | None:
+def dict_get(data: MutableMapping[str, Any], path: str, default: Any | None = None) -> Any | None:
     """Parse the path to get the desired value out of the data."""
     pathList: list = re.split(r"\.", path, flags=re.IGNORECASE)
-    result: MutableMapping[str, Any] = data
+    result: Any | None = data
 
     for key in pathList:
         if key.isnumeric():
