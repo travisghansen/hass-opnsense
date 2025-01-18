@@ -26,8 +26,8 @@ DEFAULT_TIMEOUT = 60
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
-def _log_errors(func: Callable):
-    async def inner(self, *args, **kwargs):
+def _log_errors(func: Callable) -> Any:
+    async def inner(self, *args: Any, **kwargs: Any) -> Any:
         try:
             return await func(self, *args, **kwargs)
         except asyncio.CancelledError:
@@ -51,8 +51,8 @@ def _log_errors(func: Callable):
     return inner
 
 
-def _xmlrpc_timeout(func: Callable):
-    async def inner(self, *args, **kwargs):
+def _xmlrpc_timeout(func: Callable) -> Any:
+    async def inner(self, *args: Any, **kwargs: Any) -> Any:
         response = None
         # timout applies to each recv() call, not the whole request
         default_timeout = socket.getdefaulttimeout()
@@ -73,7 +73,7 @@ def wireguard_is_connected(past_time: datetime | None) -> bool:
     return datetime.now().astimezone() - past_time <= timedelta(minutes=3)
 
 
-def human_friendly_duration(seconds) -> str:
+def human_friendly_duration(seconds: int) -> str:
     """Convert the duration in seconds to human friendly."""
     months, seconds = divmod(
         seconds, 2419200
@@ -100,7 +100,7 @@ def human_friendly_duration(seconds) -> str:
     return ", ".join(duration)
 
 
-def get_ip_key(item) -> tuple:
+def get_ip_key(item: MutableMapping[str, Any]) -> tuple:
     """Use to sort the DHCP Lease IPs."""
     address = item.get("address", None)
 
@@ -116,10 +116,10 @@ def get_ip_key(item) -> tuple:
         return (0 if ip_obj.version == 4 else 1, ip_obj)
 
 
-def dict_get(data: MutableMapping[str, Any], path: str, default=None):
+def dict_get(data: MutableMapping[str, Any], path: str, default: Any | None = None) -> Any | None:
     """Parse the path to get the desired value out of the data."""
-    pathList = re.split(r"\.", path, flags=re.IGNORECASE)
-    result = data
+    pathList: list = re.split(r"\.", path, flags=re.IGNORECASE)
+    result: Any | None = data
     for key in pathList:
         if key.isnumeric():
             key = int(key)
@@ -214,22 +214,14 @@ class OPNsenseClient(ABC):
             f"{self._xmlrpc_url}/xmlrpc.php", context=context, verbose=verbose
         )
 
-    # @_xmlrpc_timeout
-    async def _get_config_section(self, section) -> MutableMapping[str, Any]:
-        config: MutableMapping[str, Any] = await self.get_config()
-        if config is None or not isinstance(config, MutableMapping):
-            _LOGGER.error("Invalid data returned from get_config_section")
-            return {}
-        return config.get(section, {})
-
     @_xmlrpc_timeout
-    async def _restore_config_section(self, section_name, data):
+    async def _restore_config_section(self, section_name: str, data) -> None:
         params = {section_name: data}
         proxy_method = partial(self._get_proxy().opnsense.restore_config_section, params)
-        return await self._loop.run_in_executor(None, proxy_method)
+        await self._loop.run_in_executor(None, proxy_method)
 
     @_xmlrpc_timeout
-    async def _exec_php(self, script) -> MutableMapping[str, Any]:
+    async def _exec_php(self, script: str) -> MutableMapping[str, Any]:
         self._xmlrpc_query_count += 1
         script = rf"""
 ini_set('display_errors', 0);
@@ -608,7 +600,7 @@ $toreturn = [
         return status
 
     @_log_errors
-    async def upgrade_firmware(self, type="update") -> MutableMapping[str, Any] | None:
+    async def upgrade_firmware(self, type: str = "update") -> MutableMapping[str, Any] | None:
         """Trigger a firmware upgrade."""
         # minor updates of the same opnsense version
         if type == "update":
@@ -627,7 +619,7 @@ $toreturn = [
         return await self._safe_dict_post("/api/core/firmware/upgradestatus")
 
     @_log_errors
-    async def firmware_changelog(self, version) -> MutableMapping[str, Any]:
+    async def firmware_changelog(self, version: str) -> MutableMapping[str, Any]:
         """Return the changelog for the firmware upgrade."""
         return await self._safe_dict_post(f"/api/core/firmware/changelog/{version}")
 
@@ -650,7 +642,7 @@ $toreturn = [
         return ret_data
 
     @_log_errors
-    async def enable_filter_rule_by_created_time(self, created_time) -> None:
+    async def enable_filter_rule_by_created_time(self, created_time: str) -> None:
         """Enable a filter rule."""
         config = await self.get_config()
         for rule in config["filter"]["rule"]:
@@ -667,7 +659,7 @@ $toreturn = [
                 await self._filter_configure()
 
     @_log_errors
-    async def disable_filter_rule_by_created_time(self, created_time) -> None:
+    async def disable_filter_rule_by_created_time(self, created_time: str) -> None:
         """Disable a filter rule."""
         config: MutableMapping[str, Any] = await self.get_config()
 
@@ -686,7 +678,7 @@ $toreturn = [
 
     # use created_time as a unique_id since none other exists
     @_log_errors
-    async def enable_nat_port_forward_rule_by_created_time(self, created_time) -> None:
+    async def enable_nat_port_forward_rule_by_created_time(self, created_time: str) -> None:
         """Enable a NAT Port Forward rule."""
         config: MutableMapping[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("rule", []):
@@ -704,7 +696,7 @@ $toreturn = [
 
     # use created_time as a unique_id since none other exists
     @_log_errors
-    async def disable_nat_port_forward_rule_by_created_time(self, created_time) -> None:
+    async def disable_nat_port_forward_rule_by_created_time(self, created_time: str) -> None:
         """Disable a NAT Port Forward rule."""
         config: MutableMapping[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("rule", []):
@@ -722,7 +714,7 @@ $toreturn = [
 
     # use created_time as a unique_id since none other exists
     @_log_errors
-    async def enable_nat_outbound_rule_by_created_time(self, created_time) -> None:
+    async def enable_nat_outbound_rule_by_created_time(self, created_time: str) -> None:
         """Enable NAT Outbound rule."""
         config: MutableMapping[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("outbound", {}).get("rule", []):
@@ -740,7 +732,7 @@ $toreturn = [
 
     # use created_time as a unique_id since none other exists
     @_log_errors
-    async def disable_nat_outbound_rule_by_created_time(self, created_time) -> None:
+    async def disable_nat_outbound_rule_by_created_time(self, created_time: str) -> None:
         """Disable NAT Outbound Rule."""
         config: MutableMapping[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("outbound", {}).get("rule", []):
@@ -1073,7 +1065,7 @@ $toreturn = [
         return
 
     @_log_errors
-    async def send_wol(self, interface, mac) -> bool:
+    async def send_wol(self, interface: str, mac: str) -> bool:
         """Send a wake on lan packet to the specified MAC address."""
         payload: MutableMapping[str, Any] = {"wake": {"interface": interface, "mac": mac}}
         _LOGGER.debug("[send_wol] payload: %s", payload)
@@ -1632,7 +1624,7 @@ $toreturn = [
         # _LOGGER.debug(f"[get_notices] notices: {notices}")
 
     @_log_errors
-    async def close_notice(self, id) -> bool:
+    async def close_notice(self, id: str) -> bool:
         """Close selected notices."""
 
         # id = "all" to close all notices
@@ -2046,7 +2038,7 @@ $toreturn = [
         _LOGGER.debug("[generate_vouchers] vouchers: %s", vouchers)
         return vouchers
 
-    async def kill_states(self, ip_addr) -> MutableMapping[str, Any]:
+    async def kill_states(self, ip_addr: str) -> MutableMapping[str, Any]:
         """Kill the active states of the IP address."""
         payload: MutableMapping[str, Any] = {"filter": ip_addr}
         response = await self._safe_dict_post(
@@ -2059,7 +2051,7 @@ $toreturn = [
             "dropped_states": response.get("dropped_states", 0),
         }
 
-    async def toggle_alias(self, alias, toggle_on_off) -> bool:
+    async def toggle_alias(self, alias: str, toggle_on_off: str) -> bool:
         """Toggle alias on and off."""
         alias_list_resp = await self._safe_dict_get("/api/firewall/alias/searchItem")
         alias_list: list = alias_list_resp.get("rows", [])

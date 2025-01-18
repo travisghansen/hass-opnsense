@@ -55,7 +55,7 @@ def is_valid_mac_address(mac: str) -> bool:
     return bool(mac_regex.match(mac))
 
 
-def is_ip_address(value) -> bool:
+def is_ip_address(value: str) -> bool:
     """Check if string is a valid IP address."""
     try:
         ipaddress.ip_address(value)
@@ -393,13 +393,13 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
             },
         )
 
-    async def async_step_import(self, user_input) -> ConfigFlowResult:
+    async def async_step_import(self, user_input: MutableMapping[str, Any]) -> ConfigFlowResult:
         """Handle import."""
         return await self.async_step_user(user_input)
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry):
+    def async_get_options_flow(config_entry: ConfigEntry):
         """Get the options flow for this handler."""
         return OPNsenseOptionsFlow(config_entry)
 
@@ -412,7 +412,9 @@ class OPNsenseOptionsFlow(OptionsFlow):
         self.new_options: MutableMapping[str, Any] = {}
         self.config_entry = config_entry
 
-    async def async_step_init(self, user_input=None) -> ConfigFlowResult:
+    async def async_step_init(
+        self, user_input: MutableMapping[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Handle options flow."""
         if user_input is not None:
             _LOGGER.debug("[options_flow init] user_input: %s", user_input)
@@ -447,7 +449,9 @@ class OPNsenseOptionsFlow(OptionsFlow):
 
         return self.async_show_form(step_id="init", data_schema=vol.Schema(base_schema))
 
-    async def async_step_device_tracker(self, user_input=None) -> ConfigFlowResult:
+    async def async_step_device_tracker(
+        self, user_input: MutableMapping[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Handle device tracker list step."""
         url = self.config_entry.data[CONF_URL].strip()
         username: str = self.config_entry.data[CONF_USERNAME]
@@ -512,10 +516,9 @@ class OPNsenseOptionsFlow(OptionsFlow):
         if user_input:
             _LOGGER.debug("[options_flow device_tracker] user_input: %s", user_input)
             macs: list = []
-            if isinstance(user_input.get(CONF_MANUAL_DEVICES, None), str) and user_input.get(
-                CONF_MANUAL_DEVICES, None
-            ):
-                for item in user_input.get(CONF_MANUAL_DEVICES).split(","):
+            manual_devices: str | None = user_input.get(CONF_MANUAL_DEVICES)
+            if isinstance(manual_devices, str):
+                for item in manual_devices.split(","):
                     if not isinstance(item, str) or not item:
                         continue
                     item = item.strip()
@@ -523,7 +526,7 @@ class OPNsenseOptionsFlow(OptionsFlow):
                         macs.append(item)
                 _LOGGER.debug("[async_step_device_tracker] Manual Devices: %s", macs)
             _LOGGER.debug("[async_step_device_tracker] Devices: %s", user_input.get(CONF_DEVICES))
-            self.new_options[CONF_DEVICES] = user_input.get(CONF_DEVICES) + macs
+            self.new_options[CONF_DEVICES] = user_input.get(CONF_DEVICES, []) + macs
         return self.async_create_entry(title="", data=self.new_options)
 
 

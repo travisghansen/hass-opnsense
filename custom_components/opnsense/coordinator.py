@@ -69,7 +69,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
 
         return state
 
-    async def _async_update_data(self):
+    async def _async_update_data(self) -> dict[str, Any]:
         """Fetch the latest state from OPNsense."""
         _LOGGER.info(
             "%sUpdating Data",
@@ -294,7 +294,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
     @staticmethod
     async def _calculate_speed(
         prop_name: str,
-        elapsed_time,
+        elapsed_time: float,
         current_parent_value: float,
         previous_parent_value: float,
     ) -> tuple[str, int]:

@@ -479,7 +479,7 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-def slugify_filesystem_mountpoint(mountpoint) -> str:
+def slugify_filesystem_mountpoint(mountpoint: str) -> str:
     """Slugify the mountpoint."""
     if not mountpoint:
         return ""
@@ -488,7 +488,7 @@ def slugify_filesystem_mountpoint(mountpoint) -> str:
     return mountpoint.replace("/", "_").strip("_")
 
 
-def normalize_filesystem_mountpoint(mountpoint) -> str:
+def normalize_filesystem_mountpoint(mountpoint: str) -> str:
     """Normalize the mountpoint."""
     if not mountpoint:
         return ""
@@ -502,7 +502,7 @@ class OPNsenseSensor(OPNsenseEntity, SensorEntity):
 
     def __init__(
         self,
-        config_entry,
+        config_entry: ConfigEntry,
         coordinator: OPNsenseDataUpdateCoordinator,
         entity_description: SensorEntityDescription,
     ) -> None:
@@ -566,14 +566,15 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
         if self.entity_description.key == "telemetry.cpu.usage_total":
             temp_attr = self._get_opnsense_state_value("telemetry.cpu")
             # _LOGGER.debug(f"[extra_state_attributes] temp_attr: {temp_attr}")
-            for k, v in temp_attr.items():
-                if k.startswith("usage_") and k != "usage_total":
-                    self._attr_extra_state_attributes[k.replace("usage_", "")] = f"{v}%"
-            # _LOGGER.debug(f"[extra_state_attributes] attributes: {attributes}")
+            if isinstance(temp_attr, MutableMapping):
+                for k, v in temp_attr.items():
+                    if k.startswith("usage_") and k != "usage_total":
+                        self._attr_extra_state_attributes[k.replace("usage_", "")] = f"{v}%"
+                # _LOGGER.debug(f"[extra_state_attributes] attributes: {attributes}")
         elif self.entity_description.key == "certificates":
-            self._attr_extra_state_attributes = self._get_opnsense_state_value(
-                self.entity_description.key
-            )
+            certs = self._get_opnsense_state_value(self.entity_description.key)
+            if isinstance(certs, MutableMapping):
+                self._attr_extra_state_attributes = dict(certs)
 
         self.async_write_ha_state()
 
