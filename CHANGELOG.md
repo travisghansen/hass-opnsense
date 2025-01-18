@@ -1,7 +1,27 @@
+<a id="v0.3.15"></a>
+# [v0.3.15](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.15) - 2025-01-18
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🚀 Enhancements
+* Use GitHub for Firmware Changelog link by [@Snuffy2](https://github.com/Snuffy2) in [#364](https://github.com/travisghansen/hass-opnsense/pull/364)
+### 🎓 Code Quality
+* Add additional typing by [@Snuffy2](https://github.com/Snuffy2) in [#363](https://github.com/travisghansen/hass-opnsense/pull/363)
+### 🧰 Maintenance
+* Update .pre-commit-config.yaml by [@Snuffy2](https://github.com/Snuffy2) in [#362](https://github.com/travisghansen/hass-opnsense/pull/362)
+* Update labels and release notes by [@Snuffy2](https://github.com/Snuffy2) in [#365](https://github.com/travisghansen/hass-opnsense/pull/365)
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.14...v0.3.15
+
+[Changes][v0.3.15]
+
+
 <a id="v0.3.14"></a>
 # [v0.3.14](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.14) - 2025-01-09
 
-<!-- Release notes generated using configuration in .github/release.yml at main -->
+<h3>OPNsense Minimum Firmware Required: 24.1</h3><h4>OPNsense Recommended Firmware: 24.7</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
 ## What's Changed
 ### 🕷️ Bug Fixes 🕷️
@@ -12,7 +32,7 @@
 * Enable McCabe complexity checking by [@Snuffy2](https://github.com/Snuffy2) in [#354](https://github.com/travisghansen/hass-opnsense/pull/354)
 
 
-**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.13...v0.3.14
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.13...v0.3.14<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
 
 [Changes][v0.3.14]
 
@@ -571,6 +591,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.3.15]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.14...v0.3.15
 [v0.3.14]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.13...v0.3.14
 [v0.3.13]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.12...v0.3.13
 [v0.3.12]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.11...v0.3.12
