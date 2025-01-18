@@ -112,6 +112,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
         try:
             product_version = dict_get(state, "firmware_update_info.product.product_version")
             product_latest = dict_get(state, "firmware_update_info.product.product_latest")
+            product_series = dict_get(state, "firmware_update_info.product.product_series")
             if product_version is None or product_latest is None:
                 self._attr_latest_version = None
 
@@ -128,9 +129,30 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
         except (TypeError, KeyError, AttributeError):
             self._attr_latest_version = None
 
-        self._attr_release_url = (
-            self.config_entry.data.get("url", None) + "/ui/core/firmware#changelog"
-        )
+        product_class: str | None = None
+        if product_series:
+            try:
+                series_minor: str | None = str(product_series).split(".")[1]
+            except IndexError:
+                series_minor = None
+            if series_minor in {"1", "7"}:
+                product_class = "community"
+            elif series_minor in {"4", "10"}:
+                product_class = "business"
+        # _LOGGER.debug(
+        #     "[Update handle_coordinator_update] product_version: %s, product_latest: %s, product_series: %s, product_class: %s",
+        #     product_version,
+        #     product_latest,
+        #     product_series,
+        #     product_class,
+        # )
+
+        if product_series and product_latest and product_class:
+            self._attr_release_url = f"https://github.com/opnsense/changelog/blob/master/{product_class}/{product_series}/{product_latest}"
+        else:
+            self._attr_release_url = (
+                self.config_entry.data.get("url", None) + "/ui/core/firmware#changelog"
+            )
 
         summary: str | None = None
         try:
