@@ -4,24 +4,32 @@ changelog:
       - ignore-for-release
       - dependencies
   categories:
-    - title: "💥 Breaking Change 💥"
+    - title: "💥 Breaking Changes"
       labels:
         - Semver-Major
         - breaking-change
-    - title: "🎉 Enhancements & New Features 🎉"
+    - title: "✨ New Features"
+      labels:
+        - feature
+    - title: "🚀 Enhancements"
       labels:
         - Semver-Minor
         - enhancement
-        - feature
-    - title: "🕷️ Bug Fixes 🕷️"
+    - title: "🐛 Bug Fixes"
       labels:
         - fix
         - bugfix
         - bug
-    - title: "🔧 Maintenance 🔧"
+    - title: "📚 Documentation"
+      labels:
+        - documentation
+    - title: "🎓 Code Quality"
+      labels:
+        - code-quality
+    - title: "🧰 Maintenance"
       labels:
         - chore
         - github_actions
-    - title: Other Changes
+    - title: "Other Changes"
       labels:
         - "*"
