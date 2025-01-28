@@ -120,12 +120,26 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
                 dict_get(state, "firmware_update_info.status") == "update"
                 and product_version == product_latest
             ):
-                product_latest = f"{product_latest}+"
+                packages = dict_get(
+                    state, "firmware_update_info.product.product_check.upgrade_packages"
+                )
+                if isinstance(packages, list):
+                    package_found: bool = False
+                    for package in packages:
+                        if package.get("name") == "opnsense" and package.get("new_version"):
+                            package_found = True
+                            product_latest = package.get("new_version")
+                            break
+                    if not package_found:
+                        product_latest = f"{product_latest}+"
+                else:
+                    product_latest = f"{product_latest}+"
 
             if dict_get(state, "firmware_update_info.status") == "upgrade":
                 product_latest = dict_get(state, "firmware_update_info.upgrade_major_version")
 
-            self._attr_latest_version = product_latest
+            if product_latest:
+                self._attr_latest_version = product_latest.replace("_", ".")
         except (TypeError, KeyError, AttributeError):
             self._attr_latest_version = None
 
@@ -148,19 +162,18 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
         # )
 
         if product_series and product_latest and product_class:
-            self._attr_release_url = f"https://github.com/opnsense/changelog/blob/master/{product_class}/{product_series}/{product_latest}"
+            self._attr_release_url = f"https://github.com/opnsense/changelog/blob/master/{product_class}/{product_series}/{product_latest.split('+')[0].split('_')[0]}"
         else:
             self._attr_release_url = (
                 self.config_entry.data.get("url", None) + "/ui/core/firmware#changelog"
             )
 
+        # _LOGGER.debug("[Update handle_coordinator_update] release_url: %s", self._attr_release_url)
         summary: str | None = None
         try:
             if dict_get(state, "firmware_update_info.status") == "update":
                 product_name = dict_get(state, "firmware_update_info.product.product_name")
                 product_nickname = dict_get(state, "firmware_update_info.product.product_nickname")
-                product_version = dict_get(state, "firmware_update_info.product.product_version")
-                product_latest = dict_get(state, "firmware_update_info.product.product_latest")
                 status_msg = dict_get(state, "firmware_update_info.status_msg")
 
                 needs_reboot: bool = (
@@ -199,7 +212,6 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
 """
             if dict_get(state, "firmware_update_info.status") == "upgrade":
                 product_name = dict_get(state, "firmware_update_info.product.product_name")
-                product_version = dict_get(state, "firmware_update_info.upgrade_major_version")
                 status_msg = dict_get(state, "firmware_update_info.status_msg")
 
                 upgrade_needs_reboot: bool = (
