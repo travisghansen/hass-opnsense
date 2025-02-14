@@ -13,7 +13,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4.2.2
       - name: Hassfest validation
-        continue-on-error: true
         uses: home-assistant/actions/hassfest@master
   hacs_validation:
     name: HACS Validation
@@ -22,7 +21,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4.2.2
       - name: HACS validation
-        continue-on-error: true
         uses: hacs/action@main
         with:
           category: integration

@@ -1,4 +1,5 @@
 {
+  "title": "OPNsense",
   "config": {
     "abort": {
       "already_configured": "Device is already configured"
@@ -80,5 +81,312 @@
       "description": "OPNsense Device ID has changed which indicates new or changed hardware. In order to accommodate this, hass-opnsense needs to be removed and reinstalled for this router. hass-opnsense is shutting down."
     }
   },
-  "title": "OPNsense"
+  "selector": {
+    "toggle_on_off": {
+      "options": {
+        "toggle": "Toggle",
+        "on": "On",
+        "off": "Off"
+      }
+    },
+    "expirytime": {
+      "options": {
+        "0": "never",
+        "21600": "6 hours",
+        "43200": "12 hours",
+        "86400": "1 day",
+        "172800": "2 days",
+        "259200": "3 days",
+        "345600": "4 days",
+        "432000": "5 days",
+        "518400": "6 days",
+        "604800": "1 week",
+        "1209600": "2 weeks",
+        "1814400": "3 weeks",
+        "2419200": "1 month",
+        "4838400": "2 months",
+        "7257600" : "3 months"
+      }
+    },
+    "validity": {
+      "options": {
+        "14400": "4 hours",
+        "28800": "8 hours",
+        "86400": "1 day",
+        "172800": "2 days",
+        "259200": "3 days",
+        "345600": "4 days",
+        "432000": "5 days",
+        "518400": "6 days",
+        "604800": "1 week",
+        "1209600": "2 weeks"
+      }
+    }
+  },
+  "services": {
+    "close_notice": {
+      "name": "Close notice",
+      "description": "Closes one or all notices on OPNsense",
+      "fields": {
+        "id": {
+          "name": "Notice ID",
+          "description": "The notice ID to clear. Enter 'all' to clear all notices."
+        },
+        "device_id": {
+          "name": "OPNsense Device",
+          "description": "Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        },
+        "entity_id": {
+          "name": "OPNsense Entity",
+          "description": "Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        }
+      },
+      "sections": {
+        "multiple_opnsense": {
+          "name": "Only needed if there is more than one OPNsense Router"
+        }
+      }
+    },
+    "start_service": {
+      "name": "Start service",
+      "description": "Starts an OPNsense service",
+      "fields": {
+        "service_id": {
+          "name": "Service ID or Name",
+          "description": "The ID or name of the service. Like: udpbroadcastrelay/3, haproxy, dhcp, etc."
+        },
+        "device_id": {
+          "name": "OPNsense Device",
+          "description": "Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        },
+        "entity_id": {
+          "name": "OPNsense Entity",
+          "description": "Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        }
+      },
+      "sections": {
+        "multiple_opnsense": {
+          "name": "Only needed if there is more than one OPNsense Router"
+        }
+      }
+    },
+    "stop_service": {
+      "name": "Stop service",
+      "description": "Stops an OPNsense service",
+      "fields": {
+        "service_id": {
+          "name": "Service ID or Name",
+          "description": "The ID or name of the service. Like: udpbroadcastrelay/3, haproxy, dhcp, etc."
+        },
+        "device_id": {
+          "name": "OPNsense Device",
+          "description": "Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        },
+        "entity_id": {
+          "name": "OPNsense Entity",
+          "description": "Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        }
+      },
+      "sections": {
+        "multiple_opnsense": {
+          "name": "Only needed if there is more than one OPNsense Router"
+        }
+      }
+    },
+    "restart_service": {
+      "name": "Restart service",
+      "description": "Restarts an OPNsense service",
+      "fields": {
+        "service_id": {
+          "name": "Service ID or Name",
+          "description": "The ID or name of the service. Like: udpbroadcastrelay/3, haproxy, dhcp, etc."
+        },
+        "only_if_running": {
+          "name": "Only if Running",
+          "description": "Restart the service only if it is already running."
+        },
+        "device_id": {
+          "name": "OPNsense Device",
+          "description": "Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        },
+        "entity_id": {
+          "name": "OPNsense Entity",
+          "description": "Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        }
+      },
+      "sections": {
+        "multiple_opnsense": {
+          "name": "Only needed if there is more than one OPNsense Router"
+        }
+      }
+    },
+    "system_halt": {
+      "name": "Halt system",
+      "description": "Halts the OPNsense Router",
+      "fields": {
+        "device_id": {
+          "name": "OPNsense Device",
+          "description": "Only needed if there is more than one OPNsense Router. Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        },
+        "entity_id": {
+          "name": "OPNsense Entity",
+          "description": "Only needed if there is more than one OPNsense Router. Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        }
+      }
+    },
+    "system_reboot": {
+      "name": "Reboot system",
+      "description": "Reboots the OPNsense Router",
+      "fields": {
+        "device_id": {
+          "name": "OPNsense Device",
+          "description": "Only needed if there is more than one OPNsense Router. Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        },
+        "entity_id": {
+          "name": "OPNsense Entity",
+          "description": "Only needed if there is more than one OPNsense Router. Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        }
+      }
+    },
+    "send_wol": {
+      "name": "Send WOL",
+      "description": "Sends a wake-on-lan magic packet",
+      "fields": {
+        "interface": {
+          "name": "Interface Name",
+          "description": "The name of the interface. Like: wan|lan|opt1|opt2|.."
+        },
+        "mac": {
+          "name": "MAC Address",
+          "description": "The target mac address."
+        },
+        "device_id": {
+          "name": "OPNsense Device",
+          "description": "Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        },
+        "entity_id": {
+          "name": "OPNsense Entity",
+          "description": "Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        }
+      },
+      "sections": {
+        "multiple_opnsense": {
+          "name": "Only needed if there is more than one OPNsense Router"
+        }
+      }
+    },
+    "reload_interface": {
+      "name": "Reload an Interface",
+      "description": "Reload or restart an OPNSense interface",
+      "fields": {
+        "interface": {
+          "name": "Interface Name",
+          "description": "The name of the interface. Like: wan|lan|opt1|opt2|.."
+        },
+        "device_id": {
+          "name": "OPNsense Device",
+          "description": "Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        },
+        "entity_id": {
+          "name": "OPNsense Entity",
+          "description": "Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        }
+      },
+      "sections": {
+        "multiple_opnsense": {
+          "name": "Only needed if there is more than one OPNsense Router"
+        }
+      }
+    },
+    "generate_vouchers": {
+      "name": "Generate Captive Portal Vouchers",
+      "description": "Vouchers for use with Captive Portal (like guest WiFi)",
+      "fields": {
+
+        "validity": {
+          "name": "Validity",
+          "description": "If manually entering a duration, enter in seconds"
+        },
+        "expirytime": {
+          "name": "Expires in",
+          "description": "If manually entering a duration, enter in seconds"
+        },
+        "count": {
+          "name": "Number of vouchers",
+          "description": "The number of vouchers to generate"
+        },
+        "vouchergroup": {
+          "name": "Groupname",
+          "description": "The Groupname in opnsense to create the vouchers under"
+        },
+        "voucher_server": {
+          "name": "Captive Portal Voucher Server",
+          "description": "OPTIONAL: Only needed if there is more than one Captive Portal Voucher Server"
+        },
+        "device_id": {
+          "name": "OPNsense Device",
+          "description": "Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        },
+        "entity_id": {
+          "name": "OPNsense Entity",
+          "description": "Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        }
+      },
+      "sections": {
+        "multiple_opnsense": {
+          "name": "Only needed if there is more than one OPNsense Router"
+        }
+      }
+    },
+    "kill_states": {
+      "name": "Kill States",
+      "description": "Kill all states for an IP address",
+      "fields": {
+        "ip_addr": {
+          "name": "IP Address",
+          "description": "The IP Address to kill all states for. ipv4 or ipv6 accepted"
+        },
+        "device_id": {
+          "name": "OPNsense Device",
+          "description": "Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        },
+        "entity_id": {
+          "name": "OPNsense Entity",
+          "description": "Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        }
+      },
+      "sections": {
+        "multiple_opnsense": {
+          "name": "Only needed if there is more than one OPNsense Router"
+        }
+      }
+    },
+    "toggle_alias": {
+      "name": "Toggle Alias",
+      "description": "Toggle, Turn On or Turn Off an Alias",
+      "fields": {
+        "alias": {
+          "name": "Alias Name",
+          "description": "The name of the alias in OPNsense"
+        },
+        "toggle_on_off": {
+          "name": "Alias Action",
+          "description": "What action to take on the alias"
+        },
+        "device_id": {
+          "name": "OPNsense Device",
+          "description": "Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        },
+        "entity_id": {
+          "name": "OPNsense Entity",
+          "description": "Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        }
+      },
+      "sections": {
+        "multiple_opnsense": {
+          "name": "Only needed if there is more than one OPNsense Router"
+        }
+      }
+    }
+  }
 }
