@@ -137,6 +137,12 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
 
             if dict_get(state, "firmware_update_info.status") == "upgrade":
                 product_latest = dict_get(state, "firmware_update_info.upgrade_major_version")
+                if product_latest:
+                    product_series = (
+                        ".".join(product_latest.split(".")[:2])
+                        if "." in product_latest
+                        else product_latest
+                    )
 
             if product_latest:
                 self._attr_latest_version = product_latest.replace("_", ".")
