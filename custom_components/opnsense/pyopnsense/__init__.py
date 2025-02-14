@@ -333,6 +333,7 @@ $toreturn["real"] = json_encode($toreturn_real);
 
                     async for chunk in response.content.iter_chunked(1024):
                         buffer += chunk.decode("utf-8")
+                        # _LOGGER.debug("[get_from_stream] buffer: %s", buffer)
 
                         if "\n\n" in buffer:
                             message, buffer = buffer.split("\n\n", 1)
@@ -345,12 +346,23 @@ $toreturn["real"] = json_encode($toreturn_real);
                                         response_str: str = line[len("data:") :].strip()
                                         response_json = json.loads(response_str)
 
-                                        # _LOGGER.debug(f"[get_from_stream] response_json ({type(response_json).__name__}): {response_json}")
+                                        _LOGGER.debug(
+                                            "[get_from_stream] response_json (%s): %s",
+                                            type(response_json).__name__,
+                                            response_json,
+                                        )
                                         return (
                                             response_json
                                             if isinstance(response_json, MutableMapping)
                                             else {}
                                         )  # Exit after processing the second message
+                                    _LOGGER.debug(
+                                        "[get_from_stream] Ignored message %s: %s",
+                                        message_count,
+                                        line,
+                                    )
+                                else:
+                                    _LOGGER.debug("[get_from_stream] Unparsed: %s", line)
                 else:
                     if response.status == 403:
                         stack = inspect.stack()
