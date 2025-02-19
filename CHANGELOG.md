@@ -1,7 +1,26 @@
+<a id="v0.3.16"></a>
+# [v0.3.16](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.16) - 2025-02-19
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🚀 Enhancements
+* Re enable hassfest and move services text to translations by [@Snuffy2](https://github.com/Snuffy2) in [#370](https://github.com/travisghansen/hass-opnsense/pull/370)
+### 🐛 Bug Fixes
+* Handle changelog for plus releases by [@Snuffy2](https://github.com/Snuffy2) in [#367](https://github.com/travisghansen/hass-opnsense/pull/367)
+### 🎓 Code Quality
+* Increase get_from_stream debug logging by [@Snuffy2](https://github.com/Snuffy2) in [#371](https://github.com/travisghansen/hass-opnsense/pull/371)
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.15...v0.3.16
+
+[Changes][v0.3.16]
+
+
 <a id="v0.3.15"></a>
 # [v0.3.15](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.15) - 2025-01-18
 
-<!-- Release notes generated using configuration in .github/release.yml at main -->
+<h3>OPNsense Minimum Firmware Required: 24.1</h3><h4>OPNsense Recommended Firmware: 24.7</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
 ## What's Changed
 ### 🚀 Enhancements
@@ -13,7 +32,7 @@
 * Update labels and release notes by [@Snuffy2](https://github.com/Snuffy2) in [#365](https://github.com/travisghansen/hass-opnsense/pull/365)
 
 
-**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.14...v0.3.15
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.3.14...v0.3.15<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
 
 [Changes][v0.3.15]
 
@@ -591,6 +610,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.3.16]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.15...v0.3.16
 [v0.3.15]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.14...v0.3.15
 [v0.3.14]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.13...v0.3.14
 [v0.3.13]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.12...v0.3.13
