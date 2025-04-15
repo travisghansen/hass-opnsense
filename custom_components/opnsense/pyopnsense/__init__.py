@@ -1282,7 +1282,7 @@ $toreturn = [
             seconds = OPNsenseClient._try_to_int(seconds_str, 0) or 0
             system["uptime"] = days * 86400 + hours * 3600 + minutes * 60 + seconds
 
-            boottime: datetime = datetime.now() - timedelta(seconds=system["uptime"])
+            boottime: datetime = datetime.now().replace(microsecond=0) - timedelta(seconds=system["uptime"])
             system["boottime"] = boottime.timestamp()
         else:
             _LOGGER.warning("Invalid uptime format")
