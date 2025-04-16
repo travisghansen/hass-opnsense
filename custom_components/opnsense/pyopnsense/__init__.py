@@ -1273,10 +1273,12 @@ $toreturn = [
         # _LOGGER.debug(f"[get_telemetry_system] time_info: {time_info}")
         system: MutableMapping[str, Any] = {}
 
+        systemtime: datetime = datetime.strptime(time_info["datetime"], "%a %b %d %H:%M:%S %Z %Y")
+
         if "boottime" in time_info:
             boottime: datetime = datetime.strptime(time_info["boottime"], "%a %b %d %H:%M:%S %Z %Y")
             system["boottime"] = boottime.timestamp()
-            system["uptime"] = int(datetime.now() - system["boottime"])
+            system["uptime"] = int(systemtime - system["boottime"])
         else:
             pattern = re.compile(r"^(?:(\d+)\s+days?,\s+)?(\d{2}):(\d{2}):(\d{2})$")
             match = pattern.match(time_info.get("uptime", ""))
@@ -1286,9 +1288,10 @@ $toreturn = [
                 hours = OPNsenseClient._try_to_int(hours_str, 0) or 0
                 minutes = OPNsenseClient._try_to_int(minutes_str, 0) or 0
                 seconds = OPNsenseClient._try_to_int(seconds_str, 0) or 0
+                
                 system["uptime"] = days * 86400 + hours * 3600 + minutes * 60 + seconds
-
-                boottime: datetime = datetime.now() - timedelta(seconds=system["uptime"])
+                
+                boottime: datetime = systemtime - timedelta(seconds=system["uptime"])
                 system["boottime"] = boottime.timestamp()
             else:
                 _LOGGER.warning("Invalid uptime format")
