@@ -1275,22 +1275,27 @@ $toreturn = [
 
         systemtime: datetime = datetime.strptime(time_info["datetime"], "%a %b %d %H:%M:%S %Z %Y")
 
+        pattern = re.compile(r"^(?:(\d+)\s+days?,\s+)?(\d{2}):(\d{2}):(\d{2})$")
+        match = pattern.match(time_info.get("uptime", ""))
+        if match:
+            days_str, hours_str, minutes_str, seconds_str = match.groups()
+            days = OPNsenseClient._try_to_int(days_str, 0) or 0
+            hours = OPNsenseClient._try_to_int(hours_str, 0) or 0
+            minutes = OPNsenseClient._try_to_int(minutes_str, 0) or 0
+            seconds = OPNsenseClient._try_to_int(seconds_str, 0) or 0
+
+            uptime =  days * 86400 + hours * 3600 + minutes * 60 + seconds
+
         if "boottime" in time_info:
             boottime: datetime = datetime.strptime(time_info["boottime"], "%a %b %d %H:%M:%S %Z %Y")
             system["boottime"] = boottime.timestamp()
-            system["uptime"] = int(systemtime - system["boottime"])
-        else:
-            pattern = re.compile(r"^(?:(\d+)\s+days?,\s+)?(\d{2}):(\d{2}):(\d{2})$")
-            match = pattern.match(time_info.get("uptime", ""))
             if match:
-                days_str, hours_str, minutes_str, seconds_str = match.groups()
-                days = OPNsenseClient._try_to_int(days_str, 0) or 0
-                hours = OPNsenseClient._try_to_int(hours_str, 0) or 0
-                minutes = OPNsenseClient._try_to_int(minutes_str, 0) or 0
-                seconds = OPNsenseClient._try_to_int(seconds_str, 0) or 0
-                
-                system["uptime"] = days * 86400 + hours * 3600 + minutes * 60 + seconds
-                
+                system["uptime"] = uptime
+            else:
+                system["uptime"] = int(systemtime - boottime.timestamp())
+        else:
+            if match:
+                system["uptime"] = uptime
                 boottime: datetime = systemtime - timedelta(seconds=system["uptime"])
                 system["boottime"] = boottime.timestamp()
             else:
