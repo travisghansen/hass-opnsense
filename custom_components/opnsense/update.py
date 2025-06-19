@@ -82,6 +82,7 @@ class OPNsenseUpdate(OPNsenseEntity, UpdateEntity):
         self._attr_installed_version: str | None = None
         self._attr_latest_version: str | None = None
         self._attr_release_url: str | None = None
+        self._attr_release_summary: str | None = None
         self._release_notes: str | None = None
 
 
@@ -159,13 +160,13 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
                 product_class = "community"
             elif series_minor in {"4", "10"}:
                 product_class = "business"
-        # _LOGGER.debug(
-        #     "[Update handle_coordinator_update] product_version: %s, product_latest: %s, product_series: %s, product_class: %s",
-        #     product_version,
-        #     product_latest,
-        #     product_series,
-        #     product_class,
-        # )
+        _LOGGER.debug(
+            "[Update handle_coordinator_update] product_version: %s, product_latest: %s, product_series: %s, product_class: %s",
+            product_version,
+            product_latest,
+            product_series,
+            product_class,
+        )
 
         if product_series and product_latest and product_class:
             self._attr_release_url = f"https://github.com/opnsense/changelog/blob/master/{product_class}/{product_series}/{product_latest.split('+')[0].split('_')[0]}"
@@ -174,7 +175,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
                 self.config_entry.data.get("url", None) + "/ui/core/firmware#changelog"
             )
 
-        # _LOGGER.debug("[Update handle_coordinator_update] release_url: %s", self._attr_release_url)
+        _LOGGER.debug("[Update handle_coordinator_update] release_url: %s", self._attr_release_url)
         summary: str | None = None
         try:
             if dict_get(state, "firmware_update_info.status") == "update":
@@ -216,7 +217,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
 - removed packages: {remove_package_count}
 - upgraded packages: {upgrade_package_count}
 """
-            if dict_get(state, "firmware_update_info.status") == "upgrade":
+            elif dict_get(state, "firmware_update_info.status") == "upgrade":
                 product_name = dict_get(state, "firmware_update_info.product.product_name")
                 status_msg = dict_get(state, "firmware_update_info.status_msg")
 
@@ -233,9 +234,18 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
 
 - reboot needed: {upgrade_needs_reboot}
 """
-        except (TypeError, KeyError, AttributeError):
+            else:
+                summary = dict_get(state, "firmware_update_info.status_msg")
+
+        except (TypeError, KeyError, AttributeError) as e:
+            _LOGGER.error(
+                "Error getting release notes. %s: %s",
+                e.__class__.__qualname__,
+                e,
+            )
             self._release_notes = None
         self._release_notes = summary
+        self._attr_release_summary = dict_get(state, "firmware_update_info.status_msg")
 
         self._attr_extra_state_attributes = {}
 
