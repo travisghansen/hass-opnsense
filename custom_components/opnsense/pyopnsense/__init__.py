@@ -1284,7 +1284,7 @@ $toreturn = [
             minutes = OPNsenseClient._try_to_int(minutes_str, 0) or 0
             seconds = OPNsenseClient._try_to_int(seconds_str, 0) or 0
 
-            uptime =  days * 86400 + hours * 3600 + minutes * 60 + seconds
+            uptime = days * 86400 + hours * 3600 + minutes * 60 + seconds
 
         if "boottime" in time_info:
             boottime: datetime = datetime.strptime(time_info["boottime"], "%a %b %d %H:%M:%S %Z %Y")
@@ -1292,14 +1292,13 @@ $toreturn = [
             if match:
                 system["uptime"] = uptime
             else:
-                system["uptime"] = int(systemtime - boottime.timestamp())
+                system["uptime"] = int((systemtime - boottime).total_seconds())
+        elif match:
+            system["uptime"] = uptime
+            boottime = systemtime - timedelta(seconds=system["uptime"])
+            system["boottime"] = boottime.timestamp()
         else:
-            if match:
-                system["uptime"] = uptime
-                boottime: datetime = systemtime - timedelta(seconds=system["uptime"])
-                system["boottime"] = boottime.timestamp()
-            else:
-                _LOGGER.warning("Invalid uptime format")
+            _LOGGER.warning("Invalid uptime format")
 
         load_str: str = time_info.get("loadavg", "")
         load_list: list[str] = load_str.split(", ")
