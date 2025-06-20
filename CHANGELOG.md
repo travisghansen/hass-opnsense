@@ -1,3 +1,18 @@
+<a id="v0.4.1"></a>
+# [v0.4.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.4.1) - 2025-06-20
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🧰 Maintenance
+* Fix Github release action by [@Snuffy2](https://github.com/Snuffy2) in [#386](https://github.com/travisghansen/hass-opnsense/pull/386)
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.4.0...v0.4.1
+
+[Changes][v0.4.1]
+
+
 <a id="v0.4.0"></a>
 # [v0.4.0](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.4.0) - 2025-06-19
 
@@ -632,6 +647,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.4.1]: https://github.com/travisghansen/hass-opnsense/compare/v0.4.0...v0.4.1
 [v0.4.0]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.16...v0.4.0
 [v0.3.16]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.15...v0.3.16
 [v0.3.15]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.14...v0.3.15
