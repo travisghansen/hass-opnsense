@@ -10,22 +10,27 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4.2.2
+
       - name: Debug Variables
         run: |
             echo "github.event_name: ${{ github.event_name }}"
             echo "github.ref_name: ${{ github.ref_name }}"
+            echo "github.event.release.tag_name: ${{ github.event.release.tag_name }}"
             echo "github.event.repository.default_branch: ${{ github.event.repository.default_branch }}"
             echo "github.event.release.target_commitish: ${{ github.event.release.target_commitish }}"
             echo "github.event.release.prerelease: ${{ github.event.release.prerelease }}"
             echo "github.event.release.draft: ${{ github.event.release.draft }}"
+
       - name: Update Version in Manifest
         if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
         run: |
-          sed -i 's/\"version\"\s*\:\s*\".*\"/\"version\"\:\"${{ github.ref_name }}\"/g' ./custom_components/opnsense/manifest.json
+          sed -i 's/\"version\"\s*\:\s*\".*\"/\"version\"\:\"${{ github.event.release.tag_name }}\"/g' ./custom_components/opnsense/manifest.json
+
       - name: Update Version in const.py
         if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
         run: |
-          sed -i 's/^VERSION \= \".*\"/VERSION \= \"${{ github.ref_name }}\"/' ./custom_components/opnsense/const.py
+          sed -i 's/^VERSION \= \".*\"/VERSION \= \"${{ github.event.release.tag_name }}\"/' ./custom_components/opnsense/const.py
+
       - name: Update Changelog
         if: ${{ github.event_name == 'release' && github.event.release.draft == false && github.event.release.prerelease == false  }}
         uses: rhysd/changelog-from-release/action@v3
@@ -33,18 +38,21 @@ jobs:
           file: CHANGELOG.md
           github_token: ${{ secrets.GITHUB_TOKEN }}
           commit: false
+
       - name: Commit & Push Version Changes
         if: ${{ github.event_name == 'release' && github.event.release.draft == false && github.event.release.prerelease == false  }}
         uses: actions-js/push@master
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           branch: ${{ github.event.release.target_commitish }}
-          message: 'Updating to version ${{ github.ref_name }}'
+          message: 'Updating to version ${{ github.event.release.tag_name }}'
+
       - name: Update Release with Version Changes Commit
         if: ${{ github.event_name == 'release' && github.event.release.draft == false && github.event.release.prerelease == false  }}
         run: |
-          git tag -f ${{ github.ref_name }}
-          git push -f origin ${{ github.ref_name }}
+          git tag -f ${{ github.event.release.tag_name }}
+          git push -f origin ${{ github.event.release.tag_name }}
+
       - name: Extract Firmware Variables from const.py
         if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
         id: extract_variables
@@ -57,25 +65,24 @@ jobs:
       - name: Update release notes with firmware information
         if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
         run: |
-          echo "Updating release with tag: ${{ github.ref_name }}"
-          gh release edit ${{ github.ref_name }} \
-          --notes "<h3>OPNsense Minimum Firmware Required: ${{ env.OPNSENSE_MIN_FIRMWARE }}</h3><h4>OPNsense Recommended Firmware: ${{ env.OPNSENSE_LTD_FIRMWARE }}</h4><p>$(gh release view ${{ github.ref_name }} --json body -q .body)<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>"
+          echo "Updating release with tag: ${{ github.event.release.tag_name }}"
+          gh release edit ${{ github.event.release.tag_name }} \
+          --notes "<h3>OPNsense Minimum Firmware Required: ${{ env.OPNSENSE_MIN_FIRMWARE }}</h3><h4>OPNsense Recommended Firmware: ${{ env.OPNSENSE_LTD_FIRMWARE }}</h4><p>$(gh release view ${{ github.event.release.tag_name }} --json body -q .body)<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create Zip
-        uses: thedoctor0/zip-release@0.7.6
-        with:
-          type: 'zip'
-          filename: 'opnsense.zip'
-          directory: ./custom_components/opnsense
+        run: |
+          cd ${{ github.workspace }}/custom_components/opnsense
+          zip opnsense.zip -r ./
+
       - name: Upload Zip to Release
         if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
-        uses: Roang-zero1/github-upload-release-artifacts-action@v3.0.0
+        uses: softprops/action-gh-release@v2.3.2
         with:
-          args: ./custom_components/opnsense/opnsense.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: ./custom_components/opnsense/opnsense.zip
+          tag_name: ${{ github.event.release.tag_name }}
+
       - name: Add Zip to Action
         if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: actions/upload-artifact@v4.6.2
