@@ -19,6 +19,9 @@ import xmlrpc.client
 
 import aiohttp
 import awesomeversion
+from dateutil.parser import UnknownTimezoneWarning, parse
+
+from .const import AMBIGUOUS_TZINFOS
 
 # value to set as the socket timeout
 DEFAULT_TIMEOUT = 60
@@ -1270,10 +1273,23 @@ $toreturn = [
     @_log_errors
     async def _get_telemetry_system(self) -> MutableMapping[str, Any]:
         time_info = await self._safe_dict_post("/api/diagnostics/system/systemTime")
-        # _LOGGER.debug(f"[get_telemetry_system] time_info: {time_info}")
+        # _LOGGER.debug("[get_telemetry_system] time_info: %s", time_info)
         system: MutableMapping[str, Any] = {}
 
-        systemtime: datetime = datetime.strptime(time_info["datetime"], "%a %b %d %H:%M:%S %Z %Y")
+        try:
+            systemtime: datetime = parse(time_info["datetime"], tzinfos=AMBIGUOUS_TZINFOS)
+            if systemtime.tzinfo is None:
+                systemtime = systemtime.replace(
+                    tzinfo=timezone(datetime.now().astimezone().utcoffset() or timedelta())
+                )
+        except (ValueError, TypeError, UnknownTimezoneWarning) as e:
+            _LOGGER.warning(
+                "Failed to parse opnsense system time (aka. datetime), using HA system time instead: %s. %s: %s",
+                time_info["datetime"],
+                type(e).__name__,
+                e,
+            )
+            systemtime = datetime.now().astimezone()
 
         pattern = re.compile(r"^(?:(\d+)\s+days?,\s+)?(\d{2}):(\d{2}):(\d{2})$")
         match = pattern.match(time_info.get("uptime", ""))
@@ -1286,8 +1302,23 @@ $toreturn = [
 
             uptime = days * 86400 + hours * 3600 + minutes * 60 + seconds
 
+        boottime: datetime | None = None
         if "boottime" in time_info:
-            boottime: datetime = datetime.strptime(time_info["boottime"], "%a %b %d %H:%M:%S %Z %Y")
+            try:
+                boottime = parse(time_info["boottime"], tzinfos=AMBIGUOUS_TZINFOS)
+                if boottime.tzinfo is None:
+                    boottime = boottime.replace(
+                        tzinfo=timezone(datetime.now().astimezone().utcoffset() or timedelta())
+                    )
+            except (ValueError, TypeError, UnknownTimezoneWarning) as e:
+                _LOGGER.info(
+                    "Failed to parse opnsense boottime: %s. %s: %s",
+                    time_info["boottime"],
+                    type(e).__name__,
+                    e,
+                )
+
+        if boottime:
             system["boottime"] = boottime.timestamp()
             if match:
                 system["uptime"] = uptime
