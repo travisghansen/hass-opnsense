@@ -1,14 +1,29 @@
+<a id="v0.4.2"></a>
+# [v0.4.2](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.4.2) - 2025-06-29
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🐛 Bug Fixes
+* Improve handling of opnsense datetime strings by [@Snuffy2](https://github.com/Snuffy2) in [#388](https://github.com/travisghansen/hass-opnsense/pull/388)
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.4.1...v0.4.2
+
+[Changes][v0.4.2]
+
+
 <a id="v0.4.1"></a>
 # [v0.4.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.4.1) - 2025-06-20
 
-<!-- Release notes generated using configuration in .github/release.yml at main -->
+<h3>OPNsense Minimum Firmware Required: 24.7</h3><h4>OPNsense Recommended Firmware: 25.1</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
 ## What's Changed
 ### 🧰 Maintenance
 * Fix Github release action by [@Snuffy2](https://github.com/Snuffy2) in [#386](https://github.com/travisghansen/hass-opnsense/pull/386)
 
 
-**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.4.0...v0.4.1
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.4.0...v0.4.1<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
 
 [Changes][v0.4.1]
 
@@ -647,6 +662,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.4.2]: https://github.com/travisghansen/hass-opnsense/compare/v0.4.1...v0.4.2
 [v0.4.1]: https://github.com/travisghansen/hass-opnsense/compare/v0.4.0...v0.4.1
 [v0.4.0]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.16...v0.4.0
 [v0.3.16]: https://github.com/travisghansen/hass-opnsense/compare/v0.3.15...v0.3.16
