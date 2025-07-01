@@ -250,7 +250,10 @@ async def async_remove_config_entry_device(
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     platforms = hass.data[DOMAIN][entry.entry_id][LOADED_PLATFORMS]
+    client: OPNsenseClient = hass.data[DOMAIN][entry.entry_id][OPNSENSE_CLIENT]
     unload_ok = await hass.config_entries.async_unload_platforms(entry, platforms)
+
+    await client.async_close()
 
     for listener in hass.data[DOMAIN][entry.entry_id][UNDO_UPDATE_LISTENER]:
         listener()

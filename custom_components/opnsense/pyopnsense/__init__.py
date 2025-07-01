@@ -181,6 +181,14 @@ class OPNsenseClient(ABC):
         self._firmware_version: str | None = None
         self._xmlrpc_query_count = 0
         self._rest_api_query_count = 0
+        self._request_queue: asyncio.Queue = asyncio.Queue()
+        self._queue_monitor = asyncio.create_task(self._monitor_queue())
+        self._workers = []
+        self._max_workers = 2  # Number of parallel workers to process the queue
+
+        for _ in range(self._max_workers):
+            self._workers.append(asyncio.create_task(self._process_queue()))
+
         try:
             self._loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -314,6 +322,57 @@ $toreturn["real"] = json_encode($toreturn_real);
         return False
 
     async def _get_from_stream(self, path: str) -> MutableMapping[str, Any]:
+        future = asyncio.get_event_loop().create_future()
+        await self._request_queue.put(("get_from_stream", path, None, future))
+        return await future
+
+    async def _get(self, path: str) -> MutableMapping[str, Any] | list | None:
+        future = asyncio.get_event_loop().create_future()
+        await self._request_queue.put(("get", path, None, future))
+        return await future
+
+    async def _post(
+        self, path: str, payload: MutableMapping[str, Any] | None = None
+    ) -> MutableMapping[str, Any] | list | None:
+        future = asyncio.get_event_loop().create_future()
+        await self._request_queue.put(("post", path, payload, future))
+        return await future
+
+    async def _process_queue(self):
+        while True:
+            method, path, payload, future = await self._request_queue.get()
+            try:
+                if method == "get_from_stream":
+                    result: MutableMapping[str, Any] | list | None = await self._do_get_from_stream(
+                        path
+                    )
+                elif method == "get":
+                    result = await self._do_get(path)
+                elif method == "post":
+                    result = await self._do_post(path, payload)
+                else:
+                    _LOGGER.error("Unknown method to add to Queue: %s", method)
+                future.set_result(result)
+            except Exception as e:  # noqa: BLE001
+                _LOGGER.error(
+                    "Exception in request queue processor. %s: %s",
+                    type(e).__name__,
+                    e,
+                )
+                future.set_exception(e)
+            await asyncio.sleep(0.3)
+
+    async def _monitor_queue(self):
+        while True:
+            try:
+                queue_size = self._request_queue.qsize()
+                if queue_size > 0:
+                    _LOGGER.debug("OPNsense API queue backlog: %d tasks", queue_size)
+            except Exception as e:  # noqa: BLE001
+                _LOGGER.error("Error monitoring queue size. %s: %s", type(e).__name__, e)
+            await asyncio.sleep(10)
+
+    async def _do_get_from_stream(self, path: str) -> MutableMapping[str, Any]:
         self._rest_api_query_count += 1
         url: str = f"{self._url}{path}"
         _LOGGER.debug("[get_from_stream] url: %s", url)
@@ -404,7 +463,7 @@ $toreturn["real"] = json_encode($toreturn_real);
 
         return {}
 
-    async def _get(self, path: str) -> MutableMapping[str, Any] | list | None:
+    async def _do_get(self, path: str) -> MutableMapping[str, Any] | list | None:
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
         self._rest_api_query_count += 1
         url: str = f"{self._url}{path}"
@@ -465,7 +524,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         result = await self._get(path=path)
         return result if isinstance(result, list) else []
 
-    async def _post(
+    async def _do_post(
         self, path: str, payload: MutableMapping[str, Any] | None = None
     ) -> MutableMapping[str, Any] | list | None:
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
@@ -1306,7 +1365,7 @@ $toreturn = [
         if "boottime" in time_info:
             try:
                 boottime = parse(time_info["boottime"], tzinfos=AMBIGUOUS_TZINFOS)
-                if boottime.tzinfo is None:
+                if boottime and boottime.tzinfo is None:
                     boottime = boottime.replace(
                         tzinfo=timezone(datetime.now().astimezone().utcoffset() or timedelta())
                     )
@@ -2152,3 +2211,35 @@ $toreturn = [
             return False
 
         return True
+
+    async def async_close(self) -> None:
+        """Cancel all running background tasks and clear the request queue."""
+        _LOGGER.debug("Closing OPNsenseClient and cancelling background tasks")
+
+        tasks_to_cancel = []
+
+        if self._queue_monitor and not self._queue_monitor.done():
+            self._queue_monitor.cancel()
+            tasks_to_cancel.append(self._queue_monitor)
+
+        if self._workers:
+            for worker in self._workers:
+                if not worker.done():
+                    worker.cancel()
+                tasks_to_cancel.append(worker)
+
+        if tasks_to_cancel:
+            try:
+                await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
+                _LOGGER.debug("All background tasks cancelled successfully")
+            except Exception as e:  # noqa: BLE001
+                _LOGGER.warning(
+                    "Error during background task cancellation. %s: %s", type(e).__name__, e
+                )
+
+        while not self._request_queue.empty():
+            try:
+                self._request_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+        _LOGGER.debug("Request queue cleared")

@@ -1,7 +1,7 @@
 """OPNsense integration."""
 
 import asyncio
-from collections.abc import MutableMapping
+from collections.abc import Callable, MutableMapping
 import logging
 import traceback
 from typing import Any
@@ -10,6 +10,7 @@ from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity, Swi
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_platform
+from homeassistant.helpers.event import async_call_later
 
 from .const import (
     ATTR_NAT_OUTBOUND,
@@ -299,6 +300,35 @@ class OPNsenseSwitch(OPNsenseEntity, SwitchEntity):
         )
         self.entity_description = entity_description
         self._attr_is_on: bool = False
+        self._delay_seconds: int = 10
+        self._delay_update: bool = False
+        self._delay_update_remove: Callable[[], None] | None = None
+
+    @property
+    def delay_update(self):
+        """Return whether to process the coordinator update or not."""
+        return self._delay_update
+
+    @delay_update.setter
+    def delay_update(self, value: bool):
+        if value and not self._delay_update:
+            self._delay_update = True
+            self._reset_delay()
+        elif not value:
+            self._delay_update = False
+            if self._delay_update_remove:
+                self._delay_update_remove()
+                self._delay_update_remove = None
+
+    def _reset_delay(self):
+        if self._delay_update_remove:
+            self._delay_update_remove()
+
+        def _clear(_):
+            self._delay_update = False
+            self._delay_update_remove = None
+
+        self._delay_update_remove = async_call_later(self.hass, self._delay_seconds, _clear)
 
 
 class OPNsenseFilterSwitch(OPNsenseSwitch):
@@ -337,6 +367,11 @@ class OPNsenseFilterSwitch(OPNsenseSwitch):
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        if self.delay_update:
+            _LOGGER.debug(
+                "Skipping coordinator update for filter switch: %s due to delay", self.name
+            )
+            return
         self._rule = self._opnsense_get_rule()
         if not self._rule:
             self._available = False
@@ -357,14 +392,20 @@ class OPNsenseFilterSwitch(OPNsenseSwitch):
         if self._rule is None or not self._client:
             return
         await self._client.enable_filter_rule_by_created_time(self._tracker)
-        await self.coordinator.async_refresh()
+        _LOGGER.info("Turned on filter rule: %s", self.name)
+        self._attr_is_on = True
+        self.async_write_ha_state()
+        self.delay_update = True
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the entity off."""
         if self._rule is None or not self._client:
             return
         await self._client.disable_filter_rule_by_created_time(self._tracker)
-        await self.coordinator.async_refresh()
+        _LOGGER.info("Turned off filter rule: %s", self.name)
+        self._attr_is_on = False
+        self.async_write_ha_state()
+        self.delay_update = True
 
     @property
     def icon(self) -> str | None:
@@ -419,6 +460,9 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        if self.delay_update:
+            _LOGGER.debug("Skipping coordinator update for NAT switch: %s due to delay", self.name)
+            return
         self._rule = self._opnsense_get_rule()
         if not isinstance(self._rule, MutableMapping):
             return
@@ -443,7 +487,10 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
         else:
             return
         await method(self._tracker)
-        await self.coordinator.async_refresh()
+        _LOGGER.info("Turned on NAT rule: %s", self.name)
+        self._attr_is_on = True
+        self.async_write_ha_state()
+        self.delay_update = True
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the entity off."""
@@ -456,7 +503,10 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
         else:
             return
         await method(self._tracker)
-        await self.coordinator.async_refresh()
+        _LOGGER.info("Turned off NAT rule: %s", self.name)
+        self._attr_is_on = False
+        self.async_write_ha_state()
+        self.delay_update = True
 
     @property
     def icon(self) -> str | None:
@@ -503,6 +553,11 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        if self.delay_update:
+            _LOGGER.debug(
+                "Skipping coordinator update for service switch: %s due to delay", self.name
+            )
+            return
         self._service = self._opnsense_get_service()
         if not isinstance(self._service, MutableMapping):
             return
@@ -528,7 +583,12 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
             self._service.get("id", self._service.get("name", None))
         )
         if result:
-            await self.coordinator.async_refresh()
+            _LOGGER.info("Turned on service: %s", self.name)
+            self._attr_is_on = True
+            self.async_write_ha_state()
+            self.delay_update = True
+        else:
+            _LOGGER.error("Failed to turn on service: %s", self.name)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the entity off."""
@@ -539,7 +599,12 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
             self._service.get("id", self._service.get("name", None))
         )
         if result:
-            await self.coordinator.async_refresh()
+            _LOGGER.info("Turned off service: %s", self.name)
+            self._attr_is_on = False
+            self.async_write_ha_state()
+            self.delay_update = True
+        else:
+            _LOGGER.error("Failed to turn off service: %s", self.name)
 
     @property
     def icon(self) -> str | None:
@@ -555,6 +620,12 @@ class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
+        if self.delay_update:
+            _LOGGER.debug(
+                "Skipping coordinator update for unbound blocklist switch: %s due to delay",
+                self.name,
+            )
+            return
         dnsbl = self.coordinator.data.get(ATTR_UNBOUND_BLOCKLIST, {})
         if not isinstance(dnsbl, MutableMapping) or len(dnsbl) == 0:
             self._available = False
@@ -581,7 +652,12 @@ class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
             return
         result: bool = await self._client.enable_unbound_blocklist()
         if result:
-            await self.coordinator.async_refresh()
+            _LOGGER.info("Turned on Unbound Blocklist: %s", self.name)
+            self._attr_is_on = True
+            self.async_write_ha_state()
+            self.delay_update = True
+        else:
+            _LOGGER.error("Failed to turn on Unbound Blocklist: %s", self.name)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the entity off."""
@@ -589,7 +665,12 @@ class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
             return
         result: bool = await self._client.disable_unbound_blocklist()
         if result:
-            await self.coordinator.async_refresh()
+            _LOGGER.info("Turned off Unbound Blocklist: %s", self.name)
+            self._attr_is_on = False
+            self.async_write_ha_state()
+            self.delay_update = True
+        else:
+            _LOGGER.error("Failed to turn off Unbound Blocklist: %s", self.name)
 
 
 class OPNsenseVPNSwitch(OPNsenseSwitch):
@@ -614,6 +695,9 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        if self.delay_update:
+            _LOGGER.debug("Skipping coordinator update for VPN switch: %s due to delay", self.name)
+            return
         state: MutableMapping[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             self._available = False
@@ -680,7 +764,12 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
             self._vpn_type, self._clients_servers, self._uuid
         )
         if result:
-            await self.coordinator.async_refresh()
+            _LOGGER.info("Turned on VPN: %s", self.name)
+            self._attr_is_on = True
+            self.async_write_ha_state()
+            self.delay_update = True
+        else:
+            _LOGGER.error("Failed to turn on VPN: %s", self.name)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the entity off."""
@@ -692,7 +781,12 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
             self._vpn_type, self._clients_servers, self._uuid
         )
         if result:
-            await self.coordinator.async_refresh()
+            _LOGGER.info("Turned off VPN: %s", self.name)
+            self._attr_is_on = False
+            self.async_write_ha_state()
+            self.delay_update = True
+        else:
+            _LOGGER.error("Failed to turn off VPN: %s", self.name)
 
     @property
     def icon(self) -> str | None:
