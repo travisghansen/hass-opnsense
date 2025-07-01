@@ -35,10 +35,17 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
             self._attr_unique_id: str = slugify(f"{self._device_unique_id}_{unique_id_suffix}")
         if name_suffix:
             self._attr_name: str | None = f"{self.opnsense_device_name or 'OPNsense'} {name_suffix}"
-        self._client: OPNsenseClient | None = None
+        self._client_entity: OPNsenseClient | None = None
         self._attr_extra_state_attributes: dict[str, Any] = {}
         self._available: bool = False
         super().__init__(self.coordinator, self._attr_unique_id)
+
+    @property
+    def _client(self) -> OPNsenseClient:
+        """Return the OPNsense client, guaranteed not None after setup."""
+        if self._client_entity is None:
+            raise RuntimeError("OPNsense client is not initialized")
+        return self._client_entity
 
     @property
     def available(self) -> bool:
@@ -64,11 +71,10 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
     async def async_added_to_hass(self) -> None:
         """Run once integration has been added to HA."""
         await super().async_added_to_hass()
-        if self._client is None:
-            self._client = self._get_opnsense_client()
-        if self._client is None:
+        if self._client_entity is None:
+            self._client_entity = self._get_opnsense_client()
+        if self._client_entity is None:
             _LOGGER.error("Unable to get client in async_added_to_hass.")
-        assert self._client is not None
         self._handle_coordinator_update()
 
 

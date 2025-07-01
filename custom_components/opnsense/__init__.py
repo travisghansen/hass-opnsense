@@ -45,6 +45,7 @@ from .const import (
     OPNSENSE_LTD_FIRMWARE,
     OPNSENSE_MIN_FIRMWARE,
     PLATFORMS,
+    QUEUE_TASK,
     SHOULD_RELOAD,
     UNDO_UPDATE_LISTENER,
     VERSION,
@@ -52,6 +53,7 @@ from .const import (
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .helpers import is_private_ip
 from .pyopnsense import OPNsenseClient
+from .queue import handle_queue
 from .services import async_setup_services
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -211,6 +213,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
 
     undo_listener = entry.add_update_listener(_async_update_listener)
+    queue_task = hass.loop.create_task(handle_queue())
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {
@@ -220,6 +223,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         UNDO_UPDATE_LISTENER: [undo_listener],
         LOADED_PLATFORMS: platforms,
         CONF_DEVICE_UNIQUE_ID: config_device_id,
+        QUEUE_TASK: queue_task,
     }
 
     if device_tracker_enabled and device_tracker_coordinator:
@@ -250,6 +254,11 @@ async def async_remove_config_entry_device(
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     platforms = hass.data[DOMAIN][entry.entry_id][LOADED_PLATFORMS]
+
+    queue_task = hass.data[DOMAIN][entry.entry_id].get(QUEUE_TASK)
+    if queue_task and not queue_task.done():
+        queue_task.cancel()
+
     unload_ok = await hass.config_entries.async_unload_platforms(entry, platforms)
 
     for listener in hass.data[DOMAIN][entry.entry_id][UNDO_UPDATE_LISTENER]:

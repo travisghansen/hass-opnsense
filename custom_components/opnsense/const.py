@@ -43,6 +43,7 @@ CONF_FIRMWARE_VERSION = "firmware_version"
 
 CONF_DEVICES = "devices"
 CONF_MANUAL_DEVICES = "manual_devices"
+QUEUE_TASK = "queue_task"
 
 COUNT = "count"
 

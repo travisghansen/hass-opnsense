@@ -280,7 +280,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
             _LOGGER.error("Cannot update firmware, state data is missing")
             return
         upgrade_type = dict_get(state, "firmware_update_info.status")
-        if upgrade_type not in {"update", "upgrade"} or not self._client:
+        if upgrade_type not in {"update", "upgrade"}:
             return
 
         upgrade_details = await self._client.upgrade_firmware(upgrade_type)

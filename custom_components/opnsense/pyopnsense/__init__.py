@@ -1306,7 +1306,7 @@ $toreturn = [
         if "boottime" in time_info:
             try:
                 boottime = parse(time_info["boottime"], tzinfos=AMBIGUOUS_TZINFOS)
-                if boottime.tzinfo is None:
+                if boottime and boottime.tzinfo is None:
                     boottime = boottime.replace(
                         tzinfo=timezone(datetime.now().astimezone().utcoffset() or timedelta())
                     )

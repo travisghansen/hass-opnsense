@@ -21,6 +21,7 @@ from .const import (
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity
 from .helpers import dict_get
+from .queue import queue
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -352,19 +353,31 @@ class OPNsenseFilterSwitch(OPNsenseSwitch):
         self.async_write_ha_state()
         # _LOGGER.debug(f"[OPNsenseFilterSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
 
-    async def async_turn_on(self, **kwargs: Any) -> None:
+    async def async_turn_on(self, **_kwargs: Any) -> None:
         """Turn the entity on."""
-        if self._rule is None or not self._client:
+        if self._rule is None:
             return
-        await self._client.enable_filter_rule_by_created_time(self._tracker)
-        await self.coordinator.async_refresh()
 
-    async def async_turn_off(self, **kwargs: Any) -> None:
+        _LOGGER.warning("Turning On Filter Rule: %s", self.name)
+
+        async def enable_filter_rule():
+            await self._client.enable_filter_rule_by_created_time(self._tracker)
+            await self.coordinator.async_refresh()
+
+        await queue.put(enable_filter_rule)
+
+    async def async_turn_off(self, **_kwargs: Any) -> None:
         """Turn the entity off."""
-        if self._rule is None or not self._client:
+        if self._rule is None:
             return
-        await self._client.disable_filter_rule_by_created_time(self._tracker)
-        await self.coordinator.async_refresh()
+
+        _LOGGER.warning("Turning Off Filter Rule: %s", self.name)
+
+        async def disable_filter_rule():
+            await self._client.disable_filter_rule_by_created_time(self._tracker)
+            await self.coordinator.async_refresh()
+
+        await queue.put(disable_filter_rule)
 
     @property
     def icon(self) -> str | None:
@@ -432,31 +445,45 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
         self.async_write_ha_state()
         # _LOGGER.debug(f"[OPNsenseNatSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
 
-    async def async_turn_on(self, **kwargs: Any) -> None:
+    async def async_turn_on(self, **_kwargs: Any) -> None:
         """Turn the entity on."""
-        if not isinstance(self._rule, MutableMapping) or not self._client:
+        if not isinstance(self._rule, MutableMapping):
             return
+
         if self._rule_type == ATTR_NAT_PORT_FORWARD:
             method = self._client.enable_nat_port_forward_rule_by_created_time
         elif self._rule_type == ATTR_NAT_OUTBOUND:
             method = self._client.enable_nat_outbound_rule_by_created_time
         else:
             return
-        await method(self._tracker)
-        await self.coordinator.async_refresh()
 
-    async def async_turn_off(self, **kwargs: Any) -> None:
+        _LOGGER.warning("Turning On NAT Rule: %s", self.name)
+
+        async def enable_nat_rule():
+            await method(self._tracker)
+            await self.coordinator.async_refresh()
+
+        await queue.put(enable_nat_rule)
+
+    async def async_turn_off(self, **_kwargs: Any) -> None:
         """Turn the entity off."""
-        if not isinstance(self._rule, MutableMapping) or not self._client:
+        if not isinstance(self._rule, MutableMapping):
             return
+
         if self._rule_type == ATTR_NAT_PORT_FORWARD:
             method = self._client.disable_nat_port_forward_rule_by_created_time
         elif self._rule_type == ATTR_NAT_OUTBOUND:
             method = self._client.disable_nat_outbound_rule_by_created_time
         else:
             return
-        await method(self._tracker)
-        await self.coordinator.async_refresh()
+
+        _LOGGER.warning("Turning Off NAT Rule: %s", self.name)
+
+        async def disable_nat_rule():
+            await method(self._tracker)
+            await self.coordinator.async_refresh()
+
+        await queue.put(disable_nat_rule)
 
     @property
     def icon(self) -> str | None:
@@ -519,27 +546,39 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         self.async_write_ha_state()
         # _LOGGER.debug(f"[OPNsenseServiceSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
 
-    async def async_turn_on(self, **kwargs: Any) -> None:
+    async def async_turn_on(self, **_kwargs: Any) -> None:
         """Turn the entity on."""
-        if not isinstance(self._service, MutableMapping) or not self._client:
+        if not isinstance(self._service, MutableMapping):
             return
 
-        result: bool = await self._client.start_service(
-            self._service.get("id", self._service.get("name", None))
-        )
-        if result:
-            await self.coordinator.async_refresh()
+        _LOGGER.warning("Turning On Service: %s", self.name)
 
-    async def async_turn_off(self, **kwargs: Any) -> None:
+        async def start_service():
+            if self._service is not None:
+                result: bool = await self._client.start_service(
+                    self._service.get("id", self._service.get("name", None))
+                )
+                if result:
+                    await self.coordinator.async_refresh()
+
+        await queue.put(start_service)
+
+    async def async_turn_off(self, **_kwargs: Any) -> None:
         """Turn the entity off."""
-        if not isinstance(self._service, MutableMapping) or not self._client:
+        if not isinstance(self._service, MutableMapping):
             return
 
-        result: bool = await self._client.stop_service(
-            self._service.get("id", self._service.get("name", None))
-        )
-        if result:
-            await self.coordinator.async_refresh()
+        _LOGGER.warning("Turning Off Service: %s", self.name)
+
+        async def stop_service():
+            if self._service is not None:
+                result: bool = await self._client.stop_service(
+                    self._service.get("id", self._service.get("name", None))
+                )
+                if result:
+                    await self.coordinator.async_refresh()
+
+        await queue.put(stop_service)
 
     @property
     def icon(self) -> str | None:
@@ -575,21 +614,29 @@ class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
         self.async_write_ha_state()
         # _LOGGER.debug(f"[OPNsenseUnboundBlocklistSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
 
-    async def async_turn_on(self, **kwargs: Any) -> None:
+    async def async_turn_on(self, **_kwargs: Any) -> None:
         """Turn the entity on."""
-        if not self._client:
-            return
-        result: bool = await self._client.enable_unbound_blocklist()
-        if result:
-            await self.coordinator.async_refresh()
 
-    async def async_turn_off(self, **kwargs: Any) -> None:
+        _LOGGER.warning("Turning On Unbound Blocklist Switch: %s", self.name)
+
+        async def enable_unbound_blocklist():
+            result: bool = await self._client.enable_unbound_blocklist()
+            if result:
+                await self.coordinator.async_refresh()
+
+        await queue.put(enable_unbound_blocklist)
+
+    async def async_turn_off(self, **_kwargs: Any) -> None:
         """Turn the entity off."""
-        if not self._client:
-            return
-        result: bool = await self._client.disable_unbound_blocklist()
-        if result:
-            await self.coordinator.async_refresh()
+
+        _LOGGER.warning("Turning Off Unbound Blocklist Switch: %s", self.name)
+
+        async def disable_unbound_blocklist():
+            result: bool = await self._client.disable_unbound_blocklist()
+            if result:
+                await self.coordinator.async_refresh()
+
+        await queue.put(disable_unbound_blocklist)
 
 
 class OPNsenseVPNSwitch(OPNsenseSwitch):
@@ -670,29 +717,39 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
         self.async_write_ha_state()
         # _LOGGER.debug(f"[OPNsenseVPNSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
 
-    async def async_turn_on(self, **kwargs: Any) -> None:
+    async def async_turn_on(self, **_kwargs: Any) -> None:
         """Turn the entity on."""
 
-        if self.is_on or not self._client:
+        if self.is_on:
             return
 
-        result: bool = await self._client.toggle_vpn_instance(
-            self._vpn_type, self._clients_servers, self._uuid
-        )
-        if result:
-            await self.coordinator.async_refresh()
+        _LOGGER.warning("Turning On VPN Instance: %s", self.name)
 
-    async def async_turn_off(self, **kwargs: Any) -> None:
+        async def toggle_vpn_instance():
+            result: bool = await self._client.toggle_vpn_instance(
+                self._vpn_type, self._clients_servers, self._uuid
+            )
+            if result:
+                await self.coordinator.async_refresh()
+
+        await queue.put(toggle_vpn_instance)
+
+    async def async_turn_off(self, **_kwargs: Any) -> None:
         """Turn the entity off."""
 
-        if not self.is_on or not self._client:
+        if not self.is_on:
             return
 
-        result: bool = await self._client.toggle_vpn_instance(
-            self._vpn_type, self._clients_servers, self._uuid
-        )
-        if result:
-            await self.coordinator.async_refresh()
+        _LOGGER.warning("Turning Off VPN Instance: %s", self.name)
+
+        async def toggle_vpn_instance():
+            result: bool = await self._client.toggle_vpn_instance(
+                self._vpn_type, self._clients_servers, self._uuid
+            )
+            if result:
+                await self.coordinator.async_refresh()
+
+        await queue.put(toggle_vpn_instance)
 
     @property
     def icon(self) -> str | None:
