@@ -24,7 +24,6 @@ from .const import (
     DEFAULT_DEVICE_TRACKER_CONSIDER_HOME,
     DEFAULT_DEVICE_TRACKER_ENABLED,
     DEVICE_TRACKER_COORDINATOR,
-    DOMAIN,
     SHOULD_RELOAD,
     TRACKED_MACS,
 )
@@ -44,9 +43,10 @@ async def async_setup_entry(
 
     dev_reg = async_get_dev_reg(hass)
 
-    data = hass.data[DOMAIN][config_entry.entry_id]
     previous_mac_addresses: list = config_entry.data.get(TRACKED_MACS, [])
-    coordinator: OPNsenseDataUpdateCoordinator = data[DEVICE_TRACKER_COORDINATOR]
+    coordinator: OPNsenseDataUpdateCoordinator = getattr(
+        config_entry.runtime_data, DEVICE_TRACKER_COORDINATOR
+    )
     state: MutableMapping[str, Any] = coordinator.data
     if not isinstance(state, MutableMapping):
         _LOGGER.error("Missing state data in device tracker async_setup_entry")
@@ -118,7 +118,7 @@ async def async_setup_entry(
             dev_reg.async_remove_device(rem_device.id)
 
     if set(mac_addresses) != set(previous_mac_addresses):
-        data[SHOULD_RELOAD] = False
+        setattr(config_entry.runtime_data, SHOULD_RELOAD, False)
         new_data = config_entry.data.copy()
         new_data[TRACKED_MACS] = mac_addresses.copy()
         hass.config_entries.async_update_entry(config_entry, data=new_data)

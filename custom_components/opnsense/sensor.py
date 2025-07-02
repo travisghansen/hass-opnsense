@@ -26,14 +26,7 @@ from homeassistant.helpers import entity_platform
 from homeassistant.util import slugify
 from homeassistant.util.dt import utc_from_timestamp
 
-from .const import (
-    COORDINATOR,
-    COUNT,
-    DATA_PACKETS,
-    DATA_RATE_PACKETS_PER_SECOND,
-    DOMAIN,
-    STATIC_SENSORS,
-)
+from .const import COORDINATOR, COUNT, DATA_PACKETS, DATA_RATE_PACKETS_PER_SECOND, STATIC_SENSORS
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity
 from .helpers import dict_get
@@ -445,9 +438,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up the OPNsense sensors."""
 
-    coordinator: OPNsenseDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id][
-        COORDINATOR
-    ]
+    coordinator: OPNsenseDataUpdateCoordinator = getattr(config_entry.runtime_data, COORDINATOR)
     state: MutableMapping[str, Any] = coordinator.data
     if not isinstance(state, MutableMapping):
         _LOGGER.error("Missing state data in sensor async_setup_entry")

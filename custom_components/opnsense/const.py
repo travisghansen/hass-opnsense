@@ -7,7 +7,7 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import PERCENTAGE, UnitOfInformation, UnitOfTime
+from homeassistant.const import PERCENTAGE, Platform, UnitOfInformation, UnitOfTime
 
 VERSION = "v0.4.2"
 DOMAIN = "opnsense"
@@ -16,7 +16,13 @@ OPNSENSE_MIN_FIRMWARE = "24.7"  # If less than this, don't allow install. It wil
 
 UNDO_UPDATE_LISTENER = "undo_update_listener"
 
-PLATFORMS: list = ["sensor", "switch", "device_tracker", "binary_sensor", "update"]
+PLATFORMS: list[Platform] = [
+    Platform.SENSOR,
+    Platform.SWITCH,
+    Platform.DEVICE_TRACKER,
+    Platform.BINARY_SENSOR,
+    Platform.UPDATE,
+]
 LOADED_PLATFORMS = "loaded_platforms"
 
 OPNSENSE_CLIENT = "opnsense_client"

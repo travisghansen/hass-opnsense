@@ -12,13 +12,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_platform
 from homeassistant.helpers.event import async_call_later
 
-from .const import (
-    ATTR_NAT_OUTBOUND,
-    ATTR_NAT_PORT_FORWARD,
-    ATTR_UNBOUND_BLOCKLIST,
-    COORDINATOR,
-    DOMAIN,
-)
+from .const import ATTR_NAT_OUTBOUND, ATTR_NAT_PORT_FORWARD, ATTR_UNBOUND_BLOCKLIST, COORDINATOR
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity
 from .helpers import dict_get
@@ -244,9 +238,7 @@ async def async_setup_entry(
     async_add_entities: entity_platform.AddEntitiesCallback,
 ) -> None:
     """Set up the OPNsense switches."""
-    coordinator: OPNsenseDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id][
-        COORDINATOR
-    ]
+    coordinator: OPNsenseDataUpdateCoordinator = getattr(config_entry.runtime_data, COORDINATOR)
     state: MutableMapping[str, Any] = coordinator.data
     if not isinstance(state, MutableMapping):
         _LOGGER.error("Missing state data in switch async_setup_entry")

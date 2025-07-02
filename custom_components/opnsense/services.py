@@ -17,7 +17,6 @@ from homeassistant.helpers import (
 
 from .const import (
     DOMAIN,
-    OPNSENSE_CLIENT,
     SERVICE_CLOSE_NOTICE,
     SERVICE_GENERATE_VOUCHERS,
     SERVICE_KILL_STATES,
@@ -235,10 +234,8 @@ async def _get_clients(
         return []
     first_entry_id = next(iter(hass.data[DOMAIN]))
     if len(hass.data[DOMAIN]) == 1:
-        if OPNSENSE_CLIENT in hass.data[DOMAIN][first_entry_id]:
-            # _LOGGER.debug(f"[get_clients] Only 1 entry. entry_id: {first_entry_id}")
-            return [hass.data[DOMAIN][first_entry_id][OPNSENSE_CLIENT]]
-        return []
+        # _LOGGER.debug(f"[get_clients] Only 1 entry. entry_id: {first_entry_id}")
+        return [hass.data[DOMAIN][first_entry_id]]
 
     entry_ids: list = []
     if opndevice_id:
@@ -261,9 +258,9 @@ async def _get_clients(
                 entry_ids.append(entity_entry.config_entry_id)
     clients: list = []
     # _LOGGER.debug(f"[get_clients] entry_ids: {entry_ids}")
-    for entry_id, entry in hass.data[DOMAIN].items():
-        if (len(entry_ids) == 0 or entry_id in entry_ids) and OPNSENSE_CLIENT in entry:
-            clients.append(entry[OPNSENSE_CLIENT])
+    for entry_id, opnsense_client in hass.data[DOMAIN].items():
+        if len(entry_ids) == 0 or entry_id in entry_ids:
+            clients.append(opnsense_client)
     _LOGGER.debug("[get_clients] clients: %s", clients)
     return clients
 
