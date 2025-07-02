@@ -604,12 +604,17 @@ $toreturn = [
         # if error or too old trigger check (only if check is not already in progress)
         # {'status_msg': 'Firmware status check was aborted internally. Please try again.', 'status': 'error'}
         # error could be because data has not been refreshed at all OR an upgrade is currently in progress
+        # _LOGGER.debug("[get_firmware_update_info] status: %s", status)
+
         if (
-            status.get("status", None) == "error"
+            status.get("status", None) in {"none", "error"}
             or "last_check" not in status
             or not isinstance(dict_get(status, "product.product_check"), dict)
             or not dict_get(status, "product.product_check")
+            or status.get("status_msg", None)
+            == "There are no updates available on the selected mirror."
         ):
+            _LOGGER.info("Triggering firmware check")
             await self._post("/api/core/firmware/check")
 
         return status
