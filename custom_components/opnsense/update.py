@@ -240,7 +240,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
         except (TypeError, KeyError, AttributeError) as e:
             _LOGGER.error(
                 "Error getting release notes. %s: %s",
-                e.__class__.__qualname__,
+                type(e).__name__,
                 e,
             )
             self._release_notes = None
@@ -304,7 +304,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
                 _LOGGER.warning(
                     "Error #%s while getting upgrade_status. %s: %s",
                     exceptions,
-                    e.__class__.__qualname__,
+                    type(e).__name__,
                     e,
                 )
                 if exceptions > 3:

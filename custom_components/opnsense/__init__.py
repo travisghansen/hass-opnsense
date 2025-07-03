@@ -331,7 +331,7 @@ async def _migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
                 _LOGGER.error(
                     "Error migrating device: %s. %s: %s",
                     dev.identifiers,
-                    e.__class__.__qualname__,
+                    type(e).__name__,
                     e,
                 )
 
@@ -365,7 +365,7 @@ async def _migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
             _LOGGER.error(
                 "Error migrating entity: %s. %s: %s",
                 ent.entity_id,
-                e.__class__.__qualname__,
+                type(e).__name__,
                 e,
             )
 
@@ -430,7 +430,7 @@ async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
                     _LOGGER.error(
                         "Error removing entity: %s. %s: %s",
                         ent.entity_id,
-                        e.__class__.__qualname__,
+                        type(e).__name__,
                         e,
                     )
                 continue
@@ -480,7 +480,7 @@ async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
                 _LOGGER.error(
                     "Error migrating entity: %s. %s: %s",
                     ent.entity_id,
-                    e.__class__.__qualname__,
+                    type(e).__name__,
                     e,
                 )
     new_entry_bool = hass.config_entries.async_update_entry(config_entry, version=4)

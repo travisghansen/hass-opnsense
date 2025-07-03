@@ -44,7 +44,7 @@ def _log_errors(func: Callable) -> Any:
             _LOGGER.error(
                 "Error in %s. %s: %s\n%s",
                 func.__name__.strip("_"),
-                e.__class__.__qualname__,
+                type(e).__name__,
                 redacted_message,
                 "".join(traceback.format_tb(e.__traceback__)),
             )
@@ -259,7 +259,7 @@ $toreturn["real"] = json_encode($toreturn_real);
             _LOGGER.error(
                 "Invalid data returned from exec_php for %s. %s: %s. Called from %s",
                 calling_function,
-                e.__class__.__qualname__,
+                type(e).__name__,
                 e,
                 calling_function,
             )
@@ -269,7 +269,7 @@ $toreturn["real"] = json_encode($toreturn_real);
             _LOGGER.error(
                 "Error running exec_php script for %s. %s: %s. Ensure the 'os-homeassistant-maxit' plugin has been installed on OPNsense",
                 calling_function,
-                e.__class__.__qualname__,
+                type(e).__name__,
                 e,
             )
         except socket.gaierror as e:
@@ -278,7 +278,7 @@ $toreturn["real"] = json_encode($toreturn_real);
             _LOGGER.warning(
                 "Connection Error running exec_php script for %s. %s: %s. Will retry",
                 calling_function,
-                e.__class__.__qualname__,
+                type(e).__name__,
                 e,
             )
         except ssl.SSLError as e:
@@ -287,7 +287,7 @@ $toreturn["real"] = json_encode($toreturn_real);
             _LOGGER.warning(
                 "SSL Connection Error running exec_php script for %s. %s: %s. Will retry",
                 calling_function,
-                e.__class__.__qualname__,
+                type(e).__name__,
                 e,
             )
         return {}
@@ -457,7 +457,7 @@ $toreturn["real"] = json_encode($toreturn_real);
                             headers=response.headers,
                         )
         except aiohttp.ClientError as e:
-            _LOGGER.error("Client error. %s: %s", e.__class__.__qualname__, e)
+            _LOGGER.error("Client error. %s: %s", type(e).__name__, e)
             if self._initial:
                 raise
 
@@ -508,7 +508,7 @@ $toreturn["real"] = json_encode($toreturn_real);
                         headers=response.headers,
                     )
         except aiohttp.ClientError as e:
-            _LOGGER.error("Client error. %s: %s", e.__class__.__qualname__, e)
+            _LOGGER.error("Client error. %s: %s", type(e).__name__, e)
             if self._initial:
                 raise
 
@@ -573,7 +573,7 @@ $toreturn["real"] = json_encode($toreturn_real);
                         headers=response.headers,
                     )
         except aiohttp.ClientError as e:
-            _LOGGER.error("Client error. %s: %s", e.__class__.__qualname__, e)
+            _LOGGER.error("Client error. %s: %s", type(e).__name__, e)
             if self._initial:
                 raise
 
