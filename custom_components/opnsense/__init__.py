@@ -32,13 +32,11 @@ from .const import (
     CONF_DEVICE_TRACKER_SCAN_INTERVAL,
     CONF_DEVICE_UNIQUE_ID,
     CONF_TLS_INSECURE,
-    COORDINATOR,
     DEFAULT_DEVICE_TRACKER_ENABLED,
     DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_TLS_INSECURE,
     DEFAULT_VERIFY_SSL,
-    DEVICE_TRACKER_COORDINATOR,
     DOMAIN,
     LOADED_PLATFORMS,
     OPNSENSE_CLIENT,
@@ -51,6 +49,7 @@ from .const import (
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .helpers import is_private_ip
+from .models import OPNsenseData
 from .pyopnsense import OPNsenseClient
 from .services import async_setup_services
 
@@ -60,10 +59,10 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Handle options update."""
-    if hass.data[DOMAIN][entry.entry_id].get(SHOULD_RELOAD, True):
+    if getattr(entry.runtime_data, SHOULD_RELOAD, True):
         hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
     else:
-        hass.data[DOMAIN][entry.entry_id][SHOULD_RELOAD] = True
+        setattr(entry.runtime_data, SHOULD_RELOAD, True)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -192,10 +191,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await coordinator.async_config_entry_first_refresh()
 
-    platforms: list = PLATFORMS.copy()
+    platforms: list[Platform] = PLATFORMS.copy()
     device_tracker_coordinator = None
-    if not device_tracker_enabled and "device_tracker" in platforms:
-        platforms.remove("device_tracker")
+    if not device_tracker_enabled and Platform.DEVICE_TRACKER in platforms:
+        platforms.remove(Platform.DEVICE_TRACKER)
     else:
         device_tracker_scan_interval = options.get(
             CONF_DEVICE_TRACKER_SCAN_INTERVAL, DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL
@@ -213,14 +212,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     undo_listener = entry.add_update_listener(_async_update_listener)
 
     hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {
-        COORDINATOR: coordinator,
-        DEVICE_TRACKER_COORDINATOR: device_tracker_coordinator,
-        OPNSENSE_CLIENT: client,
-        UNDO_UPDATE_LISTENER: [undo_listener],
-        LOADED_PLATFORMS: platforms,
-        CONF_DEVICE_UNIQUE_ID: config_device_id,
-    }
+    hass.data[DOMAIN][entry.entry_id] = client
+
+    entry.runtime_data = OPNsenseData(
+        coordinator=coordinator,
+        device_tracker_coordinator=device_tracker_coordinator,
+        opnsense_client=client,
+        undo_update_listener=undo_listener,
+        device_unique_id=config_device_id,
+        loaded_platforms=platforms,
+    )
 
     if device_tracker_enabled and device_tracker_coordinator:
         # Fetch initial data so we have data when entities subscribe
@@ -249,17 +250,17 @@ async def async_remove_config_entry_device(
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    platforms = hass.data[DOMAIN][entry.entry_id][LOADED_PLATFORMS]
-    client: OPNsenseClient = hass.data[DOMAIN][entry.entry_id][OPNSENSE_CLIENT]
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, platforms)
+    platforms: list[Platform] = getattr(entry.runtime_data, LOADED_PLATFORMS)
+    client: OPNsenseClient = getattr(entry.runtime_data, OPNSENSE_CLIENT)
+    unload_ok: bool = await hass.config_entries.async_unload_platforms(entry, platforms)
 
     await client.async_close()
 
-    for listener in hass.data[DOMAIN][entry.entry_id][UNDO_UPDATE_LISTENER]:
-        listener()
+    listener = getattr(entry.runtime_data, UNDO_UPDATE_LISTENER)
+    listener()
 
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
+        hass.data[DOMAIN].pop(entry.entry_id, None)
 
     return unload_ok
 

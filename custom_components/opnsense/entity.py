@@ -56,16 +56,11 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
         state = self.coordinator.data
         return dict_get(state, path)
 
-    def _get_opnsense_client(self) -> OPNsenseClient | None:
-        if self.hass is None:
-            return None
-        return self.hass.data[DOMAIN][self.config_entry.entry_id][OPNSENSE_CLIENT]
-
     async def async_added_to_hass(self) -> None:
         """Run once integration has been added to HA."""
         await super().async_added_to_hass()
         if self._client is None:
-            self._client = self._get_opnsense_client()
+            self._client = getattr(self.config_entry.runtime_data, OPNSENSE_CLIENT)
         if self._client is None:
             _LOGGER.error("Unable to get client in async_added_to_hass.")
         assert self._client is not None
