@@ -1578,15 +1578,7 @@ $toreturn = [
 
     @_log_errors
     async def _get_telemetry_temps(self) -> MutableMapping[str, Any]:
-        try:
-            if awesomeversion.AwesomeVersion(
-                self._firmware_version
-            ) < awesomeversion.AwesomeVersion("24.7"):
-                _LOGGER.info("Running OPNsense < 24.7, Get Temperatures not supported")
-                return {}
-        except awesomeversion.exceptions.AwesomeVersionCompareException:
-            pass
-        temps_info = await self._safe_list_get("/api/diagnostics/system/systemTemperature")
+        temps_info = await self._safe_list_get("/api/diagnostics/system/system_temperature")
         # _LOGGER.debug(f"[get_telemetry_temps] temps_info: {temps_info}")
         if not len(temps_info) > 0:
             return {}
@@ -1966,14 +1958,6 @@ $toreturn = [
 
     async def get_certificates(self) -> MutableMapping[str, Any]:
         """Return the active encryption certificates."""
-        try:
-            if awesomeversion.AwesomeVersion(
-                self._firmware_version
-            ) < awesomeversion.AwesomeVersion("24.7"):
-                _LOGGER.info("Running OPNsense < 24.7, Get Certificates not supported")
-                return {}
-        except awesomeversion.exceptions.AwesomeVersionCompareException:
-            pass
         certs_raw = await self._safe_dict_get("/api/trust/cert/search")
         if not isinstance(certs_raw.get("rows", None), list):
             return {}

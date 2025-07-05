@@ -35,16 +35,17 @@ from .const import (
     DEFAULT_DEVICE_TRACKER_ENABLED,
     DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_SYNC_OPTION_VALUE,
     DEFAULT_TLS_INSECURE,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
+    GRANULAR_SYNC_PREFIX,
     LOADED_PLATFORMS,
     OPNSENSE_CLIENT,
     OPNSENSE_LTD_FIRMWARE,
     OPNSENSE_MIN_FIRMWARE,
     PLATFORMS,
     SHOULD_RELOAD,
-    UNDO_UPDATE_LISTENER,
     VERSION,
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
@@ -59,9 +60,37 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Handle options update."""
+    # _LOGGER.debug("[async_update_listener] entry.data: %s", entry.data)
+    _LOGGER.debug("[async_update_listener] entry: %s", entry.as_dict())
     if getattr(entry.runtime_data, SHOULD_RELOAD, True):
+        _LOGGER.info("[async_update_listener] Reloading")
+
+        uid_prefix = entry.unique_id
+        # _LOGGER.debug("[async_update_listener] uid_prefix: %s", uid_prefix)
+        removal_prefixes: list[str] = []
+        for item, prefix in GRANULAR_SYNC_PREFIX.items():
+            if not entry.data.get(item, DEFAULT_SYNC_OPTION_VALUE):
+                removal_prefixes.extend(prefix)
+        _LOGGER.debug("[async_update_listener] removal_prefixes: %s", removal_prefixes)
+
+        entity_registry = er.async_get(hass)
+        for ent in er.async_entries_for_config_entry(
+            registry=entity_registry, config_entry_id=entry.entry_id
+        ):
+            # _LOGGER.debug("[async_update_listener] ent: %s", ent)
+            for pre in removal_prefixes:
+                if ent.unique_id.startswith(f"{uid_prefix}_{pre}"):
+                    _LOGGER.debug(
+                        "[async_update_listener] removing entity_id: %s, unique_id: %s",
+                        ent.entity_id,
+                        ent.unique_id,
+                    )
+                    entity_registry.async_remove(ent.entity_id)
+                    break
+
         hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
     else:
+        _LOGGER.info("[async_update_listener] Not Reloading")
         setattr(entry.runtime_data, SHOULD_RELOAD, True)
 
 
@@ -74,7 +103,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up OPNsense from a config entry."""
     config: MutableMapping[str, Any] = dict(entry.data)
-    options = entry.options
+    options: MutableMapping[str, Any] = dict(entry.options)
+    _LOGGER.debug("[async_setup_entry] entry: %s", entry.as_dict())
+    # _LOGGER.debug("[async_setup_entry] config: %s. options: %s", config, options)
 
     url: str = config[CONF_URL]
     username: str = config[CONF_USERNAME]
@@ -206,11 +237,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             name=f"{entry.title} Device Tracker state",
             update_interval=timedelta(seconds=device_tracker_scan_interval),
             client=client,
+            config_entry=entry,
             device_unique_id=config_device_id,
             device_tracker_coordinator=True,
         )
 
-    undo_listener = entry.add_update_listener(_async_update_listener)
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = client
@@ -219,7 +251,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         coordinator=coordinator,
         device_tracker_coordinator=device_tracker_coordinator,
         opnsense_client=client,
-        undo_update_listener=undo_listener,
         device_unique_id=config_device_id,
         loaded_platforms=platforms,
     )
@@ -251,14 +282,12 @@ async def async_remove_config_entry_device(
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    _LOGGER.info("Unloading: %s", entry.as_dict())
     platforms: list[Platform] = getattr(entry.runtime_data, LOADED_PLATFORMS)
     client: OPNsenseClient = getattr(entry.runtime_data, OPNSENSE_CLIENT)
     unload_ok: bool = await hass.config_entries.async_unload_platforms(entry, platforms)
 
     await client.async_close()
-
-    listener = getattr(entry.runtime_data, UNDO_UPDATE_LISTENER)
-    listener()
 
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
