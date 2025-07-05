@@ -1,6 +1,6 @@
 """Provides sensors to track various status aspects of OPNsense."""
 
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
 import logging
 import re
 from typing import Any
@@ -20,7 +20,7 @@ from homeassistant.const import (
     UnitOfTime,
 )
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import entity_platform
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import slugify
 from homeassistant.util.dt import utc_from_timestamp
 
@@ -36,7 +36,7 @@ from .const import (
     COUNT,
     DATA_PACKETS,
     DATA_RATE_PACKETS_PER_SECOND,
-    DEFAULT_SYNC_OPTION,
+    DEFAULT_SYNC_OPTION_VALUE,
     STATIC_CERTIFICATE_SENSORS,
     STATIC_TELEMETRY_SENSORS,
 )
@@ -446,7 +446,7 @@ async def _compile_vpn_sensors(
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
-    async_add_entities: entity_platform.AddEntitiesCallback,
+    async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the OPNsense sensors."""
 
@@ -455,25 +455,25 @@ async def async_setup_entry(
     if not isinstance(state, MutableMapping):
         _LOGGER.error("Missing state data in sensor async_setup_entry")
         return
-    config: MutableMapping[str, Any] = dict(config_entry.data)
+    config: Mapping[str, Any] = config_entry.data
 
     entities: list = []
 
-    if config.get(CONF_SYNC_TELEMETRY, DEFAULT_SYNC_OPTION):
+    if config.get(CONF_SYNC_TELEMETRY, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_static_telemetry_sensors(config_entry, coordinator))
         entities.extend(await _compile_filesystem_sensors(config_entry, coordinator, state))
         entities.extend(await _compile_temperature_sensors(config_entry, coordinator, state))
-    if config.get(CONF_SYNC_CERTIFICATES, DEFAULT_SYNC_OPTION):
+    if config.get(CONF_SYNC_CERTIFICATES, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_static_certificate_sensors(config_entry, coordinator))
-    if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION):
+    if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_vpn_sensors(config_entry, coordinator, state))
-    if config.get(CONF_SYNC_GATEWAYS, DEFAULT_SYNC_OPTION):
+    if config.get(CONF_SYNC_GATEWAYS, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_gateway_sensors(config_entry, coordinator, state))
-    if config.get(CONF_SYNC_INTERFACES, DEFAULT_SYNC_OPTION):
+    if config.get(CONF_SYNC_INTERFACES, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_interface_sensors(config_entry, coordinator, state))
-    if config.get(CONF_SYNC_CARP, DEFAULT_SYNC_OPTION):
+    if config.get(CONF_SYNC_CARP, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_carp_interface_sensors(config_entry, coordinator, state))
-    if config.get(CONF_SYNC_DHCP_LEASES, DEFAULT_SYNC_OPTION):
+    if config.get(CONF_SYNC_DHCP_LEASES, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_dhcp_leases_sensors(config_entry, coordinator, state))
 
     _LOGGER.debug("[sensor async_setup_entry] entities: %s", len(entities))

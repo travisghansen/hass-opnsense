@@ -1,13 +1,13 @@
 """OPNsense integration."""
 
-from collections.abc import Callable, MutableMapping
+from collections.abc import Callable, Mapping, MutableMapping
 import logging
 from typing import Any
 
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity, SwitchEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import entity_platform
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later
 
 from .const import (
@@ -19,7 +19,7 @@ from .const import (
     CONF_SYNC_UNBOUND,
     CONF_SYNC_VPN,
     COORDINATOR,
-    DEFAULT_SYNC_OPTION,
+    DEFAULT_SYNC_OPTION_VALUE,
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity
@@ -244,7 +244,7 @@ async def _compile_static_unbound_switches(
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
-    async_add_entities: entity_platform.AddEntitiesCallback,
+    async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the OPNsense switches."""
     coordinator: OPNsenseDataUpdateCoordinator = getattr(config_entry.runtime_data, COORDINATOR)
@@ -252,19 +252,19 @@ async def async_setup_entry(
     if not isinstance(state, MutableMapping):
         _LOGGER.error("Missing state data in switch async_setup_entry")
         return
-    config: MutableMapping[str, Any] = dict(config_entry.data)
+    config: Mapping[str, Any] = config_entry.data
 
     entities: list = []
 
-    if config.get(CONF_SYNC_FILTERS_AND_NAT, DEFAULT_SYNC_OPTION):
+    if config.get(CONF_SYNC_FILTERS_AND_NAT, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_filter_switches(config_entry, coordinator, state))
         entities.extend(await _compile_port_forward_switches(config_entry, coordinator, state))
         entities.extend(await _compile_nat_outbound_switches(config_entry, coordinator, state))
-    if config.get(CONF_SYNC_SERVICES, DEFAULT_SYNC_OPTION):
+    if config.get(CONF_SYNC_SERVICES, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_service_switches(config_entry, coordinator, state))
-    if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION):
+    if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_vpn_switches(config_entry, coordinator, state))
-    if config.get(CONF_SYNC_UNBOUND, DEFAULT_SYNC_OPTION):
+    if config.get(CONF_SYNC_UNBOUND, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_static_unbound_switches(config_entry, coordinator, state))
 
     _LOGGER.debug("[switch async_setup_entry] entities: %s", len(entities))

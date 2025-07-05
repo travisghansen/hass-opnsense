@@ -1,6 +1,6 @@
 """OPNsense Coordinator."""
 
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
 import copy
 from datetime import timedelta
 import logging
@@ -23,11 +23,10 @@ from .const import (
     CONF_SYNC_INTERFACES,
     CONF_SYNC_NOTICES,
     CONF_SYNC_SERVICES,
-    CONF_SYNC_SYSTEM_INFO,
     CONF_SYNC_TELEMETRY,
     CONF_SYNC_UNBOUND,
     CONF_SYNC_VPN,
-    DEFAULT_SYNC_OPTION,
+    DEFAULT_SYNC_OPTION_VALUE,
     DOMAIN,
 )
 from .helpers import dict_get
@@ -98,20 +97,19 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         if not self.config_entry:
             _LOGGER.error("Coordinator build_categories failed. No config entry found.")
             return []
-        config: MutableMapping[str, Any] = dict(self.config_entry.data)
+        config: Mapping[str, Any] = self.config_entry.data
         categories: list[MutableMapping[str, str]] = [
             {"function": "get_device_unique_id", "state_key": "device_unique_id"},
+            {"function": "get_system_info", "state_key": "system_info"},
             {
                 "function": "get_host_firmware_version",
                 "state_key": "host_firmware_version",
             },
         ]
 
-        if config.get(CONF_SYNC_TELEMETRY, DEFAULT_SYNC_OPTION):
+        if config.get(CONF_SYNC_TELEMETRY, DEFAULT_SYNC_OPTION_VALUE):
             categories.append({"function": "get_telemetry", "state_key": "telemetry"})
-        if config.get(CONF_SYNC_SYSTEM_INFO, DEFAULT_SYNC_OPTION):
-            categories.append({"function": "get_system_info", "state_key": "system_info"})
-        if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION):
+        if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):
             categories.extend(
                 [
                     {"function": "get_openvpn", "state_key": "openvpn"},
@@ -119,7 +117,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 ]
             )
 
-        if config.get(CONF_SYNC_FIRMWARE_UPDATES, DEFAULT_SYNC_OPTION):
+        if config.get(CONF_SYNC_FIRMWARE_UPDATES, DEFAULT_SYNC_OPTION_VALUE):
             categories.append(
                 {
                     "function": "get_firmware_update_info",
@@ -127,35 +125,37 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 }
             )
 
-        if config.get(CONF_SYNC_CARP, DEFAULT_SYNC_OPTION):
+        if config.get(CONF_SYNC_CARP, DEFAULT_SYNC_OPTION_VALUE):
             categories.extend(
                 [
                     {"function": "get_carp_interfaces", "state_key": "carp_interfaces"},
                     {"function": "get_carp_status", "state_key": "carp_status"},
                 ]
             )
-        if config.get(CONF_SYNC_DHCP_LEASES, DEFAULT_SYNC_OPTION):
+        if config.get(CONF_SYNC_DHCP_LEASES, DEFAULT_SYNC_OPTION_VALUE):
             categories.append({"function": "get_dhcp_leases", "state_key": "dhcp_leases"})
-        if config.get(CONF_SYNC_GATEWAYS, DEFAULT_SYNC_OPTION):
+        if config.get(CONF_SYNC_GATEWAYS, DEFAULT_SYNC_OPTION_VALUE):
             categories.append({"function": "get_gateways", "state_key": "gateways"})
-        if config.get(CONF_SYNC_SERVICES, DEFAULT_SYNC_OPTION):
+        if config.get(CONF_SYNC_SERVICES, DEFAULT_SYNC_OPTION_VALUE):
             categories.append({"function": "get_services", "state_key": "services"})
-        if config.get(CONF_SYNC_NOTICES, DEFAULT_SYNC_OPTION):
+        if config.get(CONF_SYNC_NOTICES, DEFAULT_SYNC_OPTION_VALUE):
             categories.append({"function": "get_notices", "state_key": "notices"})
-        if config.get(CONF_SYNC_FILTERS_AND_NAT, DEFAULT_SYNC_OPTION):
+        if config.get(CONF_SYNC_FILTERS_AND_NAT, DEFAULT_SYNC_OPTION_VALUE):
             categories.append({"function": "get_config", "state_key": "config"})
-        if config.get(CONF_SYNC_UNBOUND, DEFAULT_SYNC_OPTION):
+        if config.get(CONF_SYNC_UNBOUND, DEFAULT_SYNC_OPTION_VALUE):
             categories.append(
                 {
                     "function": "get_unbound_blocklist",
                     "state_key": ATTR_UNBOUND_BLOCKLIST,
                 }
             )
-        if config.get(CONF_SYNC_INTERFACES, DEFAULT_SYNC_OPTION):
+        if config.get(CONF_SYNC_INTERFACES, DEFAULT_SYNC_OPTION_VALUE):
             categories.append({"function": "get_interfaces", "state_key": "interfaces"})
-        if config.get(CONF_SYNC_CERTIFICATES, DEFAULT_SYNC_OPTION):
+        if config.get(CONF_SYNC_CERTIFICATES, DEFAULT_SYNC_OPTION_VALUE):
             categories.append({"function": "get_certificates", "state_key": "certificates"})
-        _LOGGER.debug("Categories for fetching data: %s", categories)
+        _LOGGER.debug(
+            "Categories for fetching data: %s", [item["state_key"] for item in categories]
+        )
         return categories
 
     async def _check_device_unique_id(self) -> bool:
@@ -171,7 +171,8 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 self._state.get("device_unique_id"),
             )
             _LOGGER.error(
-                "Coordinator error. OPNsense Router Device ID (%s) differs from the one saved in hass-opnsense (%s)",
+                "Coordinator error. "
+                "OPNsense Router Device ID (%s) differs from the one saved in hass-opnsense (%s)",
                 self._state.get("device_unique_id"),
                 self._device_unique_id,
             )
@@ -231,6 +232,83 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         )
         return self._state
 
+    async def _calculate_vpn_speeds(self, elapsed_time: float) -> None:
+        for vpn_type in ("openvpn", "wireguard"):
+            cs = ["servers"]
+            if vpn_type == "wireguard":
+                cs = ["clients", "servers"]
+            for clients_servers in cs:
+                for instance_name in (
+                    dict_get(self._state, f"{vpn_type}.{clients_servers}", {}) or {}
+                ):
+                    previous_clients_servers = dict_get(
+                        self._state,
+                        f"previous_state.{vpn_type}.{clients_servers}",
+                        {},
+                    )
+                    if (
+                        not isinstance(previous_clients_servers, MutableMapping)
+                        or instance_name not in previous_clients_servers
+                    ):
+                        continue
+
+                    instance: MutableMapping[str, Any] = (
+                        self._state.get(vpn_type, {})
+                        .get(clients_servers, {})
+                        .get(instance_name, {})
+                    )
+                    previous_instance: MutableMapping[str, Any] = (
+                        self._state.get("previous_state", {})
+                        .get(vpn_type, {})
+                        .get(clients_servers, {})
+                        .get(instance_name, {})
+                    )
+
+                    for prop_name in (
+                        "total_bytes_recv",
+                        "total_bytes_sent",
+                    ):
+                        if "pkts" in prop_name or "bytes" in prop_name:
+                            (
+                                new_property,
+                                value,
+                            ) = await OPNsenseDataUpdateCoordinator._calculate_speed(
+                                prop_name=prop_name,
+                                elapsed_time=elapsed_time,
+                                current_parent_value=instance[prop_name],
+                                previous_parent_value=previous_instance[prop_name],
+                            )
+
+                        instance[new_property] = value
+
+    async def _calculate_interface_speeds(self, elapsed_time: float) -> None:
+        for interface_name, interface in (dict_get(self._state, "interfaces", {}) or {}).items():
+            previous_interface = dict_get(
+                self._state,
+                f"previous_state.interfaces.{interface_name}",
+            )
+            if previous_interface is None:
+                continue
+
+            for prop_name in (
+                "inbytes",
+                "outbytes",
+                "inpkts",
+                "outpkts",
+            ):
+                if "pkts" in prop_name or "bytes" in prop_name:
+                    (
+                        new_property,
+                        value,
+                    ) = await OPNsenseDataUpdateCoordinator._calculate_speed(
+                        prop_name=prop_name,
+                        elapsed_time=elapsed_time,
+                        current_parent_value=interface[prop_name],
+                        previous_parent_value=previous_interface[prop_name],
+                    )
+
+                    interface[new_property] = value
+
     async def _calculate_entity_speeds(self) -> None:
         """Calculate speeds for interfaces and VPNs."""
         update_time = dict_get(self._state, "update_time")
@@ -238,87 +316,14 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         if not previous_update_time or not self.config_entry:
             return
 
-        elapsed_time = update_time - previous_update_time
-        config: MutableMapping[str, Any] = dict(self.config_entry.data)
+        elapsed_time: float = update_time - previous_update_time
+        config: Mapping[str, Any] = self.config_entry.data
 
-        if config.get(CONF_SYNC_INTERFACES, DEFAULT_SYNC_OPTION):
-            for interface_name, interface in (
-                dict_get(self._state, "interfaces", {}) or {}
-            ).items():
-                previous_interface = dict_get(
-                    self._state,
-                    f"previous_state.interfaces.{interface_name}",
-                )
-                if previous_interface is None:
-                    continue
+        if config.get(CONF_SYNC_INTERFACES, DEFAULT_SYNC_OPTION_VALUE):
+            await self._calculate_interface_speeds(elapsed_time=elapsed_time)
 
-                for prop_name in (
-                    "inbytes",
-                    "outbytes",
-                    "inpkts",
-                    "outpkts",
-                ):
-                    if "pkts" in prop_name or "bytes" in prop_name:
-                        (
-                            new_property,
-                            value,
-                        ) = await OPNsenseDataUpdateCoordinator._calculate_speed(
-                            prop_name=prop_name,
-                            elapsed_time=elapsed_time,
-                            current_parent_value=interface[prop_name],
-                            previous_parent_value=previous_interface[prop_name],
-                        )
-
-                        interface[new_property] = value
-
-        if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION):
-            for vpn_type in ("openvpn", "wireguard"):
-                cs = ["servers"]
-                if vpn_type == "wireguard":
-                    cs = ["clients", "servers"]
-                for clients_servers in cs:
-                    for instance_name in (
-                        dict_get(self._state, f"{vpn_type}.{clients_servers}", {}) or {}
-                    ):
-                        previous_clients_servers = dict_get(
-                            self._state,
-                            f"previous_state.{vpn_type}.{clients_servers}",
-                            {},
-                        )
-                        if (
-                            not isinstance(previous_clients_servers, MutableMapping)
-                            or instance_name not in previous_clients_servers
-                        ):
-                            continue
-
-                        instance: MutableMapping[str, Any] = (
-                            self._state.get(vpn_type, {})
-                            .get(clients_servers, {})
-                            .get(instance_name, {})
-                        )
-                        previous_instance: MutableMapping[str, Any] = (
-                            self._state.get("previous_state", {})
-                            .get(vpn_type, {})
-                            .get(clients_servers, {})
-                            .get(instance_name, {})
-                        )
-
-                        for prop_name in (
-                            "total_bytes_recv",
-                            "total_bytes_sent",
-                        ):
-                            if "pkts" in prop_name or "bytes" in prop_name:
-                                (
-                                    new_property,
-                                    value,
-                                ) = await OPNsenseDataUpdateCoordinator._calculate_speed(
-                                    prop_name=prop_name,
-                                    elapsed_time=elapsed_time,
-                                    current_parent_value=instance[prop_name],
-                                    previous_parent_value=previous_instance[prop_name],
-                                )
-
-                            instance[new_property] = value
+        if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):
+            await self._calculate_vpn_speeds(elapsed_time=elapsed_time)
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch the latest state from OPNsense."""
@@ -358,7 +363,6 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             await self._calculate_entity_speeds()
 
             restapi_count, xmlrpc_count = await self._client.get_query_counts()
-            _LOGGER.debug("[async_update_data] wireguard: %s", self._state.get("wireguard"))
             _LOGGER.debug(
                 "Update Complete. REST API Queries: %s. XMLRPC Queries: %s",
                 restapi_count,
