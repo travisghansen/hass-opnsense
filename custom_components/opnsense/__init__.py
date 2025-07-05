@@ -73,7 +73,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up OPNsense from a config entry."""
-    config = entry.data
+    config: MutableMapping[str, Any] = dict(entry.data)
     options = entry.options
 
     url: str = config[CONF_URL]
@@ -107,6 +107,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         update_interval=timedelta(seconds=scan_interval),
         client=client,
         device_unique_id=config_device_id,
+        config_entry=entry,
     )
 
     # Trigger repair task and shutdown if device id has changed
@@ -267,7 +268,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def _migrate_1_to_2(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     tls_insecure = config_entry.data.get(CONF_TLS_INSECURE, DEFAULT_TLS_INSECURE)
-    data = dict(config_entry.data)
+    data: MutableMapping[str, Any] = dict(config_entry.data)
 
     # remove tls_insecure
     if CONF_TLS_INSECURE in data:
@@ -286,7 +287,7 @@ async def _migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
     entity_registry = er.async_get(hass)
     device_registry = dr.async_get(hass)
 
-    config = config_entry.data
+    config: MutableMapping[str, Any] = dict(config_entry.data)
     url: str = config[CONF_URL]
     username: str = config[CONF_USERNAME]
     password: str = config[CONF_PASSWORD]
@@ -394,7 +395,7 @@ async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
     _LOGGER.debug("[migrate_3_to_4] Initial Version: %s", config_entry.version)
     entity_registry = er.async_get(hass)
 
-    config = config_entry.data
+    config: MutableMapping[str, Any] = dict(config_entry.data)
     url: str = config[CONF_URL]
     username: str = config[CONF_USERNAME]
     password: str = config[CONF_PASSWORD]

@@ -41,9 +41,11 @@ from .const import (
     DEFAULT_DEVICE_TRACKER_ENABLED,
     DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_SYNC_OPTION,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
     OPNSENSE_MIN_FIRMWARE,
+    SYNC_ITEMS_REQUIRING_PLUGIN,
 )
 from .helpers import is_private_ip
 from .pyopnsense import OPNsenseClient
@@ -248,7 +250,10 @@ async def _handle_user_input(user_input: MutableMapping[str, Any], hass: HomeAss
     except awesomeversion.exceptions.AwesomeVersionCompareException as e:
         raise UnknownFirmware from e
 
-    if not await client.is_plugin_installed():
+    require_plugin = any(
+        user_input.get(item, DEFAULT_SYNC_OPTION) for item in SYNC_ITEMS_REQUIRING_PLUGIN
+    )
+    if require_plugin and not await client.is_plugin_installed():
         raise PluginMissing
 
     system_info: MutableMapping[str, Any] = await client.get_system_info()
@@ -336,7 +341,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Config flow reconfigure step."""
         reconfigure_entry = self._get_reconfigure_entry()
-        prev_data = reconfigure_entry.data
+        prev_data: MutableMapping[str, Any] = dict(reconfigure_entry.data)
         errors: MutableMapping[str, Any] = {}
         firmware: str = "Unknown"
         if user_input is not None:
