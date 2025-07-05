@@ -1,10 +1,8 @@
 """Provides sensors to track various status aspects of OPNsense."""
 
-import asyncio
 from collections.abc import MutableMapping
 import logging
 import re
-import traceback
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -14,7 +12,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import (  # ENTITY_CATEGORY_DIAGNOSTIC,
+from homeassistant.const import (
     PERCENTAGE,
     UnitOfDataRate,
     UnitOfInformation,
@@ -26,7 +24,22 @@ from homeassistant.helpers import entity_platform
 from homeassistant.util import slugify
 from homeassistant.util.dt import utc_from_timestamp
 
-from .const import COORDINATOR, COUNT, DATA_PACKETS, DATA_RATE_PACKETS_PER_SECOND, STATIC_SENSORS
+from .const import (
+    CONF_SYNC_CARP,
+    CONF_SYNC_CERTIFICATES,
+    CONF_SYNC_DHCP_LEASES,
+    CONF_SYNC_GATEWAYS,
+    CONF_SYNC_INTERFACES,
+    CONF_SYNC_TELEMETRY,
+    CONF_SYNC_VPN,
+    COORDINATOR,
+    COUNT,
+    DATA_PACKETS,
+    DATA_RATE_PACKETS_PER_SECOND,
+    DEFAULT_SYNC_OPTION,
+    STATIC_CERTIFICATE_SENSORS,
+    STATIC_TELEMETRY_SENSORS,
+)
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity
 from .helpers import dict_get
@@ -34,12 +47,27 @@ from .helpers import dict_get
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
-async def _compile_static_sensors(
+async def _compile_static_telemetry_sensors(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
 ) -> list:
     entities: list = []
-    for static_sensor in STATIC_SENSORS.values():
+    for static_sensor in STATIC_TELEMETRY_SENSORS.values():
+        entity = OPNsenseStaticKeySensor(
+            config_entry=config_entry,
+            coordinator=coordinator,
+            entity_description=static_sensor,
+        )
+        entities.append(entity)
+    return entities
+
+
+async def _compile_static_certificate_sensors(
+    config_entry: ConfigEntry,
+    coordinator: OPNsenseDataUpdateCoordinator,
+) -> list:
+    entities: list = []
+    for static_sensor in STATIC_CERTIFICATE_SENSORS.values():
         entity = OPNsenseStaticKeySensor(
             config_entry=config_entry,
             coordinator=coordinator,
@@ -127,22 +155,6 @@ async def _compile_interface_sensors(
             "inerrs",
             "outerrs",
             "collisions",
-            # "inbytespass",
-            # "inbytespass_kilobytes_per_second",
-            # "outbytespass",
-            # "outbytespass_kilobytes_per_second",
-            # "inpktspass",
-            # "inpktspass_packets_per_second",
-            # "outpktspass",
-            # "outpktspass_packets_per_second",
-            # "inbytesblock",
-            # "inbytesblock_kilobytes_per_second",
-            # "outbytesblock",
-            # "outbytesblock_kilobytes_per_second",
-            # "inpktsblock",
-            # "inpktsblock_packets_per_second",
-            # "outpktsblock",
-            # "outpktsblock_packets_per_second",
             "inbytes",
             "inbytes_kilobytes_per_second",
             "outbytes",
@@ -443,29 +455,27 @@ async def async_setup_entry(
     if not isinstance(state, MutableMapping):
         _LOGGER.error("Missing state data in sensor async_setup_entry")
         return
-    results: list = await asyncio.gather(
-        _compile_static_sensors(config_entry, coordinator),
-        _compile_vpn_sensors(config_entry, coordinator, state),
-        _compile_gateway_sensors(config_entry, coordinator, state),
-        _compile_interface_sensors(config_entry, coordinator, state),
-        _compile_carp_interface_sensors(config_entry, coordinator, state),
-        _compile_filesystem_sensors(config_entry, coordinator, state),
-        _compile_temperature_sensors(config_entry, coordinator, state),
-        _compile_dhcp_leases_sensors(config_entry, coordinator, state),
-        return_exceptions=True,
-    )
+    config: MutableMapping[str, Any] = dict(config_entry.data)
 
     entities: list = []
-    for result in results:
-        if isinstance(result, list):
-            entities += result
-        else:
-            _LOGGER.error(
-                "Error in sensor async_setup_entry. %s: %s\n%s",
-                result.__class__.__qualname__,
-                result,
-                "".join(traceback.format_tb(result.__traceback__)),
-            )
+
+    if config.get(CONF_SYNC_TELEMETRY, DEFAULT_SYNC_OPTION):
+        entities.extend(await _compile_static_telemetry_sensors(config_entry, coordinator))
+        entities.extend(await _compile_filesystem_sensors(config_entry, coordinator, state))
+        entities.extend(await _compile_temperature_sensors(config_entry, coordinator, state))
+    if config.get(CONF_SYNC_CERTIFICATES, DEFAULT_SYNC_OPTION):
+        entities.extend(await _compile_static_certificate_sensors(config_entry, coordinator))
+    if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION):
+        entities.extend(await _compile_vpn_sensors(config_entry, coordinator, state))
+    if config.get(CONF_SYNC_GATEWAYS, DEFAULT_SYNC_OPTION):
+        entities.extend(await _compile_gateway_sensors(config_entry, coordinator, state))
+    if config.get(CONF_SYNC_INTERFACES, DEFAULT_SYNC_OPTION):
+        entities.extend(await _compile_interface_sensors(config_entry, coordinator, state))
+    if config.get(CONF_SYNC_CARP, DEFAULT_SYNC_OPTION):
+        entities.extend(await _compile_carp_interface_sensors(config_entry, coordinator, state))
+    if config.get(CONF_SYNC_DHCP_LEASES, DEFAULT_SYNC_OPTION):
+        entities.extend(await _compile_dhcp_leases_sensors(config_entry, coordinator, state))
+
     _LOGGER.debug("[sensor async_setup_entry] entities: %s", len(entities))
     async_add_entities(entities)
 

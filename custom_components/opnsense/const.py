@@ -47,6 +47,24 @@ DEFAULT_DEVICE_TRACKER_CONSIDER_HOME = 0
 CONF_DEVICE_UNIQUE_ID = "device_unique_id"
 CONF_FIRMWARE_VERSION = "firmware_version"
 
+CONF_SYNC_TELEMETRY = "sync_telemetry"
+CONF_SYNC_SYSTEM_INFO = "sync_system_info"
+CONF_SYNC_VPN = "sync_vpn"
+CONF_SYNC_FIRMWARE_UPDATES = "sync_firmware_updates"
+CONF_SYNC_CARP = "sync_carp"
+CONF_SYNC_DHCP_LEASES = "sync_dhcp_leases"
+CONF_SYNC_GATEWAYS = "sync_gateways"
+CONF_SYNC_SERVICES = "sync_services"
+CONF_SYNC_NOTICES = "sync_notices"
+CONF_SYNC_FILTERS_AND_NAT = "sync_filters_and_nat"
+CONF_SYNC_UNBOUND = "sync_unbound"
+CONF_SYNC_INTERFACES = "sync_interfaces"
+CONF_SYNC_CERTIFICATES = "sync_certificates"
+
+DEFAULT_ADVANCED_SYNC_OPTIONS = False
+DEFAULT_SYNC_OPTION = True
+SYNC_ITEMS_REQUIRING_PLUGIN = [CONF_SYNC_FILTERS_AND_NAT]
+
 CONF_DEVICES = "devices"
 CONF_MANUAL_DEVICES = "manual_devices"
 
@@ -66,7 +84,7 @@ ATTR_UNBOUND_BLOCKLIST = "unbound_blocklist"
 ATTR_NAT_PORT_FORWARD = "nat_port_forward"
 ATTR_NAT_OUTBOUND = "nat_outbound"
 
-STATIC_SENSORS: Final[dict[str, SensorEntityDescription]] = {
+STATIC_TELEMETRY_SENSORS: Final[dict[str, SensorEntityDescription]] = {
     # pfstate
     "telemetry.pfstate.used": SensorEntityDescription(
         key="telemetry.pfstate.used",
@@ -266,6 +284,9 @@ STATIC_SENSORS: Final[dict[str, SensorEntityDescription]] = {
         entity_registry_enabled_default=True,
         # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
+}
+
+STATIC_CERTIFICATE_SENSORS: Final[dict[str, SensorEntityDescription]] = {
     "certificates": SensorEntityDescription(
         key="certificates",
         name="Certificates",

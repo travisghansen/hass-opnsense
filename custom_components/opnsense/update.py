@@ -13,7 +13,7 @@ from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.util import slugify
 
-from .const import COORDINATOR
+from .const import CONF_SYNC_FIRMWARE_UPDATES, COORDINATOR, DEFAULT_SYNC_OPTION
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity
 from .helpers import dict_get
@@ -29,18 +29,21 @@ async def async_setup_entry(
     """Set up the OPNsense update entities."""
     coordinator: OPNsenseDataUpdateCoordinator = getattr(config_entry.runtime_data, COORDINATOR)
     entities: list = []
-    entity = OPNsenseFirmwareUpdatesAvailableUpdate(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=UpdateEntityDescription(
-            key="firmware.update_available",
-            name="Firmware Updates Available",
-            entity_category=EntityCategory.DIAGNOSTIC,
-            device_class=UpdateDeviceClass.FIRMWARE,
-            entity_registry_enabled_default=True,
-        ),
-    )
-    entities.append(entity)
+    config: MutableMapping[str, Any] = dict(config_entry.data)
+
+    if config.get(CONF_SYNC_FIRMWARE_UPDATES, DEFAULT_SYNC_OPTION):
+        entity = OPNsenseFirmwareUpdatesAvailableUpdate(
+            config_entry=config_entry,
+            coordinator=coordinator,
+            entity_description=UpdateEntityDescription(
+                key="firmware.update_available",
+                name="Firmware Updates Available",
+                entity_category=EntityCategory.DIAGNOSTIC,
+                device_class=UpdateDeviceClass.FIRMWARE,
+                entity_registry_enabled_default=True,
+            ),
+        )
+        entities.append(entity)
 
     async_add_entities(entities)
 

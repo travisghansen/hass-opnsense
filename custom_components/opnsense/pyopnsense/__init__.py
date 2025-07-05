@@ -624,9 +624,6 @@ clear_subsystem_dirty('filter');
     @_log_errors
     async def get_system_info(self) -> MutableMapping[str, Any]:
         """Return the system info from OPNsense."""
-        # if not self._firmware_version:
-        #     await self.get_host_firmware_version()
-
         system_info: MutableMapping[str, Any] = {}
         response = await self._safe_dict_get("/api/diagnostics/system/systemInformation")
         system_info["name"] = response.get("name", None)
@@ -1228,9 +1225,6 @@ $toreturn = [
     @_log_errors
     async def get_telemetry(self) -> MutableMapping[str, Any]:
         """Get telemetry data from OPNsense."""
-        # if not self._firmware_version:
-        #     await self.get_host_firmware_version()
-
         telemetry: MutableMapping[str, Any] = {}
         telemetry["mbuf"] = await self._get_telemetry_mbuf()
         telemetry["pfstate"] = await self._get_telemetry_pfstate()
