@@ -11,9 +11,9 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import entity_platform
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import COORDINATOR
+from .const import CONF_SYNC_CARP, CONF_SYNC_NOTICES, COORDINATOR, DEFAULT_SYNC_OPTION_VALUE
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity
 from .helpers import dict_get
@@ -24,15 +24,16 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
-    async_add_entities: entity_platform.AddEntitiesCallback,
+    async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the OPNsense binary sensors."""
 
     coordinator: OPNsenseDataUpdateCoordinator = getattr(config_entry.runtime_data, COORDINATOR)
+    config: MutableMapping[str, Any] = dict(config_entry.data)
 
     entities: list = []
-    entities.extend(
-        [
+    if config.get(CONF_SYNC_CARP, DEFAULT_SYNC_OPTION_VALUE):
+        entities.append(
             OPNsenseCarpStatusBinarySensor(
                 config_entry=config_entry,
                 coordinator=coordinator,
@@ -44,7 +45,10 @@ async def async_setup_entry(
                     # entity_category=entity_category,
                     entity_registry_enabled_default=False,
                 ),
-            ),
+            )
+        )
+    if config.get(CONF_SYNC_NOTICES, DEFAULT_SYNC_OPTION_VALUE):
+        entities.append(
             OPNsensePendingNoticesPresentBinarySensor(
                 config_entry=config_entry,
                 coordinator=coordinator,
@@ -57,8 +61,7 @@ async def async_setup_entry(
                     entity_registry_enabled_default=True,
                 ),
             ),
-        ]
-    )
+        )
     async_add_entities(entities)
 
 

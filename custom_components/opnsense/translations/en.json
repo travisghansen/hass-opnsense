@@ -2,14 +2,15 @@
   "title": "OPNsense",
   "config": {
     "abort": {
-      "already_configured": "Device is already configured"
+      "already_configured": "Device is already configured",
+      "reconfigure_successful": "OPNsense integration reconfigured"
     },
     "error": {
       "cannot_connect": "Failed to connect",
       "invalid_auth": "Invalid authentication",
       "unknown": "Unexpected error",
       "invalid_url_format": "Invalid URL Format",
-      "privilege_missing": "OPNsense User has insufficient privileges. Must have admin access.",
+      "privilege_missing": "OPNsense User has insufficient privileges. Must have admin access",
       "connect_timeout": "Connection timeout",
       "cannot_connect_ssl": "SSL Failure",
       "plugin_missing": "os-homeassistant-maxit plugin not installed",
@@ -25,9 +26,28 @@
           "username": "API Key",
           "password": "API Secret",
           "name": "Firewall Name",
-          "verify_ssl": "Verify SSL certificate"
+          "verify_ssl": "Verify SSL certificate",
+          "granular_sync_options": "Enable Granular Sync Options"
         },
         "title": "Connect to the OPNsense firewall / router"
+      },
+      "granular_sync": {
+        "data": {
+          "sync_telemetry": "Basic telemetry data",
+          "sync_vpn": "VPN information and switches",
+          "sync_firmware_updates": "Firmware updater",
+          "sync_carp": "CARP information",
+          "sync_dhcp_leases": "DHCP leases",
+          "sync_gateways": "Gateway information",
+          "sync_services": "Service switches",
+          "sync_notices": "Notice information",
+          "sync_filters_and_nat": "Firewall filters and NAT switches^",
+          "sync_unbound": "Unbound blocklist switch",
+          "sync_interfaces": "Interface information",
+          "sync_certificates": "Security certificate information"
+        },
+        "title": "Choose what items to sync",
+        "description": "^ requires the OPNsense plugin"
       },
       "reconfigure": {
         "data": {
@@ -51,9 +71,27 @@
           "scan_interval": "Scan Interval (seconds)",
           "device_tracker_enabled": "Enable Device Tracker",
           "device_tracker_scan_interval": "Device Tracker Scan Interval (seconds)",
-          "device_tracker_consider_home": "Device Tracker Consider Home (seconds)"
+          "device_tracker_consider_home": "Device Tracker Consider Home (seconds)",
+          "granular_sync_options": "Enable Granular Sync Options"
+        }
+      },
+      "granular_sync": {
+        "data": {
+          "sync_telemetry": "Basic telemetry data",
+          "sync_vpn": "VPN information and switches",
+          "sync_firmware_updates": "Firmware updater",
+          "sync_carp": "CARP information",
+          "sync_dhcp_leases": "DHCP leases",
+          "sync_gateways": "Gateway information",
+          "sync_services": "Service switches",
+          "sync_notices": "Notice information",
+          "sync_filters_and_nat": "Firewall filters and NAT switches^",
+          "sync_unbound": "Unbound blocklist switch",
+          "sync_interfaces": "Interface information",
+          "sync_certificates": "Security certificate information"
         },
-        "description": "Configure Options."
+        "title": "Choose what items to sync",
+        "description": "^ requires the OPNsense plugin"
       },
       "device_tracker": {
         "description": "Choose which devices you want to track. If you don't select any devices, all devices will be tracked but will be disabled by default. If you do select any devices, only those devices will be tracked and will be enabled by default.",
