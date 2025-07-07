@@ -1,5 +1,7 @@
 """Config flow for OPNsense integration."""
 
+from __future__ import annotations
+
 from collections.abc import MutableMapping
 import ipaddress
 import logging
@@ -399,7 +401,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry: ConfigEntry):
+    def async_get_options_flow(config_entry: ConfigEntry) -> OPNsenseOptionsFlow:
         """Get the options flow for this handler."""
         return OPNsenseOptionsFlow(config_entry)
 
