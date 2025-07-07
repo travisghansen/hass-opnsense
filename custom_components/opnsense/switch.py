@@ -297,12 +297,12 @@ class OPNsenseSwitch(OPNsenseEntity, SwitchEntity):
         self._delay_update_remove: Callable[[], None] | None = None
 
     @property
-    def delay_update(self):
+    def delay_update(self) -> bool:
         """Return whether to process the coordinator update or not."""
         return self._delay_update
 
     @delay_update.setter
-    def delay_update(self, value: bool):
+    def delay_update(self, value: bool) -> None:
         if value and not self._delay_update:
             self._delay_update = True
             self._reset_delay()
@@ -312,15 +312,17 @@ class OPNsenseSwitch(OPNsenseEntity, SwitchEntity):
                 self._delay_update_remove()
                 self._delay_update_remove = None
 
-    def _reset_delay(self):
+    def _reset_delay(self) -> None:
         if self._delay_update_remove:
             self._delay_update_remove()
 
-        def _clear(_):
+        def _clear(_: Any) -> None:
             self._delay_update = False
             self._delay_update_remove = None
 
-        self._delay_update_remove = async_call_later(self.hass, self._delay_seconds, _clear)
+        self._delay_update_remove = async_call_later(
+            hass=self.hass, delay=self._delay_seconds, action=_clear
+        )
 
 
 class OPNsenseFilterSwitch(OPNsenseSwitch):

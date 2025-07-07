@@ -30,7 +30,7 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 def _log_errors(func: Callable) -> Any:
-    async def inner(self, *args: Any, **kwargs: Any) -> Any:
+    async def inner(self: Any, *args: Any, **kwargs: Any) -> Any:
         try:
             return await func(self, *args, **kwargs)
         except asyncio.CancelledError:
@@ -55,7 +55,7 @@ def _log_errors(func: Callable) -> Any:
 
 
 def _xmlrpc_timeout(func: Callable) -> Any:
-    async def inner(self, *args: Any, **kwargs: Any) -> Any:
+    async def inner(self: Any, *args: Any, **kwargs: Any) -> Any:
         response = None
         # timout applies to each recv() call, not the whole request
         default_timeout = socket.getdefaulttimeout()
@@ -226,7 +226,9 @@ class OPNsenseClient(ABC):
         )
 
     @_xmlrpc_timeout
-    async def _restore_config_section(self, section_name: str, data) -> None:
+    async def _restore_config_section(
+        self, section_name: str, data: MutableMapping[str, Any]
+    ) -> None:
         params = {section_name: data}
         proxy_method = partial(self._get_proxy().opnsense.restore_config_section, params)
         await self._loop.run_in_executor(None, proxy_method)
@@ -338,7 +340,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         await self._request_queue.put(("post", path, payload, future))
         return await future
 
-    async def _process_queue(self):
+    async def _process_queue(self) -> None:
         while True:
             method, path, payload, future = await self._request_queue.get()
             try:
@@ -362,7 +364,7 @@ $toreturn["real"] = json_encode($toreturn_real);
                 future.set_exception(e)
             await asyncio.sleep(0.3)
 
-    async def _monitor_queue(self):
+    async def _monitor_queue(self) -> None:
         while True:
             try:
                 queue_size = self._request_queue.qsize()
