@@ -61,6 +61,7 @@ from .const import (
     GRANULAR_SYNC_ITEMS,
     OPNSENSE_MIN_FIRMWARE,
     SYNC_ITEMS_REQUIRING_PLUGIN,
+    TRACKED_MACS,
 )
 from .helpers import is_private_ip
 from .pyopnsense import OPNsenseClient
@@ -777,13 +778,17 @@ class OPNsenseOptionsFlow(OptionsFlow):
                 _LOGGER.debug("[options_flow device_tracker] Manual Devices: %s", macs)
             _LOGGER.debug("[options_flow device_tracker] Devices: %s", user_input.get(CONF_DEVICES))
             self._options[CONF_DEVICES] = user_input.get(CONF_DEVICES, []) + macs
+            if not self._options.get(CONF_DEVICE_TRACKER_ENABLED):
+                self._options.pop(CONF_DEVICES, None)
+                self._config.pop(TRACKED_MACS, None)
+
             self.hass.config_entries.async_update_entry(
                 entry=self.config_entry, data=self._config, options=self._options
             )
             return self.async_create_entry(data=self._options)
 
         config = dict(self.config_entry.data)
-        selected_devices: list = config.get(CONF_DEVICES, [])
+        selected_devices: list = self.config_entry.options.get(CONF_DEVICES, [])
         dt_entries: MutableMapping[str, Any] = await _get_dt_entries(
             hass=self.hass, config=config, selected_devices=selected_devices
         )

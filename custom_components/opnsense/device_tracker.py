@@ -14,6 +14,7 @@ from homeassistant.helpers.device_registry import (
     CONNECTION_NETWORK_MAC,
     async_get as async_get_dev_reg,
 )
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
@@ -24,6 +25,7 @@ from .const import (
     DEFAULT_DEVICE_TRACKER_CONSIDER_HOME,
     DEFAULT_DEVICE_TRACKER_ENABLED,
     DEVICE_TRACKER_COORDINATOR,
+    DOMAIN,
     SHOULD_RELOAD,
     TRACKED_MACS,
 )
@@ -110,7 +112,11 @@ async def async_setup_entry(
             hostname=device.get("hostname", None),
         )
         entities.append(entity)
-
+    # _LOGGER.debug(
+    #     "[device_tracker async_setup_entry] mac_addresses: %s, previous_mac_addresses: %s",
+    #     mac_addresses,
+    #     previous_mac_addresses,
+    # )
     # Get the MACs that need to be removed and remove their devices
     for mac_address in list(set(previous_mac_addresses) - set(mac_addresses)):
         rem_device = dev_reg.async_get_device(connections={(CONNECTION_NETWORK_MAC, mac_address)})
@@ -305,15 +311,15 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         #     f"extra_state_atrributes: {self.extra_state_attributes}"
         # )
 
-    # @property
-    # def device_info(self) -> DeviceInfo | None:
-    #     """Return the device info."""
-    #     return DeviceInfo(
-    #         connections={(CONNECTION_NETWORK_MAC, self.mac_address or "")},
-    #         default_manufacturer=self._mac_vendor or "",
-    #         default_name=self.name if isinstance(self.name, str) else "",
-    #         via_device=(DOMAIN, self._device_unique_id),
-    #     )
+    @property  # type: ignore[misc] # overriding final from ScannerEntity
+    def device_info(self) -> DeviceInfo | None:
+        """Return the device info."""
+        return DeviceInfo(
+            connections={(CONNECTION_NETWORK_MAC, self.mac_address or "")},
+            default_manufacturer=self._mac_vendor or "",
+            default_name=self.name if isinstance(self.name, str) else "",
+            via_device=(DOMAIN, self._device_unique_id),
+        )
 
     async def _restore_last_state(self) -> None:
         last_state = await self.async_get_last_state()
