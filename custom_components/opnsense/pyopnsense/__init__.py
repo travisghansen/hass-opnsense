@@ -899,7 +899,9 @@ $toreturn = [
             await self._get_kea_dhcpv4_leases()
             + await self._get_isc_dhcpv4_leases()
             + await self._get_isc_dhcpv6_leases()
+            + await self._get_dnsmasq_leases()
         )
+        # TODO: Add Kea dhcpv6 leases if API ever gets added
 
         # _LOGGER.debug(f"[get_dhcp_leases] leases_raw: {leases_raw}")
         leases: MutableMapping[str, Any] = {}
@@ -1004,6 +1006,68 @@ $toreturn = [
                 lease["expires"] = lease_info.get("expire", None)
             leases.append(lease)
         # _LOGGER.debug(f"[get_kea_dhcpv4_leases] leases: {leases}")
+        return leases
+
+    def _keep_latest_leases(self, reservations: list[dict]) -> list[dict]:
+        seen: dict[tuple, dict] = {}
+
+        for entry in reservations:
+            # Create a key from all fields except 'expire'
+            key = tuple((k, v) for k, v in entry.items() if k != "expire")
+
+            # Keep the entry with the latest expiration time
+            if key not in seen or entry["expire"] > seen[key]["expire"]:
+                seen[key] = entry
+
+        return list(seen.values())
+
+    async def _get_dnsmasq_leases(self) -> list:
+        """Return Dnsmasq IPv4 and IPv6 DHCP Leases."""
+        response = await self._safe_dict_get("/api/dnsmasq/leases/search")
+        leases_info: list = response.get("rows", [])
+        if not isinstance(leases_info, list):
+            return []
+        # _LOGGER.debug("[get_dnsmasq_leases] leases_info: %s", leases_info)
+        cleaned_leases = self._keep_latest_leases(leases_info)
+        # _LOGGER.debug("[get_dnsmasq_leases] cleaned_leases: %s", cleaned_leases)
+
+        leases: list = []
+        for lease_info in cleaned_leases:
+            # _LOGGER.debug("[get_dnsmasq_leases] lease_info: %s", lease_info)
+            if not isinstance(lease_info, MutableMapping):
+                continue
+            lease: MutableMapping[str, Any] = {}
+            lease["address"] = lease_info.get("address", None)
+            lease["hostname"] = (
+                lease_info.get("hostname", None)
+                if isinstance(lease_info.get("hostname", None), str)
+                and lease_info.get("hostname", None) != "*"
+                and len(lease_info.get("hostname", "")) > 0
+                else None
+            )
+            lease["if_descr"] = lease_info.get("if_descr", None)
+            lease["if_name"] = lease_info.get("if", None)
+            if lease_info.get("is_reserved", "0") == "1":
+                lease["type"] = "static"
+            else:
+                lease["type"] = "dynamic"
+            lease["mac"] = (
+                lease_info.get("hwaddr", None)
+                if isinstance(lease_info.get("hwaddr", None), str)
+                and len(lease_info.get("hwaddr", "")) > 0
+                else None
+            )
+
+            if OPNsenseClient._try_to_int(lease_info.get("expire", None)):
+                lease["expires"] = timestamp_to_datetime(
+                    OPNsenseClient._try_to_int(lease_info.get("expire", None)) or 0
+                )
+                if lease["expires"] < datetime.now().astimezone():
+                    continue
+            else:
+                lease["expires"] = lease_info.get("expire", None)
+            leases.append(lease)
+        # _LOGGER.debug("[get_dnsmasq_leases] leases: %s", leases)
         return leases
 
     async def _get_isc_dhcpv4_leases(self) -> list:
