@@ -39,7 +39,7 @@
 | Stop Service | /api/core/service/stop | 2023 | Status: Services | |
 | Restart Service | /api/core/service/restart | 2023 | Status: Services | |
 | Get Carp Status | /api/diagnostics/interface/get_vip_status | 2022 | Interfaces: Virtual IPs: Status | |
-| Get DHCP Leases | /api/kea/leases4/search<br>/api/kea/dhcpv4/searchReservation<br>/api/dhcpv4/leases/searchLease<br>/api/dhcpv6/leases/searchLease | 24.1 | Services: DHCP: Kea(v4)<br>Status: DHCP leases<br>Status: DHCPv6 leases | |
+| Get DHCP Leases | /api/kea/leases4/search<br>/api/kea/dhcpv4/searchReservation<br>/api/dhcpv4/leases/searchLease<br>/api/dhcpv6/leases/searchLease<br>/api/dnsmasq/leases/search | 24.1 | Services: DHCP: Kea(v4)<br>Status: DHCP leases<br>Status: DHCPv6 leases<br>Services: Dnsmasq DNS/DHCP: Settings | |
 | Get Unbound Blocklist | /api/unbound/settings/get<br>/api/unbound/settings/set<br>/api/unbound/service/dnsbl<br>/api/unbound/service/restart | 21.7 | Services: Unbound (MVC) | |
 | Get Wireguard | /api/wireguard/service/show<br>/api/wireguard/client/get<br>/api/wireguard/server/get | 24.1 | VPN: WireGuard | |
 | Get Kea Interfaces | /api/kea/dhcpv4/get | 24.1 | Services: DHCP: Kea(v4) | |
