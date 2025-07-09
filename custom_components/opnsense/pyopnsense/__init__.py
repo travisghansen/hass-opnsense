@@ -1023,6 +1023,16 @@ $toreturn = [
 
     async def _get_dnsmasq_leases(self) -> list:
         """Return Dnsmasq IPv4 and IPv6 DHCP Leases."""
+
+        try:
+            if awesomeversion.AwesomeVersion(
+                self._firmware_version
+            ) < awesomeversion.AwesomeVersion("25.1"):
+                _LOGGER.debug("Skipping get_dnsmasq_leases for OPNsense < 25.1")
+                return []
+        except awesomeversion.exceptions.AwesomeVersionCompareException:
+            pass
+
         response = await self._safe_dict_get("/api/dnsmasq/leases/search")
         leases_info: list = response.get("rows", [])
         if not isinstance(leases_info, list):
