@@ -1,18 +1,26 @@
 """OPNsense integration."""
 
-import asyncio
-from collections.abc import Callable, MutableMapping
+from collections.abc import Callable, Mapping, MutableMapping
 import logging
-import traceback
 from typing import Any
 
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity, SwitchEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import entity_platform
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later
 
-from .const import ATTR_NAT_OUTBOUND, ATTR_NAT_PORT_FORWARD, ATTR_UNBOUND_BLOCKLIST, COORDINATOR
+from .const import (
+    ATTR_NAT_OUTBOUND,
+    ATTR_NAT_PORT_FORWARD,
+    ATTR_UNBOUND_BLOCKLIST,
+    CONF_SYNC_FILTERS_AND_NAT,
+    CONF_SYNC_SERVICES,
+    CONF_SYNC_UNBOUND,
+    CONF_SYNC_VPN,
+    COORDINATOR,
+    DEFAULT_SYNC_OPTION_VALUE,
+)
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity
 from .helpers import dict_get
@@ -49,19 +57,20 @@ async def _compile_filter_switches(
                 if tracker is None or len(tracker) < 1:
                     continue
 
-                entity = OPNsenseFilterSwitch(
-                    config_entry=config_entry,
-                    coordinator=coordinator,
-                    entity_description=SwitchEntityDescription(
-                        key=f"filter.{tracker}",
-                        name=f"Filter Rule {tracker} ({rule.get('descr', '')})",
-                        icon="mdi:play-network-outline",
-                        # entity_category=entity_category,
-                        device_class=SwitchDeviceClass.SWITCH,
-                        entity_registry_enabled_default=False,
-                    ),
+                entities.append(
+                    OPNsenseFilterSwitch(
+                        config_entry=config_entry,
+                        coordinator=coordinator,
+                        entity_description=SwitchEntityDescription(
+                            key=f"filter.{tracker}",
+                            name=f"Filter Rule {tracker} ({rule.get('descr', '')})",
+                            icon="mdi:play-network-outline",
+                            # entity_category=entity_category,
+                            device_class=SwitchDeviceClass.SWITCH,
+                            entity_registry_enabled_default=False,
+                        ),
+                    )
                 )
-                entities.append(entity)
     return entities
 
 
@@ -207,7 +216,7 @@ async def _compile_vpn_switches(
     return entities
 
 
-async def _compile_static_switches(
+async def _compile_static_unbound_switches(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
@@ -235,7 +244,7 @@ async def _compile_static_switches(
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
-    async_add_entities: entity_platform.AddEntitiesCallback,
+    async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the OPNsense switches."""
     coordinator: OPNsenseDataUpdateCoordinator = getattr(config_entry.runtime_data, COORDINATOR)
@@ -243,27 +252,21 @@ async def async_setup_entry(
     if not isinstance(state, MutableMapping):
         _LOGGER.error("Missing state data in switch async_setup_entry")
         return
-    results: list = await asyncio.gather(
-        _compile_filter_switches(config_entry, coordinator, state),
-        _compile_port_forward_switches(config_entry, coordinator, state),
-        _compile_nat_outbound_switches(config_entry, coordinator, state),
-        _compile_service_switches(config_entry, coordinator, state),
-        _compile_vpn_switches(config_entry, coordinator, state),
-        _compile_static_switches(config_entry, coordinator, state),
-        return_exceptions=True,
-    )
+    config: Mapping[str, Any] = config_entry.data
 
     entities: list = []
-    for result in results:
-        if isinstance(result, list):
-            entities += result
-        else:
-            _LOGGER.error(
-                "Error in switch async_setup_entry. %s: %s\n%s",
-                result.__class__.__qualname__,
-                result,
-                "".join(traceback.format_tb(result.__traceback__)),
-            )
+
+    if config.get(CONF_SYNC_FILTERS_AND_NAT, DEFAULT_SYNC_OPTION_VALUE):
+        entities.extend(await _compile_filter_switches(config_entry, coordinator, state))
+        entities.extend(await _compile_port_forward_switches(config_entry, coordinator, state))
+        entities.extend(await _compile_nat_outbound_switches(config_entry, coordinator, state))
+    if config.get(CONF_SYNC_SERVICES, DEFAULT_SYNC_OPTION_VALUE):
+        entities.extend(await _compile_service_switches(config_entry, coordinator, state))
+    if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):
+        entities.extend(await _compile_vpn_switches(config_entry, coordinator, state))
+    if config.get(CONF_SYNC_UNBOUND, DEFAULT_SYNC_OPTION_VALUE):
+        entities.extend(await _compile_static_unbound_switches(config_entry, coordinator, state))
+
     _LOGGER.debug("[switch async_setup_entry] entities: %s", len(entities))
     async_add_entities(entities)
 

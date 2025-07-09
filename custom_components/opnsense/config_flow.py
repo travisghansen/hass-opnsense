@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
 import ipaddress
 import logging
 import re
@@ -36,14 +36,20 @@ from .const import (
     CONF_DEVICE_UNIQUE_ID,
     CONF_DEVICES,
     CONF_FIRMWARE_VERSION,
+    CONF_GRANULAR_SYNC_OPTIONS,
     CONF_MANUAL_DEVICES,
     DEFAULT_DEVICE_TRACKER_CONSIDER_HOME,
     DEFAULT_DEVICE_TRACKER_ENABLED,
     DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
+    DEFAULT_GRANULAR_SYNC_OPTIONS,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_SYNC_OPTION_VALUE,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
+    GRANULAR_SYNC_ITEMS,
     OPNSENSE_MIN_FIRMWARE,
+    SYNC_ITEMS_REQUIRING_PLUGIN,
+    TRACKED_MACS,
 )
 from .helpers import is_private_ip
 from .pyopnsense import OPNsenseClient
@@ -80,14 +86,14 @@ def cleanse_sensitive_data(message: str, secrets: list | None = None) -> str:
 async def validate_input(
     hass: HomeAssistant,
     user_input: MutableMapping[str, Any],
-    errors: MutableMapping[str, Any],
-) -> MutableMapping[str, Any]:
+    errors: dict[str, Any],
+) -> dict[str, Any]:
     """Check user input for errors."""
     filtered_user_input: MutableMapping[str, Any] = {
         key: value for key, value in user_input.items() if key != CONF_PASSWORD
     }
 
-    _LOGGER.debug("[config_flow] user_input: %s", filtered_user_input)
+    _LOGGER.debug("[validate_input] user_input: %s", filtered_user_input)
 
     try:
         await _handle_user_input(user_input, hass)
@@ -248,7 +254,10 @@ async def _handle_user_input(user_input: MutableMapping[str, Any], hass: HomeAss
     except awesomeversion.exceptions.AwesomeVersionCompareException as e:
         raise UnknownFirmware from e
 
-    if not await client.is_plugin_installed():
+    require_plugin = any(
+        user_input.get(item, DEFAULT_SYNC_OPTION_VALUE) for item in SYNC_ITEMS_REQUIRING_PLUGIN
+    )
+    if require_plugin and not await client.is_plugin_installed():
         raise PluginMissing
 
     system_info: MutableMapping[str, Any] = await client.get_system_info()
@@ -270,11 +279,201 @@ def _log_and_set_error(errors: MutableMapping[str, Any], key: str, message: str)
     errors["base"] = key
 
 
+def _build_user_input_schema(
+    user_input: MutableMapping[str, Any] | None,
+    fallback: MutableMapping[str, Any] | None = None,
+    reconf: bool = False,
+) -> vol.Schema:
+    if user_input is None:
+        user_input = {}
+    if fallback is None:
+        fallback = {}
+
+    schema = vol.Schema(
+        {
+            vol.Required(
+                CONF_URL, default=user_input.get(CONF_URL, fallback.get(CONF_URL, "https://"))
+            ): str,
+            vol.Optional(
+                CONF_VERIFY_SSL,
+                default=user_input.get(
+                    CONF_VERIFY_SSL, fallback.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
+                ),
+            ): bool,
+            vol.Required(
+                CONF_USERNAME,
+                default=user_input.get(CONF_USERNAME, fallback.get(CONF_USERNAME, "")),
+            ): str,
+            vol.Required(
+                CONF_PASSWORD,
+                default=user_input.get(CONF_PASSWORD, fallback.get(CONF_PASSWORD, "")),
+            ): str,
+        }
+    )
+    if not reconf:
+        schema = schema.extend(
+            {
+                vol.Optional(
+                    CONF_NAME, default=user_input.get(CONF_NAME, fallback.get(CONF_NAME, ""))
+                ): str,
+                vol.Required(
+                    CONF_GRANULAR_SYNC_OPTIONS,
+                    default=user_input.get(
+                        CONF_GRANULAR_SYNC_OPTIONS,
+                        fallback.get(CONF_GRANULAR_SYNC_OPTIONS, DEFAULT_GRANULAR_SYNC_OPTIONS),
+                    ),
+                ): selector.BooleanSelector(selector.BooleanSelectorConfig()),
+            }
+        )
+    return schema
+
+
+def _build_granular_sync_schema(
+    user_input: MutableMapping[str, Any] | None,
+    fallback: MutableMapping[str, Any] | None = None,
+) -> vol.Schema:
+    if user_input is None:
+        user_input = {}
+    if fallback is None:
+        fallback = {}
+
+    schema_dict: MutableMapping[Any, Any] = {}
+
+    for conf in GRANULAR_SYNC_ITEMS:
+        schema_dict[
+            vol.Optional(
+                conf,
+                default=user_input.get(
+                    conf,
+                    fallback.get(conf, DEFAULT_SYNC_OPTION_VALUE),
+                ),
+            )
+        ] = selector.BooleanSelector(selector.BooleanSelectorConfig())
+
+    return vol.Schema(schema_dict)
+
+
+def _build_options_init_schema(
+    user_input: MutableMapping[str, Any] | None,
+    fallback_config: MutableMapping[str, Any] | None = None,
+    fallback_options: MutableMapping[str, Any] | None = None,
+) -> vol.Schema:
+    if user_input is None:
+        user_input = {}
+    if fallback_config is None:
+        fallback_config = {}
+    if fallback_options is None:
+        fallback_options = {}
+
+    return vol.Schema(
+        {
+            vol.Optional(
+                CONF_SCAN_INTERVAL,
+                default=user_input.get(
+                    CONF_SCAN_INTERVAL,
+                    fallback_options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+                ),
+            ): vol.All(vol.Coerce(int), vol.Clamp(min=10, max=300)),
+            vol.Optional(
+                CONF_DEVICE_TRACKER_ENABLED,
+                default=user_input.get(
+                    CONF_DEVICE_TRACKER_ENABLED,
+                    fallback_options.get(
+                        CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED
+                    ),
+                ),
+            ): selector.BooleanSelector(selector.BooleanSelectorConfig()),
+            vol.Optional(
+                CONF_DEVICE_TRACKER_SCAN_INTERVAL,
+                default=user_input.get(
+                    CONF_DEVICE_TRACKER_SCAN_INTERVAL,
+                    fallback_options.get(
+                        CONF_DEVICE_TRACKER_SCAN_INTERVAL, DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL
+                    ),
+                ),
+            ): vol.All(vol.Coerce(int), vol.Clamp(min=30, max=300)),
+            vol.Optional(
+                CONF_DEVICE_TRACKER_CONSIDER_HOME,
+                default=user_input.get(
+                    CONF_DEVICE_TRACKER_CONSIDER_HOME,
+                    fallback_options.get(
+                        CONF_DEVICE_TRACKER_CONSIDER_HOME, DEFAULT_DEVICE_TRACKER_CONSIDER_HOME
+                    ),
+                ),
+            ): vol.All(vol.Coerce(int), vol.Clamp(min=0, max=600)),
+            vol.Optional(
+                CONF_GRANULAR_SYNC_OPTIONS,
+                default=user_input.get(
+                    CONF_GRANULAR_SYNC_OPTIONS,
+                    fallback_config.get(CONF_GRANULAR_SYNC_OPTIONS, DEFAULT_GRANULAR_SYNC_OPTIONS),
+                ),
+            ): selector.BooleanSelector(selector.BooleanSelectorConfig()),
+        }
+    )
+
+
+async def _get_dt_entries(
+    hass: HomeAssistant, config: Mapping[str, Any], selected_devices: list
+) -> MutableMapping[str, Any]:
+    url = config[CONF_URL].strip()
+    username: str = config[CONF_USERNAME]
+    password: str = config[CONF_PASSWORD]
+    verify_ssl: bool = config.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
+    client = OPNsenseClient(
+        url=url,
+        username=username,
+        password=password,
+        session=async_create_clientsession(
+            hass=hass,
+            raise_for_status=False,
+            cookie_jar=aiohttp.CookieJar(unsafe=is_private_ip(url)),
+        ),
+        opts={"verify_ssl": verify_ssl},
+    )
+    # dicts are ordered so put all previously selected items at the top
+    entries: MutableMapping[str, Any] = {}
+    for device in selected_devices:
+        entries[device] = device
+    arp_table: list = await client.get_arp_table(resolve_hostnames=True)
+    if arp_table:
+        # follow with all arp table entries
+        for entry in arp_table:
+            mac: str = entry.get("mac", "").lower().strip()
+            if len(mac) < 1:
+                continue
+            hostname: str = entry.get("hostname", "").strip("?").strip()
+            ip: str = entry.get("ip", "").strip()
+            label: str = f"{ip} {'(' + hostname + ') ' if hostname else ''}[{mac}]"
+            entries[mac] = label
+
+        # Sort entries: MAC-only labels first, then by IP address (ascending)
+        sorted_entries: MutableMapping[str, Any] = dict(
+            sorted(
+                entries.items(),
+                key=lambda item: (
+                    0
+                    if not is_ip_address(item[1].split()[0])
+                    else 1,  # Sort MAC address only labels first
+                    item[1].split()[0]
+                    if not is_ip_address(item[1].split()[0])
+                    else ipaddress.ip_address(item[1].split()[0]),
+                ),
+            )
+        )
+        return sorted_entries
+    return entries
+
+
 class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for OPNsense."""
 
     # bumping this is what triggers async_migrate_entry for the component
     VERSION = 4
+
+    def __init__(self) -> None:
+        """Initialize the config flow."""
+        self._errors: dict[str, Any] = {}
+        self._config: MutableMapping[str, Any] = {}
 
     # gets invoked without user input initially
     # when user submits has user_input
@@ -282,53 +481,62 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: MutableMapping[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle the initial step."""
-        errors: MutableMapping[str, Any] = {}
-        firmware: str = "Unknown"
         if user_input is not None:
-            errors = await validate_input(hass=self.hass, user_input=user_input, errors=errors)
-            firmware = user_input.get(CONF_FIRMWARE_VERSION, "Unknown")
-            if not errors:
+            self._errors = await validate_input(
+                hass=self.hass, user_input=user_input, errors=self._errors
+            )
+            if not self._errors:
                 # https://developers.home-assistant.io/docs/config_entries_config_flow_handler#unique-ids
                 await self.async_set_unique_id(user_input.get(CONF_DEVICE_UNIQUE_ID))
                 self._abort_if_unique_id_configured()
 
+                if user_input[CONF_GRANULAR_SYNC_OPTIONS]:
+                    self._config = user_input
+                    return await self.async_step_granular_sync()
+
                 return self.async_create_entry(
                     title=user_input[CONF_NAME],
-                    data={
-                        CONF_URL: user_input[CONF_URL],
-                        CONF_PASSWORD: user_input[CONF_PASSWORD],
-                        CONF_USERNAME: user_input[CONF_USERNAME],
-                        CONF_VERIFY_SSL: user_input[CONF_VERIFY_SSL],
-                        CONF_DEVICE_UNIQUE_ID: user_input[CONF_DEVICE_UNIQUE_ID],
-                    },
+                    data=user_input,
                 )
 
         if not user_input:
             user_input = {}
-        schema = vol.Schema(
-            {
-                vol.Required(CONF_URL, default=user_input.get(CONF_URL, "https://")): str,
-                vol.Optional(
-                    CONF_VERIFY_SSL,
-                    default=user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
-                ): bool,
-                vol.Required(
-                    CONF_USERNAME,
-                    default=user_input.get(CONF_USERNAME, ""),
-                ): str,
-                vol.Required(CONF_PASSWORD, default=user_input.get(CONF_PASSWORD, "")): str,
-                vol.Optional(CONF_NAME, default=user_input.get(CONF_NAME, "")): str,
-            }
-        )
+        firmware = user_input.get(CONF_FIRMWARE_VERSION, "Unknown")
 
         return self.async_show_form(
             step_id="user",
-            data_schema=schema,
-            errors=dict(errors),
+            data_schema=_build_user_input_schema(user_input=user_input),
+            errors=self._errors,
             description_placeholders={
                 "firmware": firmware,
                 "min_firmware": OPNSENSE_MIN_FIRMWARE,
             },
+        )
+
+    async def async_step_granular_sync(
+        self, user_input: MutableMapping[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle the step for initial granular sync options."""
+        if user_input is not None:
+            _LOGGER.debug("[config_flow granular_sync] raw user_input: %s", user_input)
+            self._config.update(user_input)
+            _LOGGER.debug("[config_flow granular_sync] merged config: %s", self._config)
+            self._errors = await validate_input(
+                hass=self.hass, user_input=self._config, errors=self._errors
+            )
+            if not self._errors:
+                return self.async_create_entry(
+                    title=self._config[CONF_NAME],
+                    data=self._config,
+                )
+
+        if not user_input:
+            user_input = {}
+
+        return self.async_show_form(
+            step_id="granular_sync",
+            data_schema=_build_granular_sync_schema(user_input=user_input),
+            errors=self._errors,
         )
 
     async def async_step_reconfigure(
@@ -336,59 +544,36 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Config flow reconfigure step."""
         reconfigure_entry = self._get_reconfigure_entry()
-        prev_data = reconfigure_entry.data
-        errors: MutableMapping[str, Any] = {}
-        firmware: str = "Unknown"
+        self._config = dict(reconfigure_entry.data)
+
         if user_input is not None:
-            user_input[CONF_NAME] = prev_data.get(CONF_NAME, "")
-            errors = await validate_input(hass=self.hass, user_input=user_input, errors=errors)
-            firmware = user_input.get(CONF_FIRMWARE_VERSION, "Unknown")
-            if not errors:
+            _LOGGER.debug("[config_flow reconfigure] raw user_input: %s", user_input)
+            self._config.update(user_input)
+            _LOGGER.debug("[config_flow reconfigure] merged config: %s", self._config)
+            self._errors = await validate_input(
+                hass=self.hass, user_input=self._config, errors=self._errors
+            )
+
+            if not self._errors:
                 # https://developers.home-assistant.io/docs/config_entries_config_flow_handler#unique-ids
-                await self.async_set_unique_id(user_input.get(CONF_DEVICE_UNIQUE_ID))
+                await self.async_set_unique_id(self._config.get(CONF_DEVICE_UNIQUE_ID))
                 self._abort_if_unique_id_mismatch()
 
-                return self.async_create_entry(
-                    title=user_input[CONF_NAME],
-                    data={
-                        CONF_URL: user_input[CONF_URL],
-                        CONF_PASSWORD: user_input[CONF_PASSWORD],
-                        CONF_USERNAME: user_input[CONF_USERNAME],
-                        CONF_VERIFY_SSL: user_input[CONF_VERIFY_SSL],
-                        CONF_DEVICE_UNIQUE_ID: user_input[CONF_DEVICE_UNIQUE_ID],
-                    },
+                return self.async_update_reload_and_abort(
+                    entry=reconfigure_entry,
+                    data=self._config,
                 )
 
         if not user_input:
             user_input = {}
-        schema = vol.Schema(
-            {
-                vol.Required(
-                    CONF_URL,
-                    default=user_input.get(CONF_URL, prev_data.get(CONF_URL, "https://")),
-                ): str,
-                vol.Optional(
-                    CONF_VERIFY_SSL,
-                    default=user_input.get(
-                        CONF_VERIFY_SSL,
-                        prev_data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
-                    ),
-                ): bool,
-                vol.Required(
-                    CONF_USERNAME,
-                    default=user_input.get(CONF_USERNAME, prev_data.get(CONF_USERNAME, "")),
-                ): str,
-                vol.Required(
-                    CONF_PASSWORD,
-                    default=user_input.get(CONF_PASSWORD, prev_data.get(CONF_PASSWORD, "")),
-                ): str,
-            }
-        )
+        firmware = user_input.get(CONF_FIRMWARE_VERSION, "Unknown")
 
         return self.async_show_form(
             step_id="reconfigure",
-            data_schema=schema,
-            errors=dict(errors),
+            data_schema=_build_user_input_schema(
+                user_input=user_input, fallback=self._config, reconf=True
+            ),
+            errors=self._errors,
             description_placeholders={
                 "firmware": firmware,
                 "min_firmware": OPNSENSE_MIN_FIRMWARE,
@@ -411,114 +596,99 @@ class OPNsenseOptionsFlow(OptionsFlow):
 
     def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize options flow."""
-        self.new_options: MutableMapping[str, Any] = {}
-        self.config_entry = config_entry
+        self._errors: dict[str, Any] = {}
+        self._config: MutableMapping[str, Any] = {}
+        self._options: MutableMapping[str, Any] = {}
 
     async def async_step_init(
         self, user_input: MutableMapping[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle options flow."""
+        self._config = dict(self.config_entry.data)
+        self._options = dict(self.config_entry.options)
         if user_input is not None:
-            _LOGGER.debug("[options_flow init] user_input: %s", user_input)
-            if user_input.get(CONF_DEVICE_TRACKER_ENABLED):
-                self.new_options = user_input
+            _LOGGER.debug("[options_flow init] raw user_input: %s", user_input)
+            self._options.update(user_input)
+            self._config[CONF_GRANULAR_SYNC_OPTIONS] = self._options.pop(
+                CONF_GRANULAR_SYNC_OPTIONS, DEFAULT_GRANULAR_SYNC_OPTIONS
+            )
+            # _LOGGER.debug("[options_flow init] config_entry: %s", self.config_entry.as_dict())
+            _LOGGER.debug(
+                "[options_flow init] merged user_input. config: %s. options: %s",
+                self._config,
+                self._options,
+            )
+            if self._config.get(CONF_GRANULAR_SYNC_OPTIONS):
+                return await self.async_step_granular_sync()
+            for item in GRANULAR_SYNC_ITEMS:
+                self._config.pop(item, None)
+            if self._options.get(CONF_DEVICE_TRACKER_ENABLED):
                 return await self.async_step_device_tracker()
-            return self.async_create_entry(title="", data=user_input)
+            _LOGGER.debug("Updating options from init. user_input: %s", self._config)
 
-        scan_interval = self.config_entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-        device_tracker_enabled = self.config_entry.options.get(
-            CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED
-        )
-        device_tracker_scan_interval = self.config_entry.options.get(
-            CONF_DEVICE_TRACKER_SCAN_INTERVAL, DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL
-        )
-        device_tracker_consider_home = self.config_entry.options.get(
-            CONF_DEVICE_TRACKER_CONSIDER_HOME, DEFAULT_DEVICE_TRACKER_CONSIDER_HOME
-        )
+            self.hass.config_entries.async_update_entry(
+                entry=self.config_entry, data=self._config, options=self._options
+            )
+            return self.async_create_entry(data=self._options)
 
-        base_schema = {
-            vol.Optional(CONF_SCAN_INTERVAL, default=scan_interval): vol.All(
-                vol.Coerce(int), vol.Clamp(min=10, max=300)
+        return self.async_show_form(
+            step_id="init",
+            data_schema=_build_options_init_schema(
+                user_input=user_input, fallback_config=self._config, fallback_options=self._options
             ),
-            vol.Optional(CONF_DEVICE_TRACKER_ENABLED, default=device_tracker_enabled): bool,
-            vol.Optional(
-                CONF_DEVICE_TRACKER_SCAN_INTERVAL, default=device_tracker_scan_interval
-            ): vol.All(vol.Coerce(int), vol.Clamp(min=30, max=300)),
-            vol.Optional(
-                CONF_DEVICE_TRACKER_CONSIDER_HOME, default=device_tracker_consider_home
-            ): vol.All(vol.Coerce(int), vol.Clamp(min=0, max=600)),
-        }
+        )
 
-        return self.async_show_form(step_id="init", data_schema=vol.Schema(base_schema))
+    async def async_step_granular_sync(
+        self, user_input: MutableMapping[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle the step for granular sync options."""
+        if user_input is not None:
+            _LOGGER.debug("[options_flow granular_sync] raw user_input: %s", user_input)
+            self._config.update(user_input)
+            _LOGGER.debug(
+                "[options_flow granular_sync] merged user_input. config: %s. options: %s",
+                self._config,
+                self._options,
+            )
+            self._errors = await validate_input(
+                hass=self.hass, user_input=self._config, errors=self._errors
+            )
+            if not self._errors:
+                if self._options.get(CONF_DEVICE_TRACKER_ENABLED):
+                    return await self.async_step_device_tracker()
+                _LOGGER.debug("Updating options from granular sync. user_input: %s", self._config)
+
+                self.hass.config_entries.async_update_entry(
+                    entry=self.config_entry, data=self._config, options=self._options
+                )
+                return self.async_create_entry(data=self._options)
+
+        if not user_input:
+            user_input = {}
+
+        return self.async_show_form(
+            step_id="granular_sync",
+            data_schema=_build_granular_sync_schema(
+                user_input=user_input,
+                fallback=self._config,
+            ),
+            errors=self._errors,
+        )
 
     async def async_step_device_tracker(
         self, user_input: MutableMapping[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle device tracker list step."""
-        url = self.config_entry.data[CONF_URL].strip()
-        username: str = self.config_entry.data[CONF_USERNAME]
-        password: str = self.config_entry.data[CONF_PASSWORD]
-        verify_ssl: bool = self.config_entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
-        client = OPNsenseClient(
-            url=url,
-            username=username,
-            password=password,
-            session=async_create_clientsession(
-                hass=self.hass,
-                raise_for_status=False,
-                cookie_jar=aiohttp.CookieJar(unsafe=is_private_ip(url)),
-            ),
-            opts={"verify_ssl": verify_ssl},
-        )
-        if user_input is None and (arp_table := await client.get_arp_table(True)):
-            selected_devices: list = self.config_entry.options.get(CONF_DEVICES, [])
-
-            # dicts are ordered so put all previously selected items at the top
-            entries: MutableMapping[str, Any] = {}
-            for device in selected_devices:
-                entries[device] = device
-
-            # follow with all arp table entries
-            for entry in arp_table:
-                mac: str = entry.get("mac", "").lower().strip()
-                if len(mac) < 1:
-                    continue
-                hostname: str = entry.get("hostname", "").strip("?").strip()
-                ip: str = entry.get("ip", "").strip()
-                label: str = f"{ip} {'(' + hostname + ') ' if hostname else ''}[{mac}]"
-                entries[mac] = label
-
-            sorted_entries: MutableMapping[str, Any] = dict(
-                sorted(
-                    entries.items(),
-                    key=lambda item: (
-                        0
-                        if not is_ip_address(item[1].split()[0])
-                        else 1,  # Sort MAC address only labels first
-                        item[1].split()[0]
-                        if not is_ip_address(item[1].split()[0])
-                        else ipaddress.ip_address(item[1].split()[0]),
-                    ),
-                )
+        if user_input is not None:
+            _LOGGER.debug("[options_flow device_tracker] raw user_input: %s", user_input)
+            self._options.update(user_input)
+            _LOGGER.debug(
+                "[options_flow device_tracker] merged user_input. config: %s. options: %s",
+                self._config,
+                self._options,
             )
-
-            return self.async_show_form(
-                step_id="device_tracker",
-                data_schema=vol.Schema(
-                    {
-                        vol.Optional(CONF_DEVICES, default=selected_devices): cv.multi_select(
-                            dict(sorted_entries)
-                        ),
-                        vol.Optional(CONF_MANUAL_DEVICES): selector.TextSelector(
-                            selector.TextSelectorConfig()
-                        ),
-                    }
-                ),
-            )
-        if user_input:
-            _LOGGER.debug("[options_flow device_tracker] user_input: %s", user_input)
             macs: list = []
-            manual_devices: str | None = user_input.get(CONF_MANUAL_DEVICES)
+            manual_devices: str | None = self._options.pop(CONF_MANUAL_DEVICES, None)
             if isinstance(manual_devices, str):
                 for item in manual_devices.split(","):
                     if not isinstance(item, str) or not item:
@@ -526,10 +696,40 @@ class OPNsenseOptionsFlow(OptionsFlow):
                     item = item.strip()
                     if is_valid_mac_address(item):
                         macs.append(item)
-                _LOGGER.debug("[async_step_device_tracker] Manual Devices: %s", macs)
-            _LOGGER.debug("[async_step_device_tracker] Devices: %s", user_input.get(CONF_DEVICES))
-            self.new_options[CONF_DEVICES] = user_input.get(CONF_DEVICES, []) + macs
-        return self.async_create_entry(title="", data=self.new_options)
+                _LOGGER.debug("[options_flow device_tracker] Manual Devices: %s", macs)
+            _LOGGER.debug("[options_flow device_tracker] Devices: %s", user_input.get(CONF_DEVICES))
+            self._options[CONF_DEVICES] = user_input.get(CONF_DEVICES, []) + macs
+            if not self._options.get(CONF_DEVICE_TRACKER_ENABLED):
+                self._options.pop(CONF_DEVICES, None)
+                self._config.pop(TRACKED_MACS, None)
+
+            self.hass.config_entries.async_update_entry(
+                entry=self.config_entry, data=self._config, options=self._options
+            )
+            return self.async_create_entry(data=self._options)
+
+        selected_devices: list = self.config_entry.options.get(CONF_DEVICES, [])
+        dt_entries: MutableMapping[str, Any] = await _get_dt_entries(
+            hass=self.hass, config=self.config_entry.data, selected_devices=selected_devices
+        )
+
+        if not user_input:
+            user_input = {}
+
+        return self.async_show_form(
+            step_id="device_tracker",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(CONF_DEVICES, default=selected_devices): cv.multi_select(
+                        dict(dt_entries)
+                    ),
+                    vol.Optional(CONF_MANUAL_DEVICES): selector.TextSelector(
+                        selector.TextSelectorConfig()
+                    ),
+                }
+            ),
+            errors=self._errors,
+        )
 
 
 class InvalidURL(Exception):
