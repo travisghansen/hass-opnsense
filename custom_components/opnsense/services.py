@@ -460,7 +460,7 @@ async def _service_generate_vouchers(hass: HomeAssistant, call: ServiceCall) -> 
                     new_voucher.update(voucher)
                     voucher.clear()
                     voucher.update(new_voucher)
-            voucher_list += vouchers
+            voucher_list.extend(vouchers)
     final_vouchers: dict[str, Any] = {"vouchers": voucher_list}
     _LOGGER.debug("[service_generate_vouchers] vouchers: %s", final_vouchers)
     return final_vouchers

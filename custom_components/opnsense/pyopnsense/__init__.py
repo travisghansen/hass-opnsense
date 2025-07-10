@@ -624,38 +624,10 @@ clear_subsystem_dirty('filter');
     @_log_errors
     async def get_system_info(self) -> MutableMapping[str, Any]:
         """Return the system info from OPNsense."""
-        # TODO: add bios details here
-        if not self._firmware_version:
-            await self.get_host_firmware_version()
-        try:
-            if awesomeversion.AwesomeVersion(
-                self._firmware_version
-            ) < awesomeversion.AwesomeVersion("24.7"):
-                _LOGGER.info("Using legacy get_system_info method for OPNsense < 24.7")
-                return await self._get_system_info_legacy()
-        except awesomeversion.exceptions.AwesomeVersionCompareException:
-            pass
         system_info: MutableMapping[str, Any] = {}
         response = await self._safe_dict_get("/api/diagnostics/system/systemInformation")
         system_info["name"] = response.get("name", None)
         return system_info
-
-    @_log_errors
-    async def _get_system_info_legacy(self) -> MutableMapping[str, Any]:
-        # TODO: add bios details here
-        script: str = r"""
-global $config;
-
-$toreturn = [
-  "hostname" => $config["system"]["hostname"],
-  "domain" => $config["system"]["domain"],
-];
-"""
-        response: MutableMapping[str, Any] = await self._exec_php(script)
-        if not isinstance(response, MutableMapping):
-            return {}
-        response["name"] = f"{response.pop('hostname', '')}.{response.pop('domain', '')}"
-        return response
 
     @_log_errors
     async def get_firmware_update_info(self) -> MutableMapping[str, Any]:
@@ -1253,16 +1225,6 @@ $toreturn = [
     @_log_errors
     async def get_telemetry(self) -> MutableMapping[str, Any]:
         """Get telemetry data from OPNsense."""
-        if not self._firmware_version:
-            await self.get_host_firmware_version()
-        try:
-            if awesomeversion.AwesomeVersion(
-                self._firmware_version
-            ) < awesomeversion.AwesomeVersion("24.7"):
-                _LOGGER.info("Using legacy Get Telemetry methods for OPNsense < 24.7")
-                return await self._get_telemetry_legacy()
-        except awesomeversion.exceptions.AwesomeVersionCompareException:
-            pass
         telemetry: MutableMapping[str, Any] = {}
         telemetry["mbuf"] = await self._get_telemetry_mbuf()
         telemetry["pfstate"] = await self._get_telemetry_pfstate()
@@ -1690,14 +1652,6 @@ $toreturn = [
 
     @_log_errors
     async def _get_telemetry_temps(self) -> MutableMapping[str, Any]:
-        try:
-            if awesomeversion.AwesomeVersion(
-                self._firmware_version
-            ) < awesomeversion.AwesomeVersion("24.7"):
-                _LOGGER.info("Running OPNsense < 24.7, Get Temperatures not supported")
-                return {}
-        except awesomeversion.exceptions.AwesomeVersionCompareException:
-            pass
         temps_info = await self._safe_list_get("/api/diagnostics/system/systemTemperature")
         # _LOGGER.debug(f"[get_telemetry_temps] temps_info: {temps_info}")
         if not len(temps_info) > 0:
@@ -1713,83 +1667,6 @@ $toreturn = [
             temps[temp_info.get("device", str(i)).replace(".", "_")] = temp
         # _LOGGER.debug(f"[get_telemetry_temps] temps: {temps}")
         return temps
-
-    @_log_errors
-    async def _get_telemetry_legacy(self) -> MutableMapping[str, Any]:
-        script: str = r"""
-require_once '/usr/local/www/widgets/api/plugins/system.inc';
-
-$system_api_data = system_api();
-
-// OPNsense 23.1.1: replaced single exec_command() with new shell_safe() wrapper
-if (function_exists('exec_command')) {
-    $boottime = exec_command("sysctl kern.boottime");
-} else {
-    $boottime = shell_safe("sysctl kern.boottime");
-}
-
-// kern.boottime: { sec = 1634047554, usec = 237429 } Tue Oct 12 08:05:54 2021
-preg_match("/sec = [0-9]*/", $boottime, $matches);
-$boottime = $matches[0];
-$boottime = explode("=", $boottime)[1];
-$boottime = (int) trim($boottime);
-
-$toreturn = [
-    "pfstate" => [
-        "used" => (int) $system_api_data["kernel"]["pf"]["states"],
-        "total" => (int) $system_api_data["kernel"]["pf"]["maxstates"],
-        "used_percent" => round(floatval($system_api_data["kernel"]["pf"]["states"] / $system_api_data["kernel"]["pf"]["maxstates"]) * 100, 0),
-    ],
-
-    "mbuf" => [
-        "used" => (int) $system_api_data["kernel"]["mbuf"]["total"],
-        "total" => (int) $system_api_data["kernel"]["mbuf"]["max"],
-        "used_percent" =>  round(floatval($system_api_data["kernel"]["mbuf"]["total"] / $system_api_data["kernel"]["mbuf"]["max"]) * 100, 0),
-    ],
-
-    "memory" => [
-        "swap_used_percent" => ($system_api_data["disk"]["swap"][0]["total"] > 0) ? round(floatval($system_api_data["disk"]["swap"][0]["used"] / $system_api_data["disk"]["swap"][0]["total"]) * 100, 0) : 0,
-        "used_percent" => round(floatval($system_api_data["kernel"]["memory"]["used"] / $system_api_data["kernel"]["memory"]["total"]) * 100, 0),
-        "physmem" => (int) $system_api_data["kernel"]["memory"]["total"],
-        "used" => (int) $system_api_data["kernel"]["memory"]["used"],
-        "swap_total" => (int) $system_api_data["disk"]["swap"][0]["total"],
-        "swap_reserved" => (int) $system_api_data["disk"]["swap"][0]["used"],
-    ],
-
-    "system" => [
-        "boottime" => $boottime,
-        "uptime" => (int) $system_api_data["uptime"],
-        "load_average" => [
-            "one_minute" => floatval(trim($system_api_data["cpu"]["load"][0])),
-            "five_minute" => floatval(trim($system_api_data["cpu"]["load"][1])),
-            "fifteen_minute" => floatval(trim($system_api_data["cpu"]["load"][2])),
-        ],
-    ],
-
-    "cpu" => [
-        "count" => (int) $system_api_data["cpu"]["cur.freq"],
-    ],
-
-    "filesystems" => $system_api_data["disk"]["devices"],
-
-];
-
-"""
-        telemetry: MutableMapping[str, Any] = await self._exec_php(script)
-        if not isinstance(telemetry, MutableMapping):
-            _LOGGER.error("Invalid data returned from get_telemetry_legacy")
-            return {}
-        if isinstance(telemetry.get("gateways", []), list):
-            telemetry["gateways"] = {}
-        if isinstance(telemetry.get("filesystems", []), list):
-            for filesystem in telemetry.get("filesystems", []):
-                filesystem["blocks"] = filesystem.pop("size", None)
-                try:
-                    filesystem["used_pct"] = int(filesystem.pop("capacity", "").strip("%"))
-                except ValueError:
-                    filesystem.pop("capacity", None)
-        # _LOGGER.debug(f"[get_telemetry_legacy] telemetry: {telemetry}")
-        return telemetry
 
     @_log_errors
     async def get_notices(self) -> MutableMapping[str, Any]:
@@ -2155,14 +2032,6 @@ $toreturn = [
 
     async def get_certificates(self) -> MutableMapping[str, Any]:
         """Return the active encryption certificates."""
-        try:
-            if awesomeversion.AwesomeVersion(
-                self._firmware_version
-            ) < awesomeversion.AwesomeVersion("24.7"):
-                _LOGGER.info("Running OPNsense < 24.7, Get Certificates not supported")
-                return {}
-        except awesomeversion.exceptions.AwesomeVersionCompareException:
-            pass
         certs_raw = await self._safe_dict_get("/api/trust/cert/search")
         if not isinstance(certs_raw.get("rows", None), list):
             return {}

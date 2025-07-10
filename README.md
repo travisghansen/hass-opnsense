@@ -5,70 +5,79 @@
 [discord]: https://discord.gg/bfF47sBw6A
 [discord-shield]: https://img.shields.io/discord/1283169313653526559?style=for-the-badge&label=Discord&logo=discord&&logoColor=lightcyan&logoSize=auto&color=white
 
-
 # hass-opnsense
 
 Join `OPNsense` with `Home Assistant`!
 
-`hass-opnsense` uses the `OPNsense` [REST API](https://docs.opnsense.org/development/api.html)) built-in `xmlrpc` service to integrate OPNsense with Home Assistant. __A [plugin](#opnsense-plugin) is currently required to be installed in OPNsense for this to work properly.__
+`hass-opnsense` uses the OPNsense [REST API](https://docs.opnsense.org/development/api.html) and built-in `xmlrpc` service to integrate OPNsense with Home Assistant. 
 
-Initial development was done against `OPNsense` `21.7` and `Home Assistant` `2021.10`.
+__In most cases, a [plugin](#opnsense-plugin) is currently required to be installed on the <ins>OPNsense</ins> router for this to work properly.__
 
 A Discord server to discuss the integration is available, please click the Discord badge at the beginning of the page for the invite link.
 
-# Overview
+## Table of Contents
 
-- [Installation](#installation)
-  - [OPNsense plugin](#opnsense-plugin)
-  - [Home Assistant integration](#homeassistant-integration)
-    - [HACS installation](#hacs-installation)
-    - [Manual installation](#manual-installation)
-- [Configuration](#configuration)
-  - [OPNsense](#opnsense-plugin)
-  - [HA Config](#config)
-  - [Options](#options)
-- [Entities](#entities)
-  - [Binary Sensor](#binary-sensor)
-  - [Device Tracker](#device-tracker)
-  - [Sensor](#sensor)
-  - [Switch](#switch)
-  - [Services](#services)
-- [Known Issues](#known-issues)
-  - [Hardware Changes](#hardware-changes)
-  - [AdGuardHome](#adguardhome)
+* [Installation](#installation)
+  * [OPNsense Plugin](#opnsense-plugin)
+  * [Home Assistant Integration](#homeassistant-integration)
+    * [HACS Installation](#hacs-installation)
+    * [Manual Installation](#manual-installation)
 
-# Installation
+* [Configuration](#configuration)
+  * [OPNsense User](#opnsense-user)
+    * [Granular Sync Options](#granular-sync-options)
+  * [Basic Configuration](#basic-configuration)
+  * [Options](#options)
 
-This integration currently **replaces** the built-in `OPNsense` integration which only provides `device_tracker` functionality, be sure to remove any associated configuration for the built-in integration before installing this replacement.
+* [Entities](#entities)
+  * [Binary Sensor](#binary-sensor)
+  * [Sensor](#sensor)
+  * [Switch](#switch)
+  * [Device Tracker](#device-tracker)
 
-The installation requires a plugin on `OPNsense` and a custom integration in `Home Assistant`.
+* [Actions](#actions-services)
 
-## OPNsense Plugin
+* [Known Issues](#known-issues)
+  * [Hardware Changes](#hardware-changes)
+  * [AdGuard Home](#adguard-home)
 
-Use of the integration requires an `OPNsense` plugin made available on mimugmail repository: `https://www.routerperformance.net/opnsense-repo/`
+## Installation
 
-First, install the repository:
+This integration **replaces** the built-in OPNsense integration which only provides `device_tracker` functionality. Be sure to remove any associated configuration for the built-in integration **before** installing this replacement.
 
-- open an SSH session on `OPNsense` and issue the following commands:
+In most cases, use of the integration requires a plugin installed on <ins>OPNsense</ins>.
+
+### OPNsense Plugin
+
+In most cases, use of the integration requires an <ins>OPNsense</ins> plugin made available on mimugmail repository: `https://www.routerperformance.net/opnsense-repo/`. See [Granular Sync Options](#granular-sync-options) below for more details.
+
+#### First, install the repository
+
+* Open an SSH session on <ins>OPNsense</ins> and issue the following commands:
 
 ```
 fetch -o /usr/local/etc/pkg/repos/mimugmail.conf https://www.routerperformance.net/mimugmail.conf
 pkg update
 ```
 
-Then, install the plugin. There are two ways to do it:
+#### Then, install the plugin
 
-- In `OPNsense` web UI, go to System:Firmware:Plugins and install plugin `os-homeassistant-maxit`
-- From SSH shell: `pkg install os-homeassistant-maxit`
+There are two ways to do it:
 
-## HomeAssistant Integration
+1. In <ins>OPNsense</ins> web UI, go to `System -> Firmware -> Plugins` and install plugin `os-homeassistant-maxit`
 
-In `Home Assistant`, add this repository to the `HACS` installation or clone the directory manually.
+OR
 
-### HACS Installation
+2. In an <ins>OPNsense</ins> SSH session: `pkg install os-homeassistant-maxit`
+
+### HomeAssistant Integration
+
+In Home Assistant, add this repository to the HACS installation or clone the directory manually.
+
+#### HACS Installation
 
 In HACS, add this as a custom repository: 
-```https://github.com/travisghansen/hass-opnsense```.
+`https://github.com/travisghansen/hass-opnsense`.
 | STEP 1 | STEP 2 |
 | ------ | ------ |
 | ![image](https://github.com/user-attachments/assets/60c701dd-a8da-4205-85b8-81af2377e9a5) | ![image](https://github.com/user-attachments/assets/7e19a5e6-844f-4214-8704-ac6409756003) |
@@ -79,158 +88,160 @@ Then go to the HACS integrations page, search for `OPNsense integration for Home
 
 ![image](https://github.com/user-attachments/assets/42a747a5-f1dc-4cea-87ad-62ae1f7930da)
 
-Once the integration is installed be sure to restart `Home Assistant`. Restart option available under Developer tools.
+Once the integration is installed be sure to restart Home Assistant. Restart option available under Developer tools.
 
 | Developer Tools Page | Restart Home Assistant Popup |
 | ------ | ------ |
 | ![image](https://github.com/user-attachments/assets/95c324e5-73cb-42f9-8cd2-c4acc35c9711) | ![image](https://github.com/user-attachments/assets/bbb0ac00-1709-4206-9d59-eb47ca40390b) |
 
 <details>
-<summary><h3>Manual Installation</h3></summary>
+<summary><h4>Manual Installation</h4></summary>
 
-Copy the contents of the custom_components folder to the `Home Assistant` config/custom_components folder and restart `Home Assistant`.
-
-</details>
-
-# Configuration
-
-Configuration is managed entirely from the UI using `config_flow` semantics. Simply go to `Configuration -> Integrations -> Add Integration` and search for `OPNsense` in the search box. If it isn't in the list (well-known HA issue), do a 'hard-refresh' of the browser (ctrl-F5) then open the list again.
-
-## OPNsense
-
-The official recommendation is that the service user to be created has the admin role.
-
-Create a new admin role user (or choose an existing admin user) and create an API key associated to the user. When creating the API key, `OPNsense` will push the file containing the API key and API secret to the browser. It will be in the download folder.
-
-<details>
-<summary><h4>Unsupported Alternative</h4></summary>
-
-Alternatively, multiple individual permissions can be added for a user. However, it is likely that not all functions will work and there will be errors in the log. This option is unsupported. Identified permissions (very likely incomplete):
-
-  - Diagnostics: ARP Table
-  - Diagnostics: Halt system
-  - Diagnostics: Reboot System
-  - Diagnostics: Show States
-  - Firewall: Alias: Edit
-  - Interfaces: Virtual IPs: Settings
-  - Interfaces: Virtual IPs: Status
-  - Lobby: Dashboard
-  - Services: Captive Portal
-  - Services: DHCP: Kea(v4)
-  - Services: Unbound (MVC)
-  - Services: Wake on LAN
-  - Status: DHCP leases
-  - Status: DHCPv6 leases
-  - Status: Interfaces
-  - Status: OpenVPN
-  - Status: Services
-  - System: Certificate Manager
-  - System: Firmware
-  - System: Gateways
-  - System: Status
-  - VPN: OpenVPN: Client Export Utility
-  - VPN: OpenVPN: Instances
-  - VPN: WireGuard
-  - XMLRPC Library
+Copy the contents of the custom_components folder to the Home Assistant config/custom_components folder and restart Home Assistant.
 
 </details>
 
-## Config
+## Configuration
 
-- `URL` - the full URL to the `OPNsense` UI (ie: `https://192.168.1.1`),
-  supported format is `<scheme>://<ip or host>[:<port>]`
-- `Verify SSL Certificate` - if the SSL certificate should be verified or not (if receiving an SSL error, try unchecking this)
-- `API Key` - the API key created previously
-- `API Secret` - the API secret of the API key
-- `Firewall Name` - a custom name to be used for `entity` naming (default: use the `OPNsense hostname`)
+Configuration is managed entirely from the Home Assistant UI. Simply go to `Configuration -> Integrations -> Add Integration` and search for <ins>OPNsense</ins> in the search box. If it isn't in the list (well-known HA issue), do a 'hard-refresh' of the browser (ctrl-F5) then open the list again.
 
-## Options
+### OPNsense User
 
-- `Scan Interval (seconds)` - scan interval to use for state polling (default: `30`)
-- `Enable Device Tracker` - turn on the device tracker integration using `OPNsense` ARP table (default: `false`)
-- `Device Tracker Scan Interval (seconds)` - scan interval to use for ARP updates (default: `60`)
-- `Device Tracker Consider Home (seconds)` - seconds to wait until marking a device as not home after not being seen. (default: `0`)
-  - `0` - disabled (if device is not present during any given scan interval it is considered away)
-  - `> 0` - generally should be a multiple of the configured scan interval
+The official and simplest recommendation is that the service user to be created has the admin role.
 
-# Entities
+In <ins>OPNsense</ins>, create a new admin role user (or choose an existing admin user) and create an API key associated to the user. When creating the API key, <ins>OPNsense</ins> will download the file containing the API key and API secret to the computer. It will be in the download folder.
 
-Many `entities` are created by `hass-opnsense` for stats etc. Due to to volume of entities many are disabled by default. If something is missing be sure to review the disabled entities as it is probably there.
+### Granular Sync Options
 
-## Binary Sensor
+Either at the time of install or in the integration options, Granular Sync Options can be enabled. There, choose the categories to sync with HA as desired. If enabled:
 
-- CARP Status (enabled/disabled)
-- System Notices present (the circle icon in the upper right of the UI)
-- Firmware updates available
+* The <ins>OPNsense</ins> user can have more narrow permissions
 
-## Device Tracker
+* If a category that requires the <ins>OPNsense</ins> plugin isn't selected, the plugin on the <ins>OPNsense</ins> router isn't needed
 
-`ScannerEntity` entries are created for the `OPNsense` ARP table. Disabled by default. Not only is the feature disabled by default but created entities are currently disabled by default as well. Search the disabled entity list for the relevant mac addresses and enable as desired.
+At minimum, the following permissions are required. [The list of what other permissions are needed for the Granular Sync Options and for the Actions can be reviewed here.](granular_permissions.md)
 
-Note that by default `FreeBSD`/`OPNsense`, uses a max age of 20 minutes for ARP entries (sysctl `net.link.ether.inet.max_age`). This can be lowered in OPNsense from `System -> Advanced -> System Tunables` if desired.
+* Lobby: Dashboard
 
-Also note that if `AdGuardHome` is being used, DNS queries may get throttled causing issues with the tracker. See [below](#adguardhome) for details.
+* Status: Interfaces
 
-## Sensor
+* System: Firmware
 
-- System details (name, version, temp, boottime, etc)
-- pfstate details
-- CPU details (usage, load, cores)
-- mbuf details
-- Memory details
-- Filesystem usage
-- Interface details (status, stats, pps, kbs (time samples are based on the `Scan Interval (seconds)` config option))
-- Gateways details (status, delay, stddev, loss)
-- CARP Interface status
-- DHCP Leases
-- VPN server stats and Wireguard client stats
-- Certificates
+### Basic Configuration
 
-## Switch
+| Option | Required | Default | Description |
+| --- | :---: | --- | --- |
+| URL | X | | The full URL to the <ins>OPNsense</ins> UI (ie: `https://192.168.1.1`). Supported format is `<scheme>://<ip or host>[:<port>]` |
+| Verify SSL Certificate | | True | If the SSL certificate should be verified or not _(if receiving an SSL error, try unchecking this)_ |
+| API Key | X | | The API key of the OPNsense usercreated previously |
+| API Secret | X | | The API secret of the API key |
+| Firewall Name | | | A custom name to be used for `entity` naming (if blank: use the `OPNsense hostname`) |
+| Enable Granular Sync Options | | False | See [Granular Sync Options](#granular-sync-options) |
 
-All of the switches below are disabled by default.
+### Options
+| Option | Required | Default | Description |
+| --- | :---: | --- | --- |
+| Scan Interval (seconds) | | 30 | Scan interval to use for state polling |
+| Enable Device Tracker | | False | Enable the device tracker integration using <ins>OPNsense</ins> ARP table | 
+| Device Tracker Scan Interval (seconds) | | 60 | Scan interval to use for ARP updates | 
+| Device Tracker Consider Home (seconds) | | 0 | Seconds to wait until marking a device as not home after not being seen:<br>* 0 - Disabled _(if device is not present during any given scan interval it is considered away)_<br>* > 0 - Should be a multiple of the configured scan interval |
+| Enable Granular Sync Options | | False | See Granular Sync Options |
 
-- Filter Rules - enable/disable rules
-- NAT Port Forward Rules - enable/disable rules
-- NAT Outbound Rules - enable/disable rules
-- Services - start/stop services (services must be enabled before they can be started)
-- VPN Servers and Clients - enable/disable instances
+## Entities
 
-# Services
+Many entities are created by `hass-opnsense` for statistics etc. Due to the volume of entities, many are disabled by default. If something is missing, be sure to review the disabled entities as it is probably there.
+
+### Binary Sensor
+
+* CARP Status (enabled/disabled)
+
+* System Notices present (the circle icon in the upper right of the UI)
+
+* Firmware updates available
+
+### Sensor
+
+* System details (name, version, temp, boottime, etc.)
+
+* pfstate details
+
+* CPU details (usage, load, cores)
+
+* mbuf details
+
+* Memory details
+
+* Filesystem usage
+
+* Interface details (status, stats, pps, kbs, etc. [speeds are based on the `Scan Interval (seconds)` config option])
+
+* Gateways details (status, delay, stddev, loss)
+
+* CARP Interface status
+
+* DHCP Leases
+
+* VPN server stats and Wireguard client stats
+
+* Certificates
+
+### Switch
+
+All of the switches are disabled by default
+
+* Filter Rules - enable/disable rules
+
+* NAT Port Forward Rules - enable/disable rules
+
+* NAT Outbound Rules - enable/disable rules
+
+* Services - start/stop services (services must be enabled before they can be started)
+
+* VPN Servers and Clients - enable/disable instances
+
+### Device Tracker
+
+ScannerEntity entries are created for the <ins>OPNsense</ins> ARP table. This feature is disabled by default and can be enabled in the Options.
+
+Note that by default FreeBSD/OPNsense, uses a max age of 20 minutes for ARP entries (sysctl `net.link.ether.inet.max_age`). This can be lowered in <ins>OPNsense</ins> from `System -> Advanced -> System Tunables` if desired.
+
+Also note that if `AdGuard Home` is being used, DNS queries may get throttled causing issues with the tracker. See [below](#adguard-home) for details.
+
+## Actions _(Services)_
 
 ```
-service: opnsense.close_notice
+action: opnsense.close_notice
 data:
   # default is to clear all notices
   # id: <some id>
 
-service: opnsense.system_halt
+action: opnsense.system_halt
 
-service: opnsense.system_reboot
+action: opnsense.system_reboot
 
-service: opnsense.start_service
+action: opnsense.start_service
 data:
   service_name: "dpinger"
 
-service: opnsense.stop_service
+action: opnsense.stop_service
 data:
   service_name: "dpinger"
 
-service: opnsense.restart_service
+action: opnsense.restart_service
 data:
   service_name: "dpinger"
   # only_if_running: false
 
-service: opnsense.send_wol
+action: opnsense.send_wol
 data:
   interface: lan
   mac: "B9:7B:A6:46:B3:8B"
 
-service: opnsense.reload_interface
+action: opnsense.reload_interface
 data:
   interface: wan
 
-service: opnsense.kill_states
+action: opnsense.kill_states
 data:
   ip_address: 192.168.0.100
 # Will optionally return the number of states dropped for each client
@@ -250,14 +261,14 @@ data:
   toggle_on_off: "toggle"
 
 ```
-### [How to use `action response data` in an HA script or automation](https://www.home-assistant.io/docs/scripts/perform-actions/#use-templates-to-handle-response-data)
+[How to use <ins>action response data</ins> in an HA script or automation](https://www.home-assistant.io/docs/scripts/perform-actions/#use-templates-to-handle-response-data)
 
-# Known Issues
+## Known Issues
 
-## Hardware Changes
+### Hardware Changes
 
-If you partially or fully change the OPNsense Hardware, it will require a removal and reinstall of this integration. This is to ensure changed interfaces, services, gateways, etc. are accounted for and don't leave duplicate or non-functioning entities. 
+If you partially or fully change the <ins>OPNsense</ins> hardware, it will require a removal and reinstall of this integration. This is to ensure changed interfaces, services, gateways, etc. are accounted for and don't leave duplicate or non-functioning entities. 
 
-## AdGuardHome
+### AdGuard Home
 
-As mentioned [here](https://github.com/travisghansen/hass-opnsense/issues/22) using AdGuardHome can lead to problems with the plugin. Setting the Ratelimit in AdGuardHome to 0 will resolve this problem.
+As mentioned [here](https://github.com/travisghansen/hass-opnsense/issues/22) using AdGuard Home can lead to problems with the plugin. Setting the Ratelimit in AdGuard Home to 0 will resolve this problem.
