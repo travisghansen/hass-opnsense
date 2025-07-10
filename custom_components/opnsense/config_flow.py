@@ -89,11 +89,8 @@ async def validate_input(
     errors: dict[str, Any],
 ) -> dict[str, Any]:
     """Check user input for errors."""
-    filtered_user_input: MutableMapping[str, Any] = {
-        key: value for key, value in user_input.items() if key != CONF_PASSWORD
-    }
-
-    _LOGGER.debug("[validate_input] user_input: %s", filtered_user_input)
+    # filtered_user_input: MutableMapping[str, Any] = {key: value for key, value in user_input.items() if key != CONF_PASSWORD}
+    # _LOGGER.debug("[validate_input] user_input: %s", filtered_user_input)
 
     try:
         await _handle_user_input(user_input, hass)
@@ -109,22 +106,22 @@ async def validate_input(
             key="unknown_firmware",
             message="Unable to get OPNsense Firmware version",
         )
-    except MissingDeviceUniqueID as err:
+    except MissingDeviceUniqueID as e:
         _log_and_set_error(
             errors=errors,
             key="missing_device_unique_id",
-            message=f"Missing Device Unique ID Error. {err.__class__.__qualname__}: {err}",
+            message=f"Missing Device Unique ID Error. {type(e).__name__}: {e}",
         )
     except PluginMissing:
         _log_and_set_error(errors=errors, key="plugin_missing", message="OPNsense Plugin Missing")
-    except (aiohttp.InvalidURL, InvalidURL) as err:
+    except (aiohttp.InvalidURL, InvalidURL) as e:
         _log_and_set_error(
             errors=errors,
             key="invalid_url_format",
-            message=f"InvalidURL Error. {err.__class__.__qualname__}: {err}",
+            message=f"InvalidURL Error. {type(e).__name__}: {e}",
         )
-    except xmlrpc.client.Fault as err:
-        error_message = str(err)
+    except xmlrpc.client.Fault as e:
+        error_message = str(e)
         if "Invalid username or password" in error_message:
             errors["base"] = "invalid_auth"
         elif "Authentication failed: not enough privileges" in error_message:
@@ -135,54 +132,54 @@ async def validate_input(
             errors["base"] = "cannot_connect"
         _LOGGER.error(
             cleanse_sensitive_data(
-                f"XMLRPC Error. {err.__class__.__qualname__}: {err}",
+                f"XMLRPC Error. {type(e).__name__}: {e}",
                 [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
             )
         )
-    except aiohttp.ClientConnectorSSLError as err:
+    except aiohttp.ClientConnectorSSLError as e:
         _log_and_set_error(
             errors=errors,
             key="cannot_connect_ssl",
-            message=f"Aiohttp Error. {err.__class__.__qualname__}: {err}",
+            message=f"Aiohttp Error. {type(e).__name__}: {e}",
         )
-    except aiohttp.ClientResponseError as err:
-        if err.status in {401, 403}:
+    except aiohttp.ClientResponseError as e:
+        if e.status in {401, 403}:
             errors["base"] = "invalid_auth"
         else:
             errors["base"] = "cannot_connect"
-        _LOGGER.error("Aiohttp Error. %s: %s", err.__class__.__qualname__, err)
-    except (aiohttp.ClientError, aiohttp.ClientConnectorError, socket.gaierror) as err:
+        _LOGGER.error("Aiohttp Error. %s: %s", type(e).__name__, e)
+    except (aiohttp.ClientError, aiohttp.ClientConnectorError, socket.gaierror) as e:
         _log_and_set_error(
             errors=errors,
             key="cannot_connect",
-            message=f"Aiohttp Error. {err.__class__.__qualname__}: {err}",
+            message=f"Aiohttp Error. {type(e).__name__}: {e}",
         )
-    except xmlrpc.client.ProtocolError as err:
-        error_message = str(err)
+    except xmlrpc.client.ProtocolError as e:
+        error_message = str(e)
         if "307 Temporary Redirect" in error_message or "301 Moved Permanently" in error_message:
             errors["base"] = "url_redirect"
         else:
             errors["base"] = "cannot_connect"
         _LOGGER.error(
             cleanse_sensitive_data(
-                f"XMLRPC Error. {err.__class__.__qualname__}: {err}",
+                f"XMLRPC Error. {type(e).__name__}: {e}",
                 [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
             )
         )
-    except (aiohttp.TooManyRedirects, aiohttp.RedirectClientError) as err:
+    except (aiohttp.TooManyRedirects, aiohttp.RedirectClientError) as e:
         _log_and_set_error(
             errors=errors,
             key="url_redirect",
-            message=f"Redirect Error. {err.__class__.__qualname__}: {err}",
+            message=f"Redirect Error. {type(e).__name__}: {e}",
         )
-    except (TimeoutError, aiohttp.ServerTimeoutError) as err:
+    except (TimeoutError, aiohttp.ServerTimeoutError) as e:
         _log_and_set_error(
             errors=errors,
             key="connect_timeout",
-            message=f"Timeout Error. {err.__class__.__qualname__}: {err}",
+            message=f"Timeout Error. {type(e).__name__}: {e}",
         )
-    except OSError as err:
-        error_message = str(err)
+    except OSError as e:
+        error_message = str(e)
         if "unsupported XML-RPC protocol" in error_message:
             errors["base"] = "privilege_missing"
         elif "timed out" in error_message:
@@ -193,7 +190,7 @@ async def validate_input(
             errors["base"] = "unknown"
         _LOGGER.error(
             cleanse_sensitive_data(
-                f"Error. {err.__class__.__qualname__}: {err}",
+                f"Error. {type(e).__name__}: {e}",
                 [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
             )
         )
@@ -518,9 +515,9 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle the step for initial granular sync options."""
         if user_input is not None:
-            _LOGGER.debug("[config_flow granular_sync] raw user_input: %s", user_input)
+            # _LOGGER.debug("[config_flow granular_sync] raw user_input: %s", user_input)
             self._config.update(user_input)
-            _LOGGER.debug("[config_flow granular_sync] merged config: %s", self._config)
+            # _LOGGER.debug("[config_flow granular_sync] merged config: %s", self._config)
             self._errors = await validate_input(
                 hass=self.hass, user_input=self._config, errors=self._errors
             )
@@ -547,9 +544,9 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         self._config = dict(reconfigure_entry.data)
 
         if user_input is not None:
-            _LOGGER.debug("[config_flow reconfigure] raw user_input: %s", user_input)
+            # _LOGGER.debug("[config_flow reconfigure] raw user_input: %s", user_input)
             self._config.update(user_input)
-            _LOGGER.debug("[config_flow reconfigure] merged config: %s", self._config)
+            # _LOGGER.debug("[config_flow reconfigure] merged config: %s", self._config)
             self._errors = await validate_input(
                 hass=self.hass, user_input=self._config, errors=self._errors
             )
@@ -607,24 +604,19 @@ class OPNsenseOptionsFlow(OptionsFlow):
         self._config = dict(self.config_entry.data)
         self._options = dict(self.config_entry.options)
         if user_input is not None:
-            _LOGGER.debug("[options_flow init] raw user_input: %s", user_input)
+            # _LOGGER.debug("[options_flow init] raw user_input: %s", user_input)
             self._options.update(user_input)
             self._config[CONF_GRANULAR_SYNC_OPTIONS] = self._options.pop(
                 CONF_GRANULAR_SYNC_OPTIONS, DEFAULT_GRANULAR_SYNC_OPTIONS
             )
-            # _LOGGER.debug("[options_flow init] config_entry: %s", self.config_entry.as_dict())
-            _LOGGER.debug(
-                "[options_flow init] merged user_input. config: %s. options: %s",
-                self._config,
-                self._options,
-            )
+            # _LOGGER.debug("[options_flow init] merged user_input. config: %s. options: %s", self._config, self._options)
             if self._config.get(CONF_GRANULAR_SYNC_OPTIONS):
                 return await self.async_step_granular_sync()
             for item in GRANULAR_SYNC_ITEMS:
                 self._config.pop(item, None)
             if self._options.get(CONF_DEVICE_TRACKER_ENABLED):
                 return await self.async_step_device_tracker()
-            _LOGGER.debug("Updating options from init. user_input: %s", self._config)
+            # _LOGGER.debug("Updating options from init. user_input: %s", self._config)
 
             self.hass.config_entries.async_update_entry(
                 entry=self.config_entry, data=self._config, options=self._options
@@ -643,13 +635,9 @@ class OPNsenseOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         """Handle the step for granular sync options."""
         if user_input is not None:
-            _LOGGER.debug("[options_flow granular_sync] raw user_input: %s", user_input)
+            # _LOGGER.debug("[options_flow granular_sync] raw user_input: %s", user_input)
             self._config.update(user_input)
-            _LOGGER.debug(
-                "[options_flow granular_sync] merged user_input. config: %s. options: %s",
-                self._config,
-                self._options,
-            )
+            # _LOGGER.debug("[options_flow granular_sync] merged user_input. config: %s. options: %s", self._config, self._options)
             self._errors = await validate_input(
                 hass=self.hass, user_input=self._config, errors=self._errors
             )
@@ -680,13 +668,9 @@ class OPNsenseOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         """Handle device tracker list step."""
         if user_input is not None:
-            _LOGGER.debug("[options_flow device_tracker] raw user_input: %s", user_input)
+            # _LOGGER.debug("[options_flow device_tracker] raw user_input: %s", user_input)
             self._options.update(user_input)
-            _LOGGER.debug(
-                "[options_flow device_tracker] merged user_input. config: %s. options: %s",
-                self._config,
-                self._options,
-            )
+            # _LOGGER.debug("[options_flow device_tracker] merged user_input. config: %s. options: %s", self._config, self._options)
             macs: list = []
             manual_devices: str | None = self._options.pop(CONF_MANUAL_DEVICES, None)
             if isinstance(manual_devices, str):

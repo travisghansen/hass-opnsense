@@ -226,7 +226,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             return {}
         restapi_count, xmlrpc_count = await self._client.get_query_counts()
         _LOGGER.debug(
-            "DT Update Complete. REST API Queries: %s. XMLRPC Queries: %s",
+            "DT Update Complete. REST API Queries: %s, XMLRPC Queries: %s",
             restapi_count,
             xmlrpc_count,
         )
@@ -364,7 +364,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
 
             restapi_count, xmlrpc_count = await self._client.get_query_counts()
             _LOGGER.debug(
-                "Update Complete. REST API Queries: %s. XMLRPC Queries: %s",
+                "Update Complete. REST API Queries: %s, XMLRPC Queries: %s",
                 restapi_count,
                 xmlrpc_count,
             )

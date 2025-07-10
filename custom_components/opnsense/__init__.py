@@ -60,8 +60,7 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Handle options update."""
-    # _LOGGER.debug("[async_update_listener] entry.data: %s", entry.data)
-    _LOGGER.debug("[async_update_listener] entry: %s", entry.as_dict())
+    # _LOGGER.debug("[async_update_listener] entry: %s", entry.as_dict())
     if getattr(entry.runtime_data, SHOULD_RELOAD, True):
         _LOGGER.info("[async_update_listener] Reloading")
 
@@ -114,8 +113,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up OPNsense from a config entry."""
     config: Mapping[str, Any] = entry.data
     options: Mapping[str, Any] = entry.options
-    _LOGGER.debug("[async_setup_entry] entry: %s", entry.as_dict())
-    # _LOGGER.debug("[async_setup_entry] config: %s. options: %s", config, options)
+    # _LOGGER.debug("[async_setup_entry] entry: %s", entry.as_dict())
 
     url: str = config[CONF_URL]
     username: str = config[CONF_USERNAME]
