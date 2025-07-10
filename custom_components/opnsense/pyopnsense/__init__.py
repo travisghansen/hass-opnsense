@@ -1652,7 +1652,7 @@ $toreturn = [
 
     @_log_errors
     async def _get_telemetry_temps(self) -> MutableMapping[str, Any]:
-        temps_info = await self._safe_list_get("/api/diagnostics/system/system_temperature")
+        temps_info = await self._safe_list_get("/api/diagnostics/system/systemTemperature")
         # _LOGGER.debug(f"[get_telemetry_temps] temps_info: {temps_info}")
         if not len(temps_info) > 0:
             return {}

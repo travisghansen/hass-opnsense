@@ -366,7 +366,7 @@ class OPNsenseFilterSwitch(OPNsenseSwitch):
     def _handle_coordinator_update(self) -> None:
         if self.delay_update:
             _LOGGER.debug(
-                "Skipping coordinator update for filter switch: %s due to delay", self.name
+                "Skipping coordinator update for filter switch %s due to delay", self.name
             )
             return
         self._rule = self._opnsense_get_rule()
@@ -458,7 +458,7 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
     @callback
     def _handle_coordinator_update(self) -> None:
         if self.delay_update:
-            _LOGGER.debug("Skipping coordinator update for NAT switch: %s due to delay", self.name)
+            _LOGGER.debug("Skipping coordinator update for NAT switch %s due to delay", self.name)
             return
         self._rule = self._opnsense_get_rule()
         if not isinstance(self._rule, MutableMapping):
@@ -552,7 +552,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
     def _handle_coordinator_update(self) -> None:
         if self.delay_update:
             _LOGGER.debug(
-                "Skipping coordinator update for service switch: %s due to delay", self.name
+                "Skipping coordinator update for service switch %s due to delay", self.name
             )
             return
         self._service = self._opnsense_get_service()
@@ -619,7 +619,7 @@ class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
         """Handle updated data from the coordinator."""
         if self.delay_update:
             _LOGGER.debug(
-                "Skipping coordinator update for unbound blocklist switch: %s due to delay",
+                "Skipping coordinator update for unbound blocklist switch %s due to delay",
                 self.name,
             )
             return
@@ -693,7 +693,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
     @callback
     def _handle_coordinator_update(self) -> None:
         if self.delay_update:
-            _LOGGER.debug("Skipping coordinator update for VPN switch: %s due to delay", self.name)
+            _LOGGER.debug("Skipping coordinator update for VPN switch %s due to delay", self.name)
             return
         state: MutableMapping[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
