@@ -1,7 +1,7 @@
 """OPNsense integration."""
 
 import asyncio
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
 import logging
 from typing import Any
 
@@ -9,11 +9,11 @@ from homeassistant.components.update import UpdateDeviceClass, UpdateEntity, Upd
 from homeassistant.components.update.const import UpdateEntityFeature
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import slugify
 
-from .const import COORDINATOR
+from .const import CONF_SYNC_FIRMWARE_UPDATES, COORDINATOR, DEFAULT_SYNC_OPTION_VALUE
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity
 from .helpers import dict_get
@@ -24,23 +24,26 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
-    async_add_entities: entity_platform.AddEntitiesCallback,
+    async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the OPNsense update entities."""
     coordinator: OPNsenseDataUpdateCoordinator = getattr(config_entry.runtime_data, COORDINATOR)
     entities: list = []
-    entity = OPNsenseFirmwareUpdatesAvailableUpdate(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=UpdateEntityDescription(
-            key="firmware.update_available",
-            name="Firmware Updates Available",
-            entity_category=EntityCategory.DIAGNOSTIC,
-            device_class=UpdateDeviceClass.FIRMWARE,
-            entity_registry_enabled_default=True,
-        ),
-    )
-    entities.append(entity)
+    config: Mapping[str, Any] = config_entry.data
+
+    if config.get(CONF_SYNC_FIRMWARE_UPDATES, DEFAULT_SYNC_OPTION_VALUE):
+        entity = OPNsenseFirmwareUpdatesAvailableUpdate(
+            config_entry=config_entry,
+            coordinator=coordinator,
+            entity_description=UpdateEntityDescription(
+                key="firmware.update_available",
+                name="Firmware Updates Available",
+                entity_category=EntityCategory.DIAGNOSTIC,
+                device_class=UpdateDeviceClass.FIRMWARE,
+                entity_registry_enabled_default=True,
+            ),
+        )
+        entities.append(entity)
 
     async_add_entities(entities)
 
