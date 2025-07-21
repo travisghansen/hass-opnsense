@@ -1,15 +1,2 @@
-aiohttp_cors
+aiohttp
 asyncio_mqtt
-homeassistant-stubs
-mypy
-pydispatcher
-pytest
-pytest-homeassistant-custom-component
-ruff
-types-cffi
-types-PyMySQL
-types-pyRFC3339
-types-python-dateutil
-types-PyYAML
-types-requests
-types-setuptools
