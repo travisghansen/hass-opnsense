@@ -70,6 +70,15 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         )
         self._categories = self._build_categories()
 
+    async def _async_setup(self) -> None:
+        """Set up the coordinator."""
+        _LOGGER.debug(
+            "Setting up %sCoordinator",
+            "DT " if self._device_tracker_coordinator else "",
+        )
+        # await self._client.get_host_firmware_version() # Already triggered in __init__.py async_setup_entry
+        await self._client.set_use_snake_case()
+
     async def _get_states(self, categories: list) -> MutableMapping[str, Any]:
         state: MutableMapping[str, Any] = {}
         total_time: float = 0
