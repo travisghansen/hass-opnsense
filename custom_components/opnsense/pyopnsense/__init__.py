@@ -1002,6 +1002,11 @@ $toreturn = [
             ) < awesomeversion.AwesomeVersion("25.1"):
                 _LOGGER.debug("Skipping get_dnsmasq_leases for OPNsense < 25.1")
                 return []
+            if awesomeversion.AwesomeVersion(
+                self._firmware_version
+            ) < awesomeversion.AwesomeVersion("25.1.7"):
+                _LOGGER.debug("Skipping get_dnsmasq_leases for OPNsense < 25.1.7")
+                return []
         except awesomeversion.exceptions.AwesomeVersionCompareException:
             pass
 
