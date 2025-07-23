@@ -179,6 +179,7 @@ class OPNsenseClient(ABC):
         self._session: aiohttp.ClientSession = session
         self._initial = initial
         self._firmware_version: str | None = None
+        self._use_snake_case: bool | None = None
         self._xmlrpc_query_count = 0
         self._rest_api_query_count = 0
         self._request_queue: asyncio.Queue = asyncio.Queue()
@@ -312,6 +313,26 @@ $toreturn["real"] = json_encode($toreturn_real);
             _LOGGER.debug("[get_host_firmware_version] firmware: %s", firmware)
         self._firmware_version = firmware
         return firmware
+
+    async def set_use_snake_case(self) -> None:
+        """Set whether to use snake_case or camelCase for API calls.
+
+        In 25.7+ a number of API calls changed from camelCase to snake_case.
+        """
+        if self._firmware_version is None:
+            await self.get_host_firmware_version()
+
+        self._use_snake_case = True
+        try:
+            if awesomeversion.AwesomeVersion(
+                self._firmware_version
+            ) < awesomeversion.AwesomeVersion("25.7"):
+                _LOGGER.debug("Using camelCase for OPNsense < 25.7")
+                self._use_snake_case = False
+            else:
+                _LOGGER.debug("Using snake_case for OPNsense >= 25.7")
+        except awesomeversion.exceptions.AwesomeVersionCompareException:
+            pass
 
     async def is_plugin_installed(self) -> bool:
         """Retun whether OPNsense plugin is installed or not."""
@@ -620,7 +641,10 @@ clear_subsystem_dirty('filter');
     async def get_system_info(self) -> MutableMapping[str, Any]:
         """Return the system info from OPNsense."""
         system_info: MutableMapping[str, Any] = {}
-        response = await self._safe_dict_get("/api/diagnostics/system/systemInformation")
+        if self._use_snake_case:
+            response = await self._safe_dict_get("/api/diagnostics/system/system_information")
+        else:
+            response = await self._safe_dict_get("/api/diagnostics/system/systemInformation")
         system_info["name"] = response.get("name", None)
         return system_info
 
@@ -923,7 +947,10 @@ $toreturn = [
         response = await self._safe_dict_get("/api/kea/leases4/search")
         if not isinstance(response.get("rows", None), list):
             return []
-        res_resp = await self._safe_dict_get("/api/kea/dhcpv4/searchReservation")
+        if self._use_snake_case:
+            res_resp = await self._safe_dict_get("/api/kea/dhcpv4/search_reservation")
+        else:
+            res_resp = await self._safe_dict_get("/api/kea/dhcpv4/searchReservation")
         if not isinstance(res_resp.get("rows", None), list):
             res_info = []
         else:
@@ -1049,7 +1076,10 @@ $toreturn = [
 
     async def _get_isc_dhcpv4_leases(self) -> list:
         """Return IPv4 DHCP Leases by ISC."""
-        response = await self._safe_dict_get("/api/dhcpv4/leases/searchLease")
+        if self._use_snake_case:
+            response = await self._safe_dict_get("/api/dhcpv4/leases/search_lease")
+        else:
+            response = await self._safe_dict_get("/api/dhcpv4/leases/searchLease")
         leases_info: list = response.get("rows", [])
         if not isinstance(leases_info, list):
             return []
@@ -1090,7 +1120,10 @@ $toreturn = [
 
     async def _get_isc_dhcpv6_leases(self) -> list:
         """Return IPv6 DHCP Leases by ISC."""
-        response = await self._safe_dict_get("/api/dhcpv6/leases/searchLease")
+        if self._use_snake_case:
+            response = await self._safe_dict_get("/api/dhcpv6/leases/search_lease")
+        else:
+            response = await self._safe_dict_get("/api/dhcpv6/leases/searchLease")
         leases_info: list = response.get("rows", [])
         if not isinstance(leases_info, list):
             return []
@@ -1331,7 +1364,10 @@ $toreturn = [
 
     @_log_errors
     async def _get_telemetry_memory(self) -> MutableMapping[str, Any]:
-        memory_info = await self._safe_dict_post("/api/diagnostics/system/systemResources")
+        if self._use_snake_case:
+            memory_info = await self._safe_dict_post("/api/diagnostics/system/system_resources")
+        else:
+            memory_info = await self._safe_dict_post("/api/diagnostics/system/systemResources")
         # _LOGGER.debug(f"[get_telemetry_memory] memory_info: {memory_info}")
         memory: MutableMapping[str, Any] = {}
         memory["physmem"] = OPNsenseClient._try_to_int(
@@ -1369,7 +1405,10 @@ $toreturn = [
 
     @_log_errors
     async def _get_telemetry_system(self) -> MutableMapping[str, Any]:
-        time_info = await self._safe_dict_post("/api/diagnostics/system/systemTime")
+        if self._use_snake_case:
+            time_info = await self._safe_dict_post("/api/diagnostics/system/system_time")
+        else:
+            time_info = await self._safe_dict_post("/api/diagnostics/system/systemTime")
         # _LOGGER.debug("[get_telemetry_system] time_info: %s", time_info)
         system: MutableMapping[str, Any] = {}
 
@@ -1447,7 +1486,10 @@ $toreturn = [
 
     @_log_errors
     async def _get_telemetry_cpu(self) -> MutableMapping[str, Any]:
-        cputype_info = await self._safe_list_post("/api/diagnostics/cpu_usage/getCPUType")
+        if self._use_snake_case:
+            cputype_info = await self._safe_list_post("/api/diagnostics/cpu_usage/get_c_p_u_type")
+        else:
+            cputype_info = await self._safe_list_post("/api/diagnostics/cpu_usage/getCPUType")
         # _LOGGER.debug(f"[get_telemetry_cpu] cputype_info: {cputype_info}")
         if not len(cputype_info) > 0:
             return {}
@@ -1469,7 +1511,10 @@ $toreturn = [
 
     @_log_errors
     async def _get_telemetry_filesystems(self) -> list:
-        filesystems_info = await self._safe_dict_post("/api/diagnostics/system/systemDisk")
+        if self._use_snake_case:
+            filesystems_info = await self._safe_dict_post("/api/diagnostics/system/system_disk")
+        else:
+            filesystems_info = await self._safe_dict_post("/api/diagnostics/system/systemDisk")
         # _LOGGER.debug(f"[get_telemetry_filesystems] filesystems_info: {filesystems_info}")
         filesystems: list = filesystems_info.get("devices", [])
         # _LOGGER.debug(f"[get_telemetry_filesystems] filesystems: {filesystems}")
@@ -1484,8 +1529,12 @@ $toreturn = [
         openvpn: MutableMapping[str, Any] = {"servers": {}, "clients": {}}
 
         # Fetch data
-        sessions_info = await self._safe_dict_get("/api/openvpn/service/searchSessions")
-        routes_info = await self._safe_dict_get("/api/openvpn/service/searchRoutes")
+        if self._use_snake_case:
+            sessions_info = await self._safe_dict_get("/api/openvpn/service/search_sessions")
+            routes_info = await self._safe_dict_get("/api/openvpn/service/search_routes")
+        else:
+            sessions_info = await self._safe_dict_get("/api/openvpn/service/searchSessions")
+            routes_info = await self._safe_dict_get("/api/openvpn/service/searchRoutes")
         providers_info = await self._safe_dict_get("/api/openvpn/export/providers")
         instances_info = await self._safe_dict_get("/api/openvpn/instances/search")
 
@@ -1647,7 +1696,10 @@ $toreturn = [
 
     @_log_errors
     async def _get_telemetry_temps(self) -> MutableMapping[str, Any]:
-        temps_info = await self._safe_list_get("/api/diagnostics/system/systemTemperature")
+        if self._use_snake_case:
+            temps_info = await self._safe_list_get("/api/diagnostics/system/system_temperature")
+        else:
+            temps_info = await self._safe_list_get("/api/diagnostics/system/systemTemperature")
         # _LOGGER.debug(f"[get_telemetry_temps] temps_info: {temps_info}")
         if not len(temps_info) > 0:
             return {}
@@ -1695,6 +1747,12 @@ $toreturn = [
     async def close_notice(self, id: str) -> bool:
         """Close selected notices."""
 
+        dismiss_endpoint = (
+            "/api/core/system/dismiss_status"
+            if self._use_snake_case
+            else "/api/core/system/dismissStatus"
+        )
+
         # id = "all" to close all notices
         success = True
         if id.lower() == "all":
@@ -1702,16 +1760,12 @@ $toreturn = [
             # _LOGGER.debug(f"[close_notice] notices: {notices}")
             for key, notice in notices.items():
                 if "statusCode" in notice:
-                    dismiss = await self._safe_dict_post(
-                        "/api/core/system/dismissStatus", payload={"subject": key}
-                    )
+                    dismiss = await self._safe_dict_post(dismiss_endpoint, payload={"subject": key})
                     # _LOGGER.debug(f"[close_notice] id: {key}, dismiss: {dismiss}")
                     if dismiss.get("status", "failed") != "ok":
                         success = False
         else:
-            dismiss = await self._safe_dict_post(
-                "/api/core/system/dismissStatus", payload={"subject": id}
-            )
+            dismiss = await self._safe_dict_post(dismiss_endpoint, payload={"subject": id})
             _LOGGER.debug("[close_notice] id: %s, dismiss: %s", id, dismiss)
             if dismiss.get("status", "failed") != "ok":
                 success = False
@@ -2011,9 +2065,18 @@ $toreturn = [
             return reconfigure.get("result", "") == "ok"
         if vpn_type == "wireguard":
             if clients_servers == "clients":
-                success = await self._safe_dict_post(f"/api/wireguard/client/toggleClient/{uuid}")
+                endpoint = (
+                    f"/api/wireguard/client/toggle_client/{uuid}"
+                    if self._use_snake_case
+                    else f"/api/wireguard/client/toggleClient/{uuid}"
+                )
             elif clients_servers == "servers":
-                success = await self._safe_dict_post(f"/api/wireguard/server/toggleServer/{uuid}")
+                endpoint = (
+                    f"/api/wireguard/server/toggle_server/{uuid}"
+                    if self._use_snake_case
+                    else f"/api/wireguard/server/toggleServer/{uuid}"
+                )
+            success = await self._safe_dict_post(endpoint)
             if not success.get("changed", False):
                 return False
             reconfigure = await self._safe_dict_post("/api/wireguard/service/reconfigure")
@@ -2022,7 +2085,14 @@ $toreturn = [
 
     async def reload_interface(self, if_name: str) -> bool:
         """Reload the specified interface."""
-        reload = await self._safe_dict_post(f"/api/interfaces/overview/reloadInterface/{if_name}")
+        if self._use_snake_case:
+            reload = await self._safe_dict_post(
+                f"/api/interfaces/overview/reload_interface/{if_name}"
+            )
+        else:
+            reload = await self._safe_dict_post(
+                f"/api/interfaces/overview/reloadInterface/{if_name}"
+            )
         return reload.get("message", "").startswith("OK")
 
     async def get_certificates(self) -> MutableMapping[str, Any]:
@@ -2053,7 +2123,10 @@ $toreturn = [
         if data.get("voucher_server", None):
             server = data.get("voucher_server")
         else:
-            servers = await self._safe_list_get("/api/captiveportal/voucher/listProviders")
+            if self._use_snake_case:
+                servers = await self._safe_list_get("/api/captiveportal/voucher/list_providers")
+            else:
+                servers = await self._safe_list_get("/api/captiveportal/voucher/listProviders")
             if len(servers) == 0:
                 raise VoucherServerError("No voucher servers exist")
             if len(servers) != 1:
@@ -2064,7 +2137,10 @@ $toreturn = [
         server_slug = quote(str(server))
         payload: MutableMapping[str, Any] = dict(data).copy()
         payload.pop("voucher_server", None)
-        voucher_url: str = f"/api/captiveportal/voucher/generateVouchers/{server_slug}/"
+        if self._use_snake_case:
+            voucher_url: str = f"/api/captiveportal/voucher/generate_vouchers/{server_slug}/"
+        else:
+            voucher_url = f"/api/captiveportal/voucher/generateVouchers/{server_slug}/"
         _LOGGER.debug("[generate_vouchers] url: %s, payload: %s", voucher_url, payload)
         vouchers = await self._safe_list_post(
             voucher_url,
@@ -2113,7 +2189,10 @@ $toreturn = [
 
     async def toggle_alias(self, alias: str, toggle_on_off: str) -> bool:
         """Toggle alias on and off."""
-        alias_list_resp = await self._safe_dict_get("/api/firewall/alias/searchItem")
+        if self._use_snake_case:
+            alias_list_resp = await self._safe_dict_get("/api/firewall/alias/search_item")
+        else:
+            alias_list_resp = await self._safe_dict_get("/api/firewall/alias/searchItem")
         alias_list: list = alias_list_resp.get("rows", [])
         if not isinstance(alias_list, list):
             return False
@@ -2127,7 +2206,10 @@ $toreturn = [
         if not uuid:
             return False
         payload: MutableMapping[str, Any] = {}
-        url: str = f"/api/firewall/alias/toggleItem/{uuid}"
+        if self._use_snake_case:
+            url: str = f"/api/firewall/alias/toggle_item/{uuid}"
+        else:
+            url = f"/api/firewall/alias/toggleItem/{uuid}"
         if toggle_on_off == "on":
             url = f"{url}/1"
         elif toggle_on_off == "off":
