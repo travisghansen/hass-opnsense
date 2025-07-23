@@ -324,40 +324,53 @@ $toreturn["real"] = json_encode($toreturn_real);
         return False
 
     async def _get_from_stream(self, path: str) -> MutableMapping[str, Any]:
+        try:
+            caller = inspect.stack()[1].function
+        except (IndexError, AttributeError):
+            caller = "Unknown"
         future = asyncio.get_event_loop().create_future()
-        await self._request_queue.put(("get_from_stream", path, None, future))
+        await self._request_queue.put(("get_from_stream", path, None, future, caller))
         return await future
 
     async def _get(self, path: str) -> MutableMapping[str, Any] | list | None:
+        try:
+            caller = inspect.stack()[1].function
+        except (IndexError, AttributeError):
+            caller = "Unknown"
         future = asyncio.get_event_loop().create_future()
-        await self._request_queue.put(("get", path, None, future))
+        await self._request_queue.put(("get", path, None, future, caller))
         return await future
 
     async def _post(
         self, path: str, payload: MutableMapping[str, Any] | None = None
     ) -> MutableMapping[str, Any] | list | None:
+        try:
+            caller = inspect.stack()[1].function
+        except (IndexError, AttributeError):
+            caller = "Unknown"
         future = asyncio.get_event_loop().create_future()
-        await self._request_queue.put(("post", path, payload, future))
+        await self._request_queue.put(("post", path, payload, future, caller))
         return await future
 
     async def _process_queue(self) -> None:
         while True:
-            method, path, payload, future = await self._request_queue.get()
+            method, path, payload, future, caller = await self._request_queue.get()
             try:
                 if method == "get_from_stream":
                     result: MutableMapping[str, Any] | list | None = await self._do_get_from_stream(
-                        path
+                        path, caller
                     )
                 elif method == "get":
-                    result = await self._do_get(path)
+                    result = await self._do_get(path, caller)
                 elif method == "post":
-                    result = await self._do_post(path, payload)
+                    result = await self._do_post(path, payload, caller)
                 else:
                     _LOGGER.error("Unknown method to add to Queue: %s", method)
                 future.set_result(result)
             except Exception as e:  # noqa: BLE001
                 _LOGGER.error(
-                    "Exception in request queue processor. %s: %s",
+                    "Exception in request queue processor (called by %s). %s: %s",
+                    caller,
                     type(e).__name__,
                     e,
                 )
@@ -374,7 +387,9 @@ $toreturn["real"] = json_encode($toreturn_real);
                 _LOGGER.error("Error monitoring queue size. %s: %s", type(e).__name__, e)
             await asyncio.sleep(10)
 
-    async def _do_get_from_stream(self, path: str) -> MutableMapping[str, Any]:
+    async def _do_get_from_stream(
+        self, path: str, caller: str = "Unknown"
+    ) -> MutableMapping[str, Any]:
         self._rest_api_query_count += 1
         url: str = f"{self._url}{path}"
         _LOGGER.debug("[get_from_stream] url: %s", url)
@@ -402,14 +417,12 @@ $toreturn["real"] = json_encode($toreturn_real);
                         if "\n\n" in buffer:
                             message, buffer = buffer.split("\n\n", 1)
                             lines = message.splitlines()
-
                             for line in lines:
                                 if line.startswith("data:"):
                                     message_count += 1
                                     if message_count == 2:
                                         response_str: str = line[len("data:") :].strip()
                                         response_json = json.loads(response_str)
-
                                         _LOGGER.debug(
                                             "[get_from_stream] response_json (%s): %s",
                                             type(response_json).__name__,
@@ -429,23 +442,15 @@ $toreturn["real"] = json_encode($toreturn_real);
                                     _LOGGER.debug("[get_from_stream] Unparsed: %s", line)
                 else:
                     if response.status == 403:
-                        stack = inspect.stack()
-                        calling_function = (
-                            stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
-                        )
                         _LOGGER.error(
-                            "Permission Error in %s. Path: %s. Ensure the OPNsense user connected to HA has full Admin access",
-                            calling_function,
+                            "Permission Error in do_get_from_stream (called by %s). Path: %s. Ensure the OPNsense user connected to HA has full Admin access",
+                            caller,
                             url,
                         )
                     else:
-                        stack = inspect.stack()
-                        calling_function = (
-                            stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
-                        )
                         _LOGGER.error(
-                            "Error in %s. Path: %s. Response %s: %s",
-                            calling_function,
+                            "Error in do_get_from_stream (called by %s). Path: %s. Response %s: %s",
+                            caller,
                             url,
                             response.status,
                             response.reason,
@@ -465,7 +470,9 @@ $toreturn["real"] = json_encode($toreturn_real);
 
         return {}
 
-    async def _do_get(self, path: str) -> MutableMapping[str, Any] | list | None:
+    async def _do_get(
+        self, path: str, caller: str = "Unknown"
+    ) -> MutableMapping[str, Any] | list | None:
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
         self._rest_api_query_count += 1
         url: str = f"{self._url}{path}"
@@ -479,24 +486,17 @@ $toreturn["real"] = json_encode($toreturn_real);
             ) as response:
                 _LOGGER.debug("[get] Response %s: %s", response.status, response.reason)
                 if response.ok:
-                    response_json: MutableMapping[str, Any] | list = await response.json(
-                        content_type=None
-                    )
-                    return response_json
+                    return await response.json(content_type=None)
                 if response.status == 403:
-                    stack = inspect.stack()
-                    calling_function = stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
                     _LOGGER.error(
-                        "Permission Error in %s. Path: %s. Ensure the OPNsense user connected to HA has full Admin access",
-                        calling_function,
+                        "Permission Error in do_get (called by %s). Path: %s. Ensure the OPNsense user connected to HA has full Admin access",
+                        caller,
                         url,
                     )
                 else:
-                    stack = inspect.stack()
-                    calling_function = stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
                     _LOGGER.error(
-                        "Error in %s. Path: %s. Response %s: %s",
-                        calling_function,
+                        "Error in do_get (called by %s). Path: %s. Response %s: %s",
+                        caller,
                         url,
                         response.status,
                         response.reason,
@@ -527,9 +527,8 @@ $toreturn["real"] = json_encode($toreturn_real);
         return result if isinstance(result, list) else []
 
     async def _do_post(
-        self, path: str, payload: MutableMapping[str, Any] | None = None
+        self, path: str, payload: MutableMapping[str, Any] | None = None, caller: str = "Unknown"
     ) -> MutableMapping[str, Any] | list | None:
-        # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
         self._rest_api_query_count += 1
         url: str = f"{self._url}{path}"
         _LOGGER.debug("[post] url: %s", url)
@@ -549,19 +548,15 @@ $toreturn["real"] = json_encode($toreturn_real);
                     )
                     return response_json
                 if response.status == 403:
-                    stack = inspect.stack()
-                    calling_function = stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
                     _LOGGER.error(
-                        "Permission Error in %s. Path: %s. Ensure the OPNsense user connected to HA has full Admin access",
-                        calling_function,
+                        "Permission Error in do_post (called by %s). Path: %s. Ensure the OPNsense user connected to HA has full Admin access",
+                        caller,
                         url,
                     )
                 else:
-                    stack = inspect.stack()
-                    calling_function = stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
                     _LOGGER.error(
-                        "Error in %s. Path: %s. Response %s: %s",
-                        calling_function,
+                        "Error in do_post (called by %s). Path: %s. Response %s: %s",
+                        caller,
                         url,
                         response.status,
                         response.reason,
