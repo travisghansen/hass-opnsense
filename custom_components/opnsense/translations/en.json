@@ -10,7 +10,7 @@
       "invalid_auth": "Invalid authentication",
       "unknown": "Unexpected error",
       "invalid_url_format": "Invalid URL Format",
-      "privilege_missing": "OPNsense User has insufficient privileges. Must have admin access",
+      "privilege_missing": "OPNsense User has insufficient privileges. Recommend admin access",
       "connect_timeout": "Connection timeout",
       "cannot_connect_ssl": "SSL Failure",
       "plugin_missing": "os-homeassistant-maxit plugin not installed",

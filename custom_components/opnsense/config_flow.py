@@ -143,8 +143,10 @@ async def validate_input(
             message=f"Aiohttp Error. {type(e).__name__}: {e}",
         )
     except aiohttp.ClientResponseError as e:
-        if e.status in {401, 403}:
+        if e.status == 401:
             errors["base"] = "invalid_auth"
+        elif e.status == 403:
+            errors["base"] = "privilege_missing"
         else:
             errors["base"] = "cannot_connect"
         _LOGGER.error("Aiohttp Error. %s: %s", type(e).__name__, e)
