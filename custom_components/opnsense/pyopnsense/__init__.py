@@ -464,7 +464,7 @@ $toreturn["real"] = json_encode($toreturn_real);
                 else:
                     if response.status == 403:
                         _LOGGER.error(
-                            "Permission Error in do_get_from_stream (called by %s). Path: %s. Ensure the OPNsense user connected to HA has full Admin access",
+                            "Permission Error in do_get_from_stream (called by %s). Path: %s. Ensure the OPNsense user connected to HA has appropriate access. Recommend full admin access",
                             caller,
                             url,
                         )
@@ -510,7 +510,7 @@ $toreturn["real"] = json_encode($toreturn_real);
                     return await response.json(content_type=None)
                 if response.status == 403:
                     _LOGGER.error(
-                        "Permission Error in do_get (called by %s). Path: %s. Ensure the OPNsense user connected to HA has full Admin access",
+                        "Permission Error in do_get (called by %s). Path: %s. Ensure the OPNsense user connected to HA has appropriate access. Recommend full admin access",
                         caller,
                         url,
                     )
@@ -570,7 +570,7 @@ $toreturn["real"] = json_encode($toreturn_real);
                     return response_json
                 if response.status == 403:
                     _LOGGER.error(
-                        "Permission Error in do_post (called by %s). Path: %s. Ensure the OPNsense user connected to HA has full Admin access",
+                        "Permission Error in do_post (called by %s). Path: %s. Ensure the OPNsense user connected to HA has appropriate access. Recommend full admin access",
                         caller,
                         url,
                     )
