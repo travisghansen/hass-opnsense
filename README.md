@@ -1,9 +1,11 @@
-[![Build Status](https://img.shields.io/endpoint.svg?url=https%3A%2F%2Factions-badge.atrox.dev%2Ftravisghansen%2Fhass-opnsense%2Fbadge%3Fref%3Dmain&style=for-the-badge)](https://actions-badge.atrox.dev/travisghansen/hass-opnsense/goto?ref=main)
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://github.com/hacs/integration)
-[![][discord-shield]][discord]
-
-[discord]: https://discord.gg/bfF47sBw6A
-[discord-shield]: https://img.shields.io/discord/1283169313653526559?style=for-the-badge&label=Discord&logo=discord&&logoColor=lightcyan&logoSize=auto&color=white
+[![GitHub Downloads][downloads-shield]][releases]
+[![GitHub Latest Downloads][downloads-latest-shield]][releases]
+[![GitHub Release][releases-shield]][releases]
+[![GitHub Release Date][release-date-shield]][releases]
+[![GitHub Activity][commits-shield]][commits]
+[![License][license-shield]](LICENSE)
+[![hacs][hacsbadge]][hacs]
+[![discord][discord-shield]][discord]
 
 # hass-opnsense
 
@@ -272,3 +274,16 @@ If you partially or fully change the <ins>OPNsense</ins> hardware, it will requi
 ### AdGuard Home
 
 As mentioned [here](https://github.com/travisghansen/hass-opnsense/issues/22) using AdGuard Home can lead to problems with the plugin. Setting the Ratelimit in AdGuard Home to 0 will resolve this problem.
+
+[commits-shield]: https://img.shields.io/github/last-commit/travisghansen/hass-opnsense?style=for-the-badge
+[commits]: https://github.com/travisghansen/hass-opnsense/commits/main
+[hacs]: https://hacs.xyz
+[hacsbadge]: https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge
+[license-shield]: https://img.shields.io/github/license/travisghansen/hass-opnsense.svg?style=for-the-badge
+[downloads-latest-shield]: https://img.shields.io/github/downloads-pre/travisghansen/hass-opnsense/latest/total?style=for-the-badge
+[downloads-shield]: https://img.shields.io/github/downloads/travisghansen/hass-opnsense/total?style=for-the-badge&label=total%20downloads
+[release-date-shield]: https://img.shields.io/github/release-date/travisghansen/hass-opnsense?display_date=published_at&style=for-the-badge
+[releases-shield]: https://img.shields.io/github/v/release/travisghansen/hass-opnsense?style=for-the-badge
+[releases]: https://github.com/travisghansen/hass-opnsense/releases
+[discord]: https://discord.gg/bfF47sBw6A
+[discord-shield]: https://img.shields.io/discord/1283169313653526559?style=for-the-badge&label=Discord&logo=discord&&logoColor=lightcyan&logoSize=auto&color=white
