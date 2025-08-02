@@ -93,74 +93,17 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
     @callback
     def _handle_coordinator_update(self) -> None:
         state: MutableMapping[str, Any] = self.coordinator.data
-        try:
-            if state["firmware_update_info"]["status"] == "error":
-                self._available = False
-                self.async_write_ha_state()
-                return
-        except (TypeError, KeyError, AttributeError):
+        if not self._is_update_available(state):
             self._available = False
             self.async_write_ha_state()
             return
         self._available = True
 
-        try:
-            self._attr_installed_version = dict_get(
-                state, "firmware_update_info.product.product_version"
-            )
-        except (TypeError, KeyError, AttributeError):
-            self._attr_installed_version = None
+        self._attr_installed_version = self._get_installed_version(state)
+        product_version, product_latest, product_series = self._get_versions(state)
+        self._attr_latest_version = product_latest.replace("_", ".") if product_latest else None
 
-        try:
-            product_version = dict_get(state, "firmware_update_info.product.product_version")
-            product_latest = dict_get(state, "firmware_update_info.product.product_latest")
-            product_series = dict_get(state, "firmware_update_info.product.product_series")
-            if product_version is None or product_latest is None:
-                self._attr_latest_version = None
-
-            if (
-                dict_get(state, "firmware_update_info.status") == "update"
-                and product_version == product_latest
-            ):
-                packages = dict_get(
-                    state, "firmware_update_info.product.product_check.upgrade_packages"
-                )
-                if isinstance(packages, list):
-                    package_found: bool = False
-                    for package in packages:
-                        if package.get("name") == "opnsense" and package.get("new_version"):
-                            package_found = True
-                            product_latest = package.get("new_version")
-                            break
-                    if not package_found:
-                        product_latest = f"{product_latest}+"
-                else:
-                    product_latest = f"{product_latest}+"
-
-            if dict_get(state, "firmware_update_info.status") == "upgrade":
-                product_latest = dict_get(state, "firmware_update_info.upgrade_major_version")
-                if product_latest:
-                    product_series = (
-                        ".".join(product_latest.split(".")[:2])
-                        if "." in product_latest
-                        else product_latest
-                    )
-
-            if product_latest:
-                self._attr_latest_version = product_latest.replace("_", ".")
-        except (TypeError, KeyError, AttributeError):
-            self._attr_latest_version = None
-
-        product_class: str | None = None
-        if product_series:
-            try:
-                series_minor: str | None = str(product_series).split(".")[1]
-            except IndexError:
-                series_minor = None
-            if series_minor in {"1", "7"}:
-                product_class = "community"
-            elif series_minor in {"4", "10"}:
-                product_class = "business"
+        product_class = self._get_product_class(product_series)
         _LOGGER.debug(
             "[Update handle_coordinator_update] product_version: %s, product_latest: %s, product_series: %s, product_class: %s",
             product_version,
@@ -177,9 +120,107 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
             )
 
         _LOGGER.debug("[Update handle_coordinator_update] release_url: %s", self._attr_release_url)
-        summary: str | None = None
+        self._release_notes = self._get_release_notes(state, product_latest, product_version)
+        self._attr_release_summary = dict_get(state, "firmware_update_info.status_msg")
+
+        self._attr_extra_state_attributes = {}
+        for key in (
+            "status",
+            "status_msg",
+            "last_check",
+            "os_version",
+            "product_id",
+            "product_target",
+            "product_version",
+            "upgrade_needs_reboot",
+            "needs_reboot",
+            "download_size",
+        ):
+            slug_key = slugify(key)
+            self._attr_extra_state_attributes[f"opnsense_{slug_key}"] = dict_get(
+                state, f"firmware_update_info.{key}"
+            )
+        self.async_write_ha_state()
+
+    def _is_update_available(self, state: MutableMapping[str, Any]) -> bool:
         try:
-            if dict_get(state, "firmware_update_info.status") == "update":
+            return state["firmware_update_info"]["status"] != "error"
+        except (TypeError, KeyError, AttributeError):
+            return False
+
+    def _get_installed_version(self, state: MutableMapping[str, Any]) -> str | None:
+        try:
+            return dict_get(state, "firmware_update_info.product.product_version")
+        except (TypeError, KeyError, AttributeError):
+            return None
+
+    def _get_versions(
+        self, state: MutableMapping[str, Any]
+    ) -> tuple[str | None, str | None, str | None]:
+        try:
+            product_version = dict_get(state, "firmware_update_info.product.product_version")
+            product_latest = dict_get(state, "firmware_update_info.product.product_latest")
+            product_series = dict_get(state, "firmware_update_info.product.product_series")
+            if product_version is None or product_latest is None:
+                return product_version, None, product_series
+
+            status = dict_get(state, "firmware_update_info.status")
+            if status == "update":
+                packages = dict_get(
+                    state, "firmware_update_info.product.product_check.upgrade_packages"
+                )
+                if product_version == product_latest:
+                    if isinstance(packages, list):
+                        package_found: bool = False
+                        for package in packages:
+                            if package.get("name") == "opnsense" and package.get("new_version"):
+                                package_found = True
+                                product_latest = package.get("new_version")
+                                break
+                        if not package_found:
+                            product_latest = f"{product_latest}+"
+                    else:
+                        product_latest = f"{product_latest}+"
+                elif isinstance(packages, list):
+                    for package in packages:
+                        if package.get("name") == "opnsense" and package.get("new_version"):
+                            product_latest = package.get("new_version")
+                            break
+
+            if status == "upgrade":
+                product_latest = dict_get(state, "firmware_update_info.upgrade_major_version")
+                if product_latest:
+                    product_series = (
+                        ".".join(product_latest.split(".")[:2])
+                        if "." in product_latest
+                        else product_latest
+                    )
+        except (TypeError, KeyError, AttributeError):
+            return None, None, None
+        else:
+            return product_version, product_latest, product_series
+
+    def _get_product_class(self, product_series: str | None) -> str | None:
+        if product_series:
+            try:
+                series_minor: str | None = str(product_series).split(".")[1]
+            except IndexError:
+                series_minor = None
+            if series_minor in {"1", "7"}:
+                return "community"
+            if series_minor in {"4", "10"}:
+                return "business"
+        return None
+
+    def _get_release_notes(
+        self,
+        state: MutableMapping[str, Any],
+        product_latest: str | None,
+        product_version: str | None,
+    ) -> str | None:
+        try:
+            status = dict_get(state, "firmware_update_info.status")
+            if status == "update":
                 product_name = dict_get(state, "firmware_update_info.product.product_name")
                 product_nickname = dict_get(state, "firmware_update_info.product.product_nickname")
                 status_msg = dict_get(state, "firmware_update_info.status_msg")
@@ -206,7 +247,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
                     dict_get(state, "firmware_update_info.upgrade_packages", []) or []
                 )
 
-                summary = f"""
+                return f"""
 ## {product_name} version {product_latest} ({product_nickname})
 
 {status_msg}
@@ -218,7 +259,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
 - removed packages: {remove_package_count}
 - upgraded packages: {upgrade_package_count}
 """
-            elif dict_get(state, "firmware_update_info.status") == "upgrade":
+            if status == "upgrade":
                 product_name = dict_get(state, "firmware_update_info.product.product_name")
                 status_msg = dict_get(state, "firmware_update_info.status_msg")
 
@@ -228,45 +269,25 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
                     else False
                 )
 
-                summary = f"""
+                return f"""
 ## {product_name} version {product_version}
 
 {status_msg}
 
 - reboot needed: {upgrade_needs_reboot}
 """
-            else:
-                summary = dict_get(state, "firmware_update_info.status_msg")
-
+            return dict_get(state, "firmware_update_info.status_msg")
         except (TypeError, KeyError, AttributeError) as e:
             _LOGGER.error(
                 "Error getting release notes. %s: %s",
                 type(e).__name__,
                 e,
             )
-            self._release_notes = None
-        self._release_notes = summary
-        self._attr_release_summary = dict_get(state, "firmware_update_info.status_msg")
-
-        self._attr_extra_state_attributes = {}
-
-        for key in (
-            "status",
-            "status_msg",
-            "last_check",
-            "os_version",
-            "product_id",
-            "product_target",
-            "product_version",
-            "upgrade_needs_reboot",
-            "needs_reboot",
-            "download_size",
-        ):
-            slug_key = slugify(key)
-            self._attr_extra_state_attributes[f"opnsense_{slug_key}"] = dict_get(
-                state, f"firmware_update_info.{key}"
+            return (
+                "Release notes unavailable due to an error. "
+                "Check the Read release announcement link above or see the OPNsense web interface for details. "
+                f"{type(e).__name__}: {e}"
             )
-        self.async_write_ha_state()
 
     async def async_release_notes(self) -> str | None:
         """Return the release notes of the latest version."""

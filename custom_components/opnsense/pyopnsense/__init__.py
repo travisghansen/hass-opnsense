@@ -19,7 +19,7 @@ import xmlrpc.client
 
 import aiohttp
 import awesomeversion
-from dateutil.parser import UnknownTimezoneWarning, parse
+from dateutil.parser import ParserError, UnknownTimezoneWarning, parse
 
 from .const import AMBIGUOUS_TZINFOS
 
@@ -658,14 +658,57 @@ clear_subsystem_dirty('filter');
         # error could be because data has not been refreshed at all OR an upgrade is currently in progress
         # _LOGGER.debug("[get_firmware_update_info] status: %s", status)
 
+        if error_status := bool(status.get("status") == "error"):
+            _LOGGER.debug("Last firmware status check returned an error")
+
+        product_version = dict_get(status, "product.product_version")
+        product_latest = dict_get(status, "product.product_latest")
+        missing_data = False
         if (
-            status.get("status", None) in {"none", "error"}
-            or "last_check" not in status
-            or not isinstance(dict_get(status, "product.product_check"), dict)
+            not product_version
+            or not product_latest
+            or not isinstance(dict_get(status, "product.product_check"), MutableMapping)
             or not dict_get(status, "product.product_check")
-            or status.get("status_msg", None)
-            == "There are no updates available on the selected mirror."
         ):
+            _LOGGER.debug("Missing data in firmware status")
+            missing_data = True
+
+        update_needs_info = False
+        try:
+            if (
+                awesomeversion.AwesomeVersion(product_latest)
+                > awesomeversion.AwesomeVersion(product_version)
+                and status.get("status_msg", "").strip()
+                == "There are no updates available on the selected mirror."
+            ):
+                _LOGGER.debug("Update available but missing details")
+                update_needs_info = True
+        except awesomeversion.exceptions.AwesomeVersionCompareException as e:
+            _LOGGER.debug("Error checking firmware versions. %s: %s", type(e).__name__, e)
+            update_needs_info = True
+
+        last_check_str = status.get("last_check")
+        last_check_expired = True
+        if last_check_str:
+            try:
+                last_check_dt = parse(last_check_str, tzinfos=AMBIGUOUS_TZINFOS)
+                if last_check_dt.tzinfo is None:
+                    last_check_dt = last_check_dt.replace(
+                        tzinfo=timezone(datetime.now().astimezone().utcoffset() or timedelta())
+                    )
+                last_check_expired = (datetime.now().astimezone() - last_check_dt) > timedelta(
+                    days=1
+                )
+                if last_check_expired:
+                    _LOGGER.debug("Firmware status last check > 1 day ago")
+            except (ValueError, TypeError, ParserError, UnknownTimezoneWarning) as e:
+                _LOGGER.debug(
+                    "Error getting firmware status last check. %s: %s", type(e).__name__, e
+                )
+        else:
+            _LOGGER.debug("Firmware status last check is missing")
+
+        if error_status or last_check_expired or missing_data or update_needs_info:
             _LOGGER.info("Triggering firmware check")
             await self._post("/api/core/firmware/check")
 
@@ -1423,7 +1466,7 @@ $toreturn = [
                 systemtime = systemtime.replace(
                     tzinfo=timezone(datetime.now().astimezone().utcoffset() or timedelta())
                 )
-        except (ValueError, TypeError, UnknownTimezoneWarning) as e:
+        except (ValueError, TypeError, ParserError, UnknownTimezoneWarning) as e:
             _LOGGER.warning(
                 "Failed to parse opnsense system time (aka. datetime), using HA system time instead: %s. %s: %s",
                 time_info["datetime"],
@@ -1451,7 +1494,7 @@ $toreturn = [
                     boottime = boottime.replace(
                         tzinfo=timezone(datetime.now().astimezone().utcoffset() or timedelta())
                     )
-            except (ValueError, TypeError, UnknownTimezoneWarning) as e:
+            except (ValueError, TypeError, ParserError, UnknownTimezoneWarning) as e:
                 _LOGGER.info(
                     "Failed to parse opnsense boottime: %s. %s: %s",
                     time_info["boottime"],
