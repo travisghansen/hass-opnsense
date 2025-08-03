@@ -631,7 +631,12 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
             return
         interface_name: str = self.entity_description.key.split(".")[1]
         interface: MutableMapping[str, Any] = {}
-        for i_interface_name, iface in state.get("interfaces", {}).items():
+        interfaces = state.get("interfaces")
+        if not isinstance(interfaces, Mapping):
+            self._available = False
+            self.async_write_ha_state()
+            return
+        for i_interface_name, iface in interfaces.items():
             if i_interface_name == interface_name:
                 interface = iface
                 break
