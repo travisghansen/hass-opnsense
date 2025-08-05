@@ -12,7 +12,7 @@
       "invalid_url_format": "Invalid URL Format",
       "privilege_missing": "OPNsense User has insufficient privileges. Recommend admin access",
       "connect_timeout": "Connection timeout",
-      "cannot_connect_ssl": "SSL Failure",
+      "cannot_connect_ssl": "SSL Certificate Verification Error. If you are using a self-signed certificate, uncheck Verify SSL certificate",
       "plugin_missing": "os-homeassistant-maxit plugin not installed",
       "url_redirect": "Incorrect URL (redirect)",
       "missing_device_unique_id": "Unable to get MAC addresses from OPNsense to use as Device Unique ID",

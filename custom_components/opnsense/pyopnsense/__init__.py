@@ -179,7 +179,7 @@ class OPNsenseClient(ABC):
         self._session: aiohttp.ClientSession = session
         self._initial = initial
         self._firmware_version: str | None = None
-        self._use_snake_case: bool | None = None
+        self._use_snake_case: bool = True
         self._xmlrpc_query_count = 0
         self._rest_api_query_count = 0
         self._request_queue: asyncio.Queue = asyncio.Queue()
@@ -314,7 +314,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         self._firmware_version = firmware
         return firmware
 
-    async def set_use_snake_case(self) -> None:
+    async def set_use_snake_case(self, initial: bool = False) -> None:
         """Set whether to use snake_case or camelCase for API calls.
 
         In 25.7+ a number of API calls changed from camelCase to snake_case.
@@ -331,8 +331,13 @@ $toreturn["real"] = json_encode($toreturn_real);
                 self._use_snake_case = False
             else:
                 _LOGGER.debug("Using snake_case for OPNsense >= 25.7")
-        except awesomeversion.exceptions.AwesomeVersionCompareException:
-            pass
+        except awesomeversion.exceptions.AwesomeVersionCompareException as e:
+            _LOGGER.error(
+                "Error comparing firmware version %s. Using snake_case by default",
+                self._firmware_version,
+            )
+            if initial:
+                raise UnknownFirmware from e
 
     async def is_plugin_installed(self) -> bool:
         """Retun whether OPNsense plugin is installed or not."""
@@ -2318,3 +2323,7 @@ $toreturn = [
             except asyncio.QueueEmpty:
                 break
         _LOGGER.debug("Request queue cleared")
+
+
+class UnknownFirmware(Exception):
+    """Unknown current firmware version."""
