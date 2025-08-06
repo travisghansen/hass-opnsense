@@ -2,7 +2,7 @@
 
 | OPNsense Permission | API Endpoints |
 | ----- | ----- |
-| Lobby: Dashboard | /api/diagnostics/system/systemInformation |
+| Lobby: Dashboard | /api/diagnostics/system/system_information (or systemInformation) |
 | Status: Interfaces | /api/interfaces/overview/export |
 | System: Firmware | /api/core/firmware/status |
 
@@ -12,7 +12,7 @@
 
 |  OPNsense Permission | API Endpoints |
 | ----- | ----- |
-| Lobby: Dashboard | /api/diagnostics/system/system_mbuf<br>/api/diagnostics/firewall/pf_states<br>/api/diagnostics/system/systemResources<br>/api/diagnostics/system/system_swap<br>/api/diagnostics/system/systemTime<br>/api/diagnostics/cpu_usage/getCPUType<br>/api/diagnostics/cpu_usage/stream<br>/api/diagnostics/system/systemDisk<br>/api/diagnostics/system/systemTemperature |
+| Lobby: Dashboard | /api/diagnostics/system/system_mbuf<br>/api/diagnostics/firewall/pf_states<br>/api/diagnostics/system/system_resources (or systemResources)<br>/api/diagnostics/system/system_swap<br>/api/diagnostics/system/system_time (or systemTime)<br>/api/diagnostics/cpu_usage/get_c_p_u_type (or getCPUType)<br>/api/diagnostics/cpu_usage/stream<br>/api/diagnostics/system/system_disk (or systemDisk)<br>/api/diagnostics/system/system_temperature (or systemTemperature) |
 
 ## Gateway information
 
@@ -30,9 +30,9 @@
 
 | OPNsense Permission | API Endpoints |
 | ----- | ----- |
-| Services: DHCP: Kea(v4) | /api/kea/leases4/search<br>/api/kea/dhcpv4/searchReservation<br>/api/kea/dhcpv4/get |
-| Status: DHCP leases | /api/dhcpv4/leases/searchLease |
-| Status: DHCPv6 leases | /api/dhcpv6/leases/searchLease |
+| Services: DHCP: Kea(v4) | /api/kea/leases4/search<br>/api/kea/dhcpv4/search_reservation (or searchReservation)<br>/api/kea/dhcpv4/get |
+| Status: DHCP leases | /api/dhcpv4/leases/search_lease (or searchLease) |
+| Status: DHCPv6 leases | /api/dhcpv6/leases/search_lease (or searchLease) |
 | Services: Dnsmasq DNS/DHCP: Settings | /api/dnsmasq/leases/search |
 
 ## Notice information
@@ -71,10 +71,10 @@
 
 | OPNsense Permission | API Endpoints |
 | ----- | ----- |
-| Status: OpenVPN | /api/openvpn/service/reconfigure<br>/api/openvpn/service/searchSessions |
+| Status: OpenVPN | /api/openvpn/service/reconfigure<br>/api/openvpn/service/search_sessions (or searchSessions) |
 | VPN: OpenVPN: Instances | /api/openvpn/instances/get<br>/api/openvpn/instances/search<br>/api/openvpn/instances/toggle |
 | VPN: OpenVPN: Client Export Utility | /api/openvpn/export/providers |
-| VPN: WireGuard | /api/wireguard/client/get<br>/api/wireguard/client/toggleClient<br>/api/wireguard/server/get<br>/api/wireguard/service/reconfigure<br>/api/wireguard/service/show<br>/api/wireguard/server/toggleServer |
+| VPN: WireGuard | /api/wireguard/client/get<br>/api/wireguard/client/toggle_client (or toggleClient)<br>/api/wireguard/server/get<br>/api/wireguard/service/reconfigure<br>/api/wireguard/service/show<br>/api/wireguard/server/toggle_server (or toggleServer) |
 
 ## Security certificate information
 
@@ -100,7 +100,7 @@
 
 |  OPNsense Permission | API Endpoints |
 | ----- | ----- |
-| System: Status | /api/core/system/dismissStatus<br>/api/core/system/status |
+| System: Status | /api/core/system/dismiss_status (or dismissStatus)<br>/api/core/system/status |
 
 ## Shutdown OPNsense _(opnsense.system_halt)_
 
@@ -142,22 +142,22 @@
 
 |  OPNsense Permission | API Endpoints |
 | ----- | ----- |
-| Status: Interfaces | /api/interfaces/overview/reloadInterface/ |
+| Status: Interfaces | /api/interfaces/overview/reload_interface (or reloadInterface) |
 
 ## Kill States _(opnsense.kill_states)_
 
 |  OPNsense Permission | API Endpoints |
 | ----- | ----- |
-| Diagnostics: Show States | /api/diagnostics/firewall/kill_states/ |
+| Diagnostics: Show States | /api/diagnostics/firewall/kill_states |
 
 ## Generate Captive Portal Vouchers _(opnsense.generate_vouchers)_
 
 |  OPNsense Permission | API Endpoints |
 | ----- | ----- |
-| Services: Captive Portal | /api/captiveportal/voucher/generateVouchers<br>/api/captiveportal/voucher/listProviders |
+| Services: Captive Portal | /api/captiveportal/voucher/generate_vouchers (or generateVouchers)<br>/api/captiveportal/voucher/list_providers (or listProviders) |
 
 ## Toggle Alias _(opnsense.toggle_alias)_
 
 |  OPNsense Permission | API Endpoints |
 | ----- | ----- |
-| Firewall: Alias: Edit | /api/firewall/alias/reconfigure<br>/api/firewall/alias/searchItem<br>/api/firewall/alias/set<br>/api/firewall/alias/toggleItem |
+| Firewall: Alias: Edit | /api/firewall/alias/reconfigure<br>/api/firewall/alias/search_item (or searchItem)<br>/api/firewall/alias/set<br>/api/firewall/alias/toggle_item (or toggleItem) |

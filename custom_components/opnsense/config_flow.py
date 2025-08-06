@@ -52,7 +52,7 @@ from .const import (
     TRACKED_MACS,
 )
 from .helpers import is_private_ip
-from .pyopnsense import OPNsenseClient
+from .pyopnsense import OPNsenseClient, UnknownFirmware
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -136,7 +136,7 @@ async def validate_input(
                 [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
             )
         )
-    except aiohttp.ClientConnectorSSLError as e:
+    except aiohttp.ClientSSLError as e:
         _log_and_set_error(
             errors=errors,
             key="cannot_connect_ssl",
@@ -252,6 +252,8 @@ async def _handle_user_input(user_input: MutableMapping[str, Any], hass: HomeAss
         _validate_firmware_version(user_input[CONF_FIRMWARE_VERSION])
     except awesomeversion.exceptions.AwesomeVersionCompareException as e:
         raise UnknownFirmware from e
+
+    await client.set_use_snake_case(initial=True)
 
     require_plugin = any(
         user_input.get(item, DEFAULT_SYNC_OPTION_VALUE) for item in SYNC_ITEMS_REQUIRING_PLUGIN
@@ -471,7 +473,6 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         """Initialize the config flow."""
-        self._errors: dict[str, Any] = {}
         self._config: MutableMapping[str, Any] = {}
 
     # gets invoked without user input initially
@@ -480,11 +481,10 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: MutableMapping[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle the initial step."""
+        errors: dict[str, Any] = {}
         if user_input is not None:
-            self._errors = await validate_input(
-                hass=self.hass, user_input=user_input, errors=self._errors
-            )
-            if not self._errors:
+            errors = await validate_input(hass=self.hass, user_input=user_input, errors=errors)
+            if not errors:
                 # https://developers.home-assistant.io/docs/config_entries_config_flow_handler#unique-ids
                 await self.async_set_unique_id(user_input.get(CONF_DEVICE_UNIQUE_ID))
                 self._abort_if_unique_id_configured()
@@ -505,7 +505,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=_build_user_input_schema(user_input=user_input),
-            errors=self._errors,
+            errors=errors,
             description_placeholders={
                 "firmware": firmware,
                 "min_firmware": OPNSENSE_MIN_FIRMWARE,
@@ -516,14 +516,13 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: MutableMapping[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle the step for initial granular sync options."""
+        errors: dict[str, Any] = {}
         if user_input is not None:
             # _LOGGER.debug("[config_flow granular_sync] raw user_input: %s", user_input)
             self._config.update(user_input)
             # _LOGGER.debug("[config_flow granular_sync] merged config: %s", self._config)
-            self._errors = await validate_input(
-                hass=self.hass, user_input=self._config, errors=self._errors
-            )
-            if not self._errors:
+            errors = await validate_input(hass=self.hass, user_input=self._config, errors=errors)
+            if not errors:
                 return self.async_create_entry(
                     title=self._config[CONF_NAME],
                     data=self._config,
@@ -535,13 +534,14 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="granular_sync",
             data_schema=_build_granular_sync_schema(user_input=user_input),
-            errors=self._errors,
+            errors=errors,
         )
 
     async def async_step_reconfigure(
         self, user_input: MutableMapping[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Config flow reconfigure step."""
+        errors: dict[str, Any] = {}
         reconfigure_entry = self._get_reconfigure_entry()
         self._config = dict(reconfigure_entry.data)
 
@@ -549,11 +549,9 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
             # _LOGGER.debug("[config_flow reconfigure] raw user_input: %s", user_input)
             self._config.update(user_input)
             # _LOGGER.debug("[config_flow reconfigure] merged config: %s", self._config)
-            self._errors = await validate_input(
-                hass=self.hass, user_input=self._config, errors=self._errors
-            )
+            errors = await validate_input(hass=self.hass, user_input=self._config, errors=errors)
 
-            if not self._errors:
+            if not errors:
                 # https://developers.home-assistant.io/docs/config_entries_config_flow_handler#unique-ids
                 await self.async_set_unique_id(self._config.get(CONF_DEVICE_UNIQUE_ID))
                 self._abort_if_unique_id_mismatch()
@@ -572,7 +570,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=_build_user_input_schema(
                 user_input=user_input, fallback=self._config, reconf=True
             ),
-            errors=self._errors,
+            errors=errors,
             description_placeholders={
                 "firmware": firmware,
                 "min_firmware": OPNSENSE_MIN_FIRMWARE,
@@ -595,7 +593,6 @@ class OPNsenseOptionsFlow(OptionsFlow):
 
     def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize options flow."""
-        self._errors: dict[str, Any] = {}
         self._config: MutableMapping[str, Any] = {}
         self._options: MutableMapping[str, Any] = {}
 
@@ -603,6 +600,7 @@ class OPNsenseOptionsFlow(OptionsFlow):
         self, user_input: MutableMapping[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle options flow."""
+        errors: dict[str, Any] = {}
         self._config = dict(self.config_entry.data)
         self._options = dict(self.config_entry.options)
         if user_input is not None:
@@ -620,30 +618,31 @@ class OPNsenseOptionsFlow(OptionsFlow):
                 return await self.async_step_device_tracker()
             # _LOGGER.debug("Updating options from init. user_input: %s", self._config)
 
-            self.hass.config_entries.async_update_entry(
-                entry=self.config_entry, data=self._config, options=self._options
-            )
-            return self.async_create_entry(data=self._options)
+            if not errors:
+                self.hass.config_entries.async_update_entry(
+                    entry=self.config_entry, data=self._config, options=self._options
+                )
+                return self.async_create_entry(data=self._options)
 
         return self.async_show_form(
             step_id="init",
             data_schema=_build_options_init_schema(
                 user_input=user_input, fallback_config=self._config, fallback_options=self._options
             ),
+            errors=errors,
         )
 
     async def async_step_granular_sync(
         self, user_input: MutableMapping[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle the step for granular sync options."""
+        errors: dict[str, Any] = {}
         if user_input is not None:
             # _LOGGER.debug("[options_flow granular_sync] raw user_input: %s", user_input)
             self._config.update(user_input)
             # _LOGGER.debug("[options_flow granular_sync] merged user_input. config: %s. options: %s", self._config, self._options)
-            self._errors = await validate_input(
-                hass=self.hass, user_input=self._config, errors=self._errors
-            )
-            if not self._errors:
+            errors = await validate_input(hass=self.hass, user_input=self._config, errors=errors)
+            if not errors:
                 if self._options.get(CONF_DEVICE_TRACKER_ENABLED):
                     return await self.async_step_device_tracker()
                 _LOGGER.debug("Updating options from granular sync. user_input: %s", self._config)
@@ -662,13 +661,14 @@ class OPNsenseOptionsFlow(OptionsFlow):
                 user_input=user_input,
                 fallback=self._config,
             ),
-            errors=self._errors,
+            errors=errors,
         )
 
     async def async_step_device_tracker(
         self, user_input: MutableMapping[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle device tracker list step."""
+        errors: dict[str, Any] = {}
         if user_input is not None:
             # _LOGGER.debug("[options_flow device_tracker] raw user_input: %s", user_input)
             self._options.update(user_input)
@@ -689,10 +689,11 @@ class OPNsenseOptionsFlow(OptionsFlow):
                 self._options.pop(CONF_DEVICES, None)
                 self._config.pop(TRACKED_MACS, None)
 
-            self.hass.config_entries.async_update_entry(
-                entry=self.config_entry, data=self._config, options=self._options
-            )
-            return self.async_create_entry(data=self._options)
+            if not errors:
+                self.hass.config_entries.async_update_entry(
+                    entry=self.config_entry, data=self._config, options=self._options
+                )
+                return self.async_create_entry(data=self._options)
 
         selected_devices: list = self.config_entry.options.get(CONF_DEVICES, [])
         dt_entries: MutableMapping[str, Any] = await _get_dt_entries(
@@ -714,7 +715,7 @@ class OPNsenseOptionsFlow(OptionsFlow):
                     ),
                 }
             ),
-            errors=self._errors,
+            errors=errors,
         )
 
 
@@ -728,10 +729,6 @@ class MissingDeviceUniqueID(Exception):
 
 class BelowMinFirmware(Exception):
     """Current firmware is below the Minimum supported version."""
-
-
-class UnknownFirmware(Exception):
-    """Unknown current firmware version."""
 
 
 class PluginMissing(Exception):
