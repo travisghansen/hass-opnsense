@@ -7,7 +7,6 @@ pytest
 pytest-asyncio
 pytest-cov
 pytest-homeassistant-custom-component
-pytest-homeassistant-custom-component
 pytest-timeout
 pytest-xdist
 ruff

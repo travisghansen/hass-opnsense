@@ -10,31 +10,25 @@ dt_mod = importlib.import_module("custom_components.opnsense.device_tracker")
 pkg = importlib.import_module("custom_components.opnsense")
 
 
-def make_config_entry(mac_list=None, tracked_macs=None, options=None):
-    entry = SimpleNamespace()
-    entry.data = {dt_mod.TRACKED_MACS: tracked_macs or [], pkg.CONF_DEVICE_UNIQUE_ID: "dev1"}
-    entry.options = options or {}
-    entry.runtime_data = SimpleNamespace()
-    entry.title = "OPNsense"
-    return entry
-
-
 @pytest.mark.asyncio
-async def test_async_setup_entry_configured_devices(monkeypatch, hass, coordinator):
+async def test_async_setup_entry_configured_devices(
+    monkeypatch, ph_hass, coordinator, make_config_entry
+):
     # prepare a coordinator with arp_table containing a matching mac
     coordinator.data = {
         "arp_table": [{"mac": "aa:bb:cc", "ip": "1.2.3.4", "hostname": "dev", "manufacturer": "m"}]
     }
 
     entry = make_config_entry(
-        tracked_macs=[],
+        data={dt_mod.TRACKED_MACS: [], pkg.CONF_DEVICE_UNIQUE_ID: "dev1"},
         options={dt_mod.CONF_DEVICES: ["aa:bb:cc"], dt_mod.CONF_DEVICE_TRACKER_ENABLED: True},
+        entry_id="eid",
     )
     # attach coordinator into runtime_data under the expected attribute name
     setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
-    entry.entry_id = "eid"
     entry.add_update_listener = lambda f: (lambda: None)
     entry.async_on_unload = lambda x: None
+    hass = ph_hass
     hass.config_entries.async_update_entry = MagicMock()
     hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
     hass.config_entries.async_reload = AsyncMock()
@@ -58,14 +52,26 @@ async def test_async_setup_entry_configured_devices(monkeypatch, hass, coordinat
     await dt_mod.async_setup_entry(hass, entry, async_add_entities)
 
     assert len(added) == 1
+    # the created entity should be the integration's device tracker entity and have a unique_id
+    created = added[0]
+    assert isinstance(created, dt_mod.OPNsenseScannerEntity)
+    # make_config_entry sets the device unique id to a suffix like "mac_<normalized_mac>".
+    # slugify should normalize ':' to '_' -> unique_id should end with 'mac_aa_bb_cc'
+    uid = getattr(created, "unique_id", None)
+    assert uid is not None
+    assert uid.endswith("mac_aa_bb_cc")
+    # ensure the normalized MAC components are present in the unique_id
+    assert "aa_bb_cc" in uid
+    # ensure the MAC is available on the entity (or included in unique_id) and was normalized
+    assert created.mac_address == "aa:bb:cc"
     # tracked macs should have been updated on the config entry
     assert hass.config_entries.async_update_entry.called
 
 
-def test_handle_coordinator_update_unavailable(monkeypatch, coordinator):
+def test_handle_coordinator_update_unavailable(coordinator, make_config_entry):
     # coordinator with invalid data should mark entity unavailable
     coordinator.data = None
-    entry = make_config_entry()
+    entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
 
     ent = dt_mod.OPNsenseScannerEntity(
@@ -76,7 +82,6 @@ def test_handle_coordinator_update_unavailable(monkeypatch, coordinator):
         mac_vendor=None,
         hostname=None,
     )
-    ent._attr_extra_state_attributes = {}
     ent.async_write_ha_state = MagicMock()
 
     ent._handle_coordinator_update()
@@ -84,7 +89,7 @@ def test_handle_coordinator_update_unavailable(monkeypatch, coordinator):
     assert ent.async_write_ha_state.called
 
 
-def test_handle_coordinator_update_entry_present(monkeypatch, coordinator):
+def test_handle_coordinator_update_entry_present(monkeypatch, coordinator, make_config_entry):
     # coordinator has an arp entry that should populate attributes
     coordinator.data = {
         "arp_table": [
@@ -101,7 +106,7 @@ def test_handle_coordinator_update_entry_present(monkeypatch, coordinator):
         "update_time": float(int(datetime.now().timestamp())),
     }
 
-    entry = make_config_entry()
+    entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
 
     ent = dt_mod.OPNsenseScannerEntity(
@@ -112,7 +117,6 @@ def test_handle_coordinator_update_entry_present(monkeypatch, coordinator):
         mac_vendor="m",
         hostname="host?",
     )
-    ent._attr_extra_state_attributes = {}
     ent.async_write_ha_state = MagicMock()
 
     ent._handle_coordinator_update()
@@ -121,16 +125,19 @@ def test_handle_coordinator_update_entry_present(monkeypatch, coordinator):
     # hostname should have stripped the trailing '?'
     assert ent.hostname == "host"
     assert ent.is_connected is True
-    assert ent._attr_extra_state_attributes.get("expires") == "Never"
-    assert ent._attr_extra_state_attributes.get("interface") == "lan0"
-    assert ent._attr_extra_state_attributes.get("type") == "arp"
-    assert ent._attr_icon == "mdi:lan-connect"
+    assert ent.extra_state_attributes.get("expires") == "Never"
+    assert ent.extra_state_attributes.get("interface") == "lan0"
+    assert ent.extra_state_attributes.get("type") == "arp"
+    assert ent.icon == "mdi:lan-connect"
 
 
-def test_handle_coordinator_update_missing_entry_consider_home(coordinator):
+def test_handle_coordinator_update_missing_entry_consider_home(coordinator, make_config_entry):
     # missing arp entry but recent last_known_connected_time and consider_home > 0
     coordinator.data = {"arp_table": []}
-    entry = make_config_entry(options={dt_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME: 3600})
+    entry = make_config_entry(
+        data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"},
+        options={dt_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME: 3600},
+    )
     setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
 
     ent = dt_mod.OPNsenseScannerEntity(
@@ -141,7 +148,6 @@ def test_handle_coordinator_update_missing_entry_consider_home(coordinator):
         mac_vendor=None,
         hostname=None,
     )
-    ent._attr_extra_state_attributes = {}
     # set a recent last known connected time
     ent._last_known_connected_time = datetime.now().astimezone()
     ent.async_write_ha_state = MagicMock()
@@ -152,9 +158,9 @@ def test_handle_coordinator_update_missing_entry_consider_home(coordinator):
 
 
 @pytest.mark.asyncio
-async def test_restore_last_state_and_device_info(monkeypatch, coordinator):
+async def test_restore_last_state_and_device_info(monkeypatch, coordinator, make_config_entry):
     coordinator.data = {"arp_table": []}
-    entry = make_config_entry()
+    entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
 
     ent = dt_mod.OPNsenseScannerEntity(
@@ -183,8 +189,8 @@ async def test_restore_last_state_and_device_info(monkeypatch, coordinator):
     # restored attributes should be present
     assert ent._last_known_hostname == "oldhost"
     assert ent._last_known_ip == "9.9.9.9"
-    assert ent._attr_extra_state_attributes.get("interface") == "lan0"
-    assert "last_known_connected_time" in ent._attr_extra_state_attributes
+    assert ent.extra_state_attributes.get("interface") == "lan0"
+    assert "last_known_connected_time" in ent.extra_state_attributes
 
     # device_info should include the mac connection and via_device tuple
     devinfo = ent.device_info
@@ -198,12 +204,13 @@ async def test_restore_last_state_and_device_info(monkeypatch, coordinator):
 
     assert any(t[1] == "aa:bb:cc" for t in connections)
     assert via[0] == dt_mod.DOMAIN
+    assert via[1] == entry.data[pkg.CONF_DEVICE_UNIQUE_ID]
 
 
 @pytest.mark.asyncio
-async def test_async_added_to_hass_calls_restore(monkeypatch, coordinator):
+async def test_async_added_to_hass_calls_restore(monkeypatch, coordinator, make_config_entry):
     coordinator.data = {"arp_table": []}
-    entry = make_config_entry()
+    entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
 
     ent = dt_mod.OPNsenseScannerEntity(
@@ -226,13 +233,14 @@ async def test_async_added_to_hass_calls_restore(monkeypatch, coordinator):
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_state_not_mapping(hass, coordinator):
+async def test_async_setup_entry_state_not_mapping(ph_hass, coordinator, make_config_entry):
     # coordinator.data is not a mapping -> async_setup_entry should return early and not add entities
     coordinator.data = "not-a-mapping"
-    entry = make_config_entry()
+    entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
     added = []
 
+    hass = ph_hass
     hass.data = {}
     hass.config_entries.async_update_entry = MagicMock()
 
@@ -242,12 +250,17 @@ async def test_async_setup_entry_state_not_mapping(hass, coordinator):
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_removes_previous_mac(monkeypatch, hass, coordinator):
+async def test_async_setup_entry_removes_previous_mac(
+    monkeypatch, ph_hass, coordinator, make_config_entry
+):
     # previous tracked macs include an old mac that should be removed via device registry
     coordinator.data = {"arp_table": []}
-    entry = make_config_entry(tracked_macs=["old:mac:1"])
+    entry = make_config_entry(
+        data={dt_mod.TRACKED_MACS: ["old:mac:1"], pkg.CONF_DEVICE_UNIQUE_ID: "dev1"},
+        entry_id="e_rm",
+    )
     setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
-    entry.entry_id = "e_rm"
+    hass = ph_hass
     hass.data = {}
 
     class FakeReg:
@@ -270,7 +283,7 @@ async def test_async_setup_entry_removes_previous_mac(monkeypatch, hass, coordin
     assert hass.config_entries.async_update_entry.called
 
 
-def test_handle_coordinator_update_expires_positive(coordinator):
+def test_handle_coordinator_update_expires_positive(coordinator, make_config_entry):
     coordinator.data = {
         "arp_table": [
             {
@@ -284,7 +297,7 @@ def test_handle_coordinator_update_expires_positive(coordinator):
         "update_time": float(int(datetime.now().timestamp())),
     }
 
-    entry = make_config_entry()
+    entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
 
     ent = dt_mod.OPNsenseScannerEntity(
@@ -295,18 +308,17 @@ def test_handle_coordinator_update_expires_positive(coordinator):
         mac_vendor=None,
         hostname=None,
     )
-    ent._attr_extra_state_attributes = {}
     ent.async_write_ha_state = MagicMock()
 
     ent._handle_coordinator_update()
-    assert isinstance(ent._attr_extra_state_attributes.get("expires"), datetime)
+    assert isinstance(ent.extra_state_attributes.get("expires"), datetime)
 
 
-def test_handle_coordinator_update_ip_typeerror(coordinator):
+def test_handle_coordinator_update_ip_typeerror(coordinator, make_config_entry):
     # entry ip is None which causes TypeError in len() -> should be handled
     coordinator.data = {"arp_table": [{"mac": "aa:bb:cc", "ip": None}]}
 
-    entry = make_config_entry()
+    entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
 
     ent = dt_mod.OPNsenseScannerEntity(
@@ -317,7 +329,6 @@ def test_handle_coordinator_update_ip_typeerror(coordinator):
         mac_vendor=None,
         hostname=None,
     )
-    ent._attr_extra_state_attributes = {}
     ent.async_write_ha_state = MagicMock()
 
     ent._handle_coordinator_update()
@@ -325,12 +336,12 @@ def test_handle_coordinator_update_ip_typeerror(coordinator):
     assert ent.ip_address is None
 
 
-def test_handle_coordinator_update_expired_preserve_last_known_ip(coordinator):
+def test_handle_coordinator_update_expired_preserve_last_known_ip(coordinator, make_config_entry):
     # expired entry should set is_connected False and preserve last_known_ip
     # no ip in entry triggers branch where last_known_ip is preserved
     coordinator.data = {"arp_table": [{"mac": "aa:bb:cc", "expired": True}]}
 
-    entry = make_config_entry()
+    entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
 
     ent = dt_mod.OPNsenseScannerEntity(
@@ -341,22 +352,28 @@ def test_handle_coordinator_update_expired_preserve_last_known_ip(coordinator):
         mac_vendor=None,
         hostname=None,
     )
-    ent._attr_extra_state_attributes = {}
     ent._last_known_ip = "1.2.3.4"
     ent.async_write_ha_state = MagicMock()
 
     ent._handle_coordinator_update()
     assert ent.is_connected is False
-    assert ent._attr_extra_state_attributes.get("last_known_ip") == "1.2.3.4"
+    assert ent.extra_state_attributes.get("last_known_ip") == "1.2.3.4"
+    assert ent.icon == "mdi:lan-disconnect"
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_from_arp_entries(monkeypatch, hass, coordinator):
+async def test_async_setup_entry_from_arp_entries(
+    monkeypatch, ph_hass, coordinator, make_config_entry
+):
     # when CONF_DEVICES not set but device tracker enabled, create entity per arp entry
     coordinator.data = {"arp_table": [{"mac": "m1"}, {"mac": "m2", "hostname": "h2"}]}
-    entry = make_config_entry(options={dt_mod.CONF_DEVICE_TRACKER_ENABLED: True})
+    entry = make_config_entry(
+        data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"},
+        options={dt_mod.CONF_DEVICE_TRACKER_ENABLED: True},
+        entry_id="eid2",
+    )
     setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
-    entry.entry_id = "eid2"
+    hass = ph_hass
     hass.data = {}
     hass.config_entries.async_update_entry = MagicMock()
 
@@ -364,3 +381,5 @@ async def test_async_setup_entry_from_arp_entries(monkeypatch, hass, coordinator
 
     await dt_mod.async_setup_entry(hass, entry, lambda ents: added.extend(ents))
     assert len(added) == 2
+    assert all(isinstance(e, dt_mod.OPNsenseScannerEntity) for e in added)
+    assert {e.unique_id for e in added} == {"dev1_mac_m1", "dev1_mac_m2"}

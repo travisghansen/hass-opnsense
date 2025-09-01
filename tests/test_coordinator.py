@@ -10,7 +10,6 @@ import time
 from unittest.mock import MagicMock
 
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.opnsense import coordinator as coordinator_module
 from custom_components.opnsense.const import (
@@ -61,19 +60,15 @@ async def test_init_requires_config_entry():
         )
 
 
-def _make_entry(data=None):
-    data = data or {CONF_DEVICE_UNIQUE_ID: "id"}
-    entry = MockConfigEntry(domain="opnsense", data=data, title="t")
-    entry.runtime_data = {}
-    return entry
+# Use the shared `make_config_entry` fixture from tests/conftest.py in tests below.
 
 
 @pytest.mark.asyncio
-async def test_build_categories_respects_flags():
-    entry = _make_entry(
+async def test_build_categories_respects_flags(make_config_entry, fake_client):
+    entry = make_config_entry(
         {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
     )
-    client = FakeClient()
+    client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
         hass=MagicMock(),
         client=client,
@@ -89,15 +84,15 @@ async def test_build_categories_respects_flags():
 
 
 @pytest.mark.asyncio
-async def test_get_states_handles_missing_method_and_calls():
-    client = FakeClient()
+async def test_get_states_handles_missing_method_and_calls(make_config_entry, fake_client):
+    client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
         hass=MagicMock(),
         client=client,
         name="n",
         update_interval=timedelta(seconds=1),
         device_unique_id="id",
-        config_entry=_make_entry(),
+        config_entry=make_config_entry(),
     )
     categories = [
         {"function": "get_telemetry", "state_key": "telemetry"},
@@ -109,9 +104,11 @@ async def test_get_states_handles_missing_method_and_calls():
 
 
 @pytest.mark.asyncio
-async def test_check_device_unique_id_mismatch_triggers_issue(monkeypatch):
-    entry = _make_entry({CONF_DEVICE_UNIQUE_ID: "expected"})
-    client = FakeClient()
+async def test_check_device_unique_id_mismatch_triggers_issue(
+    monkeypatch, make_config_entry, fake_client
+):
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "expected"})
+    client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
         hass=MagicMock(),
         client=client,
@@ -159,8 +156,9 @@ async def test_calculate_speed_normal_and_exception():
         current_parent_value=200,
         previous_parent_value=100,
     )
-    assert new_prop.endswith("packets_per_second")
+    assert new_prop == "inpkts_packets_per_second"
     assert isinstance(value, int)
+    assert value == 50
 
     # zero elapsed_time -> exception handled -> rate 0
     new_prop2, value2 = await OPNsenseDataUpdateCoordinator._calculate_speed(
@@ -173,11 +171,11 @@ async def test_calculate_speed_normal_and_exception():
 
 
 @pytest.mark.asyncio
-async def test_calculate_entity_speeds_applies_calculations():
-    entry = _make_entry(
+async def test_calculate_entity_speeds_applies_calculations(make_config_entry, fake_client):
+    entry = make_config_entry(
         {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
     )
-    client = FakeClient()
+    client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
         hass=MagicMock(),
         client=client,
@@ -200,14 +198,47 @@ async def test_calculate_entity_speeds_applies_calculations():
         },
     }
 
-    # Should not raise
+    # calculate speeds and assert expected rate fields exist with correct values
     await coord._calculate_entity_speeds()
+
+    # delta_time between now and previous_state is 2 seconds
+    # coordinator stores byte rates as kilobytes_per_second (rounded) and
+    # packet rates as packets_per_second (rounded). Assert those keys/values.
+    assert "interfaces" in coord._state
+    eth0 = coord._state["interfaces"]["eth0"]
+    # byte rates -> kilobytes_per_second (rounded)
+    assert "inbytes_kilobytes_per_second" in eth0
+    assert "outbytes_kilobytes_per_second" in eth0
+    # packet rates -> packets_per_second
+    assert "inpkts_packets_per_second" in eth0
+    assert "outpkts_packets_per_second" in eth0
+
+    # Compute expected rounded values
+    # inbytes: change = 100 B/s -> 100 / 2 = 50 B/s -> 50 / 1000 = 0.05 KB/s -> round = 0
+    # outbytes: change = 50 B/s -> 25 B/s -> 0.025 KB/s -> round = 0
+    assert eth0["inbytes_kilobytes_per_second"] == 0
+    assert eth0["outbytes_kilobytes_per_second"] == 0
+    assert eth0["inpkts_packets_per_second"] == 100
+    assert eth0["outpkts_packets_per_second"] == 50
+
+    # openvpn server s1 expected rates (kilobytes_per_second, rounded)
+    assert "openvpn" in coord._state
+    assert "servers" in coord._state["openvpn"]
+    s1 = coord._state["openvpn"]["servers"]["s1"]
+    assert "total_bytes_recv_kilobytes_per_second" in s1
+    assert "total_bytes_sent_kilobytes_per_second" in s1
+    # total_bytes_recv: (1000-500)/2 = 250 B/s -> 0.25 KB/s -> round = 0
+    # total_bytes_sent: (2000-1000)/2 = 500 B/s -> 0.5 KB/s -> round = 0
+    assert s1["total_bytes_recv_kilobytes_per_second"] == 0
+    assert s1["total_bytes_sent_kilobytes_per_second"] == 0
 
 
 @pytest.mark.asyncio
-async def test_async_update_data_reentrancy_and_full_flow(monkeypatch):
-    entry = _make_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True})
-    client = FakeClient()
+async def test_async_update_data_reentrancy_and_full_flow(
+    monkeypatch, make_config_entry, fake_client
+):
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True})
+    client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
         hass=MagicMock(),
         client=client,
@@ -237,17 +268,24 @@ async def test_async_update_data_reentrancy_and_full_flow(monkeypatch):
     # run update; should return a dict
     out = await coord._async_update_data()
     assert isinstance(out, dict)
+    # Verify returned dict is the coordinator's state and bookkeeping completed
+    assert out == coord._state
+    assert coord._updating is False
+    # Ensure a last-update marker exists via DataUpdateCoordinator API
+    assert isinstance(coord.last_update_success, bool)
 
 
 @pytest.mark.asyncio
-async def test_async_setup_calls_client_set_use_snake_case(monkeypatch):
+async def test_async_setup_calls_client_set_use_snake_case(
+    monkeypatch, make_config_entry, fake_client
+):
     called = {"count": 0}
 
     async def fake_set_use_snake_case():
         called["count"] += 1
 
-    entry = _make_entry()
-    client = FakeClient()
+    entry = make_config_entry()
+    client = fake_client()()
     client.set_use_snake_case = fake_set_use_snake_case
     coord = OPNsenseDataUpdateCoordinator(
         hass=MagicMock(),
@@ -272,13 +310,14 @@ async def test_calculate_speed_bytes_case():
         current_parent_value=2000,
         previous_parent_value=1000,
     )
-    assert "kilobytes_per_second" in new_prop
+    assert new_prop == "inbytes_kilobytes_per_second"
     assert isinstance(value, int)
+    assert value == 0  # (2000-1000)/2 = 500 B/s -> 0.5 KB/s -> round -> 0
 
 
-def test_build_categories_returns_empty_when_no_config():
-    entry = _make_entry()
-    client = FakeClient()
+def test_build_categories_returns_empty_when_no_config(make_config_entry, fake_client):
+    entry = make_config_entry()
+    client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
         hass=MagicMock(),
         client=client,

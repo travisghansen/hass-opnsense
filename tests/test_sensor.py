@@ -1,22 +1,14 @@
-"""Unit tests for custom_components.opnsense.sensor.
+"""These tests import the integration code via relative imports and assert behavior across sensor variants using a synthesized coordinator state."""
 
-These tests use relative imports from the package root to locate the integration code.
-They are tolerant: if the expected function is not present in the sensor module the tests
-will be skipped rather than failing, making the test file safe to add to the repository
-without breaking CI for different code states.
-"""
-
-from contextlib import suppress
+import datetime
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.opnsense import sensor as sensor_module
 from custom_components.opnsense.const import (
-    CONF_DEVICE_UNIQUE_ID,
     CONF_SYNC_CARP,
     CONF_SYNC_CERTIFICATES,
     CONF_SYNC_DHCP_LEASES,
@@ -50,20 +42,10 @@ from custom_components.opnsense.sensor import (
 )
 
 
-def _make_config_entry() -> MockConfigEntry:
-    """Return a minimal MockConfigEntry for tests."""
-    entry = MockConfigEntry(
-        domain="opnsense", data={CONF_DEVICE_UNIQUE_ID: "test-device-123"}, title="OPNsense Test"
-    )
-    # Use a dict for runtime_data so tests can assign coordinator by key when needed
-    entry.runtime_data = {}
-    return entry
-
-
 @pytest.mark.asyncio
-async def test_async_setup_entry_invalid_state(monkeypatch):
+async def test_async_setup_entry_invalid_state(make_config_entry):
     """async_setup_entry should do nothing when coordinator.data is invalid."""
-    config_entry = _make_config_entry()
+    config_entry = make_config_entry()
     # runtime_data used by async_setup_entry expects an attribute named COORDINATOR
     coordinator = SimpleNamespace(data=None)
     config_entry.runtime_data = SimpleNamespace(**{COORDINATOR: coordinator})
@@ -79,7 +61,7 @@ async def test_async_setup_entry_invalid_state(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_static_key_sensor_cpu_and_boot_and_certificates():
+async def test_static_key_sensor_cpu_and_boot_and_certificates(make_config_entry):
     coordinator = SimpleNamespace(
         data={
             "telemetry": {
@@ -90,7 +72,7 @@ async def test_static_key_sensor_cpu_and_boot_and_certificates():
         }
     )
 
-    entry = _make_config_entry()
+    entry = make_config_entry()
 
     # CPU total sensor
     desc = MagicMock()
@@ -106,7 +88,8 @@ async def test_static_key_sensor_cpu_and_boot_and_certificates():
     s_cpu._handle_coordinator_update()
     assert s_cpu.available is True
     assert s_cpu.native_value == 30
-    assert "1" not in s_cpu.extra_state_attributes or isinstance(s_cpu.extra_state_attributes, dict)
+    assert s_cpu.extra_state_attributes.get("1") == "10%"
+    assert s_cpu.extra_state_attributes.get("2") == "20%"
 
     # boottime sensor -> converted to datetime
     desc2 = MagicMock()
@@ -120,7 +103,7 @@ async def test_static_key_sensor_cpu_and_boot_and_certificates():
     s_boot.async_write_ha_state = lambda: None
     s_boot._handle_coordinator_update()
     assert s_boot.available is True
-    assert s_boot.native_value is not None
+    assert isinstance(s_boot.native_value, datetime.datetime)
 
     # certificates -> length
     desc3 = MagicMock()
@@ -138,7 +121,7 @@ async def test_static_key_sensor_cpu_and_boot_and_certificates():
 
 
 @pytest.mark.asyncio
-async def test_filesystem_and_compile_helpers():
+async def test_filesystem_and_compile_helpers(make_config_entry):
     state = {
         "telemetry": {
             "filesystems": [
@@ -154,12 +137,13 @@ async def test_filesystem_and_compile_helpers():
             ]
         }
     }
-    entry = _make_config_entry()
+    entry = make_config_entry()
     coordinator = SimpleNamespace(data=state)
 
     # compile filesystem sensors directly
     entities = await _compile_filesystem_sensors(entry, coordinator, state)
-    assert any("telemetry.filesystems.root" in e.entity_description.key for e in entities)
+    roots = [e for e in entities if e.entity_description.key.endswith(".root")]
+    assert len(roots) == 1
 
     # instance sensor behavior
     desc = MagicMock()
@@ -176,8 +160,8 @@ async def test_filesystem_and_compile_helpers():
     assert s_fs.native_value == 9
     assert s_fs.extra_state_attributes["mountpoint"] == "/"
 
-    # missing used_pct -> unavailable
-    state2 = {"telemetry": {"filesystems": [{"mountpoint": "/var"}]}}
+    # missing used_pct -> unavailable (target the root mountpoint to match the descriptor)
+    state2 = {"telemetry": {"filesystems": [{"mountpoint": "/"}]}}
     coordinator2 = SimpleNamespace(data=state2)
     s_fs2 = OPNsenseFilesystemSensor(
         config_entry=entry, coordinator=coordinator2, entity_description=desc
@@ -190,7 +174,7 @@ async def test_filesystem_and_compile_helpers():
 
 
 @pytest.mark.asyncio
-async def test_interface_and_icon_behavior():
+async def test_interface_and_icon_behavior(make_config_entry):
     state = {
         "interfaces": {
             "lan": {
@@ -202,7 +186,7 @@ async def test_interface_and_icon_behavior():
             }
         }
     }
-    entry = _make_config_entry()
+    entry = make_config_entry()
     coordinator = SimpleNamespace(data=state)
 
     # inbytes sensor
@@ -233,8 +217,38 @@ async def test_interface_and_icon_behavior():
     assert s_status.icon == "mdi:close-network-outline"
 
 
-@pytest.mark.asyncio
-async def test_carp_and_gateway_and_vpn_and_temp_and_dhcp():
+@pytest.mark.parametrize(
+    "desc_key,cls,main_check,extra_check",
+    [
+        (
+            f"carp.interface.{sensor_module.slugify('10.0.0.1')}",
+            OPNsenseCarpInterfaceSensor,
+            lambda s: s.native_value == "MASTER",
+            lambda s: s.icon != "mdi:close-network-outline",
+        ),
+        (
+            "gateway.gw1.delay",
+            OPNsenseGatewaySensor,
+            lambda s: float(s.native_value) == pytest.approx(12.0),
+            None,
+        ),
+        (
+            "openvpn.servers.uuid1.status",
+            OPNsenseVPNSensor,
+            lambda s: "clients" in s.extra_state_attributes,
+            None,
+        ),
+        ("telemetry.temps.sensor1", OPNsenseTempSensor, lambda s: s.native_value == 42, None),
+        (
+            "dhcp_leases.all",
+            OPNsenseDHCPLeasesSensor,
+            lambda s: isinstance(s.native_value, int),
+            None,
+        ),
+    ],
+)
+def test_compiled_sensor_variants(desc_key, cls, main_check, extra_check, make_config_entry):
+    """Table-driven checks for several sensor types using a common sample state."""
     state = {
         "carp_interfaces": [
             {"subnet": "10.0.0.1", "status": "MASTER", "interface": "lan0", "vhid": 1}
@@ -255,80 +269,24 @@ async def test_carp_and_gateway_and_vpn_and_temp_and_dhcp():
             "lease_interfaces": {"lan": "LAN"},
         },
     }
-    entry = _make_config_entry()
+
+    entry = make_config_entry()
     coordinator = SimpleNamespace(data=state)
 
-    # carp interface
-    desc_carp = MagicMock()
-    desc_carp.key = f"carp.interface.{sensor_module.slugify('10.0.0.1')}"
-    desc_carp.name = "CARP"
-    s_carp = OPNsenseCarpInterfaceSensor(
-        config_entry=entry, coordinator=coordinator, entity_description=desc_carp
-    )
-    s_carp.hass = MagicMock()
-    s_carp.entity_id = "sensor.carp"
-    s_carp.async_write_ha_state = lambda: None
-    s_carp._handle_coordinator_update()
-    assert s_carp.available is True
-    assert s_carp.native_value == "MASTER"
-    # icon falls back to super().icon for MASTER; ensure it's not the "down" icon
-    assert s_carp.icon != "mdi:close-network-outline"
+    desc = MagicMock()
+    desc.key = desc_key
+    desc.name = "Test"
 
-    # gateway cleanses ms and converts
-    desc_gw = MagicMock()
-    desc_gw.key = "gateway.gw1.delay"
-    desc_gw.name = "Gateway Delay"
-    s_gw = OPNsenseGatewaySensor(
-        config_entry=entry, coordinator=coordinator, entity_description=desc_gw
-    )
-    s_gw.hass = MagicMock()
-    s_gw.entity_id = "sensor.gw_delay"
-    s_gw.async_write_ha_state = lambda: None
-    s_gw._handle_coordinator_update()
-    assert s_gw.available is True
-    assert float(s_gw.native_value) == 12.0
+    s = cls(config_entry=entry, coordinator=coordinator, entity_description=desc)
+    s.hass = MagicMock()
+    s.entity_id = "sensor.test"
+    s.async_write_ha_state = lambda: None
+    s._handle_coordinator_update()
 
-    # VPN server with clients -> clients attr present
-    desc_vpn = MagicMock()
-    desc_vpn.key = "openvpn.servers.uuid1.status"
-    desc_vpn.name = "OpenVPN Server"
-    s_vpn = OPNsenseVPNSensor(
-        config_entry=entry, coordinator=coordinator, entity_description=desc_vpn
-    )
-    s_vpn.hass = MagicMock()
-    s_vpn.entity_id = "sensor.ovpn"
-    s_vpn.async_write_ha_state = lambda: None
-    s_vpn._handle_coordinator_update()
-    assert s_vpn.available is True
-    assert "clients" in s_vpn.extra_state_attributes
-
-    # temp
-    desc_temp = MagicMock()
-    desc_temp.key = "telemetry.temps.sensor1"
-    desc_temp.name = "Temp"
-    s_temp = OPNsenseTempSensor(
-        config_entry=entry, coordinator=coordinator, entity_description=desc_temp
-    )
-    s_temp.hass = MagicMock()
-    s_temp.entity_id = "sensor.temp"
-    s_temp.async_write_ha_state = lambda: None
-    s_temp._handle_coordinator_update()
-    assert s_temp.available is True
-    assert s_temp.native_value == 42
-
-    # dhcp leases all
-    desc_all = MagicMock()
-    desc_all.key = "dhcp_leases.all"
-    desc_all.name = "DHCP All"
-    s_all = OPNsenseDHCPLeasesSensor(
-        config_entry=entry, coordinator=coordinator, entity_description=desc_all
-    )
-    s_all.hass = MagicMock()
-    s_all.entity_id = "sensor.dhcp_all"
-    s_all.async_write_ha_state = lambda: None
-    s_all._handle_coordinator_update()
-    assert s_all.available is True
-    assert isinstance(s_all.native_value, int)
+    assert s.available is True
+    assert main_check(s)
+    if extra_check:
+        assert extra_check(s)
 
 
 def test_sensor_module_import() -> None:
@@ -371,45 +329,48 @@ def test_normalize_filesystem_mountpoint(input_value: Any, expected: str) -> Non
     assert normalize_filesystem_mountpoint(input_value) == expected
 
 
-def test_static_cpu_zero_unavailable():
-    coord = SimpleNamespace(data={"telemetry": {"cpu": {"usage_total": 0}}})
-    entry = _make_config_entry()
+@pytest.mark.parametrize(
+    "cpu_map,previous,expected_available,expected_value",
+    [
+        ({"usage_total": 0}, None, False, None),  # zero => unavailable
+        ({"usage_total": 0, "usage_1": 1}, 7, True, 7),  # zero but previous retained
+    ],
+)
+def test_static_cpu_zero_variants(
+    cpu_map: dict,
+    previous: int | None,
+    expected_available: bool,
+    expected_value: int | None,
+    make_config_entry,
+) -> None:
+    """Zero CPU total should mark sensor unavailable unless previous value exists.
+
+    Consolidates unavailable and use_previous behaviors into a single parameterized test.
+    """
+    coord = SimpleNamespace(data={"telemetry": {"cpu": cpu_map}})
+    # require fixture usage for config entry
+    entry = make_config_entry()
 
     desc = MagicMock()
     desc.key = "telemetry.cpu.usage_total"
     desc.name = "CPU Total"
 
-    s = OPNsenseStaticKeySensor(config_entry=entry, coordinator=coord, entity_description=desc)
-    s.hass = MagicMock()
-    s.entity_id = "sensor.cpu_zero"
-    s.async_write_ha_state = lambda: None
-    s._handle_coordinator_update()
-    assert s.available is False
+    sensor = OPNsenseStaticKeySensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.cpu_total"
+    sensor.async_write_ha_state = lambda: None
+    if previous is not None:
+        sensor._previous_value = previous
+    sensor._handle_coordinator_update()
+    assert sensor.available is expected_available
+    if expected_value is not None:
+        assert sensor.native_value == expected_value
 
 
-def test_static_cpu_zero_use_previous():
-    coord = SimpleNamespace(data={"telemetry": {"cpu": {"usage_total": 0, "usage_1": 1}}})
-    entry = _make_config_entry()
-
-    desc = MagicMock()
-    desc.key = "telemetry.cpu.usage_total"
-    desc.name = "CPU Total"
-
-    s = OPNsenseStaticKeySensor(config_entry=entry, coordinator=coord, entity_description=desc)
-    s.hass = MagicMock()
-    s.entity_id = "sensor.cpu_prev"
-    s.async_write_ha_state = lambda: None
-    # simulate previous value
-    s._previous_value = 7
-    s._handle_coordinator_update()
-    assert s.available is True
-    assert s.native_value == 7
-
-
-def test_gateway_empty_string_unavailable():
+def test_gateway_empty_string_unavailable(make_config_entry):
     state = {"gateways": {"gw1": {"name": "gw1", "status": ""}}}
     coord = SimpleNamespace(data=state)
-    entry = _make_config_entry()
+    entry = make_config_entry()
 
     desc = MagicMock()
     desc.key = "gateway.gw1.status"
@@ -423,10 +384,10 @@ def test_gateway_empty_string_unavailable():
     assert s.available is False
 
 
-def test_interface_status_icon_up():
+def test_interface_status_icon_up(make_config_entry):
     state = {"interfaces": {"lan": {"name": "LAN", "status": "up", "interface": "lan0"}}}
     coord = SimpleNamespace(data=state)
-    entry = _make_config_entry()
+    entry = make_config_entry()
 
     desc = MagicMock()
     desc.key = "interface.lan.status"
@@ -441,8 +402,8 @@ def test_interface_status_icon_up():
     assert s.icon != "mdi:close-network-outline"
 
 
-def _setup_entry_with_all_syncs(state: dict):
-    entry = _make_config_entry()
+def _setup_entry_with_all_syncs(state: dict, make_config_entry):
+    entry = make_config_entry()
     # enable all sync options; entry.data may be a mappingproxy so construct a new dict
     base = dict(entry.data)
     base.update(
@@ -457,14 +418,14 @@ def _setup_entry_with_all_syncs(state: dict):
         }
     )
     # create a new MockConfigEntry with the updated data to avoid mutating mappingproxy
-    entry = MockConfigEntry(domain=entry.domain, data=base, title=entry.title)
+    entry = make_config_entry(base)
     coord = SimpleNamespace(data=state)
     entry.runtime_data = SimpleNamespace(**{COORDINATOR: coord})
     return entry, coord
 
 
 @pytest.mark.asyncio
-async def test_compile_and_handle_many_entities():
+async def test_compile_and_handle_many_entities(make_config_entry):
     # craft a rich state to exercise many branches
     state = {
         "telemetry": {
@@ -544,7 +505,7 @@ async def test_compile_and_handle_many_entities():
         "certificates": {"a": 1},
     }
 
-    entry, coord = _setup_entry_with_all_syncs(state)
+    entry, coord = _setup_entry_with_all_syncs(state, make_config_entry)
 
     # compile all entity lists
     entities = []
@@ -562,19 +523,33 @@ async def test_compile_and_handle_many_entities():
     assert len(entities) > 0
 
     # Exercise each entity's update handler
+    failures: list[str] = []
     for i, ent in enumerate(entities):
         ent.hass = MagicMock()
         ent.entity_id = f"sensor.test_{i}"
         ent.async_write_ha_state = lambda: None
-        # call handler where present and ignore common data-related exceptions
-        with suppress(TypeError, KeyError, ZeroDivisionError, AttributeError):
+        # call handler and collect any unexpected exceptions per-entity so test
+        # reports which entity failed rather than silently swallowing errors.
+        try:
             ent._handle_coordinator_update()
+        except (
+            TypeError,
+            KeyError,
+            ZeroDivisionError,
+            AttributeError,
+        ) as e:  # collect expected data-related exceptions
+            failures.append(
+                f"entity={getattr(ent, 'entity_id', i)} type={type(e).__name__} msg={e!r}"
+            )
+
+    if failures:
+        pytest.fail("Exceptions raised by entity handlers:\n" + "\n".join(failures))
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_creates_entities():
+async def test_async_setup_entry_creates_entities(make_config_entry):
     state = {"telemetry": {"filesystems": [], "temps": {}}, "interfaces": {}, "gateways": {}}
-    entry, coord = _setup_entry_with_all_syncs(state)
+    entry, coord = _setup_entry_with_all_syncs(state, make_config_entry)
 
     created: list = []
 
@@ -582,12 +557,13 @@ async def test_async_setup_entry_creates_entities():
         created.extend(ents)
 
     await async_setup_entry(MagicMock(), entry, add_entities)
-    assert isinstance(created, list)
-    # should not error and should return a list (may be empty depending on static lists)
+    # Ensure setup produced at least one created entity
+    assert created, "no entities created"
+    assert any(isinstance(e, OPNsenseStaticKeySensor) for e in created)
 
 
 @pytest.mark.asyncio
-async def test_compile_interface_sensors_values_end():
+async def test_compile_interface_sensors_values_end(make_config_entry):
     """Extra test to ensure interface sensors report expected numeric values."""
     state = {
         "interfaces": {
@@ -603,7 +579,7 @@ async def test_compile_interface_sensors_values_end():
             }
         }
     }
-    entry = _make_config_entry()
+    entry = make_config_entry()
     coordinator = SimpleNamespace(data=state)
 
     entities = await _compile_interface_sensors(entry, coordinator, state)

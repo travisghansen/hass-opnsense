@@ -142,6 +142,18 @@ async def validate_input(
             key="cannot_connect_ssl",
             message=f"Aiohttp Error. {type(e).__name__}: {e}",
         )
+    except (aiohttp.TooManyRedirects, aiohttp.RedirectClientError) as e:
+        _log_and_set_error(
+            errors=errors,
+            key="url_redirect",
+            message=f"Redirect Error. {type(e).__name__}: {e}",
+        )
+    except (TimeoutError, aiohttp.ServerTimeoutError) as e:
+        _log_and_set_error(
+            errors=errors,
+            key="connect_timeout",
+            message=f"Timeout Error. {type(e).__name__}: {e}",
+        )
     except aiohttp.ClientResponseError as e:
         if e.status == 401:
             errors["base"] = "invalid_auth"
@@ -150,12 +162,6 @@ async def validate_input(
         else:
             errors["base"] = "cannot_connect"
         _LOGGER.error("Aiohttp Error. %s: %s", type(e).__name__, e)
-    except (aiohttp.ClientError, aiohttp.ClientConnectorError, socket.gaierror) as e:
-        _log_and_set_error(
-            errors=errors,
-            key="cannot_connect",
-            message=f"Aiohttp Error. {type(e).__name__}: {e}",
-        )
     except xmlrpc.client.ProtocolError as e:
         error_message = str(e)
         if "307 Temporary Redirect" in error_message or "301 Moved Permanently" in error_message:
@@ -168,17 +174,11 @@ async def validate_input(
                 [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
             )
         )
-    except (aiohttp.TooManyRedirects, aiohttp.RedirectClientError) as e:
+    except (aiohttp.ClientError, socket.gaierror) as e:
         _log_and_set_error(
             errors=errors,
-            key="url_redirect",
-            message=f"Redirect Error. {type(e).__name__}: {e}",
-        )
-    except (TimeoutError, aiohttp.ServerTimeoutError) as e:
-        _log_and_set_error(
-            errors=errors,
-            key="connect_timeout",
-            message=f"Timeout Error. {type(e).__name__}: {e}",
+            key="cannot_connect",
+            message=f"Aiohttp Error. {type(e).__name__}: {e}",
         )
     except OSError as e:
         error_message = str(e)

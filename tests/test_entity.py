@@ -3,70 +3,58 @@
 from unittest.mock import MagicMock
 
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID
 from custom_components.opnsense.entity import OPNsenseBaseEntity, OPNsenseEntity
+from homeassistant.util import slugify
 
 
-class DummyCoordinator(MagicMock):
-    """Lightweight coordinator mock used by the entities.
-
-    Use a MagicMock so that callbacks registered synchronously do not create
-    AsyncMock coroutines that are never awaited. Tests can set async attributes
-    individually to AsyncMock when they need awaitable behavior.
-    """
-
-
-def _make_entry(title: str | None = "TestDevice", data: dict | None = None):
-    data = data or {CONF_DEVICE_UNIQUE_ID: "dev-123", "url": "http://x"}
-    entry = MockConfigEntry(domain="opnsense", data=data, title=title or "")
-    entry.runtime_data = MagicMock()
-    return entry
-
-
-def test_init_sets_unique_and_name_suffixes():
-    entry = _make_entry(title="MyBox")
-    coord = DummyCoordinator()
+def test_init_sets_unique_and_name_suffixes(make_config_entry, dummy_coordinator):
+    entry = make_config_entry({"device_unique_id": "dev-123", "url": "http://x"}, title="MyBox")
+    coord = dummy_coordinator
     ent = OPNsenseBaseEntity(
         config_entry=entry, coordinator=coord, unique_id_suffix="suf", name_suffix="Name"
     )
 
     assert hasattr(ent, "_attr_unique_id")
-    # slugify may normalize characters (e.g. '-' -> '_'), assert suffix and device id present
+    # deterministically compute expected slug from device_unique_id and assert
+    device_unique = entry.data.get("device_unique_id")
+    expected_prefix = slugify(device_unique)
+    # entity unique id is slugified(device_unique_id) + '_' + suffix
+    assert ent._attr_unique_id.startswith(f"{expected_prefix}_")
     assert ent._attr_unique_id.endswith("_suf")
-    assert "dev" in ent._attr_unique_id
     assert hasattr(ent, "_attr_name")
     assert ent._attr_name == "MyBox Name"
 
 
-def test_available_property_toggle():
-    entry = _make_entry()
-    coord = DummyCoordinator()
+def test_available_property_toggle(make_config_entry, dummy_coordinator):
+    entry = make_config_entry()
+    coord = dummy_coordinator
     ent = OPNsenseBaseEntity(config_entry=entry, coordinator=coord)
     assert ent.available is False
     ent._available = True
     assert ent.available is True
 
 
-def test_opnsense_device_name_prefers_title_and_fallback_to_state():
+def test_opnsense_device_name_prefers_title_and_fallback_to_state(
+    make_config_entry, dummy_coordinator
+):
     # when title present
-    entry = _make_entry(title="BoxTitle")
-    coord = DummyCoordinator()
+    entry = make_config_entry({"device_unique_id": "dev-123", "url": "http://x"}, title="BoxTitle")
+    coord = dummy_coordinator
     ent = OPNsenseBaseEntity(config_entry=entry, coordinator=coord)
     assert ent.opnsense_device_name == "BoxTitle"
 
     # when title empty -> falls back to coordinator.data system_info.name
-    entry2 = _make_entry(title="")
-    coord2 = DummyCoordinator()
+    entry2 = make_config_entry({"device_unique_id": "dev-123", "url": "http://x"}, title="")
+    coord2 = type(dummy_coordinator)()
     coord2.data = {"system_info": {"name": "FromState"}}
     ent2 = OPNsenseBaseEntity(config_entry=entry2, coordinator=coord2)
     assert ent2.opnsense_device_name == "FromState"
 
 
-def test_get_opnsense_state_value_nested_lookup():
-    entry = _make_entry()
-    coord = DummyCoordinator()
+def test_get_opnsense_state_value_nested_lookup(make_config_entry, dummy_coordinator):
+    entry = make_config_entry()
+    coord = dummy_coordinator
     coord.data = {"a": {"b": {"c": 5}}}
     ent = OPNsenseBaseEntity(config_entry=entry, coordinator=coord)
     assert ent._get_opnsense_state_value("a.b.c") == 5
@@ -74,11 +62,15 @@ def test_get_opnsense_state_value_nested_lookup():
 
 
 @pytest.mark.asyncio
-async def test_async_added_to_hass_sets_client_and_calls_update(monkeypatch):
-    entry = _make_entry()
-    coord = DummyCoordinator()
+async def test_async_added_to_hass_sets_client_and_calls_update(
+    make_config_entry, dummy_coordinator
+):
+    entry = make_config_entry()
+    coord = dummy_coordinator
     # provide a runtime client
     client = object()
+    # make_config_entry provides a dict for runtime_data; tests expect attribute access
+    entry.runtime_data = MagicMock()
     entry.runtime_data.opnsense_client = client
 
     ent = OPNsenseBaseEntity(config_entry=entry, coordinator=coord)
@@ -91,6 +83,8 @@ async def test_async_added_to_hass_sets_client_and_calls_update(monkeypatch):
 
     ent._handle_coordinator_update = fake_handle
 
+    # provide a minimal hass stub so lifecycle behaves more like real HA
+    ent.hass = MagicMock()
     # should not raise because runtime_data contains OPNSENSE_CLIENT
     await ent.async_added_to_hass()
     assert ent._client is client
@@ -98,9 +92,9 @@ async def test_async_added_to_hass_sets_client_and_calls_update(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_async_added_to_hass_missing_client_raises(monkeypatch):
-    entry = _make_entry()
-    coord = DummyCoordinator()
+async def test_async_added_to_hass_missing_client_raises(make_config_entry, dummy_coordinator):
+    entry = make_config_entry()
+    coord = dummy_coordinator
     # runtime_data has opnsense_client attribute but it's None -> triggers assertion
     entry.runtime_data = MagicMock()
     entry.runtime_data.opnsense_client = None
@@ -113,9 +107,9 @@ async def test_async_added_to_hass_missing_client_raises(monkeypatch):
         await ent.async_added_to_hass()
 
 
-def test_device_info_variants():
-    entry = _make_entry()
-    coord = DummyCoordinator()
+def test_device_info_variants(make_config_entry, dummy_coordinator):
+    entry = make_config_entry({"device_unique_id": "dev-123"})
+    coord = dummy_coordinator
     # when coordinator.data is None
     coord.data = None
     ent = OPNsenseEntity(config_entry=entry, coordinator=coord)
@@ -124,7 +118,7 @@ def test_device_info_variants():
     assert info["sw_version"] is None
 
     # when firmware present
-    coord2 = DummyCoordinator()
+    coord2 = type(dummy_coordinator)()
     coord2.data = {"host_firmware_version": "1.2.3"}
     ent2 = OPNsenseEntity(config_entry=entry, coordinator=coord2)
     info2 = ent2.device_info

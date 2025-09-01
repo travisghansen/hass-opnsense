@@ -41,8 +41,8 @@ async def test_get_clients_single_and_multiple(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_service_start_stop_restart_success_and_failure(monkeypatch, hass):
-    # prepare two clients: first returns False then second True
+async def test_service_start_stop_restart_success_and_failure(monkeypatch, ph_hass):
+    hass = ph_hass
     hass.data = {}
     # make both clients return True initially so the service calls succeed
     c1 = SimpleNamespace(
@@ -75,22 +75,23 @@ async def test_service_start_stop_restart_success_and_failure(monkeypatch, hass)
 
     # restart without only_if_running uses restart_service
     await services_mod._service_restart_service(hass, call)
-
-    # now make both clients fail for start -> should raise
-    c1.start_service = AsyncMock(return_value=False)
-    c2.start_service = AsyncMock(return_value=False)
-    with pytest.raises(ServiceValidationError):
-        await services_mod._service_start_service(hass, call)
+    c1.start_service.assert_awaited_once_with("svc")
+    c2.start_service.assert_awaited_once_with("svc")
+    c1.stop_service.assert_awaited_once_with("svc")
+    c2.stop_service.assert_awaited_once_with("svc")
+    c1.restart_service.assert_awaited_once_with("svc")
+    c2.restart_service.assert_awaited_once_with("svc")
 
 
 @pytest.mark.asyncio
-async def test_service_restart_only_if_running_and_reload_interface(monkeypatch, hass):
+async def test_service_restart_only_if_running_and_reload_interface(monkeypatch, ph_hass):
     c1 = SimpleNamespace(
         name="c1",
         restart_service_if_running=AsyncMock(return_value=True),
         restart_service=AsyncMock(return_value=True),
         reload_interface=AsyncMock(return_value=True),
     )
+    hass = ph_hass
     hass.data = {}
     hass.data[DOMAIN] = {"e1": c1}
     call = SimpleNamespace(data={"service_id": "svc", "only_if_running": True})
@@ -101,10 +102,24 @@ async def test_service_restart_only_if_running_and_reload_interface(monkeypatch,
     monkeypatch.setattr(services_mod, "_get_clients", fake_get)
     # should not raise
     await services_mod._service_restart_service(hass, call)
+    c1.restart_service_if_running.assert_awaited_once_with("svc")
+
+    # Failure path: client reports not running -> should raise ServiceValidationError
+    c1.restart_service_if_running = AsyncMock(return_value=False)
+
+    # ensure _get_clients still returns our single client
+    async def fake_get_single(*args, **kwargs):
+        return [c1]
+
+    monkeypatch.setattr(services_mod, "_get_clients", fake_get_single)
+
+    with pytest.raises(ServiceValidationError):
+        await services_mod._service_restart_service(hass, call)
 
     # reload_interface success
     call_iface = SimpleNamespace(data={"interface": "igb0"})
     await services_mod._service_reload_interface(hass, call_iface)
+    c1.reload_interface.assert_awaited_once_with("igb0")
 
     # reload_interface failure should raise
     c1.reload_interface = AsyncMock(return_value=False)
@@ -113,7 +128,45 @@ async def test_service_restart_only_if_running_and_reload_interface(monkeypatch,
 
 
 @pytest.mark.asyncio
-async def test_generate_vouchers_success_and_server_error(monkeypatch, hass):
+@pytest.mark.parametrize(
+    "method_name,ok_attr,bad_attr",
+    [
+        ("_service_start_service", "start_service", "start_service"),
+        ("_service_stop_service", "stop_service", "stop_service"),
+        ("_service_restart_service", "restart_service", "restart_service"),
+    ],
+)
+async def test_service_start_stop_restart_failure_variants(
+    monkeypatch, ph_hass, method_name, ok_attr, bad_attr
+):
+    """Parameterized failure tests for start/stop/restart service handlers.
+
+    For each handler, ensure that if any client returns False the handler
+    raises ServiceValidationError.
+    """
+    hass = ph_hass
+    hass.data = {}
+    # ok client returns True, bad client returns False for the method under test
+    ok_client = SimpleNamespace(name="ok")
+    bad_client = SimpleNamespace(name="bad")
+
+    setattr(ok_client, ok_attr, AsyncMock(return_value=True))
+    setattr(bad_client, bad_attr, AsyncMock(return_value=False))
+
+    async def fake_get(*args, **kwargs):
+        return [ok_client, bad_client]
+
+    monkeypatch.setattr(services_mod, "_get_clients", fake_get)
+    call = SimpleNamespace(data={"service_id": "svc"})
+
+    handler = getattr(services_mod, method_name)
+    with pytest.raises(ServiceValidationError):
+        await handler(hass, call)
+
+
+@pytest.mark.asyncio
+async def test_generate_vouchers_success_and_server_error(monkeypatch, ph_hass):
+    hass = ph_hass
     hass.data = {}
     # client returns a list of mapping vouchers
     vouchers = [{"code": "A1"}, {"code": "B2"}]
@@ -139,7 +192,8 @@ async def test_generate_vouchers_success_and_server_error(monkeypatch, hass):
 
 
 @pytest.mark.asyncio
-async def test_kill_states_success_and_failure(monkeypatch, hass):
+async def test_kill_states_success_and_failure(monkeypatch, ph_hass):
+    hass = ph_hass
     hass.data = {}
     c1 = SimpleNamespace(
         name="c1", kill_states=AsyncMock(return_value={"success": True, "dropped_states": 5})
@@ -152,7 +206,9 @@ async def test_kill_states_success_and_failure(monkeypatch, hass):
 
     monkeypatch.setattr(services_mod, "_get_clients", fake_get)
     resp = await services_mod._service_kill_states(hass, call)
-    assert "dropped_states" in resp
+    # Expect a payload containing the client name and dropped_states value
+    expected = {"dropped_states": [{"client_name": "c1", "dropped_states": 5}]}
+    assert resp == expected
 
     # failure -> raise
     c1.kill_states = AsyncMock(return_value={"success": False})
@@ -161,11 +217,12 @@ async def test_kill_states_success_and_failure(monkeypatch, hass):
 
 
 @pytest.mark.asyncio
-async def test_toggle_alias_failure(monkeypatch, hass):
+async def test_toggle_alias_failure(monkeypatch, ph_hass):
+    hass = ph_hass
     hass.data = {}
     c1 = SimpleNamespace(name="c1", toggle_alias=AsyncMock(return_value=False))
     hass.data[DOMAIN] = {"e1": c1}
-    call = SimpleNamespace(data={"alias": "a1", "toggle_on_off": "toggle"})
+    call = SimpleNamespace(data={"alias": "a1", "toggle_on_off": "on"})
 
     async def fake_get(*args, **kwargs):
         return [c1]
@@ -181,6 +238,53 @@ async def test_get_clients_no_data_returns_empty():
     hass.data = {}
     res = await services_mod._get_clients(hass)
     assert res == []
+
+
+@pytest.fixture
+def fake_get_empty(monkeypatch):
+    """Fixture that monkeypatches services_mod._get_clients to return an empty list."""
+
+    async def _fake_get_empty(*args, **kwargs):
+        return []
+
+    monkeypatch.setattr(services_mod, "_get_clients", _fake_get_empty)
+    return _fake_get_empty
+
+
+@pytest.mark.asyncio
+async def test_restart_service_no_clients_raises(ph_hass, fake_get_empty):
+    """If no clients are found, restarting a service should raise ServiceValidationError."""
+    hass = ph_hass
+    hass.data = {}
+
+    call = SimpleNamespace(data={"service_id": "svc"})
+
+    with pytest.raises(ServiceValidationError):
+        await services_mod._service_restart_service(hass, call)
+
+
+@pytest.mark.asyncio
+async def test_start_service_no_clients_raises(ph_hass, fake_get_empty):
+    """If no clients are found, starting a service should raise ServiceValidationError."""
+    hass = ph_hass
+    hass.data = {}
+
+    call = SimpleNamespace(data={"service_id": "svc"})
+
+    with pytest.raises(ServiceValidationError):
+        await services_mod._service_start_service(hass, call)
+
+
+@pytest.mark.asyncio
+async def test_stop_service_no_clients_raises(ph_hass, fake_get_empty):
+    """If no clients are found, stopping a service should raise ServiceValidationError."""
+    hass = ph_hass
+    hass.data = {}
+
+    call = SimpleNamespace(data={"service_id": "svc"})
+
+    with pytest.raises(ServiceValidationError):
+        await services_mod._service_stop_service(hass, call)
 
 
 @pytest.mark.asyncio
@@ -205,19 +309,19 @@ async def test_close_send_wol_and_system_calls(monkeypatch):
     # close notice
     call = SimpleNamespace(data={"id": "all"})
     await services_mod._service_close_notice(hass, call)
-    c.close_notice.assert_called()
+    c.close_notice.assert_awaited_once_with("all")
 
     # send wol
     call_wol = SimpleNamespace(data={"interface": "lan", "mac": "aa:bb:cc:dd:ee:ff"})
     await services_mod._service_send_wol(hass, call_wol)
-    c.send_wol.assert_called()
+    c.send_wol.assert_awaited_once_with("lan", "aa:bb:cc:dd:ee:ff")
 
     # system halt and reboot
     call_sys = SimpleNamespace(data={})
     await services_mod._service_system_halt(hass, call_sys)
-    c.system_halt.assert_called()
+    c.system_halt.assert_awaited_once()
     await services_mod._service_system_reboot(hass, call_sys)
-    c.system_reboot.assert_called()
+    c.system_reboot.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -231,7 +335,7 @@ async def test_toggle_alias_success_and_failure(monkeypatch):
     monkeypatch.setattr(services_mod, "_get_clients", fake_get_ok)
     hass = SimpleNamespace()
     hass.data = {DOMAIN: {"e1": c1}}
-    call = SimpleNamespace(data={"alias": "a1", "toggle_on_off": "toggle"})
+    call = SimpleNamespace(data={"alias": "a1", "toggle_on_off": "on"})
     # should not raise
     await services_mod._service_toggle_alias(hass, call)
 

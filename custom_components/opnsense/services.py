@@ -370,9 +370,8 @@ async def _service_restart_service(hass: HomeAssistant, call: ServiceCall) -> No
             if success is None or success:
                 success = response
     if success is None or not success:
-        raise ServiceValidationError(
-            f"Restart Service Failed. client: {client.name}, service: {call.data.get('service_id', call.data.get('service_name'))}"
-        )
+        service = call.data.get("service_id", call.data.get("service_name"))
+        raise ServiceValidationError(f"Restart Service Failed. service: {service}")
 
 
 async def _service_system_halt(hass: HomeAssistant, call: ServiceCall) -> None:
@@ -382,7 +381,7 @@ async def _service_system_halt(hass: HomeAssistant, call: ServiceCall) -> None:
         opnentity_id=call.data.get("entity_id", []),
     )
     for client in clients:
-        _LOGGER.debug("[service_system_halt] client: {client.name}")
+        _LOGGER.debug("[service_system_halt] client: %s", client.name)
         await client.system_halt()
 
 
@@ -393,7 +392,7 @@ async def _service_system_reboot(hass: HomeAssistant, call: ServiceCall) -> None
         opnentity_id=call.data.get("entity_id", []),
     )
     for client in clients:
-        _LOGGER.debug("[service_system_reboot] client: {client.name}")
+        _LOGGER.debug("[service_system_reboot] client: %s", client.name)
         await client.system_reboot()
 
 

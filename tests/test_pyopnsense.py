@@ -17,6 +17,7 @@ from xmlrpc.client import Fault
 
 import aiohttp
 import pytest
+from yarl import URL
 
 from custom_components.opnsense import (
     device_tracker as device_tracker_mod,
@@ -24,19 +25,6 @@ from custom_components.opnsense import (
     sensor as sensor_mod,
     switch as switch_mod,
 )
-
-# Utility function tests
-
-
-def test_wireguard_is_connected_true() -> None:
-    now = datetime.now().astimezone()
-    assert pyopnsense.wireguard_is_connected(now - timedelta(minutes=2)) is True
-
-
-def test_wireguard_is_connected_false() -> None:
-    now = datetime.now().astimezone()
-    assert pyopnsense.wireguard_is_connected(now - timedelta(minutes=5)) is False
-    assert pyopnsense.wireguard_is_connected(None) is False
 
 
 def test_human_friendly_duration() -> None:
@@ -67,6 +55,12 @@ def test_timestamp_to_datetime() -> None:
     assert pyopnsense.timestamp_to_datetime(None) is None
 
 
+# The `make_client` factory is provided as a fixture in `tests/conftest.py`.
+# Tests should accept `make_client` as a parameter and call it to construct
+# an `OPNsenseClient` instance. This keeps construction centralized and
+# avoids duplicate helpers in multiple test modules.
+
+
 def test_voucher_server_error() -> None:
     with pytest.raises(pyopnsense.VoucherServerError):
         raise pyopnsense.VoucherServerError
@@ -80,14 +74,9 @@ def test_try_to_int_and_float() -> None:
 
 
 @pytest.mark.asyncio
-async def test_safe_dict_get_and_list_get() -> None:
+async def test_safe_dict_get_and_list_get(make_client) -> None:
     session = MagicMock(spec=aiohttp.ClientSession)
-    client = pyopnsense.OPNsenseClient(
-        url="http://localhost",
-        username="user",
-        password="pass",
-        session=session,
-    )
+    client = make_client(session=session, username="user", password="pass")
     # Patch _get to return dict or list
     with patch.object(client, "_get", new=AsyncMock(return_value={"foo": "bar"})):
         result_dict = await client._safe_dict_get("/fake")
@@ -103,14 +92,9 @@ async def test_safe_dict_get_and_list_get() -> None:
 
 
 @pytest.mark.asyncio
-async def test_safe_dict_post_and_list_post() -> None:
+async def test_safe_dict_post_and_list_post(make_client) -> None:
     session = MagicMock(spec=aiohttp.ClientSession)
-    client = pyopnsense.OPNsenseClient(
-        url="http://localhost",
-        username="user",
-        password="pass",
-        session=session,
-    )
+    client = make_client(session=session, username="user", password="pass")
     with patch.object(client, "_post", new=AsyncMock(return_value={"foo": "bar"})):
         result_dict = await client._safe_dict_post("/fake")
         assert result_dict == {"foo": "bar"}
@@ -125,7 +109,7 @@ async def test_safe_dict_post_and_list_post() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_ip_key_sorting() -> None:
+async def test_get_ip_key_sorting(make_client) -> None:
     items = [
         {"address": "192.168.1.2"},
         {"address": "::1"},
@@ -140,7 +124,7 @@ async def test_get_ip_key_sorting() -> None:
 
 
 @pytest.mark.asyncio
-async def test_opnsenseclient_async_close() -> None:
+async def test_opnsenseclient_async_close(make_client) -> None:
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
         url="http://localhost",
@@ -158,25 +142,22 @@ async def test_opnsenseclient_async_close() -> None:
     worker1.done.return_value = False
     worker2.done.return_value = False
     client._workers = [worker1, worker2]
-    client._request_queue = MagicMock()
-    client._request_queue.empty.side_effect = [False, True]
+    # use a real asyncio.Queue so async_close exercises real queue semantics
+    client._request_queue = asyncio.Queue()
+    # put a dummy item so the while loop in async_close sees a non-empty queue
+    await client._request_queue.put(1)
     await client.async_close()
     worker1.cancel.assert_called()
     worker2.cancel.assert_called()
     monitor.cancel.assert_called()
 
 
-# Begin merged tests from test_pyopnsense_more.py and test_pyopnsense_extra.py
-
-
 @pytest.mark.asyncio
-async def test_get_host_firmware_set_use_snake_case_and_plugin_installed() -> None:
+async def test_get_host_firmware_set_use_snake_case_and_plugin_installed(make_client) -> None:
     """Ensure firmware parsing, snake_case detection and plugin detection work."""
     # create client/session for this test
     session = MagicMock(spec=aiohttp.ClientSession)
-    client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
-    )
+    client = make_client(session=session)
 
     # firmware valid semver
     client._safe_dict_get = AsyncMock(return_value={"product": {"product_version": "25.8.0"}})
@@ -203,12 +184,10 @@ async def test_get_host_firmware_set_use_snake_case_and_plugin_installed() -> No
 
 
 @pytest.mark.asyncio
-async def test_get_device_unique_id_and_system_info() -> None:
+async def test_get_device_unique_id_and_system_info(make_client) -> None:
     """Verify device unique id is derived from MACs and system info is returned."""
     session = MagicMock(spec=aiohttp.ClientSession)
-    client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
-    )
+    client = make_client(session=session)
 
     # device unique id from mac addresses
     client._safe_list_get = AsyncMock(
@@ -228,12 +207,10 @@ async def test_get_device_unique_id_and_system_info() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_firmware_update_info_triggers_check_on_conditions() -> None:
+async def test_get_firmware_update_info_triggers_check_on_conditions(make_client) -> None:
     """Trigger firmware update check when status is missing data or outdated."""
     session = MagicMock(spec=aiohttp.ClientSession)
-    client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
-    )
+    client = make_client(session=session)
 
     # Prepare a status that lacks data to force missing_data True and last_check missing
     status = {"product": {"product_version": "1.0", "product_latest": "2.0", "product_check": {}}}
@@ -245,12 +222,10 @@ async def test_get_firmware_update_info_triggers_check_on_conditions() -> None:
 
 
 @pytest.mark.asyncio
-async def test_service_management_and_get_services() -> None:
+async def test_service_management_and_get_services(make_client) -> None:
     """Exercise get_services(), get_service_is_running() and service control."""
     session = MagicMock(spec=aiohttp.ClientSession)
-    client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
-    )
+    client = make_client(session=session)
 
     client._safe_dict_get = AsyncMock(
         return_value={"rows": [{"name": "svc1", "running": 1, "id": "svc1"}]}
@@ -269,12 +244,10 @@ async def test_service_management_and_get_services() -> None:
 
 
 @pytest.mark.asyncio
-async def test_dhcp_leases_and_keep_latest_and_dnsmasq() -> None:
+async def test_dhcp_leases_and_keep_latest_and_dnsmasq(make_client) -> None:
     """Cover Kea and dnsmasq lease parsing and _keep_latest_leases helper."""
     session = MagicMock(spec=aiohttp.ClientSession)
-    client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
-    )
+    client = make_client(session=session)
 
     # _get_kea_interfaces returns mapping and kea leases: one valid
     client._safe_dict_get = AsyncMock(
@@ -336,12 +309,10 @@ async def test_dhcp_leases_and_keep_latest_and_dnsmasq() -> None:
 
 
 @pytest.mark.asyncio
-async def test_carp_and_reboot_and_wol() -> None:
+async def test_carp_and_reboot_and_wol(make_client) -> None:
     """Verify CARP interface discovery and system control endpoints (reboot/halt/WOL)."""
     session = MagicMock(spec=aiohttp.ClientSession)
-    client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
-    )
+    client = make_client(session=session)
 
     client._safe_dict_get = AsyncMock(return_value={"carp": {"allow": "1"}})
     assert await client.get_carp_status() is True
@@ -358,21 +329,19 @@ async def test_carp_and_reboot_and_wol() -> None:
 
     client._safe_dict_post = AsyncMock(return_value={"status": "ok"})
     assert await client.system_reboot() is True
-    assert await client.system_halt() is None or await client.system_halt() is None
+    result = await client.system_halt()
+    assert result is None
 
     client._safe_dict_post = AsyncMock(return_value={"status": "ok"})
-    assert await client.send_wol("em0", "aa:bb:cc") is False or isinstance(
-        await client.send_wol("em0", "aa:bb:cc"), bool
-    )
+    result = await client.send_wol("em0", "aa:bb:cc")
+    assert isinstance(result, bool)
 
 
 @pytest.mark.asyncio
-async def test_telemetry_and_temps_and_notices_and_unbound_blocklist() -> None:
+async def test_telemetry_and_temps_and_notices_and_unbound_blocklist(make_client) -> None:
     """Exercise telemetry harvesters, notices and unbound blocklist helper flows."""
     session = MagicMock(spec=aiohttp.ClientSession)
-    client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
-    )
+    client = make_client(session=session)
 
     # mbuf
     client._safe_list_post = AsyncMock(return_value={})
@@ -423,12 +392,10 @@ async def test_telemetry_and_temps_and_notices_and_unbound_blocklist() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_openvpn_and_fetch_details() -> None:
+async def test_get_openvpn_and_fetch_details(make_client) -> None:
     """Validate openvpn server/client discovery and fetch details flow."""
     session = MagicMock(spec=aiohttp.ClientSession)
-    client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
-    )
+    client = make_client(session=session)
 
     # Prepare fake responses for safe_gets
     sessions_info = {
@@ -496,7 +463,7 @@ async def test_get_openvpn_and_fetch_details() -> None:
 
 
 @pytest.mark.asyncio
-async def test_wireguard_processing_and_updates() -> None:
+async def test_wireguard_processing_and_updates(make_client) -> None:
     """Exercise static wireguard status update helpers and peer linking."""
     # Test static methods for wireguard processing and updates
     server = {
@@ -545,42 +512,39 @@ async def test_wireguard_processing_and_updates() -> None:
 
 
 @pytest.mark.asyncio
-async def test_toggle_vpn_instance_variants() -> None:
-    """Toggle OpenVPN/WireGuard instances and verify boolean responses."""
+@pytest.mark.parametrize(
+    "vpn_type,path,use_snake_case,post_resp,expected",
+    [
+        ("openvpn", "servers", False, {"changed": False}, False),
+        ("openvpn", "servers", False, [{"changed": True}, {"result": "ok"}], True),
+        ("wireguard", "clients", True, [{"changed": True}, {"result": "ok"}], True),
+        ("wireguard", "servers", False, {"changed": False}, False),
+    ],
+)
+async def test_toggle_vpn_instance_variants(
+    make_client, vpn_type, path, use_snake_case, post_resp, expected
+) -> None:
+    """Parametrized toggle_vpn_instance covering OpenVPN and WireGuard variants."""
     session = MagicMock(spec=aiohttp.ClientSession)
-    client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
-    )
+    client = make_client(session=session)
 
-    # openvpn: changed False -> should return False
-    client._safe_dict_post = AsyncMock(return_value={"changed": False})
-    res = await client.toggle_vpn_instance("openvpn", "servers", "uuid")
-    assert res is False
+    if use_snake_case:
+        client._use_snake_case = True
 
-    # openvpn: changed True and reconfigure ok
-    client._safe_dict_post = AsyncMock(side_effect=[{"changed": True}, {"result": "ok"}])
-    res = await client.toggle_vpn_instance("openvpn", "servers", "uuid")
-    assert res is True
+    if isinstance(post_resp, list):
+        client._safe_dict_post = AsyncMock(side_effect=post_resp)
+    else:
+        client._safe_dict_post = AsyncMock(return_value=post_resp)
 
-    # wireguard: clients path success
-    client._use_snake_case = True
-    client._safe_dict_post = AsyncMock(side_effect=[{"changed": True}, {"result": "ok"}])
-    res = await client.toggle_vpn_instance("wireguard", "clients", "uuid")
-    assert res is True
-
-    # wireguard: no change
-    client._safe_dict_post = AsyncMock(return_value={"changed": False})
-    res = await client.toggle_vpn_instance("wireguard", "servers", "uuid")
-    assert res is False
+    res = await client.toggle_vpn_instance(vpn_type, path, "uuid")
+    assert res is expected
 
 
 @pytest.mark.asyncio
-async def test_reload_interface_and_certificates_and_gateways() -> None:
+async def test_reload_interface_and_certificates_and_gateways(make_client) -> None:
     """Reload interface, list certificates, and list gateways parsing."""
     session = MagicMock(spec=aiohttp.ClientSession)
-    client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
-    )
+    client = make_client(session=session)
 
     client._use_snake_case = True
     client._safe_dict_post = AsyncMock(return_value={"message": "OK reload"})
@@ -615,12 +579,10 @@ async def test_reload_interface_and_certificates_and_gateways() -> None:
 
 
 @pytest.mark.asyncio
-async def test_generate_vouchers_and_kill_states_toggle_alias() -> None:
+async def test_generate_vouchers_and_kill_states_toggle_alias(make_client) -> None:
     """Generate vouchers, kill states and toggle alias flows."""
     session = MagicMock(spec=aiohttp.ClientSession)
-    client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
-    )
+    client = make_client(session=session)
 
     # generate_vouchers when voucher server provided
     data = {"username": 1, "voucher_server": "mysrv"}
@@ -660,12 +622,10 @@ async def test_generate_vouchers_and_kill_states_toggle_alias() -> None:
 
 
 @pytest.mark.asyncio
-async def test_notices_close_notice_and_unbound_blocklist() -> None:
+async def test_notices_close_notice_and_unbound_blocklist(make_client) -> None:
     """Test notice listing/closing and the unbound blocklist wrapper helpers."""
     session = MagicMock(spec=aiohttp.ClientSession)
-    client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
-    )
+    client = make_client(session=session)
 
     # get_notices: no pending
     client._safe_dict_get = AsyncMock(return_value={"a": {"statusCode": 2}})
@@ -699,43 +659,51 @@ async def test_notices_close_notice_and_unbound_blocklist() -> None:
     assert isinstance(res_on, bool) and isinstance(res_off, bool)
 
 
+@pytest.mark.parametrize(
+    "exc_factory,initial",
+    [
+        (lambda: TypeError("bad json"), False),
+        (lambda: Fault(1, "err"), False),
+        (lambda: socket.gaierror("name or service not known"), False),
+        (lambda: SSLError("ssl fail"), False),
+        (lambda: Fault(2, "err"), True),
+        (lambda: socket.gaierror("no host"), True),
+        (lambda: SSLError("ssl fail"), True),
+    ],
+)
 @pytest.mark.asyncio
-async def test_exec_php_exceptions_and_logging() -> None:
-    """Exercise _exec_php branches for TypeError, Fault, socket.gaierror, and SSLError."""
+async def test_exec_php_error_paths(exc_factory, initial: bool, make_client) -> None:  # type: ignore[no-untyped-def]
+    """_exec_php should swallow known exceptions and return {} regardless of initial flag.
+
+    Consolidates previous exec_php tests into one parameterized function covering:
+    - TypeError JSON issues
+    - xmlrpc.client.Fault
+    - socket.gaierror
+    - ssl.SSLError
+    With both initial False and initial True states.
+    """
     session = MagicMock(spec=aiohttp.ClientSession)
-    client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
-    )
-
-    # Patch _get_proxy().opnsense.exec_php to raise TypeError
+    client = make_client(session=session)
+    client._initial = initial
     proxy = MagicMock()
-    proxy.opnsense.exec_php.side_effect = TypeError("bad json")
+    proxy.opnsense.exec_php.side_effect = exc_factory()
     client._get_proxy = MagicMock(return_value=proxy)
-    res = await client._exec_php("echo 1;")
-    assert res == {}
-
-    # xmlrpc Fault path
-    proxy.opnsense.exec_php.side_effect = Fault(1, "err")
-    client._get_proxy = MagicMock(return_value=proxy)
-    res = await client._exec_php("echo 2;")
-    assert res == {}
-
-    # socket.gaierror path
-    proxy.opnsense.exec_php.side_effect = socket.gaierror("name or service not known")
-    client._get_proxy = MagicMock(return_value=proxy)
-    res = await client._exec_php("echo 3;")
-    assert res == {}
-
-    # ssl.SSLError path
-    proxy.opnsense.exec_php.side_effect = SSLError("ssl fail")
-    client._get_proxy = MagicMock(return_value=proxy)
-    res = await client._exec_php("echo 4;")
+    res = await client._exec_php("echo test;")
     assert res == {}
 
 
 @pytest.mark.asyncio
-async def test_do_get_post_error_initial_behavior() -> None:
-    """When client._initial is True, non-ok responses should raise ClientResponseError."""
+@pytest.mark.parametrize(
+    "method_name, session_method, args, kwargs",
+    [
+        ("_do_get", "get", ("/api/x",), {"caller": "tst"}),
+        ("_do_post", "post", ("/api/x",), {"payload": {}}),
+    ],
+)
+async def test_do_get_post_error_initial_behavior(
+    method_name, session_method, args, kwargs, make_client
+) -> None:
+    """When client._initial is True, non-ok responses should raise ClientResponseError for _do_get/_do_post."""
     session = MagicMock(spec=aiohttp.ClientSession)
 
     # create a fake response context manager
@@ -747,7 +715,7 @@ async def test_do_get_post_error_initial_behavior() -> None:
 
             # Provide a minimal request_info with real_url to satisfy logging
             class RI:
-                real_url = "http://localhost"
+                real_url = URL("http://localhost")
 
             self.request_info = RI()
             self.history = []
@@ -770,29 +738,21 @@ async def test_do_get_post_error_initial_behavior() -> None:
 
             return C()
 
-    def fake_get(*args, **kwargs):
-        return FakeResp(status=403, ok=False)
+    # attach the appropriate fake session method
+    if session_method == "get":
+        session.get = lambda *a, **k: FakeResp(status=403, ok=False)
+    else:
+        session.post = lambda *a, **k: FakeResp(status=500, ok=False)
 
-    session.get = fake_get
-    client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
-    )
+    client = make_client(session=session)
     client._initial = True
-    # _do_get should raise aiohttp.ClientResponseError when initial and status non-ok
-    with pytest.raises(aiohttp.ClientResponseError):
-        await client._do_get("/api/x", caller="tst")
 
-    # similarly for _do_post
-    def fake_post(*args, **kwargs):
-        return FakeResp(status=500, ok=False)
-
-    session.post = fake_post
     with pytest.raises(aiohttp.ClientResponseError):
-        await client._do_post("/api/x", payload={})
+        await getattr(client, method_name)(*args, **kwargs)
 
 
 @pytest.mark.asyncio
-async def test_get_from_stream_parsing() -> None:
+async def test_get_from_stream_parsing(make_client) -> None:
     """Simulate SSE-like stream with two messages and assert parsing returns dict."""
     session = MagicMock(spec=aiohttp.ClientSession)
 
@@ -826,11 +786,58 @@ async def test_get_from_stream_parsing() -> None:
         url="http://localhost", username="u", password="p", session=session
     )
     res = await client._do_get_from_stream("/stream", caller="tst")
+    # implementation returns the second 'data' message parsed as JSON
     assert isinstance(res, dict)
+    assert res.get("b") == 2
+    # ensure client closed to avoid lingering tasks
+    await client.async_close()
 
 
 @pytest.mark.asyncio
-async def test_call_many_client_methods_to_exercise_branches() -> None:
+async def test_get_from_stream_ignores_first_message(make_client) -> None:
+    """Ensure the parser ignores the first data message and returns the second."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+
+    class FakeStreamResp2:
+        def __init__(self):
+            self.status = 200
+            self.reason = "OK"
+            self.ok = True
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        @property
+        def content(self):
+            class C:
+                async def iter_chunked(self, n):
+                    # First message should be ignored by implementation
+                    yield b'data: {"id": "first", "body": "ignore me"}\n\n'
+                    yield b'data: {"id": "second", "body": "keep me"}\n\n'
+
+            return C()
+
+    def fake_get2(*args, **kwargs):
+        return FakeStreamResp2()
+
+    session.get = fake_get2
+    client = pyopnsense.OPNsenseClient(
+        url="http://localhost", username="u", password="p", session=session
+    )
+    res = await client._do_get_from_stream("/stream", caller="tst")
+    assert isinstance(res, dict)
+    # ensure the second message was selected
+    assert res.get("id") == "second"
+    assert res.get("body") == "keep me"
+    # ensure client closed to avoid lingering tasks
+    await client.async_close()
+
+
+@pytest.mark.asyncio
+async def test_call_many_client_methods_to_exercise_branches(make_client) -> None:
     """Dynamically call many async methods on OPNsenseClient with patched internals.
 
     This test intentionally swallows exceptions: its goal is to execute code paths,
@@ -890,10 +897,12 @@ async def test_call_many_client_methods_to_exercise_branches() -> None:
         else:
             with contextlib.suppress(Exception):
                 meth(*args)
+    # cleanup client to avoid leaving background tasks running
+    await client.async_close()
 
 
 @pytest.mark.asyncio
-async def test_certificates_kill_states_and_unbound_blocklist() -> None:
+async def test_certificates_kill_states_and_unbound_blocklist(make_client) -> None:
     """Cover get_certificates, kill_states and unbound blocklist toggles."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
@@ -928,34 +937,60 @@ async def test_certificates_kill_states_and_unbound_blocklist() -> None:
 
 
 @pytest.mark.asyncio
-async def test_generate_vouchers_server_selection_errors_and_success() -> None:
-    """generate_vouchers should raise when no servers or multiple servers exist; success when provided."""
+@pytest.mark.parametrize(
+    "safe_get_ret,safe_post_ret,data,expect_exc,expect_username,expect_extras",
+    [
+        ([], None, {}, pyopnsense.VoucherServerError, None, None),
+        (["s1", "s2"], None, {}, pyopnsense.VoucherServerError, None, None),
+        (
+            None,
+            [
+                {
+                    "username": "u",
+                    "password": "p",
+                    "vouchergroup": "g",
+                    "starttime": "t",
+                    "expirytime": 253402300799,
+                    "validity": 65,
+                }
+            ],
+            {"voucher_server": "srv"},
+            None,
+            "u",
+            ["expiry_timestamp", "validity_str"],
+        ),
+    ],
+)
+async def test_generate_vouchers_server_selection_errors_and_success(
+    safe_get_ret, safe_post_ret, data, expect_exc, expect_username, expect_extras
+):
+    """generate_vouchers: no servers / multiple servers -> error, provided server -> success.
+
+    Consolidated test covering error cases and success with optional extra fields.
+    """
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
         url="http://localhost", username="u", password="p", session=session
     )
 
-    # no servers available
-    client._use_snake_case = True
-    client._safe_list_get = AsyncMock(return_value=[])
-    with pytest.raises(pyopnsense.VoucherServerError):
-        await client.generate_vouchers({})
+    # follow original tests' snake_case setting where applicable
+    client._use_snake_case = False
+    if safe_get_ret is not None:
+        client._safe_list_get = AsyncMock(return_value=safe_get_ret)
+        with pytest.raises(expect_exc):
+            await client.generate_vouchers(data)
+        return
 
-    # multiple servers available
-    client._safe_list_get = AsyncMock(return_value=["s1", "s2"])
-    with pytest.raises(pyopnsense.VoucherServerError):
-        await client.generate_vouchers({})
-
-    # provided voucher_server in data -> will call _safe_list_post and return vouchers
-    client._safe_list_post = AsyncMock(
-        return_value=[{"username": "u", "password": "p", "validity": 60}]
-    )
-    res = await client.generate_vouchers({"voucher_server": "mysrv", "username": 1})
-    assert isinstance(res, list) and res[0].get("username") == "u"
+    # safe_post case: expect success and optional extra fields
+    client._safe_list_post = AsyncMock(return_value=safe_post_ret)
+    got = await client.generate_vouchers(data)
+    assert isinstance(got, list) and got[0].get("username") == expect_username
+    for key in expect_extras or []:
+        assert key in got[0]
 
 
 @pytest.mark.asyncio
-async def test_toggle_alias_flows() -> None:
+async def test_toggle_alias_flows(make_client) -> None:
     """toggle_alias returns False when not found or when subsequent calls fail; True on full success."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
@@ -981,7 +1016,7 @@ async def test_toggle_alias_flows() -> None:
 
 
 @pytest.mark.asyncio
-async def test_log_errors_decorator_re_raise_and_suppress() -> None:
+async def test_log_errors_decorator_re_raise_and_suppress(make_client) -> None:
     """The _log_errors decorator should re-raise when self._initial is True, otherwise suppress."""
 
     class Dummy:
@@ -1004,45 +1039,7 @@ async def test_log_errors_decorator_re_raise_and_suppress() -> None:
 
 
 @pytest.mark.asyncio
-async def test_exec_php_does_not_re_raise_when_initial_true() -> None:
-    """_exec_php handles socket/xmlrpc/ssl errors and should return {} even when _initial is True."""
-    session = MagicMock(spec=aiohttp.ClientSession)
-    client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
-    )
-    client._initial = True
-
-    proxy = MagicMock()
-    proxy.opnsense.exec_php.side_effect = Fault(1, "err")
-    client._get_proxy = MagicMock(return_value=proxy)
-    # Should not raise; should return {}
-    res = await client._exec_php("echo x;")
-    assert res == {}
-
-    proxy.opnsense.exec_php.side_effect = socket.gaierror("no host")
-    client._get_proxy = MagicMock(return_value=proxy)
-    res2 = await client._exec_php("echo y;")
-    assert res2 == {}
-
-
-@pytest.mark.asyncio
-async def test_exec_php_handles_ssl_error_gracefully() -> None:
-    """_exec_php should handle ssl.SSLError and return {} when initial is True."""
-    session = MagicMock(spec=aiohttp.ClientSession)
-    client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
-    )
-    client._initial = True
-
-    proxy = MagicMock()
-    proxy.opnsense.exec_php.side_effect = SSLError("ssl fail")
-    client._get_proxy = MagicMock(return_value=proxy)
-    res = await client._exec_php("echo z;")
-    assert res == {}
-
-
-@pytest.mark.asyncio
-async def test_get_from_stream_partial_chunks_accumulates_buffer() -> None:
+async def test_get_from_stream_partial_chunks_accumulates_buffer(make_client) -> None:
     """Simulate a stream where a JSON message is split across chunks to exercise buffer accumulation."""
     session = MagicMock(spec=aiohttp.ClientSession)
 
@@ -1082,7 +1079,7 @@ async def test_get_from_stream_partial_chunks_accumulates_buffer() -> None:
 
 
 @pytest.mark.asyncio
-async def test_openvpn_more_detail_parsing() -> None:
+async def test_openvpn_more_detail_parsing(make_client) -> None:
     """Exercise additional OpenVPN parsing branches (no sessions, missing fields)."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
@@ -1117,7 +1114,7 @@ async def test_openvpn_more_detail_parsing() -> None:
 
 
 @pytest.mark.asyncio
-async def test_monitor_queue_qsize_exception_is_handled() -> None:
+async def test_monitor_queue_qsize_exception_is_handled(make_client) -> None:
     """Ensure _monitor_queue swallows exceptions from queue.qsize()."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
@@ -1138,7 +1135,7 @@ async def test_monitor_queue_qsize_exception_is_handled() -> None:
 
 
 @pytest.mark.asyncio
-async def test_enable_and_disable_filter_rules_and_nat_port_forward() -> None:
+async def test_enable_and_disable_filter_rules_and_nat_port_forward(make_client) -> None:
     """Cover enabling/disabling filter rules and NAT port forward rule flows."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
@@ -1192,7 +1189,7 @@ def test_get_proxy_https_unverified_returns_serverproxy() -> None:
 
 
 @pytest.mark.asyncio
-async def test_process_queue_unknown_method_sets_future_exception() -> None:
+async def test_process_queue_unknown_method_sets_future_exception(make_client) -> None:
     """Putting an unknown method into the request queue should set an exception on the future."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
@@ -1213,14 +1210,13 @@ async def test_process_queue_unknown_method_sets_future_exception() -> None:
     task.cancel()
     # future should have an exception (NameError from undefined 'result')
     exc = future.exception()
-    assert exc is not None and isinstance(exc, Exception)
+    assert isinstance(exc, RuntimeError)
 
 
 def test_dict_get_and_timestamp_and_ipkey_utils() -> None:
     """Unit test small utility functions: dict_get, timestamp_to_datetime, get_ip_key."""
     data = {"a": {"b": [10, {"c": 3}]}, "x": "y"}
-    # note: dict_get currently doesn't index into lists by numeric path segments
-    # it will return None for numeric index access; ensure mapping access works
+    # dict_get supports numeric list indexing (see tests above); also verify mapping and defaults.
     assert pyopnsense.dict_get(data, "a.b") == [10, {"c": 3}]
     assert pyopnsense.dict_get(data, "missing.path", default=5) == 5
 
@@ -1241,7 +1237,7 @@ def test_dict_get_and_timestamp_and_ipkey_utils() -> None:
 
 
 @pytest.mark.asyncio
-async def test_manage_service_and_restart_if_running() -> None:
+async def test_manage_service_and_restart_if_running(make_client) -> None:
     """Test _manage_service and restart_service_if_running behavior."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
@@ -1265,7 +1261,9 @@ async def test_manage_service_and_restart_if_running() -> None:
 
 
 @pytest.mark.asyncio
-async def test_scanner_entity_handle_coordinator_update_missing_state_sets_unavailable() -> None:
+async def test_scanner_entity_handle_coordinator_update_missing_state_sets_unavailable(
+    make_client,
+) -> None:
     """OPNsenseScannerEntity should mark unavailable when coordinator state missing or invalid."""
 
     # minimal coordinator-like object
@@ -1289,20 +1287,19 @@ async def test_scanner_entity_handle_coordinator_update_missing_state_sets_unava
     assert ent._available is False
 
 
-def test_compile_filesystem_sensors_and_filter_switches() -> None:
+@pytest.mark.asyncio
+async def test_compile_filesystem_sensors_and_filter_switches() -> None:
     """Test sensor and switch compilation helpers for simple cases."""
     cfg = MagicMock()
     coord = MagicMock()
 
     # filesystem sensors: invalid state -> empty
-    loop = asyncio.get_event_loop()
-    # invalid state
-    sensors = loop.run_until_complete(sensor_mod._compile_filesystem_sensors(cfg, coord, None))
+    sensors = await sensor_mod._compile_filesystem_sensors(cfg, coord, None)
     assert sensors == []
 
     # valid filesystem state
     state = {"telemetry": {"filesystems": [{"mountpoint": "/"}]}}
-    sensors2 = loop.run_until_complete(sensor_mod._compile_filesystem_sensors(cfg, coord, state))
+    sensors2 = await sensor_mod._compile_filesystem_sensors(cfg, coord, state)
     assert isinstance(sensors2, list) and len(sensors2) == 1
 
     # filter switches: skip anti-lockout and nat-associated rules
@@ -1317,13 +1314,13 @@ def test_compile_filesystem_sensors_and_filter_switches() -> None:
             }
         }
     }
-    switches = loop.run_until_complete(switch_mod._compile_filter_switches(cfg, coord, state2))
+    switches = await switch_mod._compile_filter_switches(cfg, coord, state2)
     # only one valid rule should produce a switch
     assert isinstance(switches, list) and len(switches) == 1
 
 
 @pytest.mark.asyncio
-async def test_dhcp_edge_cases_and_keep_latest() -> None:
+async def test_dhcp_edge_cases_and_keep_latest(make_client) -> None:
     """Ensure DHCP parsing and _keep_latest_leases handle odd entries."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
@@ -1348,7 +1345,7 @@ async def test_dhcp_edge_cases_and_keep_latest() -> None:
 
 
 @pytest.mark.asyncio
-async def test_do_get_from_stream_error_initial_raises() -> None:
+async def test_do_get_from_stream_error_initial_raises(make_client) -> None:
     """When response.ok is False and client._initial True, _do_get_from_stream should raise."""
     session = MagicMock(spec=aiohttp.ClientSession)
 
@@ -1359,7 +1356,7 @@ async def test_do_get_from_stream_error_initial_raises() -> None:
             self.ok = False
 
             class RI:
-                real_url = "http://localhost"
+                real_url = URL("http://localhost")
 
             self.request_info = RI()
             self.history = []
@@ -1392,7 +1389,7 @@ async def test_do_get_from_stream_error_initial_raises() -> None:
 
 
 @pytest.mark.asyncio
-async def test_process_queue_handles_requests() -> None:
+async def test_process_queue_handles_requests(make_client) -> None:
     """Run a single iteration of _process_queue processing several request types."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
@@ -1491,91 +1488,6 @@ async def test_exec_php_exception_branches() -> None:
     client._get_proxy = MagicMock(return_value=proxy)
     res = await client._exec_php("x")
     assert res == {}
-
-
-@pytest.mark.asyncio
-async def test_do_get_and_do_post_initial_error_raise() -> None:
-    """When client._initial is True and response.ok is False, _do_get/_do_post should raise ClientResponseError."""
-    session = MagicMock(spec=aiohttp.ClientSession)
-
-    class BadResp:
-        def __init__(self, status=500):
-            self.status = status
-            self.reason = "Err"
-            self.ok = False
-
-            class RI:
-                real_url = "http://x"
-
-            self.request_info = RI()
-            self.history = []
-            self.headers = {}
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-        async def json(self, content_type=None):
-            return {}
-
-        @property
-        def content(self):
-            class C:
-                async def iter_chunked(self, n):
-                    yield b""
-
-            return C()
-
-    session.get = lambda *a, **k: BadResp()
-    session.post = lambda *a, **k: BadResp()
-
-    client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
-    )
-    client._initial = True
-    with pytest.raises(aiohttp.ClientResponseError):
-        await client._do_get("/x")
-    with pytest.raises(aiohttp.ClientResponseError):
-        await client._do_post("/x", payload={})
-
-
-@pytest.mark.asyncio
-async def test_generate_vouchers_errors_and_success() -> None:
-    """generate_vouchers should raise when no or multiple servers; handle provided server."""
-    session = MagicMock(spec=aiohttp.ClientSession)
-    client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
-    )
-
-    # no servers
-    client._use_snake_case = False
-    client._safe_list_get = AsyncMock(return_value=[])
-    with pytest.raises(pyopnsense.VoucherServerError):
-        await client.generate_vouchers({})
-
-    # multiple servers
-    client._safe_list_get = AsyncMock(return_value=["a", "b"])
-    with pytest.raises(pyopnsense.VoucherServerError):
-        await client.generate_vouchers({})
-
-    # success when server specified in data
-    vouchers_in = [
-        {
-            "username": "u",
-            "password": "p",
-            "vouchergroup": "g",
-            "starttime": "t",
-            "expirytime": 253402300799,  # far future
-            "validity": 65,
-        }
-    ]
-    client._safe_list_post = AsyncMock(return_value=vouchers_in)
-    got = await client.generate_vouchers({"voucher_server": "srv"})
-    assert isinstance(got, list) and got[0].get("username") == "u"
-    assert "expiry_timestamp" in got[0]
-    assert "validity_str" in got[0]
 
 
 @pytest.mark.asyncio
@@ -1775,17 +1687,7 @@ async def test_exec_php_non_mapping_and_get_proxy_https_unverified() -> None:
     res = await client._exec_php("x")
     assert res == {}
 
-    # https unverified proxy
-    session2 = MagicMock(spec=aiohttp.ClientSession)
-    client2 = pyopnsense.OPNsenseClient(
-        url="https://example.local",
-        username="u",
-        password="p",
-        session=session2,
-        opts={"verify_ssl": False},
-    )
-    srv = client2._get_proxy()
-    assert isinstance(srv, xc.ServerProxy)
+    # (ServerProxy https unverified behavior tested elsewhere)
 
 
 @pytest.mark.asyncio
@@ -2523,3 +2425,58 @@ async def test_telemetry_memory_swap_branches() -> None:
     client._safe_dict_post = AsyncMock(side_effect=fake_post)
     res = await client._get_telemetry_memory()
     assert isinstance(res.get("physmem"), int) or res.get("physmem") is None
+
+
+@pytest.mark.parametrize(
+    "delta_minutes,expected",
+    [
+        (2, True),  # within 3 minutes => connected
+        (3, True),  # exactly at threshold => connected
+        (5, False),  # beyond threshold => not connected
+    ],
+)
+def test_wireguard_is_connected_variants(monkeypatch, delta_minutes: int, expected: bool) -> None:
+    """WireGuard connection considered active when last handshake within threshold.
+
+    Monkeypatch `datetime.now` in the module under test to a fixed value with no
+    microseconds so comparisons at the 3-minute boundary are deterministic.
+    """
+    fixed_now = datetime.now().astimezone().replace(microsecond=0)
+    # create a minimal fake datetime provider with a static now() returning fixed_now
+    FakeDT = type("FakeDT", (), {"now": staticmethod(lambda: fixed_now)})
+    monkeypatch.setattr(pyopnsense, "datetime", FakeDT)
+    assert (
+        pyopnsense.wireguard_is_connected(fixed_now - timedelta(minutes=delta_minutes)) is expected
+    )
+    # None always False
+    if delta_minutes == 5:  # only need to assert once in param set
+        assert pyopnsense.wireguard_is_connected(None) is False
+
+
+@pytest.mark.asyncio
+async def test_client_name_property():
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = pyopnsense.OPNsenseClient(
+        url="http://localhost",
+        username="user",
+        password="pass",
+        session=session,
+    )
+    assert client.name == "OPNsense"
+    await client.async_close()
+
+
+@pytest.mark.asyncio
+async def test_reset_and_get_query_counts():
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = pyopnsense.OPNsenseClient(
+        url="http://localhost",
+        username="user",
+        password="pass",
+        session=session,
+    )
+    await client.reset_query_counts()
+    rest, xml = await client.get_query_counts()
+    assert rest == 0
+    assert xml == 0
+    await client.async_close()

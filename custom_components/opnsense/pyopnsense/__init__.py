@@ -386,13 +386,22 @@ $toreturn["real"] = json_encode($toreturn_real);
                     result: MutableMapping[str, Any] | list | None = await self._do_get_from_stream(
                         path, caller
                     )
+                    if future is not None and not future.done():
+                        future.set_result(result)
                 elif method == "get":
                     result = await self._do_get(path, caller)
+                    if future is not None and not future.done():
+                        future.set_result(result)
                 elif method == "post":
                     result = await self._do_post(path, payload, caller)
+                    if future is not None and not future.done():
+                        future.set_result(result)
                 else:
                     _LOGGER.error("Unknown method to add to Queue: %s", method)
-                future.set_result(result)
+                    if future is not None and not future.done():
+                        future.set_exception(
+                            RuntimeError(f"Unknown method to add to Queue: {method}")
+                        )
             except Exception as e:  # noqa: BLE001
                 _LOGGER.error(
                     "Exception in request queue processor (called by %s). %s: %s",
@@ -400,7 +409,8 @@ $toreturn["real"] = json_encode($toreturn_real);
                     type(e).__name__,
                     e,
                 )
-                future.set_exception(e)
+                if future is not None and not future.done():
+                    future.set_exception(e)
             await asyncio.sleep(0.3)
 
     async def _monitor_queue(self) -> None:

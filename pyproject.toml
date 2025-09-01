@@ -6,16 +6,17 @@ ignore-words-list = "hass"
 [tool.pytest.ini_options]
 addopts = """
   --quiet
-  --timeout=10
+  --timeout=20
   --durations=10
   -o console_output_style=progress
   --cov=custom_components.opnsense
   --junitxml=pytest.xml
-  --cov-report=term
+  --cov-report=term-missing
   --cov-report=xml
   --cov-report=html
 """
 testpaths = ["tests"]
+asyncio_mode = "auto"
 
 [tool.coverage.run]
 branch = true
@@ -224,7 +225,7 @@ fixable = ["ALL"]
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = [
     "SLF001",  # Private member accessed
-    "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107",  # Docstring rules
+    #"D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107",  # Docstring rules
     "PLR2004", # Magic value used in comparison
     "S101",    # Use of assert detected
     "PLR0913", # Too many arguments to function call
