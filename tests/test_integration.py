@@ -89,8 +89,10 @@ class _FakeRuntimeClient:
         self._closed = True
         return True
 
-    # Coordinator accessed methods (minimal subset)
-    async def set_use_snake_case(self) -> None:  # called during coordinator _async_setup
+    async def set_use_snake_case(
+        self, initial: bool = False
+    ) -> None:  # called during coordinator _async_setup
+        # Accept the optional `initial` flag like the production client. No-op for tests.
         return None
 
     async def reset_query_counts(self) -> None:

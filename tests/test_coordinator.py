@@ -138,13 +138,15 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
     # state present but mismatched -> increments and eventually triggers issue
     coord._state = {"device_unique_id": "other"}
     # patch issue registry and async_shutdown to avoid side effects
-    called = {"issue": 0, "shutdown": 0}
+    called = {"issue": 0, "shutdown": 0, "issue_kwargs": None}
 
     async def fake_shutdown():
         called["shutdown"] += 1
 
     def fake_async_create_issue(**kwargs):
+        # record the kwargs so tests can validate domain and issue_id
         called["issue"] += 1
+        called["issue_kwargs"] = kwargs
 
     monkeypatch.setattr(coordinator_module.ir, "async_create_issue", fake_async_create_issue)
     coord.async_shutdown = fake_shutdown
@@ -156,6 +158,12 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
     assert coord._mismatched_count == 3
     assert called["issue"] == 1
     assert called["shutdown"] == 1
+    # validate the issue was created for the integration domain and expected id
+    assert isinstance(called["issue_kwargs"], dict)
+    assert called["issue_kwargs"].get("domain") == coordinator_module.DOMAIN
+    assert (
+        called["issue_kwargs"].get("issue_id") == f"{coord._device_unique_id}_device_id_mismatched"
+    )
 
 
 @pytest.mark.asyncio

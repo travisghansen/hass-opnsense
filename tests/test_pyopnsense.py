@@ -1210,8 +1210,11 @@ async def test_process_queue_unknown_method_sets_future_exception(make_client) -
 
     task = loop.create_task(client._process_queue())
     await asyncio.sleep(0)  # allow the task to process the queue
-    # cancel background task
+    # cancel background task and await it so the CancelledError is retrieved
     task.cancel()
+    # await the cancelled task so the CancelledError is retrieved and suppressed
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
     # future should have an exception (NameError from undefined 'result')
     exc = future.exception()
     assert isinstance(exc, RuntimeError)

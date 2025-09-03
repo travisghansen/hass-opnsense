@@ -64,6 +64,7 @@ async def test_async_setup_entry_configured_devices(
     # slugify should normalize ':' to '_' -> unique_id should end with 'mac_aa_bb_cc'
     uid = getattr(created, "unique_id", None)
     assert uid is not None
+    assert uid.startswith("dev1_")
     assert uid.endswith("mac_aa_bb_cc")
     # ensure the normalized MAC components are present in the unique_id
     assert "aa_bb_cc" in uid
@@ -71,6 +72,84 @@ async def test_async_setup_entry_configured_devices(
     assert created.mac_address == "aa:bb:cc"
     # tracked macs should have been updated on the config entry
     assert hass.config_entries.async_update_entry.called
+    # Inspect the update payload to ensure tracked MACs were persisted
+    call_args = hass.config_entries.async_update_entry.call_args
+    args, kwargs = call_args
+    # The integration calls async_update_entry(config_entry, data=new_data)
+    if "data" in kwargs:
+        updated_data = kwargs["data"]
+    elif len(args) > 1 and isinstance(args[1], dict):
+        updated_data = args[1]
+    else:
+        updated_data = None
+
+    assert updated_data is not None
+    assert updated_data.get(dt_mod.TRACKED_MACS) == ["aa:bb:cc"]
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_removes_nonmatching_tracked_macs(
+    monkeypatch, ph_hass, coordinator, make_config_entry
+):
+    """Ensure previously-tracked MACs not present in current devices are removed."""
+    # coordinator reports only one arp entry
+    coordinator.data = {
+        "arp_table": [{"mac": "aa:bb:cc", "ip": "1.2.3.4", "hostname": "dev", "manufacturer": "m"}]
+    }
+
+    # entry previously tracked an extra MAC that is no longer present
+    entry = make_config_entry(
+        data={dt_mod.TRACKED_MACS: ["aa:bb:cc", "ff:ee:dd"], pkg.CONF_DEVICE_UNIQUE_ID: "dev1"},
+        options={dt_mod.CONF_DEVICES: ["aa:bb:cc"], dt_mod.CONF_DEVICE_TRACKER_ENABLED: True},
+        entry_id="eid_remove",
+    )
+    setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
+    entry.add_update_listener = lambda f: (lambda: None)
+    entry.async_on_unload = lambda x: None
+
+    hass = ph_hass
+    hass.config_entries.async_update_entry = MagicMock()
+    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+    hass.config_entries.async_reload = AsyncMock()
+    hass.data = {}
+
+    # fake device registry so removal code can be exercised safely
+    class FakeReg:
+        def async_get_device(self, *args, **kwargs):
+            # simulate that the device exists for the removed mac so removal path runs
+            class _D:
+                id = "removed-device-id"
+
+            return _D()
+
+        def async_remove_device(self, *args, **kwargs):
+            return None
+
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: FakeReg())
+
+    added = []
+
+    def async_add_entities(ents):
+        added.extend(ents)
+
+    await dt_mod.async_setup_entry(hass, entry, async_add_entities)
+
+    # ensure an update was persisted and the stale MAC was removed
+    assert hass.config_entries.async_update_entry.called
+    call_args = hass.config_entries.async_update_entry.call_args
+    args, kwargs = call_args
+    if "data" in kwargs:
+        updated_data = kwargs["data"]
+    elif len(args) > 1 and isinstance(args[1], dict):
+        updated_data = args[1]
+    else:
+        updated_data = None
+
+    assert updated_data is not None
+    # The stale MAC should no longer be present
+    assert "ff:ee:dd" not in updated_data.get(dt_mod.TRACKED_MACS, [])
+    # The expected remaining MAC should still be present
+    assert "aa:bb:cc" in updated_data.get(dt_mod.TRACKED_MACS, [])
 
 
 def test_handle_coordinator_update_unavailable(coordinator, make_config_entry):

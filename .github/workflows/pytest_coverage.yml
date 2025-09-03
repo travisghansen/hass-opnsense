@@ -40,15 +40,15 @@ jobs:
 
       - name: Run pytest with Coverage
         continue-on-error: true
-        run: pytest
+        run: python -m coverage run -m pytest
 
       - name: Check coverage file exists
         id: check_coverage_file
         run: |
           if [ -f "${{ env.COVERAGE_FILE }}" ]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "exists=true" >> "$GITHUB_OUTPUT"
           else
-            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Upload coverage data artifact
@@ -62,9 +62,9 @@ jobs:
         id: check_htmlcov
         run: |
           if [ -d "htmlcov" ] && [ -f "htmlcov/index.html" ]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "exists=true" >> "$GITHUB_OUTPUT"
           else
-            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Upload HTML Coverage Report
@@ -79,9 +79,9 @@ jobs:
         id: check_pytest_xml
         run: |
           if [ -f "pytest.xml" ]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "exists=true" >> "$GITHUB_OUTPUT"
           else
-            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Upload pytest junit xml
@@ -96,7 +96,7 @@ jobs:
     # allow this job to post PR comments and upload final artifacts
     permissions:
       pull-requests: write
-      contents: write
+      contents: read
     runs-on: ubuntu-latest
     needs: pytest
     steps:
@@ -142,9 +142,9 @@ jobs:
         id: check_coverage_xml
         run: |
           if [ -f "coverage.xml" ]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "exists=true" >> "$GITHUB_OUTPUT"
           else
-            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Show combined Coverage in PR

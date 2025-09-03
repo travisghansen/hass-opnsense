@@ -10,6 +10,7 @@ import xmlrpc.client
 
 import aiohttp
 import pytest
+from yarl import URL
 
 cf_mod = importlib.import_module("custom_components.opnsense.config_flow")
 
@@ -103,7 +104,7 @@ async def test_validate_input_exception_mapping(monkeypatch, exc_key, expected):
 
         # Provide minimal request_info with a real_url to satisfy logging/str()
         class RI:
-            real_url = "http://localhost"
+            real_url = URL("http://localhost")
 
         exc = aiohttp.ClientResponseError(request_info=RI(), history=(), status=status, message="m")
     elif exc_key == "protocol_307":
@@ -111,7 +112,7 @@ async def test_validate_input_exception_mapping(monkeypatch, exc_key, expected):
     elif exc_key == "too_many_redirects":
 
         class RI:
-            real_url = "http://localhost"
+            real_url = URL("http://localhost")
 
         exc = aiohttp.TooManyRedirects(request_info=RI(), history=())
     elif exc_key == "timeout":
@@ -340,7 +341,6 @@ async def test_options_flow_device_tracker_user_input(monkeypatch):
     assert cf_mod.CONF_DEVICES in flow._options
     assert "aa:bb:cc:dd:ee:ff" in flow._options[cf_mod.CONF_DEVICES]
     assert "11:22:33:44:55:66" in flow._options[cf_mod.CONF_DEVICES]
-    # language: python
 
 
 @pytest.mark.asyncio

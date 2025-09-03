@@ -77,24 +77,6 @@ def _ensure_async_create_task_mock(real, side_effect):
                     MagicMock(side_effect=lambda coro: orig(coro)),
                 )
 
-    # Proxy class used to expose a test-local asyncio namespace on the pyopnsense
-    # module without mutating the global asyncio module. The proxy forwards all
-    # attribute access to the real asyncio module except `create_task`, which is
-    # supplied by the test harness.
-    class _AsyncioProxy:
-        """Proxy delegating attribute access to a real asyncio module while overriding `create_task` with a provided implementation.
-
-        This enables tests to substitute a fake create_task for pyopnsense-only
-        scheduling without globally mutating the asyncio module used elsewhere.
-        """
-
-        def __init__(self, real, create_task_impl):
-            self._real = real
-            self.create_task = create_task_impl
-
-        def __getattr__(self, name):
-            return getattr(self._real, name)
-
 
 @pytest.fixture(autouse=True)
 def _patch_async_create_clientsession(monkeypatch):

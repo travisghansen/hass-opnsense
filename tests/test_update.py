@@ -306,7 +306,9 @@ def test_get_release_notes_variants(
     )
     ent.async_write_ha_state = lambda: None
 
-    notes = ent._get_release_notes(state, latest, product_version=product_version)
+    notes = ent._get_release_notes(
+        state=state, product_latest=latest, product_version=product_version
+    )
     if expect_exact:
         assert notes == expected
     else:

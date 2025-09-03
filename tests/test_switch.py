@@ -275,6 +275,7 @@ async def test_unbound_and_vpn_variations(coordinator, ph_hass):
 
     await unbound.async_turn_off()
     assert unbound.is_on is False
+    unbound._client.disable_unbound_blocklist.assert_awaited_once()
 
     assert any(isinstance(e, OPNsenseVPNSwitch) for e in vpn_ents)
     for vpn in vpn_ents:
