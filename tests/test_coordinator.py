@@ -21,34 +21,45 @@ from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 
 
 class FakeClient:
+    """A lightweight fake client implementing required async getters."""
+
     def __init__(self, data_map=None):
+        """Initialize the fake client with an optional data map."""
         self._data_map = data_map or {}
 
     async def set_use_snake_case(self):
+        """Pretend to set snake_case usage on the client."""
         return True
 
     async def reset_query_counts(self):
-        return None
+        """Pretend to reset query counters."""
+        return
 
     async def get_query_counts(self):
+        """Return a tuple of query counts."""
         return 1, 1
 
     # generic getters used by _get_states
     async def get_telemetry(self):
+        """Return fake telemetry data."""
         return {"telemetry": True}
 
     async def get_interfaces(self):
+        """Return fake interfaces data."""
         return {"eth0": {"inbytes": 200, "outbytes": 100}}
 
     async def get_openvpn(self):
+        """Return fake OpenVPN data."""
         return {"servers": {}}
 
     async def get_wireguard(self):
+        """Return fake WireGuard data."""
         return {"servers": {}}
 
 
 @pytest.mark.asyncio
 async def test_init_requires_config_entry():
+    """Ensure coordinator initialization requires a config entry."""
     with pytest.raises(ValueError):
         OPNsenseDataUpdateCoordinator(
             hass=MagicMock(),
@@ -60,11 +71,9 @@ async def test_init_requires_config_entry():
         )
 
 
-# Use the shared `make_config_entry` fixture from tests/conftest.py in tests below.
-
-
 @pytest.mark.asyncio
 async def test_build_categories_respects_flags(make_config_entry, fake_client):
+    """Categories builder respects configuration sync flags."""
     entry = make_config_entry(
         {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
     )
@@ -85,6 +94,7 @@ async def test_build_categories_respects_flags(make_config_entry, fake_client):
 
 @pytest.mark.asyncio
 async def test_get_states_handles_missing_method_and_calls(make_config_entry, fake_client):
+    """_get_states should skip missing client methods and return available states."""
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
         hass=MagicMock(),
@@ -107,6 +117,7 @@ async def test_get_states_handles_missing_method_and_calls(make_config_entry, fa
 async def test_check_device_unique_id_mismatch_triggers_issue(
     monkeypatch, make_config_entry, fake_client
 ):
+    """Mismatched device_unique_id should create an issue and shutdown after threshold."""
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "expected"})
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -149,6 +160,7 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
 
 @pytest.mark.asyncio
 async def test_calculate_speed_normal_and_exception():
+    """Calculate speed handles normal and exceptional (zero elapsed) cases."""
     # normal pkts
     new_prop, value = await OPNsenseDataUpdateCoordinator._calculate_speed(
         prop_name="inpkts",
@@ -172,6 +184,7 @@ async def test_calculate_speed_normal_and_exception():
 
 @pytest.mark.asyncio
 async def test_calculate_entity_speeds_applies_calculations(make_config_entry, fake_client):
+    """Entity speed calculations should add correct rate keys to state."""
     entry = make_config_entry(
         {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
     )
@@ -237,6 +250,7 @@ async def test_calculate_entity_speeds_applies_calculations(make_config_entry, f
 async def test_async_update_data_reentrancy_and_full_flow(
     monkeypatch, make_config_entry, fake_client
 ):
+    """End-to-end coordinator update flow and reentrancy behavior."""
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True})
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -279,6 +293,7 @@ async def test_async_update_data_reentrancy_and_full_flow(
 async def test_async_setup_calls_client_set_use_snake_case(
     monkeypatch, make_config_entry, fake_client
 ):
+    """Coordinator setup invokes client set_use_snake_case when appropriate."""
     called = {"count": 0}
 
     async def fake_set_use_snake_case():
@@ -303,6 +318,7 @@ async def test_async_setup_calls_client_set_use_snake_case(
 
 @pytest.mark.asyncio
 async def test_calculate_speed_bytes_case():
+    """Calculate byte-rate conversion yields kilobytes_per_second."""
     # bytes branch should return kilobytes_per_second label
     new_prop, value = await OPNsenseDataUpdateCoordinator._calculate_speed(
         prop_name="inbytes",
@@ -316,6 +332,7 @@ async def test_calculate_speed_bytes_case():
 
 
 def test_build_categories_returns_empty_when_no_config(make_config_entry, fake_client):
+    """Categories builder returns empty list when no sync flags set."""
     entry = make_config_entry()
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(

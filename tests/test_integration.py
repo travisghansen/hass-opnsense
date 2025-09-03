@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import MutableMapping
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -386,11 +385,11 @@ async def test_e2e_reload_and_unload(monkeypatch, make_config_entry):
     assert entry.entry_id in hass.data[init_mod.DOMAIN]
 
     # Patch registries for update listener (return no entities/devices)
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: SimpleNamespace())
+    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: MagicMock())
     monkeypatch.setattr(
         init_mod.er, "async_entries_for_config_entry", lambda registry, config_entry_id: []
     )
-    monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: SimpleNamespace())
+    monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: MagicMock())
     monkeypatch.setattr(
         init_mod.dr, "async_entries_for_config_entry", lambda registry, config_entry_id: []
     )

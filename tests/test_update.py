@@ -11,6 +11,7 @@ from homeassistant.components.update import UpdateEntityDescription
 
 
 def test_is_update_available_false_when_missing(make_config_entry, dummy_coordinator):
+    """Update entity should be unavailable when coordinator data is missing."""
     entry = make_config_entry()
     coord = dummy_coordinator
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
@@ -135,6 +136,7 @@ def test_get_product_class_and_series_parsing(
 
 
 def test_handle_coordinator_update_sets_attributes(make_config_entry, dummy_coordinator):
+    """_handle_coordinator_update should populate versions and extra attributes."""
     entry = make_config_entry()
     coord = dummy_coordinator
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
@@ -182,6 +184,7 @@ def test_handle_coordinator_update_sets_attributes(make_config_entry, dummy_coor
 async def test_handle_coordinator_update_upgrade_sets_release_url(
     make_config_entry, dummy_coordinator
 ):
+    """Upgrade state should compute a release URL and provide release notes."""
     entry = make_config_entry()
     coord = dummy_coordinator
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
@@ -216,6 +219,7 @@ async def test_handle_coordinator_update_upgrade_sets_release_url(
 def test_handle_coordinator_update_upgrade_sets_business_release_url(
     make_config_entry, dummy_coordinator
 ):
+    """Business product series should generate business release URL."""
     entry = make_config_entry()
     coord = dummy_coordinator
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
@@ -311,6 +315,7 @@ def test_get_release_notes_variants(
 
 @pytest.mark.asyncio
 async def test_async_install_reboots_when_needed(monkeypatch, make_config_entry, dummy_coordinator):
+    """async_install should trigger a reboot when the update requires it."""
     entry = make_config_entry()
     coord = dummy_coordinator
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
@@ -359,6 +364,7 @@ async def test_async_install_reboots_when_needed(monkeypatch, make_config_entry,
 async def test_async_install_early_returns_and_no_client(
     monkeypatch, make_config_entry, dummy_coordinator
 ):
+    """async_install should return early when there's no client available."""
     entry = make_config_entry()
     coord = dummy_coordinator
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
@@ -381,6 +387,8 @@ async def test_async_install_early_returns_and_no_client(
 
 
 def test_get_versions_exception_path(monkeypatch, make_config_entry, dummy_coordinator):
+    """_get_versions returns None tuple when underlying dict_get raises."""
+
     # force dict_get to raise so we hit the exception return
 
     entry = make_config_entry()
@@ -401,6 +409,8 @@ def test_get_versions_exception_path(monkeypatch, make_config_entry, dummy_coord
 
 
 def test_get_release_notes_exception_path(monkeypatch, make_config_entry, dummy_coordinator):
+    """_get_release_notes returns an unavailable message when dict_get raises."""
+
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,
@@ -420,6 +430,7 @@ def test_get_release_notes_exception_path(monkeypatch, make_config_entry, dummy_
 
 @pytest.mark.asyncio
 async def test_async_install_exceptions_loop(monkeypatch, make_config_entry, dummy_coordinator):
+    """async_install should handle exceptions and exit the install loop gracefully."""
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,
@@ -455,6 +466,8 @@ async def test_async_install_exceptions_loop(monkeypatch, make_config_entry, dum
 
 
 def test_get_installed_version_none_on_error(make_config_entry, dummy_coordinator):
+    """_get_installed_version returns None on malformed or missing state."""
+
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,
@@ -468,6 +481,8 @@ def test_get_installed_version_none_on_error(make_config_entry, dummy_coordinato
 
 @pytest.mark.asyncio
 async def test_async_release_notes_returns_value(make_config_entry, dummy_coordinator):
+    """async_release_notes returns generated release notes when state present."""
+
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,

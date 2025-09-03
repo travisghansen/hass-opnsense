@@ -1,6 +1,11 @@
+"""Unit tests for the device_tracker component of the hass-opnsense integration.
+
+These tests cover setup, coordinator update handling, restore state behavior,
+and device info formatting for the integration's device tracker entities.
+"""
+
 from datetime import datetime
 import importlib
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -14,7 +19,7 @@ pkg = importlib.import_module("custom_components.opnsense")
 async def test_async_setup_entry_configured_devices(
     monkeypatch, ph_hass, coordinator, make_config_entry
 ):
-    # prepare a coordinator with arp_table containing a matching mac
+    """Setup creates device tracker entities for configured MACs."""
     coordinator.data = {
         "arp_table": [{"mac": "aa:bb:cc", "ip": "1.2.3.4", "hostname": "dev", "manufacturer": "m"}]
     }
@@ -69,7 +74,7 @@ async def test_async_setup_entry_configured_devices(
 
 
 def test_handle_coordinator_update_unavailable(coordinator, make_config_entry):
-    # coordinator with invalid data should mark entity unavailable
+    """Coordinator with invalid data should mark entity unavailable."""
     coordinator.data = None
     entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
@@ -90,7 +95,7 @@ def test_handle_coordinator_update_unavailable(coordinator, make_config_entry):
 
 
 def test_handle_coordinator_update_entry_present(monkeypatch, coordinator, make_config_entry):
-    # coordinator has an arp entry that should populate attributes
+    """Coordinator arp entry populates entity attributes correctly."""
     coordinator.data = {
         "arp_table": [
             {
@@ -132,7 +137,7 @@ def test_handle_coordinator_update_entry_present(monkeypatch, coordinator, make_
 
 
 def test_handle_coordinator_update_missing_entry_consider_home(coordinator, make_config_entry):
-    # missing arp entry but recent last_known_connected_time and consider_home > 0
+    """If missing entry and within consider_home, entity remains connected."""
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(
         data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"},
@@ -159,6 +164,7 @@ def test_handle_coordinator_update_missing_entry_consider_home(coordinator, make
 
 @pytest.mark.asyncio
 async def test_restore_last_state_and_device_info(monkeypatch, coordinator, make_config_entry):
+    """Restoring last state merges saved attributes into the entity."""
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
@@ -174,7 +180,7 @@ async def test_restore_last_state_and_device_info(monkeypatch, coordinator, make
     ent._attr_extra_state_attributes = {}
 
     # fake last state with attributes including isoformat time
-    last_state = SimpleNamespace()
+    last_state = MagicMock()
     last_state.attributes = {
         "last_known_hostname": "oldhost",
         "last_known_ip": "9.9.9.9",
@@ -209,6 +215,7 @@ async def test_restore_last_state_and_device_info(monkeypatch, coordinator, make
 
 @pytest.mark.asyncio
 async def test_async_added_to_hass_calls_restore(monkeypatch, coordinator, make_config_entry):
+    """Entity.async_added_to_hass should call state restoration."""
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
@@ -234,6 +241,7 @@ async def test_async_added_to_hass_calls_restore(monkeypatch, coordinator, make_
 
 @pytest.mark.asyncio
 async def test_async_setup_entry_state_not_mapping(ph_hass, coordinator, make_config_entry):
+    """Setup exits early when coordinator state is not a mapping."""
     # coordinator.data is not a mapping -> async_setup_entry should return early and not add entities
     coordinator.data = "not-a-mapping"
     entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -253,6 +261,7 @@ async def test_async_setup_entry_state_not_mapping(ph_hass, coordinator, make_co
 async def test_async_setup_entry_removes_previous_mac(
     monkeypatch, ph_hass, coordinator, make_config_entry
 ):
+    """Setup removes previously tracked MAC addresses when reconfiguring."""
     # previous tracked macs include an old mac that should be removed via device registry
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(
@@ -268,7 +277,7 @@ async def test_async_setup_entry_removes_previous_mac(
             self.removed = False
 
         def async_get_device(self, *args, **kwargs):
-            return SimpleNamespace(id="dev_to_remove")
+            return MagicMock(id="dev_to_remove")
 
         def async_remove_device(self, _id):
             self.removed = True
@@ -284,6 +293,7 @@ async def test_async_setup_entry_removes_previous_mac(
 
 
 def test_handle_coordinator_update_expires_positive(coordinator, make_config_entry):
+    """Expired ARP entries set entity to disconnected and update attributes."""
     coordinator.data = {
         "arp_table": [
             {
@@ -315,7 +325,7 @@ def test_handle_coordinator_update_expires_positive(coordinator, make_config_ent
 
 
 def test_handle_coordinator_update_ip_typeerror(coordinator, make_config_entry):
-    # entry ip is None which causes TypeError in len() -> should be handled
+    """Handle TypeError when entry IP is None and avoid crashing."""
     coordinator.data = {"arp_table": [{"mac": "aa:bb:cc", "ip": None}]}
 
     entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -337,6 +347,7 @@ def test_handle_coordinator_update_ip_typeerror(coordinator, make_config_entry):
 
 
 def test_handle_coordinator_update_expired_preserve_last_known_ip(coordinator, make_config_entry):
+    """Expired entries preserve last_known_ip when no IP present."""
     # expired entry should set is_connected False and preserve last_known_ip
     # no ip in entry triggers branch where last_known_ip is preserved
     coordinator.data = {"arp_table": [{"mac": "aa:bb:cc", "expired": True}]}
@@ -365,6 +376,7 @@ def test_handle_coordinator_update_expired_preserve_last_known_ip(coordinator, m
 async def test_async_setup_entry_from_arp_entries(
     monkeypatch, ph_hass, coordinator, make_config_entry
 ):
+    """Setup from ARP entries creates device trackers for present ARP rows."""
     # when CONF_DEVICES not set but device tracker enabled, create entity per arp entry
     coordinator.data = {"arp_table": [{"mac": "m1"}, {"mac": "m2", "hostname": "h2"}]}
     entry = make_config_entry(

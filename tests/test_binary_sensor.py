@@ -4,7 +4,6 @@ These tests validate async_setup_entry and the update handlers for the
 binary sensor entities.
 """
 
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -20,19 +19,21 @@ from custom_components.opnsense.const import (
     CONF_SYNC_NOTICES,
     COORDINATOR,
 )
+from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 from homeassistant.components.binary_sensor import BinarySensorEntityDescription
-
-# Use shared make_config_entry fixture from tests/conftest.py.
 
 
 @pytest.mark.asyncio
 async def test_async_setup_entry_creates_entities_when_enabled(make_config_entry):
+    """Create entities when sync options are enabled."""
     # enable both sync options
     entry = make_config_entry(
         {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_CARP: True, CONF_SYNC_NOTICES: True}
     )
-    coord = SimpleNamespace(data={})
-    entry.runtime_data = SimpleNamespace(**{COORDINATOR: coord})
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {}
+    entry.runtime_data = MagicMock()
+    setattr(entry.runtime_data, COORDINATOR, coord)
 
     created: list = []
 
@@ -48,12 +49,15 @@ async def test_async_setup_entry_creates_entities_when_enabled(make_config_entry
 
 @pytest.mark.asyncio
 async def test_async_setup_entry_skips_when_disabled(make_config_entry):
+    """Skip creating entities when sync options are disabled."""
     # explicitly disable both
     entry = make_config_entry(
         {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_CARP: False, CONF_SYNC_NOTICES: False}
     )
-    coord = SimpleNamespace(data={})
-    entry.runtime_data = SimpleNamespace(**{COORDINATOR: coord})
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {}
+    entry.runtime_data = MagicMock()
+    setattr(entry.runtime_data, COORDINATOR, coord)
 
     created: list = []
 
@@ -66,12 +70,15 @@ async def test_async_setup_entry_skips_when_disabled(make_config_entry):
 
 @pytest.mark.asyncio
 async def test_async_setup_entry_creates_only_carp_when_carp_enabled(make_config_entry):
+    """Create only CARP entity when CARP sync is enabled."""
     # enable only CARP
     entry = make_config_entry(
         {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_CARP: True, CONF_SYNC_NOTICES: False}
     )
-    coord = SimpleNamespace(data={})
-    entry.runtime_data = SimpleNamespace(**{COORDINATOR: coord})
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {}
+    entry.runtime_data = MagicMock()
+    setattr(entry.runtime_data, COORDINATOR, coord)
 
     created: list = []
 
@@ -86,12 +93,15 @@ async def test_async_setup_entry_creates_only_carp_when_carp_enabled(make_config
 
 @pytest.mark.asyncio
 async def test_async_setup_entry_creates_only_notices_when_notices_enabled(make_config_entry):
+    """Create only Notices entity when notices sync is enabled."""
     # enable only Notices
     entry = make_config_entry(
         {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_CARP: False, CONF_SYNC_NOTICES: True}
     )
-    coord = SimpleNamespace(data={})
-    entry.runtime_data = SimpleNamespace(**{COORDINATOR: coord})
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {}
+    entry.runtime_data = MagicMock()
+    setattr(entry.runtime_data, COORDINATOR, coord)
 
     created: list = []
 
@@ -123,7 +133,8 @@ def test_carp_sensor_update_paths_param(
     entry = make_config_entry()
     desc = BinarySensorEntityDescription(key="carp.status", name="CARP Status")
 
-    coord = SimpleNamespace(data=coord_data)
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = coord_data
     s = OPNsenseCarpStatusBinarySensor(
         config_entry=entry, coordinator=coord, entity_description=desc
     )
@@ -185,7 +196,8 @@ def test_pending_notices_sensor_update_paths_param(
         key="notices.pending_notices_present", name="Pending Notices"
     )
 
-    coord = SimpleNamespace(data=coord_data)
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = coord_data
     s = OPNsensePendingNoticesPresentBinarySensor(
         config_entry=entry, coordinator=coord, entity_description=desc
     )

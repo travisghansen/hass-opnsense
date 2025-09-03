@@ -1,4 +1,10 @@
-# isort: skip_file
+"""Test fixtures and helpers for the hass-opnsense integration.
+
+This module provides pytest fixtures, fake clients, and monkeypatch helpers
+used across the integration's test suite to avoid network IO, neutralize
+background tasks, and simplify Home Assistant testing.
+"""
+
 import asyncio
 import contextlib
 import inspect
@@ -7,14 +13,14 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
-import homeassistant.core as ha_core
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.plugins import get_scheduled_timer_handles
 
 import custom_components.opnsense as _init_mod
-from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID
 from custom_components.opnsense import pyopnsense as _pyopnsense_mod
+from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID
+import homeassistant.core as ha_core
 
 # expose the pyopnsense module under the plain name for tests that
 # import the fixture and expect `pyopnsense` to be available.
@@ -26,16 +32,19 @@ class FakeClientSession:
     """Minimal fake client session used by tests in lieu of aiohttp.ClientSession."""
 
     def __init__(self, *args, **kwargs):
-        pass
+        """Initialize the fake client session (no-op)."""
 
     async def __aenter__(self):
+        """Enter async context and return the session-like object."""
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
+        """Exit async context, close the session and propagate exceptions."""
         await self.close()
         return False
 
     async def close(self):
+        """Close the fake session (no-op)."""
         return True
 
 
@@ -567,7 +576,7 @@ def fake_flow_client():
 
             """
 
-            last_instance = None
+            last_instance: "FakeFlowClient | None" = None
 
             def __init__(self, *args, **kwargs):
                 FakeFlowClient.last_instance = self

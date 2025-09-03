@@ -1,7 +1,6 @@
 """These tests import the integration code via relative imports and assert behavior across sensor variants using a synthesized coordinator state."""
 
 import datetime
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -18,6 +17,7 @@ from custom_components.opnsense.const import (
     CONF_SYNC_VPN,
     COORDINATOR,
 )
+from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 from custom_components.opnsense.sensor import (
     OPNsenseCarpInterfaceSensor,
     OPNsenseDHCPLeasesSensor,
@@ -47,8 +47,10 @@ async def test_async_setup_entry_invalid_state(make_config_entry):
     """async_setup_entry should do nothing when coordinator.data is invalid."""
     config_entry = make_config_entry()
     # runtime_data used by async_setup_entry expects an attribute named COORDINATOR
-    coordinator = SimpleNamespace(data=None)
-    config_entry.runtime_data = SimpleNamespace(**{COORDINATOR: coordinator})
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = None
+    config_entry.runtime_data = MagicMock()
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
 
     called = False
 
@@ -62,15 +64,15 @@ async def test_async_setup_entry_invalid_state(make_config_entry):
 
 @pytest.mark.asyncio
 async def test_static_key_sensor_cpu_and_boot_and_certificates(make_config_entry):
-    coordinator = SimpleNamespace(
-        data={
-            "telemetry": {
-                "cpu": {"usage_1": 10, "usage_2": 20, "usage_total": 30},
-                "system": {"boottime": 1609459200},
-            },
-            "certificates": {"a": 1, "b": 2},
-        }
-    )
+    """Static key sensors should expose CPU, boot time, and certificate counts."""
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {
+        "telemetry": {
+            "cpu": {"usage_1": 10, "usage_2": 20, "usage_total": 30},
+            "system": {"boottime": 1609459200},
+        },
+        "certificates": {"a": 1, "b": 2},
+    }
 
     entry = make_config_entry()
 
@@ -122,6 +124,7 @@ async def test_static_key_sensor_cpu_and_boot_and_certificates(make_config_entry
 
 @pytest.mark.asyncio
 async def test_filesystem_and_compile_helpers(make_config_entry):
+    """Filesystem helpers should compile sensors and handle missing fields."""
     state = {
         "telemetry": {
             "filesystems": [
@@ -138,7 +141,8 @@ async def test_filesystem_and_compile_helpers(make_config_entry):
         }
     }
     entry = make_config_entry()
-    coordinator = SimpleNamespace(data=state)
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
 
     # compile filesystem sensors directly
     entities = await _compile_filesystem_sensors(entry, coordinator, state)
@@ -162,7 +166,8 @@ async def test_filesystem_and_compile_helpers(make_config_entry):
 
     # missing used_pct -> unavailable (target the root mountpoint to match the descriptor)
     state2 = {"telemetry": {"filesystems": [{"mountpoint": "/"}]}}
-    coordinator2 = SimpleNamespace(data=state2)
+    coordinator2 = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator2.data = state2
     s_fs2 = OPNsenseFilesystemSensor(
         config_entry=entry, coordinator=coordinator2, entity_description=desc
     )
@@ -175,6 +180,7 @@ async def test_filesystem_and_compile_helpers(make_config_entry):
 
 @pytest.mark.asyncio
 async def test_interface_and_icon_behavior(make_config_entry):
+    """Interface sensors should expose byte counters and proper status icons."""
     state = {
         "interfaces": {
             "lan": {
@@ -187,7 +193,8 @@ async def test_interface_and_icon_behavior(make_config_entry):
         }
     }
     entry = make_config_entry()
-    coordinator = SimpleNamespace(data=state)
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
 
     # inbytes sensor
     desc = MagicMock()
@@ -271,7 +278,8 @@ def test_compiled_sensor_variants(desc_key, cls, main_check, extra_check, make_c
     }
 
     entry = make_config_entry()
-    coordinator = SimpleNamespace(data=state)
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
 
     desc = MagicMock()
     desc.key = desc_key
@@ -347,7 +355,8 @@ def test_static_cpu_zero_variants(
 
     Consolidates unavailable and use_previous behaviors into a single parameterized test.
     """
-    coord = SimpleNamespace(data={"telemetry": {"cpu": cpu_map}})
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {"telemetry": {"cpu": cpu_map}}
     # require fixture usage for config entry
     entry = make_config_entry()
 
@@ -368,8 +377,10 @@ def test_static_cpu_zero_variants(
 
 
 def test_gateway_empty_string_unavailable(make_config_entry):
+    """Gateway sensor should be unavailable for empty status strings."""
     state = {"gateways": {"gw1": {"name": "gw1", "status": ""}}}
-    coord = SimpleNamespace(data=state)
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = state
     entry = make_config_entry()
 
     desc = MagicMock()
@@ -385,8 +396,10 @@ def test_gateway_empty_string_unavailable(make_config_entry):
 
 
 def test_interface_status_icon_up(make_config_entry):
+    """Interface status sensor shows an 'up' icon when status is up."""
     state = {"interfaces": {"lan": {"name": "LAN", "status": "up", "interface": "lan0"}}}
-    coord = SimpleNamespace(data=state)
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = state
     entry = make_config_entry()
 
     desc = MagicMock()
@@ -419,13 +432,16 @@ def _setup_entry_with_all_syncs(state: dict, make_config_entry):
     )
     # create a new MockConfigEntry with the updated data to avoid mutating mappingproxy
     entry = make_config_entry(base)
-    coord = SimpleNamespace(data=state)
-    entry.runtime_data = SimpleNamespace(**{COORDINATOR: coord})
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = state
+    entry.runtime_data = MagicMock()
+    setattr(entry.runtime_data, COORDINATOR, coord)
     return entry, coord
 
 
 @pytest.mark.asyncio
 async def test_compile_and_handle_many_entities(make_config_entry):
+    """Compile a complex state and verify many sensor branches are handled."""
     # craft a rich state to exercise many branches
     state = {
         "telemetry": {
@@ -548,6 +564,7 @@ async def test_compile_and_handle_many_entities(make_config_entry):
 
 @pytest.mark.asyncio
 async def test_async_setup_entry_creates_entities(make_config_entry):
+    """async_setup_entry should create sensor entities for available telemetry and interfaces."""
     state = {"telemetry": {"filesystems": [], "temps": {}}, "interfaces": {}, "gateways": {}}
     entry, coord = _setup_entry_with_all_syncs(state, make_config_entry)
 
@@ -580,7 +597,8 @@ async def test_compile_interface_sensors_values_end(make_config_entry):
         }
     }
     entry = make_config_entry()
-    coordinator = SimpleNamespace(data=state)
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
 
     entities = await _compile_interface_sensors(entry, coordinator, state)
     assert any(e.entity_description.key.startswith("interface.eth0.") for e in entities)

@@ -1,3 +1,9 @@
+"""Unit tests for the config flow and options flow of the hass-opnsense integration.
+
+Tests include URL parsing/validation, exception mapping for user input,
+and options flow behaviors such as device tracker handling.
+"""
+
 import importlib
 from unittest.mock import MagicMock
 import xmlrpc.client
@@ -9,7 +15,7 @@ cf_mod = importlib.import_module("custom_components.opnsense.config_flow")
 
 
 def test_mac_and_ip_and_cleanse():
-    # MAC validation
+    """Validate MAC/IP helpers and cleanse sensitive data."""
     assert cf_mod.is_valid_mac_address("aa:bb:cc:dd:ee:ff")
     assert not cf_mod.is_valid_mac_address("not-a-mac")
 
@@ -25,7 +31,7 @@ def test_mac_and_ip_and_cleanse():
 
 @pytest.mark.asyncio
 async def test_clean_and_parse_url_success_and_failure():
-    # missing scheme -> should be fixed to https
+    """Clean and parse URL, fix missing scheme and handle invalid URL."""
     ui = {cf_mod.CONF_URL: "router.example"}
     await cf_mod._clean_and_parse_url(ui)
     assert ui[cf_mod.CONF_URL] == "https://router.example"

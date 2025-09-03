@@ -28,12 +28,14 @@ from custom_components.opnsense import (
 
 
 def test_human_friendly_duration() -> None:
+    """Convert seconds into a human-friendly duration string."""
     assert pyopnsense.human_friendly_duration(65) == "1 minute, 5 seconds"
     assert pyopnsense.human_friendly_duration(0) == "0 seconds"
     assert "month" in pyopnsense.human_friendly_duration(2419200)
 
 
 def test_get_ip_key() -> None:
+    """Compute sorting key for IP addresses across IPv4, IPv6, and invalid forms."""
     assert pyopnsense.get_ip_key({"address": "192.168.1.1"})[0] == 0
     assert pyopnsense.get_ip_key({"address": "::1"})[0] == 1
     assert pyopnsense.get_ip_key({"address": "notanip"})[0] == 2
@@ -42,6 +44,7 @@ def test_get_ip_key() -> None:
 
 
 def test_dict_get() -> None:
+    """Retrieve nested values from dicts and lists using dotted paths."""
     data = {"a": {"b": {"c": 1}}, "x": [0, 1, 2]}
     assert pyopnsense.dict_get(data, "a.b.c") == 1
     assert pyopnsense.dict_get(data, "x.1") == 1
@@ -49,24 +52,21 @@ def test_dict_get() -> None:
 
 
 def test_timestamp_to_datetime() -> None:
+    """Convert timestamp integers to datetime objects, handling None."""
     ts = int(datetime.now().timestamp())
     dt = pyopnsense.timestamp_to_datetime(ts)
     assert isinstance(dt, datetime)
     assert pyopnsense.timestamp_to_datetime(None) is None
 
 
-# The `make_client` factory is provided as a fixture in `tests/conftest.py`.
-# Tests should accept `make_client` as a parameter and call it to construct
-# an `OPNsenseClient` instance. This keeps construction centralized and
-# avoids duplicate helpers in multiple test modules.
-
-
 def test_voucher_server_error() -> None:
+    """Raise VoucherServerError to ensure the exception class exists."""
     with pytest.raises(pyopnsense.VoucherServerError):
         raise pyopnsense.VoucherServerError
 
 
 def test_try_to_int_and_float() -> None:
+    """Coerce numeric-like strings to int/float with defaults."""
     assert pyopnsense.OPNsenseClient._try_to_int("5") == 5
     assert pyopnsense.OPNsenseClient._try_to_int(None, 7) == 7
     assert pyopnsense.OPNsenseClient._try_to_float("5.5") == 5.5
@@ -75,6 +75,7 @@ def test_try_to_int_and_float() -> None:
 
 @pytest.mark.asyncio
 async def test_safe_dict_get_and_list_get(make_client) -> None:
+    """Ensure safe getters coerce None to empty dict/list as expected."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session, username="user", password="pass")
     # Patch _get to return dict or list
@@ -93,6 +94,7 @@ async def test_safe_dict_get_and_list_get(make_client) -> None:
 
 @pytest.mark.asyncio
 async def test_safe_dict_post_and_list_post(make_client) -> None:
+    """Ensure safe post helpers coerce None to empty dict/list as expected."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session, username="user", password="pass")
     with patch.object(client, "_post", new=AsyncMock(return_value={"foo": "bar"})):
@@ -110,6 +112,7 @@ async def test_safe_dict_post_and_list_post(make_client) -> None:
 
 @pytest.mark.asyncio
 async def test_get_ip_key_sorting(make_client) -> None:
+    """Sort IP-like items using get_ip_key ordering."""
     items = [
         {"address": "192.168.1.2"},
         {"address": "::1"},
@@ -125,6 +128,7 @@ async def test_get_ip_key_sorting(make_client) -> None:
 
 @pytest.mark.asyncio
 async def test_opnsenseclient_async_close(make_client) -> None:
+    """Verify async_close cancels workers and queue monitor as expected."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
         url="http://localhost",
@@ -1492,6 +1496,7 @@ async def test_exec_php_exception_branches() -> None:
 
 @pytest.mark.asyncio
 async def test_toggle_vpn_instance_openvpn_and_wireguard() -> None:
+    """Toggle VPN instances for OpenVPN and WireGuard and assert outcomes."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
         url="http://localhost", username="u", password="p", session=session
@@ -1516,6 +1521,7 @@ async def test_toggle_vpn_instance_openvpn_and_wireguard() -> None:
 
 @pytest.mark.asyncio
 async def test_toggle_alias_and_set_unbound_blocklist_flows() -> None:
+    """Toggle firewall aliases and handle unbound blocklist flows."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
         url="http://localhost", username="u", password="p", session=session
@@ -1959,6 +1965,7 @@ async def test_get_unbound_blocklist_parsing() -> None:
 
 @pytest.mark.asyncio
 async def test_gateways_notices_and_close_notice_all() -> None:
+    """Test gateway notices handling and closing all notices."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
         url="http://localhost", username="u", password="p", session=session
@@ -1990,6 +1997,7 @@ async def test_gateways_notices_and_close_notice_all() -> None:
 
 @pytest.mark.asyncio
 async def test_get_services_and_service_is_running() -> None:
+    """Verify service listing and running-state detection."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
         url="http://localhost", username="u", password="p", session=session
@@ -2455,6 +2463,7 @@ def test_wireguard_is_connected_variants(monkeypatch, delta_minutes: int, expect
 
 @pytest.mark.asyncio
 async def test_client_name_property():
+    """Ensure client reports a composed name property correctly."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
         url="http://localhost",
@@ -2468,6 +2477,7 @@ async def test_client_name_property():
 
 @pytest.mark.asyncio
 async def test_reset_and_get_query_counts():
+    """Reset and retrieve client query counters."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
         url="http://localhost",
