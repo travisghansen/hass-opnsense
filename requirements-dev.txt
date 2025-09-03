@@ -1,8 +1,7 @@
 -r requirements.txt
-coverage
-homeassistant
 homeassistant-stubs
 mypy
+pre-commit
 pytest
 pytest-asyncio
 pytest-cov

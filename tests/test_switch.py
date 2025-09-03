@@ -5,6 +5,7 @@ async setup flows for the integration's switch platform.
 """
 
 import asyncio
+import contextlib
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -47,14 +48,12 @@ def make_coord(data):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "compile_fn,state,client_methods,on_name,off_name",
+    "compile_fn,state,client_methods",
     [
         (
             _compile_filter_switches,
             {"config": {"filter": {"rule": [{"descr": "Allow LAN", "created": {"time": "t1"}}]}}},
             ("enable_filter_rule_by_created_time", "disable_filter_rule_by_created_time"),
-            "enable_filter_rule_by_created_time",
-            "disable_filter_rule_by_created_time",
         ),
         (
             _compile_port_forward_switches,
@@ -63,8 +62,6 @@ def make_coord(data):
                 "enable_nat_port_forward_rule_by_created_time",
                 "disable_nat_port_forward_rule_by_created_time",
             ),
-            "enable_nat_port_forward_rule_by_created_time",
-            "disable_nat_port_forward_rule_by_created_time",
         ),
         (
             _compile_nat_outbound_switches,
@@ -77,8 +74,6 @@ def make_coord(data):
                 "enable_nat_outbound_rule_by_created_time",
                 "disable_nat_outbound_rule_by_created_time",
             ),
-            "enable_nat_outbound_rule_by_created_time",
-            "disable_nat_outbound_rule_by_created_time",
         ),
         (
             _compile_service_switches,
@@ -94,21 +89,15 @@ def make_coord(data):
                 ]
             },
             ("start_service", "stop_service"),
-            "start_service",
-            "stop_service",
         ),
         (
             _compile_static_unbound_switches,
             {"unbound_blocklist": {"enabled": "1"}},
             ("enable_unbound_blocklist", "disable_unbound_blocklist"),
-            "enable_unbound_blocklist",
-            "disable_unbound_blocklist",
         ),
     ],
 )
-async def test_switch_toggle_variants(
-    coordinator, ph_hass, compile_fn, state, client_methods, on_name, off_name
-):
+async def test_switch_toggle_variants(coordinator, ph_hass, compile_fn, state, client_methods):
     """Generic param test for switches that support enable/disable-style clients."""
     config_entry = MagicMock()
     config_entry.runtime_data = MagicMock()
@@ -143,9 +132,10 @@ async def test_switch_toggle_variants(
 
     # call turn_on/turn_off and assert client methods called
     await ent.async_turn_on()
-    assert getattr(ent._client, on_name).called
+    # ensure the async client coroutine was actually awaited
+    getattr(ent._client, client_methods[0]).assert_awaited_once()
     await ent.async_turn_off()
-    assert getattr(ent._client, off_name).called
+    getattr(ent._client, client_methods[1]).assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -205,8 +195,27 @@ async def test_async_setup_entry_all_flags(coordinator, ph_hass):
     hass = ph_hass
     await switch_mod.async_setup_entry(hass, config_entry, fake_add_entities)
 
-    # expecting: filter(1) + pf(1) + nat outbound(1) + service(1) + vpn client(1) + unbound(1) = 6
-    assert calls.get("len") == 6
+    # compute expected counts from coordinator.data to avoid brittle hard-coded value
+    expected = 0
+    cfg = coordinator.data.get("config", {})
+    # filter rules
+    expected += len(cfg.get("filter", {}).get("rule", []) or [])
+    # port forward rules
+    expected += len(cfg.get("nat", {}).get("rule", []) or [])
+    # nat outbound rules
+    expected += len(cfg.get("nat", {}).get("outbound", {}).get("rule", []) or [])
+    # services
+    expected += len(coordinator.data.get("services", []) or [])
+    # vpn clients+servers for enabled VPN platforms
+    for vpn_key in ("openvpn", "wireguard"):
+        vpn_blob = coordinator.data.get(vpn_key, {})
+        # clients and servers are dicts keyed by uuid
+        expected += len(vpn_blob.get("clients", {}) or {})
+        expected += len(vpn_blob.get("servers", {}) or {})
+    # unbound blocklist counts as a single entity when enabled
+    expected += 1
+
+    assert calls.get("len") == expected
 
 
 def test_vpn_icon_property():
@@ -257,8 +266,34 @@ async def test_unbound_and_vpn_variations(coordinator, ph_hass):
     }
     coordinator.data = state
 
-    unbound = (await _compile_static_unbound_switches(config_entry, coordinator, state))[0]
-    vpn_ents = await _compile_vpn_switches(config_entry, coordinator, state)
+    # Prefer exercising the public setup path to reduce coupling to private
+    # compile helpers: run async_setup_entry and inspect created entities.
+    created: list = []
+
+    async def run_setup():
+        def add_entities(ents):
+            created.extend(ents)
+
+        await switch_mod.async_setup_entry(MagicMock(), config_entry, add_entities)
+
+    await run_setup()
+
+    # find the unbound and vpn entities we expect
+    unbound = next(
+        e
+        for e in created
+        if (
+            (
+                not isinstance(e, OPNsenseFilterSwitch)
+                and getattr(e, "_attr_unique_id", "").endswith("unbound")
+            )
+            or (
+                getattr(e, "entity_description", None)
+                and e.entity_description.key.startswith("unbound_blocklist")
+            )
+        )
+    )
+    vpn_ents = [e for e in created if isinstance(e, OPNsenseVPNSwitch)]
 
     # use PHCC-provided hass fixture
     hass = ph_hass
@@ -303,27 +338,35 @@ def test_delay_update_setter(monkeypatch, coordinator):
     ent = OPNsenseFilterSwitch(
         config_entry=config_entry, coordinator=coordinator, entity_description=desc
     )
-    # synchronous test: use a plain hass-like object
+    # synchronous test: use a plain hass-like object with a dedicated loop
     hass_local = MagicMock(spec=HomeAssistant)
-    hass_local.loop = asyncio.get_event_loop()
-    hass_local.data = {}
-    ent.hass = hass_local
-    called = {"removed": False}
+    loop = asyncio.new_event_loop()
+    try:
+        hass_local.loop = loop
+        hass_local.data = {}
+        ent.hass = hass_local
+        called = {"removed": False}
 
-    def fake_async_call_later(*args, **kwargs):
-        def remover():
-            called["removed"] = True
+        def fake_async_call_later(*args, **kwargs):
+            def remover():
+                called["removed"] = True
 
-        return remover
+            return remover
 
-    monkeypatch.setattr("custom_components.opnsense.switch.async_call_later", fake_async_call_later)
+        monkeypatch.setattr(
+            "custom_components.opnsense.switch.async_call_later", fake_async_call_later
+        )
 
-    ent.delay_update = True
-    assert ent.delay_update is True
-    # ensure async_call_later returned remover was captured
-    assert callable(getattr(ent, "_delay_update_remove", None))
-    ent.delay_update = False
-    assert called["removed"] is True
+        ent.delay_update = True
+        assert ent.delay_update is True
+        # ensure async_call_later returned remover was captured
+        assert callable(getattr(ent, "_delay_update_remove", None))
+        ent.delay_update = False
+        assert called["removed"] is True
+    finally:
+        # make sure we close the loop created for this test
+        with contextlib.suppress(RuntimeError):
+            loop.close()
 
 
 @pytest.mark.asyncio
@@ -417,74 +460,80 @@ async def test_async_setup_entry_missing_state(monkeypatch, coordinator, ph_hass
 async def test_switch_handle_error_sets_unavailable(kind: str, coordinator) -> None:
     """When underlying rule/service lookups return non-mapping values, switch becomes unavailable."""
     hass_local = MagicMock(spec=HomeAssistant)
-    hass_local.loop = asyncio.get_event_loop()
-    hass_local.data = {}
+    loop = asyncio.new_event_loop()
+    try:
+        hass_local.loop = loop
+        hass_local.data = {}
 
-    if kind == "filter":
-        # compile one valid filter entity then monkeypatch to produce error
-        config_entry = MagicMock()
-        config_entry.runtime_data = MagicMock()
-        config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1"}
-        config_entry.title = "OPNsenseTest"
-        setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-        state = {"config": {"filter": {"rule": [{"descr": "Good", "created": {"time": "t1"}}]}}}
-        coordinator.data = state
-        ent = (await _compile_filter_switches(config_entry, coordinator, state))[0]
-        ent.hass = hass_local
-        ent.coordinator = make_coord(state)
-        ent.entity_id = f"switch.{ent._attr_unique_id}"
-        ent.async_write_ha_state = lambda: None
+        if kind == "filter":
+            # compile one valid filter entity then monkeypatch to produce error
+            config_entry = MagicMock()
+            config_entry.runtime_data = MagicMock()
+            config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1"}
+            config_entry.title = "OPNsenseTest"
+            setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+            state = {"config": {"filter": {"rule": [{"descr": "Good", "created": {"time": "t1"}}]}}}
+            coordinator.data = state
+            ent = (await _compile_filter_switches(config_entry, coordinator, state))[0]
+            ent.hass = hass_local
+            ent.coordinator = make_coord(state)
+            ent.entity_id = f"switch.{ent._attr_unique_id}"
+            ent.async_write_ha_state = lambda: None
 
-        def _fake_get_rule_filter() -> Any:
-            return 5
+            def _fake_get_rule_filter() -> Any:
+                return 5
 
-        ent._opnsense_get_rule = _fake_get_rule_filter
-    elif kind == "nat":
-        desc = SwitchEntityDescription(key="nat_port_forward.abc", name="NAT")
-        config_entry = MagicMock()
-        config_entry.runtime_data = MagicMock()
-        config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1"}
-        config_entry.title = "OPNsenseTest"
-        setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-        ent = OPNsenseNatSwitch(
-            config_entry=config_entry,
-            coordinator=coordinator,
-            entity_description=desc,
-        )
-        ent.hass = hass_local
-        ent.coordinator = make_coord({})
-        ent.entity_id = "switch.nat"
-        ent.async_write_ha_state = lambda: None
+            ent._opnsense_get_rule = _fake_get_rule_filter
+        elif kind == "nat":
+            desc = SwitchEntityDescription(key="nat_port_forward.abc", name="NAT")
+            config_entry = MagicMock()
+            config_entry.runtime_data = MagicMock()
+            config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1"}
+            config_entry.title = "OPNsenseTest"
+            setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+            ent = OPNsenseNatSwitch(
+                config_entry=config_entry,
+                coordinator=coordinator,
+                entity_description=desc,
+            )
+            ent.hass = hass_local
+            ent.coordinator = make_coord({})
+            ent.entity_id = "switch.nat"
+            ent.async_write_ha_state = lambda: None
 
-        def _fake_get_rule_nat() -> Any:
-            return 123
+            def _fake_get_rule_nat() -> Any:
+                return 123
 
-        ent._opnsense_get_rule = _fake_get_rule_nat
-    else:  # service
-        desc = SwitchEntityDescription(key="service.svc1.status", name="Svc")
-        config_entry = MagicMock()
-        config_entry.runtime_data = MagicMock()
-        config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1"}
-        config_entry.title = "OPNsenseTest"
-        setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-        ent = OPNsenseServiceSwitch(
-            config_entry=config_entry,
-            coordinator=coordinator,
-            entity_description=desc,
-        )
-        ent.hass = hass_local
-        ent.coordinator = make_coord({})
-        ent.entity_id = "switch.svc"
-        ent.async_write_ha_state = lambda: None
+            ent._opnsense_get_rule = _fake_get_rule_nat
+        else:  # service
+            desc = SwitchEntityDescription(key="service.svc1.status", name="Svc")
+            config_entry = MagicMock()
+            config_entry.runtime_data = MagicMock()
+            config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1"}
+            config_entry.title = "OPNsenseTest"
+            setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+            ent = OPNsenseServiceSwitch(
+                config_entry=config_entry,
+                coordinator=coordinator,
+                entity_description=desc,
+            )
+            ent.hass = hass_local
+            ent.coordinator = make_coord({})
+            ent.entity_id = "switch.svc"
+            ent.async_write_ha_state = lambda: None
 
-        def _fake_get_service() -> Any:
-            return 5
+            def _fake_get_service() -> Any:
+                return 5
 
-        ent._opnsense_get_service = _fake_get_service
+            ent._opnsense_get_service = _fake_get_service
 
-    # Exercise the update logic and ensure entity is marked unavailable.
-    ent._handle_coordinator_update()
-    assert ent.available is False
+        # Exercise the update logic and ensure entity is marked unavailable.
+        ent._handle_coordinator_update()
+        assert ent.available is False
+    finally:
+        # make sure we close the loop created for this test
+        with contextlib.suppress(RuntimeError):
+            loop.close()
 
 
 def test_entity_icons():
@@ -635,6 +684,8 @@ async def test_vpn_toggle_parametrized(
     ent.coordinator = make_coord(state)
     ent.entity_id = f"switch.{ent.entity_description.key}"
     ent.async_write_ha_state = lambda: None
+    # attach a client and set its toggle_vpn_instance to a simple AsyncMock
+    # that returns the desired toggle_return value for the test case.
     ent._client = MagicMock()
     ent._client.toggle_vpn_instance = AsyncMock(return_value=toggle_return)
 
@@ -645,8 +696,19 @@ async def test_vpn_toggle_parametrized(
         assert ent.extra_state_attributes.get("name") == expect_name
 
     # try toggle
+    # capture whether the entity was already on (in which case async_turn_on
+    # should early-return and not call the client), then invoke the turn on
+    # behavior and assert the client was awaited only when appropriate.
+    already_on = ent.is_on
     await ent.async_turn_on()
     assert ent.is_on is expect_on
+
+    if already_on:
+        # when already on, the client should not be invoked
+        ent._client.toggle_vpn_instance.assert_not_awaited()
+    else:
+        # when not already on, the client should have been awaited once
+        ent._client.toggle_vpn_instance.assert_awaited_once()
 
 
 def test_reset_delay_calls_existing_remover(monkeypatch):
@@ -809,9 +871,18 @@ async def test_vpn_servers_properties_and_toggle(coordinator, ph_hass, make_conf
     state = {"openvpn": {"servers": {"srv1": server}}, "wireguard": {"clients": {}, "servers": {}}}
     coordinator.data = state
 
-    ents = await _compile_vpn_switches(config_entry, coordinator, state)
-    # find the server ent
-    server_ent = next(e for e in ents if e.entity_description.key.startswith("openvpn.servers."))
+    # Use public setup to create switches and find the server entity
+    created: list = []
+
+    async def run_setup():
+        def add_entities(ents):
+            created.extend(ents)
+
+        await switch_mod.async_setup_entry(MagicMock(), config_entry, add_entities)
+
+    await run_setup()
+    # find the server entity
+    server_ent = next(e for e in created if e.entity_description.key.startswith("openvpn.servers."))
     hass = ph_hass
     server_ent.hass = hass
     server_ent.coordinator = make_coord(state)
@@ -936,10 +1007,18 @@ async def test_client_failure_does_not_set_on(
     setattr(ent._client, client_attr[0], AsyncMock(return_value=False))
     setattr(ent._client, client_attr[1], AsyncMock(return_value=False))
     # call the turn method and assert is_on unchanged/False
+    # capture whether entity was already in the requested state so we can
+    # assert the client is not called in that case
+    already_on = ent.is_on
     await getattr(ent, turn_method)()
     assert ent.is_on is expect_is_on
     method = getattr(ent._client, client_attr[0])
-    method.assert_awaited()
+    if already_on:
+        # when already matching the requested action, client should not be called
+        assert method.await_count == 0
+    else:
+        # otherwise the client should have been awaited exactly once
+        method.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -999,8 +1078,8 @@ async def test_compile_vpn_wireguard_variations(coordinator, ph_hass, make_confi
         vpn._client = MagicMock()
         vpn._client.toggle_vpn_instance = AsyncMock(return_value=True)
         vpn._handle_coordinator_update()
-        # available may be True/False depending on enabled flag but handler should not raise
-        assert vpn.available in (True, False)
+        # available should be a boolean; ensures handler ran without raising
+        assert isinstance(vpn.available, bool)
 
 
 def test_vpn_instance_non_mapping_sets_unavailable(coordinator):

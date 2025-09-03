@@ -39,20 +39,17 @@ def _patch_hass_async_create_clientsession(monkeypatch):
 
         return _FakeSession()
 
-    # Prefer setting via the real module object when available; fall back to
-    # setting by import path string to be resilient in different test envs.
-    # Patch the helper in the imported module; if it's missing (ImportError) use
-    # monkeypatch.setattr with the import path string.
-    try:
-        monkeypatch.setattr(
-            _hc, "async_create_clientsession", _fake_create_clientsession, raising=False
-        )
-    except ImportError:
-        monkeypatch.setattr(
-            "homeassistant.helpers.aiohttp_client.async_create_clientsession",
-            _fake_create_clientsession,
-            raising=False,
-        )
+    # Patch both the imported module object and the import-path string so
+    # tests are resilient in different environments. Use raising=False so
+    # missing targets don't cause the fixture to fail.
+    monkeypatch.setattr(
+        _hc, "async_create_clientsession", _fake_create_clientsession, raising=False
+    )
+    monkeypatch.setattr(
+        "homeassistant.helpers.aiohttp_client.async_create_clientsession",
+        _fake_create_clientsession,
+        raising=False,
+    )
 
     # Also patch the integration's local import of the helper so the
     # integration doesn't create a real session when tests import the
@@ -157,15 +154,16 @@ async def test_async_update_listener_not_reload(monkeypatch):
     # should set SHOULD_RELOAD back to True and not call reload
     await init_mod._async_update_listener(hass, entry)
     assert getattr(entry.runtime_data, init_mod.SHOULD_RELOAD) is True
+    hass.config_entries.async_reload.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_async_remove_config_entry_device_branches(monkeypatch):
+async def test_async_remove_config_entry_device_branches(monkeypatch, hass):
     """Verify removal logic for config entry device registry branches."""
     device = MagicMock()
     device.via_device_id = True
     device.id = "d1"
-    res = await init_mod.async_remove_config_entry_device(None, None, device)
+    res = await init_mod.async_remove_config_entry_device(hass, None, device)
     assert res is False
 
     # device_entry with linked entity -> False
@@ -183,8 +181,28 @@ async def test_async_remove_config_entry_device_branches(monkeypatch):
     monkeypatch.setattr(
         init_mod.er, "async_entries_for_config_entry", lambda registry, config_entry_id: [ent]
     )
-    res = await init_mod.async_remove_config_entry_device(None, MagicMock(entry_id="x"), device)
+    res = await init_mod.async_remove_config_entry_device(hass, MagicMock(entry_id="x"), device)
     assert res is False
+
+
+@pytest.mark.asyncio
+async def test_async_remove_config_entry_device_no_linked_entities(monkeypatch):
+    """When no linked entities exist for a device, removal should succeed (return True)."""
+    # device not linked via via_device_id and has an id
+    device = MagicMock()
+    device.via_device_id = False
+    device.id = "d3"
+
+    # fake entity registry returns no entities for the config entry
+    ER = MagicMock()
+    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: ER)
+    monkeypatch.setattr(
+        init_mod.er, "async_entries_for_config_entry", lambda registry, config_entry_id: []
+    )
+
+    # call the removal helper with a dummy config entry
+    res = await init_mod.async_remove_config_entry_device(None, MagicMock(entry_id="x"), device)
+    assert res is True
 
 
 @pytest.mark.asyncio
@@ -243,12 +261,12 @@ async def test_migrate_1_to_2_updates_entry(ph_hass):
 
 
 @pytest.mark.asyncio
-async def test_async_migrate_entry_version_gt4():
+async def test_async_migrate_entry_version_gt4(ph_hass):
     """async_migrate_entry returns False for versions greater than supported."""
     cfg = MagicMock()
     cfg.version = 5
     # should return False
-    res = await init_mod.async_migrate_entry(None, cfg)
+    res = await init_mod.async_migrate_entry(ph_hass, cfg)
     assert res is False
 
 
@@ -373,9 +391,9 @@ async def test_async_setup_entry_firmware_between_min_and_ltd(
     res = await init_mod.async_setup_entry(hass, entry)
     assert res is True
     # verify the LTD deprecation/warning issue was created
-    assert (
-        create_issue_mock.called
-    ), "async_create_issue should have been called for firmware between min and LTD"
+    assert create_issue_mock.called, (
+        "async_create_issue should have been called for firmware between min and LTD"
+    )
     call_args = create_issue_mock.call_args
     # args: (hass, domain, issue_id, ...)
     assert call_args[0][1] == init_mod.DOMAIN
@@ -512,6 +530,7 @@ async def test_async_unload_entry_unload_fails(ph_hass):
     assert res is False
     # hass.data should still have the entry
     assert entry.entry_id in hass.data[init_mod.DOMAIN]
+    fake_client.async_close.assert_awaited_once()
 
 
 @pytest.mark.asyncio

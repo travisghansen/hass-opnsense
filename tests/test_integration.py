@@ -33,8 +33,9 @@ from custom_components.opnsense.const import (
     CONF_GRANULAR_SYNC_OPTIONS,
     CONF_MANUAL_DEVICES,
 )
-import homeassistant
 from homeassistant.const import CONF_NAME, CONF_PASSWORD, CONF_URL, CONF_USERNAME, CONF_VERIFY_SSL
+
+homeassistant = pytest.importorskip("homeassistant")
 
 
 class _FakeFlowClient:
@@ -142,7 +143,15 @@ def _build_mock_hass() -> Any:
         def __init__(self) -> None:
             self._entries: dict[str, Any] = {}
 
-        def async_update_entry(self, entry, data=None, options=None, version=None, unique_id=None):
+        def async_update_entry(
+            self,
+            entry,
+            data=None,
+            options=None,
+            version=None,
+            unique_id=None,
+            **kwargs,
+        ):
             # Bypass ConfigEntry attribute protections using object.__setattr__
             if data is not None:
                 object.__setattr__(entry, "data", data)
@@ -176,7 +185,9 @@ async def test_e2e_basic_config_flow_and_setup(monkeypatch, make_config_entry):
     monkeypatch.setattr(
         cf_mod, "OPNsenseClient", lambda **k: _FakeFlowClient(device_id="dev-basic")
     )
-    monkeypatch.setattr(cf_mod, "async_create_clientsession", lambda **k: MagicMock())
+    monkeypatch.setattr(
+        cf_mod, "async_create_clientsession", lambda **k: MagicMock(), raising=False
+    )
 
     flow = cf_mod.OPNsenseConfigFlow()
     hass = _build_mock_hass()
@@ -186,8 +197,8 @@ async def test_e2e_basic_config_flow_and_setup(monkeypatch, make_config_entry):
     async def _noop_unique_id(*a, **k):
         return None
 
-    flow.async_set_unique_id = _noop_unique_id  # type: ignore[attr-defined]
-    flow._abort_if_unique_id_configured = lambda: None  # type: ignore[attr-defined]
+    flow.async_set_unique_id = _noop_unique_id
+    flow._abort_if_unique_id_configured = lambda: None
 
     user_input = _make_basic_user_input()
     # Run user step -> should create entry directly (no granular sync)
@@ -212,8 +223,8 @@ async def test_e2e_basic_config_flow_and_setup(monkeypatch, make_config_entry):
         options={},
     )
     # Provide stubs expected by integration (update listener registration returns unsubscribe)
-    entry.add_update_listener = lambda f: (lambda: None)  # type: ignore[attr-defined]
-    entry.async_on_unload = lambda x: None  # type: ignore[attr-defined]
+    entry.add_update_listener = lambda f: (lambda: None)
+    entry.async_on_unload = lambda x: None
     hass.data = {}
 
     ok = await init_mod.async_setup_entry(hass, entry)
@@ -241,7 +252,9 @@ async def test_e2e_granular_sync_and_options_device_tracker(
 
     # Patch flow client
     monkeypatch.setattr(cf_mod, "OPNsenseClient", lambda **k: _FakeFlowClient(device_id="dev-gran"))
-    monkeypatch.setattr(cf_mod, "async_create_clientsession", lambda **k: MagicMock())
+    monkeypatch.setattr(
+        cf_mod, "async_create_clientsession", lambda **k: MagicMock(), raising=False
+    )
 
     flow = cf_mod.OPNsenseConfigFlow()
     hass = _build_mock_hass()
@@ -250,8 +263,8 @@ async def test_e2e_granular_sync_and_options_device_tracker(
     async def _noop_unique_id(*a, **k):  # redefined for this test context
         return None
 
-    flow.async_set_unique_id = _noop_unique_id  # type: ignore[attr-defined]
-    flow._abort_if_unique_id_configured = lambda: None  # type: ignore[attr-defined]
+    flow.async_set_unique_id = _noop_unique_id
+    flow._abort_if_unique_id_configured = lambda: None
 
     # Step 1: user chooses granular sync
     user_input = _make_basic_user_input()
@@ -273,14 +286,14 @@ async def test_e2e_granular_sync_and_options_device_tracker(
         entry_id="entry_gran",
         options={},
     )
-    entry.add_update_listener = lambda f: (lambda: None)  # type: ignore[attr-defined]
-    entry.async_on_unload = lambda x: None  # type: ignore[attr-defined]
+    entry.add_update_listener = lambda f: (lambda: None)
+    entry.async_on_unload = lambda x: None
 
     # Add to fake hass store so options flow update calls can mutate it
     hass.data.setdefault(init_mod.DOMAIN, {})
     # Provide async_get_known_entry for options flow compatibility
     if not hasattr(hass.config_entries, "async_get_known_entry"):
-        hass.config_entries.async_get_known_entry = lambda entry_id: entry  # type: ignore[attr-defined]
+        hass.config_entries.async_get_known_entry = lambda entry_id: entry
 
     # Options flow path
     opt_flow = cf_mod.OPNsenseConfigFlow.async_get_options_flow(
@@ -290,8 +303,11 @@ async def test_e2e_granular_sync_and_options_device_tracker(
     # Avoid Home Assistant usage reporting side-effects in this lightweight
     # test harness (the real HA runtime sets up frame helpers). Stub the
     # usage reporter so assigning the config_entry property on the flow
-    # doesn't fail during tests.
-    monkeypatch.setattr(homeassistant.config_entries, "report_usage", lambda *a, **k: None)
+    # doesn't fail during tests. Use raising=False to allow older HA versions
+    # that don't expose report_usage.
+    monkeypatch.setattr(
+        homeassistant.config_entries, "report_usage", lambda *a, **k: None, raising=False
+    )
     # Provide the config entry to the options flow in this test environment
     # so it can access entry.data/options without relying on HA internals.
     opt_flow.config_entry = entry
@@ -346,17 +362,19 @@ async def test_e2e_reload_and_unload(monkeypatch, make_config_entry):
 
     # Patch config flow client
     monkeypatch.setattr(cf_mod, "OPNsenseClient", lambda **k: _FakeFlowClient(device_id="dev-rel"))
-    monkeypatch.setattr(cf_mod, "async_create_clientsession", lambda **k: MagicMock())
+    monkeypatch.setattr(
+        cf_mod, "async_create_clientsession", lambda **k: MagicMock(), raising=False
+    )
 
     flow = cf_mod.OPNsenseConfigFlow()
     hass = _build_mock_hass()
     flow.hass = hass
 
-    async def _noop_unique_id(*a, **k):  # type: ignore[unused-ignore]
+    async def _noop_unique_id(*a, **k):
         return None
 
-    flow.async_set_unique_id = _noop_unique_id  # type: ignore[attr-defined]
-    flow._abort_if_unique_id_configured = lambda: None  # type: ignore[attr-defined]
+    flow.async_set_unique_id = _noop_unique_id
+    flow._abort_if_unique_id_configured = lambda: None
 
     result = await flow.async_step_user(user_input=_make_basic_user_input())
     data = result["data"]
@@ -367,8 +385,8 @@ async def test_e2e_reload_and_unload(monkeypatch, make_config_entry):
     monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", _FakeCoordinator)
 
     # Provide unload platforms async method
-    hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)  # type: ignore[attr-defined]
-    hass.config_entries.async_reload = AsyncMock()  # type: ignore[attr-defined]
+    hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
+    hass.config_entries.async_reload = AsyncMock()
 
     # Entry object using MockConfigEntry
     entry = make_config_entry(
@@ -378,8 +396,8 @@ async def test_e2e_reload_and_unload(monkeypatch, make_config_entry):
         entry_id="entry_rel",
         options={},
     )
-    entry.add_update_listener = lambda f: (lambda: None)  # type: ignore[attr-defined]
-    entry.async_on_unload = lambda x: None  # type: ignore[attr-defined]
+    entry.add_update_listener = lambda f: (lambda: None)
+    entry.async_on_unload = lambda x: None
 
     # Setup
     ok = await init_mod.async_setup_entry(hass, entry)
@@ -397,7 +415,7 @@ async def test_e2e_reload_and_unload(monkeypatch, make_config_entry):
     )
 
     # Trigger update listener -> should schedule reload
-    setattr(entry.runtime_data, "SHOULD_RELOAD", True)
+    setattr(entry.runtime_data, init_mod.SHOULD_RELOAD, True)
     await init_mod._async_update_listener(hass, entry)
     assert hass.config_entries.async_reload.call_count == 1
 
@@ -436,7 +454,7 @@ async def test_e2e_full_migration_chain(monkeypatch, make_config_entry):
             ]
             self.updated: list[FakeDevice] = []
 
-        def async_update_device(self, device_id: str, new_identifiers: set[tuple[str, str]]):  # type: ignore[override]
+        def async_update_device(self, device_id: str, new_identifiers: set[tuple[str, str]]):
             for d in self._devices:
                 if d.id == device_id:
                     d.identifiers = new_identifiers
@@ -475,13 +493,16 @@ async def test_e2e_full_migration_chain(monkeypatch, make_config_entry):
             self.updated: list[FakeEntity] = []
             self.removed: list[str] = []
 
-        def async_update_entity(self, entity_id: str, new_unique_id: str):  # type: ignore[override]
+        def async_update_entity(self, entity_id: str, new_unique_id: str, **kwargs):
+            # Accept HA's keyword-based calls (e.g. new_unique_id=...) while
+            # preserving existing positional behavior. Prefer kwarg when present.
+            new_unique_id = kwargs.get("new_unique_id", new_unique_id)
             ent = self._entities[entity_id]
             ent.unique_id = new_unique_id
             self.updated.append(ent)
             return ent
 
-        def async_remove(self, entity_id: str):  # type: ignore[override]
+        def async_remove(self, entity_id: str):
             self.removed.append(entity_id)
             self._entities.pop(entity_id, None)
 
@@ -494,12 +515,12 @@ async def test_e2e_full_migration_chain(monkeypatch, make_config_entry):
     monkeypatch.setattr(
         init_mod.dr,
         "async_entries_for_config_entry",
-        lambda registry, config_entry_id: list(fake_device_reg._devices),  # type: ignore[attr-defined]
+        lambda registry, config_entry_id: list(fake_device_reg._devices),
     )
     monkeypatch.setattr(
         init_mod.er,
         "async_entries_for_config_entry",
-        lambda registry, config_entry_id: list(fake_entity_reg._entities.values()),  # type: ignore[attr-defined]
+        lambda registry, config_entry_id: list(fake_entity_reg._entities.values()),
     )
 
     # Patch client used during migrations (v2->3 get_device_unique_id, v3->4 get_telemetry)
@@ -514,7 +535,9 @@ async def test_e2e_full_migration_chain(monkeypatch, make_config_entry):
             return {"filesystems": []}  # keep simple to avoid extra branches
 
     monkeypatch.setattr(init_mod, "OPNsenseClient", lambda **k: _MigClient())
-    monkeypatch.setattr(init_mod, "async_create_clientsession", lambda **k: MagicMock())
+    monkeypatch.setattr(
+        init_mod, "async_create_clientsession", lambda **k: MagicMock(), raising=False
+    )
 
     # Build legacy v1 entry (tls_insecure True, missing verify_ssl)
     entry = make_config_entry(

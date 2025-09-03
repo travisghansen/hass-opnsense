@@ -27,15 +27,6 @@ from custom_components.opnsense.sensor import (
     OPNsenseStaticKeySensor,
     OPNsenseTempSensor,
     OPNsenseVPNSensor,
-    _compile_carp_interface_sensors,
-    _compile_dhcp_leases_sensors,
-    _compile_filesystem_sensors,
-    _compile_gateway_sensors,
-    _compile_interface_sensors,
-    _compile_static_certificate_sensors,
-    _compile_static_telemetry_sensors,
-    _compile_temperature_sensors,
-    _compile_vpn_sensors,
     async_setup_entry,
     normalize_filesystem_mountpoint,
     slugify_filesystem_mountpoint,
@@ -143,10 +134,27 @@ async def test_filesystem_and_compile_helpers(make_config_entry):
     entry = make_config_entry()
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coordinator.data = state
+    # async_setup_entry expects the runtime_data.COORDINATOR to be present and
+    # the config entry to have telemetry sync enabled. Construct a new entry
+    # with the sync option enabled and attach the coordinator to runtime_data.
+    base = dict(entry.data)
+    base.update({CONF_SYNC_TELEMETRY: True})
+    entry = make_config_entry(base)
+    entry.runtime_data = MagicMock()
+    setattr(entry.runtime_data, COORDINATOR, coordinator)
 
-    # compile filesystem sensors directly
-    entities = await _compile_filesystem_sensors(entry, coordinator, state)
-    roots = [e for e in entities if e.entity_description.key.endswith(".root")]
+    # Prefer exercising the public integration path: run async_setup_entry and
+    # inspect the created entities for filesystem sensors (root mounts).
+    created: list = []
+
+    async def run_setup():
+        def add_entities(entities):
+            created.extend(entities)
+
+        await sensor_module.async_setup_entry(MagicMock(), entry, add_entities)
+
+    await run_setup()
+    roots = [e for e in created if e.entity_description.key.endswith(".root")]
     assert len(roots) == 1
 
     # instance sensor behavior
@@ -523,29 +531,32 @@ async def test_compile_and_handle_many_entities(make_config_entry):
 
     entry, coord = _setup_entry_with_all_syncs(state, make_config_entry)
 
-    # compile all entity lists
-    entities = []
-    entities.extend(await _compile_static_telemetry_sensors(entry, coord))
-    entities.extend(await _compile_static_certificate_sensors(entry, coord))
-    entities.extend(await _compile_filesystem_sensors(entry, coord, state))
-    entities.extend(await _compile_temperature_sensors(entry, coord, state))
-    entities.extend(await _compile_vpn_sensors(entry, coord, state))
-    entities.extend(await _compile_gateway_sensors(entry, coord, state))
-    entities.extend(await _compile_interface_sensors(entry, coord, state))
-    entities.extend(await _compile_carp_interface_sensors(entry, coord, state))
-    entities.extend(await _compile_dhcp_leases_sensors(entry, coord, state))
+    # Prefer exercising the public integration path: run async_setup_entry to
+    # create entities and reduce coupling to private compile helpers. Keep a
+    # tiny smoke check for filesystem helper only.
+    created: list = []
 
-    # Ensure we produced entities
-    assert len(entities) > 0
+    async def run_setup():
+        def add_entities(entities):
+            created.extend(entities)
+
+        await sensor_module.async_setup_entry(MagicMock(), entry, add_entities)
+
+    await run_setup()
+
+    # minimal private helper smoke check for filesystem compilation
+    fs_entities = await sensor_module._compile_filesystem_sensors(entry, coord, state)
+    assert isinstance(fs_entities, list)
+
+    # Ensure we produced entities via the public setup
+    assert len(created) > 0
 
     # Exercise each entity's update handler
     failures: list[str] = []
-    for i, ent in enumerate(entities):
+    for i, ent in enumerate(created):
         ent.hass = MagicMock()
         ent.entity_id = f"sensor.test_{i}"
         ent.async_write_ha_state = lambda: None
-        # call handler and collect any unexpected exceptions per-entity so test
-        # reports which entity failed rather than silently swallowing errors.
         try:
             ent._handle_coordinator_update()
         except (
@@ -553,7 +564,7 @@ async def test_compile_and_handle_many_entities(make_config_entry):
             KeyError,
             ZeroDivisionError,
             AttributeError,
-        ) as e:  # collect expected data-related exceptions
+        ) as e:
             failures.append(
                 f"entity={getattr(ent, 'entity_id', i)} type={type(e).__name__} msg={e!r}"
             )
@@ -600,7 +611,7 @@ async def test_compile_interface_sensors_values_end(make_config_entry):
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coordinator.data = state
 
-    entities = await _compile_interface_sensors(entry, coordinator, state)
+    entities = await sensor_module._compile_interface_sensors(entry, coordinator, state)
     assert any(e.entity_description.key.startswith("interface.eth0.") for e in entities)
 
     kb_entity = next(

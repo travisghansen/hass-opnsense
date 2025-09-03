@@ -140,19 +140,28 @@ async def validate_input(
         _log_and_set_error(
             errors=errors,
             key="cannot_connect_ssl",
-            message=f"Aiohttp Error. {type(e).__name__}: {e}",
+            message=cleanse_sensitive_data(
+                f"Aiohttp Error. {type(e).__name__}: {e}",
+                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
+            ),
         )
     except (aiohttp.TooManyRedirects, aiohttp.RedirectClientError) as e:
         _log_and_set_error(
             errors=errors,
             key="url_redirect",
-            message=f"Redirect Error. {type(e).__name__}: {e}",
+            message=cleanse_sensitive_data(
+                f"Redirect Error. {type(e).__name__}: {e}",
+                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
+            ),
         )
     except (TimeoutError, aiohttp.ServerTimeoutError) as e:
         _log_and_set_error(
             errors=errors,
             key="connect_timeout",
-            message=f"Timeout Error. {type(e).__name__}: {e}",
+            message=cleanse_sensitive_data(
+                f"Timeout Error. {type(e).__name__}: {e}",
+                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
+            ),
         )
     except aiohttp.ClientResponseError as e:
         if e.status == 401:
@@ -161,7 +170,12 @@ async def validate_input(
             errors["base"] = "privilege_missing"
         else:
             errors["base"] = "cannot_connect"
-        _LOGGER.error("Aiohttp Error. %s: %s", type(e).__name__, e)
+        _LOGGER.error(
+            cleanse_sensitive_data(
+                f"Aiohttp Error. {type(e).__name__}: {e}",
+                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
+            )
+        )
     except xmlrpc.client.ProtocolError as e:
         error_message = str(e)
         if "307 Temporary Redirect" in error_message or "301 Moved Permanently" in error_message:
@@ -178,7 +192,10 @@ async def validate_input(
         _log_and_set_error(
             errors=errors,
             key="cannot_connect",
-            message=f"Aiohttp Error. {type(e).__name__}: {e}",
+            message=cleanse_sensitive_data(
+                f"Aiohttp Error. {type(e).__name__}: {e}",
+                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
+            ),
         )
     except OSError as e:
         error_message = str(e)

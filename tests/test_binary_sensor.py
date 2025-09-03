@@ -121,6 +121,8 @@ async def test_async_setup_entry_creates_only_notices_when_notices_enabled(make_
         ({"carp_status": True}, True, True, True, dict),
         ({"carp_status": False}, True, True, False, dict),
         ({"other": 1}, True, False, None, None),
+        # non-boolean carp value should trigger a write and mark sensor available; extras are dict
+        ({"carp_status": "up"}, True, True, None, dict),
     ],
 )
 def test_carp_sensor_update_paths_param(
@@ -131,7 +133,7 @@ def test_carp_sensor_update_paths_param(
     Covers: non-mapping (None), present True, and missing-key cases.
     """
     entry = make_config_entry()
-    desc = BinarySensorEntityDescription(key="carp.status", name="CARP Status")
+    desc = BinarySensorEntityDescription(key="carp_status", name="CARP Status")
 
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord.data = coord_data

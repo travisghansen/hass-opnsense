@@ -17,7 +17,7 @@ pkg = importlib.import_module("custom_components.opnsense")
 
 @pytest.mark.asyncio
 async def test_async_setup_entry_configured_devices(
-    monkeypatch, ph_hass, coordinator, make_config_entry
+    monkeypatch, ph_hass, coordinator, make_config_entry, fake_reg_factory
 ):
     """Setup creates device tracker entities for configured MACs."""
     coordinator.data = {
@@ -39,15 +39,9 @@ async def test_async_setup_entry_configured_devices(
     hass.config_entries.async_reload = AsyncMock()
     hass.data = {}
 
-    # fake device registry so removal code can be exercised safely
-    class FakeReg:
-        def async_get_device(self, *args, **kwargs):
-            return None
-
-        def async_remove_device(self, *args, **kwargs):
-            return None
-
-    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: FakeReg())
+    # use shared fake registry fixture: device does not exist
+    fake = fake_reg_factory(device_exists=False)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: fake, raising=False)
 
     added = []
 
@@ -73,23 +67,20 @@ async def test_async_setup_entry_configured_devices(
     # tracked macs should have been updated on the config entry
     assert hass.config_entries.async_update_entry.called
     # Inspect the update payload to ensure tracked MACs were persisted
-    call_args = hass.config_entries.async_update_entry.call_args
-    args, kwargs = call_args
-    # The integration calls async_update_entry(config_entry, data=new_data)
-    if "data" in kwargs:
-        updated_data = kwargs["data"]
-    elif len(args) > 1 and isinstance(args[1], dict):
-        updated_data = args[1]
-    else:
-        updated_data = None
+    call = hass.config_entries.async_update_entry.call_args
+    args = call.args
+    kwargs = call.kwargs
+    # HA calls async_update_entry(positionally): (entry, data)
+    target_entry = args[0]
+    updated_data = kwargs.get("data", args[1] if len(args) > 1 else None)
 
-    assert updated_data is not None
+    assert target_entry is entry
     assert updated_data.get(dt_mod.TRACKED_MACS) == ["aa:bb:cc"]
 
 
 @pytest.mark.asyncio
 async def test_async_setup_entry_removes_nonmatching_tracked_macs(
-    monkeypatch, ph_hass, coordinator, make_config_entry
+    monkeypatch, ph_hass, coordinator, make_config_entry, fake_reg_factory
 ):
     """Ensure previously-tracked MACs not present in current devices are removed."""
     # coordinator reports only one arp entry
@@ -113,19 +104,8 @@ async def test_async_setup_entry_removes_nonmatching_tracked_macs(
     hass.config_entries.async_reload = AsyncMock()
     hass.data = {}
 
-    # fake device registry so removal code can be exercised safely
-    class FakeReg:
-        def async_get_device(self, *args, **kwargs):
-            # simulate that the device exists for the removed mac so removal path runs
-            class _D:
-                id = "removed-device-id"
-
-            return _D()
-
-        def async_remove_device(self, *args, **kwargs):
-            return None
-
-    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: FakeReg())
+    fake = fake_reg_factory(device_exists=True, device_id="removed-device-id")
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: fake, raising=False)
 
     added = []
 
@@ -136,14 +116,10 @@ async def test_async_setup_entry_removes_nonmatching_tracked_macs(
 
     # ensure an update was persisted and the stale MAC was removed
     assert hass.config_entries.async_update_entry.called
-    call_args = hass.config_entries.async_update_entry.call_args
-    args, kwargs = call_args
-    if "data" in kwargs:
-        updated_data = kwargs["data"]
-    elif len(args) > 1 and isinstance(args[1], dict):
-        updated_data = args[1]
-    else:
-        updated_data = None
+    call = hass.config_entries.async_update_entry.call_args
+    args = call.args
+    kwargs = call.kwargs
+    updated_data = kwargs.get("data", args[1] if len(args) > 1 else None)
 
     assert updated_data is not None
     # The stale MAC should no longer be present
@@ -173,7 +149,7 @@ def test_handle_coordinator_update_unavailable(coordinator, make_config_entry):
     assert ent.async_write_ha_state.called
 
 
-def test_handle_coordinator_update_entry_present(monkeypatch, coordinator, make_config_entry):
+def test_handle_coordinator_update_entry_present(coordinator, make_config_entry):
     """Coordinator arp entry populates entity attributes correctly."""
     coordinator.data = {
         "arp_table": [
@@ -338,7 +314,7 @@ async def test_async_setup_entry_state_not_mapping(ph_hass, coordinator, make_co
 
 @pytest.mark.asyncio
 async def test_async_setup_entry_removes_previous_mac(
-    monkeypatch, ph_hass, coordinator, make_config_entry
+    monkeypatch, ph_hass, coordinator, make_config_entry, fake_reg_factory
 ):
     """Setup removes previously tracked MAC addresses when reconfiguring."""
     # previous tracked macs include an old mac that should be removed via device registry
@@ -351,18 +327,9 @@ async def test_async_setup_entry_removes_previous_mac(
     hass = ph_hass
     hass.data = {}
 
-    class FakeReg:
-        def __init__(self):
-            self.removed = False
-
-        def async_get_device(self, *args, **kwargs):
-            return MagicMock(id="dev_to_remove")
-
-        def async_remove_device(self, _id):
-            self.removed = True
-
-    fake = FakeReg()
-    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: fake)
+    # use shared fake registry fixture: simulate device present and removal
+    fake = fake_reg_factory(device_exists=True, device_id="dev_to_remove")
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: fake, raising=False)
 
     hass.config_entries.async_update_entry = MagicMock()
 

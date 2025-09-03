@@ -28,6 +28,7 @@ def test_mac_and_ip_and_cleanse():
     msg = "user=admin&pass=secret"
     out = cf_mod.cleanse_sensitive_data(msg, ["secret"])
     assert "[redacted]" in out
+    assert "secret" not in out
 
 
 @pytest.mark.asyncio
@@ -92,13 +93,16 @@ async def test_validate_input_exception_mapping(monkeypatch, exc_key, expected):
     elif exc_key == "xmlrpc_other":
         exc = xmlrpc.client.Fault(1, "other fault")
     elif exc_key == "client_connector_ssl":
-        # ClientConnectorSSLError requires a connector key object with host/port; provide one
+        # Simulate an SSL-related client error that maps to "cannot_connect_ssl".
+        # ClientSSLError (and its base ClientConnectorError) require a connection
+        # key and an underlying os_error; provide a minimal connector-like
+        # object and an OSError to construct the exception instance.
         class Conn:
             host = "host.example"
             port = 443
             ssl = None
 
-        exc = aiohttp.ClientConnectorSSLError(Conn(), OSError("ssl error"))
+        exc = aiohttp.ClientSSLError(Conn(), OSError("ssl error"))
     elif exc_key in ("resp_401", "resp_403", "resp_500"):
         status = 401 if exc_key == "resp_401" else 403 if exc_key == "resp_403" else 500
 
@@ -184,6 +188,16 @@ async def test_get_dt_entries_sorts_and_includes_selected(monkeypatch, fake_clie
     keys = list(res.keys())
     assert "aa:bb:cc:00:00:01" in keys
     assert "11:22:33:44:55:66" in keys
+    # Selected device appears first
+    assert keys[0] == "11:22:33:44:55:66"
+    # IP-labeled entries are sorted numerically (10.0.0.5 before 192.168.1.10 < 192.168.1.20)
+    vals = list(res.values())
+    assert vals.index("10.0.0.5 [11:22:33:44:55:66]") < vals.index(
+        "192.168.1.10 (hosta) [bb:cc:dd:00:00:02]"
+    )
+    assert vals.index("192.168.1.10 (hosta) [bb:cc:dd:00:00:02]") < vals.index(
+        "192.168.1.20 (hostb) [aa:bb:cc:00:00:01]"
+    )
 
 
 def test_build_user_input_and_granular_and_options_schemas_defaults():
@@ -205,6 +219,22 @@ def test_build_user_input_and_granular_and_options_schemas_defaults():
     oschema = cf_mod._build_options_init_schema(user_input=None)
     out = oschema({})
     assert cf_mod.CONF_SCAN_INTERVAL in out
+
+
+@pytest.mark.parametrize(
+    "input_value,expected",
+    [
+        (5, 10),  # below minimum -> clamped to 10
+        (150, 150),  # within range -> unchanged
+        (1000, 300),  # above maximum -> clamped to 300
+    ],
+)
+def test_options_scan_interval_clamp(input_value, expected):
+    """_build_options_init_schema should clamp CONF_SCAN_INTERVAL to min/max values."""
+    oschema = cf_mod._build_options_init_schema(user_input=None)
+    # pass a dict with the scan interval set to the test value
+    validated = oschema({cf_mod.CONF_SCAN_INTERVAL: input_value})
+    assert validated.get(cf_mod.CONF_SCAN_INTERVAL) == expected
 
 
 def test_async_get_options_flow_returns_options_flow():
@@ -262,7 +292,7 @@ async def test_options_flow_granular_sync_calls_validate_and_updates(monkeypatch
     monkeypatch.setattr(cf_mod, "validate_input", fake_validate)
 
     # use an actual granular sync key present in the module
-    gkey = list(cf_mod.GRANULAR_SYNC_ITEMS)[0]
+    gkey = next(iter(cf_mod.GRANULAR_SYNC_ITEMS))
     # populate internals so the flow method doesn't access Home Assistant internals
     flow._config = dict(cfg.data)
     flow._options = dict(cfg.options)
@@ -335,7 +365,10 @@ async def test_options_flow_device_tracker_user_input(monkeypatch):
         cf_mod.CONF_DEVICES: ["11:22:33:44:55:66"],
     }
 
-    await flow.async_step_device_tracker(user_input=user_input)
+    result = await flow.async_step_device_tracker(user_input=user_input)
+
+    # flow should have returned a create_entry
+    assert result["type"] == "create_entry"
 
     # The flow should have parsed manual devices into _options
     assert cf_mod.CONF_DEVICES in flow._options

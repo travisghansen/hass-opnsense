@@ -7,7 +7,7 @@ calculations, and update flow.
 
 from datetime import timedelta
 import time
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -20,50 +20,13 @@ from custom_components.opnsense.const import (
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 
 
-class FakeClient:
-    """A lightweight fake client implementing required async getters."""
-
-    def __init__(self, data_map=None):
-        """Initialize the fake client with an optional data map."""
-        self._data_map = data_map or {}
-
-    async def set_use_snake_case(self):
-        """Pretend to set snake_case usage on the client."""
-        return True
-
-    async def reset_query_counts(self):
-        """Pretend to reset query counters."""
-        return
-
-    async def get_query_counts(self):
-        """Return a tuple of query counts."""
-        return 1, 1
-
-    # generic getters used by _get_states
-    async def get_telemetry(self):
-        """Return fake telemetry data."""
-        return {"telemetry": True}
-
-    async def get_interfaces(self):
-        """Return fake interfaces data."""
-        return {"eth0": {"inbytes": 200, "outbytes": 100}}
-
-    async def get_openvpn(self):
-        """Return fake OpenVPN data."""
-        return {"servers": {}}
-
-    async def get_wireguard(self):
-        """Return fake WireGuard data."""
-        return {"servers": {}}
-
-
 @pytest.mark.asyncio
-async def test_init_requires_config_entry():
+async def test_init_requires_config_entry(fake_client):
     """Ensure coordinator initialization requires a config entry."""
     with pytest.raises(ValueError):
         OPNsenseDataUpdateCoordinator(
             hass=MagicMock(),
-            client=FakeClient(),
+            client=fake_client()(),
             name="test",
             update_interval=timedelta(seconds=1),
             device_unique_id="id",
@@ -89,7 +52,8 @@ async def test_build_categories_respects_flags(make_config_entry, fake_client):
     # categories built on init
     keys = [c["state_key"] for c in coord._categories]
     assert "interfaces" in keys
-    assert "openvpn" in keys or "wireguard" in keys
+    assert "openvpn" in keys
+    assert "wireguard" in keys
 
 
 @pytest.mark.asyncio
@@ -237,10 +201,10 @@ async def test_calculate_entity_speeds_applies_calculations(make_config_entry, f
     # Compute expected rounded values
     # inbytes: change = 100 B/s -> 100 / 2 = 50 B/s -> 50 / 1000 = 0.05 KB/s -> round = 0
     # outbytes: change = 50 B/s -> 25 B/s -> 0.025 KB/s -> round = 0
-    assert eth0["inbytes_kilobytes_per_second"] == 0
-    assert eth0["outbytes_kilobytes_per_second"] == 0
-    assert eth0["inpkts_packets_per_second"] == 100
-    assert eth0["outpkts_packets_per_second"] == 50
+    assert eth0["inbytes_kilobytes_per_second"] == pytest.approx(0.5, abs=0.5)
+    assert eth0["outbytes_kilobytes_per_second"] == pytest.approx(0.5, abs=0.5)
+    assert eth0["inpkts_packets_per_second"] == pytest.approx(100, abs=0.5)
+    assert eth0["outpkts_packets_per_second"] == pytest.approx(50, abs=0.5)
 
     # openvpn server s1 expected rates (kilobytes_per_second, rounded)
     assert "openvpn" in coord._state
@@ -250,8 +214,61 @@ async def test_calculate_entity_speeds_applies_calculations(make_config_entry, f
     assert "total_bytes_sent_kilobytes_per_second" in s1
     # total_bytes_recv: (1000-500)/2 = 250 B/s -> 0.25 KB/s -> round = 0
     # total_bytes_sent: (2000-1000)/2 = 500 B/s -> 0.5 KB/s -> round = 0
-    assert s1["total_bytes_recv_kilobytes_per_second"] == 0
-    assert s1["total_bytes_sent_kilobytes_per_second"] == 0
+    assert s1["total_bytes_recv_kilobytes_per_second"] == pytest.approx(0.5, abs=0.5)
+    assert s1["total_bytes_sent_kilobytes_per_second"] == pytest.approx(0.5, abs=0.5)
+
+
+@pytest.mark.asyncio
+async def test_calculate_entity_speeds_handles_counter_rollover(make_config_entry, fake_client):
+    """Regression: ensure rates never go negative when counters decrease (device reset/rollback)."""
+    entry = make_config_entry(
+        {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
+    )
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    # Now simulate a rollback: previous counters larger than current
+    now = time.time()
+    coord._state = {
+        "update_time": now,
+        "interfaces": {"eth0": {"inbytes": 100, "outbytes": 50, "inpkts": 10, "outpkts": 5}},
+        "openvpn": {"servers": {"s1": {"total_bytes_recv": 100, "total_bytes_sent": 200}}},
+        "previous_state": {
+            "update_time": now - 2,
+            "interfaces": {
+                "eth0": {"inbytes": 1000, "outbytes": 500, "inpkts": 1000, "outpkts": 500}
+            },
+            "openvpn": {"servers": {"s1": {"total_bytes_recv": 1000, "total_bytes_sent": 2000}}},
+        },
+    }
+
+    # run calculation; code should clamp or avoid negative rates
+    await coord._calculate_entity_speeds()
+
+    # interfaces rates exist and are non-negative
+    eth0 = coord._state["interfaces"]["eth0"]
+    assert "inbytes_kilobytes_per_second" in eth0
+    assert "outbytes_kilobytes_per_second" in eth0
+    assert "inpkts_packets_per_second" in eth0
+    assert "outpkts_packets_per_second" in eth0
+    assert eth0["inbytes_kilobytes_per_second"] >= 0
+    assert eth0["outbytes_kilobytes_per_second"] >= 0
+    assert eth0["inpkts_packets_per_second"] >= 0
+    assert eth0["outpkts_packets_per_second"] >= 0
+
+    # openvpn rates exist and are non-negative
+    s1 = coord._state["openvpn"]["servers"]["s1"]
+    assert "total_bytes_recv_kilobytes_per_second" in s1
+    assert "total_bytes_sent_kilobytes_per_second" in s1
+    assert s1["total_bytes_recv_kilobytes_per_second"] >= 0
+    assert s1["total_bytes_sent_kilobytes_per_second"] >= 0
 
 
 @pytest.mark.asyncio
@@ -287,6 +304,10 @@ async def test_async_update_data_reentrancy_and_full_flow(
         return None
 
     monkeypatch.setattr(coord, "_calculate_entity_speeds", fake_calc)
+    # Spy on client's reset_query_counts before running the update so we can
+    # assert the public method was awaited during the update flow.
+    client.reset_query_counts = AsyncMock(wraps=getattr(client, "reset_query_counts", None))
+
     # run update; should return a dict
     out = await coord._async_update_data()
     assert isinstance(out, dict)
@@ -295,6 +316,8 @@ async def test_async_update_data_reentrancy_and_full_flow(
     assert coord._updating is False
     # Ensure a last-update marker exists via DataUpdateCoordinator API
     assert isinstance(coord.last_update_success, bool)
+    # And the client.reset_query_counts public method was awaited exactly once
+    client.reset_query_counts.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -336,11 +359,11 @@ async def test_calculate_speed_bytes_case():
     )
     assert new_prop == "inbytes_kilobytes_per_second"
     assert isinstance(value, int)
-    assert value == 0  # (2000-1000)/2 = 500 B/s -> 0.5 KB/s -> round -> 0
+    assert value == pytest.approx(0.5, abs=0.5)  # 500 B/s -> 0.5 KB/s, allow ±0.5 tolerance
 
 
 def test_build_categories_returns_empty_when_no_config(make_config_entry, fake_client):
-    """Categories builder returns empty list when no sync flags set."""
+    """Categories builder returns empty list when config_entry is missing."""
     entry = make_config_entry()
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(

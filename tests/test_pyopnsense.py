@@ -90,6 +90,7 @@ async def test_safe_dict_get_and_list_get(make_client) -> None:
         assert result_empty_dict == {}
         result_empty_list = await client._safe_list_get("/fake")
         assert result_empty_list == []
+    await client.async_close()
 
 
 @pytest.mark.asyncio
@@ -348,7 +349,7 @@ async def test_telemetry_and_temps_and_notices_and_unbound_blocklist(make_client
     client = make_client(session=session)
 
     # mbuf
-    client._safe_list_post = AsyncMock(return_value={})
+    client._safe_list_post = AsyncMock(return_value=[])
     client._safe_dict_post = AsyncMock(
         return_value={"mbuf-statistics": {"mbuf-current": 1, "mbuf-total": 2}}
     )
@@ -448,7 +449,7 @@ async def test_get_openvpn_and_fetch_details(make_client) -> None:
         return {}
 
     async def fake_safe_list_get(path):
-        return {}
+        return []
 
     patcher_get = patch.object(
         client, "_safe_dict_get", new=AsyncMock(side_effect=fake_safe_dict_get)
@@ -508,11 +509,13 @@ async def test_wireguard_processing_and_updates(make_client) -> None:
         "latest-handshake": "0",
     }
     await pyopnsense.OPNsenseClient._update_wireguard_status([entry_peer], servers, clients)
-    # ensure client's server linkage updated
-    assert (
-        clients["c1"]["servers"][0].get("uuid") in {None, "s1", "c1"}
-        or "connected" in clients["c1"]["servers"][0]
-    )
+    # ensure client's server linkage updated: require explicit connected state or measurable traffic
+    srv = clients["c1"]["servers"][0]
+    has_connected_flag = bool(srv.get("connected"))
+    # accept numeric transfer counters set by implementation (bytes_recv/bytes_sent)
+    rx = int(srv.get("bytes_recv") or srv.get("transfer-rx") or 0)
+    tx = int(srv.get("bytes_sent") or srv.get("transfer-tx") or 0)
+    assert has_connected_flag or (rx > 0 or tx > 0)
 
 
 @pytest.mark.asyncio
@@ -542,6 +545,7 @@ async def test_toggle_vpn_instance_variants(
 
     res = await client.toggle_vpn_instance(vpn_type, path, "uuid")
     assert res is expected
+    await client.async_close()
 
 
 @pytest.mark.asyncio
@@ -609,20 +613,7 @@ async def test_generate_vouchers_and_kill_states_toggle_alias(make_client) -> No
     client._safe_dict_post = AsyncMock(return_value={"result": "ok", "dropped_states": 5})
     res = await client.kill_states("1.2.3.4")
     assert res["success"] is True and res["dropped_states"] == 5
-
-    # toggle_alias: alias not found
-    client._safe_dict_get = AsyncMock(return_value={"rows": []})
-    ok = await client.toggle_alias("nope", "on")
-    assert ok is False
-
-    # toggle_alias: found and flow success
-    client._safe_dict_get = AsyncMock(return_value={"rows": [{"name": "myalias", "uuid": "aid"}]})
-    # sequence: _safe_dict_post for toggle -> returns success, set -> saved, reconfigure -> ok
-    client._safe_dict_post = AsyncMock(
-        side_effect=[{"result": "ok"}, {"result": "saved"}, {"status": "ok"}]
-    )
-    ok = await client.toggle_alias("myalias", "on")
-    assert ok is True
+    await client.async_close()
 
 
 @pytest.mark.asyncio
@@ -676,7 +667,7 @@ async def test_notices_close_notice_and_unbound_blocklist(make_client) -> None:
     ],
 )
 @pytest.mark.asyncio
-async def test_exec_php_error_paths(exc_factory, initial: bool, make_client) -> None:  # type: ignore[no-untyped-def]
+async def test_exec_php_error_paths(exc_factory, initial: bool, make_client) -> None:
     """_exec_php should swallow known exceptions and return {} regardless of initial flag.
 
     Consolidates previous exec_php tests into one parameterized function covering:
@@ -742,7 +733,6 @@ async def test_do_get_post_error_initial_behavior(
 
             return C()
 
-    # attach the appropriate fake session method
     if session_method == "get":
         session.get = lambda *a, **k: FakeResp(status=403, ok=False)
     else:
@@ -750,94 +740,58 @@ async def test_do_get_post_error_initial_behavior(
 
     client = make_client(session=session)
     client._initial = True
-
-    with pytest.raises(aiohttp.ClientResponseError):
-        await getattr(client, method_name)(*args, **kwargs)
+    try:
+        with pytest.raises(aiohttp.ClientResponseError):
+            await getattr(client, method_name)(*args, **kwargs)
+    finally:
+        await client.async_close()
 
 
 @pytest.mark.asyncio
-async def test_get_from_stream_parsing(make_client) -> None:
+async def test_get_from_stream_parsing(make_client, fake_stream_response_factory) -> None:
     """Simulate SSE-like stream with two messages and assert parsing returns dict."""
     session = MagicMock(spec=aiohttp.ClientSession)
 
-    class FakeStreamResp:
-        def __init__(self):
-            self.status = 200
-            self.reason = "OK"
-            self.ok = True
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-        @property
-        def content(self):
-            class C:
-                async def iter_chunked(self, n):
-                    # First chunk contains two messages separated by \n\n
-                    yield b'data: {"a": 1}\n\n'
-                    yield b'data: {"b": 2}\n\n'
-
-            return C()
-
-    def fake_get(*args, **kwargs):
-        return FakeStreamResp()
-
-    session.get = fake_get
+    # use shared factory to construct a fake streaming response
+    session.get = lambda *a, **k: fake_stream_response_factory(
+        [b'data: {"a": 1}\n\n', b'data: {"b": 2}\n\n']
+    )
     client = pyopnsense.OPNsenseClient(
         url="http://localhost", username="u", password="p", session=session
     )
-    res = await client._do_get_from_stream("/stream", caller="tst")
-    # implementation returns the second 'data' message parsed as JSON
-    assert isinstance(res, dict)
-    assert res.get("b") == 2
-    # ensure client closed to avoid lingering tasks
-    await client.async_close()
+    try:
+        res = await client._do_get_from_stream("/stream", caller="tst")
+        # implementation returns the second 'data' message parsed as JSON
+        assert isinstance(res, dict)
+        assert res.get("b") == 2
+    finally:
+        await client.async_close()
 
 
 @pytest.mark.asyncio
-async def test_get_from_stream_ignores_first_message(make_client) -> None:
+async def test_get_from_stream_ignores_first_message(
+    make_client, fake_stream_response_factory
+) -> None:
     """Ensure the parser ignores the first data message and returns the second."""
     session = MagicMock(spec=aiohttp.ClientSession)
 
-    class FakeStreamResp2:
-        def __init__(self):
-            self.status = 200
-            self.reason = "OK"
-            self.ok = True
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-        @property
-        def content(self):
-            class C:
-                async def iter_chunked(self, n):
-                    # First message should be ignored by implementation
-                    yield b'data: {"id": "first", "body": "ignore me"}\n\n'
-                    yield b'data: {"id": "second", "body": "keep me"}\n\n'
-
-            return C()
-
-    def fake_get2(*args, **kwargs):
-        return FakeStreamResp2()
-
-    session.get = fake_get2
+    session.get = lambda *a, **k: fake_stream_response_factory(
+        [
+            b'data: {"id": "first", "body": "ignore me"}\n\n',
+            b'data: {"id": "second", "body": "keep me"}\n\n',
+        ]
+    )
     client = pyopnsense.OPNsenseClient(
         url="http://localhost", username="u", password="p", session=session
     )
-    res = await client._do_get_from_stream("/stream", caller="tst")
-    assert isinstance(res, dict)
-    # ensure the second message was selected
-    assert res.get("id") == "second"
-    assert res.get("body") == "keep me"
-    # ensure client closed to avoid lingering tasks
-    await client.async_close()
+    try:
+        res = await client._do_get_from_stream("/stream", caller="tst")
+        assert isinstance(res, dict)
+        # ensure the second message was selected
+        assert res.get("id") == "second"
+        assert res.get("body") == "keep me"
+    finally:
+        await client.async_close()
 
 
 @pytest.mark.asyncio
@@ -851,58 +805,58 @@ async def test_call_many_client_methods_to_exercise_branches(make_client) -> Non
     client = pyopnsense.OPNsenseClient(
         url="http://localhost", username="u", password="p", session=session
     )
+    try:
+        # Patch common internals to return safe defaults
+        client._safe_dict_get = AsyncMock(return_value={})
+        client._safe_list_get = AsyncMock(return_value=[])
+        client._safe_dict_post = AsyncMock(return_value={})
+        client._safe_list_post = AsyncMock(return_value=[])
+        client._get = AsyncMock(return_value={})
+        client._post = AsyncMock(return_value={})
+        client._do_get = AsyncMock(return_value={})
+        client._do_post = AsyncMock(return_value={})
+        client._do_get_from_stream = AsyncMock(return_value={})
+        client._exec_php = AsyncMock(return_value={})
 
-    # Patch common internals to return safe defaults
-    client._safe_dict_get = AsyncMock(return_value={})
-    client._safe_list_get = AsyncMock(return_value=[])
-    client._safe_dict_post = AsyncMock(return_value={})
-    client._safe_list_post = AsyncMock(return_value=[])
-    client._get = AsyncMock(return_value={})
-    client._post = AsyncMock(return_value={})
-    client._do_get = AsyncMock(return_value={})
-    client._do_post = AsyncMock(return_value={})
-    client._do_get_from_stream = AsyncMock(return_value={})
-    client._exec_php = AsyncMock(return_value={})
+        # Prepare a small arg builder to supply plausible defaults
+        def mkarg(pname: str):
+            if pname in ("path", "if_name", "alias", "service", "version", "uuid"):
+                return "/x"
+            if pname in ("data", "payload"):
+                return {}
+            if pname in ("seconds", "timeout"):
+                return 1
+            return "x"
 
-    # Prepare a small arg builder to supply plausible defaults
-    def mkarg(pname: str):
-        if pname in ("path", "if_name", "alias", "service", "version", "uuid"):
-            return "/x"
-        if pname in ("data", "payload"):
-            return {}
-        if pname in ("seconds", "timeout"):
-            return 1
-        return "x"
+        coros = [
+            (name, func)
+            for name, func in _inspect.getmembers(
+                pyopnsense.OPNsenseClient, predicate=_inspect.iscoroutinefunction
+            )
+            if name not in ("__init__",)
+        ]
 
-    coros = [
-        (name, func)
-        for name, func in _inspect.getmembers(
-            pyopnsense.OPNsenseClient, predicate=_inspect.iscoroutinefunction
-        )
-        if name not in ("__init__",)
-    ]
+        for name, _func in coros:
+            # skip some problematic long-running internals
+            if name in {"_monitor_queue", "_process_queue"}:
+                continue
+            meth = getattr(client, name, None)
+            if not meth:
+                continue
+            sig = _inspect.signature(meth)
+            # build args list (skip 'self')
+            args = [mkarg(pname) for pname in sig.parameters if pname != "self"]
 
-    for name, _func in coros:
-        # skip some problematic long-running internals
-        if name in {"_monitor_queue", "_process_queue"}:
-            continue
-        meth = getattr(client, name, None)
-        if not meth:
-            continue
-        sig = _inspect.signature(meth)
-        # build args list (skip 'self')
-        args = [mkarg(pname) for pname in sig.parameters if pname != "self"]
-
-        # Call coroutine functions with await, and sync ones normally. Swallow expected exceptions.
-        if _inspect.iscoroutinefunction(_func):
-            with contextlib.suppress(asyncio.TimeoutError, Exception):
-                # limit each call to avoid long-running hangs
-                await asyncio.wait_for(meth(*args), timeout=0.5)
-        else:
-            with contextlib.suppress(Exception):
-                meth(*args)
-    # cleanup client to avoid leaving background tasks running
-    await client.async_close()
+            # Call coroutine functions with await, and sync ones normally. Swallow expected exceptions.
+            if _inspect.iscoroutinefunction(_func):
+                with contextlib.suppress(asyncio.TimeoutError, Exception):
+                    # limit each call to avoid long-running hangs
+                    await asyncio.wait_for(meth(*args), timeout=0.5)
+            else:
+                with contextlib.suppress(Exception):
+                    meth(*args)
+    finally:
+        await client.async_close()
 
 
 @pytest.mark.asyncio
@@ -912,32 +866,35 @@ async def test_certificates_kill_states_and_unbound_blocklist(make_client) -> No
     client = pyopnsense.OPNsenseClient(
         url="http://localhost", username="u", password="p", session=session
     )
+    try:
+        certs_raw = {
+            "rows": [
+                {
+                    "descr": "cert1",
+                    "uuid": "u1",
+                    "caref": "ca",
+                    "rfc3280_purpose": "srv",
+                    "in_use": "1",
+                    "valid_from": 1600000000,
+                    "valid_to": 1700000000,
+                }
+            ]
+        }
 
-    certs_raw = {
-        "rows": [
-            {
-                "descr": "cert1",
-                "uuid": "u1",
-                "caref": "ca",
-                "rfc3280_purpose": "srv",
-                "in_use": "1",
-                "valid_from": 1600000000,
-                "valid_to": 1700000000,
-            }
-        ]
-    }
-    client._safe_dict_get = AsyncMock(return_value=certs_raw)
-    certs = await client.get_certificates()
-    assert "cert1" in certs and certs["cert1"]["uuid"] == "u1"
+        client._safe_dict_get = AsyncMock(return_value=certs_raw)
+        certs = await client.get_certificates()
+        assert "cert1" in certs and certs["cert1"]["uuid"] == "u1"
 
-    client._safe_dict_post = AsyncMock(return_value={"result": "ok", "dropped_states": 3})
-    res = await client.kill_states("1.2.3.4")
-    assert res.get("success") is True and res.get("dropped_states") == 3
+        client._safe_dict_post = AsyncMock(return_value={"result": "ok", "dropped_states": 3})
+        res = await client.kill_states("1.2.3.4")
+        assert res.get("success") is True and res.get("dropped_states") == 3
 
-    # enable/disable unbound blocklist: patch underlying _set_unbound_blocklist
-    client._set_unbound_blocklist = AsyncMock(return_value=True)
-    assert await client.enable_unbound_blocklist() is True
-    assert await client.disable_unbound_blocklist() is True
+        # enable/disable unbound blocklist: patch underlying _set_unbound_blocklist
+        client._set_unbound_blocklist = AsyncMock(return_value=True)
+        assert await client.enable_unbound_blocklist() is True
+        assert await client.disable_unbound_blocklist() is True
+    finally:
+        await client.async_close()
 
 
 @pytest.mark.asyncio
@@ -976,21 +933,23 @@ async def test_generate_vouchers_server_selection_errors_and_success(
     client = pyopnsense.OPNsenseClient(
         url="http://localhost", username="u", password="p", session=session
     )
+    try:
+        # follow original tests' snake_case setting where applicable
+        client._use_snake_case = False
+        if safe_get_ret is not None:
+            client._safe_list_get = AsyncMock(return_value=safe_get_ret)
+            with pytest.raises(expect_exc):
+                await client.generate_vouchers(data)
+            return
 
-    # follow original tests' snake_case setting where applicable
-    client._use_snake_case = False
-    if safe_get_ret is not None:
-        client._safe_list_get = AsyncMock(return_value=safe_get_ret)
-        with pytest.raises(expect_exc):
-            await client.generate_vouchers(data)
-        return
-
-    # safe_post case: expect success and optional extra fields
-    client._safe_list_post = AsyncMock(return_value=safe_post_ret)
-    got = await client.generate_vouchers(data)
-    assert isinstance(got, list) and got[0].get("username") == expect_username
-    for key in expect_extras or []:
-        assert key in got[0]
+        # safe_post case: expect success and optional extra fields
+        client._safe_list_post = AsyncMock(return_value=safe_post_ret)
+        got = await client.generate_vouchers(data)
+        assert isinstance(got, list) and got[0].get("username") == expect_username
+        for key in expect_extras or []:
+            assert key in got[0]
+    finally:
+        await client.async_close()
 
 
 @pytest.mark.asyncio
@@ -1000,23 +959,38 @@ async def test_toggle_alias_flows(make_client) -> None:
     client = pyopnsense.OPNsenseClient(
         url="http://localhost", username="u", password="p", session=session
     )
+    try:
+        # alias not found
+        client._use_snake_case = True
+        client._safe_dict_get = AsyncMock(return_value={"rows": []})
+        assert await client.toggle_alias("nope", "on") is False
 
-    # alias not found
-    client._use_snake_case = True
-    client._safe_dict_get = AsyncMock(return_value={"rows": []})
-    assert await client.toggle_alias("nope", "on") is False
+        # alias found but toggle fails
+        client._safe_dict_get = AsyncMock(
+            return_value={"rows": [{"name": "myalias", "uuid": "aid"}]}
+        )
+        client._safe_dict_post = AsyncMock(return_value={"result": "failed"})
+        assert await client.toggle_alias("myalias", "on") is False
 
-    # alias found but toggle fails
-    client._safe_dict_get = AsyncMock(return_value={"rows": [{"name": "myalias", "uuid": "aid"}]})
-    client._safe_dict_post = AsyncMock(return_value={"result": "failed"})
-    assert await client.toggle_alias("myalias", "on") is False
+        # full success path
+        client._safe_dict_get = AsyncMock(
+            return_value={"rows": [{"name": "myalias", "uuid": "aid"}]}
+        )
+        client._safe_dict_post = AsyncMock(
+            side_effect=[{"result": "ok"}, {"result": "saved"}, {"status": "ok"}]
+        )
+        assert await client.toggle_alias("myalias", "on") is True
+    finally:
+        await client.async_close()
 
-    # full success path
-    client._safe_dict_get = AsyncMock(return_value={"rows": [{"name": "myalias", "uuid": "aid"}]})
-    client._safe_dict_post = AsyncMock(
-        side_effect=[{"result": "ok"}, {"result": "saved"}, {"status": "ok"}]
+
+@pytest.fixture
+def toggle_alias_client(make_client):
+    """Provide a preconfigured OPNsenseClient for toggle_alias tests."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    return pyopnsense.OPNsenseClient(
+        url="http://localhost", username="u", password="p", session=session
     )
-    assert await client.toggle_alias("myalias", "on") is True
 
 
 @pytest.mark.asyncio
@@ -1043,43 +1017,23 @@ async def test_log_errors_decorator_re_raise_and_suppress(make_client) -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_from_stream_partial_chunks_accumulates_buffer(make_client) -> None:
+async def test_get_from_stream_partial_chunks_accumulates_buffer(
+    make_client, fake_stream_response_factory
+) -> None:
     """Simulate a stream where a JSON message is split across chunks to exercise buffer accumulation."""
     session = MagicMock(spec=aiohttp.ClientSession)
 
-    class FakeStreamResp2:
-        def __init__(self):
-            self.status = 200
-            self.reason = "OK"
-            self.ok = True
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-        @property
-        def content(self):
-            class C:
-                async def iter_chunked(self, n):
-                    # first chunk ends mid-json
-                    yield b'data: {"a"'
-                    yield b": 1}\n\n"
-                    # second message complete
-                    yield b'data: {"b": 2}\n\n'
-
-            return C()
-
-    def fake_get2(*args, **kwargs):
-        return FakeStreamResp2()
-
-    session.get = fake_get2
+    session.get = lambda *a, **k: fake_stream_response_factory(
+        [b'data: {"a"', b": 1}\n\n", b'data: {"b": 2}\n\n']
+    )
     client = pyopnsense.OPNsenseClient(
         url="http://localhost", username="u", password="p", session=session
     )
-    res = await client._do_get_from_stream("/stream2", caller="tst")
-    assert isinstance(res, dict)
+    try:
+        res = await client._do_get_from_stream("/stream2", caller="tst")
+        assert isinstance(res, dict)
+    finally:
+        await client.async_close()
 
 
 @pytest.mark.asyncio
@@ -1115,27 +1069,7 @@ async def test_openvpn_more_detail_parsing(make_client) -> None:
     with patcher_get:
         res = await client.get_openvpn()
         assert "servers" in res and "clients" in res
-
-
-@pytest.mark.asyncio
-async def test_monitor_queue_qsize_exception_is_handled(make_client) -> None:
-    """Ensure _monitor_queue swallows exceptions from queue.qsize()."""
-    session = MagicMock(spec=aiohttp.ClientSession)
-    client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
-    )
-
-    class BadQ:
-        def qsize(self):
-            raise RuntimeError("boom")
-
-    client._request_queue = BadQ()  # type: ignore[assignment]
-
-    # run one iteration of monitor by scheduling and cancelling promptly
-    monitor = asyncio.get_running_loop().create_task(client._monitor_queue())
-    await asyncio.sleep(0)  # yield to allow monitor to run and handle exception
-    monitor.cancel()
-    # if it reached here without raising, behavior is correct
+    await client.async_close()
 
 
 @pytest.mark.asyncio
@@ -1174,8 +1108,14 @@ async def test_enable_and_disable_filter_rules_and_nat_port_forward(make_client)
     client._filter_configure.assert_awaited()
 
 
-def test_get_proxy_https_unverified_returns_serverproxy() -> None:
-    """When scheme is https and verify_ssl is False, _get_proxy returns ServerProxy."""
+@pytest.mark.asyncio
+async def test_get_proxy_https_unverified_returns_serverproxy() -> None:
+    """When scheme is https and verify_ssl is False, _get_proxy returns ServerProxy.
+
+    Make this an async test and instantiate the client while the event loop is
+    running so any background tasks are created on the active loop; ensure we
+    close the client afterwards to avoid leaking tasks.
+    """
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
         url="https://localhost",
@@ -1184,12 +1124,11 @@ def test_get_proxy_https_unverified_returns_serverproxy() -> None:
         session=session,
         opts={"verify_ssl": False},
     )
-    proxy = client._get_proxy()
-    # ServerProxy class object from xmlrpc.client (xc imported at top)
-    assert isinstance(proxy, xc.ServerProxy)
-
-
-# Note: xmlrpc timeout behavior is covered by the monkeypatch-based test lower in the file.
+    try:
+        proxy = client._get_proxy()
+        assert isinstance(proxy, xc.ServerProxy)
+    finally:
+        await client.async_close()
 
 
 @pytest.mark.asyncio
@@ -1200,7 +1139,6 @@ async def test_process_queue_unknown_method_sets_future_exception(make_client) -
         url="http://localhost", username="u", password="p", session=session
     )
 
-    # ensure client uses a real asyncio.Queue
     q: asyncio.Queue = asyncio.Queue()
     client._request_queue = q
 
@@ -1215,9 +1153,10 @@ async def test_process_queue_unknown_method_sets_future_exception(make_client) -
     # await the cancelled task so the CancelledError is retrieved and suppressed
     with contextlib.suppress(asyncio.CancelledError):
         await task
-    # future should have an exception (NameError from undefined 'result')
+    # future should have an exception
     exc = future.exception()
     assert isinstance(exc, RuntimeError)
+    await client.async_close()
 
 
 def test_dict_get_and_timestamp_and_ipkey_utils() -> None:
@@ -1265,6 +1204,7 @@ async def test_manage_service_and_restart_if_running(make_client) -> None:
 
     client.get_service_is_running = AsyncMock(return_value=False)
     assert await client.restart_service_if_running("svc1") is True
+    await client.async_close()
 
 
 @pytest.mark.asyncio
@@ -1297,19 +1237,35 @@ async def test_scanner_entity_handle_coordinator_update_missing_state_sets_unava
 @pytest.mark.asyncio
 async def test_compile_filesystem_sensors_and_filter_switches() -> None:
     """Test sensor and switch compilation helpers for simple cases."""
+    # Use the public async_setup_entry to exercise creation rather than
+    # directly calling private helpers. Create a minimal config entry and
+    # coordinator for the setup path.
     cfg = MagicMock()
     coord = MagicMock()
+    cfg.runtime_data = MagicMock()
+    setattr(cfg.runtime_data, "coordinator", coord)
 
-    # filesystem sensors: invalid state -> empty
-    sensors = await sensor_mod._compile_filesystem_sensors(cfg, coord, None)
-    assert sensors == []
+    # filesystem sensors: invalid state -> setup should not create filesystem entities
+    coord.data = None
+    created: list = []
 
-    # valid filesystem state
+    async def run_setup():
+        def add_entities(ents):
+            created.extend(ents)
+
+        await sensor_mod.async_setup_entry(MagicMock(), cfg, add_entities)
+
+    await run_setup()
+    assert created == []
+
+    # valid filesystem state -> expect filesystem entities created
     state = {"telemetry": {"filesystems": [{"mountpoint": "/"}]}}
-    sensors2 = await sensor_mod._compile_filesystem_sensors(cfg, coord, state)
-    assert isinstance(sensors2, list) and len(sensors2) == 1
+    coord.data = state
+    created = []
+    await run_setup()
+    assert isinstance(created, list) and len(created) >= 1
 
-    # filter switches: skip anti-lockout and nat-associated rules
+    # filter switches: validate via public switch setup path as a smoke test
     state2 = {
         "config": {
             "filter": {
@@ -1321,9 +1277,29 @@ async def test_compile_filesystem_sensors_and_filter_switches() -> None:
             }
         }
     }
-    switches = await switch_mod._compile_filter_switches(cfg, coord, state2)
-    # only one valid rule should produce a switch
-    assert isinstance(switches, list) and len(switches) == 1
+    # prepare a switch config entry with filter sync enabled
+    switch_cfg = MagicMock()
+    switch_cfg.runtime_data = MagicMock()
+    setattr(switch_cfg.runtime_data, "coordinator", coord)
+    switch_cfg.data = {
+        "device_unique_id": "dev1",
+        "sync_filters_and_nat": True,
+        "sync_unbound": False,
+        "sync_vpn": False,
+        "sync_services": False,
+    }
+    coord.data = state2
+    created_switches: list = []
+
+    async def run_switch_setup():
+        def add_switches(ents):
+            created_switches.extend(ents)
+
+        await switch_mod.async_setup_entry(MagicMock(), switch_cfg, add_switches)
+
+    await run_switch_setup()
+    # Only one valid filter rule should produce a switch entity
+    assert isinstance(created_switches, list) and len(created_switches) == 1
 
 
 @pytest.mark.asyncio
@@ -1390,9 +1366,12 @@ async def test_do_get_from_stream_error_initial_raises(make_client) -> None:
     client = pyopnsense.OPNsenseClient(
         url="http://localhost", username="u", password="p", session=session
     )
-    client._initial = True
-    with pytest.raises(aiohttp.ClientResponseError):
-        await client._do_get_from_stream("/bad", caller="t")
+    try:
+        client._initial = True
+        with pytest.raises(aiohttp.ClientResponseError):
+            await client._do_get_from_stream("/bad", caller="t")
+    finally:
+        await client.async_close()
 
 
 @pytest.mark.asyncio
@@ -1402,7 +1381,6 @@ async def test_process_queue_handles_requests(make_client) -> None:
     client = pyopnsense.OPNsenseClient(
         url="http://localhost", username="u", password="p", session=session
     )
-
     # patch the do_* methods
     client._do_get = AsyncMock(return_value={"g": 1})
     client._do_post = AsyncMock(return_value={"p": 2})
@@ -1436,6 +1414,7 @@ async def test_process_queue_handles_requests(make_client) -> None:
     task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await task
+    await client.async_close()
 
 
 @pytest.mark.asyncio
@@ -1445,121 +1424,92 @@ async def test_exec_php_returns_real_json_and_xmlrpc_timeout_decorator() -> None
     client = pyopnsense.OPNsenseClient(
         url="http://localhost", username="u", password="p", session=session
     )
+    try:
+        # Simulate exec_php returning a mapping with 'real' JSON string
+        proxy = MagicMock()
+        proxy.opnsense.exec_php.return_value = {"real": '{"ok": true, "val": 5}'}
+        client._get_proxy = MagicMock(return_value=proxy)
+        res = await client._exec_php("echo ok;")
+        assert isinstance(res, dict) and res.get("val") == 5
 
-    # Simulate exec_php returning a mapping with 'real' JSON string
-    proxy = MagicMock()
-    proxy.opnsense.exec_php.return_value = {"real": '{"ok": true, "val": 5}'}
-    client._get_proxy = MagicMock(return_value=proxy)
-    res = await client._exec_php("echo ok;")
-    assert isinstance(res, dict) and res.get("val") == 5
+        # Test the _xmlrpc_timeout decorator: wrap a simple async function
+        class D:
+            @pyopnsense._xmlrpc_timeout
+            async def wrapped(self) -> int:
+                return 7
 
-    # Test the _xmlrpc_timeout decorator: wrap a simple async function
-    class D:
-        @pyopnsense._xmlrpc_timeout
-        async def wrapped(self) -> int:  # type: ignore[misc]
-            return 7
-
-    d = D()
-    assert await d.wrapped() == 7
+        d = D()
+        assert await d.wrapped() == 7
+    finally:
+        await client.async_close()
 
 
 @pytest.mark.asyncio
-async def test_exec_php_exception_branches() -> None:
-    """_exec_php should handle TypeError, Fault, socket.gaierror and ssl.SSLError and return {}."""
+@pytest.mark.parametrize(
+    "safe_get_rows, safe_post_result, expected",
+    [
+        ([], None, False),
+        ([{"name": "a", "uuid": "u1"}], {"result": "failed"}, False),
+        (
+            [{"name": "a", "uuid": "u1"}],
+            [{"result": "ok"}, {"result": "saved"}, {"status": "ok"}],
+            True,
+        ),
+    ],
+)
+async def test_toggle_alias_scenarios(
+    safe_get_rows, safe_post_result, expected, toggle_alias_client
+) -> None:
+    """Parametrized toggle_alias scenarios: not found, failed toggle, and full success."""
+    client = toggle_alias_client
+    try:
+        client._safe_dict_get = AsyncMock(return_value={"rows": safe_get_rows})
+
+        # alias not found path expects immediate False
+        if not safe_get_rows:
+            assert await client.toggle_alias("nope", "on") is expected
+            return
+
+        # when rows are present, set up _safe_dict_post appropriately
+        if isinstance(safe_post_result, list):
+            client._safe_dict_post = AsyncMock(side_effect=safe_post_result)
+        else:
+            client._safe_dict_post = AsyncMock(return_value=safe_post_result)
+
+        assert await client.toggle_alias("a", "on") is expected
+    finally:
+        await client.async_close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "blocklist_return, post_side_effects, get_return, expected",
+    [
+        ({}, None, None, False),
+        ({"enabled": "0"}, [{"result": "saved"}, {"response": "OK"}], {"status": "OK"}, True),
+    ],
+)
+async def test_set_unbound_blocklist_scenarios(
+    blocklist_return, post_side_effects, get_return, expected
+) -> None:
+    """Parametrized _set_unbound_blocklist scenarios: empty and full success."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
         url="http://localhost", username="u", password="p", session=session
     )
+    try:
+        client.get_unbound_blocklist = AsyncMock(return_value=blocklist_return)
 
-    # TypeError
-    proxy = MagicMock()
-    proxy.opnsense.exec_php.side_effect = TypeError("bad")
-    client._get_proxy = MagicMock(return_value=proxy)
-    res = await client._exec_php("x")
-    assert res == {}
+        if not expected:
+            assert await client._set_unbound_blocklist(True) is False
+            return
 
-    # xmlrpc Fault
-    proxy.opnsense.exec_php.side_effect = Fault(1, "f")
-    client._get_proxy = MagicMock(return_value=proxy)
-    res = await client._exec_php("x")
-    assert res == {}
-
-    # socket.gaierror
-    proxy.opnsense.exec_php.side_effect = socket.gaierror("fail")
-    client._get_proxy = MagicMock(return_value=proxy)
-    res = await client._exec_php("x")
-    assert res == {}
-
-    # ssl.SSLError
-    proxy.opnsense.exec_php.side_effect = SSLError("ssl")
-    client._get_proxy = MagicMock(return_value=proxy)
-    res = await client._exec_php("x")
-    assert res == {}
-
-
-@pytest.mark.asyncio
-async def test_toggle_vpn_instance_openvpn_and_wireguard() -> None:
-    """Toggle VPN instances for OpenVPN and WireGuard and assert outcomes."""
-    session = MagicMock(spec=aiohttp.ClientSession)
-    client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
-    )
-
-    # openvpn: changed False -> False
-    client._safe_dict_post = AsyncMock(return_value={"changed": False})
-    res = await client.toggle_vpn_instance("openvpn", "servers", "uuid1")
-    assert res is False
-
-    # openvpn: changed True and reconfigure ok -> True
-    client._safe_dict_post = AsyncMock(side_effect=[{"changed": True}, {"result": "ok"}])
-    res = await client.toggle_vpn_instance("openvpn", "servers", "uuid1")
-    assert res is True
-
-    # wireguard: clients toggled
-    client._use_snake_case = True
-    client._safe_dict_post = AsyncMock(side_effect=[{"changed": True}, {"result": "ok"}])
-    res = await client.toggle_vpn_instance("wireguard", "clients", "uuid2")
-    assert res is True
-
-
-@pytest.mark.asyncio
-async def test_toggle_alias_and_set_unbound_blocklist_flows() -> None:
-    """Toggle firewall aliases and handle unbound blocklist flows."""
-    session = MagicMock(spec=aiohttp.ClientSession)
-    client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
-    )
-
-    # toggle_alias: alias not found
-    client._safe_dict_get = AsyncMock(return_value={"rows": []})
-    assert await client.toggle_alias("nope", "on") is False
-
-    # toggle_alias: found but toggle returns failed
-    client._safe_dict_get = AsyncMock(return_value={"rows": [{"name": "a", "uuid": "u1"}]})
-    client._safe_dict_post = AsyncMock(return_value={"result": "failed"})
-    assert await client.toggle_alias("a", "on") is False
-
-    # toggle_alias: full success
-    client._safe_dict_get = AsyncMock(return_value={"rows": [{"name": "a", "uuid": "u1"}]})
-    client._safe_dict_post = AsyncMock(
-        side_effect=[{"result": "ok"}, {"result": "saved"}, {"status": "ok"}]
-    )
-    assert await client.toggle_alias("a", "on") is True
-
-    # _set_unbound_blocklist: get_unbound_blocklist empty -> False
-    client.get_unbound_blocklist = AsyncMock(return_value={})
-    assert await client._set_unbound_blocklist(True) is False
-
-    # _set_unbound_blocklist: success path
-    client.get_unbound_blocklist = AsyncMock(return_value={"enabled": "0"})
-    client._post = AsyncMock(return_value={"result": "saved"})
-    client._get = AsyncMock(return_value={"status": "OK"})
-    client._post = AsyncMock(return_value={"response": "OK"})
-    # ensure True when all responses indicate success
-    # monkeypatching sequence of calls: first _post (set) -> {'result':'saved'}, _get -> {'status':'OK'}, _post (restart) -> {'response':'OK'}
-    client._post = AsyncMock(side_effect=[{"result": "saved"}, {"response": "OK"}])
-    client._get = AsyncMock(return_value={"status": "OK"})
-    assert await client._set_unbound_blocklist(True) is True
+        # success path: arrange the sequence of network calls
+        client._post = AsyncMock(side_effect=post_side_effects)
+        client._get = AsyncMock(return_value=get_return)
+        assert await client._set_unbound_blocklist(True) is True
+    finally:
+        await client.async_close()
 
 
 @pytest.mark.asyncio
@@ -1567,22 +1517,25 @@ async def test_log_errors_timeout_re_raise_and_suppress() -> None:
     """_log_errors should re-raise TimeoutError when client._initial is True and suppress when False."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(url="http://x", username="u", password="p", session=session)
+    try:
 
-    async def raising_timeout(*args, **kwargs):
-        raise TimeoutError("boom")
+        async def raising_timeout(*args, **kwargs):
+            raise TimeoutError("boom")
 
-    # wrap the coroutine with the decorator
-    decorated = pyopnsense._log_errors(raising_timeout)
+        # wrap the coroutine with the decorator
+        decorated = pyopnsense._log_errors(raising_timeout)
 
-    # When initial is True we expect the TimeoutError to propagate
-    client._initial = True
-    with pytest.raises(TimeoutError):
-        await decorated(client)
+        # When initial is True we expect the TimeoutError to propagate
+        client._initial = True
+        with pytest.raises(TimeoutError):
+            await decorated(client)
 
-    # When initial is False the decorator should suppress TimeoutError and return None
-    client._initial = False
-    res = await decorated(client)
-    assert res is None
+        # When initial is False the decorator should suppress TimeoutError and return None
+        client._initial = False
+        res = await decorated(client)
+        assert res is None
+    finally:
+        await client.async_close()
 
 
 @pytest.mark.asyncio
@@ -1602,6 +1555,7 @@ async def test_log_errors_server_timeout_re_raise_and_suppress() -> None:
 
     client._initial = False
     assert await decorated(client) is None
+    await client.async_close()
 
 
 @pytest.mark.asyncio
@@ -1680,6 +1634,7 @@ async def test_do_get_and_do_post_success_paths() -> None:
 
     posted = await client._do_post("/api/x", payload={"x": 1}, caller="t")
     assert isinstance(posted, list) and posted[0] == 1
+    await client.async_close()
 
 
 @pytest.mark.asyncio
@@ -1695,19 +1650,17 @@ async def test_exec_php_non_mapping_and_get_proxy_https_unverified() -> None:
     client._get_proxy = MagicMock(return_value=proxy)
     res = await client._exec_php("x")
     assert res == {}
-
-    # (ServerProxy https unverified behavior tested elsewhere)
+    await client.async_close()
 
 
 @pytest.mark.asyncio
 async def test_process_queue_exception_sets_future_exception() -> None:
-    """_if a worker raises, the future should get_exception set."""
+    """If a worker raises, the future should get_exception set."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
         url="http://localhost", username="u", password="p", session=session
     )
 
-    # make _do_get raise
     client._do_get = AsyncMock(side_effect=ValueError("boom"))
 
     q: asyncio.Queue = asyncio.Queue()
@@ -1782,10 +1735,8 @@ async def test_openvpn_processing_and_fetch_details() -> None:
 
     openvpn = await client.get_openvpn()
     assert "servers" in openvpn and "clients" in openvpn
-    # server present
     servers = openvpn["servers"]
     assert any(s.get("uuid") == "srv1" for s in servers.values())
-    # details filled in
     srv = servers.get("srv1")
     assert srv is not None
     assert srv.get("dns_servers") == ["8.8.8.8"]
@@ -1817,7 +1768,9 @@ async def test_telemetry_system_parsing_and_filesystems() -> None:
     client._safe_dict_post = AsyncMock(side_effect=fake_safe_post)
 
     sys = await client._get_telemetry_system()
-    assert sys is None or (isinstance(sys, dict) and ("uptime" in sys or "boottime" in sys))
+    assert isinstance(sys, dict)
+    # At least one of the expected fields is normalized/present
+    assert any(k in sys for k in ("uptime", "boottime", "loadavg"))
 
     files = await client._get_telemetry_filesystems()
     assert files is None or isinstance(files, list)
@@ -1925,6 +1878,12 @@ async def test_monitor_queue_handles_qsize_exception() -> None:
         def qsize(self):
             raise RuntimeError("boom")
 
+        def empty(self):
+            # indicate there are no queued items so async_close won't attempt to
+            # drain a non-standard queue object; this keeps the test focused on
+            # the qsize exception handling in _monitor_queue.
+            return True
+
     client._request_queue = BadQ()  # type: ignore[assignment]
 
     loop = asyncio.get_running_loop()
@@ -1936,6 +1895,7 @@ async def test_monitor_queue_handles_qsize_exception() -> None:
     task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await task
+    await client.async_close()
 
 
 @pytest.mark.asyncio
@@ -1974,7 +1934,6 @@ async def test_gateways_notices_and_close_notice_all() -> None:
         url="http://localhost", username="u", password="p", session=session
     )
 
-    # gateways
     client._safe_dict_get = AsyncMock(
         return_value={"items": [{"name": "gw1", "status_translated": "OK"}]}
     )
@@ -2235,6 +2194,7 @@ async def test_get_isc_dhcpv4_and_v6_parsing() -> None:
     )
     v6 = await client._get_isc_dhcpv6_leases()
     assert isinstance(v6, list) and len(v6) == 1
+    await client.async_close()
 
 
 @pytest.mark.asyncio
@@ -2259,6 +2219,7 @@ async def test_get_dhcp_leases_combined_structure() -> None:
     combined = await client.get_dhcp_leases()
     assert isinstance(combined, dict)
     assert "lease_interfaces" in combined and "leases" in combined
+    await client.async_close()
 
 
 @pytest.mark.asyncio
@@ -2285,6 +2246,7 @@ async def test_get_arp_table_and_manage_service_upgrade_flow() -> None:
 
     # upgrade_firmware: unknown type returns None
     assert await client.upgrade_firmware("noop") is None
+    await client.async_close()
 
 
 @pytest.mark.asyncio
@@ -2336,6 +2298,7 @@ async def test_get_config_and_rule_enable_disable_branches() -> None:
     client._restore_config_section = AsyncMock()
     client._filter_configure = AsyncMock()
     await client.disable_nat_port_forward_rule_by_created_time("n1")
+    await client.async_close()
 
 
 @pytest.mark.asyncio
@@ -2374,6 +2337,7 @@ async def test_get_interfaces_status_variants() -> None:
     assert "em1" in interfaces and interfaces["em1"]["status"] == "up"
     # em1 mac should be filtered out because it's 00:00:00:00:00:00
     assert "mac" not in interfaces["em1"]
+    await client.async_close()
 
 
 @pytest.mark.asyncio
@@ -2436,6 +2400,7 @@ async def test_telemetry_memory_swap_branches() -> None:
     client._safe_dict_post = AsyncMock(side_effect=fake_post)
     res = await client._get_telemetry_memory()
     assert isinstance(res.get("physmem"), int) or res.get("physmem") is None
+    await client.async_close()
 
 
 @pytest.mark.parametrize(

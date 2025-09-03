@@ -54,6 +54,23 @@ async def test_get_clients_single_and_multiple(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_get_clients_registry_errors_are_ignored(monkeypatch):
+    """Verify that _get_clients returns all configured clients even when registry lookups raise exceptions.
+
+    Device or entity registry lookups may raise exceptions; ensure these are ignored.
+    """
+    hass_local = MagicMock(spec=HomeAssistant)
+    c1, c2 = MagicMock(name="c1"), MagicMock(name="c2")
+    hass_local.data = {DOMAIN: {"e1": c1, "e2": c2}}
+    monkeypatch.setattr(services_mod.dr, "async_get", lambda _: (_ for _ in ()).throw(TypeError()))
+    monkeypatch.setattr(
+        services_mod.er, "async_get", lambda _: (_ for _ in ()).throw(AttributeError())
+    )
+    res = await services_mod._get_clients(hass_local, opndevice_id="d", opnentity_id="e")
+    assert res == [c1, c2]
+
+
+@pytest.mark.asyncio
 async def test_service_start_stop_restart_success_and_failure(monkeypatch, ph_hass):
     """Start/stop/restart service handlers call client methods correctly."""
     hass = ph_hass
@@ -94,6 +111,29 @@ async def test_service_start_stop_restart_success_and_failure(monkeypatch, ph_ha
     c2.stop_service.assert_awaited_once_with("svc")
     c1.restart_service.assert_awaited_once_with("svc")
     c2.restart_service.assert_awaited_once_with("svc")
+    c1.restart_service_if_running.assert_not_awaited()
+    c2.restart_service_if_running.assert_not_awaited()
+
+    # Also verify fallback via service_name works
+    call2 = MagicMock()
+    call2.data = {"service_name": "svc"}
+    await services_mod._service_start_service(hass, call2)
+    await services_mod._service_stop_service(hass, call2)
+    await services_mod._service_restart_service(hass, call2)
+
+    # Confirm fallback path invoked client methods again with same arg
+    c1.start_service.assert_awaited_with("svc")
+    c2.start_service.assert_awaited_with("svc")
+    assert c1.start_service.await_count == 2
+    assert c2.start_service.await_count == 2
+    c1.stop_service.assert_awaited_with("svc")
+    c2.stop_service.assert_awaited_with("svc")
+    assert c1.stop_service.await_count == 2
+    assert c2.stop_service.await_count == 2
+    c1.restart_service.assert_awaited_with("svc")
+    c2.restart_service.assert_awaited_with("svc")
+    assert c1.restart_service.await_count == 2
+    assert c2.restart_service.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -117,6 +157,8 @@ async def test_service_restart_only_if_running_and_reload_interface(monkeypatch,
     # should not raise
     await services_mod._service_restart_service(hass, call)
     c1.restart_service_if_running.assert_awaited_once_with("svc")
+    # Ensure the non-conditional restart path was not used
+    c1.restart_service.assert_not_awaited()
 
     # Failure path: client reports not running -> should raise ServiceValidationError
     c1.restart_service_if_running = AsyncMock(return_value=False)
@@ -144,15 +186,15 @@ async def test_service_restart_only_if_running_and_reload_interface(monkeypatch,
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "method_name,ok_attr,bad_attr",
+    "method_name,method_attr",
     [
-        ("_service_start_service", "start_service", "start_service"),
-        ("_service_stop_service", "stop_service", "stop_service"),
-        ("_service_restart_service", "restart_service", "restart_service"),
+        ("_service_start_service", "start_service"),
+        ("_service_stop_service", "stop_service"),
+        ("_service_restart_service", "restart_service"),
     ],
 )
 async def test_service_start_stop_restart_failure_variants(
-    monkeypatch, ph_hass, method_name, ok_attr, bad_attr
+    monkeypatch, ph_hass, method_name, method_attr
 ):
     """Parameterized failure tests for start/stop/restart service handlers.
 
@@ -167,8 +209,8 @@ async def test_service_start_stop_restart_failure_variants(
     bad_client = MagicMock()
     bad_client.name = "bad"
 
-    setattr(ok_client, ok_attr, AsyncMock(return_value=True))
-    setattr(bad_client, bad_attr, AsyncMock(return_value=False))
+    setattr(ok_client, method_attr, AsyncMock(return_value=True))
+    setattr(bad_client, method_attr, AsyncMock(return_value=False))
 
     async def fake_get(*args, **kwargs):
         return [ok_client, bad_client]
@@ -236,26 +278,6 @@ async def test_kill_states_success_and_failure(monkeypatch, ph_hass):
     c1.kill_states = AsyncMock(return_value={"success": False})
     with pytest.raises(ServiceValidationError):
         await services_mod._service_kill_states(hass, call)
-
-
-@pytest.mark.asyncio
-async def test_toggle_alias_failure(monkeypatch, ph_hass):
-    """Toggling alias failure raises ServiceValidationError."""
-    hass = ph_hass
-    hass.data = {}
-    c1 = MagicMock()
-    c1.name = "c1"
-    c1.toggle_alias = AsyncMock(return_value=False)
-    hass.data[DOMAIN] = {"e1": c1}
-    call = MagicMock()
-    call.data = {"alias": "a1", "toggle_on_off": "on"}
-
-    async def fake_get(*args, **kwargs):
-        return [c1]
-
-    monkeypatch.setattr(services_mod, "_get_clients", fake_get)
-    with pytest.raises(ServiceValidationError):
-        await services_mod._service_toggle_alias(hass, call)
 
 
 @pytest.mark.asyncio

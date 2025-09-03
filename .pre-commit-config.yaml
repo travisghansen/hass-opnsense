@@ -5,9 +5,9 @@ repos:
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
-        exclude: '.*.md'
+        exclude: '.*\.md$'
       - id: end-of-file-fixer
-        exclude: '.*.md'
+        exclude: '.*\.md$'
       - id: check-yaml
       - id: check-toml
       - id: check-added-large-files
@@ -15,17 +15,15 @@ repos:
     rev: v1.7.4
     hooks:
       - id: actionlint
-  # To ensure shellcheck-based diagnostics from actionlint (which CI runs with
-  # shellcheck present) are reproducible locally, install `shellcheck` on
-  # macOS with `brew install shellcheck` or add the Python wrapper hook below.
   # Note: shellcheck cannot directly parse YAML; actionlint extracts workflow
   # shell blocks and calls shellcheck when available.
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.10.0.1
     hooks:
       - id: shellcheck
-        # Run on common shell script files in the repo
-        files: (^|/)\w.*\.(sh|bash)$
+        # Match by detected shell file type (extensions or shebang)
+        types: [shell]
+        args: ['-x']
   - repo: https://github.com/codespell-project/codespell
     rev: v2.2.4
     hooks:

@@ -33,6 +33,7 @@
 
 ## Local tooling note
 - This repository uses `pre-commit` (configured in `/.pre-commit-config.yaml`) and `pytest` (configured via `pyproject.toml`) as the primary local tooling for formatting, linting, and tests. Avoid recommending `tox` by default — some development environments may still have user-specific VS Code tasks that reference `tox`, which can be misleading. Prefer instructing contributors to run `pre-commit run --all-files` and `pytest` locally.
+- Ensure that pytest and pre-commit are always run locally in a virtual environment (venv).
 
 ## Error Handling & Logging
 - Implement robust error handling and debug logging.

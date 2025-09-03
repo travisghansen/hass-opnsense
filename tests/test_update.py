@@ -1,11 +1,12 @@
 """Unit tests for custom_components.opnsense.update."""
 
 import asyncio
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from custom_components.opnsense import update as update_module
+from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID
 from custom_components.opnsense.update import OPNsenseFirmwareUpdatesAvailableUpdate
 from homeassistant.components.update import UpdateEntityDescription
 
@@ -32,6 +33,23 @@ def test_is_update_available_false_when_missing(make_config_entry, dummy_coordin
 @pytest.mark.parametrize(
     "state_builder,expect_latest,expect_series,expect_latest_condition",
     [
+        # product_version == product_latest and packages is list without opnsense -> append '+'
+        (
+            lambda: {
+                "firmware_update_info": {
+                    "product": {
+                        "product_version": "1_0_0",
+                        "product_latest": "1_0_0",
+                        "product_series": "1.0",
+                        "product_check": {"upgrade_packages": [{"name": "not-opnsense"}]},
+                    },
+                    "status": "update",
+                }
+            },
+            None,
+            "1.0",
+            lambda latest: latest == "1_0_0+",
+        ),
         (
             lambda: {
                 "firmware_update_info": {
@@ -92,7 +110,7 @@ def test_get_versions_scenarios(
     expect_latest_condition,
     make_config_entry,
     dummy_coordinator,
-):  # type: ignore[no-untyped-def]
+):
     """Parameterize _get_versions behaviors across upgrade package presence and missing fields."""
     # Use the shared fixture for a config entry
     entry = make_config_entry()
@@ -118,6 +136,8 @@ def test_get_versions_scenarios(
         ("1.1", "community"),
         ("2.4", "business"),
         ("3.4", "business"),
+        ("25.7", "community"),
+        ("1.10", "business"),
     ],
 )
 def test_get_product_class_and_series_parsing(
@@ -184,7 +204,11 @@ def test_handle_coordinator_update_sets_attributes(make_config_entry, dummy_coor
 async def test_handle_coordinator_update_upgrade_sets_release_url(
     make_config_entry, dummy_coordinator
 ):
-    """Upgrade state should compute a release URL and provide release notes."""
+    """Upgrade state should compute a release URL and provide release notes.
+
+    This also asserts normalization of product_latest and correct derivation of
+    the series_minor (from product_series) which affects the release URL.
+    """
     entry = make_config_entry()
     coord = dummy_coordinator
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
@@ -208,12 +232,104 @@ async def test_handle_coordinator_update_upgrade_sets_release_url(
     ent.coordinator.data = state
     ent.async_write_ha_state = lambda: None
     ent._handle_coordinator_update()
+
+    # For upgrade status, latest_version should reflect the upgrade_major_version
+    assert ent.latest_version == "2.1.3"
+
     # product_series '2.1' => series_minor '1' => product_class community -> use github URL
     assert ent.release_url is not None
     assert "community/2.1" in ent.release_url
-    # Use the public async API instead of the private attribute
-    release_notes = await ent.async_release_notes()
-    assert release_notes is not None
+
+    # Ensure the upgrade_major_version appears in release_url
+    assert "2.1.3" in ent.release_url
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "product_latest_input, expected_latest_normalized",
+    [("2_0_1", "2.0.1"), ("2.0.1", "2.0.1")],
+)
+async def test_handle_coordinator_update_update_normalizes_product_latest(
+    product_latest_input, expected_latest_normalized, make_config_entry, dummy_coordinator
+):
+    """When status is 'update', product_latest should be normalized (underscores -> dots)."""
+    entry = make_config_entry()
+    coord = dummy_coordinator
+    ent = OPNsenseFirmwareUpdatesAvailableUpdate(
+        config_entry=entry,
+        coordinator=coord,
+        entity_description=UpdateEntityDescription(
+            key="firmware.update_available", name="Firmware"
+        ),
+    )
+    state = {
+        "firmware_update_info": {
+            "status": "update",
+            "product": {
+                "product_version": "2.0.0",
+                "product_latest": product_latest_input,
+                "product_series": "2.1",
+                "product_check": {"upgrade_packages": []},
+            },
+        }
+    }
+    ent.coordinator.data = state
+    ent.async_write_ha_state = lambda: None
+    ent._handle_coordinator_update()
+
+    # product_latest should be normalized into latest_version
+    assert ent.latest_version == expected_latest_normalized
+
+    # release notes are currently generated from the raw product_latest value
+    # (the entity stores a normalized latest_version separately), so verify
+    # the original input appears in the notes and the normalized value is
+    # available on the entity
+    notes = await ent.async_release_notes()
+    assert product_latest_input in notes
+
+
+def test_handle_coordinator_update_release_url_fallback_when_product_class_none(
+    monkeypatch, make_config_entry, dummy_coordinator
+):
+    """When _get_product_class returns None, release_url should fall back to the OPNsense UI changelog."""
+    # ensure config entry has a base url for the fallback and a device id
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "test-device-123",
+            "url": "https://opnsense.example",
+        }
+    )
+    coord = dummy_coordinator
+    ent = OPNsenseFirmwareUpdatesAvailableUpdate(
+        config_entry=entry,
+        coordinator=coord,
+        entity_description=UpdateEntityDescription(
+            key="firmware.update_available", name="Firmware"
+        ),
+    )
+
+    # arrange state where product_series and product_latest exist but product class will be None
+    state = {
+        "firmware_update_info": {
+            "status": "upgrade",
+            "product": {
+                "product_version": "2.0.0",
+                "product_latest": "2_0_1",
+                "product_series": "2.1",
+            },
+            "upgrade_major_version": "2.1.3",
+        }
+    }
+    ent.coordinator.data = state
+    ent.async_write_ha_state = lambda: None
+
+    # Patch the instance method to return None to force the fallback branch
+    monkeypatch.setattr(ent, "_get_product_class", lambda series: None)
+
+    ent._handle_coordinator_update()
+
+    expected = entry.data.get("url") + "/ui/core/firmware#changelog"
+    assert ent.release_url == expected
 
 
 def test_handle_coordinator_update_upgrade_sets_business_release_url(
@@ -244,6 +360,7 @@ def test_handle_coordinator_update_upgrade_sets_business_release_url(
     ent.async_write_ha_state = lambda: None
     ent._handle_coordinator_update()
     assert ent.release_url and "business/2.4" in ent.release_url
+    assert "2.4.1" in ent.release_url
 
 
 @pytest.mark.parametrize(
@@ -331,6 +448,7 @@ async def test_async_install_reboots_when_needed(monkeypatch, make_config_entry,
 
     class FakeClient:
         def __init__(self):
+            # planned sequence: first 'running', then 'done'
             self._status_calls = [
                 {"status": "running"},
                 {"status": "done"},
@@ -341,6 +459,7 @@ async def test_async_install_reboots_when_needed(monkeypatch, make_config_entry,
             return {"started": True}
 
         async def upgrade_status(self):
+            # placeholder; will be replaced by AsyncMock in test below
             return self._status_calls.pop(0)
 
         async def get_firmware_update_info(self):
@@ -350,16 +469,54 @@ async def test_async_install_reboots_when_needed(monkeypatch, make_config_entry,
             self.rebooted = True
 
     fake = FakeClient()
+    # replace upgrade_status with an AsyncMock to track await calls and sequence
+    fake.upgrade_status = AsyncMock(side_effect=fake._status_calls.copy())
+    # wrap upgrade_firmware to assert it was awaited exactly once
+    fake.upgrade_firmware = AsyncMock(wraps=fake.upgrade_firmware)
     ent._client = fake
 
     # provide coordinator state with firmware info and upgrade in progress
     ent.coordinator.data = {"firmware_update_info": {"status": "update"}}
 
-    # speed up sleep
-    monkeypatch.setattr(asyncio, "sleep", AsyncMock(return_value=None))
+    # speed up sleep and capture await count
+    sleep_spy = AsyncMock(return_value=None)
+    monkeypatch.setattr(asyncio, "sleep", sleep_spy)
 
     await ent.async_install()
     assert fake.rebooted is True
+    # ensure polling occurred: upgrade_status should have been awaited twice (running -> done)
+    assert fake.upgrade_status.await_count == 2
+    fake.upgrade_firmware.assert_awaited_once_with("update")
+    assert sleep_spy.await_count >= 1
+
+
+@pytest.mark.asyncio
+async def test_async_install_does_nothing_on_non_update_status(
+    make_config_entry, dummy_coordinator
+):
+    """async_install should early-return and not call upgrade_firmware when status is not update/upgrade."""
+    entry = make_config_entry()
+    coord = dummy_coordinator
+    ent = OPNsenseFirmwareUpdatesAvailableUpdate(
+        config_entry=entry,
+        coordinator=coord,
+        entity_description=UpdateEntityDescription(
+            key="firmware.update_available", name="Firmware"
+        ),
+    )
+    ent.async_write_ha_state = lambda: None
+
+    # non-update status
+    ent.coordinator.data = {"firmware_update_info": {"status": "none"}}
+
+    # attach a mock client and ensure upgrade_firmware is not called
+    client = MagicMock()
+    client.upgrade_firmware = AsyncMock()
+    ent._client = client
+
+    await ent.async_install()
+
+    client.upgrade_firmware.assert_not_awaited()
 
 
 @pytest.mark.asyncio

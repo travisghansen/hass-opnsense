@@ -74,7 +74,7 @@ def _ensure_async_create_task_mock(real, side_effect):
                 object.__setattr__(
                     real,
                     "async_create_task",
-                    MagicMock(side_effect=lambda coro: orig(coro)),
+                    MagicMock(side_effect=lambda coro, *a, **k: orig(coro, *a, **k)),
                 )
 
 
@@ -121,12 +121,58 @@ def coordinator_capture():
 
 
 @pytest.fixture
-def make_client():
+def fake_stream_response_factory():
+    r"""Return a factory that constructs a fake streaming response.
+
+    Usage:
+        resp = fake_stream_response_factory([b'data: {...}\n\n', b'data: {...}\n\n'])
+        session.get = lambda *a, **k: resp
+
+    The returned object implements:
+      - .status / .reason / .ok
+      - async context manager __aenter__/__aexit__
+      - .content.iter_chunked(n) async generator yielding provided chunks
+    """
+
+    def _make(chunks: list[bytes], status: int = 200, reason: str = "OK", ok: bool = True):
+        class _Resp:
+            def __init__(self):
+                self.status = status
+                self.reason = reason
+                self.ok = ok
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            @property
+            def content(self):
+                class C:
+                    def __init__(self, chunks):
+                        self._chunks = chunks
+
+                    async def iter_chunked(self, _n):
+                        for c in self._chunks:
+                            yield c
+
+                return C(list(chunks))
+
+        return _Resp()
+
+    return _make
+
+
+@pytest.fixture
+async def make_client():
     """Return a factory that constructs an OPNsenseClient for tests.
 
     This mirrors the local helper used in some test modules but exposes it as a
     fixture so tests can request it via parameters for consistency.
     """
+
+    clients: list[pyopnsense.OPNsenseClient] = []
 
     def _make(
         session: aiohttp.ClientSession | None = None,
@@ -139,11 +185,19 @@ def make_client():
         # into the production client which expects a session-like object.
         if session is None:
             session = cast("aiohttp.ClientSession", FakeClientSession())
-        return pyopnsense.OPNsenseClient(
+        client = pyopnsense.OPNsenseClient(
             url=url, username=username, password=password, session=session
         )
+        clients.append(client)
+        return client
 
-    return _make
+    try:
+        yield _make
+    finally:
+        # Ensure all created clients are closed to avoid leaking background tasks.
+        for c in clients:
+            with contextlib.suppress(Exception):
+                await c.async_close()
 
 
 # Module logger for test diagnostics
@@ -422,6 +476,12 @@ def _neutralize_pyopnsense_background_tasks(monkeypatch, request):
                             def cancelled(self):
                                 return False
 
+                            def result(self):
+                                return None
+
+                            def exception(self):
+                                return None
+
                             def add_done_callback(self, cb):
                                 with contextlib.suppress(AttributeError, TypeError):
                                     cb(self)
@@ -533,6 +593,52 @@ def fake_client():
                 return {"servers": {}}
 
         return FakeClient
+
+    return _make
+
+
+@pytest.fixture
+def fake_reg_factory():
+    """Return a factory that constructs a configurable fake device registry.
+
+    Usage:
+        # registry where device does not exist
+        fake = fake_reg_factory(device_exists=False)
+
+        # registry where device exists and has id
+        fake = fake_reg_factory(device_exists=True, device_id="removed-device-id")
+
+    The returned object exposes:
+      - async_get_device(self, *args, **kwargs) -> object | None
+      - async_remove_device(self, *args, **kwargs) -> any
+      - removed: boolean flag set to True when async_remove_device is called
+    """
+
+    def _make(
+        device_exists: bool = False, device_id: str = "dev", remove_result: object | None = None
+    ):
+        class _FakeReg:
+            def __init__(self):
+                self.removed = False
+                self._device_exists = device_exists
+                self._device_id = device_id
+                self._remove_result = remove_result
+
+            def async_get_device(self, *args, **kwargs):
+                if self._device_exists:
+
+                    class _D:
+                        id = self._device_id
+
+                    return _D()
+                return None
+
+            def async_remove_device(self, *args, **kwargs):
+                # mirror previous tests which sometimes inspect a `removed` flag
+                self.removed = True
+                return self._remove_result
+
+        return _FakeReg()
 
     return _make
 
@@ -726,10 +832,15 @@ def ph_hass(request, hass=None):
     m.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
     m.config_entries.async_reload = AsyncMock(return_value=None)
     m.data = {}
+    # Mirror HomeAssistant API used by the integration/tests.
+    m.async_create_task = MagicMock(side_effect=_schedule_or_return)
     # provide a loop wrapper that cancels scheduled timer handles immediately
     # so the pytest-homeassistant-custom-component plugin does not report
     # lingering timers during test teardown.
-    real_loop = asyncio.get_event_loop()
+    try:
+        real_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        real_loop = asyncio.new_event_loop()
 
     class FakeLoop:
         def __init__(self, loop):
@@ -804,8 +915,3 @@ def pytest_runtest_teardown(item: Any, nextitem: Any) -> None:
         with contextlib.suppress(Exception):
             if not handle.cancelled():
                 handle.cancel()
-
-
-# Note: do not define a `hass` fixture here. When the pytest-homeassistant-custom-component
-# plugin is installed it exposes a proper `hass` fixture; when it's absent the
-# `ph_hass` fixture above falls back to a MagicMock so tests still run.
