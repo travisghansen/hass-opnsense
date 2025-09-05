@@ -16,20 +16,24 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v5.0.0
 
-      - name: Set up Python 3
+      - name: Debug GitHub Variables
+        run: |
+            echo "github.event_name: ${{ github.event_name }}"
+            echo "github.ref_name: ${{ github.ref_name }}"
+            echo "github.event.repository.default_branch: ${{ github.event.repository.default_branch }}"
+
+      - name: Setup Python 3 (with caching)
         uses: actions/setup-python@v6.0.0
         with:
           python-version: 3.x
+          cache: 'pip'
+          cache-dependency-path: |
+            requirements-dev.txt
+            requirements.txt
+            pyproject.toml
+            .pre-commit-config.yaml
 
-      - name: Cache pip dependencies
-        uses: actions/cache@v4.2.3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements-dev.txt', 'requirements.txt', 'pyproject.toml', '.pre-commit-config.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
-      - name: Install dependencies
+      - name: Install Requirements
         run: python -m pip install --upgrade pip && pip install -r requirements-dev.txt
 
       - name: Run pytest with coverage (pytest-cov)

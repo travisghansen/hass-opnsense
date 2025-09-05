@@ -8,10 +8,10 @@ jobs:
   update_version_and_create_zip:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v5.0.0
 
-      - name: Debug Variables
+      - name: Debug GitHub Variables
         run: |
             echo "github.event_name: ${{ github.event_name }}"
             echo "github.ref_name: ${{ github.ref_name }}"
