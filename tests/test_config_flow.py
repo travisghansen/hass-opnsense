@@ -132,12 +132,14 @@ async def test_validate_input_exception_mapping(monkeypatch, exc_key, expected):
     else:
         exc = OSError("unknown")
 
-    async def _raiser(user_input, hass):
+    async def _raiser(*args, **kwargs):
         raise exc
 
     monkeypatch.setattr(cf_mod, "_handle_user_input", _raiser)
     errors = {}
-    res = await cf_mod.validate_input(hass=MagicMock(), user_input={}, errors=errors)
+    res = await cf_mod.validate_input(
+        hass=MagicMock(), user_input={}, errors=errors, config_step="user"
+    )
     assert res.get("base") == expected
 
 
@@ -286,7 +288,7 @@ async def test_options_flow_granular_sync_calls_validate_and_updates(monkeypatch
     flow.hass.config_entries.async_update_entry = MagicMock()
 
     # monkeypatch validate_input to return no errors
-    async def fake_validate(hass, user_input, errors):
+    async def fake_validate(hass, user_input, errors, **kwargs):
         return {}
 
     monkeypatch.setattr(cf_mod, "validate_input", fake_validate)
@@ -380,29 +382,24 @@ async def test_options_flow_device_tracker_user_input(monkeypatch, make_config_e
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "granular_flag, expected_called",
+    "granular_flag, config_step, expected_called",
     [
-        # When the user opts into granular sync, we should NOT check plugin yet
-        pytest.param(
-            True,
-            False,
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="Bug #428 (https://github.com/travisghansen/hass-opnsense/issues/428): Plugin check occurs when it should not",
-            ),
-        ),
-        # When the user does not opt into granular sync, require_plugin should be evaluated
-        # (defaults cause plugin-requiring items to be considered) and plugin check should occur
-        (False, True),
+        # user step: no plugin check no matter the granular sync flag
+        (True, "user", False),
+        (False, "user", False),
+        # granular_sync or reconfigure step: if granular sync is enabled, plugin check should happen
+        (True, "granular_sync", True),
+        (False, "granular_sync", False),
+        (True, "reconfigure", True),
+        (False, "reconfigure", False),
     ],
 )
 async def test_validate_input_user_respects_granular_flag_for_plugin_check(
-    monkeypatch, granular_flag, expected_called, fake_flow_client
+    monkeypatch, granular_flag, config_step, expected_called, fake_flow_client
 ):
-    """From the user step (async_step_user) plugin check behavior depends on CONF_GRANULAR_SYNC_OPTIONS.
+    """Plugin check not required for config step of user.
 
-    - If CONF_GRANULAR_SYNC_OPTIONS is True -> is_plugin_installed SHOULD NOT be called.
-    - If CONF_GRANULAR_SYNC_OPTIONS is False -> is_plugin_installed SHOULD be called (defaults apply).
+    Otherwise, plugin check is required if granular sync options is enabled
     """
     # Use shared fake_flow_client fixture to supply a FakeClient class
     client_cls = fake_flow_client()
@@ -430,8 +427,36 @@ async def test_validate_input_user_respects_granular_flag_for_plugin_check(
     flow.async_set_unique_id = _noop
     flow._abort_if_unique_id_configured = lambda: None
 
-    # Call the user step which calls validate_input internally
-    await flow.async_step_user(user_input=user_input)
+    # Call the requested config step which will call validate_input internally
+    if config_step == "user":
+        await flow.async_step_user(user_input=user_input)
+    elif config_step == "granular_sync":
+        # populate internal config as if the user completed the first step
+        flow._config = {
+            cf_mod.CONF_URL: "https://host.example",
+            cf_mod.CONF_USERNAME: "user",
+            cf_mod.CONF_PASSWORD: "pass",
+            cf_mod.CONF_GRANULAR_SYNC_OPTIONS: granular_flag,
+        }
+        await flow.async_step_granular_sync(user_input={})
+    elif config_step == "reconfigure":
+        # reconfigure should behave like granular_sync for plugin-check testing;
+        # populate internal config and invoke the reconfigure step
+        reconfigure_entry = MagicMock()
+        reconfigure_entry.data = {
+            cf_mod.CONF_URL: "https://host.example",
+            cf_mod.CONF_USERNAME: "user",
+            cf_mod.CONF_PASSWORD: "pass",
+            cf_mod.CONF_GRANULAR_SYNC_OPTIONS: granular_flag,
+        }
+        # Monkeypatch the helper the config flow uses to get the reconfigure entry
+        flow._get_reconfigure_entry = lambda: reconfigure_entry
+        # Prevent HA internals from being accessed if the flow reaches update/abort paths
+        flow.hass.config_entries = MagicMock()
+        flow.hass.config_entries.async_update_entry = MagicMock()
+        await flow.async_step_reconfigure(user_input={})
+    else:
+        raise ValueError(f"unknown config_step: {config_step}")
 
     # ensure client was instantiated
     assert client_cls.last_instance is not None
