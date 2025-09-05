@@ -52,7 +52,8 @@ jobs:
         uses: py-cov-action/python-coverage-comment-action@v3.37
         with:
           GITHUB_TOKEN: ${{ github.token }}
-
+          MINIMUM_GREEN: 90
+          MINIMUM_ORANGE: 70
       - name: Store PR Comment to be Posted
         if: steps.coverage_comment.outputs.COMMENT_FILE_WRITTEN == 'true'
         uses: actions/upload-artifact@v4.6.2
