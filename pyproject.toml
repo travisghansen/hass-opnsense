@@ -11,7 +11,7 @@ addopts = """
   -o console_output_style=progress
   --cov=custom_components.opnsense
   --junitxml=pytest.xml
-  --cov-report=term-missing
+  --cov-report=term-missing:skip-covered
   --cov-report=xml
   --cov-report=html
 """
