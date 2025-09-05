@@ -87,10 +87,13 @@ jobs:
 
       - name: PR coverage comment
         if: ${{ github.event_name == 'pull_request_target' && steps.check_cov.outputs.exists == 'true' }}
-        # uses: MishaKav/pytest-coverage-comment@main
-        uses: eltoder/pytest-coverage-comment@feature/branch-coverage
+        uses: MishaKav/pytest-coverage-comment@v1.1.57
+        # uses: eltoder/pytest-coverage-comment@feature/branch-coverage
         with:
           pytest-xml-coverage-path: ./coverage.xml
           junitxml-path: ./pytest.xml
           remove-link-from-badge: true
-          badge-title: Branch Coverage
+          # xml-skip-covered: true
+          remove-links-to-lines: true
+          report-only-changed-files: true
+          # badge-title: Branch Coverage
