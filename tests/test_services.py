@@ -62,10 +62,15 @@ async def test_get_clients_registry_errors_are_ignored(monkeypatch):
     hass_local = MagicMock(spec=HomeAssistant)
     c1, c2 = MagicMock(name="c1"), MagicMock(name="c2")
     hass_local.data = {DOMAIN: {"e1": c1, "e2": c2}}
-    monkeypatch.setattr(services_mod.dr, "async_get", lambda _: (_ for _ in ()).throw(TypeError()))
-    monkeypatch.setattr(
-        services_mod.er, "async_get", lambda _: (_ for _ in ()).throw(AttributeError())
-    )
+
+    def _raises(exc):
+        def _r(*_a, **_k):
+            raise exc
+
+        return _r
+
+    monkeypatch.setattr(services_mod.dr, "async_get", _raises(TypeError()))
+    monkeypatch.setattr(services_mod.er, "async_get", _raises(AttributeError()))
     res = await services_mod._get_clients(hass_local, opndevice_id="d", opnentity_id="e")
     assert res == [c1, c2]
 

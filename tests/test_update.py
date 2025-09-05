@@ -30,6 +30,23 @@ def test_is_update_available_false_when_missing(make_config_entry, dummy_coordin
     assert ent.available is False
 
 
+def test_is_update_available_false_when_error(make_config_entry, dummy_coordinator):
+    """Update entity should be unavailable when coordinator reports an error status."""
+    entry = make_config_entry()
+    coord = dummy_coordinator
+    ent = OPNsenseFirmwareUpdatesAvailableUpdate(
+        config_entry=entry,
+        coordinator=coord,
+        entity_description=UpdateEntityDescription(
+            key="firmware.update_available", name="Firmware"
+        ),
+    )
+    ent.async_write_ha_state = lambda: None
+    coord.data = {"firmware_update_info": {"status": "error"}}
+    ent._handle_coordinator_update()
+    assert ent.available is False
+
+
 @pytest.mark.parametrize(
     "state_builder,expect_latest,expect_series,expect_latest_condition",
     [
@@ -100,6 +117,23 @@ def test_is_update_available_false_when_missing(make_config_entry, dummy_coordin
             None,
             "s1",
             lambda latest: latest is None,
+        ),
+        # exercise the 'upgrade' branch: upgrade_major_version should become product_latest
+        (
+            lambda: {
+                "firmware_update_info": {
+                    "status": "upgrade",
+                    "product": {
+                        "product_version": "2_0_0",
+                        "product_latest": "2_0_0",
+                        "product_series": "2.0",
+                    },
+                    "upgrade_major_version": "2.1.3",
+                }
+            },
+            "2.1.3",
+            "2.1",
+            lambda latest: latest == "2.1.3",
         ),
     ],
 )

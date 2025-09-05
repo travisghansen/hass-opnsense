@@ -13,8 +13,19 @@ import pytest
 
 from custom_components.opnsense import coordinator as coordinator_module
 from custom_components.opnsense.const import (
+    ATTR_UNBOUND_BLOCKLIST,
     CONF_DEVICE_UNIQUE_ID,
+    CONF_SYNC_CARP,
+    CONF_SYNC_CERTIFICATES,
+    CONF_SYNC_DHCP_LEASES,
+    CONF_SYNC_FILTERS_AND_NAT,
+    CONF_SYNC_FIRMWARE_UPDATES,
+    CONF_SYNC_GATEWAYS,
     CONF_SYNC_INTERFACES,
+    CONF_SYNC_NOTICES,
+    CONF_SYNC_SERVICES,
+    CONF_SYNC_TELEMETRY,
+    CONF_SYNC_UNBOUND,
     CONF_SYNC_VPN,
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
@@ -378,3 +389,266 @@ def test_build_categories_returns_empty_when_no_config(make_config_entry, fake_c
     coord.config_entry = None
     cats = coord._build_categories()
     assert cats == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "flag,expected_keys",
+    [
+        (CONF_SYNC_TELEMETRY, ["telemetry"]),
+        (CONF_SYNC_VPN, ["openvpn", "wireguard"]),
+        (CONF_SYNC_FIRMWARE_UPDATES, ["firmware_update_info"]),
+        (CONF_SYNC_CARP, ["carp_interfaces", "carp_status"]),
+        (CONF_SYNC_DHCP_LEASES, ["dhcp_leases"]),
+        (CONF_SYNC_GATEWAYS, ["gateways"]),
+        (CONF_SYNC_SERVICES, ["services"]),
+        (CONF_SYNC_NOTICES, ["notices"]),
+        (CONF_SYNC_FILTERS_AND_NAT, ["config"]),
+        (CONF_SYNC_UNBOUND, [ATTR_UNBOUND_BLOCKLIST]),
+        (CONF_SYNC_INTERFACES, ["interfaces"]),
+        (CONF_SYNC_CERTIFICATES, ["certificates"]),
+    ],
+)
+async def test_build_categories_flag_true_and_false(
+    make_config_entry, fake_client, flag, expected_keys
+):
+    """Verify categories include keys when flag True and exclude when False."""
+    # When flag is True -> expected keys present
+    entry_true = make_config_entry({"device_unique_id": "id", flag: True})
+    client = fake_client()()
+    coord_true = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry_true,
+    )
+    keys_true = [c["state_key"] for c in coord_true._categories]
+    for ek in expected_keys:
+        assert ek in keys_true
+
+    # When flag is False -> expected keys absent
+    entry_false = make_config_entry({"device_unique_id": "id", flag: False})
+    coord_false = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry_false,
+    )
+    keys_false = [c["state_key"] for c in coord_false._categories]
+    for ek in expected_keys:
+        assert ek not in keys_false
+
+
+@pytest.mark.asyncio
+async def test_async_update_data_strips_nested_previous_state(
+    monkeypatch, make_config_entry, fake_client
+):
+    """Ensure nested 'previous_state' key is removed from the copied previous_state.
+
+    The coordinator copies its current _state into previous_state, then removes any
+    nested 'previous_state' key from that copy before assigning it back. This test
+    verifies that behavior.
+    """
+    entry = make_config_entry({"device_unique_id": "id", CONF_SYNC_INTERFACES: True})
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    # Prepare a state that contains a nested 'previous_state' key which should be stripped
+    coord._state = {
+        "previous_state": {"inner": 1},
+        "device_unique_id": "id",
+        "extra": "keep",
+    }
+
+    # Make device id check pass and skip heavy calculations
+    async def true_check():
+        return True
+
+    async def noop_calc():
+        return None
+
+    monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
+    monkeypatch.setattr(coord, "_calculate_entity_speeds", noop_calc)
+
+    # Spy on reset_query_counts to ensure update flow runs
+    client.reset_query_counts = AsyncMock(wraps=getattr(client, "reset_query_counts", None))
+
+    out = await coord._async_update_data()
+
+    # previous_state assigned on the coordinator should not contain the nested key
+    assert isinstance(out, dict)
+    assert "previous_state" in out
+    assert "previous_state" not in out["previous_state"]
+    # other top-level keys from the original state should be preserved in the copy
+    assert out["previous_state"].get("device_unique_id") == "id"
+    assert out["previous_state"].get("extra") == "keep"
+
+
+@pytest.mark.asyncio
+async def test_async_update_data_device_tracker_branch(monkeypatch, make_config_entry, fake_client):
+    """When coordinator is a device tracker coordinator, _async_update_data should return _async_update_dt_data result."""
+    entry = make_config_entry({"device_unique_id": "id"})
+    client = fake_client()()
+    # create coordinator as device tracker coordinator
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+        device_tracker_coordinator=True,
+    )
+
+    # patch the device tracker update to return a specific dict and record calls
+    called = {"dt_called": 0}
+
+    async def fake_dt_update():
+        called["dt_called"] += 1
+        return {"dt": True}
+
+    monkeypatch.setattr(coord, "_async_update_dt_data", fake_dt_update)
+
+    # spy on client's reset_query_counts
+    client.reset_query_counts = AsyncMock(wraps=getattr(client, "reset_query_counts", None))
+
+    res = await coord._async_update_data()
+    assert res == {"dt": True}
+    assert called["dt_called"] == 1
+    client.reset_query_counts.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_async_update_data_returns_empty_when_device_id_check_fails(
+    monkeypatch, make_config_entry, fake_client
+):
+    """When device unique id check fails, _async_update_data should return an empty dict."""
+    entry = make_config_entry({"device_unique_id": "id", CONF_SYNC_INTERFACES: True})
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    async def false_check():
+        return False
+
+    # make the device id check return False
+    monkeypatch.setattr(coord, "_check_device_unique_id", false_check)
+
+    # spy on reset_query_counts
+    client.reset_query_counts = AsyncMock(wraps=getattr(client, "reset_query_counts", None))
+
+    res = await coord._async_update_data()
+
+    assert res == {}
+    client.reset_query_counts.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", ["no_previous", "no_config"])
+async def test_calculate_entity_speeds_returns_early_when_missing(
+    case, make_config_entry, fake_client, monkeypatch
+):
+    """_calculate_entity_speeds should return early when previous_update_time is falsy or config_entry is falsy."""
+    entry = make_config_entry(
+        {"device_unique_id": "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
+    )
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    now = time.time()
+    if case == "no_previous":
+        # update_time present but previous_state.update_time missing -> early return
+        coord._state = {"update_time": now, "previous_state": {}}
+    else:
+        # previous_update_time present but config_entry falsy -> early return
+        coord._state = {"update_time": now, "previous_state": {"update_time": now - 2}}
+        coord.config_entry = None
+
+    # Ensure the deeper calculation functions are not called when guard triggers
+    coord._calculate_interface_speeds = AsyncMock(
+        side_effect=AssertionError("_calculate_interface_speeds should not be called")
+    )
+    coord._calculate_vpn_speeds = AsyncMock(
+        side_effect=AssertionError("_calculate_vpn_speeds should not be called")
+    )
+
+    # Call the method; it should return None and not call the mocked methods
+    res = await coord._calculate_entity_speeds()
+    assert res is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "returned_device_id,should_call_counts",
+    [
+        (None, False),
+        ("other", False),
+        ("id", True),
+    ],
+)
+async def test_async_update_dt_data_device_id_branches(
+    returned_device_id, should_call_counts, make_config_entry, fake_client, monkeypatch
+):
+    """Verify _async_update_dt_data returns early for missing/mismatched IDs and calls query counts when OK."""
+    entry = make_config_entry({"device_unique_id": "id"})
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    # stub _get_states to return controlled values
+    fake_state = {
+        "device_unique_id": returned_device_id,
+        "host_firmware_version": "fv",
+        "system_info": {"name": "opn"},
+        "arp_table": {"a": 1},
+    }
+
+    async def fake_get_states(categories):
+        return fake_state
+
+    monkeypatch.setattr(coord, "_get_states", fake_get_states)
+
+    # spy on client's get_query_counts
+    client.get_query_counts = AsyncMock(return_value=(3, 4))
+
+    res = await coord._async_update_dt_data()
+
+    if should_call_counts:
+        # Should return the state and call get_query_counts
+        assert isinstance(res, dict)
+        assert res.get("device_unique_id") == "id"
+        client.get_query_counts.assert_awaited_once()
+    else:
+        # Should return empty dict and not call get_query_counts
+        assert res == {}
+        assert client.get_query_counts.await_count == 0
