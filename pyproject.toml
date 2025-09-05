@@ -10,9 +10,7 @@ addopts = """
   --durations=10
   -o console_output_style=progress
   --cov=custom_components.opnsense
-  --junitxml=pytest.xml
-  --cov-report=term-missing:skip-covered
-  --cov-report=xml
+  --cov-report=term-missing
   --cov-report=html
 """
 testpaths = ["tests"]
@@ -21,13 +19,11 @@ asyncio_mode = "auto"
 [tool.coverage.run]
 branch = true
 source = ["custom_components.opnsense"]
+relative_files = true
 parallel = false
 
 [tool.coverage.report]
 show_missing = true
-
-[tool.coverage.xml]
-output = "coverage.xml"
 
 [tool.mypy]
 python_version = "3.13"
