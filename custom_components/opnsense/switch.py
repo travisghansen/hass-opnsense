@@ -100,7 +100,7 @@ async def _compile_port_forward_switches(
                     config_entry=config_entry,
                     coordinator=coordinator,
                     entity_description=SwitchEntityDescription(
-                        key=f"nat_port_forward.{tracker}".format(tracker),
+                        key=f"nat_port_forward.{tracker}",
                         name=f"NAT Port Forward Rule {tracker} ({rule.get('descr', '')})",
                         icon="mdi:network-outline",
                         # entity_category=ENTITY_CATEGORY_CONFIG,

@@ -1,15 +1,1 @@
-aiohttp_cors
-asyncio_mqtt
-homeassistant-stubs
-mypy
-pydispatcher
-pytest
-pytest-homeassistant-custom-component
-ruff
-types-cffi
-types-PyMySQL
-types-pyRFC3339
-types-python-dateutil
-types-PyYAML
-types-requests
-types-setuptools
+# Intentionally empty; runtime deps are managed by Home Assistant (manifest)

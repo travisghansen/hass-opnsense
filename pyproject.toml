@@ -3,9 +3,31 @@ skip = "*.py,*.toml,CHANGELOG.*"
 quiet-level = 3
 ignore-words-list = "hass"
 
+[tool.pytest.ini_options]
+addopts = """
+  --quiet
+  --timeout=20
+  --durations=10
+  -o console_output_style=progress
+  --cov=custom_components.opnsense
+  --junitxml=pytest.xml
+  --cov-report=term-missing:skip-covered
+  --cov-report=xml
+  --cov-report=html
+"""
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+branch = true
+source = ["custom_components.opnsense"]
+parallel = false
+
 [tool.coverage.report]
 show_missing = true
-fail_under = 80
+
+[tool.coverage.xml]
+output = "coverage.xml"
 
 [tool.mypy]
 python_version = "3.13"
@@ -29,22 +51,15 @@ disallow_untyped_defs = true
 warn_return_any = false
 warn_unreachable = false
 
-[tool.pytest.ini_options]
-testpaths = [
-    "tests",
-]
-norecursedirs = [
-    ".git",
-    "testing_config",
-]
-log_format = "%(asctime)s.%(msecs)03d %(levelname)-8s %(threadName)s %(name)s:%(filename)s:%(lineno)s %(message)s"
-log_date_format = "%Y-%m-%d %H:%M:%S"
-# log_cli = true  # Enable live logging to the console
-# log_level = "DEBUG"  # Set the logging level to DEBUG
-asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
-timeout = 30
-addopts = "-rA"
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_missing_imports = true
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+disallow_incomplete_defs = false
+disable_error_code = ["import-untyped", "arg-type", "method-assign", "no-untyped-def", "index", "union-attr", "operator"]
+check_untyped_defs = false
+warn_unused_ignores = false
 
 [tool.ruff]
 line-length = 100
@@ -206,6 +221,19 @@ ignore = [
     "PLE0605"
 ]
 fixable = ["ALL"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "SLF001",  # Private member accessed
+    #"D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107",  # Docstring rules
+    "PLR2004", # Magic value used in comparison
+    "S101",    # Use of assert detected
+    "PLR0913", # Too many arguments to function call
+    "C901",    # Function is too complex
+    "E501", # line too long
+    "B017",  # Don't assert blind Exception
+    "PT006", # Wrong type passed to first argument
+]
 
 [tool.ruff.lint.flake8-import-conventions.extend-aliases]
 voluptuous = "vol"

@@ -1,0 +1,18 @@
+-r requirements.txt
+homeassistant-stubs
+mypy
+pre-commit
+pytest
+pytest-asyncio
+pytest-cov
+pytest-homeassistant-custom-component
+pytest-timeout
+pytest-xdist
+ruff
+types-cffi
+types-PyMySQL
+types-pyRFC3339
+types-python-dateutil
+types-PyYAML
+types-requests
+types-setuptools
