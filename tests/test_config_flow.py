@@ -307,11 +307,12 @@ async def test_options_flow_granular_sync_calls_validate_and_updates(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_device_tracker_shows_form_when_no_user_input(monkeypatch):
+async def test_device_tracker_shows_form_when_no_user_input(monkeypatch, make_config_entry):
     """async_step_device_tracker should show form containing data_schema when called without user_input."""
-    cfg = MagicMock()
-    cfg.data = {cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"}
-    cfg.options = {cf_mod.CONF_DEVICES: ["11:22:33:44:55:66"]}
+    cfg = make_config_entry(
+        data={cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"},
+        options={cf_mod.CONF_DEVICES: ["11:22:33:44:55:66"]},
+    )
 
     flow = cf_mod.OPNsenseOptionsFlow(cfg)
     flow.hass = MagicMock()
@@ -336,16 +337,17 @@ async def test_device_tracker_shows_form_when_no_user_input(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_options_flow_device_tracker_user_input(monkeypatch):
+async def test_options_flow_device_tracker_user_input(monkeypatch, make_config_entry):
     """When user submits manual devices, they should be parsed and saved to options."""
-    # Build a fake config_entry-like object
-    config_entry = MagicMock()
-    config_entry.data = {
-        cf_mod.CONF_URL: "https://x",
-        cf_mod.CONF_USERNAME: "u",
-        cf_mod.CONF_PASSWORD: "p",
-    }
-    config_entry.options = {cf_mod.CONF_DEVICE_TRACKER_ENABLED: True, cf_mod.CONF_DEVICES: []}
+    # Build a fake config_entry using shared factory
+    config_entry = make_config_entry(
+        data={
+            cf_mod.CONF_URL: "https://x",
+            cf_mod.CONF_USERNAME: "u",
+            cf_mod.CONF_PASSWORD: "p",
+        },
+        options={cf_mod.CONF_DEVICE_TRACKER_ENABLED: True, cf_mod.CONF_DEVICES: []},
+    )
 
     flow = cf_mod.OPNsenseOptionsFlow(config_entry)
     # attach hass with config_entries.update stub

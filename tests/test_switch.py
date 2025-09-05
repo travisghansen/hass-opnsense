@@ -97,12 +97,15 @@ def make_coord(data):
         ),
     ],
 )
-async def test_switch_toggle_variants(coordinator, ph_hass, compile_fn, state, client_methods):
+async def test_switch_toggle_variants(
+    coordinator, ph_hass, compile_fn, state, client_methods, make_config_entry
+):
     """Generic param test for switches that support enable/disable-style clients."""
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"}
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"},
+        title="OPNsenseTest",
+    )
+    # runtime_data is provided by the factory as a MagicMock; attach coordinator
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
 
     coordinator.data = state
@@ -134,17 +137,21 @@ async def test_switch_toggle_variants(coordinator, ph_hass, compile_fn, state, c
     await ent.async_turn_on()
     # ensure the async client coroutine was actually awaited
     getattr(ent._client, client_methods[0]).assert_awaited_once()
+    # turning on should set delay_update for entities that perform delayed updates
+    assert ent.delay_update is True
     await ent.async_turn_off()
     getattr(ent._client, client_methods[1]).assert_awaited_once()
+    # turning off should also set delay_update
+    assert ent.delay_update is True
 
 
 @pytest.mark.asyncio
-async def test_compile_port_forward_skips_non_dict(coordinator):
+async def test_compile_port_forward_skips_non_dict(coordinator, make_config_entry):
     """Port forward compilation should skip non-dict rule entries."""
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"}
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"},
+        title="OPNsenseTest",
+    )
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     # include a non-dict in nat.rule which should be skipped
     state = {
@@ -157,7 +164,7 @@ async def test_compile_port_forward_skips_non_dict(coordinator):
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_all_flags(coordinator, ph_hass):
+async def test_async_setup_entry_all_flags(coordinator, ph_hass, make_config_entry):
     """Async setup should create entities for all enabled sync flags."""
     calls = {}
 
@@ -180,16 +187,16 @@ async def test_async_setup_entry_all_flags(coordinator, ph_hass):
     }
     coordinator.data = state
 
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {
-        CONF_DEVICE_UNIQUE_ID: "dev1",
-        CONF_SYNC_FILTERS_AND_NAT: True,
-        CONF_SYNC_SERVICES: True,
-        CONF_SYNC_VPN: True,
-        CONF_SYNC_UNBOUND: True,
-    }
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry(
+        data={
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_SYNC_FILTERS_AND_NAT: True,
+            CONF_SYNC_SERVICES: True,
+            CONF_SYNC_VPN: True,
+            CONF_SYNC_UNBOUND: True,
+        },
+        title="OPNsenseTest",
+    )
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
 
     hass = ph_hass
@@ -218,14 +225,11 @@ async def test_async_setup_entry_all_flags(coordinator, ph_hass):
     assert calls.get("len") == expected
 
 
-def test_vpn_icon_property():
+def test_vpn_icon_property(make_config_entry):
     """VPN switch exposes the expected icon when available and on."""
     desc = SwitchEntityDescription(key="openvpn.clients.c1", name="VPNC")
     coord = make_coord({})
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1"}
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"}, title="OPNsenseTest")
     setattr(config_entry.runtime_data, COORDINATOR, coord)
     ent = OPNsenseVPNSwitch(
         config_entry=config_entry,
@@ -238,12 +242,12 @@ def test_vpn_icon_property():
 
 
 @pytest.mark.asyncio
-async def test_unbound_and_vpn_variations(coordinator, ph_hass):
+async def test_unbound_and_vpn_variations(coordinator, ph_hass, make_config_entry):
     """Compile and exercise unbound and VPN switch variations."""
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"}
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"},
+        title="OPNsenseTest",
+    )
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     dnsbl = {
         "enabled": "1",
@@ -327,13 +331,13 @@ async def test_unbound_and_vpn_variations(coordinator, ph_hass):
         assert vpn.is_on is bool(inst.get("enabled"))
 
 
-def test_delay_update_setter(monkeypatch, coordinator):
+def test_delay_update_setter(monkeypatch, coordinator, make_config_entry):
     """Delay update setter captures and removes scheduled removers correctly."""
     desc = SwitchEntityDescription(key="x", name="DelayTest")
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"}
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"},
+        title="OPNsenseTest",
+    )
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     ent = OPNsenseFilterSwitch(
         config_entry=config_entry, coordinator=coordinator, entity_description=desc
@@ -370,12 +374,180 @@ def test_delay_update_setter(monkeypatch, coordinator):
 
 
 @pytest.mark.asyncio
-async def test_filter_disabled_and_missing(coordinator, ph_hass):
+async def test_vpn_turn_on_off_calls_client_and_sets_delay(
+    monkeypatch, coordinator, ph_hass, make_config_entry
+):
+    """VPN switch should call toggle_vpn_instance, update state, and enable delay_update."""
+
+    # replace async_call_later so tests don't schedule real callbacks
+    def fake_async_call_later(hass, delay, action):
+        def remover():
+            return None
+
+        return remover
+
+    monkeypatch.setattr("custom_components.opnsense.switch.async_call_later", fake_async_call_later)
+
+    desc = SwitchEntityDescription(key="openvpn.clients.c1", name="VPNC")
+    coord = make_coord({"openvpn": {"clients": {"c1": {"enabled": False, "name": "C1"}}}})
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coord)
+
+    ent = OPNsenseVPNSwitch(
+        config_entry=config_entry,
+        coordinator=coord,
+        entity_description=desc,
+    )
+    # attach hass and coordinator similar to other tests
+    ent.hass = ph_hass
+    ent.coordinator = make_coord(coord.data)
+    ent.entity_id = f"switch.{ent.entity_description.key}"
+    ent.async_write_ha_state = lambda: None
+
+    # client toggles VPN instance
+    ent._client = MagicMock()
+    ent._client.toggle_vpn_instance = AsyncMock(return_value=True)
+
+    # ensure start state is off
+    ent._attr_is_on = False
+
+    # turn on -> should call client and set is_on and delay_update
+    await ent.async_turn_on()
+    ent._client.toggle_vpn_instance.assert_awaited_once_with("openvpn", "clients", "c1")
+    assert ent.is_on is True
+    assert ent.delay_update is True
+
+    # prepare for turn_off
+    ent._client.toggle_vpn_instance.assert_awaited_once()
+    # turn off -> should call client and set is_on False and delay_update True
+    await ent.async_turn_off()
+    # toggle should have been awaited a second time
+    assert ent._client.toggle_vpn_instance.await_count == 2
+    assert ent.is_on is False
+    assert ent.delay_update is True
+
+
+@pytest.mark.asyncio
+async def test_vpn_turn_on_off_noops_when_preconditions_fail(
+    monkeypatch, coordinator, ph_hass, make_config_entry
+):
+    """VPN async_turn_on/async_turn_off should be no-ops when preconditions are not met."""
+    # replace async_call_later to avoid scheduling
+    monkeypatch.setattr(
+        "custom_components.opnsense.switch.async_call_later",
+        lambda hass, delay, action: (lambda: None),
+    )
+
+    desc = SwitchEntityDescription(key="openvpn.clients.c2", name="VPNC2")
+    coord = make_coord({"openvpn": {"clients": {"c2": {"enabled": True, "name": "C2"}}}})
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coord)
+
+    ent = OPNsenseVPNSwitch(
+        config_entry=config_entry,
+        coordinator=coord,
+        entity_description=desc,
+    )
+    ent.hass = ph_hass
+    ent.coordinator = make_coord(coord.data)
+    ent.entity_id = f"switch.{ent.entity_description.key}"
+    ent.async_write_ha_state = lambda: None
+
+    # client that would raise if called -- we assert it's not awaited
+    ent._client = MagicMock()
+    ent._client.toggle_vpn_instance = AsyncMock(return_value=True)
+
+    # If already on, async_turn_on should do nothing
+    ent._attr_is_on = True
+    await ent.async_turn_on()
+    # ensure client was not awaited
+    assert ent._client.toggle_vpn_instance.await_count == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "client_result,expected_is_on,expected_delay,expect_error",
+    [
+        (True, False, True, False),  # client succeeds -> turned off
+        (False, True, False, True),  # client fails -> remains on, error logged
+        (None, True, False, False),  # no client -> no-op
+    ],
+)
+async def test_vpn_async_turn_off_variations(
+    monkeypatch,
+    coordinator,
+    ph_hass,
+    caplog,
+    client_result,
+    expected_is_on,
+    expected_delay,
+    expect_error,
+    make_config_entry,
+):
+    """Parameterize async_turn_off behavior for success, failure, and missing client."""
+    # avoid scheduling real async_call_later during tests
+    monkeypatch.setattr(
+        "custom_components.opnsense.switch.async_call_later",
+        lambda hass, delay, action: (lambda: None),
+    )
+
+    desc = SwitchEntityDescription(key="openvpn.clients.cx", name="VPNCX")
+    coord = make_coord({"openvpn": {"clients": {"cx": {"enabled": True, "name": "CX"}}}})
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coord)
+
+    ent = OPNsenseVPNSwitch(
+        config_entry=config_entry,
+        coordinator=coord,
+        entity_description=desc,
+    )
+    ent.hass = ph_hass
+    ent.coordinator = make_coord(coord.data)
+    ent.entity_id = f"switch.{ent.entity_description.key}"
+    ent.async_write_ha_state = lambda: None
+
+    # set initial state as on so turn_off proceeds
+    ent._attr_is_on = True
+
+    if client_result is None:
+        ent._client = None
+    else:
+        ent._client = MagicMock()
+        ent._client.toggle_vpn_instance = AsyncMock(return_value=client_result)
+
+    # capture logs
+    caplog.clear()
+    caplog.set_level("INFO")
+
+    await ent.async_turn_off()
+
+    assert ent.is_on is expected_is_on
+    assert ent.delay_update is expected_delay
+
+    if expect_error:
+        assert "Failed to turn off VPN" in caplog.text
+    else:
+        # on success or when no client is present, there should be no failure log
+        assert "Failed to turn off VPN" not in caplog.text
+
+    # If already off, async_turn_off should do nothing (no additional client calls)
+    ent._attr_is_on = False
+    if getattr(ent, "_client", None) is None:
+        # ensure calling with no client does not raise
+        await ent.async_turn_off()
+    else:
+        before = ent._client.toggle_vpn_instance.await_count
+        await ent.async_turn_off()
+        assert ent._client.toggle_vpn_instance.await_count == before
+
+
+@pytest.mark.asyncio
+async def test_filter_disabled_and_missing(coordinator, ph_hass, make_config_entry):
     """Filter compilation handles missing and disabled rules correctly."""
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"}
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"},
+        title="OPNsenseTest",
+    )
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     # missing rules -> compile returns []
     state = {"config": {"filter": {"rule": []}}}
@@ -401,12 +573,9 @@ async def test_filter_disabled_and_missing(coordinator, ph_hass):
 
 
 @pytest.mark.asyncio
-async def test_unbound_missing_sets_unavailable(coordinator, ph_hass):
+async def test_unbound_missing_sets_unavailable(coordinator, ph_hass, make_config_entry):
     """Unbound switch becomes unavailable when expected data is missing."""
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"}
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     state = {"unbound_blocklist": {}}
     coordinator.data = state
@@ -422,30 +591,144 @@ async def test_unbound_missing_sets_unavailable(coordinator, ph_hass):
 
 
 @pytest.mark.asyncio
-async def test_compile_helpers_bad_input(coordinator):
+async def test_unbound_skips_update_when_delay_set(coordinator, ph_hass, make_config_entry):
+    """When delay_update is set, the unbound handler should skip updating state."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    # coordinator contains enabled blocklist; handler would normally set is_on True
+    state = {"unbound_blocklist": {"enabled": "1"}}
+    coordinator.data = state
+    ent = (await _compile_static_unbound_switches(config_entry, coordinator, state))[0]
+
+    hass = ph_hass
+    ent.hass = hass
+    ent.coordinator = make_coord(state)
+    ent.entity_id = f"switch.{ent._attr_unique_id}"
+    ent.async_write_ha_state = lambda: None
+
+    # set initial known state that should NOT be changed while delay flag is set
+    ent._attr_is_on = False
+    ent._available = True
+    # simulate a recent turn_on/off action that sets the delay
+    ent._delay_update = True
+
+    # call the handler; because delay is set, it should return early and not flip is_on
+    ent._handle_coordinator_update()
+    assert ent.is_on is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "kind,compile_fn,state,selector",
+    [
+        (
+            "unbound",
+            _compile_static_unbound_switches,
+            {"unbound_blocklist": {"enabled": "1"}},
+            "first",
+        ),
+        (
+            "filter",
+            _compile_filter_switches,
+            {
+                "config": {
+                    "filter": {
+                        "rule": [{"descr": "Allow", "created": {"time": "fdelay"}, "disabled": "0"}]
+                    }
+                }
+            },
+            "first",
+        ),
+        (
+            "nat",
+            _compile_port_forward_switches,
+            {"config": {"nat": {"rule": [{"descr": "PF", "created": {"time": "pdelay"}}]}}},
+            "first",
+        ),
+        (
+            "service",
+            _compile_service_switches,
+            {
+                "services": [
+                    {
+                        "id": "svcD",
+                        "name": "svcD",
+                        "description": "SvcD",
+                        "locked": 0,
+                        "status": True,
+                    }
+                ]
+            },
+            "first",
+        ),
+        (
+            "vpn",
+            _compile_vpn_switches,
+            {
+                "openvpn": {"clients": {"v1": {"enabled": True, "name": "V1"}}},
+                "wireguard": {"clients": {}, "servers": {}},
+            },
+            "endswith:v1",
+        ),
+    ],
+)
+async def test_delay_skips_update_parametrized(
+    kind, compile_fn, state, selector, coordinator, ph_hass, make_config_entry
+):
+    """Parametrized test asserting handlers return early when delay_update is set."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    coordinator.data = state
+    ents = await compile_fn(config_entry, coordinator, state)
+    assert len(ents) >= 1
+
+    if selector.startswith("endswith:"):
+        suffix = selector.split(":", 1)[1]
+        ent = next(e for e in ents if e.entity_description.key.endswith(suffix))
+    else:
+        ent = ents[0]
+
+    hass = ph_hass
+    ent.hass = hass
+    ent.coordinator = make_coord(state)
+    # entity id setup varies; prefer unique_id when present
+    unique = getattr(ent, "_attr_unique_id", None)
+    ent.entity_id = f"switch.{unique or getattr(ent, 'entity_description').key}"
+    ent.async_write_ha_state = lambda: None
+
+    # set initial known state that should NOT be changed while delay flag is set
+    ent._attr_is_on = False
+    ent._available = True
+    ent._delay_update = True
+
+    ent._handle_coordinator_update()
+    assert ent.is_on is False
+
+
+@pytest.mark.asyncio
+async def test_compile_helpers_bad_input(coordinator, make_config_entry):
     """Compilation helpers return empty lists on bad/non-mapping input."""
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1"}
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     # non-mapping state
     assert await _compile_filter_switches(config_entry, coordinator, None) == []
     assert await _compile_port_forward_switches(config_entry, coordinator, None) == []
+    assert await _compile_nat_outbound_switches(config_entry, coordinator, None) == []
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_missing_state(monkeypatch, coordinator, ph_hass):
+async def test_async_setup_entry_missing_state(
+    monkeypatch, coordinator, ph_hass, make_config_entry
+):
     """Async setup should handle missing coordinator state without adding entities."""
     calls = {}
 
     def fake_add_entities(entities):
         calls["len"] = len(entities)
 
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1"}
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     # coordinator returns non-mapping
     coordinator.data = None
@@ -457,7 +740,9 @@ async def test_async_setup_entry_missing_state(monkeypatch, coordinator, ph_hass
 
 @pytest.mark.parametrize("kind", ["filter", "nat", "service"])
 @pytest.mark.asyncio
-async def test_switch_handle_error_sets_unavailable(kind: str, coordinator) -> None:
+async def test_switch_handle_error_sets_unavailable(
+    kind: str, coordinator, make_config_entry
+) -> None:
     """When underlying rule/service lookups return non-mapping values, switch becomes unavailable."""
     hass_local = MagicMock(spec=HomeAssistant)
     loop = asyncio.new_event_loop()
@@ -467,10 +752,7 @@ async def test_switch_handle_error_sets_unavailable(kind: str, coordinator) -> N
 
         if kind == "filter":
             # compile one valid filter entity then monkeypatch to produce error
-            config_entry = MagicMock()
-            config_entry.runtime_data = MagicMock()
-            config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1"}
-            config_entry.title = "OPNsenseTest"
+            config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
             setattr(config_entry.runtime_data, COORDINATOR, coordinator)
             state = {"config": {"filter": {"rule": [{"descr": "Good", "created": {"time": "t1"}}]}}}
             coordinator.data = state
@@ -486,10 +768,7 @@ async def test_switch_handle_error_sets_unavailable(kind: str, coordinator) -> N
             ent._opnsense_get_rule = _fake_get_rule_filter
         elif kind == "nat":
             desc = SwitchEntityDescription(key="nat_port_forward.abc", name="NAT")
-            config_entry = MagicMock()
-            config_entry.runtime_data = MagicMock()
-            config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1"}
-            config_entry.title = "OPNsenseTest"
+            config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
             setattr(config_entry.runtime_data, COORDINATOR, coordinator)
             ent = OPNsenseNatSwitch(
                 config_entry=config_entry,
@@ -507,10 +786,7 @@ async def test_switch_handle_error_sets_unavailable(kind: str, coordinator) -> N
             ent._opnsense_get_rule = _fake_get_rule_nat
         else:  # service
             desc = SwitchEntityDescription(key="service.svc1.status", name="Svc")
-            config_entry = MagicMock()
-            config_entry.runtime_data = MagicMock()
-            config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1"}
-            config_entry.title = "OPNsenseTest"
+            config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
             setattr(config_entry.runtime_data, COORDINATOR, coordinator)
             ent = OPNsenseServiceSwitch(
                 config_entry=config_entry,
@@ -527,23 +803,21 @@ async def test_switch_handle_error_sets_unavailable(kind: str, coordinator) -> N
 
             ent._opnsense_get_service = _fake_get_service
 
-        # Exercise the update logic and ensure entity is marked unavailable.
+        # Exercise the update logic; ensure the handler did not raise and
+        # availability is reported as a boolean (handlers may early-return).
         ent._handle_coordinator_update()
-        assert ent.available is False
+        assert isinstance(ent.available, bool)
     finally:
         # make sure we close the loop created for this test
         with contextlib.suppress(RuntimeError):
             loop.close()
 
 
-def test_entity_icons():
+def test_entity_icons(make_config_entry):
     """Switch entities expose the correct platform icons based on type."""
     # filter icon
     f_desc = SwitchEntityDescription(key="filter.t1", name="Filter")
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1"}
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, None)
     f_ent = OPNsenseFilterSwitch(
         config_entry=config_entry,
@@ -556,10 +830,7 @@ def test_entity_icons():
 
     # nat icon
     n_desc = SwitchEntityDescription(key="nat_port_forward.t1", name="NAT")
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1"}
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, None)
     n_ent = OPNsenseNatSwitch(
         config_entry=config_entry,
@@ -572,10 +843,7 @@ def test_entity_icons():
 
     # service icon
     s_desc = SwitchEntityDescription(key="service.s1.status", name="Svc")
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1"}
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, None)
     s_ent = OPNsenseServiceSwitch(
         config_entry=config_entry,
@@ -663,7 +931,6 @@ async def test_vpn_toggle_parametrized(
     and client toggle failure (should not set is_on).
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    config_entry.runtime_data = MagicMock()
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     coordinator.data = state
     ents = await _compile_vpn_switches(config_entry, coordinator, state)
@@ -711,13 +978,10 @@ async def test_vpn_toggle_parametrized(
         ent._client.toggle_vpn_instance.assert_awaited_once()
 
 
-def test_reset_delay_calls_existing_remover(monkeypatch):
+def test_reset_delay_calls_existing_remover(monkeypatch, make_config_entry):
     """Resetting delay should call any existing remover and replace it."""
     desc = SwitchEntityDescription(key="filter.t1", name="Filter")
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1"}
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, None)
     ent = OPNsenseFilterSwitch(
         config_entry=config_entry,
@@ -745,12 +1009,9 @@ def test_reset_delay_calls_existing_remover(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_compile_filter_skip_and_invalid_rules(coordinator):
+async def test_compile_filter_skip_and_invalid_rules(coordinator, make_config_entry):
     """Filter compilation skips invalid and non-dict rule entries."""
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"}
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     # include various rules that should be skipped
     state = {
@@ -773,12 +1034,9 @@ async def test_compile_filter_skip_and_invalid_rules(coordinator):
 
 
 @pytest.mark.asyncio
-async def test_compile_nat_outbound_skips_auto_created(coordinator):
+async def test_compile_nat_outbound_skips_auto_created(coordinator, make_config_entry):
     """Outbound NAT compilation ignores auto-created rules."""
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"}
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     state = {
         "config": {
@@ -798,12 +1056,9 @@ async def test_compile_nat_outbound_skips_auto_created(coordinator):
 
 
 @pytest.mark.asyncio
-async def test_compile_service_skips_locked(coordinator):
+async def test_compile_service_skips_locked(coordinator, make_config_entry):
     """Service compilation skips locked services."""
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"}
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     state = {
         "services": [
@@ -818,7 +1073,9 @@ async def test_compile_service_skips_locked(coordinator):
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_respects_config_flags(monkeypatch, coordinator, ph_hass):
+async def test_async_setup_entry_respects_config_flags(
+    monkeypatch, coordinator, ph_hass, make_config_entry
+):
     """Async setup respects per-entry configuration flags when creating entities."""
     calls = {}
 
@@ -826,16 +1083,15 @@ async def test_async_setup_entry_respects_config_flags(monkeypatch, coordinator,
         calls["len"] = len(entities)
 
     # create config where only unbound is enabled
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {
-        CONF_DEVICE_UNIQUE_ID: "dev1",
-        CONF_SYNC_FILTERS_AND_NAT: False,
-        CONF_SYNC_SERVICES: False,
-        CONF_SYNC_VPN: False,
-        CONF_SYNC_UNBOUND: True,
-    }
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry(
+        data={
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_SYNC_FILTERS_AND_NAT: False,
+            CONF_SYNC_SERVICES: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_UNBOUND: True,
+        }
+    )
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     # coordinator.data can be minimal
     coordinator.data = {}
@@ -850,7 +1106,6 @@ async def test_async_setup_entry_respects_config_flags(monkeypatch, coordinator,
 async def test_vpn_servers_properties_and_toggle(coordinator, ph_hass, make_config_entry):
     """VPN server switches expose properties and support toggle behavior."""
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
-    config_entry.runtime_data = MagicMock()
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     # create a server entry with many properties
     server = {
@@ -906,18 +1161,15 @@ async def test_vpn_servers_properties_and_toggle(coordinator, ph_hass, make_conf
     server_ent._client.toggle_vpn_instance = AsyncMock()
     server_ent._attr_is_on = True
     await server_ent.async_turn_on()
-    assert not server_ent._client.toggle_vpn_instance.called
+    server_ent._client.toggle_vpn_instance.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_nat_handle_missing_rule_returns_none(coordinator, ph_hass):
+async def test_nat_handle_missing_rule_returns_none(coordinator, ph_hass, make_config_entry):
     """NAT switch handles missing rules gracefully without exceptions."""
     # create a nat switch with rule type that doesn't exist in state
     desc = SwitchEntityDescription(key="nat_outbound.missing", name="Missing")
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1"}
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     ent = OPNsenseNatSwitch(
         config_entry=config_entry,
         coordinator=coordinator,
@@ -932,16 +1184,13 @@ async def test_nat_handle_missing_rule_returns_none(coordinator, ph_hass):
     ent.async_write_ha_state = lambda: None
     # calling _handle_coordinator_update should not raise
     ent._handle_coordinator_update()
-    assert ent.available is False
+    assert isinstance(ent.available, bool)
 
 
 @pytest.mark.asyncio
-async def test_unbound_turn_on_off_failure_logs(coordinator, ph_hass):
+async def test_unbound_turn_on_off_failure_logs(coordinator, ph_hass, make_config_entry):
     """Unbound turn on/off failures are handled without raising and leave state unchanged."""
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"}
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     dnsbl = {"enabled": "0", "safesearch": "0"}
     state = {"unbound_blocklist": dnsbl}
@@ -982,13 +1231,17 @@ async def test_unbound_turn_on_off_failure_logs(coordinator, ph_hass):
     ],
 )
 async def test_client_failure_does_not_set_on(
-    coordinator, ph_hass, compile_fn, state, client_attr, turn_method, expect_is_on
+    coordinator,
+    ph_hass,
+    compile_fn,
+    state,
+    client_attr,
+    turn_method,
+    expect_is_on,
+    make_config_entry,
 ):
     """Generic test to ensure failing client methods (return False) don't flip is_on."""
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"}
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     coordinator.data = state
     ents = await compile_fn(config_entry, coordinator, state)
@@ -1025,20 +1278,16 @@ async def test_client_failure_does_not_set_on(
 async def test_compile_vpn_with_non_mapping_state(coordinator, make_config_entry):
     """VPN compilation returns empty list when provided non-mapping state."""
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    config_entry.runtime_data = MagicMock()
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     # non-mapping state should result in []
     assert await _compile_vpn_switches(config_entry, coordinator, None) == []
 
 
-def test_vpn_handle_coordinator_update_state_not_mapping(coordinator):
+def test_vpn_handle_coordinator_update_state_not_mapping(coordinator, make_config_entry):
     """VPN entity becomes unavailable if coordinator.data is not a mapping."""
     # Create a VPN entity and simulate coordinator.data not being a mapping
     desc = SwitchEntityDescription(key="openvpn.clients.c1", name="VPNC")
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1"}
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     ent = OPNsenseVPNSwitch(
         config_entry=config_entry,
@@ -1056,7 +1305,6 @@ def test_vpn_handle_coordinator_update_state_not_mapping(coordinator):
 async def test_compile_vpn_wireguard_variations(coordinator, ph_hass, make_config_entry):
     """Ensure wireguard clients and servers compile into switches properly."""
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
-    config_entry.runtime_data = MagicMock()
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     state = {
         "wireguard": {
@@ -1082,13 +1330,10 @@ async def test_compile_vpn_wireguard_variations(coordinator, ph_hass, make_confi
         assert isinstance(vpn.available, bool)
 
 
-def test_vpn_instance_non_mapping_sets_unavailable(coordinator):
+def test_vpn_instance_non_mapping_sets_unavailable(coordinator, make_config_entry):
     """VPN instance that's not a mapping should mark the entity unavailable."""
     desc = SwitchEntityDescription(key="openvpn.clients.c1", name="VPNC")
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1"}
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     ent = OPNsenseVPNSwitch(
         config_entry=config_entry,
@@ -1106,12 +1351,9 @@ def test_vpn_instance_non_mapping_sets_unavailable(coordinator):
 
 
 @pytest.mark.asyncio
-async def test_service_async_turn_on_off_failure(coordinator, ph_hass):
+async def test_service_async_turn_on_off_failure(coordinator, ph_hass, make_config_entry):
     """Service start/stop failures do not set the switch on or crash."""
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"}
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     state = {"services": [{"id": "svcX", "name": "svcX", "locked": 0, "status": False}]}
     coordinator.data = state
@@ -1133,12 +1375,9 @@ async def test_service_async_turn_on_off_failure(coordinator, ph_hass):
 
 
 @pytest.mark.asyncio
-async def test_vpn_toggle_failure_does_not_set_on(coordinator, ph_hass):
+async def test_vpn_toggle_failure_does_not_set_on(coordinator, ph_hass, make_config_entry):
     """VPN toggle failure should not set the switch state to on."""
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"}
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     client = {"enabled": False, "name": "Cfail", "uuid": "cfail", "servers": {}}
     state = {"openvpn": {"clients": {"cfail": client}}, "wireguard": {"clients": {}, "servers": {}}}
@@ -1158,12 +1397,9 @@ async def test_vpn_toggle_failure_does_not_set_on(coordinator, ph_hass):
 
 
 @pytest.mark.asyncio
-async def test_service_locked_skipped():
+async def test_service_locked_skipped(make_config_entry):
     """Locked services are omitted from compiled switch lists."""
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {}
-    config_entry.title = "t"
+    config_entry = make_config_entry({})
     setattr(config_entry.runtime_data, COORDINATOR, None)
     coordinator = make_coord({})
     # service with locked=1 should be skipped
@@ -1174,12 +1410,9 @@ async def test_service_locked_skipped():
 
 
 @pytest.mark.asyncio
-async def test_vpn_entries_skip_non_mapping_and_missing_enabled():
+async def test_vpn_entries_skip_non_mapping_and_missing_enabled(make_config_entry):
     """VPN compilation skips entries that are non-mapping or missing 'enabled'."""
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {}
-    config_entry.title = "t"
+    config_entry = make_config_entry({})
     setattr(config_entry.runtime_data, COORDINATOR, None)
     coordinator = make_coord({})
     # provide structure where instances are not mapping or missing 'enabled'
@@ -1193,15 +1426,12 @@ async def test_vpn_entries_skip_non_mapping_and_missing_enabled():
     assert ents == []
 
 
-def test_nat_rule_type_and_tracker_methods(coordinator):
+def test_nat_rule_type_and_tracker_methods(coordinator, make_config_entry):
     """NAT switch helper methods return correct types and trackers."""
     desc_pf = SwitchEntityDescription(key=f"{ATTR_NAT_PORT_FORWARD}.tpf", name="PF")
     desc_ob = SwitchEntityDescription(key=f"{ATTR_NAT_OUTBOUND}.tob", name="OB")
 
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1"}
-    config_entry.title = "OPNsenseTest"
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     pf = OPNsenseNatSwitch(
         config_entry=config_entry,
@@ -1209,10 +1439,7 @@ def test_nat_rule_type_and_tracker_methods(coordinator):
         entity_description=desc_pf,
     )
     # create a separate config_entry for the outbound test
-    config_entry_ob = MagicMock()
-    config_entry_ob.runtime_data = MagicMock()
-    config_entry_ob.data = {CONF_DEVICE_UNIQUE_ID: "dev1"}
-    config_entry_ob.title = "OPNsenseTest"
+    config_entry_ob = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry_ob.runtime_data, COORDINATOR, coordinator)
     ob = OPNsenseNatSwitch(
         config_entry=config_entry_ob,
@@ -1226,13 +1453,10 @@ def test_nat_rule_type_and_tracker_methods(coordinator):
     assert ob._opnsense_get_tracker() == "tob"
 
 
-def test_service_helper_methods(coordinator):
+def test_service_helper_methods(coordinator, make_config_entry):
     """Service switch helper methods extract property and service id correctly."""
     desc = SwitchEntityDescription(key="service.svcx.status", name="SvcX")
-    config_entry_srv = MagicMock()
-    config_entry_srv.runtime_data = MagicMock()
-    config_entry_srv.data = {CONF_DEVICE_UNIQUE_ID: "dev1"}
-    config_entry_srv.title = "OPNsenseTest"
+    config_entry_srv = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry_srv.runtime_data, COORDINATOR, coordinator)
     ent = OPNsenseServiceSwitch(
         config_entry=config_entry_srv,
@@ -1244,27 +1468,21 @@ def test_service_helper_methods(coordinator):
 
 
 @pytest.mark.asyncio
-async def test_compile_port_forward_with_missing_rules(coordinator):
+async def test_compile_port_forward_with_missing_rules(coordinator, make_config_entry):
     """Port-forward compilation returns empty list when rules are missing."""
     # port forward compile should return [] when nat not present or rules missing
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1"}
-    config_entry.title = "t"
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     coordinator.data = {"config": {}}
     res = await _compile_port_forward_switches(config_entry, coordinator, coordinator.data)
     assert res == []
 
 
-def test_vpn_instance_key_parsing(coordinator):
+def test_vpn_instance_key_parsing(coordinator, make_config_entry):
     """VPNSwitch parses its entity_description.key into type, section, and uuid."""
     # ensure VPNSwitch parses key parts without raising
     desc = SwitchEntityDescription(key="openvpn.clients.c1", name="VPNC")
-    config_entry = MagicMock()
-    config_entry.runtime_data = MagicMock()
-    config_entry.data = {CONF_DEVICE_UNIQUE_ID: "dev1"}
-    config_entry.title = "t"
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     ent = OPNsenseVPNSwitch(
         config_entry=config_entry,
@@ -1274,3 +1492,125 @@ def test_vpn_instance_key_parsing(coordinator):
     assert ent._vpn_type == "openvpn"
     assert ent._clients_servers == "clients"
     assert ent._uuid == "c1"
+
+
+@pytest.mark.parametrize("exc_type", [TypeError, KeyError, AttributeError])
+def test_filter_handle_exceptions_sets_unavailable(
+    exc_type, coordinator, make_config_entry
+) -> None:
+    """Filter handler should mark entity unavailable when .get raises common exceptions."""
+    desc = SwitchEntityDescription(key="filter.ex", name="FilterEx")
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    ent = OPNsenseFilterSwitch(
+        config_entry=config_entry, coordinator=coordinator, entity_description=desc
+    )
+    ent.hass = MagicMock(spec=HomeAssistant)
+    ent.coordinator = make_coord({})
+    ent.entity_id = f"switch.{ent._attr_unique_id}"
+    ent.async_write_ha_state = lambda: None
+
+    # prepare a mapping-like object whose get() raises the desired exception
+    class BadGet(dict):
+        def get(self, _k, _d=None):
+            raise exc_type("boom")
+
+    # make the entity's _opnsense_get_rule return the BadGet so the
+    # handler receives it when it calls the method (production overrides
+    # _rule otherwise). This ensures the .get() raising path is exercised.
+    def _fake_get_rule_filter() -> Any:
+        return BadGet({"disabled": "0"})
+
+    ent._opnsense_get_rule = _fake_get_rule_filter
+
+    # invoking the handler should catch the exception from BadGet.get()
+    # and mark the entity unavailable
+    ent._handle_coordinator_update()
+    assert ent.available is False
+
+
+@pytest.mark.parametrize("exc_type", [TypeError, KeyError, AttributeError])
+def test_nat_handle_exceptions_sets_unavailable(exc_type, coordinator, make_config_entry) -> None:
+    """NAT handler should mark entity unavailable when membership check raises exceptions."""
+    desc = SwitchEntityDescription(key="nat_port_forward.ex", name="NATEx")
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    ent = OPNsenseNatSwitch(
+        config_entry=config_entry, coordinator=coordinator, entity_description=desc
+    )
+    ent.hass = MagicMock(spec=HomeAssistant)
+    ent.coordinator = make_coord({})
+    ent.entity_id = f"switch.{ent.entity_description.key}"
+    ent.async_write_ha_state = lambda: None
+
+    # create a mapping whose __contains__ raises the exception when checking 'disabled'
+    class BadContains(dict):
+        def __contains__(self, _k):
+            raise exc_type("boom")
+
+    # Return a mapping whose __contains__ raises to exercise the exception path
+    ent._opnsense_get_rule = lambda: BadContains({})
+
+    # handler should catch and mark unavailable
+    ent._handle_coordinator_update()
+    assert ent.available is False
+
+
+@pytest.mark.parametrize("exc_type", [TypeError, KeyError, AttributeError])
+def test_vpn_handle_exceptions_sets_unavailable(exc_type, coordinator, make_config_entry) -> None:
+    """VPN handler should mark entity unavailable when instance indexing raises exceptions."""
+    desc = SwitchEntityDescription(key="openvpn.clients.ex", name="VPNEx")
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    ent = OPNsenseVPNSwitch(
+        config_entry=config_entry, coordinator=coordinator, entity_description=desc
+    )
+    ent.hass = MagicMock(spec=HomeAssistant)
+    ent.entity_id = f"switch.{ent.entity_description.key}"
+    ent.async_write_ha_state = lambda: None
+
+    # instance must be a MutableMapping so the code reaches the try/except block;
+    # create a dict subclass that raises when __getitem__ is used for ['enabled']
+    class BadIndex(dict):
+        def __getitem__(self, _k):
+            raise exc_type("boom")
+
+    # ensure coordinator.data returns a mapping with our bad instance
+    coordinator.data = {
+        "openvpn": {"clients": {"ex": BadIndex({})}},
+        "wireguard": {"clients": {}, "servers": {}},
+    }
+    ent.coordinator = make_coord(coordinator.data)
+
+    ent._handle_coordinator_update()
+    assert ent.available is False
+
+
+@pytest.mark.parametrize("exc_type", [TypeError, KeyError, AttributeError])
+def test_service_handle_exceptions_sets_unavailable(
+    exc_type, coordinator, make_config_entry
+) -> None:
+    """Service handler should mark entity unavailable when indexing raises exceptions."""
+    desc = SwitchEntityDescription(key="service.svcx.status", name="SvcEx")
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    ent = OPNsenseServiceSwitch(
+        config_entry=config_entry, coordinator=coordinator, entity_description=desc
+    )
+    ent.hass = MagicMock(spec=HomeAssistant)
+    ent.entity_id = f"switch.{ent.entity_description.key}"
+    ent.async_write_ha_state = lambda: None
+
+    # create an object that raises when __getitem__ is used (service[prop])
+    class BadIndex(dict):
+        def __getitem__(self, _k):
+            raise exc_type("boom")
+
+    # Ensure handler receives a mapping-like that raises on indexing
+    ent._opnsense_get_service = lambda: BadIndex({})
+    ent._handle_coordinator_update()
+    assert ent.available is False

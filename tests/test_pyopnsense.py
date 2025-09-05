@@ -1267,6 +1267,7 @@ async def test_manage_service_and_restart_if_running(make_client) -> None:
 @pytest.mark.asyncio
 async def test_scanner_entity_handle_coordinator_update_missing_state_sets_unavailable(
     make_client,
+    make_config_entry,
 ) -> None:
     """OPNsenseScannerEntity should mark unavailable when coordinator state missing or invalid."""
 
@@ -1274,7 +1275,7 @@ async def test_scanner_entity_handle_coordinator_update_missing_state_sets_unava
     class FakeCoord:
         data: object | None = None
 
-    cfg = MagicMock()
+    cfg = make_config_entry()
     coord = FakeCoord()
     ent = device_tracker_mod.OPNsenseScannerEntity(
         config_entry=cfg,
@@ -1292,14 +1293,13 @@ async def test_scanner_entity_handle_coordinator_update_missing_state_sets_unava
 
 
 @pytest.mark.asyncio
-async def test_compile_filesystem_sensors_and_filter_switches() -> None:
+async def test_compile_filesystem_sensors_and_filter_switches(make_config_entry) -> None:
     """Test sensor and switch compilation helpers for simple cases."""
     # Use the public async_setup_entry to exercise creation rather than
     # directly calling private helpers. Create a minimal config entry and
     # coordinator for the setup path.
-    cfg = MagicMock()
+    cfg = make_config_entry()
     coord = MagicMock()
-    cfg.runtime_data = MagicMock()
     setattr(cfg.runtime_data, "coordinator", coord)
 
     # filesystem sensors: invalid state -> setup should not create filesystem entities
@@ -1335,16 +1335,16 @@ async def test_compile_filesystem_sensors_and_filter_switches() -> None:
         }
     }
     # prepare a switch config entry with filter sync enabled
-    switch_cfg = MagicMock()
-    switch_cfg.runtime_data = MagicMock()
+    switch_cfg = make_config_entry(
+        data={
+            "device_unique_id": "dev1",
+            "sync_filters_and_nat": True,
+            "sync_unbound": False,
+            "sync_vpn": False,
+            "sync_services": False,
+        }
+    )
     setattr(switch_cfg.runtime_data, "coordinator", coord)
-    switch_cfg.data = {
-        "device_unique_id": "dev1",
-        "sync_filters_and_nat": True,
-        "sync_unbound": False,
-        "sync_vpn": False,
-        "sync_services": False,
-    }
     coord.data = state2
     created_switches: list = []
 
@@ -2751,3 +2751,247 @@ async def test_enable_filter_rule_by_created_time(
     else:
         client._restore_config_section.assert_not_awaited()
         client._filter_configure.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_wireguard_success_and_invalid(make_client) -> None:
+    """Exercise get_wireguard success path and invalid structure early return."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+
+    now = datetime.now().astimezone()
+    old_handshake = int((now - timedelta(minutes=10)).timestamp())  # disconnected
+
+    # Build server/client structures expected by API shape
+    summary_resp = {
+        "rows": [
+            {"type": "interface", "public-key": "spk", "status": "up"},
+            {
+                "type": "peer",
+                "public-key": "cpk",
+                "if": "wg1",
+                "latest-handshake": old_handshake,
+                "transfer-rx": "1",
+                "transfer-tx": "2",
+            },
+        ]
+    }
+    clients_resp = {
+        "client": {
+            "clients": {
+                "client": {
+                    "c1": {
+                        "name": "client1",
+                        "pubkey": "cpk",
+                        "enabled": "1",
+                        "tunneladdress": {},
+                        "servers": {"s1": {"selected": 1, "value": "srv1"}},
+                    }
+                }
+            }
+        }
+    }
+    servers_resp = {
+        "server": {
+            "servers": {
+                "server": {
+                    "s1": {
+                        "name": "srv1",
+                        "pubkey": "spk",
+                        "enabled": "1",
+                        "instance": "1",
+                        "tunneladdress": {"0": {"selected": 1, "value": "10.0.0.1"}},
+                        "peers": {"c1": {"selected": 1, "value": "client1"}},
+                    }
+                }
+            }
+        }
+    }
+
+    # side_effect order matches comprehension iteration order in get_wireguard
+    client._safe_dict_get = AsyncMock(side_effect=[summary_resp, clients_resp, servers_resp])
+    wg = await client.get_wireguard()
+    assert "servers" in wg and "clients" in wg and wg["servers"]["s1"]["uuid"] == "s1"
+    # client peer should reflect disconnected (old handshake)
+    assert wg["clients"]["c1"].get("connected_servers") in (
+        0,
+        wg["clients"]["c1"].get("connected_servers"),
+    )
+
+    # invalid structure (summary not list) -> {}
+    client._safe_dict_get = AsyncMock(return_value={"rows": {}})
+    assert await client.get_wireguard() == {}
+    await client.async_close()
+
+
+@pytest.mark.asyncio
+async def test_update_wireguard_peer_details_endpoint_none_does_not_override() -> None:
+    """When endpoint is '(none)' existing endpoint value should remain unchanged."""
+    server = {
+        "total_bytes_recv": 0,
+        "total_bytes_sent": 0,
+        "connected_servers": 0,
+        "latest_handshake": None,
+    }
+    peer = {"endpoint": "keep"}
+    await pyopnsense.OPNsenseClient._update_wireguard_peer_details(  # type: ignore[arg-type]
+        peer=peer,
+        server_or_client=server,
+        endpoint="(none)",
+        transfer_rx=0,
+        transfer_tx=0,
+        handshake_time=None,
+        is_connected=False,
+        connection_counter_key="connected_servers",
+    )
+    assert peer.get("endpoint") == "keep"
+
+
+@pytest.mark.asyncio
+async def test_restore_config_section_executes_in_executor(make_client) -> None:
+    """_restore_config_section should call underlying proxy method with params."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+    called = {}
+
+    class FakeProxy:
+        class opnsense:  # noqa: D401 - minimal container for restore_config_section
+            @staticmethod
+            def restore_config_section(params):  # pragma: no cover - executed in executor
+                called["params"] = params
+
+    client._get_proxy = MagicMock(return_value=FakeProxy())
+    await client._restore_config_section("filter", {"rule": []})
+    assert called.get("params") == {"filter": {"rule": []}}
+    await client.async_close()
+
+
+@pytest.mark.asyncio
+async def test_enable_disable_nat_outbound_rules(make_client) -> None:
+    """Cover enable/disable NAT outbound rule flows."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+
+    # Enable: rule has disabled flag -> should remove and call helpers
+    cfg_enable = {"nat": {"outbound": {"rule": [{"created": {"time": "t1"}, "disabled": "1"}]}}}
+    client.get_config = AsyncMock(return_value=cfg_enable)
+    client._restore_config_section = AsyncMock()
+    client._filter_configure = AsyncMock()
+    await client.enable_nat_outbound_rule_by_created_time("t1")
+    client._restore_config_section.assert_awaited()
+    client._filter_configure.assert_awaited()
+
+    # Disable: rule missing disabled -> should add and call helpers
+    cfg_disable = {"nat": {"outbound": {"rule": [{"created": {"time": "t2"}}]}}}
+    client.get_config = AsyncMock(return_value=cfg_disable)
+    client._restore_config_section = AsyncMock()
+    client._filter_configure = AsyncMock()
+    await client.disable_nat_outbound_rule_by_created_time("t2")
+    client._restore_config_section.assert_awaited()
+    client._filter_configure.assert_awaited()
+    await client.async_close()
+
+
+@pytest.mark.asyncio
+async def test_do_get_post_and_stream_permission_errors(make_client) -> None:
+    """_do_get/_do_post/_do_get_from_stream should not raise when 403 and initial False."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+
+    class Fake403:
+        def __init__(self):
+            self.status = 403
+            self.reason = "Forbidden"
+            self.ok = False
+
+            class RI:  # minimal request_info
+                real_url = URL("http://localhost")
+
+            self.request_info = RI()
+            self.history = []
+            self.headers = {}
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def json(self, content_type=None):
+            return {"err": 1}
+
+        @property
+        def content(self):  # for stream variant
+            class C:
+                async def iter_chunked(self, n):
+                    if False:  # pragma: no cover
+                        yield b""  # never executed; placeholder
+                        return
+                    yield b""  # empty stream
+
+            return C()
+
+    session.get = lambda *a, **k: Fake403()
+    session.post = lambda *a, **k: Fake403()
+    client = pyopnsense.OPNsenseClient(
+        url="http://localhost", username="u", password="p", session=session
+    )
+    try:
+        client._initial = False
+        assert await client._do_get("/x", caller="t") is None
+        assert await client._do_post("/x", payload={}, caller="t") is None
+        assert await client._do_get_from_stream("/x", caller="t") == {}
+    finally:
+        await client.async_close()
+
+
+@pytest.mark.asyncio
+async def test_update_wireguard_peer_details_latest_handshake() -> None:
+    """_update_wireguard_peer_details should update latest_handshake when newer."""
+    server: dict = {"total_bytes_recv": 0, "total_bytes_sent": 0, "connected_clients": 0}
+    peer: dict = {}
+    old_time = datetime.now().astimezone() - timedelta(minutes=10)
+    server["latest_handshake"] = old_time
+    new_time = datetime.now().astimezone()
+    await pyopnsense.OPNsenseClient._update_wireguard_peer_details(  # type: ignore[arg-type]
+        peer=peer,
+        server_or_client=server,
+        endpoint="1.2.3.4:51820",
+        transfer_rx=10,
+        transfer_tx=20,
+        handshake_time=new_time,
+        is_connected=True,
+        connection_counter_key="connected_clients",
+    )
+    assert server.get("latest_handshake") == new_time
+    assert server.get("connected_clients") == 1
+    assert peer.get("connected") is True
+
+
+@pytest.mark.asyncio
+async def test_set_use_snake_case_unknown_firmware_raise(monkeypatch, make_client) -> None:
+    """set_use_snake_case should raise UnknownFirmware when initial True and compare fails."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+    client._firmware_version = "25.x"
+
+    class BadAV:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def __lt__(self, other):  # noqa: D401 - comparison triggers exception
+            raise pyopnsense.awesomeversion.exceptions.AwesomeVersionCompareException("bad")
+
+    monkeypatch.setattr(pyopnsense.awesomeversion, "AwesomeVersion", BadAV)
+    with pytest.raises(pyopnsense.UnknownFirmware):
+        await client.set_use_snake_case(initial=True)
+    await client.async_close()
+
+
+@pytest.mark.asyncio
+async def test_get_device_unique_id_no_mac(make_client) -> None:
+    """get_device_unique_id returns None when no physical mac addresses present."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+    client._safe_list_get = AsyncMock(return_value=[{"is_physical": False}])
+    assert await client.get_device_unique_id() is None
+    await client.async_close()

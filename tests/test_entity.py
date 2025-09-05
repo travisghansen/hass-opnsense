@@ -78,8 +78,7 @@ async def test_async_added_to_hass_sets_client_and_calls_update(
     coord = dummy_coordinator
     # provide a runtime client
     client = object()
-    # make_config_entry provides a dict for runtime_data; tests expect attribute access
-    entry.runtime_data = MagicMock()
+    # make_config_entry provides runtime_data; attach a client on it
     entry.runtime_data.opnsense_client = client
 
     ent = OPNsenseBaseEntity(config_entry=entry, coordinator=coord, unique_id_suffix="test")
@@ -106,7 +105,6 @@ async def test_async_added_to_hass_missing_client_raises(make_config_entry, dumm
     entry = make_config_entry()
     coord = dummy_coordinator
     # runtime_data has opnsense_client attribute but it's None -> triggers assertion
-    entry.runtime_data = MagicMock()
     entry.runtime_data.opnsense_client = None
 
     ent = OPNsenseBaseEntity(config_entry=entry, coordinator=coord, unique_id_suffix="test")

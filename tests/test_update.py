@@ -228,16 +228,14 @@ def test_handle_coordinator_update_sets_attributes(make_config_entry, dummy_coor
     assert ent.available is True
     assert ent.installed_version == "1_0_0"
     assert ent.latest_version == "1.0.2"
+    assert ent.release_summary == "ok"
     # extra state attributes are created from firmware_update_info keys (top-level ones)
     assert "opnsense_download_size" in ent.extra_state_attributes
     assert ent.extra_state_attributes.get("opnsense_download_size") == 123
     assert ent.extra_state_attributes.get("opnsense_last_check") == 1
 
 
-@pytest.mark.asyncio
-async def test_handle_coordinator_update_upgrade_sets_release_url(
-    make_config_entry, dummy_coordinator
-):
+def test_handle_coordinator_update_upgrade_sets_release_url(make_config_entry, dummy_coordinator):
     """Upgrade state should compute a release URL and provide release notes.
 
     This also asserts normalization of product_latest and correct derivation of
@@ -320,6 +318,8 @@ async def test_handle_coordinator_update_update_normalizes_product_latest(
     # available on the entity
     notes = await ent.async_release_notes()
     assert product_latest_input in notes
+    # series '2.1' -> community mapping reflected in path
+    assert "community/2.1" in ent.release_url
 
 
 def test_handle_coordinator_update_release_url_fallback_when_product_class_none(
@@ -521,7 +521,7 @@ async def test_async_install_reboots_when_needed(monkeypatch, make_config_entry,
     # ensure polling occurred: upgrade_status should have been awaited twice (running -> done)
     assert fake.upgrade_status.await_count == 2
     fake.upgrade_firmware.assert_awaited_once_with("update")
-    assert sleep_spy.await_count >= 1
+    assert 1 <= sleep_spy.await_count <= 5
 
 
 @pytest.mark.asyncio

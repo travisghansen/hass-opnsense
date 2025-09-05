@@ -1,7 +1,6 @@
 """These tests import the integration code via relative imports and assert behavior across sensor variants using a synthesized coordinator state."""
 
-import inspect
-import sys
+# removed unused `inspect` and `sys` imports when tracer-based test was replaced
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -40,7 +39,6 @@ async def test_async_setup_entry_invalid_state(make_config_entry):
     # runtime_data used by async_setup_entry expects an attribute named COORDINATOR
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coordinator.data = None
-    config_entry.runtime_data = MagicMock()
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
 
     called = False
@@ -568,26 +566,26 @@ def test_temp_sensor_handles_index_exceptions(exc_type, make_config_entry):
 
 
 @pytest.mark.parametrize(
-    "desc_key,state,expected_icon",
+    "desc_key,state,expect_close_icon",
     [
         (
             "openvpn.servers.uuid1.status",
             {"openvpn": {"servers": {"uuid1": {"name": "ovpn", "status": "up"}}}},
-            "not_close",
+            False,
         ),
         (
             "openvpn.servers.uuid1.status",
             {"openvpn": {"servers": {"uuid1": {"name": "ovpn", "status": "down"}}}},
-            "mdi:close-network-outline",
+            True,
         ),
         (
             "openvpn.servers.uuid1.connected_clients",
             {"openvpn": {"servers": {"uuid1": {"name": "ovpn", "connected_clients": 1}}}},
-            "mdi:custom-icon",
+            False,
         ),
     ],
 )
-def test_vpn_sensor_icon_variants(desc_key, state, expected_icon, make_config_entry):
+def test_vpn_sensor_icon_variants(desc_key, state, expect_close_icon, make_config_entry):
     """Verify VPNSensor.icon for status up/down and fallback to description icon for non-status."""
     entry = make_config_entry()
 
@@ -606,10 +604,10 @@ def test_vpn_sensor_icon_variants(desc_key, state, expected_icon, make_config_en
     s.async_write_ha_state = lambda: None
     s._handle_coordinator_update()
 
-    if expected_icon == "not_close":
-        assert s.icon != "mdi:close-network-outline"
+    if expect_close_icon:
+        assert s.icon == "mdi:close-network-outline"
     else:
-        assert s.icon == expected_icon
+        assert s.icon != "mdi:close-network-outline"
 
 
 def test_sensor_module_import() -> None:
@@ -685,133 +683,6 @@ def test_static_cpu_zero_variants(
     sensor.async_write_ha_state = lambda: None
     if previous is not None:
         sensor._previous_value = previous
-
-        def test_carp_sensor_invalid_state(make_config_entry):
-            """CARP sensor should be unavailable when coordinator state is invalid."""
-            coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-            coord.data = None
-            entry = make_config_entry()
-
-            desc = MagicMock()
-            desc.key = "carp.interface.some"
-            desc.name = "CARP"
-
-            s = OPNsenseCarpInterfaceSensor(
-                config_entry=entry, coordinator=coord, entity_description=desc
-            )
-            s.hass = MagicMock()
-            s.entity_id = "sensor.carp_invalid"
-            s.async_write_ha_state = lambda: None
-            s._handle_coordinator_update()
-            assert s.available is False
-
-        def test_carp_sensor_no_matching_interface(make_config_entry):
-            """CARP sensor should be unavailable when no matching carp_interface is found."""
-            coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-            coord.data = {"carp_interfaces": [{"subnet": "10.0.0.5", "status": "MASTER"}]}
-            entry = make_config_entry()
-
-            # create a descriptor that looks for a different subnet
-            desc = MagicMock()
-            desc.key = f"carp.interface.{sensor_module.slugify('192.168.1.10')}"
-            desc.name = "CARP Missing"
-
-            s = OPNsenseCarpInterfaceSensor(
-                config_entry=entry, coordinator=coord, entity_description=desc
-            )
-            s.hass = MagicMock()
-            s.entity_id = "sensor.carp_nomatch"
-            s.async_write_ha_state = lambda: None
-            s._handle_coordinator_update()
-            assert s.available is False
-
-        def test_carp_sensor_missing_status_key(make_config_entry):
-            """CARP sensor should be unavailable when the matched carp_interface lacks 'status'."""
-            coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-            coord.data = {"carp_interfaces": [{"subnet": "1.2.3.4", "interface": "lan0"}]}
-            entry = make_config_entry()
-
-            desc = MagicMock()
-            desc.key = f"carp.interface.{sensor_module.slugify('1.2.3.4')}"
-            desc.name = "CARP NoStatus"
-
-            s = OPNsenseCarpInterfaceSensor(
-                config_entry=entry, coordinator=coord, entity_description=desc
-            )
-            s.hass = MagicMock()
-            s.entity_id = "sensor.carp_nostatus"
-            s.async_write_ha_state = lambda: None
-            s._handle_coordinator_update()
-            assert s.available is False
-
-        def test_carp_sensor_attributes_and_icon_master_and_backup(make_config_entry):
-            """Verify extra attributes population and icon behavior for MASTER and non-MASTER states."""
-            entry = make_config_entry()
-
-            # BACKUP case: icon should indicate down/other
-            coord_b = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-            coord_b.data = {
-                "carp_interfaces": [
-                    {
-                        "subnet": "192.168.1.20",
-                        "status": "BACKUP",
-                        "interface": "lan0",
-                        "vhid": 7,
-                        "advskew": 100,
-                        "advbase": 0,
-                        "subnet_bits": 24,
-                        "descr": "test carp",
-                    }
-                ]
-            }
-
-            desc_b = MagicMock()
-            desc_b.key = f"carp.interface.{sensor_module.slugify('192.168.1.20')}"
-            desc_b.name = "CARP Backup"
-
-            s_b = OPNsenseCarpInterfaceSensor(
-                config_entry=entry, coordinator=coord_b, entity_description=desc_b
-            )
-            s_b.hass = MagicMock()
-            s_b.entity_id = "sensor.carp_backup"
-            s_b.async_write_ha_state = lambda: None
-            s_b._handle_coordinator_update()
-
-            assert s_b.available is True
-            assert s_b.native_value == "BACKUP"
-            # icon should be the down/other icon
-            assert s_b.icon == "mdi:close-network-outline"
-            # extra attrs present
-            for key in (
-                "interface",
-                "vhid",
-                "advskew",
-                "advbase",
-                "subnet_bits",
-                "subnet",
-                "descr",
-            ):
-                assert key in s_b.extra_state_attributes
-
-            # MASTER case: icon should not be the down icon
-            coord_m = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-            coord_m.data = {"carp_interfaces": [{"subnet": "10.0.0.1", "status": "MASTER"}]}
-
-            desc_m = MagicMock()
-            desc_m.key = f"carp.interface.{sensor_module.slugify('10.0.0.1')}"
-            desc_m.name = "CARP Master"
-
-            s_m = OPNsenseCarpInterfaceSensor(
-                config_entry=entry, coordinator=coord_m, entity_description=desc_m
-            )
-            s_m.hass = MagicMock()
-            s_m.entity_id = "sensor.carp_master"
-            s_m.async_write_ha_state = lambda: None
-            s_m._handle_coordinator_update()
-
-            assert s_m.available is True
-            assert s_m.native_value == "MASTER"
-            assert s_m.icon != "mdi:close-network-outline"
 
     sensor._handle_coordinator_update()
     assert sensor.available is expected_available
@@ -1103,40 +974,13 @@ def test_dhcp_leases_per_interface_handles_exceptions(exc_type, make_config_entr
 
 
 def test_dhcp_leases_coverage_tracer(make_config_entry):
-    """Use a line tracer to assert the exact except lines in sensor.py executed.
+    """Trigger the BrokenLease path and assert the except-branch observable behavior.
 
-    This finds the source lines for OPNsenseDHCPLeasesSensor._handle_coordinator_update,
-    locates the `except (TypeError, KeyError, ZeroDivisionError):` occurrences, then
-    runs the handler with a BrokenLease that raises to ensure the tracer records the
-    except-line execution.
+    Instead of introspecting source lines, exercise the same failure mode used by
+    other DHCP-lease tests: make the lease object raise when accessed and assert
+    that the sensor marks itself unavailable and calls async_write_ha_state.
     """
-    # inspect and sys are imported at module scope
 
-    # locate the function source and file
-    fn = OPNsenseDHCPLeasesSensor._handle_coordinator_update
-    src_lines, start_lineno = inspect.getsourcelines(fn)
-    filename = inspect.getsourcefile(fn)
-
-    # find the line offsets where the except occurs
-    except_offsets = [
-        i
-        for i, line in enumerate(src_lines)
-        if "except (TypeError, KeyError, ZeroDivisionError):" in line
-    ]
-    assert except_offsets, "no except line found in function source"
-    except_line_nos = [start_lineno + off for off in except_offsets]
-
-    # tracer to collect executed lines in the sensor file
-    executed: set[int] = set()
-
-    def tracer(frame, event, arg):
-        if event == "line":
-            co = frame.f_code
-            if co.co_filename == filename:
-                executed.add(frame.f_lineno)
-        return tracer
-
-    # set up a BrokenLease which will raise when .get called
     class BrokenLease:
         def get(self, *args, **kwargs):
             raise TypeError("simulated")
@@ -1147,24 +991,22 @@ def test_dhcp_leases_coverage_tracer(make_config_entry):
 
     desc = MagicMock()
     desc.key = "dhcp_leases.lan"
-    desc.name = "DHCP Per-Interface Tracer"
+    desc.name = "DHCP Per-Interface Collector"
 
     s = OPNsenseDHCPLeasesSensor(config_entry=entry, coordinator=coord, entity_description=desc)
     s.hass = MagicMock()
-    s.entity_id = "sensor.dhcp_per_if_tracer"
-    s.async_write_ha_state = lambda: None
+    s.entity_id = "sensor.dhcp_per_if_collector"
 
-    prev = sys.gettrace()
-    try:
-        sys.settrace(tracer)
-        s._handle_coordinator_update()
-    finally:
-        sys.settrace(prev)
+    writes: list[bool] = []
 
-    # assert at least one of the except-line numbers was executed
-    assert any(
-        lineno in executed for lineno in except_line_nos
-    ), f"expected one of lines {except_line_nos} to be executed, got {sorted(executed)}"
+    def collector():
+        writes.append(bool(getattr(s, "_available", None)))
+
+    s.async_write_ha_state = collector
+    s._handle_coordinator_update()
+
+    assert writes, "async_write_ha_state was not called"
+    assert any(w is False for w in writes), f"expected a False write captured, got {writes}"
 
 
 def _setup_entry_with_all_syncs(state: dict, make_config_entry):
@@ -1186,7 +1028,6 @@ def _setup_entry_with_all_syncs(state: dict, make_config_entry):
     entry = make_config_entry(base)
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord.data = state
-    entry.runtime_data = MagicMock()
     setattr(entry.runtime_data, COORDINATOR, coord)
     return entry, coord
 

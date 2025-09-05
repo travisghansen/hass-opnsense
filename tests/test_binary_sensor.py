@@ -32,7 +32,6 @@ async def test_async_setup_entry_creates_entities_when_enabled(make_config_entry
     )
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord.data = {}
-    entry.runtime_data = MagicMock()
     setattr(entry.runtime_data, COORDINATOR, coord)
 
     created: list = []
@@ -56,7 +55,6 @@ async def test_async_setup_entry_skips_when_disabled(make_config_entry):
     )
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord.data = {}
-    entry.runtime_data = MagicMock()
     setattr(entry.runtime_data, COORDINATOR, coord)
 
     created: list = []
@@ -77,7 +75,6 @@ async def test_async_setup_entry_creates_only_carp_when_carp_enabled(make_config
     )
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord.data = {}
-    entry.runtime_data = MagicMock()
     setattr(entry.runtime_data, COORDINATOR, coord)
 
     created: list = []
@@ -100,7 +97,6 @@ async def test_async_setup_entry_creates_only_notices_when_notices_enabled(make_
     )
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord.data = {}
-    entry.runtime_data = MagicMock()
     setattr(entry.runtime_data, COORDINATOR, coord)
 
     created: list = []
@@ -158,6 +154,8 @@ def test_carp_sensor_update_paths_param(
         assert s.is_on is expect_is_on
     if expect_extra is not None:
         assert isinstance(s.extra_state_attributes, expect_extra)
+        if coord_data and "carp_status" in (coord_data or {}):
+            assert s.extra_state_attributes == {}
 
 
 @pytest.mark.parametrize(
