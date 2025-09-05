@@ -15,12 +15,19 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v5.0.0
+        with:
+          # For pull_request_target we must manually checkout the PR's head commit;
+          # fall back to the current SHA for push / manual dispatch events.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
 
       - name: Debug GitHub Variables
         run: |
             echo "github.event_name: ${{ github.event_name }}"
             echo "github.ref_name: ${{ github.ref_name }}"
             echo "github.event.repository.default_branch: ${{ github.event.repository.default_branch }}"
+            echo "github.event.pull_request.head.sha: ${{ github.event.pull_request.head.sha }}"
+            echo "github.sha: ${{ github.sha }}"
 
       - name: Setup Python 3 (with caching)
         uses: actions/setup-python@v6.0.0
