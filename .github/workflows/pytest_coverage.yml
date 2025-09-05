@@ -23,19 +23,12 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v5.0.0
-        with:
-          # For pull_request_target we must manually checkout the PR's head commit;
-          # fall back to the current SHA for push / manual dispatch events.
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
 
       - name: Debug GitHub Variables
         run: |
             echo "github.event_name: ${{ github.event_name }}"
             echo "github.ref_name: ${{ github.ref_name }}"
             echo "github.event.repository.default_branch: ${{ github.event.repository.default_branch }}"
-            echo "github.event.pull_request.head.sha: ${{ github.event.pull_request.head.sha }}"
-            echo "github.sha: ${{ github.sha }}"
 
       - name: Setup Python 3 (with caching)
         uses: actions/setup-python@v6.0.0
@@ -54,15 +47,14 @@ jobs:
       - name: Run pytest with coverage (pytest-cov)
         run: pytest
 
-      - name: Coverage comment
-        if: ${{ github.event_name == 'pull_request' }}
+      - name: "Generate coverage Comment (and possibly Post to PR)"
         id: coverage_comment
         uses: py-cov-action/python-coverage-comment-action@v3.37
         with:
           GITHUB_TOKEN: ${{ github.token }}
 
-      - name: Store Pull Request comment to be posted
-        if: ${{ github.event_name == 'pull_request' && steps.coverage_comment.outputs.COMMENT_FILE_WRITTEN == 'true' }}
+      - name: Store PR Comment to be Posted
+        if: steps.coverage_comment.outputs.COMMENT_FILE_WRITTEN == 'true'
         uses: actions/upload-artifact@v4.6.2
         with:
           # If you use a different name, update COMMENT_ARTIFACT_NAME accordingly
