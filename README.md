@@ -3,6 +3,7 @@
 [![GitHub Release][releases-shield]][releases]
 [![GitHub Release Date][release-date-shield]][releases]
 [![GitHub Activity][commits-shield]][commits]
+[![Coverage][coverage-shield]][coverage]
 [![License][license-shield]](LICENSE)
 [![hacs][hacsbadge]][hacs]
 [![discord][discord-shield]][discord]
@@ -287,3 +288,5 @@ As mentioned [here](https://github.com/travisghansen/hass-opnsense/issues/22) us
 [releases]: https://github.com/travisghansen/hass-opnsense/releases
 [discord]: https://discord.gg/bfF47sBw6A
 [discord-shield]: https://img.shields.io/discord/1283169313653526559?style=for-the-badge&label=Discord&logo=discord&&logoColor=lightcyan&logoSize=auto&color=white
+[coverage]: https://htmlpreview.github.io/?https://github.com/travisghansen/hass-opnsense/blob/python-coverage-comment-action-data/htmlcov/index.html
+[coverage-shield]: https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ftravisghansen%2Fhass-opnsense%2Fpython-coverage-comment-action-data%2Fendpoint.json&style=for-the-badge
