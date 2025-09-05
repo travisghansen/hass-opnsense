@@ -52,25 +52,6 @@ jobs:
             echo "coverage.xml missing"
           fi
 
-      - name: "Debug: list workspace and coverage files"
-        if: ${{ always() }}
-        run: |
-          echo "--- Workspace root listing ---"
-          ls -la . || true
-          echo "--- Looking for .coverage* files ---"
-          shopt -s nullglob || true
-          files=(.coverage*)
-          if [ ${#files[@]} -gt 0 ]; then
-            echo "Found coverage files:" "${files[*]}"
-            if compgen -G ".coverage*" > /dev/null; then
-              ls -la -- .coverage* || true
-            else
-              echo "No .coverage* files to list"
-            fi
-          else
-            echo "No .coverage* files found"
-          fi
-
       - name: Verify coverage data file exists
         id: check_cov
         run: |
@@ -94,7 +75,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: PR coverage comment
-        if: ${{ github.event_name == 'pull_request' && steps.check_cov.outputs.exists == 'true' }}
+        if: ${{ github.event_name == 'pull_request_target' && steps.check_cov.outputs.exists == 'true' }}
         # uses: MishaKav/pytest-coverage-comment@main
         uses: eltoder/pytest-coverage-comment@feature/branch-coverage
         with:
