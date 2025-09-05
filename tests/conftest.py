@@ -876,7 +876,14 @@ def pytest_runtest_teardown(item: Any, nextitem: Any) -> None:
     due to lingering timer handles created by the integration (for example via
     hass.loop.call_later / async_call_later).
     """
-    event_loop = asyncio.get_event_loop()
+    try:
+        # Prefer the running loop when called from a running async context.
+        event_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        # No running loop; fall back to the event loop from the current
+        # policy. This mirrors the recommended replacement for
+        # asyncio.get_event_loop() in synchronous code.
+        event_loop = asyncio.get_event_loop_policy().get_event_loop()
     # If some integration code created and closed the global loop, we may
     # need to replace it with a fresh loop to allow the PHCC plugin to
     # perform teardown. However, this repository opts in to that behavior

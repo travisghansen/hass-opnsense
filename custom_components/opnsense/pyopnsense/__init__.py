@@ -354,7 +354,7 @@ $toreturn["real"] = json_encode($toreturn_real);
             caller = inspect.stack()[1].function
         except (IndexError, AttributeError):
             caller = "Unknown"
-        future = asyncio.get_event_loop().create_future()
+        future = self._loop.create_future()
         await self._request_queue.put(("get_from_stream", path, None, future, caller))
         return await future
 
@@ -363,7 +363,7 @@ $toreturn["real"] = json_encode($toreturn_real);
             caller = inspect.stack()[1].function
         except (IndexError, AttributeError):
             caller = "Unknown"
-        future = asyncio.get_event_loop().create_future()
+        future = self._loop.create_future()
         await self._request_queue.put(("get", path, None, future, caller))
         return await future
 
@@ -374,7 +374,7 @@ $toreturn["real"] = json_encode($toreturn_real);
             caller = inspect.stack()[1].function
         except (IndexError, AttributeError):
             caller = "Unknown"
-        future = asyncio.get_event_loop().create_future()
+        future = self._loop.create_future()
         await self._request_queue.put(("post", path, payload, future, caller))
         return await future
 
