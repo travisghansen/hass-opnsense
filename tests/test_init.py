@@ -485,9 +485,9 @@ async def test_async_setup_entry_firmware_between_min_and_ltd(
     res = await init_mod.async_setup_entry(hass, entry)
     assert res is True
     # verify the LTD deprecation/warning issue was created
-    assert (
-        create_issue_mock.called
-    ), "async_create_issue should have been called for firmware between min and LTD"
+    assert create_issue_mock.called, (
+        "async_create_issue should have been called for firmware between min and LTD"
+    )
     call_args = create_issue_mock.call_args
     # args: (hass, domain, issue_id, ...)
     assert call_args[0][1] == init_mod.DOMAIN
