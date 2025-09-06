@@ -2,6 +2,8 @@ name: Linters
 
 on:
   pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -35,8 +37,7 @@ jobs:
       - name: Run pre-commit
         uses: pre-commit/action@v3.0.1
 
-      - name: Run pre-commit.ci
-        uses: pre-commit-ci/lite-action@v1.1.0
+      - uses: pre-commit-ci/lite-action@v1.1.0
         if: always()
 
       - name: Run mypy
