@@ -37,8 +37,8 @@ jobs:
       - name: Run pre-commit
         uses: pre-commit/action@v3.0.1
 
-      - uses: pre-commit-ci/lite-action@v1.1.0
-        if: always()
-
       - name: Run mypy
         run: mypy "./custom_components/opnsense/" --install-types --non-interactive --config-file pyproject.toml
+
+      - uses: pre-commit-ci/lite-action@v1.1.0
+        if: always()
