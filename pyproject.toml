@@ -229,6 +229,9 @@ fixable = ["ALL"]
     "E501", # line too long
     "B017",  # Don't assert blind Exception
     "PT006", # Wrong type passed to first argument
+    "S108",
+    "D401",
+    "D417",
 ]
 
 [tool.ruff.lint.flake8-import-conventions.extend-aliases]
