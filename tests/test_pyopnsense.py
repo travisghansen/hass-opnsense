@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import inspect as _inspect
 import socket
 from ssl import SSLError
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 import xmlrpc.client as xc
 from xmlrpc.client import Fault
 
@@ -105,41 +105,45 @@ def test_try_to_int_and_float() -> None:
 
 
 @pytest.mark.asyncio
-async def test_safe_dict_get_and_list_get(make_client) -> None:
+async def test_safe_dict_get_and_list_get(monkeypatch, make_client) -> None:
     """Ensure safe getters coerce None to empty dict/list as expected."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session, username="user", password="pass")
-    # Patch _get to return dict or list
-    with patch.object(client, "_get", new=AsyncMock(return_value={"foo": "bar"})):
-        result_dict = await client._safe_dict_get("/fake")
-        assert result_dict == {"foo": "bar"}
-    with patch.object(client, "_get", new=AsyncMock(return_value=[1, 2, 3])):
-        result_list = await client._safe_list_get("/fake")
-        assert result_list == [1, 2, 3]
-    with patch.object(client, "_get", new=AsyncMock(return_value=None)):
-        result_empty_dict = await client._safe_dict_get("/fake")
-        assert result_empty_dict == {}
-        result_empty_list = await client._safe_list_get("/fake")
-        assert result_empty_list == []
+    # Patch _get to return dict or list using pytest's monkeypatch
+    monkeypatch.setattr(client, "_get", AsyncMock(return_value={"foo": "bar"}), raising=False)
+    result_dict = await client._safe_dict_get("/fake")
+    assert result_dict == {"foo": "bar"}
+
+    monkeypatch.setattr(client, "_get", AsyncMock(return_value=[1, 2, 3]), raising=False)
+    result_list = await client._safe_list_get("/fake")
+    assert result_list == [1, 2, 3]
+
+    monkeypatch.setattr(client, "_get", AsyncMock(return_value=None), raising=False)
+    result_empty_dict = await client._safe_dict_get("/fake")
+    assert result_empty_dict == {}
+    result_empty_list = await client._safe_list_get("/fake")
+    assert result_empty_list == []
     await client.async_close()
 
 
 @pytest.mark.asyncio
-async def test_safe_dict_post_and_list_post(make_client) -> None:
+async def test_safe_dict_post_and_list_post(monkeypatch, make_client) -> None:
     """Ensure safe post helpers coerce None to empty dict/list as expected."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session, username="user", password="pass")
-    with patch.object(client, "_post", new=AsyncMock(return_value={"foo": "bar"})):
-        result_dict = await client._safe_dict_post("/fake")
-        assert result_dict == {"foo": "bar"}
-    with patch.object(client, "_post", new=AsyncMock(return_value=[1, 2, 3])):
-        result_list = await client._safe_list_post("/fake")
-        assert result_list == [1, 2, 3]
-    with patch.object(client, "_post", new=AsyncMock(return_value=None)):
-        result_empty_dict = await client._safe_dict_post("/fake")
-        assert result_empty_dict == {}
-        result_empty_list = await client._safe_list_post("/fake")
-        assert result_empty_list == []
+    monkeypatch.setattr(client, "_post", AsyncMock(return_value={"foo": "bar"}), raising=False)
+    result_dict = await client._safe_dict_post("/fake")
+    assert result_dict == {"foo": "bar"}
+
+    monkeypatch.setattr(client, "_post", AsyncMock(return_value=[1, 2, 3]), raising=False)
+    result_list = await client._safe_list_post("/fake")
+    assert result_list == [1, 2, 3]
+
+    monkeypatch.setattr(client, "_post", AsyncMock(return_value=None), raising=False)
+    result_empty_dict = await client._safe_dict_post("/fake")
+    assert result_empty_dict == {}
+    result_empty_list = await client._safe_list_post("/fake")
+    assert result_empty_list == []
 
 
 @pytest.mark.asyncio
@@ -447,7 +451,7 @@ async def test_telemetry_and_temps_and_notices_and_unbound_blocklist(make_client
 
 
 @pytest.mark.asyncio
-async def test_get_openvpn_and_fetch_details(make_client) -> None:
+async def test_get_openvpn_and_fetch_details(monkeypatch, make_client) -> None:
     """Validate openvpn server/client discovery and fetch details flow."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session)
@@ -503,20 +507,19 @@ async def test_get_openvpn_and_fetch_details(make_client) -> None:
         async def fake_safe_list_get(path):
             return []
 
-        patcher_get = patch.object(
-            client, "_safe_dict_get", new=AsyncMock(side_effect=fake_safe_dict_get)
+        monkeypatch.setattr(
+            client, "_safe_dict_get", AsyncMock(side_effect=fake_safe_dict_get), raising=False
         )
-        patcher_list = patch.object(
-            client, "_safe_list_get", new=AsyncMock(side_effect=fake_safe_list_get)
+        monkeypatch.setattr(
+            client, "_safe_list_get", AsyncMock(side_effect=fake_safe_list_get), raising=False
         )
-        with patcher_get, patcher_list:
-            openvpn = await client.get_openvpn()
-            assert "servers" in openvpn and "clients" in openvpn
-            # servers should include uuid1
-            assert any(
-                s.get("name") == "server1" or s.get("uuid") == "uuid1"
-                for s in openvpn["servers"].values()
-            )
+        openvpn = await client.get_openvpn()
+        assert "servers" in openvpn and "clients" in openvpn
+        # servers should include uuid1
+        assert any(
+            s.get("name") == "server1" or s.get("uuid") == "uuid1"
+            for s in openvpn["servers"].values()
+        )
     finally:
         await client.async_close()
 
@@ -1094,7 +1097,7 @@ async def test_get_from_stream_partial_chunks_accumulates_buffer(
 
 
 @pytest.mark.asyncio
-async def test_openvpn_more_detail_parsing(make_client) -> None:
+async def test_openvpn_more_detail_parsing(monkeypatch, make_client) -> None:
     """Exercise additional OpenVPN parsing branches (no sessions, missing fields)."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
@@ -1120,12 +1123,11 @@ async def test_openvpn_more_detail_parsing(make_client) -> None:
             return {"instance": {}}  # missing details
         return {}
 
-    patcher_get = patch.object(
-        client, "_safe_dict_get", new=AsyncMock(side_effect=fake_safe_dict_get)
+    monkeypatch.setattr(
+        client, "_safe_dict_get", AsyncMock(side_effect=fake_safe_dict_get), raising=False
     )
-    with patcher_get:
-        res = await client.get_openvpn()
-        assert "servers" in res and "clients" in res
+    res = await client.get_openvpn()
+    assert "servers" in res and "clients" in res
     await client.async_close()
 
 
@@ -1240,7 +1242,7 @@ def test_dict_get_and_timestamp_and_ipkey_utils() -> None:
 
 
 @pytest.mark.asyncio
-async def test_manage_service_and_restart_if_running(make_client) -> None:
+async def test_manage_service_and_restart_if_running(monkeypatch, make_client) -> None:
     """Test _manage_service and restart_service_if_running behavior."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
@@ -1256,8 +1258,8 @@ async def test_manage_service_and_restart_if_running(make_client) -> None:
 
     # get_service_is_running uses get_services; test restart_service_if_running branches
     client.get_service_is_running = AsyncMock(return_value=True)
-    with patch.object(client, "restart_service", new=AsyncMock(return_value=True)):
-        assert await client.restart_service_if_running("svc1") is True
+    monkeypatch.setattr(client, "restart_service", AsyncMock(return_value=True), raising=False)
+    assert await client.restart_service_if_running("svc1") is True
 
     client.get_service_is_running = AsyncMock(return_value=False)
     assert await client.restart_service_if_running("svc1") is True
