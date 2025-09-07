@@ -36,13 +36,13 @@ jobs:
           python-version: 3.x
           cache: 'pip'
           cache-dependency-path: |
-            requirements-dev.txt
-            requirements.txt
+            requirements-pytest.txt
             pyproject.toml
-            .pre-commit-config.yaml
 
-      - name: Install Requirements
-        run: python -m pip install --upgrade pip && pip install -r requirements-dev.txt
+      - name: Install pytest Requirements
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-pytest.txt
 
       - name: Run pytest with coverage (pytest-cov)
         run: pytest
