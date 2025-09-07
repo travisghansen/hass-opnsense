@@ -1,7 +1,36 @@
+<a id="v0.4.8"></a>
+# [v0.4.8](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.4.8) - 2025-09-07
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🐛 Bug Fixes
+* Fix plugin check in config_flow by [@Snuffy2](https://github.com/Snuffy2) in [#433](https://github.com/travisghansen/hass-opnsense/pull/433)
+* Replace deprecated asyncio.get_event_loop() by [@Snuffy2](https://github.com/Snuffy2) in [#436](https://github.com/travisghansen/hass-opnsense/pull/436)
+### 📚 Documentation
+* Show coverage on Readme by [@Snuffy2](https://github.com/Snuffy2) in [#441](https://github.com/travisghansen/hass-opnsense/pull/441)
+### 🎓 Code Quality
+* Unit and integration tests by [@Snuffy2](https://github.com/Snuffy2) in [#432](https://github.com/travisghansen/hass-opnsense/pull/432)
+* Update pre-commit by [@Snuffy2](https://github.com/Snuffy2) in [#442](https://github.com/travisghansen/hass-opnsense/pull/442)
+### 🧰 Maintenance
+* Update linting CI by [@Snuffy2](https://github.com/Snuffy2) in [#443](https://github.com/travisghansen/hass-opnsense/pull/443)
+* Fix pytest CI by [@Snuffy2](https://github.com/Snuffy2) in [#434](https://github.com/travisghansen/hass-opnsense/pull/434)
+* Update Python caching in GitHub Actions by [@Snuffy2](https://github.com/Snuffy2) in [#435](https://github.com/travisghansen/hass-opnsense/pull/435)
+* Update pytest CI checkout by [@Snuffy2](https://github.com/Snuffy2) in [#437](https://github.com/travisghansen/hass-opnsense/pull/437)
+* Refine pytest CI comment by [@Snuffy2](https://github.com/Snuffy2) in [#438](https://github.com/travisghansen/hass-opnsense/pull/438)
+* Replace pytest CI Comment Action by [@Snuffy2](https://github.com/Snuffy2) in [#439](https://github.com/travisghansen/hass-opnsense/pull/439)
+* Refine pytest CI again by [@Snuffy2](https://github.com/Snuffy2) in [#440](https://github.com/travisghansen/hass-opnsense/pull/440)
+* Split Requirements and Update GitHub Actions by [@Snuffy2](https://github.com/Snuffy2) in [#445](https://github.com/travisghansen/hass-opnsense/pull/445)
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.4.7...v0.4.8
+
+[Changes][v0.4.8]
+
+
 <a id="v0.4.7"></a>
 # [v0.4.7](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.4.7) - 2025-08-06
 
-<!-- Release notes generated using configuration in .github/release.yml at main -->
+<h3>OPNsense Minimum Firmware Required: 24.7</h3><h4>OPNsense Recommended Firmware: 25.1</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
 ## What's Changed
 ### 🐛 Bug Fixes
@@ -13,7 +42,7 @@
 * Update GitHub Actions by [@Snuffy2](https://github.com/Snuffy2) in [#421](https://github.com/travisghansen/hass-opnsense/pull/421)
 
 
-**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.4.6...v0.4.7
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.4.6...v0.4.7<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
 
 [Changes][v0.4.7]
 
@@ -761,6 +790,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.4.8]: https://github.com/travisghansen/hass-opnsense/compare/v0.4.7...v0.4.8
 [v0.4.7]: https://github.com/travisghansen/hass-opnsense/compare/v0.4.6...v0.4.7
 [v0.4.6]: https://github.com/travisghansen/hass-opnsense/compare/v0.4.5...v0.4.6
 [v0.4.5]: https://github.com/travisghansen/hass-opnsense/compare/v0.4.4...v0.4.5
