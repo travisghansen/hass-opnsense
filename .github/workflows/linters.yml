@@ -37,7 +37,7 @@ jobs:
           pip install -r requirements-lint.txt
 
       - name: Cache pre-commit and mypy
-        uses: actions/cache@v4.2.4
+        uses: actions/cache@v4.3.0
         with:
           path: |
             ~/.cache/pre-commit
