@@ -33,7 +33,7 @@ jobs:
 
       - name: Update Changelog
         if: ${{ github.event_name == 'release' && github.event.release.draft == false && github.event.release.prerelease == false  }}
-        uses: rhysd/changelog-from-release/action@v3.9.0
+        uses: rhysd/changelog-from-release/action@v3.9.1
         with:
           file: CHANGELOG.md
           github_token: ${{ secrets.GITHUB_TOKEN }}
