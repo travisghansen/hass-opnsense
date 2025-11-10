@@ -78,7 +78,7 @@ jobs:
 
       - name: Upload Zip to Release
         if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
-        uses: softprops/action-gh-release@v2.4.1
+        uses: softprops/action-gh-release@v2.4.2
         with:
           files: ./custom_components/opnsense/opnsense.zip
           tag_name: ${{ github.event.release.tag_name }}
