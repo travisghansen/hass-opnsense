@@ -1892,15 +1892,83 @@ $toreturn = [
             and restart_resp.get("response", "failed") == "OK"
         )
 
-    @_log_errors
-    async def enable_unbound_blocklist(self) -> bool:
-        """Enable the unbound blocklist."""
-        return await self._set_unbound_blocklist_legacy(set_state=True)
+    async def get_unbound_blocklist(self) -> dict[str, Any]:
+        """Return the Unbound Blocklist details."""
+        # https://opnsense.home/api/unbound/settings/searchDnsbl
+        try:
+            if awesomeversion.AwesomeVersion(
+                self._firmware_version
+            ) < awesomeversion.AwesomeVersion("25.7.8"):
+                _LOGGER.debug("Getting Unbound Regular Blocklists for OPNsense < 25.7.8")
+                return {"legacy": await self.get_unbound_blocklist_legacy()}
+        except awesomeversion.exceptions.AwesomeVersionCompareException:
+            _LOGGER.error(
+                "Error comparing firmware version %s when determining which Unbound Blocklist method to use",
+                self._firmware_version,
+            )
+        dnsbl_raw = await self._safe_dict_get("/api/unbound/settings/searchDnsbl")
+        # _LOGGER.debug(f"[get_unbound_blocklist] dnsbl_raw: {dnsbl_raw}")
+        if not isinstance(dnsbl_raw, dict):
+            return {}
+        dnsbl_rows = dnsbl_raw.get("rows", [])
+        if not isinstance(dnsbl_rows, list) or not len(dnsbl_rows) > 0:
+            return {}
+        dnsbl_full: dict[str, Any] = {}
+        for dnsbl in dnsbl_rows:
+            if not isinstance(dnsbl, dict):
+                continue
+            _LOGGER.debug("[get_unbound_blocklist] dnsbl: %s", dnsbl)
+            if dnsbl.get("uuid"):
+                dnsbl_full.update({dnsbl["uuid"]: dnsbl})
+        _LOGGER.debug("[get_unbound_blocklist] dnsbl_full: %s", dnsbl_full)
+        return dnsbl_full
+
+    async def _toggle_unbound_blocklist(self, set_state: bool, uuid: str | None) -> bool:
+        """Enable or disable the unbound blocklist."""
+        if not uuid:
+            _LOGGER.error("Blocklist name must be provided for Unbound Extended Blocklists")
+            return False
+        return False
 
     @_log_errors
-    async def disable_unbound_blocklist(self) -> bool:
+    async def enable_unbound_blocklist(self, uuid: str | None = None) -> bool:
+        """Enable the unbound blocklist."""
+        try:
+            if awesomeversion.AwesomeVersion(
+                self._firmware_version
+            ) < awesomeversion.AwesomeVersion("25.7.8"):
+                _LOGGER.debug("Using Unbound Regular Blocklists for OPNsense < 25.7.8")
+                return await self._set_unbound_blocklist_legacy(set_state=True)
+            _LOGGER.debug("Using Unbound Extended Blocklists for OPNsense >= 25.7.8")
+            return await self._toggle_unbound_blocklist(set_state=True, uuid=uuid)
+        except awesomeversion.exceptions.AwesomeVersionCompareException:
+            _LOGGER.error(
+                "Error comparing firmware version %s when determining which Unbound Blocklist method to use",
+                self._firmware_version,
+            )
+            if uuid:
+                return await self._toggle_unbound_blocklist(set_state=True, uuid=uuid)
+            return await self._set_unbound_blocklist_legacy(set_state=True)
+
+    @_log_errors
+    async def disable_unbound_blocklist(self, uuid: str | None = None) -> bool:
         """Disable the unbound blocklist."""
-        return await self._set_unbound_blocklist_legacy(set_state=False)
+        try:
+            if awesomeversion.AwesomeVersion(
+                self._firmware_version
+            ) < awesomeversion.AwesomeVersion("25.7.8"):
+                _LOGGER.debug("Using Unbound Regular Blocklists for OPNsense < 25.7.8")
+                return await self._set_unbound_blocklist_legacy(set_state=False)
+            _LOGGER.debug("Using Unbound Extended Blocklists for OPNsense >= 25.7.8")
+            return await self._toggle_unbound_blocklist(set_state=False, uuid=uuid)
+        except awesomeversion.exceptions.AwesomeVersionCompareException:
+            _LOGGER.error(
+                "Error comparing firmware version %s when determining which Unbound Blocklist method to use",
+                self._firmware_version,
+            )
+            if uuid:
+                return await self._toggle_unbound_blocklist(set_state=False, uuid=uuid)
+            return await self._set_unbound_blocklist_legacy(set_state=False)
 
     @_log_errors
     async def get_wireguard(self) -> MutableMapping[str, Any]:

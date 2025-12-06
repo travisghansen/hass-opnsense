@@ -154,7 +154,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         if config.get(CONF_SYNC_UNBOUND, DEFAULT_SYNC_OPTION_VALUE):
             categories.append(
                 {
-                    "function": "get_unbound_blocklist_legacy",
+                    "function": "get_unbound_blocklist",
                     "state_key": ATTR_UNBOUND_BLOCKLIST,
                 }
             )
