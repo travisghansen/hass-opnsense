@@ -31,7 +31,7 @@ Coding standards
 - Follow existing repository style; run `pre-commit` and `ruff` where available.
 
 Local tooling note
-- Use `pre-commit` and `pytest` configured in the repo. Prefer running these inside `./.venv`.
+- Use `pre-commit` and `pytest` configured in the repo. You must run these inside `./.venv`.
 - By default, run the full pytest suite. If running targeted tests, explain why.
 - Avoid recommending `tox`, it is not in use by this repo.
 

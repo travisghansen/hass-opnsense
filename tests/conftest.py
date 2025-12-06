@@ -880,10 +880,10 @@ def pytest_runtest_teardown(item: Any, nextitem: Any) -> None:
         # Prefer the running loop when called from a running async context.
         event_loop = asyncio.get_running_loop()
     except RuntimeError:
-        # No running loop; fall back to the event loop from the current
-        # policy. This mirrors the recommended replacement for
-        # asyncio.get_event_loop() in synchronous code.
-        event_loop = asyncio.get_event_loop_policy().get_event_loop()
+        # No running loop; create a new event loop as a safe fallback.
+        # This avoids using the deprecated `get_event_loop` path and mirrors
+        # the recommended pattern for synchronous code needing a loop.
+        event_loop = asyncio.new_event_loop()
     # If some integration code created and closed the global loop, we may
     # need to replace it with a fresh loop to allow the PHCC plugin to
     # perform teardown. However, this repository opts in to that behavior
