@@ -1836,12 +1836,12 @@ $toreturn = [
         return success
 
     @_log_errors
-    async def get_unbound_blocklist(self) -> MutableMapping[str, Any]:
+    async def get_unbound_blocklist_legacy(self) -> MutableMapping[str, Any]:
         """Return the Unbound Blocklist details."""
         response = await self._safe_dict_get("/api/unbound/settings/get")
-        # _LOGGER.debug(f"[get_unbound_blocklist] response: {response}")
+        # _LOGGER.debug(f"[get_unbound_blocklist_legacy] response: {response}")
         dnsbl_settings = response.get("unbound", {}).get("dnsbl", {})
-        # _LOGGER.debug(f"[get_unbound_blocklist] dnsbl_settings: {dnsbl_settings}")
+        # _LOGGER.debug(f"[get_unbound_blocklist_legacy] dnsbl_settings: {dnsbl_settings}")
         if not isinstance(dnsbl_settings, MutableMapping):
             return {}
         dnsbl = {}
@@ -1858,13 +1858,13 @@ $toreturn = [
                 )
             else:
                 dnsbl[attr] = ""
-        # _LOGGER.debug(f"[get_unbound_blocklist] dnsbl: {dnsbl}")
+        # _LOGGER.debug(f"[get_unbound_blocklist_legacy] dnsbl: {dnsbl}")
         return dnsbl
 
-    async def _set_unbound_blocklist(self, set_state: bool) -> bool:
+    async def _set_unbound_blocklist_legacy(self, set_state: bool) -> bool:
         payload: MutableMapping[str, Any] = {}
         payload["unbound"] = {}
-        payload["unbound"]["dnsbl"] = await self.get_unbound_blocklist()
+        payload["unbound"]["dnsbl"] = await self.get_unbound_blocklist_legacy()
         if not payload["unbound"]["dnsbl"]:
             _LOGGER.error("Unable to get Unbound Blocklist Status")
             return False
@@ -1876,7 +1876,7 @@ $toreturn = [
         dnsbl_resp = await self._get("/api/unbound/service/dnsbl")
         restart_resp = await self._post("/api/unbound/service/restart")
         _LOGGER.debug(
-            "[set_unbound_blocklist] set_state: %s, payload: %s, response: %s, dnsbl_resp: %s, restart_resp: %s",
+            "[set_unbound_blocklist_legacy] set_state: %s, payload: %s, response: %s, dnsbl_resp: %s, restart_resp: %s",
             "On" if set_state else "Off",
             payload,
             response,
@@ -1895,12 +1895,12 @@ $toreturn = [
     @_log_errors
     async def enable_unbound_blocklist(self) -> bool:
         """Enable the unbound blocklist."""
-        return await self._set_unbound_blocklist(set_state=True)
+        return await self._set_unbound_blocklist_legacy(set_state=True)
 
     @_log_errors
     async def disable_unbound_blocklist(self) -> bool:
         """Disable the unbound blocklist."""
-        return await self._set_unbound_blocklist(set_state=False)
+        return await self._set_unbound_blocklist_legacy(set_state=False)
 
     @_log_errors
     async def get_wireguard(self) -> MutableMapping[str, Any]:

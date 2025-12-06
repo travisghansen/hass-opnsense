@@ -444,8 +444,8 @@ async def test_telemetry_and_temps_and_notices_and_unbound_blocklist(make_client
         assert await client.close_notice("x") is False
 
         # unbound blocklist _set when empty
-        client.get_unbound_blocklist = AsyncMock(return_value={})
-        assert await client._set_unbound_blocklist(True) is False
+        client.get_unbound_blocklist_legacy = AsyncMock(return_value={})
+        assert await client._set_unbound_blocklist_legacy(True) is False
     finally:
         await client.async_close()
 
@@ -697,17 +697,17 @@ async def test_notices_close_notice_and_unbound_blocklist(make_client) -> None:
     ok = await client.close_notice("all")
     assert ok is False
 
-    # set_unbound_blocklist: return False when get_unbound_blocklist empty
-    client.get_unbound_blocklist = AsyncMock(return_value={})
-    res = await client._set_unbound_blocklist(True)
+    # set_unbound_blocklist_legacy: return False when get_unbound_blocklist_legacy empty
+    client.get_unbound_blocklist_legacy = AsyncMock(return_value={})
+    res = await client._set_unbound_blocklist_legacy(True)
     assert res is False
 
     # enable/disable wrappers
-    client.get_unbound_blocklist = AsyncMock(return_value={"enabled": "0", "status": "OK"})
+    client.get_unbound_blocklist_legacy = AsyncMock(return_value={"enabled": "0", "status": "OK"})
     client._post = AsyncMock(return_value={"result": "saved"})
     client._get = AsyncMock(return_value={"status": "OK"})
     client._safe_dict_post = AsyncMock(return_value={"response": "OK"})
-    # Call enable/disable; these call _set_unbound_blocklist which now returns based on our mocks
+    # Call enable/disable; these call _set_unbound_blocklist_legacy which now returns based on our mocks
     res_on = await client.enable_unbound_blocklist()
     res_off = await client.disable_unbound_blocklist()
     assert isinstance(res_on, bool) and isinstance(res_off, bool)
@@ -949,8 +949,8 @@ async def test_certificates_kill_states_and_unbound_blocklist(make_client) -> No
         res = await client.kill_states("1.2.3.4")
         assert res.get("success") is True and res.get("dropped_states") == 3
 
-        # enable/disable unbound blocklist: patch underlying _set_unbound_blocklist
-        client._set_unbound_blocklist = AsyncMock(return_value=True)
+        # enable/disable unbound blocklist: patch underlying _set_unbound_blocklist_legacy
+        client._set_unbound_blocklist_legacy = AsyncMock(return_value=True)
         assert await client.enable_unbound_blocklist() is True
         assert await client.disable_unbound_blocklist() is True
     finally:
@@ -1708,25 +1708,25 @@ async def test_toggle_alias_scenarios(
         ({"enabled": "0"}, [{"result": "saved"}, {"response": "OK"}], {"status": "OK"}, True),
     ],
 )
-async def test_set_unbound_blocklist_scenarios(
+async def test_set_unbound_blocklist_legacy_scenarios(
     blocklist_return, post_side_effects, get_return, expected
 ) -> None:
-    """Parametrized _set_unbound_blocklist scenarios: empty and full success."""
+    """Parametrized _set_unbound_blocklist_legacy scenarios: empty and full success."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
         url="http://localhost", username="u", password="p", session=session
     )
     try:
-        client.get_unbound_blocklist = AsyncMock(return_value=blocklist_return)
+        client.get_unbound_blocklist_legacy = AsyncMock(return_value=blocklist_return)
 
         if not expected:
-            assert await client._set_unbound_blocklist(True) is False
+            assert await client._set_unbound_blocklist_legacy(True) is False
             return
 
         # success path: arrange the sequence of network calls
         client._post = AsyncMock(side_effect=post_side_effects)
         client._get = AsyncMock(return_value=get_return)
-        assert await client._set_unbound_blocklist(True) is True
+        assert await client._set_unbound_blocklist_legacy(True) is True
     finally:
         await client.async_close()
 
@@ -2121,8 +2121,8 @@ async def test_monitor_queue_handles_qsize_exception() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_unbound_blocklist_parsing() -> None:
-    """Ensure get_unbound_blocklist properly extracts and joins nested mappings."""
+async def test_get_unbound_blocklist_legacy_parsing() -> None:
+    """Ensure get_unbound_blocklist_legacy properly extracts and joins nested mappings."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
         url="http://localhost", username="u", password="p", session=session
@@ -2142,7 +2142,7 @@ async def test_get_unbound_blocklist_parsing() -> None:
     }
 
     client._safe_dict_get = AsyncMock(return_value=dnsbl)
-    parsed = await client.get_unbound_blocklist()
+    parsed = await client.get_unbound_blocklist_legacy()
     assert parsed.get("enabled") == "1"
     assert parsed.get("lists") == "a"
     assert parsed.get("blocklists") == "x"
