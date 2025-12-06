@@ -22,7 +22,7 @@ jobs:
             echo "github.event.repository.default_branch: ${{ github.event.repository.default_branch }}"
 
       - name: Setup Python 3 (with caching)
-        uses: actions/setup-python@v6.0.0
+        uses: actions/setup-python@v6.1.0
         id: setup-python
         with:
           python-version: 3.x
