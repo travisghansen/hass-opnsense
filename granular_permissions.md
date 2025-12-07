@@ -86,7 +86,7 @@
 
 |  OPNsense Permission | API Endpoints |
 | ----- | ----- |
-| Services: Unbound (MVC) | /api/unbound/service/dnsbl<br>/api/unbound/settings/get<br>/api/unbound/service/restart<br>/api/unbound/settings/set |
+| Services: Unbound (MVC) | **Firmware <25.7.8**<br>/api/unbound/service/dnsbl<br>/api/unbound/settings/get<br>/api/unbound/service/restart<br>/api/unbound/settings/set<br>**Firmware >=25.7.8**<br>/api/unbound/settings/search_dnsbl<br>/api/unbound/settings/toggle_dnsbl |
 
 ## Device Trackers
 

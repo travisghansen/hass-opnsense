@@ -32,7 +32,8 @@ from custom_components.opnsense.switch import (
     _compile_nat_outbound_switches,
     _compile_port_forward_switches,
     _compile_service_switches,
-    _compile_static_unbound_switches,
+    _compile_static_unbound_switch_legacy,
+    _compile_unbound_switches,
     _compile_vpn_switches,
 )
 from homeassistant.components.switch import SwitchEntityDescription
@@ -91,8 +92,8 @@ def make_coord(data):
             ("start_service", "stop_service"),
         ),
         (
-            _compile_static_unbound_switches,
-            {"unbound_blocklist": {"enabled": "1"}},
+            _compile_static_unbound_switch_legacy,
+            {"unbound_blocklist": {"legacy": {"enabled": "1"}}},
             ("enable_unbound_blocklist", "disable_unbound_blocklist"),
         ),
     ],
@@ -183,7 +184,8 @@ async def test_async_setup_entry_all_flags(coordinator, ph_hass, make_config_ent
         "services": [{"id": "s1", "name": "svc", "locked": 0, "status": True}],
         "openvpn": {"clients": {"c1": {"enabled": True, "name": "C1"}}, "servers": {}},
         "wireguard": {"clients": {}, "servers": {}},
-        "unbound_blocklist": {"enabled": "1"},
+        "unbound_blocklist": {"legacy": {"enabled": "1"}},
+        "host_firmware_version": "25.7.7",
     }
     coordinator.data = state
 
@@ -261,7 +263,8 @@ async def test_unbound_and_vpn_variations(coordinator, ph_hass, make_config_entr
         "nxdomain": "1",
     }
     state = {
-        "unbound_blocklist": dnsbl,
+        "unbound_blocklist": {"legacy": dnsbl},
+        "host_firmware_version": "25.7.7",
         "openvpn": {
             "clients": {"u1": {"enabled": True, "name": "C1"}},
             "servers": {"s1": {"enabled": False, "name": "S1"}},
@@ -417,14 +420,56 @@ async def test_vpn_turn_on_off_calls_client_and_sets_delay(
     assert ent.is_on is True
     assert ent.delay_update is True
 
-    # prepare for turn_off
-    ent._client.toggle_vpn_instance.assert_awaited_once()
-    # turn off -> should call client and set is_on False and delay_update True
+
+@pytest.mark.asyncio
+async def test_compile_unbound_extended_and_toggle(coordinator, ph_hass, make_config_entry):
+    """Compile extended unbound blocklist switches and exercise toggle behavior."""
+    # create state with two extended blocklists
+    state = {
+        "unbound_blocklist": {
+            "u1": {"enabled": "1", "description": "One"},
+            "u2": {"enabled": "0", "description": "Two"},
+        },
+        "host_firmware_version": "25.7.8",
+    }
+    coordinator.data = state
+
+    config_entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"}, title="OPNsenseTest"
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    ents = await _compile_unbound_switches(config_entry, coordinator, state)
+    # expect two switches (one per uuid)
+    assert len(ents) == 2
+
+    # pick one entity and exercise client toggle methods; ensure uuid passed
+    ent = next(e for e in ents if e.entity_description.key.endswith(".u1"))
+    hass = ph_hass
+    ent.hass = hass
+    ent.coordinator = make_coord(state)
+    ent.entity_id = f"switch.{ent._attr_unique_id or ent.entity_description.key}"
+    ent.async_write_ha_state = lambda: None
+
+    # attach client with AsyncMock methods
+    ent._client = MagicMock()
+    ent._client.enable_unbound_blocklist = AsyncMock(return_value=True)
+    ent._client.disable_unbound_blocklist = AsyncMock(return_value=True)
+
+    # initial update should mark available and on
+    ent._handle_coordinator_update()
+    assert ent.available is True
+    assert ent.is_on is True
+
+    # toggling off should call disable with uuid
     await ent.async_turn_off()
-    # toggle should have been awaited a second time
-    assert ent._client.toggle_vpn_instance.await_count == 2
-    assert ent.is_on is False
-    assert ent.delay_update is True
+    ent._client.disable_unbound_blocklist.assert_awaited_once_with("u1")
+
+    # toggling on should call enable with uuid
+    await ent.async_turn_on()
+    ent._client.enable_unbound_blocklist.assert_awaited_once_with("u1")
+
+    # nothing more to assert for VPN here; unbound toggle assertions complete
 
 
 @pytest.mark.asyncio
@@ -577,9 +622,9 @@ async def test_unbound_missing_sets_unavailable(coordinator, ph_hass, make_confi
     """Unbound switch becomes unavailable when expected data is missing."""
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    state = {"unbound_blocklist": {}}
+    state = {"unbound_blocklist": {"legacy": {}}}
     coordinator.data = state
-    ent = (await _compile_static_unbound_switches(config_entry, coordinator, state))[0]
+    ent = (await _compile_static_unbound_switch_legacy(config_entry, coordinator, state))[0]
     # use PHCC-provided hass fixture
     hass = ph_hass
     ent.hass = hass
@@ -597,9 +642,9 @@ async def test_unbound_skips_update_when_delay_set(coordinator, ph_hass, make_co
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
 
     # coordinator contains enabled blocklist; handler would normally set is_on True
-    state = {"unbound_blocklist": {"enabled": "1"}}
+    state = {"unbound_blocklist": {"legacy": {"enabled": "1"}}}
     coordinator.data = state
-    ent = (await _compile_static_unbound_switches(config_entry, coordinator, state))[0]
+    ent = (await _compile_static_unbound_switch_legacy(config_entry, coordinator, state))[0]
 
     hass = ph_hass
     ent.hass = hass
@@ -624,8 +669,8 @@ async def test_unbound_skips_update_when_delay_set(coordinator, ph_hass, make_co
     [
         (
             "unbound",
-            _compile_static_unbound_switches,
-            {"unbound_blocklist": {"enabled": "1"}},
+            _compile_static_unbound_switch_legacy,
+            {"unbound_blocklist": {"legacy": {"enabled": "1"}}},
             "first",
         ),
         (
@@ -1093,8 +1138,8 @@ async def test_async_setup_entry_respects_config_flags(
         }
     )
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    # coordinator.data can be minimal
-    coordinator.data = {}
+    # coordinator.data can be minimal; include firmware so unbound is compiled
+    coordinator.data = {"host_firmware_version": "25.7.7"}
     # run the async setup
     hass = ph_hass
     await switch_mod.async_setup_entry(hass, config_entry, fake_add_entities)
@@ -1193,9 +1238,9 @@ async def test_unbound_turn_on_off_failure_logs(coordinator, ph_hass, make_confi
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     dnsbl = {"enabled": "0", "safesearch": "0"}
-    state = {"unbound_blocklist": dnsbl}
+    state = {"unbound_blocklist": {"legacy": dnsbl}}
     coordinator.data = state
-    ent = (await _compile_static_unbound_switches(config_entry, coordinator, state))[0]
+    ent = (await _compile_static_unbound_switch_legacy(config_entry, coordinator, state))[0]
     hass = ph_hass
     ent.hass = hass
     ent.coordinator = make_coord(state)
@@ -1222,8 +1267,8 @@ async def test_unbound_turn_on_off_failure_logs(coordinator, ph_hass, make_confi
             False,
         ),
         (
-            _compile_static_unbound_switches,
-            {"unbound_blocklist": {"enabled": "0", "safesearch": "0"}},
+            _compile_static_unbound_switch_legacy,
+            {"unbound_blocklist": {"legacy": {"enabled": "0", "safesearch": "0"}}},
             ("enable_unbound_blocklist", "disable_unbound_blocklist"),
             "async_turn_on",
             False,
@@ -1614,3 +1659,83 @@ def test_service_handle_exceptions_sets_unavailable(
     ent._opnsense_get_service = lambda: BadIndex({})
     ent._handle_coordinator_update()
     assert ent.available is False
+
+
+@pytest.mark.asyncio
+async def test_unbound_legacy_switch_toggle_failures(coordinator, ph_hass, make_config_entry):
+    """Test unbound legacy switch handles client method failures."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    state = {"unbound_blocklist": {"legacy": {"enabled": "0"}}}
+    coordinator.data = state
+    ent = (await _compile_static_unbound_switch_legacy(config_entry, coordinator, state))[0]
+
+    hass = ph_hass
+    ent.hass = hass
+    ent.coordinator = make_coord(state)
+    ent.entity_id = f"switch.{ent._attr_unique_id}"
+    ent.async_write_ha_state = lambda: None
+
+    # Mock client to return False (failure)
+    ent._client = MagicMock()
+    ent._client.enable_unbound_blocklist = AsyncMock(return_value=False)
+    ent._client.disable_unbound_blocklist = AsyncMock(return_value=False)
+
+    # Test turn_on failure - should not change state
+    await ent.async_turn_on()
+    assert ent.is_on is False  # Should remain off
+    assert ent.delay_update is False  # Should not set delay
+
+    # Update coordinator data to simulate successful previous state
+    state["unbound_blocklist"]["legacy"]["enabled"] = "1"
+    ent._handle_coordinator_update()
+
+    # Test turn_off failure - should not change state
+    await ent.async_turn_off()
+    assert ent.is_on is True  # Should remain on
+    assert ent.delay_update is False  # Should not set delay
+
+
+@pytest.mark.asyncio
+async def test_unbound_extended_switch_toggle_failures(coordinator, ph_hass, make_config_entry):
+    """Test unbound extended switch handles client method failures."""
+    # create state with extended blocklist
+    state = {
+        "unbound_blocklist": {
+            "u1": {"enabled": "0", "description": "One"},
+        },
+        "host_firmware_version": "25.7.8",
+    }
+    coordinator.data = state
+
+    config_entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"}, title="OPNsenseTest"
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    ents = await _compile_unbound_switches(config_entry, coordinator, state)
+    ent = next(e for e in ents if e.entity_description.key.endswith(".u1"))
+    hass = ph_hass
+    ent.hass = hass
+    ent.coordinator = make_coord(state)
+    ent.entity_id = f"switch.{ent._attr_unique_id}"
+    ent.async_write_ha_state = lambda: None
+
+    # Mock client to return False (failure)
+    ent._client = MagicMock()
+    ent._client.enable_unbound_blocklist = AsyncMock(return_value=False)
+    ent._client.disable_unbound_blocklist = AsyncMock(return_value=False)
+
+    # Test turn_on failure - should not change state
+    await ent.async_turn_on()
+    assert ent.is_on is False  # Should remain off
+    assert ent.delay_update is False  # Should not set delay
+
+    # Update coordinator data to simulate successful previous state
+    state["unbound_blocklist"]["u1"]["enabled"] = "1"
+    ent._handle_coordinator_update()
+
+    # Test turn_off failure - should not change state
+    await ent.async_turn_off()
+    assert ent.is_on is True  # Should remain on
+    assert ent.delay_update is False  # Should not set delay

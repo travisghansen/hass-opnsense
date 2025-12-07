@@ -4,6 +4,8 @@ from collections.abc import Callable, Mapping, MutableMapping
 import logging
 from typing import Any
 
+import awesomeversion
+
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity, SwitchEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
@@ -216,15 +218,13 @@ async def _compile_vpn_switches(
     return entities
 
 
-async def _compile_static_unbound_switches(
+async def _compile_static_unbound_switch_legacy(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
-    if not isinstance(state, MutableMapping):
-        return []
     entities: list = []
-    entity = OPNsenseUnboundBlocklistSwitch(
+    entity = OPNsenseUnboundBlocklistSwitchLegacy(
         config_entry=config_entry,
         coordinator=coordinator,
         entity_description=SwitchEntityDescription(
@@ -237,6 +237,35 @@ async def _compile_static_unbound_switches(
         ),
     )
     entities.append(entity)
+
+    return entities
+
+
+async def _compile_unbound_switches(
+    config_entry: ConfigEntry,
+    coordinator: OPNsenseDataUpdateCoordinator,
+    state: MutableMapping[str, Any],
+) -> list:
+    if not isinstance(state, MutableMapping):
+        return []
+    entities: list = []
+    for uuid, dnsbl in state.get(ATTR_UNBOUND_BLOCKLIST, {}).items():
+        if not isinstance(dnsbl, dict):
+            continue
+
+        entity = OPNsenseUnboundBlocklistSwitch(
+            config_entry=config_entry,
+            coordinator=coordinator,
+            entity_description=SwitchEntityDescription(
+                key=f"unbound_blocklist.switch.{uuid}",
+                name=f"Unbound Blocklist {dnsbl.get('description', 'Unknown')}",
+                icon="mdi:folder-key-network-outline",
+                # entity_category=ENTITY_CATEGORY_CONFIG,
+                device_class=SwitchDeviceClass.SWITCH,
+                entity_registry_enabled_default=False,
+            ),
+        )
+        entities.append(entity)
 
     return entities
 
@@ -265,7 +294,34 @@ async def async_setup_entry(
     if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_vpn_switches(config_entry, coordinator, state))
     if config.get(CONF_SYNC_UNBOUND, DEFAULT_SYNC_OPTION_VALUE):
-        entities.extend(await _compile_static_unbound_switches(config_entry, coordinator, state))
+        firmware = state.get("host_firmware_version", None)
+        if firmware:
+            try:
+                if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
+                    "25.7.8"
+                ):
+                    _LOGGER.debug("Using Unbound Regular Blocklists for OPNsense < 25.7.8")
+                    entities.extend(
+                        await _compile_static_unbound_switch_legacy(
+                            config_entry, coordinator, state
+                        )
+                    )
+                else:
+                    _LOGGER.debug("Using Unbound Extended Blocklists for OPNsense >= 25.7.8")
+                    entities.extend(
+                        await _compile_unbound_switches(config_entry, coordinator, state)
+                    )
+            except (
+                awesomeversion.exceptions.AwesomeVersionCompareException,
+                TypeError,
+                ValueError,
+            ) as e:
+                _LOGGER.error(
+                    "Error comparing firmware version %s when determining creating Unbound Blocklist switches. %s: %s",
+                    firmware,
+                    type(e).__name__,
+                    e,
+                )
 
     _LOGGER.debug("[switch async_setup_entry] entities: %s", len(entities))
     async_add_entities(entities)
@@ -611,8 +667,8 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         return super().icon
 
 
-class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
-    """Class for OPNsense Unbound Blocklist Switch entities."""
+class OPNsenseUnboundBlocklistSwitchLegacy(OPNsenseSwitch):
+    """Class for OPNsense Unbound Blocklist Switch entity for Firmware < 25.7.8."""
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -623,7 +679,7 @@ class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
                 self.name,
             )
             return
-        dnsbl = self.coordinator.data.get(ATTR_UNBOUND_BLOCKLIST, {})
+        dnsbl = self.coordinator.data.get(ATTR_UNBOUND_BLOCKLIST, {}).get("legacy", {})
         if not isinstance(dnsbl, MutableMapping) or len(dnsbl) == 0:
             self._available = False
             self.async_write_ha_state()
@@ -661,6 +717,86 @@ class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
         if not self._client:
             return
         result: bool = await self._client.disable_unbound_blocklist()
+        if result:
+            _LOGGER.info("Turned off Unbound Blocklist: %s", self.name)
+            self._attr_is_on = False
+            self.async_write_ha_state()
+            self.delay_update = True
+        else:
+            _LOGGER.error("Failed to turn off Unbound Blocklist: %s", self.name)
+
+
+class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
+    """Class for OPNsense Unbound Blocklist Switch entities."""
+
+    def __init__(
+        self,
+        config_entry: ConfigEntry,
+        coordinator: OPNsenseDataUpdateCoordinator,
+        entity_description: SwitchEntityDescription,
+    ) -> None:
+        """Initialize switch entity."""
+        super().__init__(
+            config_entry=config_entry,
+            coordinator=coordinator,
+            entity_description=entity_description,
+        )
+        self._uuid = self.entity_description.key.split(".")[2]
+        _LOGGER.debug("[OPNsenseUnboundBlocklistSwitch init] Name: %s", self.name)
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        if self.delay_update:
+            _LOGGER.debug(
+                "Skipping coordinator update for unbound blocklist switch %s due to delay",
+                self.name,
+            )
+            return
+        state: MutableMapping[str, Any] = self.coordinator.data
+        if not isinstance(state, MutableMapping):
+            self._available = False
+            self.async_write_ha_state()
+            return
+        dnsbl = self.coordinator.data.get(ATTR_UNBOUND_BLOCKLIST, {}).get(self._uuid, {})
+        if not isinstance(dnsbl, MutableMapping) or len(dnsbl) == 0:
+            self._available = False
+            self.async_write_ha_state()
+            return
+        self._available = True
+        self._attr_is_on = dnsbl.get("enabled", "0") == "1"
+        self._attr_extra_state_attributes: dict[str, Any] = {
+            "Name": dnsbl.get("description", ""),
+            "Type of DNSBL": dnsbl.get("%type", ""),
+            "URLs of Blocklists": dnsbl.get("lists", ""),
+            "Allowlist Domains": dnsbl.get("allowlists", ""),
+            "Blocklist Domains": dnsbl.get("blocklists", ""),
+            "Wildcard Domains": dnsbl.get("wildcards", ""),
+            "Source Net(s)": dnsbl.get("source_nets", ""),
+            "Destination Address": dnsbl.get("address", ""),
+            "Return NXDOMAIN": bool(dnsbl.get("nxdomain", "0") == "1"),
+        }
+        self.async_write_ha_state()
+        # _LOGGER.debug(f"[OPNsenseUnboundBlocklistSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn the entity on."""
+        if not self._client:
+            return
+        result: bool = await self._client.enable_unbound_blocklist(self._uuid)
+        if result:
+            _LOGGER.info("Turned on Unbound Blocklist: %s", self.name)
+            self._attr_is_on = True
+            self.async_write_ha_state()
+            self.delay_update = True
+        else:
+            _LOGGER.error("Failed to turn on Unbound Blocklist: %s", self.name)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn the entity off."""
+        if not self._client:
+            return
+        result: bool = await self._client.disable_unbound_blocklist(self._uuid)
         if result:
             _LOGGER.info("Turned off Unbound Blocklist: %s", self.name)
             self._attr_is_on = False

@@ -35,9 +35,16 @@ warn_incomplete_stub = true
 warn_redundant_casts = true
 warn_unused_configs = true
 warn_unused_ignores = true
-enable_error_code = ["deprecated", "ignore-without-code", "redundant-self", "truthy-iterable"]
+enable_error_code = [
+    "deprecated",
+    "ignore-without-code",
+    "redundant-self",
+    "truthy-iterable",
+]
 disable_error_code = ["annotation-unchecked"]
 extra_checks = false
+mypy_path = ["."]
+explicit_package_bases = true
 check_untyped_defs = true
 disallow_incomplete_defs = true
 disallow_subclassing_any = false
@@ -53,7 +60,15 @@ ignore_missing_imports = true
 disallow_untyped_defs = false
 disallow_untyped_calls = false
 disallow_incomplete_defs = false
-disable_error_code = ["import-untyped", "arg-type", "method-assign", "no-untyped-def", "index", "union-attr", "operator"]
+disable_error_code = [
+    "import-untyped",
+    "arg-type",
+    "method-assign",
+    "no-untyped-def",
+    "index",
+    "union-attr",
+    "operator",
+]
 check_untyped_defs = false
 warn_unused_ignores = false
 
@@ -75,91 +90,91 @@ docstring-code-line-length = "dynamic"
 
 [tool.ruff.lint]
 select = [
-    "A001", # Variable {name} is shadowing a Python builtin
+    "A001",     # Variable {name} is shadowing a Python builtin
     "ASYNC210", # Async functions should not call blocking HTTP methods
     "ASYNC220", # Async functions should not create subprocesses with blocking methods
     "ASYNC221", # Async functions should not run processes with blocking methods
     "ASYNC222", # Async functions should not wait on processes with blocking methods
     "ASYNC230", # Async functions should not open files with blocking methods like open
     "ASYNC251", # Async functions should not call time.sleep
-    "B002", # Python does not support the unary prefix increment
-    "B005", # Using .strip() with multi-character strings is misleading
-    "B007", # Loop control variable {name} not used within loop body
-    "B014", # Exception handler with duplicate exception
-    "B015", # Pointless comparison. Did you mean to assign a value? Otherwise, prepend assert or remove it.
-    "B017", # pytest.raises(BaseException) should be considered evil
-    "B018", # Found useless attribute access. Either assign it to a variable or remove it.
-    "B023", # Function definition does not bind loop variable {name}
-    "B026", # Star-arg unpacking after a keyword argument is strongly discouraged
-    "B032", # Possible unintentional type annotation (using :). Did you mean to assign (using =)?
-    "B904", # Use raise from to specify exception cause
-    "B905", # zip() without an explicit strict= parameter
+    "B002",     # Python does not support the unary prefix increment
+    "B005",     # Using .strip() with multi-character strings is misleading
+    "B007",     # Loop control variable {name} not used within loop body
+    "B014",     # Exception handler with duplicate exception
+    "B015",     # Pointless comparison. Did you mean to assign a value? Otherwise, prepend assert or remove it.
+    "B017",     # pytest.raises(BaseException) should be considered evil
+    "B018",     # Found useless attribute access. Either assign it to a variable or remove it.
+    "B023",     # Function definition does not bind loop variable {name}
+    "B026",     # Star-arg unpacking after a keyword argument is strongly discouraged
+    "B032",     # Possible unintentional type annotation (using :). Did you mean to assign (using =)?
+    "B904",     # Use raise from to specify exception cause
+    "B905",     # zip() without an explicit strict= parameter
     "BLE",
-    "C", # complexity
-    "COM818", # Trailing comma on bare tuple prohibited
-    "D", # docstrings
-    "DTZ003", # Use datetime.now(tz=) instead of datetime.utcnow()
-    "DTZ004", # Use datetime.fromtimestamp(ts, tz=) instead of datetime.utcfromtimestamp(ts)
-    "E", # pycodestyle
-    "F", # pyflakes/autoflake
-    "F541", # f-string without any placeholders
-    "FLY", # flynt
-    "FURB", # refurb
-    "G", # flake8-logging-format
-    "I", # isort
-    "INP", # flake8-no-pep420
-    "ISC", # flake8-implicit-str-concat
-    "ICN001", # import concentions; {name} should be imported as {asname}
-    "LOG", # flake8-logging
-    "N804", # First argument of a class method should be named cls
-    "N805", # First argument of a method should be named self
-    "N815", # Variable {name} in class scope should not be mixedCase
-    "PERF", # Perflint
-    "PGH", # pygrep-hooks
-    "PIE", # flake8-pie
-    "PL", # pylint
-    "PT", # flake8-pytest-style
-    "PTH", # flake8-pathlib
-    "PYI", # flake8-pyi
-    "RET", # flake8-return
-    "RSE", # flake8-raise
-    "RUF005", # Consider iterable unpacking instead of concatenation
-    "RUF006", # Store a reference to the return value of asyncio.create_task
-    "RUF010", # Use explicit conversion flag
-    "RUF013", # PEP 484 prohibits implicit Optional
-    "RUF017", # Avoid quadratic list summation
-    "RUF018", # Avoid assignment expressions in assert statements
-    "RUF019", # Unnecessary key check before dictionary access
+    "C",        # complexity
+    "COM818",   # Trailing comma on bare tuple prohibited
+    "D",        # docstrings
+    "DTZ003",   # Use datetime.now(tz=) instead of datetime.utcnow()
+    "DTZ004",   # Use datetime.fromtimestamp(ts, tz=) instead of datetime.utcfromtimestamp(ts)
+    "E",        # pycodestyle
+    "F",        # pyflakes/autoflake
+    "F541",     # f-string without any placeholders
+    "FLY",      # flynt
+    "FURB",     # refurb
+    "G",        # flake8-logging-format
+    "I",        # isort
+    "INP",      # flake8-no-pep420
+    "ISC",      # flake8-implicit-str-concat
+    "ICN001",   # import concentions; {name} should be imported as {asname}
+    "LOG",      # flake8-logging
+    "N804",     # First argument of a class method should be named cls
+    "N805",     # First argument of a method should be named self
+    "N815",     # Variable {name} in class scope should not be mixedCase
+    "PERF",     # Perflint
+    "PGH",      # pygrep-hooks
+    "PIE",      # flake8-pie
+    "PL",       # pylint
+    "PT",       # flake8-pytest-style
+    "PTH",      # flake8-pathlib
+    "PYI",      # flake8-pyi
+    "RET",      # flake8-return
+    "RSE",      # flake8-raise
+    "RUF005",   # Consider iterable unpacking instead of concatenation
+    "RUF006",   # Store a reference to the return value of asyncio.create_task
+    "RUF010",   # Use explicit conversion flag
+    "RUF013",   # PEP 484 prohibits implicit Optional
+    "RUF017",   # Avoid quadratic list summation
+    "RUF018",   # Avoid assignment expressions in assert statements
+    "RUF019",   # Unnecessary key check before dictionary access
     # "RUF100", # Unused `noqa` directive; temporarily every now and then to clean them up
-    "S102", # Use of exec detected
-    "S103", # bad-file-permissions
-    "S108", # hardcoded-temp-file
-    "S306", # suspicious-mktemp-usage
-    "S307", # suspicious-eval-usage
-    "S313", # suspicious-xmlc-element-tree-usage
-    "S314", # suspicious-xml-element-tree-usage
-    "S315", # suspicious-xml-expat-reader-usage
-    "S316", # suspicious-xml-expat-builder-usage
-    "S317", # suspicious-xml-sax-usage
-    "S318", # suspicious-xml-mini-dom-usage
-    "S319", # suspicious-xml-pull-dom-usage
-    "S601", # paramiko-call
-    "S602", # subprocess-popen-with-shell-equals-true
-    "S604", # call-with-shell-equals-true
-    "S608", # hardcoded-sql-expression
-    "S609", # unix-command-wildcard-injection
-    "SIM", # flake8-simplify
-    "SLF", # flake8-self
-    "SLOT", # flake8-slots
-    "T100", # Trace found: {name} used
-    "T20", # flake8-print
-    "TC", # flake8-type-checking
-    "TID", # Tidy imports
-    "TRY", # tryceratops
-    "UP", # pyupgrade
+    "S102",  # Use of exec detected
+    "S103",  # bad-file-permissions
+    "S108",  # hardcoded-temp-file
+    "S306",  # suspicious-mktemp-usage
+    "S307",  # suspicious-eval-usage
+    "S313",  # suspicious-xmlc-element-tree-usage
+    "S314",  # suspicious-xml-element-tree-usage
+    "S315",  # suspicious-xml-expat-reader-usage
+    "S316",  # suspicious-xml-expat-builder-usage
+    "S317",  # suspicious-xml-sax-usage
+    "S318",  # suspicious-xml-mini-dom-usage
+    "S319",  # suspicious-xml-pull-dom-usage
+    "S601",  # paramiko-call
+    "S602",  # subprocess-popen-with-shell-equals-true
+    "S604",  # call-with-shell-equals-true
+    "S608",  # hardcoded-sql-expression
+    "S609",  # unix-command-wildcard-injection
+    "SIM",   # flake8-simplify
+    "SLF",   # flake8-self
+    "SLOT",  # flake8-slots
+    "T100",  # Trace found: {name} used
+    "T20",   # flake8-print
+    "TC",    # flake8-type-checking
+    "TID",   # Tidy imports
+    "TRY",   # tryceratops
+    "UP",    # pyupgrade
     "UP031", # Use format specifiers instead of percent format
     "UP032", # Use f-string instead of `format` call
-    "W", # pycodestyle
+    "W",     # pycodestyle
 ]
 
 ignore = [
@@ -182,16 +197,16 @@ ignore = [
     "PLR1702", # Too many nested blocks
     "PLR2004", # Magic value used in comparison, consider replacing {value} with a constant variable
     "PLW2901", # Outer {outer_kind} variable {name} overwritten by inner {inner_kind} target
-    "PT011", # pytest.raises({exception}) is too broad, set the `match` parameter or use a more specific exception
-    "PT018", # Assertion should be broken down into multiple parts
-    "RUF001", # String contains ambiguous unicode character.
-    "RUF002", # Docstring contains ambiguous unicode character.
-    "RUF003", # Comment contains ambiguous unicode character.
-    "RUF015", # Prefer next(...) over single element slice
-    "SIM102", # Use a single if statement instead of nested if statements
-    "SIM103", # Return the condition {condition} directly
-    "SIM108", # Use ternary operator {contents} instead of if-else-block
-    "SIM115", # Use context handler for opening files
+    "PT011",   # pytest.raises({exception}) is too broad, set the `match` parameter or use a more specific exception
+    "PT018",   # Assertion should be broken down into multiple parts
+    "RUF001",  # String contains ambiguous unicode character.
+    "RUF002",  # Docstring contains ambiguous unicode character.
+    "RUF003",  # Comment contains ambiguous unicode character.
+    "RUF015",  # Prefer next(...) over single element slice
+    "SIM102",  # Use a single if statement instead of nested if statements
+    "SIM103",  # Return the condition {condition} directly
+    "SIM108",  # Use ternary operator {contents} instead of if-else-block
+    "SIM115",  # Use context handler for opening files
 
     # Moving imports into type-checking blocks can mess with pytest.patch()
     "TC001", # Move application import {} into a type-checking block
@@ -214,21 +229,21 @@ ignore = [
     "ISC001",
 
     # Disabled because ruff does not understand type of __all__ generated by a function
-    "PLE0605"
+    "PLE0605",
 ]
 fixable = ["ALL"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = [
-    "SLF001",  # Private member accessed
+    "SLF001", # Private member accessed
     #"D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107",  # Docstring rules
     "PLR2004", # Magic value used in comparison
     "S101",    # Use of assert detected
     "PLR0913", # Too many arguments to function call
     "C901",    # Function is too complex
-    "E501", # line too long
-    "B017",  # Don't assert blind Exception
-    "PT006", # Wrong type passed to first argument
+    "E501",    # line too long
+    "B017",    # Don't assert blind Exception
+    "PT006",   # Wrong type passed to first argument
     "S108",
     "D401",
     "D417",
@@ -298,9 +313,7 @@ mark-parentheses = false
 
 [tool.ruff.lint.isort]
 force-sort-within-sections = true
-known-first-party = [
-    "homeassistant",
-]
+known-first-party = ["homeassistant"]
 combine-as-imports = true
 split-on-trailing-comma = false
 
