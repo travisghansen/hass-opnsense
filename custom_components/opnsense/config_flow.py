@@ -432,7 +432,7 @@ def _build_options_init_schema(
                         CONF_DEVICE_TRACKER_CONSIDER_HOME, DEFAULT_DEVICE_TRACKER_CONSIDER_HOME
                     ),
                 ),
-            ): vol.All(vol.Coerce(int), vol.Clamp(min=0, max=600)),
+            ): vol.All(vol.Coerce(int), vol.Clamp(min=0, max=3600)),
             vol.Optional(
                 CONF_GRANULAR_SYNC_OPTIONS,
                 default=user_input.get(
