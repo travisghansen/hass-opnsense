@@ -1075,6 +1075,8 @@ $toreturn = [
 
     async def _get_dnsmasq_leases(self) -> list:
         """Return Dnsmasq IPv4 and IPv6 DHCP Leases."""
+        if self._firmware_version is None:
+            await self.get_host_firmware_version()
 
         try:
             if awesomeversion.AwesomeVersion(
@@ -1894,6 +1896,8 @@ $toreturn = [
 
     async def get_unbound_blocklist(self) -> dict[str, Any]:
         """Return the Unbound Blocklist details."""
+        if self._firmware_version is None:
+            await self.get_host_firmware_version()
         try:
             if awesomeversion.AwesomeVersion(
                 self._firmware_version
@@ -1945,6 +1949,8 @@ $toreturn = [
     @_log_errors
     async def enable_unbound_blocklist(self, uuid: str | None = None) -> bool:
         """Enable the unbound blocklist."""
+        if self._firmware_version is None:
+            await self.get_host_firmware_version()
         try:
             if awesomeversion.AwesomeVersion(
                 self._firmware_version
@@ -1971,6 +1977,8 @@ $toreturn = [
     @_log_errors
     async def disable_unbound_blocklist(self, uuid: str | None = None) -> bool:
         """Disable the unbound blocklist."""
+        if self._firmware_version is None:
+            await self.get_host_firmware_version()
         try:
             if awesomeversion.AwesomeVersion(
                 self._firmware_version
