@@ -297,19 +297,27 @@ async def async_setup_entry(
         entities.extend(await _compile_vpn_switches(config_entry, coordinator, state))
     if config.get(CONF_SYNC_UNBOUND, DEFAULT_SYNC_OPTION_VALUE):
         firmware = state.get("host_firmware_version", None)
-        try:
-            if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion("25.7.8"):
-                _LOGGER.debug("Using Unbound Regular Blocklists for OPNsense < 25.7.8")
-                entities.extend(
-                    await _compile_static_unbound_switch_legacy(config_entry, coordinator, state)
+        if firmware:
+            try:
+                if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
+                    "25.7.8"
+                ):
+                    _LOGGER.debug("Using Unbound Regular Blocklists for OPNsense < 25.7.8")
+                    entities.extend(
+                        await _compile_static_unbound_switch_legacy(
+                            config_entry, coordinator, state
+                        )
+                    )
+                else:
+                    _LOGGER.debug("Using Unbound Extended Blocklists for OPNsense >= 25.7.8")
+                    entities.extend(
+                        await _compile_unbound_switches(config_entry, coordinator, state)
+                    )
+            except awesomeversion.exceptions.AwesomeVersionCompareException:
+                _LOGGER.error(
+                    "Error comparing firmware version %s when determining creating Unbound Blocklist switches",
+                    firmware,
                 )
-            _LOGGER.debug("Using Unbound Extended Blocklists for OPNsense >= 25.7.8")
-            entities.extend(await _compile_unbound_switches(config_entry, coordinator, state))
-        except awesomeversion.exceptions.AwesomeVersionCompareException:
-            _LOGGER.error(
-                "Error comparing firmware version %s when determining creating Unbound Blocklist switches",
-                firmware,
-            )
 
     _LOGGER.debug("[switch async_setup_entry] entities: %s", len(entities))
     async_add_entities(entities)

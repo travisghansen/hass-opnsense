@@ -1894,7 +1894,6 @@ $toreturn = [
 
     async def get_unbound_blocklist(self) -> dict[str, Any]:
         """Return the Unbound Blocklist details."""
-        # https://opnsense.home/api/unbound/settings/searchDnsbl
         try:
             if awesomeversion.AwesomeVersion(
                 self._firmware_version
@@ -1906,7 +1905,7 @@ $toreturn = [
                 "Error comparing firmware version %s when determining which Unbound Blocklist method to use",
                 self._firmware_version,
             )
-        dnsbl_raw = await self._safe_dict_get("/api/unbound/settings/searchDnsbl")
+        dnsbl_raw = await self._safe_dict_get("/api/unbound/settings/search_dnsbl")
         # _LOGGER.debug(f"[get_unbound_blocklist] dnsbl_raw: {dnsbl_raw}")
         if not isinstance(dnsbl_raw, dict):
             return {}
@@ -1926,8 +1925,15 @@ $toreturn = [
     async def _toggle_unbound_blocklist(self, set_state: bool, uuid: str | None) -> bool:
         """Enable or disable the unbound blocklist."""
         if not uuid:
-            _LOGGER.error("Blocklist name must be provided for Unbound Extended Blocklists")
+            _LOGGER.error("Blocklist uuid must be provided for Unbound Extended Blocklists")
             return False
+        endpoint = f"/api/unbound/settings/toggle_dnsbl/{uuid}/{'1' if set_state else '0'}"
+        response = await self._safe_dict_post(endpoint)
+        result = response.get("result")
+        if set_state and result == "Enabled":
+            return True
+        if not set_state and result == "Disabled":
+            return True
         return False
 
     @_log_errors

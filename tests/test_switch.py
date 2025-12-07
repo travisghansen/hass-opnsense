@@ -32,7 +32,7 @@ from custom_components.opnsense.switch import (
     _compile_nat_outbound_switches,
     _compile_port_forward_switches,
     _compile_service_switches,
-    _compile_static_unbound_switches,
+    _compile_static_unbound_switch_legacy,
     _compile_vpn_switches,
 )
 from homeassistant.components.switch import SwitchEntityDescription
@@ -91,7 +91,7 @@ def make_coord(data):
             ("start_service", "stop_service"),
         ),
         (
-            _compile_static_unbound_switches,
+            _compile_static_unbound_switch_legacy,
             {"unbound_blocklist": {"enabled": "1"}},
             ("enable_unbound_blocklist", "disable_unbound_blocklist"),
         ),
@@ -579,7 +579,7 @@ async def test_unbound_missing_sets_unavailable(coordinator, ph_hass, make_confi
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     state = {"unbound_blocklist": {}}
     coordinator.data = state
-    ent = (await _compile_static_unbound_switches(config_entry, coordinator, state))[0]
+    ent = (await _compile_static_unbound_switch_legacy(config_entry, coordinator, state))[0]
     # use PHCC-provided hass fixture
     hass = ph_hass
     ent.hass = hass
@@ -599,7 +599,7 @@ async def test_unbound_skips_update_when_delay_set(coordinator, ph_hass, make_co
     # coordinator contains enabled blocklist; handler would normally set is_on True
     state = {"unbound_blocklist": {"enabled": "1"}}
     coordinator.data = state
-    ent = (await _compile_static_unbound_switches(config_entry, coordinator, state))[0]
+    ent = (await _compile_static_unbound_switch_legacy(config_entry, coordinator, state))[0]
 
     hass = ph_hass
     ent.hass = hass
@@ -624,7 +624,7 @@ async def test_unbound_skips_update_when_delay_set(coordinator, ph_hass, make_co
     [
         (
             "unbound",
-            _compile_static_unbound_switches,
+            _compile_static_unbound_switch_legacy,
             {"unbound_blocklist": {"enabled": "1"}},
             "first",
         ),
@@ -1195,7 +1195,7 @@ async def test_unbound_turn_on_off_failure_logs(coordinator, ph_hass, make_confi
     dnsbl = {"enabled": "0", "safesearch": "0"}
     state = {"unbound_blocklist": dnsbl}
     coordinator.data = state
-    ent = (await _compile_static_unbound_switches(config_entry, coordinator, state))[0]
+    ent = (await _compile_static_unbound_switch_legacy(config_entry, coordinator, state))[0]
     hass = ph_hass
     ent.hass = hass
     ent.coordinator = make_coord(state)
@@ -1222,7 +1222,7 @@ async def test_unbound_turn_on_off_failure_logs(coordinator, ph_hass, make_confi
             False,
         ),
         (
-            _compile_static_unbound_switches,
+            _compile_static_unbound_switch_legacy,
             {"unbound_blocklist": {"enabled": "0", "safesearch": "0"}},
             ("enable_unbound_blocklist", "disable_unbound_blocklist"),
             "async_turn_on",
