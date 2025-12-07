@@ -766,12 +766,13 @@ class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
         self._available = True
         self._attr_is_on = dnsbl.get("enabled", "0") == "1"
         self._attr_extra_state_attributes: dict[str, Any] = {
-            "Force SafeSearch": bool(dnsbl.get("safesearch", "0") == "1"),
-            "Type of DNSBL": dnsbl.get("type", ""),
+            "Name": dnsbl.get("description", ""),
+            "Type of DNSBL": dnsbl.get("%type", ""),
             "URLs of Blocklists": dnsbl.get("lists", ""),
-            "Whitelist Domains": dnsbl.get("whitelists", ""),
+            "Allowlist Domains": dnsbl.get("allowlists", ""),
             "Blocklist Domains": dnsbl.get("blocklists", ""),
             "Wildcard Domains": dnsbl.get("wildcards", ""),
+            "Source Net(s)": dnsbl.get("source_nets", ""),
             "Destination Address": dnsbl.get("address", ""),
             "Return NXDOMAIN": bool(dnsbl.get("nxdomain", "0") == "1"),
         }
