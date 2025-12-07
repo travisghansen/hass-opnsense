@@ -17,9 +17,9 @@ jobs:
 
       - name: Debug GitHub Variables
         run: |
-            echo "github.event_name: ${{ github.event_name }}"
-            echo "github.ref_name: ${{ github.ref_name }}"
-            echo "github.event.repository.default_branch: ${{ github.event.repository.default_branch }}"
+          echo "github.event_name: ${{ github.event_name }}"
+          echo "github.ref_name: ${{ github.ref_name }}"
+          echo "github.event.repository.default_branch: ${{ github.event.repository.default_branch }}"
 
       - name: Setup Python 3 (with caching)
         uses: actions/setup-python@v6.1.0
@@ -28,13 +28,12 @@ jobs:
           python-version: 3.x
           cache: 'pip'
           cache-dependency-path: |
-            requirements-lint.txt
             pyproject.toml
 
       - name: Install Linting Requirements
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-lint.txt
+          pip install --group lint -e .
 
       - name: Cache pre-commit and mypy
         uses: actions/cache@v4.3.0
@@ -43,7 +42,7 @@ jobs:
             ~/.cache/pre-commit
             .mypy_cache
             .ruff_cache
-          key: ${{ runner.os }}-lint-py${{ steps.setup-python.outputs.python-version || '3.x' }}-${{ hashFiles('**/requirements-lint.txt', '**/.pre-commit-config.yaml', '**/pyproject.toml') }}
+          key: ${{ runner.os }}-lint-py${{ steps.setup-python.outputs.python-version || '3.x' }}-${{ hashFiles('**/.pre-commit-config.yaml', '**/pyproject.toml') }}
           restore-keys: |
             ${{ runner.os }}-lint-
 

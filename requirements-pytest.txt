@@ -1,6 +1,0 @@
--r requirements.txt
-pytest
-pytest-asyncio
-pytest-cov
-pytest-homeassistant-custom-component
-pytest-timeout

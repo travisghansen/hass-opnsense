@@ -51,4 +51,50 @@ logger:
 
 ## Use a Consistent Coding Style
 
-Use [black](https://github.com/psf/black) or [Ruff](https://docs.astral.sh/ruff/) to make sure the code follows the style.
+Use [ruff](https://docs.astral.sh/ruff/) to make sure the code follows the style.
+
+## Setting up the Development Environment
+
+1. Create a virtual environment:
+
+   ```bash
+   python -m venv .venv
+   ```
+
+2. Activate the virtual environment:
+
+   ```bash
+   source .venv/bin/activate
+   ```
+
+3. Install the package in editable mode with development dependencies:
+
+   ```bash
+   pip install --group dev -e .
+   ```
+
+   This will install the core dependencies plus the development tools including:
+   - Linting tools (ruff, mypy, etc.)
+   - Testing tools (pytest, etc.)
+   - Other development utilities
+
+   Alternatively, you can install specific groups:
+   - `pip install --group lint -e .` for linting tools only
+   - `pip install --group pytest -e .` for testing tools only
+
+4. Install pre-commit hooks:
+
+   ```bash
+   pre-commit install
+   ```
+
+   This sets up pre-commit to run automatically on commits.
+
+5. Run tests and linting:
+
+   ```bash
+   pytest
+   pre-commit run --all
+   ```
+
+   The `pre-commit run --all` command will run all configured linting and formatting checks.
