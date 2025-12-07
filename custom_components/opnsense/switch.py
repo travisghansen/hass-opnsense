@@ -223,8 +223,6 @@ async def _compile_static_unbound_switch_legacy(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
-    if not isinstance(state, MutableMapping):
-        return []
     entities: list = []
     entity = OPNsenseUnboundBlocklistSwitchLegacy(
         config_entry=config_entry,
@@ -313,10 +311,16 @@ async def async_setup_entry(
                     entities.extend(
                         await _compile_unbound_switches(config_entry, coordinator, state)
                     )
-            except awesomeversion.exceptions.AwesomeVersionCompareException:
+            except (
+                awesomeversion.exceptions.AwesomeVersionCompareException,
+                TypeError,
+                ValueError,
+            ) as e:
                 _LOGGER.error(
-                    "Error comparing firmware version %s when determining creating Unbound Blocklist switches",
+                    "Error comparing firmware version %s when determining creating Unbound Blocklist switches. %s: %s",
                     firmware,
+                    type(e).__name__,
+                    e,
                 )
 
     _LOGGER.debug("[switch async_setup_entry] entities: %s", len(entities))
