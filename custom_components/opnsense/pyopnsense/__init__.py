@@ -1924,7 +1924,7 @@ $toreturn = [
             return {}
 
         servers = {
-            uid: await OPNsenseClient._process_wireguard_server(uid, srv)
+            uid: await OPNsenseClient._process_wireguard_server(uid, srv, client_summ)
             for uid, srv in server_summ.items()
             if isinstance(srv, MutableMapping)
         }
@@ -1942,7 +1942,7 @@ $toreturn = [
 
     @staticmethod
     async def _process_wireguard_server(
-        uid: str, srv: MutableMapping[str, Any]
+        uid: str, srv: MutableMapping[str, Any], client_summ: MutableMapping[str, Any]
     ) -> MutableMapping[str, Any]:
         """Process a single WireGuard server entry."""
         return {
@@ -1961,6 +1961,7 @@ $toreturn = [
                 {
                     "name": peer.get("value"),
                     "uuid": peer_id,
+                    "pubkey": client_summ.get(peer_id, {}).get("pubkey"),
                     "connected": False,
                 }
                 for peer_id, peer in srv.get("peers", {}).items()
