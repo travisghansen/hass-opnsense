@@ -239,6 +239,24 @@ def test_options_scan_interval_clamp(input_value, expected):
     assert validated.get(cf_mod.CONF_SCAN_INTERVAL) == expected
 
 
+@pytest.mark.parametrize(
+    "input_value,expected",
+    [
+        (-10, 0),  # below minimum -> clamped to 0
+        (300, 300),  # within range -> unchanged
+        (1200, 1200),  # within new range (20 minutes) -> unchanged
+        (3600, 3600),  # at maximum (1 hour) -> unchanged
+        (5000, 3600),  # above maximum -> clamped to 3600
+    ],
+)
+def test_options_device_tracker_consider_home_clamp(input_value, expected):
+    """_build_options_init_schema should clamp CONF_DEVICE_TRACKER_CONSIDER_HOME to min/max values."""
+    oschema = cf_mod._build_options_init_schema(user_input=None)
+    # pass a dict with the consider_home value set to the test value
+    validated = oschema({cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME: input_value})
+    assert validated.get(cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME) == expected
+
+
 def test_async_get_options_flow_returns_options_flow():
     """async_get_options_flow should return an OPNsenseOptionsFlow instance."""
     cfg = MagicMock()
