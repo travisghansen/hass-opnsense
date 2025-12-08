@@ -1,1 +1,0 @@
-# Intentionally empty; runtime deps are managed by Home Assistant (manifest)

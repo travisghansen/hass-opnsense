@@ -1,3 +1,26 @@
+[dependency-groups]
+lint = [
+    "homeassistant-stubs",
+    "mypy",
+    "pre-commit",
+    "ruff",
+    "types-cffi",
+    "types-PyMySQL",
+    "types-pyRFC3339",
+    "types-python-dateutil",
+    "types-PyYAML",
+    "types-requests",
+    "types-setuptools",
+]
+pytest = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "pytest-homeassistant-custom-component",
+    "pytest-timeout",
+]
+dev = [{ include-group = "lint" }, { include-group = "pytest" }]
+
 [tool.codespell]
 skip = "*.py,*.toml,CHANGELOG.*"
 quiet-level = 3
