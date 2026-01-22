@@ -34,7 +34,7 @@ jobs:
           echo "PR labels: ${{ github.event_name == 'pull_request' && toJSON(github.event.pull_request.labels.*.name) || '' }}"
 
       - name: Setup Python 3 (with caching)
-        uses: actions/setup-python@v6.1.0
+        uses: actions/setup-python@v6.2.0
         with:
           python-version: 3.x
           cache: 'pip'
