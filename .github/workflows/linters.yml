@@ -36,7 +36,7 @@ jobs:
           pip install --group lint -e .
 
       - name: Cache pre-commit and mypy
-        uses: actions/cache@v5.0.1
+        uses: actions/cache@v5.0.3
         with:
           path: |
             ~/.cache/pre-commit
