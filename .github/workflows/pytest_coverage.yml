@@ -51,7 +51,7 @@ jobs:
 
       - name: 'Generate coverage Comment (and possibly Post to PR)'
         id: coverage_comment
-        uses: py-cov-action/python-coverage-comment-action@v3.39
+        uses: py-cov-action/python-coverage-comment-action@v3.40
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MINIMUM_GREEN: 90
