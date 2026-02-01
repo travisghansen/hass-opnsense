@@ -60,8 +60,8 @@ def make_coord(data):
             _compile_port_forward_switches,
             {"config": {"nat": {"rule": [{"descr": "PF", "created": {"time": "p1"}}]}}},
             (
-                "enable_nat_port_forward_rule_by_created_time",
-                "disable_nat_port_forward_rule_by_created_time",
+                "enable_nat_port_forward_rule_by_created_time_legacy",
+                "disable_nat_port_forward_rule_by_created_time_legacy",
             ),
         ),
         (
@@ -72,8 +72,8 @@ def make_coord(data):
                 }
             },
             (
-                "enable_nat_outbound_rule_by_created_time",
-                "disable_nat_outbound_rule_by_created_time",
+                "enable_nat_outbound_rule_by_created_time_legacy",
+                "disable_nat_outbound_rule_by_created_time_legacy",
             ),
         ),
         (

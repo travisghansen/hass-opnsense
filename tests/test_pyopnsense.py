@@ -1331,12 +1331,12 @@ async def test_enable_and_disable_filter_rules_and_nat_port_forward(make_client)
     client._restore_config_section.assert_called()
     client._filter_configure.assert_awaited()
 
-    # enable_nat_port_forward_rule_by_created_time: similar flow under 'nat' section
+    # enable_nat_port_forward_rule_by_created_time_legacy: similar flow under 'nat' section
     cfg_nat = {"nat": {"rule": [{"created": {"time": "t-nat"}, "disabled": "1"}]}}
     client.get_config = AsyncMock(return_value=cfg_nat)
     client._restore_config_section = AsyncMock()
     client._filter_configure = AsyncMock()
-    await client.enable_nat_port_forward_rule_by_created_time("t-nat")
+    await client.enable_nat_port_forward_rule_by_created_time_legacy("t-nat")
     client._restore_config_section.assert_called()
     client._filter_configure.assert_awaited()
 
@@ -2701,7 +2701,7 @@ async def test_get_config_and_rule_enable_disable_branches() -> None:
     # patch _restore_config_section and _filter_configure to be no-ops
     client._restore_config_section = AsyncMock()
     client._filter_configure = AsyncMock()
-    await client.disable_nat_port_forward_rule_by_created_time("n1")
+    await client.disable_nat_port_forward_rule_by_created_time_legacy("n1")
     await client.async_close()
 
 
@@ -3053,7 +3053,7 @@ async def test_enable_disable_nat_outbound_rules(make_client) -> None:
     client.get_config = AsyncMock(return_value=cfg_enable)
     client._restore_config_section = AsyncMock()
     client._filter_configure = AsyncMock()
-    await client.enable_nat_outbound_rule_by_created_time("t1")
+    await client.enable_nat_outbound_rule_by_created_time_legacy("t1")
     client._restore_config_section.assert_awaited()
     client._filter_configure.assert_awaited()
 
@@ -3062,7 +3062,7 @@ async def test_enable_disable_nat_outbound_rules(make_client) -> None:
     client.get_config = AsyncMock(return_value=cfg_disable)
     client._restore_config_section = AsyncMock()
     client._filter_configure = AsyncMock()
-    await client.disable_nat_outbound_rule_by_created_time("t2")
+    await client.disable_nat_outbound_rule_by_created_time_legacy("t2")
     client._restore_config_section.assert_awaited()
     client._filter_configure.assert_awaited()
     await client.async_close()

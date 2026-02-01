@@ -367,6 +367,15 @@ $toreturn["real"] = json_encode($toreturn_real);
         await self._request_queue.put(("get", path, None, future, caller))
         return await future
 
+    async def _get_raw(self, path: str) -> str | None:
+        try:
+            caller = inspect.stack()[1].function
+        except (IndexError, AttributeError):
+            caller = "Unknown"
+        future = self._loop.create_future()
+        await self._request_queue.put(("get_raw", path, None, future, caller))
+        return await future
+
     async def _post(
         self, path: str, payload: MutableMapping[str, Any] | None = None
     ) -> MutableMapping[str, Any] | list | None:
@@ -383,13 +392,15 @@ $toreturn["real"] = json_encode($toreturn_real);
             method, path, payload, future, caller = await self._request_queue.get()
             try:
                 if method == "get_from_stream":
-                    result: MutableMapping[str, Any] | list | None = await self._do_get_from_stream(
-                        path, caller
-                    )
+                    result: Any = await self._do_get_from_stream(path, caller)
                     if future is not None and not future.done():
                         future.set_result(result)
                 elif method == "get":
                     result = await self._do_get(path, caller)
+                    if future is not None and not future.done():
+                        future.set_result(result)
+                elif method == "get_raw":
+                    result = await self._do_get_raw(path, caller)
                     if future is not None and not future.done():
                         future.set_result(result)
                 elif method == "post":
@@ -532,6 +543,50 @@ $toreturn["real"] = json_encode($toreturn_real);
                 else:
                     _LOGGER.error(
                         "Error in do_get (called by %s). Path: %s. Response %s: %s",
+                        caller,
+                        url,
+                        response.status,
+                        response.reason,
+                    )
+                if self._initial:
+                    raise aiohttp.ClientResponseError(
+                        request_info=response.request_info,
+                        history=response.history,
+                        status=response.status,
+                        message=f"HTTP Status Error: {response.status} {response.reason}",
+                        headers=response.headers,
+                    )
+        except aiohttp.ClientError as e:
+            _LOGGER.error("Client error. %s: %s", type(e).__name__, e)
+            if self._initial:
+                raise
+
+        return None
+
+    async def _do_get_raw(self, path: str, caller: str = "Unknown") -> str | None:
+        # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
+        self._rest_api_query_count += 1
+        url: str = f"{self._url}{path}"
+        _LOGGER.debug("[get_raw] url: %s", url)
+        try:
+            async with self._session.get(
+                url,
+                auth=aiohttp.BasicAuth(self._username, self._password),
+                timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
+                ssl=self._verify_ssl,
+            ) as response:
+                _LOGGER.debug("[get_raw] Response %s: %s", response.status, response.reason)
+                if response.ok:
+                    return await response.text()
+                if response.status == 403:
+                    _LOGGER.error(
+                        "Permission Error in do_get_raw (called by %s). Path: %s. Ensure the OPNsense user connected to HA has appropriate access. Recommend full admin access",
+                        caller,
+                        url,
+                    )
+                else:
+                    _LOGGER.error(
+                        "Error in do_get_raw (called by %s). Path: %s. Response %s: %s",
                         caller,
                         url,
                         response.status,
@@ -808,7 +863,7 @@ $toreturn = [
 
     # use created_time as a unique_id since none other exists
     @_log_errors
-    async def enable_nat_port_forward_rule_by_created_time(self, created_time: str) -> None:
+    async def enable_nat_port_forward_rule_by_created_time_legacy(self, created_time: str) -> None:
         """Enable a NAT Port Forward rule."""
         config: MutableMapping[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("rule", []):
@@ -826,7 +881,7 @@ $toreturn = [
 
     # use created_time as a unique_id since none other exists
     @_log_errors
-    async def disable_nat_port_forward_rule_by_created_time(self, created_time: str) -> None:
+    async def disable_nat_port_forward_rule_by_created_time_legacy(self, created_time: str) -> None:
         """Disable a NAT Port Forward rule."""
         config: MutableMapping[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("rule", []):
@@ -844,7 +899,7 @@ $toreturn = [
 
     # use created_time as a unique_id since none other exists
     @_log_errors
-    async def enable_nat_outbound_rule_by_created_time(self, created_time: str) -> None:
+    async def enable_nat_outbound_rule_by_created_time_legacy(self, created_time: str) -> None:
         """Enable NAT Outbound rule."""
         config: MutableMapping[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("outbound", {}).get("rule", []):
@@ -862,7 +917,7 @@ $toreturn = [
 
     # use created_time as a unique_id since none other exists
     @_log_errors
-    async def disable_nat_outbound_rule_by_created_time(self, created_time: str) -> None:
+    async def disable_nat_outbound_rule_by_created_time_legacy(self, created_time: str) -> None:
         """Disable NAT Outbound Rule."""
         config: MutableMapping[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("outbound", {}).get("rule", []):
@@ -873,6 +928,127 @@ $toreturn = [
                 rule["disabled"] = "1"
                 await self._restore_config_section("nat", config["nat"])
                 await self._filter_configure()
+
+    #####################
+    @_log_errors
+    async def get_firewall(self) -> dict[str, Any]:
+        """Retrieve all firewall and NAT rules from OPNsense.
+
+        Returns
+        -------
+        dict
+            A dictionary representing the firewall and NAT rules.
+
+        """
+        if self._firmware_version is None:
+            await self.get_host_firmware_version()
+
+        try:
+            if awesomeversion.AwesomeVersion(
+                self._firmware_version
+            ) < awesomeversion.AwesomeVersion("26.1"):
+                _LOGGER.debug("Using legacy plugin for firewall filters for OPNsense < 26.1")
+                return {"config": await self.get_config()}
+        except awesomeversion.exceptions.AwesomeVersionCompareException:
+            _LOGGER.warning("Error comparing firmware version. Skipping get_firewall.")
+            return {}
+        firewall: dict[str, Any] = {"nat": {}}
+        if await self.is_plugin_installed():
+            firewall["config"] = await self.get_config()
+        firewall["rules"] = await self.get_firewall_rules()
+        firewall["nat"]["destination_rules"] = await self.get_firewall_nat_destination_rules()
+        firewall["nat"]["one_to_one_rules"] = await self.get_firewall_nat_one_to_one_rules()
+        firewall["nat"]["source_rules"] = await self.get_firewall_nat_source_rules()
+        _LOGGER.debug("[get_firewall] firewall: %s", firewall)
+        return firewall
+
+    @_log_errors
+    async def get_firewall_rules(self) -> list:
+        """Retrieve firewall rules from OPNsense.
+
+        Returns
+        -------
+        list of dict
+            A list of dictionaries, each representing a firewall rule parsed
+            from CSV format. Dictionary keys correspond to CSV headers such
+            as '@uuid', 'enabled', 'action', etc.
+
+        """
+        response = await self._get_raw("/api/firewall/filter/download_rules")
+        _LOGGER.debug("[get_firewall_rules] response: %s", response)
+        if not response or not isinstance(response, str):
+            return []
+        lines = response.strip().split("\n")
+        if len(lines) < 2:
+            return []
+        headers = lines[0].split(",")
+        rules = []
+        for line in lines[1:]:
+            if line.strip():
+                values = line.split(",")
+                rule = dict(zip(headers, values, strict=True))
+                rules.append(rule)
+        _LOGGER.debug("[get_firewall_rules] rules: %s", rules)
+        return rules
+
+    @_log_errors
+    async def get_firewall_nat_destination_rules(self) -> list:
+        """Retrieve NAT destination rules from OPNsense.
+
+        Returns
+        -------
+        list of dict
+            A list of dictionaries representing NAT destination rules.
+
+        """
+        request_body: MutableMapping[str, Any] = {"current": 1, "sort": {}}
+        response = await self._safe_dict_post(
+            "/api/firewall/d_nat/search_rule", payload=request_body
+        )
+        _LOGGER.debug("[get_firewall_nat_destination_rules] response: %s", response)
+        rules: list = response.get("rows", [])
+        _LOGGER.debug("[get_firewall_nat_destination_rules] rules: %s", rules)
+        return rules
+
+    @_log_errors
+    async def get_firewall_nat_one_to_one_rules(self) -> list:
+        """Retrieve NAT one-to-one rules from OPNsense.
+
+        Returns
+        -------
+        list of dict
+            A list of dictionaries representing NAT one-to-one rules.
+
+        """
+        request_body: MutableMapping[str, Any] = {"current": 1, "sort": {}}
+        response = await self._safe_dict_post(
+            "/api/firewall/one_to_one/search_rule", payload=request_body
+        )
+        _LOGGER.debug("[get_firewall_nat_one_to_one_rules] response: %s", response)
+        rules: list = response.get("rows", [])
+        _LOGGER.debug("[get_firewall_nat_one_to_one_rules] rules: %s", rules)
+        return rules
+
+    @_log_errors
+    async def get_firewall_nat_source_rules(self) -> list:
+        """Retrieve NAT source rules from OPNsense.
+
+        Returns
+        -------
+        list of dict
+            A list of dictionaries representing NAT source rules.
+
+        """
+        request_body: MutableMapping[str, Any] = {"current": 1, "sort": {}}
+        response = await self._safe_dict_post(
+            "/api/firewall/source_nat/search_rule", payload=request_body
+        )
+        _LOGGER.debug("[get_firewall_nat_source_rules] response: %s", response)
+        rules: list = response.get("rows", [])
+        _LOGGER.debug("[get_firewall_nat_source_rules] rules: %s", rules)
+        return rules
+
+    #####################
 
     @_log_errors
     async def get_arp_table(self, resolve_hostnames: bool = False) -> list:

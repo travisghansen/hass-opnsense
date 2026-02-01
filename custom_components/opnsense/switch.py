@@ -30,128 +30,135 @@ from .helpers import dict_get
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
-async def _compile_filter_switches(
+async def _compile_filter_switches_legacy(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
-    if not isinstance(state, MutableMapping) or not isinstance(state.get("config"), MutableMapping):
+    if not isinstance(state, MutableMapping) or not isinstance(
+        state.get("firewall", {}).get("config", {}).get("filter", {}).get("rule"), list
+    ):
         return []
     entities: list = []
     # filter rules
-    if "filter" in state.get("config", {}):
-        rules = dict_get(state, "config.filter.rule")
-        if isinstance(rules, list):
-            for rule in rules:
-                if not isinstance(rule, dict):
-                    continue
+    rules = dict_get(state, "firewall.config.filter.rule")
+    if isinstance(rules, list):
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
 
-                # do NOT add rules that are NAT rules
-                if "associated-rule-id" in rule:
-                    continue
+            # do NOT add rules that are NAT rules
+            if "associated-rule-id" in rule:
+                continue
 
-                # not possible to disable these rules
-                if rule.get("descr", "") == "Anti-Lockout Rule":
-                    continue
+            # not possible to disable these rules
+            if rule.get("descr", "") == "Anti-Lockout Rule":
+                continue
 
-                tracker = dict_get(rule, "created.time")
-                # we use tracker as the unique id
-                if tracker is None or len(tracker) < 1:
-                    continue
+            tracker = dict_get(rule, "created.time")
+            # we use tracker as the unique id
+            if tracker is None or len(tracker) < 1:
+                continue
 
-                entities.append(
-                    OPNsenseFilterSwitch(
-                        config_entry=config_entry,
-                        coordinator=coordinator,
-                        entity_description=SwitchEntityDescription(
-                            key=f"filter.{tracker}",
-                            name=f"Filter Rule {tracker} ({rule.get('descr', '')})",
-                            icon="mdi:play-network-outline",
-                            # entity_category=entity_category,
-                            device_class=SwitchDeviceClass.SWITCH,
-                            entity_registry_enabled_default=False,
-                        ),
-                    )
+            entities.append(
+                OPNsenseFilterSwitchLegacy(
+                    config_entry=config_entry,
+                    coordinator=coordinator,
+                    entity_description=SwitchEntityDescription(
+                        key=f"filter.{tracker}",
+                        name=f"Filter Rule {tracker} ({rule.get('descr', '')})",
+                        icon="mdi:play-network-outline",
+                        # entity_category=entity_category,
+                        device_class=SwitchDeviceClass.SWITCH,
+                        entity_registry_enabled_default=False,
+                    ),
                 )
+            )
+    _LOGGER.debug("[compile_filter_switches_legacy] entities: %s", len(entities))
     return entities
 
 
-async def _compile_port_forward_switches(
+async def _compile_port_forward_switches_legacy(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
-    if not isinstance(state, MutableMapping) or not isinstance(state.get("config"), MutableMapping):
+    if not isinstance(state, MutableMapping) or not isinstance(
+        state.get("firewall", {}).get("config", {}).get("nat", {}).get("rule"), list
+    ):
         return []
 
     entities: list = []
     # nat port forward rules
-    if "nat" in state.get("config", {}):
-        rules = dict_get(state, "config.nat.rule")
-        if isinstance(rules, list):
-            for rule in rules:
-                if not isinstance(rule, dict):
-                    continue
+    rules = dict_get(state, "firewall.config.nat.rule")
+    if isinstance(rules, list):
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
 
-                tracker = dict_get(rule, "created.time")
-                # we use tracker as the unique id
-                if tracker is None or len(tracker) < 1:
-                    continue
+            tracker = dict_get(rule, "created.time")
+            # we use tracker as the unique id
+            if tracker is None or len(tracker) < 1:
+                continue
 
-                entity = OPNsenseNatSwitch(
-                    config_entry=config_entry,
-                    coordinator=coordinator,
-                    entity_description=SwitchEntityDescription(
-                        key=f"nat_port_forward.{tracker}",
-                        name=f"NAT Port Forward Rule {tracker} ({rule.get('descr', '')})",
-                        icon="mdi:network-outline",
-                        # entity_category=ENTITY_CATEGORY_CONFIG,
-                        device_class=SwitchDeviceClass.SWITCH,
-                        entity_registry_enabled_default=False,
-                    ),
-                )
-                entities.append(entity)
+            entity = OPNsenseNatSwitchLegacy(
+                config_entry=config_entry,
+                coordinator=coordinator,
+                entity_description=SwitchEntityDescription(
+                    key=f"nat_port_forward.{tracker}",
+                    name=f"NAT Port Forward Rule {tracker} ({rule.get('descr', '')})",
+                    icon="mdi:network-outline",
+                    # entity_category=ENTITY_CATEGORY_CONFIG,
+                    device_class=SwitchDeviceClass.SWITCH,
+                    entity_registry_enabled_default=False,
+                ),
+            )
+            entities.append(entity)
+    _LOGGER.debug("[compile_port_forward_switches_legacy] entities: %s", len(entities))
     return entities
 
 
-async def _compile_nat_outbound_switches(
+async def _compile_nat_outbound_switches_legacy(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
-    if not isinstance(state, MutableMapping) or not isinstance(state.get("config"), MutableMapping):
+    if not isinstance(state, MutableMapping) or not isinstance(
+        state.get("firewall", {}).get("config", {}).get("nat", {}).get("outbound", {}).get("rule"),
+        list,
+    ):
         return []
     entities: list = []
     # nat outbound rules
-    if "nat" in state.get("config", {}):
-        # to actually be applicable mode must by "hybrid" or "advanced"
-        rules = dict_get(state, "config.nat.outbound.rule")
-        if isinstance(rules, list):
-            for rule in rules:
-                if not isinstance(rule, dict):
-                    continue
+    # to actually be applicable, mode must by "hybrid" or "advanced"
+    rules = dict_get(state, "firewall.config.nat.outbound.rule")
+    if isinstance(rules, list):
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
 
-                tracker = dict_get(rule, "created.time")
-                # we use tracker as the unique id
-                if tracker is None or len(tracker) < 1:
-                    continue
+            tracker = dict_get(rule, "created.time")
+            # we use tracker as the unique id
+            if tracker is None or len(tracker) < 1:
+                continue
 
-                if "Auto created rule" in rule.get("descr", ""):
-                    continue
+            if "Auto created rule" in rule.get("descr", ""):
+                continue
 
-                entity = OPNsenseNatSwitch(
-                    config_entry=config_entry,
-                    coordinator=coordinator,
-                    entity_description=SwitchEntityDescription(
-                        key=f"nat_outbound.{tracker}",
-                        name=f"NAT Outbound Rule {tracker} ({rule.get('descr', '')})",
-                        icon="mdi:network-outline",
-                        # entity_category=ENTITY_CATEGORY_CONFIG,
-                        device_class=SwitchDeviceClass.SWITCH,
-                        entity_registry_enabled_default=False,
-                    ),
-                )
-                entities.append(entity)
+            entity = OPNsenseNatSwitchLegacy(
+                config_entry=config_entry,
+                coordinator=coordinator,
+                entity_description=SwitchEntityDescription(
+                    key=f"nat_outbound.{tracker}",
+                    name=f"NAT Outbound Rule {tracker} ({rule.get('descr', '')})",
+                    icon="mdi:network-outline",
+                    # entity_category=ENTITY_CATEGORY_CONFIG,
+                    device_class=SwitchDeviceClass.SWITCH,
+                    entity_registry_enabled_default=False,
+                ),
+            )
+            entities.append(entity)
+    _LOGGER.debug("[compile_nat_outbound_switches_legacy] entities: %s", len(entities))
     return entities
 
 
@@ -286,9 +293,13 @@ async def async_setup_entry(
     entities: list = []
 
     if config.get(CONF_SYNC_FILTERS_AND_NAT, DEFAULT_SYNC_OPTION_VALUE):
-        entities.extend(await _compile_filter_switches(config_entry, coordinator, state))
-        entities.extend(await _compile_port_forward_switches(config_entry, coordinator, state))
-        entities.extend(await _compile_nat_outbound_switches(config_entry, coordinator, state))
+        entities.extend(await _compile_filter_switches_legacy(config_entry, coordinator, state))
+        entities.extend(
+            await _compile_port_forward_switches_legacy(config_entry, coordinator, state)
+        )
+        entities.extend(
+            await _compile_nat_outbound_switches_legacy(config_entry, coordinator, state)
+        )
     if config.get(CONF_SYNC_SERVICES, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_service_switches(config_entry, coordinator, state))
     if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):
@@ -384,7 +395,7 @@ class OPNsenseSwitch(OPNsenseEntity, SwitchEntity):
         )
 
 
-class OPNsenseFilterSwitch(OPNsenseSwitch):
+class OPNsenseFilterSwitchLegacy(OPNsenseSwitch):
     """Class for OPNsense Filter Switch entities."""
 
     def __init__(
@@ -401,7 +412,7 @@ class OPNsenseFilterSwitch(OPNsenseSwitch):
         )
         self._tracker: str = self._opnsense_get_tracker()
         self._rule: MutableMapping[str, Any] | None = None
-        # _LOGGER.debug(f"[OPNsenseFilterSwitch init] Name: {self.name}, tracker: {self._tracker}")
+        # _LOGGER.debug(f"[OPNsenseFilterSwitchLegacy init] Name: {self.name}, tracker: {self._tracker}")
 
     def _opnsense_get_tracker(self) -> str:
         parts = self.entity_description.key.split(".")
@@ -413,7 +424,7 @@ class OPNsenseFilterSwitch(OPNsenseSwitch):
         tracker: str = self._opnsense_get_tracker()
         if not isinstance(state, MutableMapping):
             return None
-        for rule in state.get("config", {}).get("filter", {}).get("rule", {}):
+        for rule in state.get("firewall", {}).get("config", {}).get("filter", {}).get("rule", {}):
             if dict_get(rule, "created.time") == tracker:
                 return rule
         return None
@@ -438,7 +449,7 @@ class OPNsenseFilterSwitch(OPNsenseSwitch):
             return
         self._available = True
         self.async_write_ha_state()
-        # _LOGGER.debug(f"[OPNsenseFilterSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
+        # _LOGGER.debug(f"[OPNsenseFilterSwitchLegacy handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""
@@ -468,7 +479,7 @@ class OPNsenseFilterSwitch(OPNsenseSwitch):
         return super().icon
 
 
-class OPNsenseNatSwitch(OPNsenseSwitch):
+class OPNsenseNatSwitchLegacy(OPNsenseSwitch):
     """Class for OPNsense NAT Switch entities."""
 
     def __init__(
@@ -486,7 +497,7 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
         self._rule_type: str = self._opnsense_get_rule_type()
         self._tracker: str = self._opnsense_get_tracker()
         self._rule: MutableMapping[str, Any] | None = None
-        # _LOGGER.debug(f"[OPNsenseNatSwitch init] Name: {self.name}, tracker: {self._tracker}, rule_type: {self._rule_type}")
+        # _LOGGER.debug(f"[OPNsenseNatSwitchLegacy init] Name: {self.name}, tracker: {self._tracker}, rule_type: {self._rule_type}")
 
     def _opnsense_get_rule_type(self) -> str:
         return self.entity_description.key.split(".")[0]
@@ -502,9 +513,15 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
             return None
         rules: list = []
         if self._rule_type == ATTR_NAT_PORT_FORWARD:
-            rules = state.get("config", {}).get("nat", {}).get("rule", [])
+            rules = state.get("firewall", {}).get("config", {}).get("nat", {}).get("rule", [])
         if self._rule_type == ATTR_NAT_OUTBOUND:
-            rules = state.get("config", {}).get("nat", {}).get("outbound", {}).get("rule", [])
+            rules = (
+                state.get("firewall", {})
+                .get("config", {})
+                .get("nat", {})
+                .get("outbound", {})
+                .get("rule", [])
+            )
 
         for rule in rules:
             if dict_get(rule, "created.time") == self._tracker:
@@ -527,16 +544,16 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
             return
         self._available = True
         self.async_write_ha_state()
-        # _LOGGER.debug(f"[OPNsenseNatSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
+        # _LOGGER.debug(f"[OPNsenseNatSwitchLegacy handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""
         if not isinstance(self._rule, MutableMapping) or not self._client:
             return
         if self._rule_type == ATTR_NAT_PORT_FORWARD:
-            method = self._client.enable_nat_port_forward_rule_by_created_time
+            method = self._client.enable_nat_port_forward_rule_by_created_time_legacy
         elif self._rule_type == ATTR_NAT_OUTBOUND:
-            method = self._client.enable_nat_outbound_rule_by_created_time
+            method = self._client.enable_nat_outbound_rule_by_created_time_legacy
         else:
             return
         await method(self._tracker)
@@ -550,9 +567,9 @@ class OPNsenseNatSwitch(OPNsenseSwitch):
         if not isinstance(self._rule, MutableMapping) or not self._client:
             return
         if self._rule_type == ATTR_NAT_PORT_FORWARD:
-            method = self._client.disable_nat_port_forward_rule_by_created_time
+            method = self._client.disable_nat_port_forward_rule_by_created_time_legacy
         elif self._rule_type == ATTR_NAT_OUTBOUND:
-            method = self._client.disable_nat_outbound_rule_by_created_time
+            method = self._client.disable_nat_outbound_rule_by_created_time_legacy
         else:
             return
         await method(self._tracker)

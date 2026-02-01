@@ -150,7 +150,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         if config.get(CONF_SYNC_NOTICES, DEFAULT_SYNC_OPTION_VALUE):
             categories.append({"function": "get_notices", "state_key": "notices"})
         if config.get(CONF_SYNC_FILTERS_AND_NAT, DEFAULT_SYNC_OPTION_VALUE):
-            categories.append({"function": "get_config", "state_key": "config"})
+            categories.append({"function": "get_firewall", "state_key": "firewall"})
         if config.get(CONF_SYNC_UNBOUND, DEFAULT_SYNC_OPTION_VALUE):
             categories.append(
                 {
