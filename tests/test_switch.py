@@ -16,7 +16,7 @@ from custom_components.opnsense.const import (
     ATTR_NAT_OUTBOUND,
     ATTR_NAT_PORT_FORWARD,
     CONF_DEVICE_UNIQUE_ID,
-    CONF_SYNC_FILTERS_AND_NAT,
+    CONF_SYNC_FIREWALL_AND_NAT,
     CONF_SYNC_SERVICES,
     CONF_SYNC_UNBOUND,
     CONF_SYNC_VPN,
@@ -24,13 +24,13 @@ from custom_components.opnsense.const import (
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 from custom_components.opnsense.switch import (
-    OPNsenseFilterSwitch,
-    OPNsenseNatSwitch,
+    OPNsenseFilterSwitchLegacy,
+    OPNsenseNatSwitchLegacy,
     OPNsenseServiceSwitch,
     OPNsenseVPNSwitch,
-    _compile_filter_switches,
-    _compile_nat_outbound_switches,
-    _compile_port_forward_switches,
+    _compile_filter_switches_legacy,
+    _compile_nat_outbound_switches_legacy,
+    _compile_port_forward_switches_legacy,
     _compile_service_switches,
     _compile_static_unbound_switch_legacy,
     _compile_unbound_switches,
@@ -52,12 +52,12 @@ def make_coord(data):
     "compile_fn,state,client_methods",
     [
         (
-            _compile_filter_switches,
+            _compile_filter_switches_legacy,
             {"config": {"filter": {"rule": [{"descr": "Allow LAN", "created": {"time": "t1"}}]}}},
             ("enable_filter_rule_by_created_time", "disable_filter_rule_by_created_time"),
         ),
         (
-            _compile_port_forward_switches,
+            _compile_port_forward_switches_legacy,
             {"config": {"nat": {"rule": [{"descr": "PF", "created": {"time": "p1"}}]}}},
             (
                 "enable_nat_port_forward_rule_by_created_time_legacy",
@@ -65,7 +65,7 @@ def make_coord(data):
             ),
         ),
         (
-            _compile_nat_outbound_switches,
+            _compile_nat_outbound_switches_legacy,
             {
                 "config": {
                     "nat": {"outbound": {"rule": [{"descr": "OB", "created": {"time": "o1"}}]}}
@@ -159,7 +159,7 @@ async def test_compile_port_forward_skips_non_dict(coordinator, make_config_entr
         "config": {"nat": {"rule": ["not-a-dict", {"descr": "PF", "created": {"time": "p2"}}]}}
     }
     coordinator.data = state
-    ents = await _compile_port_forward_switches(config_entry, coordinator, state)
+    ents = await _compile_port_forward_switches_legacy(config_entry, coordinator, state)
     assert len(ents) == 1
     assert ents[0].entity_description.key.endswith(".p2")
 
@@ -192,7 +192,7 @@ async def test_async_setup_entry_all_flags(coordinator, ph_hass, make_config_ent
     config_entry = make_config_entry(
         data={
             CONF_DEVICE_UNIQUE_ID: "dev1",
-            CONF_SYNC_FILTERS_AND_NAT: True,
+            CONF_SYNC_FIREWALL_AND_NAT: True,
             CONF_SYNC_SERVICES: True,
             CONF_SYNC_VPN: True,
             CONF_SYNC_UNBOUND: True,
@@ -291,7 +291,7 @@ async def test_unbound_and_vpn_variations(coordinator, ph_hass, make_config_entr
         for e in created
         if (
             (
-                not isinstance(e, OPNsenseFilterSwitch)
+                not isinstance(e, OPNsenseFilterSwitchLegacy)
                 and getattr(e, "_attr_unique_id", "").endswith("unbound")
             )
             or (
@@ -342,7 +342,7 @@ def test_delay_update_setter(monkeypatch, coordinator, make_config_entry):
         title="OPNsenseTest",
     )
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    ent = OPNsenseFilterSwitch(
+    ent = OPNsenseFilterSwitchLegacy(
         config_entry=config_entry, coordinator=coordinator, entity_description=desc
     )
     # synchronous test: use a plain hass-like object with a dedicated loop
@@ -597,7 +597,7 @@ async def test_filter_disabled_and_missing(coordinator, ph_hass, make_config_ent
     # missing rules -> compile returns []
     state = {"config": {"filter": {"rule": []}}}
     coordinator.data = state
-    entities = await _compile_filter_switches(config_entry, coordinator, state)
+    entities = await _compile_filter_switches_legacy(config_entry, coordinator, state)
     assert entities == []
 
     # disabled rule -> is_on False
@@ -605,7 +605,7 @@ async def test_filter_disabled_and_missing(coordinator, ph_hass, make_config_ent
         "config": {"filter": {"rule": [{"descr": "x", "created": {"time": "t2"}, "disabled": "1"}]}}
     }
     coordinator.data = state
-    entities = await _compile_filter_switches(config_entry, coordinator, state)
+    entities = await _compile_filter_switches_legacy(config_entry, coordinator, state)
     ent = entities[0]
     # use PHCC-provided hass fixture
     hass = ph_hass
@@ -675,7 +675,7 @@ async def test_unbound_skips_update_when_delay_set(coordinator, ph_hass, make_co
         ),
         (
             "filter",
-            _compile_filter_switches,
+            _compile_filter_switches_legacy,
             {
                 "config": {
                     "filter": {
@@ -687,7 +687,7 @@ async def test_unbound_skips_update_when_delay_set(coordinator, ph_hass, make_co
         ),
         (
             "nat",
-            _compile_port_forward_switches,
+            _compile_port_forward_switches_legacy,
             {"config": {"nat": {"rule": [{"descr": "PF", "created": {"time": "pdelay"}}]}}},
             "first",
         ),
@@ -758,9 +758,9 @@ async def test_compile_helpers_bad_input(coordinator, make_config_entry):
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     # non-mapping state
-    assert await _compile_filter_switches(config_entry, coordinator, None) == []
-    assert await _compile_port_forward_switches(config_entry, coordinator, None) == []
-    assert await _compile_nat_outbound_switches(config_entry, coordinator, None) == []
+    assert await _compile_filter_switches_legacy(config_entry, coordinator, None) == []
+    assert await _compile_port_forward_switches_legacy(config_entry, coordinator, None) == []
+    assert await _compile_nat_outbound_switches_legacy(config_entry, coordinator, None) == []
 
 
 @pytest.mark.asyncio
@@ -801,7 +801,7 @@ async def test_switch_handle_error_sets_unavailable(
             setattr(config_entry.runtime_data, COORDINATOR, coordinator)
             state = {"config": {"filter": {"rule": [{"descr": "Good", "created": {"time": "t1"}}]}}}
             coordinator.data = state
-            ent = (await _compile_filter_switches(config_entry, coordinator, state))[0]
+            ent = (await _compile_filter_switches_legacy(config_entry, coordinator, state))[0]
             ent.hass = hass_local
             ent.coordinator = make_coord(state)
             ent.entity_id = f"switch.{ent._attr_unique_id}"
@@ -815,7 +815,7 @@ async def test_switch_handle_error_sets_unavailable(
             desc = SwitchEntityDescription(key="nat_port_forward.abc", name="NAT")
             config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
             setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-            ent = OPNsenseNatSwitch(
+            ent = OPNsenseNatSwitchLegacy(
                 config_entry=config_entry,
                 coordinator=coordinator,
                 entity_description=desc,
@@ -864,7 +864,7 @@ def test_entity_icons(make_config_entry):
     f_desc = SwitchEntityDescription(key="filter.t1", name="Filter")
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, None)
-    f_ent = OPNsenseFilterSwitch(
+    f_ent = OPNsenseFilterSwitchLegacy(
         config_entry=config_entry,
         coordinator=make_coord({}),
         entity_description=f_desc,
@@ -877,7 +877,7 @@ def test_entity_icons(make_config_entry):
     n_desc = SwitchEntityDescription(key="nat_port_forward.t1", name="NAT")
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, None)
-    n_ent = OPNsenseNatSwitch(
+    n_ent = OPNsenseNatSwitchLegacy(
         config_entry=config_entry,
         coordinator=make_coord({}),
         entity_description=n_desc,
@@ -1028,7 +1028,7 @@ def test_reset_delay_calls_existing_remover(monkeypatch, make_config_entry):
     desc = SwitchEntityDescription(key="filter.t1", name="Filter")
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, None)
-    ent = OPNsenseFilterSwitch(
+    ent = OPNsenseFilterSwitchLegacy(
         config_entry=config_entry,
         coordinator=make_coord({}),
         entity_description=desc,
@@ -1073,7 +1073,7 @@ async def test_compile_filter_skip_and_invalid_rules(coordinator, make_config_en
         }
     }
     coordinator.data = state
-    entities = await _compile_filter_switches(config_entry, coordinator, state)
+    entities = await _compile_filter_switches_legacy(config_entry, coordinator, state)
     # only the valid rule should be compiled
     assert len(entities) == 1
 
@@ -1096,7 +1096,7 @@ async def test_compile_nat_outbound_skips_auto_created(coordinator, make_config_
         }
     }
     coordinator.data = state
-    ents = await _compile_nat_outbound_switches(config_entry, coordinator, state)
+    ents = await _compile_nat_outbound_switches_legacy(config_entry, coordinator, state)
     assert len(ents) == 1
 
 
@@ -1131,7 +1131,7 @@ async def test_async_setup_entry_respects_config_flags(
     config_entry = make_config_entry(
         data={
             CONF_DEVICE_UNIQUE_ID: "dev1",
-            CONF_SYNC_FILTERS_AND_NAT: False,
+            CONF_SYNC_FIREWALL_AND_NAT: False,
             CONF_SYNC_SERVICES: False,
             CONF_SYNC_VPN: False,
             CONF_SYNC_UNBOUND: True,
@@ -1215,7 +1215,7 @@ async def test_nat_handle_missing_rule_returns_none(coordinator, ph_hass, make_c
     # create a nat switch with rule type that doesn't exist in state
     desc = SwitchEntityDescription(key="nat_outbound.missing", name="Missing")
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    ent = OPNsenseNatSwitch(
+    ent = OPNsenseNatSwitchLegacy(
         config_entry=config_entry,
         coordinator=coordinator,
         entity_description=desc,
@@ -1478,7 +1478,7 @@ def test_nat_rule_type_and_tracker_methods(coordinator, make_config_entry):
 
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    pf = OPNsenseNatSwitch(
+    pf = OPNsenseNatSwitchLegacy(
         config_entry=config_entry,
         coordinator=coordinator,
         entity_description=desc_pf,
@@ -1486,7 +1486,7 @@ def test_nat_rule_type_and_tracker_methods(coordinator, make_config_entry):
     # create a separate config_entry for the outbound test
     config_entry_ob = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry_ob.runtime_data, COORDINATOR, coordinator)
-    ob = OPNsenseNatSwitch(
+    ob = OPNsenseNatSwitchLegacy(
         config_entry=config_entry_ob,
         coordinator=coordinator,
         entity_description=desc_ob,
@@ -1519,7 +1519,7 @@ async def test_compile_port_forward_with_missing_rules(coordinator, make_config_
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     coordinator.data = {"config": {}}
-    res = await _compile_port_forward_switches(config_entry, coordinator, coordinator.data)
+    res = await _compile_port_forward_switches_legacy(config_entry, coordinator, coordinator.data)
     assert res == []
 
 
@@ -1548,7 +1548,7 @@ def test_filter_handle_exceptions_sets_unavailable(
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
 
-    ent = OPNsenseFilterSwitch(
+    ent = OPNsenseFilterSwitchLegacy(
         config_entry=config_entry, coordinator=coordinator, entity_description=desc
     )
     ent.hass = MagicMock(spec=HomeAssistant)
@@ -1582,7 +1582,7 @@ def test_nat_handle_exceptions_sets_unavailable(exc_type, coordinator, make_conf
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
 
-    ent = OPNsenseNatSwitch(
+    ent = OPNsenseNatSwitchLegacy(
         config_entry=config_entry, coordinator=coordinator, entity_description=desc
     )
     ent.hass = MagicMock(spec=HomeAssistant)

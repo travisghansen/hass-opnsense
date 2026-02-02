@@ -827,7 +827,7 @@ $toreturn = [
         return ret_data
 
     @_log_errors
-    async def enable_filter_rule_by_created_time(self, created_time: str) -> None:
+    async def enable_filter_rule_by_created_time_legacy(self, created_time: str) -> None:
         """Enable a filter rule."""
         config = await self.get_config()
         for rule in config["filter"]["rule"]:
@@ -844,7 +844,7 @@ $toreturn = [
                 await self._filter_configure()
 
     @_log_errors
-    async def disable_filter_rule_by_created_time(self, created_time: str) -> None:
+    async def disable_filter_rule_by_created_time_legacy(self, created_time: str) -> None:
         """Disable a filter rule."""
         config: MutableMapping[str, Any] = await self.get_config()
 
@@ -955,15 +955,40 @@ $toreturn = [
         firewall: dict[str, Any] = {"nat": {}}
         if await self.is_plugin_installed():
             firewall["config"] = await self.get_config()
-        firewall["rules"] = await self.get_firewall_rules()
-        firewall["nat"]["destination_rules"] = await self.get_firewall_nat_destination_rules()
-        firewall["nat"]["one_to_one_rules"] = await self.get_firewall_nat_one_to_one_rules()
-        firewall["nat"]["source_rules"] = await self.get_firewall_nat_source_rules()
-        _LOGGER.debug("[get_firewall] firewall: %s", firewall)
+        interface_map = await self._get_interface_firewall_map()
+        firewall["rules"] = await self._get_firewall_rules(interface_map=interface_map)
+        firewall["nat"]["d_nat"] = await self._get_nat_destination_rules()
+        firewall["nat"]["one_to_one"] = await self._get_nat_one_to_one_rules()
+        firewall["nat"]["source_nat"] = await self._get_nat_source_rules()
+        firewall["nat"]["npt"] = await self._get_nat_npt_rules()
+        # _LOGGER.debug("[get_firewall] firewall: %s", firewall)
         return firewall
 
     @_log_errors
-    async def get_firewall_rules(self) -> list:
+    async def _get_interface_firewall_map(self) -> dict[str, Any]:
+        """Retrieve a mapping of interface names to firewall interface names.
+
+        Returns
+        -------
+        dict
+            A dictionary mapping interface names to firewall interface names.
+
+        """
+        interfaces = await self._safe_dict_get("/api/firewall/filter/get_interface_list")
+        interface_map: dict[str, Any] = {}
+
+        if isinstance(interfaces, MutableMapping):
+            for section in interfaces.values():
+                if isinstance(section, MutableMapping) and "items" in section:
+                    for item in section["items"]:
+                        if isinstance(item, MutableMapping) and "value" in item and "label" in item:
+                            interface_map[item["value"]] = item["label"]
+
+        _LOGGER.debug("[get_interface_firewall_map] interface_map: %s", interface_map)
+        return interface_map
+
+    @_log_errors
+    async def _get_firewall_rules(self, interface_map: dict[str, Any]) -> dict[str, Any]:
         """Retrieve firewall rules from OPNsense.
 
         Returns
@@ -975,12 +1000,12 @@ $toreturn = [
 
         """
         response = await self._get_raw("/api/firewall/filter/download_rules")
-        _LOGGER.debug("[get_firewall_rules] response: %s", response)
+        # _LOGGER.debug("[get_firewall_rules] response: %s", response)
         if not response or not isinstance(response, str):
-            return []
+            return {}
         lines = response.strip().split("\n")
         if len(lines) < 2:
-            return []
+            return {}
         headers = lines[0].split(",")
         rules = []
         for line in lines[1:]:
@@ -988,11 +1013,20 @@ $toreturn = [
                 values = line.split(",")
                 rule = dict(zip(headers, values, strict=True))
                 rules.append(rule)
-        _LOGGER.debug("[get_firewall_rules] rules: %s", rules)
-        return rules
+        # _LOGGER.debug("[get_firewall_rules] rules: %s", rules)
+        rules_dict: dict[str, Any] = {}
+        for rule in rules:
+            new_rule = rule.copy()
+            new_rule["uuid"] = new_rule.pop("@uuid", "")
+            new_rule["%interface"] = interface_map.get(
+                new_rule.get("interface", ""), new_rule.get("interface", "")
+            )
+            rules_dict[new_rule["uuid"]] = new_rule
+        _LOGGER.debug("[get_firewall_rules] rules_dict: %s", rules_dict)
+        return rules_dict
 
     @_log_errors
-    async def get_firewall_nat_destination_rules(self) -> list:
+    async def _get_nat_destination_rules(self) -> dict[str, Any]:
         """Retrieve NAT destination rules from OPNsense.
 
         Returns
@@ -1005,13 +1039,22 @@ $toreturn = [
         response = await self._safe_dict_post(
             "/api/firewall/d_nat/search_rule", payload=request_body
         )
-        _LOGGER.debug("[get_firewall_nat_destination_rules] response: %s", response)
+        # _LOGGER.debug("[get_nat_destination_rules] response: %s", response)
         rules: list = response.get("rows", [])
-        _LOGGER.debug("[get_firewall_nat_destination_rules] rules: %s", rules)
-        return rules
+        # _LOGGER.debug("[get_nat_destination_rules] rules: %s", rules)
+        rules_dict: dict[str, Any] = {}
+        for rule in rules:
+            if not rule.get("uuid") or "lockout" in rule.get("uuid"):
+                continue  # skip lockout rules
+            new_rule = rule.copy()
+            new_rule["description"] = new_rule.pop("descr", "")
+            new_rule["enabled"] = "1" if new_rule.pop("disabled", "0") == "0" else "0"
+            rules_dict[new_rule["uuid"]] = new_rule
+        _LOGGER.debug("[get_nat_destination_rules] rules_dict: %s", rules_dict)
+        return rules_dict
 
     @_log_errors
-    async def get_firewall_nat_one_to_one_rules(self) -> list:
+    async def _get_nat_one_to_one_rules(self) -> dict[str, Any]:
         """Retrieve NAT one-to-one rules from OPNsense.
 
         Returns
@@ -1024,13 +1067,21 @@ $toreturn = [
         response = await self._safe_dict_post(
             "/api/firewall/one_to_one/search_rule", payload=request_body
         )
-        _LOGGER.debug("[get_firewall_nat_one_to_one_rules] response: %s", response)
+        # _LOGGER.debug("[get_nat_one_to_one_rules] response: %s", response)
         rules: list = response.get("rows", [])
-        _LOGGER.debug("[get_firewall_nat_one_to_one_rules] rules: %s", rules)
-        return rules
+        _LOGGER.debug("[get_nat_one_to_one_rules] rules: %s", rules)
+        rules_dict: dict[str, Any] = {}
+        for rule in rules:
+            if not rule.get("uuid") or "lockout" in rule.get("uuid"):
+                continue
+            new_rule = rule.copy()
+            # Add any transforms here
+            rules_dict[new_rule["uuid"]] = new_rule
+        _LOGGER.debug("[get_nat_one_to_one_rules] rules_dict: %s", rules_dict)
+        return rules_dict
 
     @_log_errors
-    async def get_firewall_nat_source_rules(self) -> list:
+    async def _get_nat_source_rules(self) -> dict[str, Any]:
         """Retrieve NAT source rules from OPNsense.
 
         Returns
@@ -1043,10 +1094,107 @@ $toreturn = [
         response = await self._safe_dict_post(
             "/api/firewall/source_nat/search_rule", payload=request_body
         )
-        _LOGGER.debug("[get_firewall_nat_source_rules] response: %s", response)
+        # _LOGGER.debug("[get_nat_source_rules] response: %s", response)
         rules: list = response.get("rows", [])
-        _LOGGER.debug("[get_firewall_nat_source_rules] rules: %s", rules)
-        return rules
+        # _LOGGER.debug("[get_nat_source_rules] rules: %s", rules)
+        rules_dict: dict[str, Any] = {}
+        for rule in rules:
+            if not rule.get("uuid") or "lockout" in rule.get("uuid"):
+                continue
+            new_rule = rule.copy()
+            # Add any transforms here
+            rules_dict[new_rule["uuid"]] = new_rule
+        _LOGGER.debug("[get_nat_source_rules] rules_dict: %s", rules_dict)
+        return rules_dict
+
+    @_log_errors
+    async def _get_nat_npt_rules(self) -> dict[str, Any]:
+        """Retrieve NAT NPT rules from OPNsense.
+
+        Returns
+        -------
+        list of dict
+            A list of dictionaries representing NAT NPT rules.
+
+        """
+        request_body: MutableMapping[str, Any] = {"current": 1, "sort": {}}
+        response = await self._safe_dict_post("/api/firewall/npt/search_rule", payload=request_body)
+        # _LOGGER.debug("[get_nat_npt_rules] response: %s", response)
+        rules: list = response.get("rows", [])
+        # _LOGGER.debug("[get_nat_npt_rules] rules: %s", rules)
+        rules_dict: dict[str, Any] = {}
+        for rule in rules:
+            if not rule.get("uuid") or "lockout" in rule.get("uuid"):
+                continue
+            new_rule = rule.copy()
+            # Add any transforms here
+            rules_dict[new_rule["uuid"]] = new_rule
+        _LOGGER.debug("[get_nat_npt_rules] rules_dict: %s", rules_dict)
+        return rules_dict
+
+    async def toggle_firewall_rule(self, uuid: str, toggle_on_off: str | None = None) -> bool:
+        """Toggle Firewall Rule on and off."""
+        payload: MutableMapping[str, Any] = {}
+        url = f"/api/firewall/filter/toggle_rule/{uuid}"
+        if toggle_on_off == "on":
+            url = f"{url}/1"
+        elif toggle_on_off == "off":
+            url = f"{url}/0"
+        response = await self._safe_dict_post(
+            url,
+            payload=payload,
+        )
+        _LOGGER.debug(
+            "[toggle_firewall_rule] uuid: %s, action: %s, url: %s, response: %s",
+            uuid,
+            toggle_on_off,
+            url,
+            response,
+        )
+        if response.get("result") == "failed":
+            return False
+
+        apply_resp = await self._safe_dict_post("/api/firewall/filter/apply")
+        if apply_resp.get("status") != "OK\n\n":
+            return False
+
+        return True
+
+    async def toggle_nat_rule(
+        self, nat_rule_type: str, uuid: str, toggle_on_off: str | None = None
+    ) -> bool:
+        """Toggle NAT Rule on and off."""
+        payload: MutableMapping[str, Any] = {}
+        url = f"/api/firewall/{nat_rule_type}/toggle_rule/{uuid}"
+        # d_nat uses opposite logic for on/off
+        if nat_rule_type == "d_nat" and toggle_on_off is not None:
+            if toggle_on_off == "on":
+                url = f"{url}/0"
+            elif toggle_on_off == "off":
+                url = f"{url}/1"
+        elif toggle_on_off == "on":
+            url = f"{url}/1"
+        elif toggle_on_off == "off":
+            url = f"{url}/0"
+        response = await self._safe_dict_post(
+            url,
+            payload=payload,
+        )
+        _LOGGER.debug(
+            "[toggle_nat_rule] uuid: %s, action: %s, url: %s, response: %s",
+            uuid,
+            toggle_on_off,
+            url,
+            response,
+        )
+        if response.get("result") == "failed":
+            return False
+
+        apply_resp = await self._safe_dict_post(f"/api/firewall/{nat_rule_type}/apply")
+        if apply_resp.get("status") != "OK\n\n":
+            return False
+
+        return True
 
     #####################
 
@@ -2527,7 +2675,7 @@ $toreturn = [
             "dropped_states": response.get("dropped_states", 0),
         }
 
-    async def toggle_alias(self, alias: str, toggle_on_off: str) -> bool:
+    async def toggle_alias(self, alias: str, toggle_on_off: str | None = None) -> bool:
         """Toggle alias on and off."""
         if self._use_snake_case:
             alias_list_resp = await self._safe_dict_get("/api/firewall/alias/search_item")
