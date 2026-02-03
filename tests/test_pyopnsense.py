@@ -1313,21 +1313,21 @@ async def test_enable_and_disable_filter_rules_and_nat_port_forward(make_client)
         url="http://localhost", username="u", password="p", session=session
     )
 
-    # enable_filter_rule_by_created_time: rule has 'disabled' -> should remove and call restore+configure
+    # enable_filter_rule_by_created_time_legacy: rule has 'disabled' -> should remove and call restore+configure
     cfg_enable = {"filter": {"rule": [{"created": {"time": "t-enable"}, "disabled": "1"}]}}
     client.get_config = AsyncMock(return_value=cfg_enable)
     client._restore_config_section = AsyncMock()
     client._filter_configure = AsyncMock()
-    await client.enable_filter_rule_by_created_time("t-enable")
+    await client.enable_filter_rule_by_created_time_legacy("t-enable")
     client._restore_config_section.assert_called()
     client._filter_configure.assert_awaited()
 
-    # disable_filter_rule_by_created_time: rule missing 'disabled' -> should add it and call restore+configure
+    # disable_filter_rule_by_created_time_legacy: rule missing 'disabled' -> should add it and call restore+configure
     cfg_disable = {"filter": {"rule": [{"created": {"time": "t-disable"}}]}}
     client.get_config = AsyncMock(return_value=cfg_disable)
     client._restore_config_section = AsyncMock()
     client._filter_configure = AsyncMock()
-    await client.disable_filter_rule_by_created_time("t-disable")
+    await client.disable_filter_rule_by_created_time_legacy("t-disable")
     client._restore_config_section.assert_called()
     client._filter_configure.assert_awaited()
 
@@ -1500,15 +1500,22 @@ async def test_compile_filesystem_sensors_and_filter_switches(make_config_entry)
 
     # filter switches: validate via public switch setup path as a smoke test
     state2 = {
-        "config": {
-            "filter": {
-                "rule": [
-                    {"descr": "Anti-Lockout Rule", "created": {"time": "t1"}},
-                    {"descr": "Normal", "created": {"time": "t2"}, "associated-rule-id": "r1"},
-                    {"descr": "Ok", "created": {"time": "t3"}},
-                ]
+        "host_firmware_version": "25.7.8",
+        "firewall": {
+            "config": {
+                "filter": {
+                    "rule": [
+                        {"description": "Anti-Lockout Rule", "created": {"time": "t1"}},
+                        {
+                            "description": "Normal",
+                            "created": {"time": "t2"},
+                            "associated-rule-id": "r1",
+                        },
+                        {"description": "Ok", "created": {"time": "t3"}},
+                    ]
+                }
             }
-        }
+        },
     }
     # prepare a switch config entry with filter sync enabled
     switch_cfg = make_config_entry(
@@ -2692,7 +2699,7 @@ async def test_get_config_and_rule_enable_disable_branches() -> None:
     client._exec_php = AsyncMock(return_value=fake_config)
 
     # calling enable should remove 'disabled' and call restore/configure (no exception)
-    await client.enable_filter_rule_by_created_time("t1")
+    await client.enable_filter_rule_by_created_time_legacy("t1")
 
     # disable_nat_port_forward: add a rule without 'disabled' and expect it to set 'disabled'
     client._exec_php = AsyncMock(
@@ -2890,7 +2897,7 @@ async def test_reset_and_get_query_counts():
         ),
     ],
 )
-async def test_enable_filter_rule_by_created_time(
+async def test_enable_filter_rule_by_created_time_legacy(
     make_client, rules, created_time, should_call
 ) -> None:
     """Ensure enabling a filter rule removes 'disabled' and triggers restore/configure only when appropriate.
@@ -2906,7 +2913,7 @@ async def test_enable_filter_rule_by_created_time(
     client._restore_config_section = AsyncMock()
     client._filter_configure = AsyncMock()
 
-    await client.enable_filter_rule_by_created_time(created_time)
+    await client.enable_filter_rule_by_created_time_legacy(created_time)
 
     if should_call:
         client._restore_config_section.assert_awaited()

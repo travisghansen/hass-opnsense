@@ -929,7 +929,6 @@ $toreturn = [
                 await self._restore_config_section("nat", config["nat"])
                 await self._filter_configure()
 
-    #####################
     @_log_errors
     async def get_firewall(self) -> dict[str, Any]:
         """Retrieve all firewall and NAT rules from OPNsense.
@@ -991,12 +990,17 @@ $toreturn = [
     async def _get_firewall_rules(self, interface_map: dict[str, Any]) -> dict[str, Any]:
         """Retrieve firewall rules from OPNsense.
 
+        Parameters
+        ----------
+        interface_map : dict[str, Any]
+            A mapping of interface names to firewall interface names.
+
         Returns
         -------
-        list of dict
-            A list of dictionaries, each representing a firewall rule parsed
+        dict[str, Any]
+            A dictionary of firewall rules, keyed by UUID, each representing a firewall rule parsed
             from CSV format. Dictionary keys correspond to CSV headers such
-            as '@uuid', 'enabled', 'action', etc.
+            as 'uuid', 'enabled', 'action', etc.
 
         """
         response = await self._get_raw("/api/firewall/filter/download_rules")
@@ -1031,8 +1035,8 @@ $toreturn = [
 
         Returns
         -------
-        list of dict
-            A list of dictionaries representing NAT destination rules.
+        dict[str, Any]
+            A dictionary of NAT destination rules, keyed by UUID.
 
         """
         request_body: MutableMapping[str, Any] = {"current": 1, "sort": {}}
@@ -1059,8 +1063,8 @@ $toreturn = [
 
         Returns
         -------
-        list of dict
-            A list of dictionaries representing NAT one-to-one rules.
+        dict[str, Any]
+            A dictionary of NAT one-to-one rules, keyed by UUID.
 
         """
         request_body: MutableMapping[str, Any] = {"current": 1, "sort": {}}
@@ -1086,8 +1090,8 @@ $toreturn = [
 
         Returns
         -------
-        list of dict
-            A list of dictionaries representing NAT source rules.
+        dict[str, Any]
+            A dictionary of NAT source rules, keyed by UUID.
 
         """
         request_body: MutableMapping[str, Any] = {"current": 1, "sort": {}}
@@ -1113,8 +1117,8 @@ $toreturn = [
 
         Returns
         -------
-        list of dict
-            A list of dictionaries representing NAT NPT rules.
+        dict[str, Any]
+            A dictionary of NAT NPT rules, keyed by UUID.
 
         """
         request_body: MutableMapping[str, Any] = {"current": 1, "sort": {}}
@@ -1133,7 +1137,21 @@ $toreturn = [
         return rules_dict
 
     async def toggle_firewall_rule(self, uuid: str, toggle_on_off: str | None = None) -> bool:
-        """Toggle Firewall Rule on and off."""
+        """Toggle Firewall Rule on and off.
+
+        Parameters
+        ----------
+        uuid : str
+            The UUID of the firewall rule to toggle.
+        toggle_on_off : str | None, optional
+            The action to perform: 'on' to enable, 'off' to disable, or None to toggle.
+
+        Returns
+        -------
+        bool
+            True if the operation was successful, False otherwise.
+
+        """
         payload: MutableMapping[str, Any] = {}
         url = f"/api/firewall/filter/toggle_rule/{uuid}"
         if toggle_on_off == "on":
@@ -1163,7 +1181,23 @@ $toreturn = [
     async def toggle_nat_rule(
         self, nat_rule_type: str, uuid: str, toggle_on_off: str | None = None
     ) -> bool:
-        """Toggle NAT Rule on and off."""
+        """Toggle NAT Rule on and off.
+
+        Parameters
+        ----------
+        nat_rule_type : str
+            The type of NAT rule (e.g., 'd_nat', 'source_nat').
+        uuid : str
+            The UUID of the NAT rule to toggle.
+        toggle_on_off : str | None, optional
+            The action to perform: 'on' to enable, 'off' to disable, or None to toggle.
+
+        Returns
+        -------
+        bool
+            True if the operation was successful, False otherwise.
+
+        """
         payload: MutableMapping[str, Any] = {}
         url = f"/api/firewall/{nat_rule_type}/toggle_rule/{uuid}"
         # d_nat uses opposite logic for on/off
@@ -1195,8 +1229,6 @@ $toreturn = [
             return False
 
         return True
-
-    #####################
 
     @_log_errors
     async def get_arp_table(self, resolve_hostnames: bool = False) -> list:

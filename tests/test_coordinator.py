@@ -403,7 +403,7 @@ def test_build_categories_returns_empty_when_no_config(make_config_entry, fake_c
         (CONF_SYNC_GATEWAYS, ["gateways"]),
         (CONF_SYNC_SERVICES, ["services"]),
         (CONF_SYNC_NOTICES, ["notices"]),
-        (CONF_SYNC_FIREWALL_AND_NAT, ["config"]),
+        (CONF_SYNC_FIREWALL_AND_NAT, ["firewall"]),
         (CONF_SYNC_UNBOUND, [ATTR_UNBOUND_BLOCKLIST]),
         (CONF_SYNC_INTERFACES, ["interfaces"]),
         (CONF_SYNC_CERTIFICATES, ["certificates"]),

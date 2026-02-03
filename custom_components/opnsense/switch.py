@@ -35,6 +35,23 @@ async def _compile_filter_switches_legacy(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
+    """Compile legacy filter rule switches from OPNsense state.
+
+    Parameters
+    ----------
+    config_entry : ConfigEntry
+        The Home Assistant config entry.
+    coordinator : OPNsenseDataUpdateCoordinator
+        The data update coordinator.
+    state : MutableMapping[str, Any]
+        The current state data from OPNsense.
+
+    Returns
+    -------
+    list
+        A list of OPNsenseFilterSwitchLegacy entities.
+
+    """
     if not isinstance(state, MutableMapping) or not isinstance(
         state.get("firewall", {}).get("config", {}).get("filter", {}).get("rule"), list
     ):
@@ -83,6 +100,23 @@ async def _compile_port_forward_switches_legacy(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
+    """Compile legacy NAT port forward rule switches from OPNsense state.
+
+    Parameters
+    ----------
+    config_entry : ConfigEntry
+        The Home Assistant config entry.
+    coordinator : OPNsenseDataUpdateCoordinator
+        The data update coordinator.
+    state : MutableMapping[str, Any]
+        The current state data from OPNsense.
+
+    Returns
+    -------
+    list
+        A list of OPNsenseNatSwitchLegacy entities for port forward rules.
+
+    """
     if not isinstance(state, MutableMapping) or not isinstance(
         state.get("firewall", {}).get("config", {}).get("nat", {}).get("rule"), list
     ):
@@ -123,6 +157,23 @@ async def _compile_nat_outbound_switches_legacy(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
+    """Compile legacy NAT outbound rule switches from OPNsense state.
+
+    Parameters
+    ----------
+    config_entry : ConfigEntry
+        The Home Assistant config entry.
+    coordinator : OPNsenseDataUpdateCoordinator
+        The data update coordinator.
+    state : MutableMapping[str, Any]
+        The current state data from OPNsense.
+
+    Returns
+    -------
+    list
+        A list of OPNsenseNatSwitchLegacy entities for outbound rules.
+
+    """
     if not isinstance(state, MutableMapping) or not isinstance(
         state.get("firewall", {}).get("config", {}).get("nat", {}).get("outbound", {}).get("rule"),
         list,
@@ -167,6 +218,23 @@ async def _compile_service_switches(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
+    """Compile service switches from OPNsense state.
+
+    Parameters
+    ----------
+    config_entry : ConfigEntry
+        The Home Assistant config entry.
+    coordinator : OPNsenseDataUpdateCoordinator
+        The data update coordinator.
+    state : MutableMapping[str, Any]
+        The current state data from OPNsense.
+
+    Returns
+    -------
+    list
+        A list of OPNsenseServiceSwitch entities.
+
+    """
     if not isinstance(state, MutableMapping) or not isinstance(state.get("services"), list):
         return []
 
@@ -197,6 +265,23 @@ async def _compile_vpn_switches(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
+    """Compile VPN switches from OPNsense state.
+
+    Parameters
+    ----------
+    config_entry : ConfigEntry
+        The Home Assistant config entry.
+    coordinator : OPNsenseDataUpdateCoordinator
+        The data update coordinator.
+    state : MutableMapping[str, Any]
+        The current state data from OPNsense.
+
+    Returns
+    -------
+    list
+        A list of OPNsenseVPNSwitch entities.
+
+    """
     entities: list = []
     for vpn_type in ("openvpn", "wireguard"):
         for clients_servers in ("clients", "servers"):
@@ -230,6 +315,23 @@ async def _compile_static_unbound_switch_legacy(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
+    """Compile legacy static Unbound blocklist switch from OPNsense state.
+
+    Parameters
+    ----------
+    config_entry : ConfigEntry
+        The Home Assistant config entry.
+    coordinator : OPNsenseDataUpdateCoordinator
+        The data update coordinator.
+    state : MutableMapping[str, Any]
+        The current state data from OPNsense.
+
+    Returns
+    -------
+    list
+        A list containing a single OPNsenseUnboundBlocklistSwitchLegacy entity.
+
+    """
     entities: list = []
     entity = OPNsenseUnboundBlocklistSwitchLegacy(
         config_entry=config_entry,
@@ -253,6 +355,23 @@ async def _compile_unbound_switches(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
+    """Compile Unbound blocklist switches from OPNsense state.
+
+    Parameters
+    ----------
+    config_entry : ConfigEntry
+        The Home Assistant config entry.
+    coordinator : OPNsenseDataUpdateCoordinator
+        The data update coordinator.
+    state : MutableMapping[str, Any]
+        The current state data from OPNsense.
+
+    Returns
+    -------
+    list
+        A list of OPNsenseUnboundBlocklistSwitch entities.
+
+    """
     if not isinstance(state, MutableMapping):
         return []
     entities: list = []
@@ -282,6 +401,23 @@ async def _compile_firewall_rules_switches(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
+    """Compile firewall rule switches from OPNsense state.
+
+    Parameters
+    ----------
+    config_entry : ConfigEntry
+        The Home Assistant config entry.
+    coordinator : OPNsenseDataUpdateCoordinator
+        The data update coordinator.
+    state : MutableMapping[str, Any]
+        The current state data from OPNsense.
+
+    Returns
+    -------
+    list
+        A list of OPNsenseFirewallRuleSwitch entities.
+
+    """
     if not isinstance(state, MutableMapping) or not isinstance(
         state.get("firewall", {}).get("rules"), dict
     ):
@@ -309,6 +445,23 @@ async def _compile_nat_source_rules_switches(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
+    """Compile NAT source rule switches from OPNsense state.
+
+    Parameters
+    ----------
+    config_entry : ConfigEntry
+        The Home Assistant config entry.
+    coordinator : OPNsenseDataUpdateCoordinator
+        The data update coordinator.
+    state : MutableMapping[str, Any]
+        The current state data from OPNsense.
+
+    Returns
+    -------
+    list
+        A list of OPNsenseNATRuleSwitch entities for source NAT rules.
+
+    """
     if not isinstance(state, MutableMapping) or not isinstance(
         state.get("firewall", {}).get("nat", {}).get("source_nat"), dict
     ):
@@ -336,6 +489,23 @@ async def _compile_nat_destination_rules_switches(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
+    """Compile NAT destination rule switches from OPNsense state.
+
+    Parameters
+    ----------
+    config_entry : ConfigEntry
+        The Home Assistant config entry.
+    coordinator : OPNsenseDataUpdateCoordinator
+        The data update coordinator.
+    state : MutableMapping[str, Any]
+        The current state data from OPNsense.
+
+    Returns
+    -------
+    list
+        A list of OPNsenseNATRuleSwitch entities for destination NAT rules.
+
+    """
     if not isinstance(state, MutableMapping) or not isinstance(
         state.get("firewall", {}).get("nat", {}).get("d_nat"), dict
     ):
@@ -363,6 +533,23 @@ async def _compile_nat_one_to_one_rules_switches(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
+    """Compile NAT one-to-one rule switches from OPNsense state.
+
+    Parameters
+    ----------
+    config_entry : ConfigEntry
+        The Home Assistant config entry.
+    coordinator : OPNsenseDataUpdateCoordinator
+        The data update coordinator.
+    state : MutableMapping[str, Any]
+        The current state data from OPNsense.
+
+    Returns
+    -------
+    list
+        A list of OPNsenseNATRuleSwitch entities for one-to-one NAT rules.
+
+    """
     if not isinstance(state, MutableMapping) or not isinstance(
         state.get("firewall", {}).get("nat", {}).get("one_to_one"), dict
     ):
@@ -390,6 +577,23 @@ async def _compile_nat_npt_rules_switches(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
+    """Compile NAT NPT rule switches from OPNsense state.
+
+    Parameters
+    ----------
+    config_entry : ConfigEntry
+        The Home Assistant config entry.
+    coordinator : OPNsenseDataUpdateCoordinator
+        The data update coordinator.
+    state : MutableMapping[str, Any]
+        The current state data from OPNsense.
+
+    Returns
+    -------
+    list
+        A list of OPNsenseNATRuleSwitch entities for NPT NAT rules.
+
+    """
     if not isinstance(state, MutableMapping) or not isinstance(
         state.get("firewall", {}).get("nat", {}).get("npt"), dict
     ):
@@ -417,7 +621,18 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the OPNsense switches."""
+    """Set up the OPNsense switches.
+
+    Parameters
+    ----------
+    hass : HomeAssistant
+        The Home Assistant instance.
+    config_entry : ConfigEntry
+        The config entry for this integration.
+    async_add_entities : AddEntitiesCallback
+        Callback to add entities to Home Assistant.
+
+    """
     coordinator: OPNsenseDataUpdateCoordinator = getattr(config_entry.runtime_data, COORDINATOR)
     state: MutableMapping[str, Any] = coordinator.data
     if not isinstance(state, MutableMapping):
@@ -527,7 +742,18 @@ class OPNsenseSwitch(OPNsenseEntity, SwitchEntity):
         coordinator: OPNsenseDataUpdateCoordinator,
         entity_description: SwitchEntityDescription,
     ) -> None:
-        """Initialize OPNsense Switch entities."""
+        """Initialize OPNsense Switch entities.
+
+        Parameters
+        ----------
+        config_entry : ConfigEntry
+            The Home Assistant config entry.
+        coordinator : OPNsenseDataUpdateCoordinator
+            The data update coordinator.
+        entity_description : SwitchEntityDescription
+            The entity description.
+
+        """
         name_suffix: str | None = (
             entity_description.name if isinstance(entity_description.name, str) else None
         )
@@ -548,11 +774,26 @@ class OPNsenseSwitch(OPNsenseEntity, SwitchEntity):
 
     @property
     def delay_update(self) -> bool:
-        """Return whether to process the coordinator update or not."""
+        """Return whether to process the coordinator update or not.
+
+        Returns
+        -------
+        bool
+            True if updates should be delayed, False otherwise.
+
+        """
         return self._delay_update
 
     @delay_update.setter
     def delay_update(self, value: bool) -> None:
+        """Set whether to delay coordinator updates.
+
+        Parameters
+        ----------
+        value : bool
+            True to delay updates, False to allow them.
+
+        """
         if value and not self._delay_update:
             self._delay_update = True
             self._reset_delay()
@@ -563,6 +804,7 @@ class OPNsenseSwitch(OPNsenseEntity, SwitchEntity):
                 self._delay_update_remove = None
 
     def _reset_delay(self) -> None:
+        """Reset the delay timer for coordinator updates."""
         if self._delay_update_remove:
             self._delay_update_remove()
 
@@ -584,7 +826,18 @@ class OPNsenseFirewallRuleSwitch(OPNsenseSwitch):
         coordinator: OPNsenseDataUpdateCoordinator,
         entity_description: SwitchEntityDescription,
     ) -> None:
-        """Initialize switch entity."""
+        """Initialize switch entity.
+
+        Parameters
+        ----------
+        config_entry : ConfigEntry
+            The Home Assistant config entry.
+        coordinator : OPNsenseDataUpdateCoordinator
+            The data update coordinator.
+        entity_description : SwitchEntityDescription
+            The entity description.
+
+        """
         super().__init__(
             config_entry=config_entry,
             coordinator=coordinator,
@@ -596,9 +849,25 @@ class OPNsenseFirewallRuleSwitch(OPNsenseSwitch):
         )
 
     def _opnsense_get_rule_id(self) -> str:
+        """Get the rule ID from the entity description.
+
+        Returns
+        -------
+        str
+            The rule ID.
+
+        """
         return self.entity_description.key.split(".")[-1]
 
     def _opnsense_get_rule(self) -> MutableMapping[str, Any] | None:
+        """Get the firewall rule data from the coordinator.
+
+        Returns
+        -------
+        MutableMapping[str, Any] | None
+            The rule data if available, None otherwise.
+
+        """
         state: MutableMapping[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             return None
@@ -606,6 +875,7 @@ class OPNsenseFirewallRuleSwitch(OPNsenseSwitch):
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        """Handle coordinator update for the firewall rule switch."""
         if self.delay_update:
             _LOGGER.debug(
                 "Skipping coordinator update for firewall rule switch %s due to delay", self.name
@@ -669,7 +939,18 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
         coordinator: OPNsenseDataUpdateCoordinator,
         entity_description: SwitchEntityDescription,
     ) -> None:
-        """Initialize switch entity."""
+        """Initialize switch entity.
+
+        Parameters
+        ----------
+        config_entry : ConfigEntry
+            The Home Assistant config entry.
+        coordinator : OPNsenseDataUpdateCoordinator
+            The data update coordinator.
+        entity_description : SwitchEntityDescription
+            The entity description.
+
+        """
         super().__init__(
             config_entry=config_entry,
             coordinator=coordinator,
@@ -686,12 +967,36 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
         )
 
     def _get_nat_rule_type(self) -> str:
+        """Get the NAT rule type from the entity description.
+
+        Returns
+        -------
+        str
+            The NAT rule type.
+
+        """
         return self.entity_description.key.split(".")[2]
 
     def _opnsense_get_rule_id(self) -> str:
+        """Get the rule ID from the entity description.
+
+        Returns
+        -------
+        str
+            The rule ID.
+
+        """
         return self.entity_description.key.split(".")[-1]
 
     def _opnsense_get_rule(self) -> MutableMapping[str, Any] | None:
+        """Get the NAT rule data from the coordinator.
+
+        Returns
+        -------
+        MutableMapping[str, Any] | None
+            The rule data if available, None otherwise.
+
+        """
         state: MutableMapping[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             return None
@@ -704,6 +1009,7 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        """Handle coordinator update for the NAT rule switch."""
         if self.delay_update:
             _LOGGER.debug("Skipping coordinator update for NAT switch %s due to delay", self.name)
             return
@@ -766,7 +1072,18 @@ class OPNsenseFilterSwitchLegacy(OPNsenseSwitch):
         coordinator: OPNsenseDataUpdateCoordinator,
         entity_description: SwitchEntityDescription,
     ) -> None:
-        """Initialize switch entity."""
+        """Initialize switch entity.
+
+        Parameters
+        ----------
+        config_entry : ConfigEntry
+            The Home Assistant config entry.
+        coordinator : OPNsenseDataUpdateCoordinator
+            The data update coordinator.
+        entity_description : SwitchEntityDescription
+            The entity description.
+
+        """
         super().__init__(
             config_entry=config_entry,
             coordinator=coordinator,
@@ -777,11 +1094,27 @@ class OPNsenseFilterSwitchLegacy(OPNsenseSwitch):
         # _LOGGER.debug(f"[OPNsenseFilterSwitchLegacy init] Name: {self.name}, tracker: {self._tracker}")
 
     def _opnsense_get_tracker(self) -> str:
+        """Get the tracker from the entity description.
+
+        Returns
+        -------
+        str
+            The tracker string.
+
+        """
         parts = self.entity_description.key.split(".")
         parts.pop(0)
         return ".".join(parts)
 
     def _opnsense_get_rule(self) -> MutableMapping[str, Any] | None:
+        """Get the filter rule data from the coordinator.
+
+        Returns
+        -------
+        MutableMapping[str, Any] | None
+            The rule data if available, None otherwise.
+
+        """
         state: MutableMapping[str, Any] = self.coordinator.data
         tracker: str = self._opnsense_get_tracker()
         if not isinstance(state, MutableMapping):
@@ -793,6 +1126,7 @@ class OPNsenseFilterSwitchLegacy(OPNsenseSwitch):
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        """Handle coordinator update for the filter switch."""
         if self.delay_update:
             _LOGGER.debug(
                 "Skipping coordinator update for filter switch %s due to delay", self.name
@@ -850,7 +1184,18 @@ class OPNsenseNatSwitchLegacy(OPNsenseSwitch):
         coordinator: OPNsenseDataUpdateCoordinator,
         entity_description: SwitchEntityDescription,
     ) -> None:
-        """Initialize switch entity."""
+        """Initialize switch entity.
+
+        Parameters
+        ----------
+        config_entry : ConfigEntry
+            The Home Assistant config entry.
+        coordinator : OPNsenseDataUpdateCoordinator
+            The data update coordinator.
+        entity_description : SwitchEntityDescription
+            The entity description.
+
+        """
         super().__init__(
             config_entry=config_entry,
             coordinator=coordinator,
@@ -862,14 +1207,38 @@ class OPNsenseNatSwitchLegacy(OPNsenseSwitch):
         # _LOGGER.debug(f"[OPNsenseNatSwitchLegacy init] Name: {self.name}, tracker: {self._tracker}, rule_type: {self._rule_type}")
 
     def _opnsense_get_rule_type(self) -> str:
+        """Get the rule type from the entity description.
+
+        Returns
+        -------
+        str
+            The rule type.
+
+        """
         return self.entity_description.key.split(".")[0]
 
     def _opnsense_get_tracker(self) -> str:
+        """Get the tracker from the entity description.
+
+        Returns
+        -------
+        str
+            The tracker string.
+
+        """
         parts = self.entity_description.key.split(".")
         parts.pop(0)
         return ".".join(parts)
 
     def _opnsense_get_rule(self) -> MutableMapping[str, Any] | None:
+        """Get the NAT rule data from the coordinator.
+
+        Returns
+        -------
+        MutableMapping[str, Any] | None
+            The rule data if available, None otherwise.
+
+        """
         state: MutableMapping[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             return None
@@ -892,6 +1261,7 @@ class OPNsenseNatSwitchLegacy(OPNsenseSwitch):
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        """Handle coordinator update for the NAT switch."""
         if self.delay_update:
             _LOGGER.debug("Skipping coordinator update for NAT switch %s due to delay", self.name)
             return
@@ -957,7 +1327,18 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         coordinator: OPNsenseDataUpdateCoordinator,
         entity_description: SwitchEntityDescription,
     ) -> None:
-        """Initialize switch entity."""
+        """Initialize switch entity.
+
+        Parameters
+        ----------
+        config_entry : ConfigEntry
+            The Home Assistant config entry.
+        coordinator : OPNsenseDataUpdateCoordinator
+            The data update coordinator.
+        entity_description : SwitchEntityDescription
+            The entity description.
+
+        """
         super().__init__(
             config_entry=config_entry,
             coordinator=coordinator,
@@ -968,12 +1349,36 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         # _LOGGER.debug(f"[OPNsenseServiceSwitch init] Name: {self.name}, prop_name: {self._prop_name}")
 
     def _opnsense_get_property_name(self) -> str:
+        """Get the property name from the entity description.
+
+        Returns
+        -------
+        str
+            The property name.
+
+        """
         return self.entity_description.key.split(".")[2]
 
     def _opnsense_get_service_id(self) -> str:
+        """Get the service ID from the entity description.
+
+        Returns
+        -------
+        str
+            The service ID.
+
+        """
         return self.entity_description.key.split(".")[1]
 
     def _opnsense_get_service(self) -> MutableMapping[str, Any] | None:
+        """Get the service data from the coordinator.
+
+        Returns
+        -------
+        MutableMapping[str, Any] | None
+            The service data if available, None otherwise.
+
+        """
         state: MutableMapping[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             return None
@@ -985,6 +1390,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        """Handle coordinator update for the service switch."""
         if self.delay_update:
             _LOGGER.debug(
                 "Skipping coordinator update for service switch %s due to delay", self.name
@@ -1114,7 +1520,18 @@ class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
         coordinator: OPNsenseDataUpdateCoordinator,
         entity_description: SwitchEntityDescription,
     ) -> None:
-        """Initialize switch entity."""
+        """Initialize switch entity.
+
+        Parameters
+        ----------
+        config_entry : ConfigEntry
+            The Home Assistant config entry.
+        coordinator : OPNsenseDataUpdateCoordinator
+            The data update coordinator.
+        entity_description : SwitchEntityDescription
+            The entity description.
+
+        """
         super().__init__(
             config_entry=config_entry,
             coordinator=coordinator,
@@ -1194,7 +1611,18 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
         coordinator: OPNsenseDataUpdateCoordinator,
         entity_description: SwitchEntityDescription,
     ) -> None:
-        """Initialize switch entity."""
+        """Initialize switch entity.
+
+        Parameters
+        ----------
+        config_entry : ConfigEntry
+            The Home Assistant config entry.
+        coordinator : OPNsenseDataUpdateCoordinator
+            The data update coordinator.
+        entity_description : SwitchEntityDescription
+            The entity description.
+
+        """
         super().__init__(
             config_entry=config_entry,
             coordinator=coordinator,
@@ -1207,6 +1635,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        """Handle coordinator update for the VPN switch."""
         if self.delay_update:
             _LOGGER.debug("Skipping coordinator update for VPN switch %s due to delay", self.name)
             return
@@ -1267,7 +1696,14 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
         # _LOGGER.debug(f"[OPNsenseVPNSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn the entity on."""
+        """Turn on the VPN switch.
+
+        Parameters
+        ----------
+        **kwargs : Any
+            Additional keyword arguments.
+
+        """
 
         if self.is_on or not self._client:
             return
@@ -1284,7 +1720,14 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
             _LOGGER.error("Failed to turn on VPN: %s", self.name)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn the entity off."""
+        """Turn off the VPN switch.
+
+        Parameters
+        ----------
+        **kwargs : Any
+            Additional keyword arguments.
+
+        """
 
         if not self.is_on or not self._client:
             return

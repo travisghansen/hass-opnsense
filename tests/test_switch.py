@@ -53,12 +53,25 @@ def make_coord(data):
     [
         (
             _compile_filter_switches_legacy,
-            {"config": {"filter": {"rule": [{"descr": "Allow LAN", "created": {"time": "t1"}}]}}},
-            ("enable_filter_rule_by_created_time", "disable_filter_rule_by_created_time"),
+            {
+                "firewall": {
+                    "config": {
+                        "filter": {"rule": [{"descr": "Allow LAN", "created": {"time": "t1"}}]}
+                    }
+                }
+            },
+            (
+                "enable_filter_rule_by_created_time_legacy",
+                "disable_filter_rule_by_created_time_legacy",
+            ),
         ),
         (
             _compile_port_forward_switches_legacy,
-            {"config": {"nat": {"rule": [{"descr": "PF", "created": {"time": "p1"}}]}}},
+            {
+                "firewall": {
+                    "config": {"nat": {"rule": [{"descr": "PF", "created": {"time": "p1"}}]}}
+                }
+            },
             (
                 "enable_nat_port_forward_rule_by_created_time_legacy",
                 "disable_nat_port_forward_rule_by_created_time_legacy",
@@ -67,8 +80,10 @@ def make_coord(data):
         (
             _compile_nat_outbound_switches_legacy,
             {
-                "config": {
-                    "nat": {"outbound": {"rule": [{"descr": "OB", "created": {"time": "o1"}}]}}
+                "firewall": {
+                    "config": {
+                        "nat": {"outbound": {"rule": [{"descr": "OB", "created": {"time": "o1"}}]}}
+                    }
                 }
             },
             (
@@ -151,12 +166,15 @@ async def test_compile_port_forward_skips_non_dict(coordinator, make_config_entr
     """Port forward compilation should skip non-dict rule entries."""
     config_entry = make_config_entry(
         data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"},
+        options={CONF_SYNC_FIREWALL_AND_NAT: True},
         title="OPNsenseTest",
     )
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     # include a non-dict in nat.rule which should be skipped
     state = {
-        "config": {"nat": {"rule": ["not-a-dict", {"descr": "PF", "created": {"time": "p2"}}]}}
+        "firewall": {
+            "config": {"nat": {"rule": ["not-a-dict", {"descr": "PF", "created": {"time": "p2"}}]}}
+        }
     }
     coordinator.data = state
     ents = await _compile_port_forward_switches_legacy(config_entry, coordinator, state)
@@ -174,11 +192,13 @@ async def test_async_setup_entry_all_flags(coordinator, ph_hass, make_config_ent
 
     # create a state that contains one of each entity type
     state = {
-        "config": {
-            "filter": {"rule": [{"descr": "Allow", "created": {"time": "f1"}}]},
-            "nat": {
-                "rule": [{"descr": "PF", "created": {"time": "p1"}}],
-                "outbound": {"rule": [{"descr": "OB", "created": {"time": "o1"}}]},
+        "firewall": {
+            "config": {
+                "filter": {"rule": [{"descr": "Allow", "created": {"time": "f1"}}]},
+                "nat": {
+                    "rule": [{"descr": "PF", "created": {"time": "p1"}}],
+                    "outbound": {"rule": [{"descr": "OB", "created": {"time": "o1"}}]},
+                },
             },
         },
         "services": [{"id": "s1", "name": "svc", "locked": 0, "status": True}],
@@ -206,7 +226,7 @@ async def test_async_setup_entry_all_flags(coordinator, ph_hass, make_config_ent
 
     # compute expected counts from coordinator.data to avoid brittle hard-coded value
     expected = 0
-    cfg = coordinator.data.get("config", {})
+    cfg = coordinator.data.get("firewall", {}).get("config", {})
     # filter rules
     expected += len(cfg.get("filter", {}).get("rule", []) or [])
     # port forward rules
@@ -591,18 +611,23 @@ async def test_filter_disabled_and_missing(coordinator, ph_hass, make_config_ent
     """Filter compilation handles missing and disabled rules correctly."""
     config_entry = make_config_entry(
         data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"},
+        options={CONF_SYNC_FIREWALL_AND_NAT: True},
         title="OPNsenseTest",
     )
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     # missing rules -> compile returns []
-    state = {"config": {"filter": {"rule": []}}}
+    state = {"firewall": {"config": {"filter": {"rule": []}}}}
     coordinator.data = state
     entities = await _compile_filter_switches_legacy(config_entry, coordinator, state)
     assert entities == []
 
     # disabled rule -> is_on False
     state = {
-        "config": {"filter": {"rule": [{"descr": "x", "created": {"time": "t2"}, "disabled": "1"}]}}
+        "firewall": {
+            "config": {
+                "filter": {"rule": [{"descr": "x", "created": {"time": "t2"}, "disabled": "1"}]}
+            }
+        }
     }
     coordinator.data = state
     entities = await _compile_filter_switches_legacy(config_entry, coordinator, state)
@@ -665,31 +690,42 @@ async def test_unbound_skips_update_when_delay_set(coordinator, ph_hass, make_co
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "kind,compile_fn,state,selector",
+    "kind,compile_fn,state,selector,options",
     [
         (
             "unbound",
             _compile_static_unbound_switch_legacy,
             {"unbound_blocklist": {"legacy": {"enabled": "1"}}},
             "first",
+            {CONF_SYNC_UNBOUND: True},
         ),
         (
             "filter",
             _compile_filter_switches_legacy,
             {
-                "config": {
-                    "filter": {
-                        "rule": [{"descr": "Allow", "created": {"time": "fdelay"}, "disabled": "0"}]
+                "firewall": {
+                    "config": {
+                        "filter": {
+                            "rule": [
+                                {"descr": "Allow", "created": {"time": "fdelay"}, "disabled": "0"}
+                            ]
+                        }
                     }
                 }
             },
             "first",
+            {CONF_SYNC_FIREWALL_AND_NAT: True},
         ),
         (
             "nat",
             _compile_port_forward_switches_legacy,
-            {"config": {"nat": {"rule": [{"descr": "PF", "created": {"time": "pdelay"}}]}}},
+            {
+                "firewall": {
+                    "config": {"nat": {"rule": [{"descr": "PF", "created": {"time": "pdelay"}}]}}
+                }
+            },
             "first",
+            {CONF_SYNC_FIREWALL_AND_NAT: True},
         ),
         (
             "service",
@@ -706,6 +742,7 @@ async def test_unbound_skips_update_when_delay_set(coordinator, ph_hass, make_co
                 ]
             },
             "first",
+            {CONF_SYNC_SERVICES: True},
         ),
         (
             "vpn",
@@ -715,14 +752,17 @@ async def test_unbound_skips_update_when_delay_set(coordinator, ph_hass, make_co
                 "wireguard": {"clients": {}, "servers": {}},
             },
             "endswith:v1",
+            {CONF_SYNC_VPN: True},
         ),
     ],
 )
 async def test_delay_skips_update_parametrized(
-    kind, compile_fn, state, selector, coordinator, ph_hass, make_config_entry
+    kind, compile_fn, state, selector, options, coordinator, ph_hass, make_config_entry
 ):
     """Parametrized test asserting handlers return early when delay_update is set."""
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
+    config_entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"}, options=options
+    )
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
 
     coordinator.data = state
@@ -797,9 +837,15 @@ async def test_switch_handle_error_sets_unavailable(
 
         if kind == "filter":
             # compile one valid filter entity then monkeypatch to produce error
-            config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+            config_entry = make_config_entry(
+                data={CONF_DEVICE_UNIQUE_ID: "dev1"}, options={CONF_SYNC_FIREWALL_AND_NAT: True}
+            )
             setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-            state = {"config": {"filter": {"rule": [{"descr": "Good", "created": {"time": "t1"}}]}}}
+            state = {
+                "firewall": {
+                    "config": {"filter": {"rule": [{"descr": "Good", "created": {"time": "t1"}}]}}
+                }
+            }
             coordinator.data = state
             ent = (await _compile_filter_switches_legacy(config_entry, coordinator, state))[0]
             ent.hass = hass_local
@@ -1056,19 +1102,24 @@ def test_reset_delay_calls_existing_remover(monkeypatch, make_config_entry):
 @pytest.mark.asyncio
 async def test_compile_filter_skip_and_invalid_rules(coordinator, make_config_entry):
     """Filter compilation skips invalid and non-dict rule entries."""
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
+    config_entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"},
+        options={CONF_SYNC_FIREWALL_AND_NAT: True},
+    )
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     # include various rules that should be skipped
     state = {
-        "config": {
-            "filter": {
-                "rule": [
-                    {"descr": "Anti-Lockout Rule", "created": {"time": "a1"}},
-                    {"associated-rule-id": "x", "created": {"time": "a2"}},
-                    {"descr": "No tracker"},
-                    ["not", "a", "dict"],
-                    {"descr": "Good", "created": {"time": "g1"}},
-                ]
+        "firewall": {
+            "config": {
+                "filter": {
+                    "rule": [
+                        {"description": "Anti-Lockout Rule", "created": {"time": "a1"}},
+                        {"associated-rule-id": "x", "created": {"time": "a2"}},
+                        {"description": "No tracker"},
+                        ["not", "a", "dict"],
+                        {"description": "Good", "created": {"time": "g1"}},
+                    ]
+                }
             }
         }
     }
@@ -1081,16 +1132,21 @@ async def test_compile_filter_skip_and_invalid_rules(coordinator, make_config_en
 @pytest.mark.asyncio
 async def test_compile_nat_outbound_skips_auto_created(coordinator, make_config_entry):
     """Outbound NAT compilation ignores auto-created rules."""
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
+    config_entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"},
+        options={CONF_SYNC_FIREWALL_AND_NAT: True},
+    )
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     state = {
-        "config": {
-            "nat": {
-                "outbound": {
-                    "rule": [
-                        {"descr": "Auto created rule", "created": {"time": "x1"}},
-                        {"descr": "Manual", "created": {"time": "x2"}},
-                    ]
+        "firewall": {
+            "config": {
+                "nat": {
+                    "outbound": {
+                        "rule": [
+                            {"description": "Auto created rule", "created": {"time": "x1"}},
+                            {"description": "Manual", "created": {"time": "x2"}},
+                        ]
+                    }
                 }
             }
         }
@@ -1518,7 +1574,7 @@ async def test_compile_port_forward_with_missing_rules(coordinator, make_config_
     # port forward compile should return [] when nat not present or rules missing
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    coordinator.data = {"config": {}}
+    coordinator.data = {"firewall": {"config": {}}}
     res = await _compile_port_forward_switches_legacy(config_entry, coordinator, coordinator.data)
     assert res == []
 
