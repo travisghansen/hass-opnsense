@@ -281,6 +281,50 @@ async def test_switch_toggle_variants(
 
 
 @pytest.mark.asyncio
+async def test_compile_filter_switches_legacy_skip_conditions(make_config_entry) -> None:
+    """Test that _compile_filter_switches_legacy properly skips invalid rules."""
+
+    config_entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"},
+        title="OPNsenseTest",
+    )
+    coordinator = make_coord({})
+
+    # Test with non-dict rules
+    state_with_mixed_rules = {
+        "firewall": {
+            "config": {
+                "filter": {
+                    "rule": [
+                        {"descr": "Valid Rule", "created": {"time": "t1"}},
+                        "invalid_string_rule",  # should be skipped
+                        {
+                            "descr": "NAT Rule",
+                            "associated-rule-id": "nat1",
+                            "created": {"time": "t2"},
+                        },  # should be skipped
+                        {
+                            "description": "Anti-Lockout Rule",
+                            "created": {"time": "t3"},
+                        },  # should be skipped
+                        {"descr": "No Tracker"},  # should be skipped
+                        {"descr": "Empty Tracker", "created": {"time": ""}},  # should be skipped
+                    ]
+                }
+            }
+        }
+    }
+
+    entities = await _compile_filter_switches_legacy(
+        config_entry, coordinator, state_with_mixed_rules
+    )
+    # Only the first valid rule should be included
+    assert len(entities) == 1
+    assert entities[0].entity_description.key == "filter.t1"
+    assert "Valid Rule" in entities[0].entity_description.name
+
+
+@pytest.mark.asyncio
 async def test_compile_port_forward_skips_non_dict(coordinator, make_config_entry):
     """Port forward compilation should skip non-dict rule entries."""
     config_entry = make_config_entry(
