@@ -1026,6 +1026,8 @@ $toreturn = [
         for rule in rules:
             new_rule = rule.copy()
             new_rule["uuid"] = new_rule.pop("@uuid", "")
+            if not new_rule["uuid"]:
+                continue
             new_rule["%interface"] = interface_map.get(
                 new_rule.get("interface", ""), new_rule.get("interface", "")
             )
@@ -1177,7 +1179,7 @@ $toreturn = [
             return False
 
         apply_resp = await self._safe_dict_post("/api/firewall/filter/apply")
-        if apply_resp.get("status") != "OK\n\n":
+        if apply_resp.get("status", "").strip() != "OK":
             return False
 
         return True
@@ -1229,7 +1231,7 @@ $toreturn = [
             return False
 
         apply_resp = await self._safe_dict_post(f"/api/firewall/{nat_rule_type}/apply")
-        if apply_resp.get("status") != "OK\n\n":
+        if apply_resp.get("status", "").strip() != "OK":
             return False
 
         return True

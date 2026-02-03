@@ -7,10 +7,12 @@ integration module as required by the repository guidelines.
 
 import asyncio
 import contextlib
+import copy
 from datetime import datetime, timedelta
 import inspect as _inspect
 import socket
 from ssl import SSLError
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 import xmlrpc.client as xc
 from xmlrpc.client import Fault
@@ -195,7 +197,9 @@ async def test_opnsenseclient_async_close(make_client) -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_host_firmware_set_use_snake_case_and_plugin_installed(make_client) -> None:
+async def test_get_host_firmware_set_use_snake_case_and_plugin_installed(
+    monkeypatch, make_client
+) -> None:
     """Ensure firmware parsing, snake_case detection and plugin detection work."""
     # create client/session for this test
     session = MagicMock(spec=aiohttp.ClientSession)
@@ -217,19 +221,14 @@ async def test_get_host_firmware_set_use_snake_case_and_plugin_installed(make_cl
     assert client._use_snake_case is False
 
     # test AwesomeVersionCompareException handling
-    original_compare = awesomeversion.AwesomeVersion.__lt__
-
     def mock_compare(self, other):
         raise awesomeversion.exceptions.AwesomeVersionCompareException("test exception")
 
-    awesomeversion.AwesomeVersion.__lt__ = mock_compare
-    try:
-        client._firmware_version = "25.8.0"
-        await client.set_use_snake_case()
-        # Should default to True on exception
-        assert client._use_snake_case is True
-    finally:
-        awesomeversion.AwesomeVersion.__lt__ = original_compare
+    monkeypatch.setattr(awesomeversion.AwesomeVersion, "__lt__", mock_compare)
+    client._firmware_version = "25.8.0"
+    await client.set_use_snake_case()
+    # Should default to True on exception
+    assert client._use_snake_case is True
 
     # invalid semver -> fallback to product_series
     client._safe_dict_get = AsyncMock(
@@ -3437,14 +3436,8 @@ async def test_get_firewall_rules_missing_uuid(make_client) -> None:
 
     result = await client._get_firewall_rules({})
 
-    # Should have empty string as UUID
-    assert result[""]["uuid"] == ""
-    assert result[""]["enabled"] == "1"
-    assert result[""]["action"] == "pass"
-    await client.async_close()
-    assert result[""]["uuid"] == ""
-    assert result[""]["enabled"] == "1"
-    assert result[""]["action"] == "pass"
+    # Rules without @uuid are skipped, so result should be empty
+    assert result == {}
     await client.async_close()
 
 
@@ -3458,40 +3451,22 @@ async def test_get_firewall_rules_missing_uuid(make_client) -> None:
     ],
 )
 @pytest.mark.parametrize(
-    ("test_case", "mock_response", "expected_result"),
+    ("test_case", "expected_result"),
     [
         (
             "successful_parsing",
             {
-                "rows": [
-                    {
-                        "uuid": "test-rule-1",
-                        "descr": "Test rule 1",
-                        "disabled": "0",
-                        "interface": "wan",
-                        "protocol": "tcp",
-                    },
-                    {
-                        "uuid": "test-rule-2",
-                        "descr": "Test rule 2",
-                        "disabled": "1",
-                        "interface": "lan",
-                        "protocol": "udp",
-                    },
-                ]
-            },
-            {
                 "test-rule-1": {
                     "uuid": "test-rule-1",
-                    "description": "Test rule 1",  # transformed
-                    "enabled": "1",  # transformed
+                    "description": "Test rule 1",
+                    "enabled": "1",
                     "interface": "wan",
                     "protocol": "tcp",
                 },
                 "test-rule-2": {
                     "uuid": "test-rule-2",
-                    "description": "Test rule 2",  # transformed
-                    "enabled": "0",  # transformed
+                    "description": "Test rule 2",
+                    "enabled": "0",
                     "interface": "lan",
                     "protocol": "udp",
                 },
@@ -3500,31 +3475,15 @@ async def test_get_firewall_rules_missing_uuid(make_client) -> None:
         (
             "filters_lockout_rules",
             {
-                "rows": [
-                    {"uuid": "normal-rule", "descr": "Normal rule", "disabled": "0"},
-                    {
-                        "uuid": "lockout-rule",
-                        "descr": "Lockout rule",
-                        "disabled": "0",
-                    },  # Should be filtered
-                    {
-                        "uuid": "another-lockout",
-                        "descr": "Another lockout",
-                        "disabled": "0",
-                    },  # Should be filtered
-                    {"uuid": None, "descr": "No UUID rule", "disabled": "0"},  # Should be filtered
-                ]
-            },
-            {
                 "normal-rule": {
                     "uuid": "normal-rule",
-                    "description": "Normal rule",  # transformed
-                    "enabled": "1",  # transformed
+                    "description": "Normal rule",
+                    "enabled": "1",
                 }
             },
         ),
-        ("empty_response", {}, {}),
-        ("response_without_rows", {"some_other_key": "value"}, {}),
+        ("empty_response", {}),
+        ("response_without_rows", {}),
     ],
 )
 @pytest.mark.asyncio
@@ -3534,12 +3493,55 @@ async def test_nat_rules_parsing(
     api_endpoint,
     has_transformations,
     test_case,
-    mock_response,
     expected_result,
 ) -> None:
     """Test NAT rules parsing for all NAT rule types."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session)
+
+    # Build API-style mock response depending on whether the endpoint uses
+    # transformations (d_nat-like endpoints use 'descr'/'disabled').
+    mock_response: dict[str, Any]
+    if test_case == "empty_response":
+        mock_response = {}
+    elif test_case == "response_without_rows":
+        mock_response = {"some_other_key": "value"}
+    else:
+        normalized_rows: list[dict[str, Any]] = []
+        extra_rows: list[dict[str, Any]] = []
+        if test_case == "successful_parsing":
+            for uid, info in expected_result.items():
+                row = {"uuid": uid}
+                row["description"] = info.get("description")
+                row["enabled"] = info.get("enabled")
+                if "interface" in info:
+                    row["interface"] = info.get("interface")
+                if "protocol" in info:
+                    row["protocol"] = info.get("protocol")
+                normalized_rows.append(row)
+        elif test_case == "filters_lockout_rules":
+            normalized_rows = [
+                {"uuid": "normal-rule", "description": "Normal rule", "enabled": "1"}
+            ]
+            extra_rows = [
+                {"uuid": "lockout-rule", "description": "Lockout rule", "enabled": "1"},
+                {"uuid": "another-lockout", "description": "Another lockout", "enabled": "1"},
+                {"uuid": None, "description": "No UUID rule", "enabled": "1"},
+            ]
+
+        api_rows: list[dict[str, Any]] = []
+        for row in normalized_rows + extra_rows:
+            if has_transformations:
+                new_row = row.copy()
+                if "description" in new_row:
+                    new_row["descr"] = new_row.pop("description")
+                if "enabled" in new_row:
+                    new_row["disabled"] = "0" if new_row.pop("enabled") == "1" else "1"
+                api_rows.append(new_row)
+            else:
+                api_rows.append(row.copy())
+
+        mock_response = {"rows": api_rows}
 
     client._safe_dict_post = AsyncMock(return_value=mock_response)
 
@@ -3547,26 +3549,12 @@ async def test_nat_rules_parsing(
     method = getattr(client, method_name)
     result = await method()
 
-    # For non-transformed methods, adjust expected result
-    if not has_transformations and test_case == "successful_parsing":
-        # Remove transformations from expected result
-        for rule in expected_result.values():
-            if "description" in rule:
-                rule["descr"] = rule.pop("description")
-            if "enabled" in rule:
-                rule.pop("enabled")
-                rule["disabled"] = "0" if rule.get("uuid") == "test-rule-1" else "1"
+    # Make a deep copy of expected_result so we don't mutate the shared fixture
+    expected = copy.deepcopy(expected_result)
 
-    if not has_transformations and test_case == "filters_lockout_rules":
-        # Remove transformations from expected result
-        for rule in expected_result.values():
-            if "description" in rule:
-                rule["descr"] = rule.pop("description")
-            if "enabled" in rule:
-                rule.pop("enabled")
-                rule["disabled"] = "0"
-
-    assert result == expected_result
+    assert result == expected
 
     # Verify the correct API endpoint was called
     client._safe_dict_post.assert_called_with(api_endpoint, payload={"current": 1, "sort": {}})
+
+    await client.async_close()
