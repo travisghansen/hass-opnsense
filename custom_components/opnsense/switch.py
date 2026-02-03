@@ -671,9 +671,11 @@ async def async_setup_entry(
                         )
                     )
                 else:
-                    entities.extend(
-                        await _compile_filter_switches_legacy(config_entry, coordinator, state)
-                    )
+                    # TODO: Also disable once OPNsense 26.1.x drops support for the plugin
+                    if state.get("plugin_installed", False) is True:
+                        entities.extend(
+                            await _compile_filter_switches_legacy(config_entry, coordinator, state)
+                        )
                     entities.extend(
                         await _compile_firewall_rules_switches(config_entry, coordinator, state)
                     )

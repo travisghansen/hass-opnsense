@@ -114,6 +114,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 "function": "get_host_firmware_version",
                 "state_key": "host_firmware_version",
             },
+            {"function": "is_plugin_installed", "state_key": "plugin_installed"},
         ]
 
         if config.get(CONF_SYNC_TELEMETRY, DEFAULT_SYNC_OPTION_VALUE):
