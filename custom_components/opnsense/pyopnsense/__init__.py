@@ -3,9 +3,11 @@
 from abc import ABC
 import asyncio
 from collections.abc import Callable, MutableMapping
+import csv
 from datetime import datetime, timedelta, timezone
 from functools import partial
 import inspect
+from io import StringIO
 import ipaddress
 import json
 import logging
@@ -921,6 +923,8 @@ $toreturn = [
         """Disable NAT Outbound Rule."""
         config: MutableMapping[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("outbound", {}).get("rule", []):
+            if "created" not in rule or "time" not in rule["created"]:
+                continue
             if rule["created"]["time"] != created_time:
                 continue
 
@@ -1007,16 +1011,16 @@ $toreturn = [
         # _LOGGER.debug("[get_firewall_rules] response: %s", response)
         if not response or not isinstance(response, str):
             return {}
-        lines = response.strip().split("\n")
-        if len(lines) < 2:
+
+        try:
+            reader = csv.DictReader(StringIO(response))
+        except (csv.Error, ValueError) as e:
+            _LOGGER.error("Failed to parse firewall rules CSV: %s", e)
             return {}
-        headers = lines[0].split(",")
-        rules = []
-        for line in lines[1:]:
-            if line.strip():
-                values = line.split(",")
-                rule = dict(zip(headers, values, strict=True))
-                rules.append(rule)
+        if not reader.fieldnames:
+            return {}
+        rules = [row for row in reader if row]
+
         # _LOGGER.debug("[get_firewall_rules] rules: %s", rules)
         rules_dict: dict[str, Any] = {}
         for rule in rules:

@@ -425,6 +425,8 @@ async def _compile_firewall_rules_switches(
 
     entities: list = []
     for rule in state.get("firewall", {}).get("rules", {}).values():
+        if not isinstance(rule, dict):
+            continue
         entity = OPNsenseFirewallRuleSwitch(
             config_entry=config_entry,
             coordinator=coordinator,
@@ -469,6 +471,8 @@ async def _compile_nat_source_rules_switches(
 
     entities: list = []
     for rule in state.get("firewall", {}).get("nat", {}).get("source_nat", {}).values():
+        if not isinstance(rule, dict):
+            continue
         entity = OPNsenseNATRuleSwitch(
             config_entry=config_entry,
             coordinator=coordinator,
@@ -513,6 +517,8 @@ async def _compile_nat_destination_rules_switches(
 
     entities: list = []
     for rule in state.get("firewall", {}).get("nat", {}).get("d_nat", {}).values():
+        if not isinstance(rule, dict):
+            continue
         entity = OPNsenseNATRuleSwitch(
             config_entry=config_entry,
             coordinator=coordinator,
@@ -557,6 +563,8 @@ async def _compile_nat_one_to_one_rules_switches(
 
     entities: list = []
     for rule in state.get("firewall", {}).get("nat", {}).get("one_to_one", {}).values():
+        if not isinstance(rule, dict):
+            continue
         entity = OPNsenseNATRuleSwitch(
             config_entry=config_entry,
             coordinator=coordinator,
@@ -601,6 +609,8 @@ async def _compile_nat_npt_rules_switches(
 
     entities: list = []
     for rule in state.get("firewall", {}).get("nat", {}).get("npt", {}).values():
+        if not isinstance(rule, dict):
+            continue
         entity = OPNsenseNATRuleSwitch(
             config_entry=config_entry,
             coordinator=coordinator,
@@ -690,7 +700,7 @@ async def async_setup_entry(
                 ValueError,
             ) as e:
                 _LOGGER.error(
-                    "Error comparing firmware version %s when determining creating Unbound Blocklist switches. %s: %s",
+                    "Error comparing firewall/NAT firmware version %s: %s: %s",
                     firmware,
                     type(e).__name__,
                     e,
@@ -906,21 +916,27 @@ class OPNsenseFirewallRuleSwitch(OPNsenseSwitch):
         """Turn the entity on."""
         if self._rule_id is None or not self._client:
             return
-        await self._client.toggle_firewall_rule(self._rule_id, "on")
-        _LOGGER.info("Turned on firewall rule: %s", self.name)
-        self._attr_is_on = True
-        self.async_write_ha_state()
-        self.delay_update = True
+        result = await self._client.toggle_firewall_rule(self._rule_id, "on")
+        if result:
+            _LOGGER.info("Turned on firewall rule: %s", self.name)
+            self._attr_is_on = True
+            self.async_write_ha_state()
+            self.delay_update = True
+        else:
+            _LOGGER.error("Failed to turn on firewall rule: %s", self.name)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the entity off."""
         if self._rule_id is None or not self._client:
             return
-        await self._client.toggle_firewall_rule(self._rule_id, "off")
-        _LOGGER.info("Turned off firewall rule: %s", self.name)
-        self._attr_is_on = False
-        self.async_write_ha_state()
-        self.delay_update = True
+        result = await self._client.toggle_firewall_rule(self._rule_id, "off")
+        if result:
+            _LOGGER.info("Turned off firewall rule: %s", self.name)
+            self._attr_is_on = False
+            self.async_write_ha_state()
+            self.delay_update = True
+        else:
+            _LOGGER.error("Failed to turn off firewall rule: %s", self.name)
 
     @property
     def icon(self) -> str | None:
@@ -1039,21 +1055,27 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
         """Turn the entity on."""
         if self._rule_id is None or not self._client:
             return
-        await self._client.toggle_nat_rule(self._nat_rule_type, self._rule_id, "on")
-        _LOGGER.info("Turned on NAT rule: %s", self.name)
-        self._attr_is_on = True
-        self.async_write_ha_state()
-        self.delay_update = True
+        result = await self._client.toggle_nat_rule(self._nat_rule_type, self._rule_id, "on")
+        if result:
+            _LOGGER.info("Turned on NAT rule: %s", self.name)
+            self._attr_is_on = True
+            self.async_write_ha_state()
+            self.delay_update = True
+        else:
+            _LOGGER.error("Failed to turn on NAT rule: %s", self.name)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the entity off."""
         if self._rule_id is None or not self._client:
             return
-        await self._client.toggle_nat_rule(self._nat_rule_type, self._rule_id, "off")
-        _LOGGER.info("Turned off NAT rule: %s", self.name)
-        self._attr_is_on = False
-        self.async_write_ha_state()
-        self.delay_update = True
+        result = await self._client.toggle_nat_rule(self._nat_rule_type, self._rule_id, "off")
+        if result:
+            _LOGGER.info("Turned off NAT rule: %s", self.name)
+            self._attr_is_on = False
+            self.async_write_ha_state()
+            self.delay_update = True
+        else:
+            _LOGGER.error("Failed to turn off NAT rule: %s", self.name)
 
     @property
     def icon(self) -> str | None:
@@ -1267,6 +1289,8 @@ class OPNsenseNatSwitchLegacy(OPNsenseSwitch):
             return
         self._rule = self._opnsense_get_rule()
         if not isinstance(self._rule, MutableMapping):
+            self._available = False
+            self.async_write_ha_state()
             return
         try:
             self._attr_is_on = "disabled" not in self._rule

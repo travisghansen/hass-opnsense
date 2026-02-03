@@ -25,6 +25,7 @@ from custom_components.opnsense import (
     sensor as sensor_mod,
     switch as switch_mod,
 )
+from custom_components.opnsense.const import CONF_SYNC_FIREWALL_AND_NAT
 
 
 def test_human_friendly_duration() -> None:
@@ -1319,7 +1320,7 @@ async def test_enable_and_disable_filter_rules_and_nat_port_forward(make_client)
     client._restore_config_section = AsyncMock()
     client._filter_configure = AsyncMock()
     await client.enable_filter_rule_by_created_time_legacy("t-enable")
-    client._restore_config_section.assert_called()
+    client._restore_config_section.assert_awaited()
     client._filter_configure.assert_awaited()
 
     # disable_filter_rule_by_created_time_legacy: rule missing 'disabled' -> should add it and call restore+configure
@@ -1328,7 +1329,7 @@ async def test_enable_and_disable_filter_rules_and_nat_port_forward(make_client)
     client._restore_config_section = AsyncMock()
     client._filter_configure = AsyncMock()
     await client.disable_filter_rule_by_created_time_legacy("t-disable")
-    client._restore_config_section.assert_called()
+    client._restore_config_section.assert_awaited()
     client._filter_configure.assert_awaited()
 
     # enable_nat_port_forward_rule_by_created_time_legacy: similar flow under 'nat' section
@@ -1337,7 +1338,7 @@ async def test_enable_and_disable_filter_rules_and_nat_port_forward(make_client)
     client._restore_config_section = AsyncMock()
     client._filter_configure = AsyncMock()
     await client.enable_nat_port_forward_rule_by_created_time_legacy("t-nat")
-    client._restore_config_section.assert_called()
+    client._restore_config_section.assert_awaited()
     client._filter_configure.assert_awaited()
 
 
@@ -1521,7 +1522,7 @@ async def test_compile_filesystem_sensors_and_filter_switches(make_config_entry)
     switch_cfg = make_config_entry(
         data={
             "device_unique_id": "dev1",
-            "sync_filters_and_nat": True,
+            CONF_SYNC_FIREWALL_AND_NAT: True,
             "sync_unbound": False,
             "sync_vpn": False,
             "sync_services": False,
@@ -2697,9 +2698,12 @@ async def test_get_config_and_rule_enable_disable_branches() -> None:
     }
 
     client._exec_php = AsyncMock(return_value=fake_config)
-
+    client._restore_config_section = AsyncMock()
+    client._filter_configure = AsyncMock()
     # calling enable should remove 'disabled' and call restore/configure (no exception)
     await client.enable_filter_rule_by_created_time_legacy("t1")
+    client._restore_config_section.assert_awaited()
+    client._filter_configure.assert_awaited()
 
     # disable_nat_port_forward: add a rule without 'disabled' and expect it to set 'disabled'
     client._exec_php = AsyncMock(

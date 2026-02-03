@@ -258,15 +258,21 @@ async def test_switch_toggle_variants(
         # Same method for on/off with different parameters
         if "firewall_rule" in client_methods[0]:
             # toggle_firewall_rule(rule_id, action)
-            getattr(ent._client, client_methods[0]).assert_any_call(ent._rule_id, "on")
-            getattr(ent._client, client_methods[1]).assert_any_call(ent._rule_id, "off")
+            getattr(ent._client, client_methods[0]).assert_has_awaits(
+                [
+                    ((ent._rule_id, "on"), {}),
+                    ((ent._rule_id, "off"), {}),
+                ],
+                any_order=True,
+            )
         else:
             # toggle_nat_rule(rule_type, rule_id, action)
-            getattr(ent._client, client_methods[0]).assert_any_call(
-                ent._nat_rule_type, ent._rule_id, "on"
-            )
-            getattr(ent._client, client_methods[1]).assert_any_call(
-                ent._nat_rule_type, ent._rule_id, "off"
+            getattr(ent._client, client_methods[0]).assert_has_awaits(
+                [
+                    ((ent._nat_rule_type, ent._rule_id, "on"), {}),
+                    ((ent._nat_rule_type, ent._rule_id, "off"), {}),
+                ],
+                any_order=True,
             )
     else:
         # Different methods for on/off
