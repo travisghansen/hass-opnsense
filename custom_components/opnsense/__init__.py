@@ -229,6 +229,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except awesomeversion.exceptions.AwesomeVersionCompareException:
         _LOGGER.warning("Unable to confirm OPNsense Firmware version")
 
+    try:
+        if awesomeversion.AwesomeVersion(firmware) > awesomeversion.AwesomeVersion(
+            "25.10"
+        ) and awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion("26.7"):
+            await _deprecated_plugin_cleanup_26_1(hass=hass, client=client, entry_id=entry.entry_id)
+    except awesomeversion.exceptions.AwesomeVersionCompareException:
+        _LOGGER.warning("Unable to confirm OPNsense Firmware version")
+
     await coordinator.async_config_entry_first_refresh()
 
     platforms: list[Platform] = PLATFORMS.copy()
@@ -269,6 +277,67 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
 
+    return True
+
+
+async def _deprecated_plugin_cleanup_26_1(
+    hass: HomeAssistant, client: OPNsenseClient, entry_id: str
+) -> bool:
+    _LOGGER.debug("Starting OPNsense 26.1 and Plugin cleanup")
+    entity_registry = er.async_get(hass)
+    plugin_installed: bool = await client.is_plugin_installed()
+    cleanup_started: bool = False
+
+    for ent in er.async_entries_for_config_entry(entity_registry, entry_id):
+        platform = ent.entity_id.split(".")[0]
+        if platform != Platform.SWITCH:
+            continue
+        # _LOGGER.debug("[deprecated_plugin_cleanup] ent: %s", ent)
+        if (
+            (not plugin_installed and "_filter_" in ent.unique_id)
+            or "_nat_port_forward_" in ent.unique_id
+            or "_nat_outbound_" in ent.unique_id
+        ):
+            cleanup_started = True
+            try:
+                entity_registry.async_remove(ent.entity_id)
+                _LOGGER.debug("[deprecated_plugin_cleanup] removed entity_id: %s", ent.entity_id)
+            except (KeyError, ValueError) as e:
+                _LOGGER.error(
+                    "Error removing entity: %s. %s: %s",
+                    ent.entity_id,
+                    type(e).__name__,
+                    e,
+                )
+    if cleanup_started:
+        if plugin_installed:
+            _LOGGER.info(
+                "OPNsense 26.1 and Plugin cleanup partially completed. Plugin is still installed. NAT Outbound and NAT Port Forward rules removed. Firewall Filter rules will be removed once the plugin is removed."
+            )
+            ir.async_create_issue(
+                hass,
+                DOMAIN,
+                "plugin_cleanup_partial",
+                is_fixable=False,
+                is_persistent=False,
+                issue_domain=DOMAIN,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key="plugin_cleanup_partial",
+            )
+        else:
+            _LOGGER.info(
+                "OPNsense 26.1 and Plugin cleanup completed. NAT Outbound, NAT Port Forward, and Firewall Filter rules removed."
+            )
+            ir.async_create_issue(
+                hass,
+                DOMAIN,
+                "plugin_cleanup_done",
+                is_fixable=False,
+                is_persistent=False,
+                issue_domain=DOMAIN,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key="plugin_cleanup_done",
+            )
     return True
 
 
@@ -454,7 +523,7 @@ async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
     for ent in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
         platform = ent.entity_id.split(".")[0]
         if platform == Platform.SENSOR:
-            # _LOGGER.debug(f"[migrate_3_to_4] ent: {ent}")
+            # _LOGGER.debug("[migrate_3_to_4] ent: %s", ent)
             if "_telemetry_interface_" in ent.unique_id:
                 new_unique_id: str | None = ent.unique_id.replace(
                     "_telemetry_interface_", "_interface_"
