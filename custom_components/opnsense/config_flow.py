@@ -277,13 +277,20 @@ async def _handle_user_input(
 
     # Plugin check not required for config step of user. Otherwise, plugin check is required if
     # granular sync options is enabled
-    require_plugin_check = (
-        config_step != "user"
-        and user_input.get(CONF_GRANULAR_SYNC_OPTIONS, DEFAULT_GRANULAR_SYNC_OPTIONS)
-        and any(
-            user_input.get(item, DEFAULT_SYNC_OPTION_VALUE) for item in SYNC_ITEMS_REQUIRING_PLUGIN
+    try:
+        require_plugin_check = (
+            config_step != "user"
+            and user_input.get(CONF_GRANULAR_SYNC_OPTIONS, DEFAULT_GRANULAR_SYNC_OPTIONS)
+            and any(
+                user_input.get(item, DEFAULT_SYNC_OPTION_VALUE)
+                for item in SYNC_ITEMS_REQUIRING_PLUGIN
+            )
+            and awesomeversion.AwesomeVersion(user_input[CONF_FIRMWARE_VERSION])
+            < awesomeversion.AwesomeVersion("26.1")
         )
-    )
+    except awesomeversion.exceptions.AwesomeVersionCompareException as e:
+        raise UnknownFirmware from e
+
     _LOGGER.debug(
         "[handle_user_input] config_step: %s, require_plugin_check: %s",
         config_step,
