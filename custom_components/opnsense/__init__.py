@@ -1,4 +1,9 @@
-"""Support for OPNsense."""
+"""Home Assistant integration for OPNsense firewalls.
+
+This integration provides monitoring and control of OPNsense firewall devices,
+including system information, network interfaces, firewall rules, DHCP leases,
+and various other OPNsense features through the Home Assistant interface.
+"""
 
 from collections.abc import Mapping, MutableMapping
 from datetime import timedelta
@@ -59,7 +64,21 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Handle options update."""
+    """Handle options update for the OPNsense integration.
+
+    This function is called when the configuration entry options are updated.
+    It handles reloading the integration if necessary, removing entities that
+    are no longer enabled based on granular sync options, and cleaning up
+    device tracker devices if device tracking is disabled.
+
+    Parameters
+    ----------
+    hass : HomeAssistant
+        The Home Assistant instance.
+    entry : ConfigEntry
+        The configuration entry for the OPNsense integration.
+
+    """
     # _LOGGER.debug("[async_update_listener] entry: %s", entry.as_dict())
     if getattr(entry.runtime_data, SHOULD_RELOAD, True):
         _LOGGER.info("[async_update_listener] Reloading")
@@ -104,13 +123,55 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Call the method to setup the integration-level services."""
+    """Set up the OPNsense integration at the domain level.
+
+    This function is called during Home Assistant startup to initialize
+    integration-level services for the OPNsense domain.
+
+    Parameters
+    ----------
+    hass : HomeAssistant
+        The Home Assistant instance.
+    config : ConfigType
+        The configuration dictionary (unused for config entry only integrations).
+
+    Returns
+    -------
+    bool
+        Always returns True to indicate successful setup.
+
+    """
     await async_setup_services(hass)
     return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up OPNsense from a config entry."""
+    """Set up the OPNsense integration from a configuration entry.
+
+    This function initializes the OPNsense client, coordinators, and platforms
+    based on the provided configuration entry. It performs firmware version
+    checks, handles device ID validation, and sets up data coordinators for
+    state updates and device tracking.
+
+    Parameters
+    ----------
+    hass : HomeAssistant
+        The Home Assistant instance.
+    entry : ConfigEntry
+        The configuration entry containing OPNsense connection details.
+
+    Returns
+    -------
+    bool
+        True if setup was successful, False otherwise.
+
+    Raises
+    ------
+    Various exceptions may be raised during client initialization or firmware
+    checks, but they are handled internally with appropriate logging and issue
+    creation.
+
+    """
     config: Mapping[str, Any] = entry.data
     options: Mapping[str, Any] = entry.options
     # _LOGGER.debug("[async_setup_entry] entry: %s", entry.as_dict())
@@ -282,7 +343,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def _deprecated_plugin_cleanup_26_1(
     hass: HomeAssistant, client: OPNsenseClient, entry_id: str
-) -> bool:
+) -> None:
+    """Clean up deprecated entities for OPNsense 26.1 and plugin compatibility.
+
+    This function removes switch entities that are no longer supported in
+    OPNsense 26.1, specifically firewall filter rules (when plugin not installed)
+    and NAT port forward/outbound rules. It creates appropriate issues to
+    inform the user about the cleanup.
+
+    Parameters
+    ----------
+    hass : HomeAssistant
+        The Home Assistant instance.
+    client : OPNsenseClient
+        The OPNsense client instance.
+    entry_id : str
+        The configuration entry ID.
+
+    """
     _LOGGER.debug("Starting OPNsense 26.1 and Plugin cleanup")
     entity_registry = er.async_get(hass)
     plugin_installed: bool = await client.is_plugin_installed()
@@ -338,14 +416,31 @@ async def _deprecated_plugin_cleanup_26_1(
                 severity=ir.IssueSeverity.WARNING,
                 translation_key="plugin_cleanup_done",
             )
-    return True
 
 
 async def async_remove_config_entry_device(
     hass: HomeAssistant, config_entry: ConfigEntry, device_entry: dr.DeviceEntry
 ) -> bool:
-    """Remove OPNsense Devices that aren't Device Tracker Devices and without any linked entities."""
+    """Remove OPNsense devices that are not device tracker devices and have no linked entities.
 
+    This function checks if an OPNsense device can be safely removed. It prevents
+    removal of device tracker devices and devices that still have linked entities.
+
+    Parameters
+    ----------
+    hass : HomeAssistant
+        The Home Assistant instance.
+    config_entry : ConfigEntry
+        The configuration entry for the OPNsense integration.
+    device_entry : dr.DeviceEntry
+        The device entry to be removed.
+
+    Returns
+    -------
+    bool
+        True if the device can be removed, False otherwise.
+
+    """
     if device_entry.via_device_id:
         _LOGGER.error("Remove OPNsense Device Tracker Devices via the Integration Configuration")
         return False
@@ -358,7 +453,24 @@ async def async_remove_config_entry_device(
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
+    """Unload the OPNsense integration configuration entry.
+
+    This function unloads all platforms associated with the configuration entry,
+    closes the OPNsense client connection, and cleans up the entry data.
+
+    Parameters
+    ----------
+    hass : HomeAssistant
+        The Home Assistant instance.
+    entry : ConfigEntry
+        The configuration entry to unload.
+
+    Returns
+    -------
+    bool
+        True if unloading was successful, False otherwise.
+
+    """
     _LOGGER.info("Unloading: %s", entry.as_dict())
     platforms: list[Platform] = getattr(entry.runtime_data, LOADED_PLATFORMS)
     client: OPNsenseClient = getattr(entry.runtime_data, OPNSENSE_CLIENT)
@@ -373,6 +485,24 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _migrate_1_to_2(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    """Migrate configuration entry from version 1 to version 2.
+
+    This migration replaces the deprecated 'tls_insecure' option with
+    'verify_ssl' for SSL certificate verification.
+
+    Parameters
+    ----------
+    hass : HomeAssistant
+        The Home Assistant instance.
+    config_entry : ConfigEntry
+        The configuration entry to migrate.
+
+    Returns
+    -------
+    bool
+        Always returns True.
+
+    """
     tls_insecure = config_entry.data.get(CONF_TLS_INSECURE, DEFAULT_TLS_INSECURE)
     data: MutableMapping[str, Any] = dict(config_entry.data)
 
@@ -389,6 +519,25 @@ async def _migrate_1_to_2(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
 
 
 async def _migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    """Migrate configuration entry from version 2 to version 3.
+
+    This migration updates device unique IDs to use the lowest MAC address
+    and updates entity unique IDs accordingly. It also updates device
+    identifiers in the device registry.
+
+    Parameters
+    ----------
+    hass : HomeAssistant
+        The Home Assistant instance.
+    config_entry : ConfigEntry
+        The configuration entry to migrate.
+
+    Returns
+    -------
+    bool
+        True if migration was successful, False otherwise.
+
+    """
     _LOGGER.debug("[migrate_2_to_3] Initial Version: %s", config_entry.version)
     entity_registry = er.async_get(hass)
     device_registry = dr.async_get(hass)
@@ -498,6 +647,25 @@ async def _migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
 
 
 async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    """Migrate configuration entry from version 3 to version 4.
+
+    This migration moves telemetry-based entities (interfaces, gateways, openvpn)
+    out of the telemetry namespace and updates their unique IDs. It also removes
+    deprecated connected client count sensors.
+
+    Parameters
+    ----------
+    hass : HomeAssistant
+        The Home Assistant instance.
+    config_entry : ConfigEntry
+        The configuration entry to migrate.
+
+    Returns
+    -------
+    bool
+        True if migration was successful, False otherwise.
+
+    """
     _LOGGER.debug("[migrate_3_to_4] Initial Version: %s", config_entry.version)
     entity_registry = er.async_get(hass)
 
@@ -601,7 +769,24 @@ async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
 
 
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    """Migrate an old config entry."""
+    """Migrate an old configuration entry to the latest version.
+
+    This function handles migration of configuration entries from older versions
+    to the current version by applying sequential migration steps.
+
+    Parameters
+    ----------
+    hass : HomeAssistant
+        The Home Assistant instance.
+    config_entry : ConfigEntry
+        The configuration entry to migrate.
+
+    Returns
+    -------
+    bool
+        True if migration was successful, False otherwise.
+
+    """
     version = config_entry.version
 
     if version > 4:
