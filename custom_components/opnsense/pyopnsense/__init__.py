@@ -3,11 +3,9 @@
 from abc import ABC
 import asyncio
 from collections.abc import Callable, MutableMapping
-import csv
 from datetime import datetime, timedelta, timezone
 from functools import partial
 import inspect
-from io import StringIO
 import ipaddress
 import json
 import logging
@@ -369,15 +367,6 @@ $toreturn["real"] = json_encode($toreturn_real);
         await self._request_queue.put(("get", path, None, future, caller))
         return await future
 
-    async def _get_raw(self, path: str) -> str | None:
-        try:
-            caller = inspect.stack()[1].function
-        except (IndexError, AttributeError):
-            caller = "Unknown"
-        future = self._loop.create_future()
-        await self._request_queue.put(("get_raw", path, None, future, caller))
-        return await future
-
     async def _post(
         self, path: str, payload: MutableMapping[str, Any] | None = None
     ) -> MutableMapping[str, Any] | list | None:
@@ -399,10 +388,6 @@ $toreturn["real"] = json_encode($toreturn_real);
                         future.set_result(result)
                 elif method == "get":
                     result = await self._do_get(path, caller)
-                    if future is not None and not future.done():
-                        future.set_result(result)
-                elif method == "get_raw":
-                    result = await self._do_get_raw(path, caller)
                     if future is not None and not future.done():
                         future.set_result(result)
                 elif method == "post":
@@ -545,50 +530,6 @@ $toreturn["real"] = json_encode($toreturn_real);
                 else:
                     _LOGGER.error(
                         "Error in do_get (called by %s). Path: %s. Response %s: %s",
-                        caller,
-                        url,
-                        response.status,
-                        response.reason,
-                    )
-                if self._initial:
-                    raise aiohttp.ClientResponseError(
-                        request_info=response.request_info,
-                        history=response.history,
-                        status=response.status,
-                        message=f"HTTP Status Error: {response.status} {response.reason}",
-                        headers=response.headers,
-                    )
-        except aiohttp.ClientError as e:
-            _LOGGER.error("Client error. %s: %s", type(e).__name__, e)
-            if self._initial:
-                raise
-
-        return None
-
-    async def _do_get_raw(self, path: str, caller: str = "Unknown") -> str | None:
-        # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
-        self._rest_api_query_count += 1
-        url: str = f"{self._url}{path}"
-        _LOGGER.debug("[get_raw] url: %s", url)
-        try:
-            async with self._session.get(
-                url,
-                auth=aiohttp.BasicAuth(self._username, self._password),
-                timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
-                ssl=self._verify_ssl,
-            ) as response:
-                _LOGGER.debug("[get_raw] Response %s: %s", response.status, response.reason)
-                if response.ok:
-                    return await response.text()
-                if response.status == 403:
-                    _LOGGER.error(
-                        "Permission Error in do_get_raw (called by %s). Path: %s. Ensure the OPNsense user connected to HA has appropriate access. Recommend full admin access",
-                        caller,
-                        url,
-                    )
-                else:
-                    _LOGGER.error(
-                        "Error in do_get_raw (called by %s). Path: %s. Response %s: %s",
                         caller,
                         url,
                         response.status,
@@ -949,8 +890,8 @@ $toreturn = [
         try:
             if awesomeversion.AwesomeVersion(
                 self._firmware_version
-            ) < awesomeversion.AwesomeVersion("26.1"):
-                _LOGGER.debug("Using legacy plugin for firewall filters for OPNsense < 26.1")
+            ) < awesomeversion.AwesomeVersion("26.1.1"):
+                _LOGGER.debug("Using legacy plugin for firewall filters for OPNsense < 26.1.1")
                 return {"config": await self.get_config()}
         except awesomeversion.exceptions.AwesomeVersionCompareException:
             _LOGGER.warning("Error comparing firmware version. Skipping get_firewall.")
@@ -958,8 +899,7 @@ $toreturn = [
         firewall: dict[str, Any] = {"nat": {}}
         if await self.is_plugin_installed():
             firewall["config"] = await self.get_config()
-        interface_map = await self._get_interface_firewall_map()
-        firewall["rules"] = await self._get_firewall_rules(interface_map=interface_map)
+        firewall["rules"] = await self._get_firewall_rules()
         firewall["nat"]["d_nat"] = await self._get_nat_destination_rules()
         firewall["nat"]["one_to_one"] = await self._get_nat_one_to_one_rules()
         firewall["nat"]["source_nat"] = await self._get_nat_source_rules()
@@ -968,30 +908,7 @@ $toreturn = [
         return firewall
 
     @_log_errors
-    async def _get_interface_firewall_map(self) -> dict[str, Any]:
-        """Retrieve a mapping of interface names to firewall interface names.
-
-        Returns
-        -------
-        dict
-            A dictionary mapping interface names to firewall interface names.
-
-        """
-        interfaces = await self._safe_dict_get("/api/firewall/filter/get_interface_list")
-        interface_map: dict[str, Any] = {}
-
-        if isinstance(interfaces, MutableMapping):
-            for section in interfaces.values():
-                if isinstance(section, MutableMapping) and "items" in section:
-                    for item in section["items"]:
-                        if isinstance(item, MutableMapping) and "value" in item and "label" in item:
-                            interface_map[item["value"]] = item["label"]
-
-        _LOGGER.debug("[get_interface_firewall_map] interface_map: %s", interface_map)
-        return interface_map
-
-    @_log_errors
-    async def _get_firewall_rules(self, interface_map: dict[str, Any]) -> dict[str, Any]:
+    async def _get_firewall_rules(self) -> dict[str, Any]:
         """Retrieve firewall rules from OPNsense.
 
         Parameters
@@ -1007,30 +924,19 @@ $toreturn = [
             as 'uuid', 'enabled', 'action', etc.
 
         """
-        response = await self._get_raw("/api/firewall/filter/download_rules")
+        request_body: MutableMapping[str, Any] = {"current": 1, "sort": {}}
+        response = await self._safe_dict_post(
+            "/api/firewall/filter/search_rule", payload=request_body
+        )
         # _LOGGER.debug("[get_firewall_rules] response: %s", response)
-        if not response or not isinstance(response, str):
-            return {}
-
-        try:
-            reader = csv.DictReader(StringIO(response))
-        except (csv.Error, ValueError) as e:
-            _LOGGER.error("Failed to parse firewall rules CSV: %s", e)
-            return {}
-        if not reader.fieldnames:
-            return {}
-        rules = [row for row in reader if row]
-
-        # _LOGGER.debug("[get_firewall_rules] rules: %s", rules)
+        rules: list = response.get("rows", [])
+        _LOGGER.debug("[get_firewall_rules] rules: %s", rules)
         rules_dict: dict[str, Any] = {}
         for rule in rules:
-            new_rule = rule.copy()
-            new_rule["uuid"] = new_rule.pop("@uuid", "")
-            if not new_rule["uuid"]:
+            if not rule.get("uuid") or "lockout" in rule.get("uuid"):
                 continue
-            new_rule["%interface"] = interface_map.get(
-                new_rule.get("interface", ""), new_rule.get("interface", "")
-            )
+            new_rule = rule.copy()
+            # Add any transforms here
             rules_dict[new_rule["uuid"]] = new_rule
         _LOGGER.debug("[get_firewall_rules] rules_dict: %s", rules_dict)
         return rules_dict

@@ -286,7 +286,7 @@ async def _handle_user_input(
                 for item in SYNC_ITEMS_REQUIRING_PLUGIN
             )
             and awesomeversion.AwesomeVersion(user_input[CONF_FIRMWARE_VERSION])
-            < awesomeversion.AwesomeVersion("26.1")
+            < awesomeversion.AwesomeVersion("26.1.1")
         )
     except awesomeversion.exceptions.AwesomeVersionCompareException as e:
         raise UnknownFirmware from e

@@ -948,13 +948,12 @@ async def test_exec_php_error_paths(exc_factory, initial: bool, make_client) -> 
     [
         ("_do_get", "get", ("/api/x",), {"caller": "tst"}),
         ("_do_post", "post", ("/api/x",), {"payload": {}}),
-        ("_do_get_raw", "get", ("/api/x",), {"caller": "tst"}),
     ],
 )
-async def test_do_get_post_get_raw_error_initial_behavior(
+async def test_do_get_post_error_initial_behavior(
     method_name, session_method, args, kwargs, make_client
 ) -> None:
-    """When client._initial is True, non-ok responses should raise ClientResponseError for _do_get/_do_post/_do_get_raw."""
+    """When client._initial is True, non-ok responses should raise ClientResponseError for _do_get/_do_post."""
     session = MagicMock(spec=aiohttp.ClientSession)
 
     # create a fake response context manager
@@ -1002,36 +1001,6 @@ async def test_do_get_post_get_raw_error_initial_behavior(
     try:
         with pytest.raises(aiohttp.ClientResponseError):
             await getattr(client, method_name)(*args, **kwargs)
-    finally:
-        await client.async_close()
-
-
-@pytest.mark.asyncio
-async def test_do_get_raw_client_error_initial_behavior(make_client) -> None:
-    """When client._initial is True, aiohttp.ClientError should be re-raised for _do_get_raw."""
-    session = MagicMock(spec=aiohttp.ClientSession)
-    session.get.side_effect = aiohttp.ClientError("Connection failed")
-
-    client = make_client(session=session)
-    client._initial = True
-    try:
-        with pytest.raises(aiohttp.ClientError):
-            await client._do_get_raw("/api/x", caller="tst")
-    finally:
-        await client.async_close()
-
-
-@pytest.mark.asyncio
-async def test_do_get_raw_client_error_non_initial_behavior(make_client) -> None:
-    """When client._initial is False, aiohttp.ClientError should be logged and None returned for _do_get_raw."""
-    session = MagicMock(spec=aiohttp.ClientSession)
-    session.get.side_effect = aiohttp.ClientError("Connection failed")
-
-    client = make_client(session=session)
-    client._initial = False
-    try:
-        result = await client._do_get_raw("/api/x", caller="tst")
-        assert result is None
     finally:
         await client.async_close()
 
@@ -3240,7 +3209,7 @@ async def test_get_device_unique_id_no_mac(make_client) -> None:
 
 @pytest.mark.asyncio
 async def test_get_firewall_legacy_fallback(make_client) -> None:
-    """get_firewall falls back to legacy config for OPNsense < 26.1."""
+    """get_firewall falls back to legacy config for OPNsense < 26.1.1."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session)
     client._firmware_version = "25.7.0"
@@ -3256,15 +3225,14 @@ async def test_get_firewall_legacy_fallback(make_client) -> None:
 
 @pytest.mark.asyncio
 async def test_get_firewall_new_api(make_client) -> None:
-    """get_firewall uses new API for OPNsense >= 26.1."""
+    """get_firewall uses new API for OPNsense >= 26.1.1."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session)
-    client._firmware_version = "26.1.0"
+    client._firmware_version = "26.1.1"
 
     # Mock all the methods called in the new API path
     client.is_plugin_installed = AsyncMock(return_value=True)
     client.get_config = AsyncMock(return_value={"filter": {"rule": []}})
-    client._get_interface_firewall_map = AsyncMock(return_value={"lan": "LAN"})
     client._get_firewall_rules = AsyncMock(return_value={"rule1": {"uuid": "rule1"}})
     client._get_nat_destination_rules = AsyncMock(return_value={"nat1": {"uuid": "nat1"}})
     client._get_nat_one_to_one_rules = AsyncMock(return_value={"one1": {"uuid": "one1"}})
@@ -3285,7 +3253,6 @@ async def test_get_firewall_new_api(make_client) -> None:
     assert result == expected
     client.is_plugin_installed.assert_awaited_once()
     client.get_config.assert_awaited_once()
-    client._get_interface_firewall_map.assert_awaited_once()
     client._get_firewall_rules.assert_awaited_once()
     client._get_nat_destination_rules.assert_awaited_once()
     client._get_nat_one_to_one_rules.assert_awaited_once()
@@ -3308,136 +3275,68 @@ async def test_get_firewall_version_compare_exception(make_client) -> None:
 
 @pytest.mark.asyncio
 async def test_get_firewall_rules_successful_parsing(make_client) -> None:
-    """_get_firewall_rules successfully parses valid CSV data."""
+    """_get_firewall_rules successfully parses rows returned from the REST API."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session)
 
-    # Mock CSV response with valid firewall rules
-    csv_data = """@uuid,enabled,action,interface,descr
-rule1,1,pass,lan,Allow HTTP
-rule2,0,block,wan,Block traffic
-"""
-    client._get_raw = AsyncMock(return_value=csv_data)
-
-    interface_map = {"lan": "LAN", "wan": "WAN"}
-    result = await client._get_firewall_rules(interface_map)
-
-    expected = {
-        "rule1": {
+    rows = [
+        {
             "uuid": "rule1",
             "enabled": "1",
             "action": "pass",
             "interface": "lan",
-            "%interface": "LAN",
             "descr": "Allow HTTP",
         },
-        "rule2": {
+        {
             "uuid": "rule2",
             "enabled": "0",
             "action": "block",
             "interface": "wan",
-            "%interface": "WAN",
             "descr": "Block traffic",
         },
-    }
+    ]
+
+    client._safe_dict_post = AsyncMock(return_value={"rows": rows})
+
+    result = await client._get_firewall_rules()
+
+    expected = {r["uuid"]: r.copy() for r in rows}
     assert result == expected
-    client._get_raw.assert_awaited_once_with("/api/firewall/filter/download_rules")
+    client._safe_dict_post.assert_awaited_once_with(
+        "/api/firewall/filter/search_rule", payload={"current": 1, "sort": {}}
+    )
     await client.async_close()
 
 
 @pytest.mark.asyncio
-async def test_get_firewall_rules_none_response(make_client) -> None:
-    """_get_firewall_rules returns empty dict when response is None."""
+async def test_get_firewall_rules_empty_response(make_client) -> None:
+    """_get_firewall_rules returns empty dict when API response has no rows."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session)
 
-    client._get_raw = AsyncMock(return_value=None)
+    client._safe_dict_post = AsyncMock(return_value={})
 
-    result = await client._get_firewall_rules({})
+    result = await client._get_firewall_rules()
     assert result == {}
     await client.async_close()
 
 
 @pytest.mark.asyncio
-async def test_get_firewall_rules_non_string_response(make_client) -> None:
-    """_get_firewall_rules returns empty dict when response is not a string."""
+async def test_get_firewall_rules_skips_invalid_rows(make_client) -> None:
+    """_get_firewall_rules skips rules without uuid and lockout rules."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session)
 
-    client._get_raw = AsyncMock(return_value=123)  # Non-string response
+    rows = [
+        {"enabled": "1", "action": "pass"},  # missing uuid
+        {"uuid": "lockout-1", "enabled": "1"},  # lockout rule
+        {"uuid": "rule-ok", "enabled": "1"},  # valid
+    ]
 
-    result = await client._get_firewall_rules({})
-    assert result == {}
-    await client.async_close()
+    client._safe_dict_post = AsyncMock(return_value={"rows": rows})
 
-
-@pytest.mark.asyncio
-async def test_get_firewall_rules_csv_parsing_error(make_client) -> None:
-    """_get_firewall_rules returns empty dict when CSV parsing fails."""
-    session = MagicMock(spec=aiohttp.ClientSession)
-    client = make_client(session=session)
-
-    # Invalid CSV that will cause parsing error - unterminated quote
-    client._get_raw = AsyncMock(return_value='"unterminated,quote\nvalue1,value2')
-
-    result = await client._get_firewall_rules({})
-    assert result == {}
-    await client.async_close()
-
-
-@pytest.mark.asyncio
-async def test_get_firewall_rules_empty_csv(make_client) -> None:
-    """_get_firewall_rules returns empty dict when CSV has no data rows."""
-    session = MagicMock(spec=aiohttp.ClientSession)
-    client = make_client(session=session)
-
-    # CSV with only headers, no data rows
-    client._get_raw = AsyncMock(return_value="@uuid,enabled,action\n")
-
-    result = await client._get_firewall_rules({})
-    assert result == {}
-    await client.async_close()
-
-
-@pytest.mark.asyncio
-async def test_get_firewall_rules_interface_mapping(make_client) -> None:
-    """_get_firewall_rules handles interface mapping correctly."""
-    session = MagicMock(spec=aiohttp.ClientSession)
-    client = make_client(session=session)
-
-    # CSV with interfaces, some in map, some not
-    csv_data = """@uuid,enabled,interface,descr
-rule1,1,lan,LAN rule
-rule2,1,opt1,OPT1 rule
-rule3,1,unknown,Unknown interface
-"""
-    client._get_raw = AsyncMock(return_value=csv_data)
-
-    interface_map = {"lan": "LAN", "opt1": "OPT1"}  # opt1 in map, unknown not in map
-    result = await client._get_firewall_rules(interface_map)
-
-    assert result["rule1"]["%interface"] == "LAN"  # Mapped
-    assert result["rule2"]["%interface"] == "OPT1"  # Mapped
-    assert result["rule3"]["%interface"] == "unknown"  # Not mapped, uses original
-    await client.async_close()
-
-
-@pytest.mark.asyncio
-async def test_get_firewall_rules_missing_uuid(make_client) -> None:
-    """_get_firewall_rules handles rules without @uuid field."""
-    session = MagicMock(spec=aiohttp.ClientSession)
-    client = make_client(session=session)
-
-    # CSV with missing @uuid field
-    csv_data = """enabled,action,descr
-1,pass,Rule without UUID
-"""
-    client._get_raw = AsyncMock(return_value=csv_data)
-
-    result = await client._get_firewall_rules({})
-
-    # Rules without @uuid are skipped, so result should be empty
-    assert result == {}
+    result = await client._get_firewall_rules()
+    assert list(result.keys()) == ["rule-ok"]
     await client.async_close()
 
 
@@ -3555,6 +3454,8 @@ async def test_nat_rules_parsing(
     assert result == expected
 
     # Verify the correct API endpoint was called
-    client._safe_dict_post.assert_called_with(api_endpoint, payload={"current": 1, "sort": {}})
+    client._safe_dict_post.assert_awaited_once_with(
+        api_endpoint, payload={"current": 1, "sort": {}}
+    )
 
     await client.async_close()

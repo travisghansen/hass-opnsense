@@ -656,7 +656,9 @@ async def async_setup_entry(
         firmware = state.get("host_firmware_version", None)
         if firmware:
             try:
-                if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion("26.1"):
+                if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
+                    "26.1.1"
+                ):
                     entities.extend(
                         await _compile_filter_switches_legacy(config_entry, coordinator, state)
                     )

@@ -412,7 +412,7 @@ async def test_async_setup_entry_all_flags(coordinator, ph_hass, make_config_ent
 
 @pytest.mark.asyncio
 async def test_async_setup_entry_new_firewall_api(coordinator, ph_hass, make_config_entry):
-    """Async setup should create entities for new firewall API (>= 26.1)."""
+    """Async setup should create entities for new firewall API (>= 26.1.1)."""
     calls = {}
 
     def fake_add_entities(entities):
@@ -464,7 +464,7 @@ async def test_async_setup_entry_new_firewall_api(coordinator, ph_hass, make_con
                 },
             },
         },
-        "host_firmware_version": "26.1.0",
+        "host_firmware_version": "26.1.1",
     }
     coordinator.data = state
 

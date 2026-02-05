@@ -292,9 +292,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     try:
         if awesomeversion.AwesomeVersion(firmware) > awesomeversion.AwesomeVersion(
-            "25.10"
+            "26.1"
         ) and awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion("26.7"):
-            await _deprecated_plugin_cleanup_26_1(hass=hass, client=client, entry_id=entry.entry_id)
+            await _deprecated_plugin_cleanup_26_1_1(
+                hass=hass, client=client, entry_id=entry.entry_id
+            )
     except awesomeversion.exceptions.AwesomeVersionCompareException:
         _LOGGER.warning("Unable to confirm OPNsense Firmware version")
 
@@ -341,7 +343,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-async def _deprecated_plugin_cleanup_26_1(
+async def _deprecated_plugin_cleanup_26_1_1(
     hass: HomeAssistant, client: OPNsenseClient, entry_id: str
 ) -> None:
     """Clean up deprecated entities for OPNsense 26.1 and plugin compatibility.
