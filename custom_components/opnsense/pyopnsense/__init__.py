@@ -331,7 +331,11 @@ $toreturn["real"] = json_encode($toreturn_real);
                 self._use_snake_case = False
             else:
                 _LOGGER.debug("Using snake_case for OPNsense >= 25.7")
-        except awesomeversion.exceptions.AwesomeVersionCompareException as e:
+        except (
+            awesomeversion.exceptions.AwesomeVersionCompareException,
+            TypeError,
+            ValueError,
+        ) as e:
             _LOGGER.error(
                 "Error comparing firmware version %s. Using snake_case by default",
                 self._firmware_version,
@@ -696,7 +700,11 @@ clear_subsystem_dirty('filter');
             ):
                 _LOGGER.debug("Update available but missing details")
                 update_needs_info = True
-        except awesomeversion.exceptions.AwesomeVersionCompareException as e:
+        except (
+            awesomeversion.exceptions.AwesomeVersionCompareException,
+            TypeError,
+            ValueError,
+        ) as e:
             _LOGGER.debug("Error checking firmware versions. %s: %s", type(e).__name__, e)
             update_needs_info = True
 
@@ -893,7 +901,7 @@ $toreturn = [
             ) < awesomeversion.AwesomeVersion("26.1.1"):
                 _LOGGER.debug("Using legacy plugin for firewall filters for OPNsense < 26.1.1")
                 return {"config": await self.get_config()}
-        except awesomeversion.exceptions.AwesomeVersionCompareException:
+        except (awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError):
             _LOGGER.warning("Error comparing firmware version. Skipping get_firewall.")
             return {}
         firewall: dict[str, Any] = {"nat": {}}
@@ -1357,7 +1365,7 @@ $toreturn = [
             ) < awesomeversion.AwesomeVersion("25.1.7"):
                 _LOGGER.debug("Skipping get_dnsmasq_leases for OPNsense < 25.1.7")
                 return []
-        except awesomeversion.exceptions.AwesomeVersionCompareException:
+        except (awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError):
             pass
 
         response = await self._safe_dict_get("/api/dnsmasq/leases/search")

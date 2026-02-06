@@ -244,7 +244,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             ir.async_create_issue(
                 hass,
                 DOMAIN,
-                f"opnsense_{firmware}_below_min_firmware_{OPNSENSE_MIN_FIRMWARE}",
+                f"{config_device_id}_opnsense_below_min_firmware_{OPNSENSE_MIN_FIRMWARE}",
                 is_fixable=False,
                 is_persistent=False,
                 issue_domain=DOMAIN,
@@ -264,7 +264,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             ir.async_create_issue(
                 hass,
                 DOMAIN,
-                f"opnsense_{firmware}_below_ltd_firmware_{OPNSENSE_LTD_FIRMWARE}",
+                f"{config_device_id}_opnsense_below_ltd_firmware_{OPNSENSE_LTD_FIRMWARE}",
                 is_fixable=False,
                 is_persistent=False,
                 issue_domain=DOMAIN,
@@ -280,14 +280,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             ir.async_delete_issue(
                 hass,
                 DOMAIN,
-                f"opnsense_{firmware}_below_min_firmware_{OPNSENSE_MIN_FIRMWARE}",
+                f"{config_device_id}_opnsense_below_min_firmware_{OPNSENSE_MIN_FIRMWARE}",
             )
             ir.async_delete_issue(
                 hass,
                 DOMAIN,
-                f"opnsense_{firmware}_below_ltd_firmware_{OPNSENSE_LTD_FIRMWARE}",
+                f"{config_device_id}_opnsense_below_ltd_firmware_{OPNSENSE_LTD_FIRMWARE}",
             )
-    except awesomeversion.exceptions.AwesomeVersionCompareException:
+    except (awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError):
         _LOGGER.warning("Unable to confirm OPNsense Firmware version")
 
     try:
@@ -295,9 +295,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "26.1"
         ) and awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion("26.7"):
             await _deprecated_plugin_cleanup_26_1_1(
-                hass=hass, client=client, entry_id=entry.entry_id
+                hass=hass, client=client, entry_id=entry.entry_id, config_device_id=config_device_id
             )
-    except awesomeversion.exceptions.AwesomeVersionCompareException:
+    except (awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError):
         _LOGGER.warning("Unable to confirm OPNsense Firmware version")
 
     await coordinator.async_config_entry_first_refresh()
@@ -344,7 +344,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _deprecated_plugin_cleanup_26_1_1(
-    hass: HomeAssistant, client: OPNsenseClient, entry_id: str
+    hass: HomeAssistant, client: OPNsenseClient, entry_id: str, config_device_id: str
 ) -> None:
     """Clean up deprecated entities for OPNsense 26.1 and plugin compatibility.
 
@@ -361,6 +361,8 @@ async def _deprecated_plugin_cleanup_26_1_1(
         The OPNsense client instance.
     entry_id : str
         The configuration entry ID.
+    config_device_id : str
+        The device unique ID from the configuration.
 
     """
     _LOGGER.debug("Starting OPNsense 26.1 and Plugin cleanup")
@@ -397,7 +399,7 @@ async def _deprecated_plugin_cleanup_26_1_1(
             ir.async_create_issue(
                 hass,
                 DOMAIN,
-                "plugin_cleanup_partial",
+                f"{config_device_id}_plugin_cleanup_partial",
                 is_fixable=False,
                 is_persistent=False,
                 issue_domain=DOMAIN,
@@ -411,7 +413,7 @@ async def _deprecated_plugin_cleanup_26_1_1(
             ir.async_create_issue(
                 hass,
                 DOMAIN,
-                "plugin_cleanup_done",
+                f"{config_device_id}_plugin_cleanup_done",
                 is_fixable=False,
                 is_persistent=False,
                 issue_domain=DOMAIN,

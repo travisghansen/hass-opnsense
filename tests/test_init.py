@@ -491,7 +491,7 @@ async def test_async_setup_entry_firmware_between_min_and_ltd(
     call_args = create_issue_mock.call_args
     # args: (hass, domain, issue_id, ...)
     assert call_args[0][1] == init_mod.DOMAIN
-    expected_issue_id = f"opnsense_25.0_below_ltd_firmware_{init_mod.OPNSENSE_LTD_FIRMWARE}"
+    expected_issue_id = f"{entry.data[init_mod.CONF_DEVICE_UNIQUE_ID]}_opnsense_below_ltd_firmware_{init_mod.OPNSENSE_LTD_FIRMWARE}"
     assert call_args[0][2] == expected_issue_id
     assert call_args[1].get("severity") == init_mod.ir.IssueSeverity.WARNING
 
@@ -525,7 +525,12 @@ async def test_async_setup_entry_firmware_triggers_plugin_cleanup(
     res = await init_mod.async_setup_entry(hass, entry)
     assert res is True
     # Verify cleanup was called with correct args and awaited
-    cleanup_mock.assert_awaited_once_with(hass=hass, client=ANY, entry_id=entry.entry_id)
+    cleanup_mock.assert_awaited_once_with(
+        hass=hass,
+        client=ANY,
+        entry_id=entry.entry_id,
+        config_device_id=entry.data[init_mod.CONF_DEVICE_UNIQUE_ID],
+    )
 
 
 @pytest.mark.asyncio
@@ -557,14 +562,15 @@ async def test_deprecated_plugin_cleanup_26_1_1_plugin_not_installed(monkeypatch
     create_issue_mock = MagicMock()
     monkeypatch.setattr(init_mod.ir, "async_create_issue", create_issue_mock)
 
-    await init_mod._deprecated_plugin_cleanup_26_1_1(hass, client, entry_id)
+    config_device_id = "dev1"
+    await init_mod._deprecated_plugin_cleanup_26_1_1(hass, client, entry_id, config_device_id)
 
     # Verify filter entity was removed, normal was not
     entity_registry.async_remove.assert_called_once_with("switch.opnsense_filter_rule")
     # Verify issue created for cleanup done
     create_issue_mock.assert_called_once()
     call_args = create_issue_mock.call_args
-    assert call_args[0][2] == "plugin_cleanup_done"
+    assert call_args[0][2] == f"{config_device_id}_plugin_cleanup_done"
 
 
 @pytest.mark.asyncio
@@ -599,7 +605,8 @@ async def test_deprecated_plugin_cleanup_26_1_1_plugin_installed(monkeypatch):
     create_issue_mock = MagicMock()
     monkeypatch.setattr(init_mod.ir, "async_create_issue", create_issue_mock)
 
-    await init_mod._deprecated_plugin_cleanup_26_1_1(hass, client, entry_id)
+    config_device_id = "dev1"
+    await init_mod._deprecated_plugin_cleanup_26_1_1(hass, client, entry_id, config_device_id)
 
     # Verify NAT entities were removed, normal was not
     assert entity_registry.async_remove.call_count == 2
@@ -608,7 +615,7 @@ async def test_deprecated_plugin_cleanup_26_1_1_plugin_installed(monkeypatch):
     # Verify issue created for partial cleanup
     create_issue_mock.assert_called_once()
     call_args = create_issue_mock.call_args
-    assert call_args[0][2] == "plugin_cleanup_partial"
+    assert call_args[0][2] == f"{config_device_id}_plugin_cleanup_partial"
 
 
 @pytest.mark.asyncio
@@ -1003,8 +1010,8 @@ async def test_async_setup_entry_firmware_at_or_above_ltd_deletes_previous_issue
     # Expect delete_issue to be called for the previous below-min and below-ltd issue ids
     assert delete_issue_mock.called, "async_delete_issue should have been called"
     called_issue_ids = [call[0][2] for call in delete_issue_mock.call_args_list if len(call[0]) > 2]
-    expected_min = f"opnsense_{init_mod.OPNSENSE_LTD_FIRMWARE}_below_min_firmware_{init_mod.OPNSENSE_MIN_FIRMWARE}"
-    expected_ltd = f"opnsense_{init_mod.OPNSENSE_LTD_FIRMWARE}_below_ltd_firmware_{init_mod.OPNSENSE_LTD_FIRMWARE}"
+    expected_min = f"{entry.data[init_mod.CONF_DEVICE_UNIQUE_ID]}_opnsense_below_min_firmware_{init_mod.OPNSENSE_MIN_FIRMWARE}"
+    expected_ltd = f"{entry.data[init_mod.CONF_DEVICE_UNIQUE_ID]}_opnsense_below_ltd_firmware_{init_mod.OPNSENSE_LTD_FIRMWARE}"
     assert expected_min in called_issue_ids
     assert expected_ltd in called_issue_ids
 
@@ -1037,9 +1044,9 @@ async def test_async_setup_entry_delete_uses_actual_firmware_string(
     res = await init_mod.async_setup_entry(hass, entry)
     assert res is True
 
-    # Confirm delete_issue was called with the firmware returned by the client
-    expected_min = f"opnsense_{firmware_str}_below_min_firmware_{init_mod.OPNSENSE_MIN_FIRMWARE}"
-    expected_ltd = f"opnsense_{firmware_str}_below_ltd_firmware_{init_mod.OPNSENSE_LTD_FIRMWARE}"
+    # Confirm delete_issue was called for the expected issue ids
+    expected_min = f"{entry.data[init_mod.CONF_DEVICE_UNIQUE_ID]}_opnsense_below_min_firmware_{init_mod.OPNSENSE_MIN_FIRMWARE}"
+    expected_ltd = f"{entry.data[init_mod.CONF_DEVICE_UNIQUE_ID]}_opnsense_below_ltd_firmware_{init_mod.OPNSENSE_LTD_FIRMWARE}"
     assert calls.called, "async_delete_issue should have been called"
     issue_ids = [call[0][2] for call in calls.call_args_list if len(call[0]) > 2]
     assert expected_min in issue_ids

@@ -270,7 +270,7 @@ async def _handle_user_input(
 
     try:
         _validate_firmware_version(user_input[CONF_FIRMWARE_VERSION])
-    except awesomeversion.exceptions.AwesomeVersionCompareException as e:
+    except (awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError) as e:
         raise UnknownFirmware from e
 
     await client.set_use_snake_case(initial=True)
@@ -288,7 +288,7 @@ async def _handle_user_input(
             and awesomeversion.AwesomeVersion(user_input[CONF_FIRMWARE_VERSION])
             < awesomeversion.AwesomeVersion("26.1.1")
         )
-    except awesomeversion.exceptions.AwesomeVersionCompareException as e:
+    except (awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError) as e:
         raise UnknownFirmware from e
 
     _LOGGER.debug(
