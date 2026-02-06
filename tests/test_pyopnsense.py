@@ -1091,7 +1091,7 @@ async def test_call_many_client_methods_to_exercise_branches(make_client) -> Non
             for name, func in _inspect.getmembers(
                 pyopnsense.OPNsenseClient, predicate=_inspect.iscoroutinefunction
             )
-            if name not in ("__init__",)
+            if name != "__init__"
         ]
 
         for name, _func in coros:

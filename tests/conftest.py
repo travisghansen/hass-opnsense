@@ -74,7 +74,7 @@ def _ensure_async_create_task_mock(real, side_effect):
                 object.__setattr__(
                     real,
                     "async_create_task",
-                    MagicMock(side_effect=lambda coro, *a, **k: orig(coro, *a, **k)),
+                    MagicMock(side_effect=orig),
                 )
 
 

@@ -173,7 +173,7 @@ def _build_mock_hass() -> Any:
             return None
 
     hass.config_entries = _Cfg()
-    hass.async_create_task = MagicMock(side_effect=lambda coro: asyncio.create_task(coro))
+    hass.async_create_task = MagicMock(side_effect=asyncio.create_task)
     return hass
 
 
@@ -223,7 +223,7 @@ async def test_e2e_basic_config_flow_and_setup(monkeypatch, make_config_entry):
         options={},
     )
     # Provide stubs expected by integration (update listener registration returns unsubscribe)
-    entry.add_update_listener = lambda f: (lambda: None)
+    entry.add_update_listener = lambda f: lambda: None
     entry.async_on_unload = lambda x: None
     hass.data = {}
 
@@ -286,7 +286,7 @@ async def test_e2e_granular_sync_and_options_device_tracker(
         entry_id="entry_gran",
         options={},
     )
-    entry.add_update_listener = lambda f: (lambda: None)
+    entry.add_update_listener = lambda f: lambda: None
     entry.async_on_unload = lambda x: None
 
     # Add to fake hass store so options flow update calls can mutate it
@@ -396,7 +396,7 @@ async def test_e2e_reload_and_unload(monkeypatch, make_config_entry):
         entry_id="entry_rel",
         options={},
     )
-    entry.add_update_listener = lambda f: (lambda: None)
+    entry.add_update_listener = lambda f: lambda: None
     entry.async_on_unload = lambda x: None
 
     # Setup

@@ -741,7 +741,7 @@ async def test_vpn_turn_on_off_noops_when_preconditions_fail(
     # replace async_call_later to avoid scheduling
     monkeypatch.setattr(
         "custom_components.opnsense.switch.async_call_later",
-        lambda hass, delay, action: (lambda: None),
+        lambda hass, delay, action: lambda: None,
     )
 
     desc = SwitchEntityDescription(key="openvpn.clients.c2", name="VPNC2")
@@ -794,7 +794,7 @@ async def test_vpn_async_turn_off_variations(
     # avoid scheduling real async_call_later during tests
     monkeypatch.setattr(
         "custom_components.opnsense.switch.async_call_later",
-        lambda hass, delay, action: (lambda: None),
+        lambda hass, delay, action: lambda: None,
     )
 
     desc = SwitchEntityDescription(key="openvpn.clients.cx", name="VPNCX")

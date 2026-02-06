@@ -31,7 +31,7 @@ async def test_async_setup_entry_configured_devices(
     )
     # attach coordinator into runtime_data under the expected attribute name
     setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
-    entry.add_update_listener = lambda f: (lambda: None)
+    entry.add_update_listener = lambda f: lambda: None
     entry.async_on_unload = lambda x: None
     hass = ph_hass
     hass.config_entries.async_update_entry = MagicMock()
@@ -95,7 +95,7 @@ async def test_async_setup_entry_removes_nonmatching_tracked_macs(
         entry_id="eid_remove",
     )
     setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
-    entry.add_update_listener = lambda f: (lambda: None)
+    entry.add_update_listener = lambda f: lambda: None
     entry.async_on_unload = lambda x: None
 
     hass = ph_hass
@@ -307,7 +307,7 @@ async def test_async_setup_entry_state_not_mapping(ph_hass, coordinator, make_co
     hass.data = {}
     hass.config_entries.async_update_entry = MagicMock()
 
-    await dt_mod.async_setup_entry(hass, entry, lambda x: added.extend(x))
+    await dt_mod.async_setup_entry(hass, entry, added.extend)
     assert len(added) == 0
     assert not hass.config_entries.async_update_entry.called
 
@@ -437,7 +437,7 @@ async def test_async_setup_entry_from_arp_entries(
 
     added = []
 
-    await dt_mod.async_setup_entry(hass, entry, lambda ents: added.extend(ents))
+    await dt_mod.async_setup_entry(hass, entry, added.extend)
     assert len(added) == 2
     assert all(isinstance(e, dt_mod.OPNsenseScannerEntity) for e in added)
     assert {e.unique_id for e in added} == {"dev1_mac_m1", "dev1_mac_m2"}
