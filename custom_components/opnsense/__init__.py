@@ -346,7 +346,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def _deprecated_plugin_cleanup_26_1_1(
     hass: HomeAssistant, client: OPNsenseClient, entry_id: str, config_device_id: str
 ) -> None:
-    """Clean up deprecated entities for OPNsense 26.1 and plugin compatibility.
+    """Clean up deprecated entities for OPNsense 26.1.1 and plugin compatibility.
 
     This function removes switch entities that are no longer supported in
     OPNsense 26.1, specifically firewall filter rules (when plugin not installed)
@@ -365,7 +365,7 @@ async def _deprecated_plugin_cleanup_26_1_1(
         The device unique ID from the configuration.
 
     """
-    _LOGGER.debug("Starting OPNsense 26.1 and Plugin cleanup")
+    _LOGGER.debug("Starting OPNsense 26.1.1 and Plugin cleanup")
     entity_registry = er.async_get(hass)
     plugin_installed: bool = await client.is_plugin_installed()
     cleanup_started: bool = False
@@ -394,7 +394,7 @@ async def _deprecated_plugin_cleanup_26_1_1(
     if cleanup_started:
         if plugin_installed:
             _LOGGER.info(
-                "OPNsense 26.1 and Plugin cleanup partially completed. Plugin is still installed. NAT Outbound and NAT Port Forward rules removed. Firewall Filter rules will be removed once the plugin is removed."
+                "OPNsense 26.1.1 and Plugin cleanup partially completed. Plugin is still installed. NAT Outbound and NAT Port Forward rules removed. Firewall Filter rules will be removed once the plugin is removed."
             )
             ir.async_create_issue(
                 hass,
@@ -408,7 +408,7 @@ async def _deprecated_plugin_cleanup_26_1_1(
             )
         else:
             _LOGGER.info(
-                "OPNsense 26.1 and Plugin cleanup completed. NAT Outbound, NAT Port Forward, and Firewall Filter rules removed."
+                "OPNsense 26.1.1 and Plugin cleanup completed. NAT Outbound, NAT Port Forward, and Firewall Filter rules removed."
             )
             ir.async_create_issue(
                 hass,

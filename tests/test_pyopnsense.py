@@ -3262,6 +3262,43 @@ async def test_get_firewall_new_api(make_client) -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_firewall_new_api_plugin_not_installed(make_client) -> None:
+    """get_firewall uses new API for OPNsense >= 26.1.1 but when plugin not installed it should skip config."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+    client._firmware_version = "26.1.1"
+
+    # Plugin not installed: shouldn't call get_config
+    client.is_plugin_installed = AsyncMock(return_value=False)
+    client.get_config = AsyncMock(return_value={"filter": {"rule": []}})
+    client._get_firewall_rules = AsyncMock(return_value={"rule1": {"uuid": "rule1"}})
+    client._get_nat_destination_rules = AsyncMock(return_value={"nat1": {"uuid": "nat1"}})
+    client._get_nat_one_to_one_rules = AsyncMock(return_value={"one1": {"uuid": "one1"}})
+    client._get_nat_source_rules = AsyncMock(return_value={"src1": {"uuid": "src1"}})
+    client._get_nat_npt_rules = AsyncMock(return_value={"npt1": {"uuid": "npt1"}})
+
+    result = await client.get_firewall()
+    expected = {
+        "rules": {"rule1": {"uuid": "rule1"}},
+        "nat": {
+            "d_nat": {"nat1": {"uuid": "nat1"}},
+            "one_to_one": {"one1": {"uuid": "one1"}},
+            "source_nat": {"src1": {"uuid": "src1"}},
+            "npt": {"npt1": {"uuid": "npt1"}},
+        },
+    }
+    assert result == expected
+    client.is_plugin_installed.assert_awaited_once()
+    client.get_config.assert_not_awaited()
+    client._get_firewall_rules.assert_awaited_once()
+    client._get_nat_destination_rules.assert_awaited_once()
+    client._get_nat_one_to_one_rules.assert_awaited_once()
+    client._get_nat_source_rules.assert_awaited_once()
+    client._get_nat_npt_rules.assert_awaited_once()
+    await client.async_close()
+
+
+@pytest.mark.asyncio
 async def test_get_firewall_version_compare_exception(make_client) -> None:
     """get_firewall handles AwesomeVersionCompareException gracefully."""
     session = MagicMock(spec=aiohttp.ClientSession)

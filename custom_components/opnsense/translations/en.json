@@ -119,11 +119,11 @@
       "description": "OPNsense Device ID has changed which indicates new or changed hardware. In order to accommodate this, hass-opnsense needs to be removed and reinstalled for this router. hass-opnsense is shutting down."
     },
     "plugin_cleanup_partial": {
-      "title": "OPNsense 26.1 and Plugin cleanup partially completed",
+      "title": "OPNsense 26.1.1 and Plugin cleanup partially completed",
       "description": "OPNsense Plugin is still installed. NAT Outbound and NAT Port Forward rules removed. Firewall Filter rules will be removed once the plugin is removed."
     },
     "plugin_cleanup_done": {
-      "title": "OPNsense 26.1 and Plugin cleanup completed",
+      "title": "OPNsense 26.1.1 and Plugin cleanup completed",
       "description": "NAT Outbound, NAT Port Forward, and Firewall Filter rules removed."
     }
   },

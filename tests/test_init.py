@@ -585,20 +585,23 @@ async def test_deprecated_plugin_cleanup_26_1_1_plugin_installed(monkeypatch):
     entity_registry = MagicMock()
     monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
 
-    # Mock entities: NAT port forward, NAT outbound, normal switch
+    # Mock entities: NAT port forward, NAT outbound, filter, normal switch
     nat_pf_entity = MagicMock()
     nat_pf_entity.entity_id = "switch.opnsense_nat_port_forward_rule"
     nat_pf_entity.unique_id = "dev1_nat_port_forward_rule1"
     nat_out_entity = MagicMock()
     nat_out_entity.entity_id = "switch.opnsense_nat_outbound_rule"
     nat_out_entity.unique_id = "dev1_nat_outbound_rule1"
+    filter_entity = MagicMock()
+    filter_entity.entity_id = "switch.opnsense_filter_rule"
+    filter_entity.unique_id = "dev1_filter_rule1"
     normal_entity = MagicMock()
     normal_entity.entity_id = "switch.opnsense_normal_rule"
     normal_entity.unique_id = "dev1_normal_rule1"
     monkeypatch.setattr(
         init_mod.er,
         "async_entries_for_config_entry",
-        MagicMock(return_value=[nat_pf_entity, nat_out_entity, normal_entity]),
+        MagicMock(return_value=[nat_pf_entity, nat_out_entity, filter_entity, normal_entity]),
     )
 
     # Mock issue registry
@@ -608,10 +611,15 @@ async def test_deprecated_plugin_cleanup_26_1_1_plugin_installed(monkeypatch):
     config_device_id = "dev1"
     await init_mod._deprecated_plugin_cleanup_26_1_1(hass, client, entry_id, config_device_id)
 
-    # Verify NAT entities were removed, normal was not
+    # Verify NAT entities were removed, filter and normal were not
     assert entity_registry.async_remove.call_count == 2
     entity_registry.async_remove.assert_any_call("switch.opnsense_nat_port_forward_rule")
     entity_registry.async_remove.assert_any_call("switch.opnsense_nat_outbound_rule")
+    # Ensure filter entity was preserved when plugin is installed
+    assert not entity_registry.async_remove.mock_calls or all(
+        call.args[0] != "switch.opnsense_filter_rule"
+        for call in entity_registry.async_remove.mock_calls
+    )
     # Verify issue created for partial cleanup
     create_issue_mock.assert_called_once()
     call_args = create_issue_mock.call_args
