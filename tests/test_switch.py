@@ -1384,8 +1384,8 @@ async def test_compile_nat_outbound_skips_auto_created(coordinator, make_config_
                 "nat": {
                     "outbound": {
                         "rule": [
-                            {"description": "Auto created rule", "created": {"time": "x1"}},
-                            {"description": "Manual", "created": {"time": "x2"}},
+                            {"descr": "Auto created rule", "created": {"time": "x1"}},
+                            {"descr": "Manual", "created": {"time": "x2"}},
                         ]
                     }
                 }
