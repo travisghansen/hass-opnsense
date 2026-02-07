@@ -12,16 +12,17 @@
 
 Join `OPNsense` with `Home Assistant`!
 
-`hass-opnsense` uses the OPNsense [REST API](https://docs.opnsense.org/development/api.html) and built-in `xmlrpc` service to integrate OPNsense with Home Assistant. 
+`hass-opnsense` uses the OPNsense [REST API](https://docs.opnsense.org/development/api.html) to integrate OPNsense with Home Assistant. 
 
-__In most cases, a [plugin](#opnsense-plugin) is currently required to be installed on the <ins>OPNsense</ins> router for this to work properly.__
+**With OPNsense Firmware 26.1.1+, a plugin is no longer needed on the OPNsense Router.**
+
 
 A Discord server to discuss the integration is available, please click the Discord badge at the beginning of the page for the invite link.
 
 ## Table of Contents
 
 * [Installation](#installation)
-  * [OPNsense Plugin](#opnsense-plugin)
+  * [OPNsense Plugin (deprecated)](#opnsense-plugin)
   * [Home Assistant Integration](#homeassistant-integration)
     * [HACS Installation](#hacs-installation)
     * [Manual Installation](#manual-installation)
@@ -48,9 +49,12 @@ A Discord server to discuss the integration is available, please click the Disco
 
 This integration **replaces** the built-in OPNsense integration which only provides `device_tracker` functionality. Be sure to remove any associated configuration for the built-in integration **before** installing this replacement.
 
-In most cases, use of the integration requires a plugin installed on <ins>OPNsense</ins>.
+### OPNsense Plugin *(deprecated)*
 
-### OPNsense Plugin
+With OPNsense Firmware 26.1.1+, a plugin is **no longer needed** on the OPNsense Router.
+
+<details>
+<summary><h4>OPNsense Firmware < 26.1.1</h4></summary>
 
 In most cases, use of the integration requires an <ins>OPNsense</ins> plugin made available on mimugmail repository: `https://www.routerperformance.net/opnsense-repo/`. See [Granular Sync Options](#granular-sync-options) below for more details.
 
@@ -72,6 +76,8 @@ There are two ways to do it:
 OR
 
 2. In an <ins>OPNsense</ins> SSH session: `pkg install os-homeassistant-maxit`
+
+</details>
 
 ### HomeAssistant Integration
 
@@ -116,19 +122,17 @@ In <ins>OPNsense</ins>, create a new admin role user (or choose an existing admi
 
 ### Granular Sync Options
 
-Either at the time of install or in the integration options, Granular Sync Options can be enabled. There, choose the categories to sync with HA as desired. If enabled:
+Either at the time of install or in the integration options, Granular Sync Options can be enabled. There, choose the categories to sync with HA as desired. If enabled, the <ins>OPNsense</ins> user can have more narrow permissions.
 
-* The <ins>OPNsense</ins> user can have more narrow permissions
-
-* If a category that requires the <ins>OPNsense</ins> plugin isn't selected, the plugin on the <ins>OPNsense</ins> router isn't needed
-
-At minimum, the following permissions are required. [The list of what other permissions are needed for the Granular Sync Options and for the Actions can be reviewed here.](granular_permissions.md)
+At minimum, the following permissions are required:
 
 * Lobby: Dashboard
 
 * Status: Interfaces
 
 * System: Firmware
+
+[The list of what other permissions are needed for the Granular Sync Options and for the Actions can be reviewed here.](granular_permissions.md)
 
 ### Basic Configuration
 
@@ -192,11 +196,9 @@ Many entities are created by `hass-opnsense` for statistics etc. Due to the volu
 
 All of the switches are disabled by default
 
-* Filter Rules - enable/disable rules
+* Firewall Rules - enable/disable rules
 
-* NAT Port Forward Rules - enable/disable rules
-
-* NAT Outbound Rules - enable/disable rules
+* NAT Rules - enable/disable rules
 
 * Services - start/stop services (services must be enabled before they can be started)
 
