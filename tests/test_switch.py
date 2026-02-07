@@ -16,7 +16,7 @@ from custom_components.opnsense.const import (
     ATTR_NAT_OUTBOUND,
     ATTR_NAT_PORT_FORWARD,
     CONF_DEVICE_UNIQUE_ID,
-    CONF_SYNC_FILTERS_AND_NAT,
+    CONF_SYNC_FIREWALL_AND_NAT,
     CONF_SYNC_SERVICES,
     CONF_SYNC_UNBOUND,
     CONF_SYNC_VPN,
@@ -24,13 +24,20 @@ from custom_components.opnsense.const import (
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 from custom_components.opnsense.switch import (
-    OPNsenseFilterSwitch,
-    OPNsenseNatSwitch,
+    OPNsenseFilterSwitchLegacy,
+    OPNsenseFirewallRuleSwitch,
+    OPNsenseNATRuleSwitch,
+    OPNsenseNatSwitchLegacy,
     OPNsenseServiceSwitch,
     OPNsenseVPNSwitch,
-    _compile_filter_switches,
-    _compile_nat_outbound_switches,
-    _compile_port_forward_switches,
+    _compile_filter_switches_legacy,
+    _compile_firewall_rules_switches,
+    _compile_nat_destination_rules_switches,
+    _compile_nat_npt_rules_switches,
+    _compile_nat_one_to_one_rules_switches,
+    _compile_nat_outbound_switches_legacy,
+    _compile_nat_source_rules_switches,
+    _compile_port_forward_switches_legacy,
     _compile_service_switches,
     _compile_static_unbound_switch_legacy,
     _compile_unbound_switches,
@@ -52,28 +59,43 @@ def make_coord(data):
     "compile_fn,state,client_methods",
     [
         (
-            _compile_filter_switches,
-            {"config": {"filter": {"rule": [{"descr": "Allow LAN", "created": {"time": "t1"}}]}}},
-            ("enable_filter_rule_by_created_time", "disable_filter_rule_by_created_time"),
-        ),
-        (
-            _compile_port_forward_switches,
-            {"config": {"nat": {"rule": [{"descr": "PF", "created": {"time": "p1"}}]}}},
-            (
-                "enable_nat_port_forward_rule_by_created_time",
-                "disable_nat_port_forward_rule_by_created_time",
-            ),
-        ),
-        (
-            _compile_nat_outbound_switches,
+            _compile_filter_switches_legacy,
             {
-                "config": {
-                    "nat": {"outbound": {"rule": [{"descr": "OB", "created": {"time": "o1"}}]}}
+                "firewall": {
+                    "config": {
+                        "filter": {"rule": [{"descr": "Allow LAN", "created": {"time": "t1"}}]}
+                    }
                 }
             },
             (
-                "enable_nat_outbound_rule_by_created_time",
-                "disable_nat_outbound_rule_by_created_time",
+                "enable_filter_rule_by_created_time_legacy",
+                "disable_filter_rule_by_created_time_legacy",
+            ),
+        ),
+        (
+            _compile_port_forward_switches_legacy,
+            {
+                "firewall": {
+                    "config": {"nat": {"rule": [{"descr": "PF", "created": {"time": "p1"}}]}}
+                }
+            },
+            (
+                "enable_nat_port_forward_rule_by_created_time_legacy",
+                "disable_nat_port_forward_rule_by_created_time_legacy",
+            ),
+        ),
+        (
+            _compile_nat_outbound_switches_legacy,
+            {
+                "firewall": {
+                    "config": {
+                        "nat": {"outbound": {"rule": [{"descr": "OB", "created": {"time": "o1"}}]}}
+                    }
+                }
+            },
+            (
+                "enable_nat_outbound_rule_by_created_time_legacy",
+                "disable_nat_outbound_rule_by_created_time_legacy",
             ),
         ),
         (
@@ -95,6 +117,94 @@ def make_coord(data):
             _compile_static_unbound_switch_legacy,
             {"unbound_blocklist": {"legacy": {"enabled": "1"}}},
             ("enable_unbound_blocklist", "disable_unbound_blocklist"),
+        ),
+        (
+            _compile_firewall_rules_switches,
+            {
+                "firewall": {
+                    "rules": {
+                        "rule1": {
+                            "uuid": "rule1",
+                            "description": "Test Firewall Rule",
+                            "%interface": "wan",
+                            "enabled": "1",
+                        }
+                    }
+                }
+            },
+            ("toggle_firewall_rule", "toggle_firewall_rule"),
+        ),
+        (
+            _compile_nat_source_rules_switches,
+            {
+                "firewall": {
+                    "nat": {
+                        "source_nat": {
+                            "nat1": {
+                                "uuid": "nat1",
+                                "description": "Source NAT Rule",
+                                "%interface": "wan",
+                                "enabled": "1",
+                            }
+                        }
+                    }
+                }
+            },
+            ("toggle_nat_rule", "toggle_nat_rule"),
+        ),
+        (
+            _compile_nat_destination_rules_switches,
+            {
+                "firewall": {
+                    "nat": {
+                        "d_nat": {
+                            "dnat1": {
+                                "uuid": "dnat1",
+                                "description": "Destination NAT Rule",
+                                "%interface": "wan",
+                                "enabled": "1",
+                            }
+                        }
+                    }
+                }
+            },
+            ("toggle_nat_rule", "toggle_nat_rule"),
+        ),
+        (
+            _compile_nat_one_to_one_rules_switches,
+            {
+                "firewall": {
+                    "nat": {
+                        "one_to_one": {
+                            "oto1": {
+                                "uuid": "oto1",
+                                "description": "One-to-One NAT Rule",
+                                "%interface": "wan",
+                                "enabled": "1",
+                            }
+                        }
+                    }
+                }
+            },
+            ("toggle_nat_rule", "toggle_nat_rule"),
+        ),
+        (
+            _compile_nat_npt_rules_switches,
+            {
+                "firewall": {
+                    "nat": {
+                        "npt": {
+                            "npt1": {
+                                "uuid": "npt1",
+                                "description": "NPT NAT Rule",
+                                "%interface": "wan",
+                                "enabled": "1",
+                            }
+                        }
+                    }
+                }
+            },
+            ("toggle_nat_rule", "toggle_nat_rule"),
         ),
     ],
 )
@@ -136,14 +246,82 @@ async def test_switch_toggle_variants(
 
     # call turn_on/turn_off and assert client methods called
     await ent.async_turn_on()
-    # ensure the async client coroutine was actually awaited
-    getattr(ent._client, client_methods[0]).assert_awaited_once()
     # turning on should set delay_update for entities that perform delayed updates
     assert ent.delay_update is True
+
     await ent.async_turn_off()
-    getattr(ent._client, client_methods[1]).assert_awaited_once()
     # turning off should also set delay_update
     assert ent.delay_update is True
+
+    # Check that the correct client methods were called
+    if client_methods[0] == client_methods[1]:
+        # Same method for on/off with different parameters
+        if "firewall_rule" in client_methods[0]:
+            # toggle_firewall_rule(rule_id, action)
+            getattr(ent._client, client_methods[0]).assert_has_awaits(
+                [
+                    ((ent._rule_id, "on"), {}),
+                    ((ent._rule_id, "off"), {}),
+                ],
+                any_order=True,
+            )
+        else:
+            # toggle_nat_rule(rule_type, rule_id, action)
+            getattr(ent._client, client_methods[0]).assert_has_awaits(
+                [
+                    ((ent._nat_rule_type, ent._rule_id, "on"), {}),
+                    ((ent._nat_rule_type, ent._rule_id, "off"), {}),
+                ],
+                any_order=True,
+            )
+    else:
+        # Different methods for on/off
+        getattr(ent._client, client_methods[0]).assert_awaited_once()
+        getattr(ent._client, client_methods[1]).assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_compile_filter_switches_legacy_skip_conditions(make_config_entry) -> None:
+    """Test that _compile_filter_switches_legacy properly skips invalid rules."""
+
+    config_entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"},
+        title="OPNsenseTest",
+    )
+    coordinator = make_coord({})
+
+    # Test with non-dict rules
+    state_with_mixed_rules = {
+        "firewall": {
+            "config": {
+                "filter": {
+                    "rule": [
+                        {"descr": "Valid Rule", "created": {"time": "t1"}},
+                        "invalid_string_rule",  # should be skipped
+                        {
+                            "descr": "NAT Rule",
+                            "associated-rule-id": "nat1",
+                            "created": {"time": "t2"},
+                        },  # should be skipped
+                        {
+                            "description": "Anti-Lockout Rule",
+                            "created": {"time": "t3"},
+                        },  # should be skipped
+                        {"descr": "No Tracker"},  # should be skipped
+                        {"descr": "Empty Tracker", "created": {"time": ""}},  # should be skipped
+                    ]
+                }
+            }
+        }
+    }
+
+    entities = await _compile_filter_switches_legacy(
+        config_entry, coordinator, state_with_mixed_rules
+    )
+    # Only the first valid rule should be included
+    assert len(entities) == 1
+    assert entities[0].entity_description.key == "filter.t1"
+    assert "Valid Rule" in entities[0].entity_description.name
 
 
 @pytest.mark.asyncio
@@ -151,15 +329,18 @@ async def test_compile_port_forward_skips_non_dict(coordinator, make_config_entr
     """Port forward compilation should skip non-dict rule entries."""
     config_entry = make_config_entry(
         data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"},
+        options={CONF_SYNC_FIREWALL_AND_NAT: True},
         title="OPNsenseTest",
     )
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     # include a non-dict in nat.rule which should be skipped
     state = {
-        "config": {"nat": {"rule": ["not-a-dict", {"descr": "PF", "created": {"time": "p2"}}]}}
+        "firewall": {
+            "config": {"nat": {"rule": ["not-a-dict", {"descr": "PF", "created": {"time": "p2"}}]}}
+        }
     }
     coordinator.data = state
-    ents = await _compile_port_forward_switches(config_entry, coordinator, state)
+    ents = await _compile_port_forward_switches_legacy(config_entry, coordinator, state)
     assert len(ents) == 1
     assert ents[0].entity_description.key.endswith(".p2")
 
@@ -174,11 +355,13 @@ async def test_async_setup_entry_all_flags(coordinator, ph_hass, make_config_ent
 
     # create a state that contains one of each entity type
     state = {
-        "config": {
-            "filter": {"rule": [{"descr": "Allow", "created": {"time": "f1"}}]},
-            "nat": {
-                "rule": [{"descr": "PF", "created": {"time": "p1"}}],
-                "outbound": {"rule": [{"descr": "OB", "created": {"time": "o1"}}]},
+        "firewall": {
+            "config": {
+                "filter": {"rule": [{"descr": "Allow", "created": {"time": "f1"}}]},
+                "nat": {
+                    "rule": [{"descr": "PF", "created": {"time": "p1"}}],
+                    "outbound": {"rule": [{"descr": "OB", "created": {"time": "o1"}}]},
+                },
             },
         },
         "services": [{"id": "s1", "name": "svc", "locked": 0, "status": True}],
@@ -192,7 +375,7 @@ async def test_async_setup_entry_all_flags(coordinator, ph_hass, make_config_ent
     config_entry = make_config_entry(
         data={
             CONF_DEVICE_UNIQUE_ID: "dev1",
-            CONF_SYNC_FILTERS_AND_NAT: True,
+            CONF_SYNC_FIREWALL_AND_NAT: True,
             CONF_SYNC_SERVICES: True,
             CONF_SYNC_VPN: True,
             CONF_SYNC_UNBOUND: True,
@@ -206,7 +389,7 @@ async def test_async_setup_entry_all_flags(coordinator, ph_hass, make_config_ent
 
     # compute expected counts from coordinator.data to avoid brittle hard-coded value
     expected = 0
-    cfg = coordinator.data.get("config", {})
+    cfg = coordinator.data.get("firewall", {}).get("config", {})
     # filter rules
     expected += len(cfg.get("filter", {}).get("rule", []) or [])
     # port forward rules
@@ -224,6 +407,84 @@ async def test_async_setup_entry_all_flags(coordinator, ph_hass, make_config_ent
     # unbound blocklist counts as a single entity when enabled
     expected += 1
 
+    assert calls.get("len") == expected
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_new_firewall_api(coordinator, ph_hass, make_config_entry):
+    """Async setup should create entities for new firewall API (>= 26.1.1)."""
+    calls = {}
+
+    def fake_add_entities(entities):
+        calls["len"] = len(entities)
+
+    # create a state that contains new firewall API structure
+    state = {
+        "firewall": {
+            "rules": {
+                "rule1": {
+                    "uuid": "rule1",
+                    "description": "Test Firewall Rule",
+                    "%interface": "wan",
+                    "enabled": "1",
+                }
+            },
+            "nat": {
+                "source_nat": {
+                    "nat1": {
+                        "uuid": "nat1",
+                        "description": "Test Source NAT",
+                        "%interface": "wan",
+                        "enabled": "1",
+                    }
+                },
+                "d_nat": {
+                    "dnat1": {
+                        "uuid": "dnat1",
+                        "description": "Test Destination NAT",
+                        "%interface": "wan",
+                        "enabled": "1",
+                    }
+                },
+                "one_to_one": {
+                    "oto1": {
+                        "uuid": "oto1",
+                        "description": "Test One-to-One NAT",
+                        "%interface": "wan",
+                        "enabled": "1",
+                    }
+                },
+                "npt": {
+                    "npt1": {
+                        "uuid": "npt1",
+                        "description": "Test NPT NAT",
+                        "%interface": "wan",
+                        "enabled": "1",
+                    }
+                },
+            },
+        },
+        "host_firmware_version": "26.1.1",
+    }
+    coordinator.data = state
+
+    config_entry = make_config_entry(
+        data={
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_SYNC_FIREWALL_AND_NAT: True,
+            CONF_SYNC_SERVICES: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_UNBOUND: False,
+        },
+        title="OPNsenseTest",
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    hass = ph_hass
+    await switch_mod.async_setup_entry(hass, config_entry, fake_add_entities)
+
+    # Should create entities for each rule type in new API
+    expected = 5  # 1 firewall rule + 4 NAT rules
     assert calls.get("len") == expected
 
 
@@ -291,7 +552,7 @@ async def test_unbound_and_vpn_variations(coordinator, ph_hass, make_config_entr
         for e in created
         if (
             (
-                not isinstance(e, OPNsenseFilterSwitch)
+                not isinstance(e, OPNsenseFilterSwitchLegacy)
                 and getattr(e, "_attr_unique_id", "").endswith("unbound")
             )
             or (
@@ -342,7 +603,7 @@ def test_delay_update_setter(monkeypatch, coordinator, make_config_entry):
         title="OPNsenseTest",
     )
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    ent = OPNsenseFilterSwitch(
+    ent = OPNsenseFilterSwitchLegacy(
         config_entry=config_entry, coordinator=coordinator, entity_description=desc
     )
     # synchronous test: use a plain hass-like object with a dedicated loop
@@ -480,7 +741,7 @@ async def test_vpn_turn_on_off_noops_when_preconditions_fail(
     # replace async_call_later to avoid scheduling
     monkeypatch.setattr(
         "custom_components.opnsense.switch.async_call_later",
-        lambda hass, delay, action: (lambda: None),
+        lambda hass, delay, action: lambda: None,
     )
 
     desc = SwitchEntityDescription(key="openvpn.clients.c2", name="VPNC2")
@@ -533,7 +794,7 @@ async def test_vpn_async_turn_off_variations(
     # avoid scheduling real async_call_later during tests
     monkeypatch.setattr(
         "custom_components.opnsense.switch.async_call_later",
-        lambda hass, delay, action: (lambda: None),
+        lambda hass, delay, action: lambda: None,
     )
 
     desc = SwitchEntityDescription(key="openvpn.clients.cx", name="VPNCX")
@@ -591,21 +852,26 @@ async def test_filter_disabled_and_missing(coordinator, ph_hass, make_config_ent
     """Filter compilation handles missing and disabled rules correctly."""
     config_entry = make_config_entry(
         data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"},
+        options={CONF_SYNC_FIREWALL_AND_NAT: True},
         title="OPNsenseTest",
     )
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     # missing rules -> compile returns []
-    state = {"config": {"filter": {"rule": []}}}
+    state = {"firewall": {"config": {"filter": {"rule": []}}}}
     coordinator.data = state
-    entities = await _compile_filter_switches(config_entry, coordinator, state)
+    entities = await _compile_filter_switches_legacy(config_entry, coordinator, state)
     assert entities == []
 
     # disabled rule -> is_on False
     state = {
-        "config": {"filter": {"rule": [{"descr": "x", "created": {"time": "t2"}, "disabled": "1"}]}}
+        "firewall": {
+            "config": {
+                "filter": {"rule": [{"descr": "x", "created": {"time": "t2"}, "disabled": "1"}]}
+            }
+        }
     }
     coordinator.data = state
-    entities = await _compile_filter_switches(config_entry, coordinator, state)
+    entities = await _compile_filter_switches_legacy(config_entry, coordinator, state)
     ent = entities[0]
     # use PHCC-provided hass fixture
     hass = ph_hass
@@ -665,31 +931,42 @@ async def test_unbound_skips_update_when_delay_set(coordinator, ph_hass, make_co
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "kind,compile_fn,state,selector",
+    "kind,compile_fn,state,selector,options",
     [
         (
             "unbound",
             _compile_static_unbound_switch_legacy,
             {"unbound_blocklist": {"legacy": {"enabled": "1"}}},
             "first",
+            {CONF_SYNC_UNBOUND: True},
         ),
         (
             "filter",
-            _compile_filter_switches,
+            _compile_filter_switches_legacy,
             {
-                "config": {
-                    "filter": {
-                        "rule": [{"descr": "Allow", "created": {"time": "fdelay"}, "disabled": "0"}]
+                "firewall": {
+                    "config": {
+                        "filter": {
+                            "rule": [
+                                {"descr": "Allow", "created": {"time": "fdelay"}, "disabled": "0"}
+                            ]
+                        }
                     }
                 }
             },
             "first",
+            {CONF_SYNC_FIREWALL_AND_NAT: True},
         ),
         (
             "nat",
-            _compile_port_forward_switches,
-            {"config": {"nat": {"rule": [{"descr": "PF", "created": {"time": "pdelay"}}]}}},
+            _compile_port_forward_switches_legacy,
+            {
+                "firewall": {
+                    "config": {"nat": {"rule": [{"descr": "PF", "created": {"time": "pdelay"}}]}}
+                }
+            },
             "first",
+            {CONF_SYNC_FIREWALL_AND_NAT: True},
         ),
         (
             "service",
@@ -706,6 +983,7 @@ async def test_unbound_skips_update_when_delay_set(coordinator, ph_hass, make_co
                 ]
             },
             "first",
+            {CONF_SYNC_SERVICES: True},
         ),
         (
             "vpn",
@@ -715,14 +993,17 @@ async def test_unbound_skips_update_when_delay_set(coordinator, ph_hass, make_co
                 "wireguard": {"clients": {}, "servers": {}},
             },
             "endswith:v1",
+            {CONF_SYNC_VPN: True},
         ),
     ],
 )
 async def test_delay_skips_update_parametrized(
-    kind, compile_fn, state, selector, coordinator, ph_hass, make_config_entry
+    kind, compile_fn, state, selector, options, coordinator, ph_hass, make_config_entry
 ):
     """Parametrized test asserting handlers return early when delay_update is set."""
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
+    config_entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"}, options=options
+    )
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
 
     coordinator.data = state
@@ -758,9 +1039,9 @@ async def test_compile_helpers_bad_input(coordinator, make_config_entry):
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     # non-mapping state
-    assert await _compile_filter_switches(config_entry, coordinator, None) == []
-    assert await _compile_port_forward_switches(config_entry, coordinator, None) == []
-    assert await _compile_nat_outbound_switches(config_entry, coordinator, None) == []
+    assert await _compile_filter_switches_legacy(config_entry, coordinator, None) == []
+    assert await _compile_port_forward_switches_legacy(config_entry, coordinator, None) == []
+    assert await _compile_nat_outbound_switches_legacy(config_entry, coordinator, None) == []
 
 
 @pytest.mark.asyncio
@@ -797,11 +1078,17 @@ async def test_switch_handle_error_sets_unavailable(
 
         if kind == "filter":
             # compile one valid filter entity then monkeypatch to produce error
-            config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+            config_entry = make_config_entry(
+                data={CONF_DEVICE_UNIQUE_ID: "dev1"}, options={CONF_SYNC_FIREWALL_AND_NAT: True}
+            )
             setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-            state = {"config": {"filter": {"rule": [{"descr": "Good", "created": {"time": "t1"}}]}}}
+            state = {
+                "firewall": {
+                    "config": {"filter": {"rule": [{"descr": "Good", "created": {"time": "t1"}}]}}
+                }
+            }
             coordinator.data = state
-            ent = (await _compile_filter_switches(config_entry, coordinator, state))[0]
+            ent = (await _compile_filter_switches_legacy(config_entry, coordinator, state))[0]
             ent.hass = hass_local
             ent.coordinator = make_coord(state)
             ent.entity_id = f"switch.{ent._attr_unique_id}"
@@ -815,7 +1102,7 @@ async def test_switch_handle_error_sets_unavailable(
             desc = SwitchEntityDescription(key="nat_port_forward.abc", name="NAT")
             config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
             setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-            ent = OPNsenseNatSwitch(
+            ent = OPNsenseNatSwitchLegacy(
                 config_entry=config_entry,
                 coordinator=coordinator,
                 entity_description=desc,
@@ -864,7 +1151,7 @@ def test_entity_icons(make_config_entry):
     f_desc = SwitchEntityDescription(key="filter.t1", name="Filter")
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, None)
-    f_ent = OPNsenseFilterSwitch(
+    f_ent = OPNsenseFilterSwitchLegacy(
         config_entry=config_entry,
         coordinator=make_coord({}),
         entity_description=f_desc,
@@ -877,7 +1164,7 @@ def test_entity_icons(make_config_entry):
     n_desc = SwitchEntityDescription(key="nat_port_forward.t1", name="NAT")
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, None)
-    n_ent = OPNsenseNatSwitch(
+    n_ent = OPNsenseNatSwitchLegacy(
         config_entry=config_entry,
         coordinator=make_coord({}),
         entity_description=n_desc,
@@ -1028,7 +1315,7 @@ def test_reset_delay_calls_existing_remover(monkeypatch, make_config_entry):
     desc = SwitchEntityDescription(key="filter.t1", name="Filter")
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, None)
-    ent = OPNsenseFilterSwitch(
+    ent = OPNsenseFilterSwitchLegacy(
         config_entry=config_entry,
         coordinator=make_coord({}),
         entity_description=desc,
@@ -1056,24 +1343,29 @@ def test_reset_delay_calls_existing_remover(monkeypatch, make_config_entry):
 @pytest.mark.asyncio
 async def test_compile_filter_skip_and_invalid_rules(coordinator, make_config_entry):
     """Filter compilation skips invalid and non-dict rule entries."""
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
+    config_entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"},
+        options={CONF_SYNC_FIREWALL_AND_NAT: True},
+    )
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     # include various rules that should be skipped
     state = {
-        "config": {
-            "filter": {
-                "rule": [
-                    {"descr": "Anti-Lockout Rule", "created": {"time": "a1"}},
-                    {"associated-rule-id": "x", "created": {"time": "a2"}},
-                    {"descr": "No tracker"},
-                    ["not", "a", "dict"],
-                    {"descr": "Good", "created": {"time": "g1"}},
-                ]
+        "firewall": {
+            "config": {
+                "filter": {
+                    "rule": [
+                        {"description": "Anti-Lockout Rule", "created": {"time": "a1"}},
+                        {"associated-rule-id": "x", "created": {"time": "a2"}},
+                        {"description": "No tracker"},
+                        ["not", "a", "dict"],
+                        {"description": "Good", "created": {"time": "g1"}},
+                    ]
+                }
             }
         }
     }
     coordinator.data = state
-    entities = await _compile_filter_switches(config_entry, coordinator, state)
+    entities = await _compile_filter_switches_legacy(config_entry, coordinator, state)
     # only the valid rule should be compiled
     assert len(entities) == 1
 
@@ -1081,22 +1373,27 @@ async def test_compile_filter_skip_and_invalid_rules(coordinator, make_config_en
 @pytest.mark.asyncio
 async def test_compile_nat_outbound_skips_auto_created(coordinator, make_config_entry):
     """Outbound NAT compilation ignores auto-created rules."""
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
+    config_entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"},
+        options={CONF_SYNC_FIREWALL_AND_NAT: True},
+    )
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     state = {
-        "config": {
-            "nat": {
-                "outbound": {
-                    "rule": [
-                        {"descr": "Auto created rule", "created": {"time": "x1"}},
-                        {"descr": "Manual", "created": {"time": "x2"}},
-                    ]
+        "firewall": {
+            "config": {
+                "nat": {
+                    "outbound": {
+                        "rule": [
+                            {"description": "Auto created rule", "created": {"time": "x1"}},
+                            {"description": "Manual", "created": {"time": "x2"}},
+                        ]
+                    }
                 }
             }
         }
     }
     coordinator.data = state
-    ents = await _compile_nat_outbound_switches(config_entry, coordinator, state)
+    ents = await _compile_nat_outbound_switches_legacy(config_entry, coordinator, state)
     assert len(ents) == 1
 
 
@@ -1131,7 +1428,7 @@ async def test_async_setup_entry_respects_config_flags(
     config_entry = make_config_entry(
         data={
             CONF_DEVICE_UNIQUE_ID: "dev1",
-            CONF_SYNC_FILTERS_AND_NAT: False,
+            CONF_SYNC_FIREWALL_AND_NAT: False,
             CONF_SYNC_SERVICES: False,
             CONF_SYNC_VPN: False,
             CONF_SYNC_UNBOUND: True,
@@ -1215,7 +1512,7 @@ async def test_nat_handle_missing_rule_returns_none(coordinator, ph_hass, make_c
     # create a nat switch with rule type that doesn't exist in state
     desc = SwitchEntityDescription(key="nat_outbound.missing", name="Missing")
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    ent = OPNsenseNatSwitch(
+    ent = OPNsenseNatSwitchLegacy(
         config_entry=config_entry,
         coordinator=coordinator,
         entity_description=desc,
@@ -1478,7 +1775,7 @@ def test_nat_rule_type_and_tracker_methods(coordinator, make_config_entry):
 
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    pf = OPNsenseNatSwitch(
+    pf = OPNsenseNatSwitchLegacy(
         config_entry=config_entry,
         coordinator=coordinator,
         entity_description=desc_pf,
@@ -1486,7 +1783,7 @@ def test_nat_rule_type_and_tracker_methods(coordinator, make_config_entry):
     # create a separate config_entry for the outbound test
     config_entry_ob = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry_ob.runtime_data, COORDINATOR, coordinator)
-    ob = OPNsenseNatSwitch(
+    ob = OPNsenseNatSwitchLegacy(
         config_entry=config_entry_ob,
         coordinator=coordinator,
         entity_description=desc_ob,
@@ -1518,8 +1815,8 @@ async def test_compile_port_forward_with_missing_rules(coordinator, make_config_
     # port forward compile should return [] when nat not present or rules missing
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    coordinator.data = {"config": {}}
-    res = await _compile_port_forward_switches(config_entry, coordinator, coordinator.data)
+    coordinator.data = {"firewall": {"config": {}}}
+    res = await _compile_port_forward_switches_legacy(config_entry, coordinator, coordinator.data)
     assert res == []
 
 
@@ -1548,7 +1845,7 @@ def test_filter_handle_exceptions_sets_unavailable(
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
 
-    ent = OPNsenseFilterSwitch(
+    ent = OPNsenseFilterSwitchLegacy(
         config_entry=config_entry, coordinator=coordinator, entity_description=desc
     )
     ent.hass = MagicMock(spec=HomeAssistant)
@@ -1582,7 +1879,7 @@ def test_nat_handle_exceptions_sets_unavailable(exc_type, coordinator, make_conf
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
 
-    ent = OPNsenseNatSwitch(
+    ent = OPNsenseNatSwitchLegacy(
         config_entry=config_entry, coordinator=coordinator, entity_description=desc
     )
     ent.hass = MagicMock(spec=HomeAssistant)
@@ -1739,3 +2036,150 @@ async def test_unbound_extended_switch_toggle_failures(coordinator, ph_hass, mak
     await ent.async_turn_off()
     assert ent.is_on is True  # Should remain on
     assert ent.delay_update is False  # Should not set delay
+
+
+@pytest.mark.asyncio
+async def test_compile_firewall_rules_switches(coordinator, make_config_entry):
+    """Test compilation of firewall rule switches for new API."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    state = {
+        "firewall": {
+            "rules": {
+                "rule1": {
+                    "uuid": "rule1",
+                    "description": "Test Rule 1",
+                    "%interface": "wan",
+                    "enabled": "1",
+                },
+                "rule2": {
+                    "uuid": "rule2",
+                    "description": "Test Rule 2",
+                    "%interface": "lan",
+                    "enabled": "0",
+                },
+            }
+        }
+    }
+    ents = await _compile_firewall_rules_switches(config_entry, coordinator, state)
+    assert len(ents) == 2
+    assert isinstance(ents[0], OPNsenseFirewallRuleSwitch)
+    assert isinstance(ents[1], OPNsenseFirewallRuleSwitch)
+    assert ents[0].entity_description.key == "firewall.rule.rule1"
+    assert ents[1].entity_description.key == "firewall.rule.rule2"
+
+
+@pytest.mark.asyncio
+async def test_compile_nat_source_rules_switches(coordinator, make_config_entry):
+    """Test compilation of NAT source rule switches."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    state = {
+        "firewall": {
+            "nat": {
+                "source_nat": {
+                    "nat1": {
+                        "uuid": "nat1",
+                        "description": "Source NAT Rule",
+                        "%interface": "wan",
+                        "enabled": "1",
+                    }
+                }
+            }
+        }
+    }
+    ents = await _compile_nat_source_rules_switches(config_entry, coordinator, state)
+    assert len(ents) == 1
+    assert isinstance(ents[0], OPNsenseNATRuleSwitch)
+    assert ents[0].entity_description.key == "firewall.nat.source_nat.nat1"
+
+
+@pytest.mark.asyncio
+async def test_compile_nat_destination_rules_switches(coordinator, make_config_entry):
+    """Test compilation of NAT destination rule switches."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    state = {
+        "firewall": {
+            "nat": {
+                "d_nat": {
+                    "dnat1": {
+                        "uuid": "dnat1",
+                        "description": "Destination NAT Rule",
+                        "%interface": "wan",
+                        "enabled": "1",
+                    }
+                }
+            }
+        }
+    }
+    ents = await _compile_nat_destination_rules_switches(config_entry, coordinator, state)
+    assert len(ents) == 1
+    assert isinstance(ents[0], OPNsenseNATRuleSwitch)
+    assert ents[0].entity_description.key == "firewall.nat.d_nat.dnat1"
+
+
+@pytest.mark.asyncio
+async def test_compile_nat_one_to_one_rules_switches(coordinator, make_config_entry):
+    """Test compilation of NAT one-to-one rule switches."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    state = {
+        "firewall": {
+            "nat": {
+                "one_to_one": {
+                    "oto1": {
+                        "uuid": "oto1",
+                        "description": "One-to-One NAT Rule",
+                        "%interface": "wan",
+                        "enabled": "1",
+                    }
+                }
+            }
+        }
+    }
+    ents = await _compile_nat_one_to_one_rules_switches(config_entry, coordinator, state)
+    assert len(ents) == 1
+    assert isinstance(ents[0], OPNsenseNATRuleSwitch)
+    assert ents[0].entity_description.key == "firewall.nat.one_to_one.oto1"
+
+
+@pytest.mark.asyncio
+async def test_compile_nat_npt_rules_switches(coordinator, make_config_entry):
+    """Test compilation of NAT NPT rule switches."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    state = {
+        "firewall": {
+            "nat": {
+                "npt": {
+                    "npt1": {
+                        "uuid": "npt1",
+                        "description": "NPT NAT Rule",
+                        "%interface": "wan",
+                        "enabled": "1",
+                    }
+                }
+            }
+        }
+    }
+    ents = await _compile_nat_npt_rules_switches(config_entry, coordinator, state)
+    assert len(ents) == 1
+    assert isinstance(ents[0], OPNsenseNATRuleSwitch)
+    assert ents[0].entity_description.key == "firewall.nat.npt.npt1"
+
+
+@pytest.mark.asyncio
+async def test_compile_new_api_empty_state(coordinator, make_config_entry):
+    """Test compilation functions handle empty/missing state gracefully."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+
+    # Test empty state
+    ents = await _compile_firewall_rules_switches(config_entry, coordinator, {})
+    assert ents == []
+
+    ents = await _compile_nat_source_rules_switches(config_entry, coordinator, {})
+    assert ents == []
+
+    # Test state with firewall but no rules
+    state = {"firewall": {}}
+    ents = await _compile_firewall_rules_switches(config_entry, coordinator, state)
+    assert ents == []
+
+    ents = await _compile_nat_source_rules_switches(config_entry, coordinator, state)
+    assert ents == []

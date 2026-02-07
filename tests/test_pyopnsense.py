@@ -7,15 +7,18 @@ integration module as required by the repository guidelines.
 
 import asyncio
 import contextlib
+import copy
 from datetime import datetime, timedelta
 import inspect as _inspect
 import socket
 from ssl import SSLError
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 import xmlrpc.client as xc
 from xmlrpc.client import Fault
 
 import aiohttp
+import awesomeversion
 import pytest
 from yarl import URL
 
@@ -25,6 +28,7 @@ from custom_components.opnsense import (
     sensor as sensor_mod,
     switch as switch_mod,
 )
+from custom_components.opnsense.const import CONF_SYNC_FIREWALL_AND_NAT
 
 
 def test_human_friendly_duration() -> None:
@@ -260,7 +264,9 @@ async def test_opnsenseclient_async_close(make_client) -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_host_firmware_set_use_snake_case_and_plugin_installed(make_client) -> None:
+async def test_get_host_firmware_set_use_snake_case_and_plugin_installed(
+    monkeypatch, make_client
+) -> None:
     """Ensure firmware parsing, snake_case detection and plugin detection work."""
     # create client/session for this test
     session = MagicMock(spec=aiohttp.ClientSession)
@@ -274,6 +280,21 @@ async def test_get_host_firmware_set_use_snake_case_and_plugin_installed(make_cl
     # set use snake case should detect >=25.7
     client._firmware_version = "25.8.0"
     await client.set_use_snake_case()
+    assert client._use_snake_case is True
+
+    # set use snake case should detect <25.7
+    client._firmware_version = "25.1.0"
+    await client.set_use_snake_case()
+    assert client._use_snake_case is False
+
+    # test AwesomeVersionCompareException handling
+    def mock_compare(self, other):
+        raise awesomeversion.exceptions.AwesomeVersionCompareException("test exception")
+
+    monkeypatch.setattr(awesomeversion.AwesomeVersion, "__lt__", mock_compare)
+    client._firmware_version = "25.8.0"
+    await client.set_use_snake_case()
+    # Should default to True on exception
     assert client._use_snake_case is True
 
     # invalid semver -> fallback to product_series
@@ -1046,6 +1067,9 @@ async def test_do_get_post_error_initial_behavior(
         async def json(self, content_type=None):
             return {"x": 1}
 
+        async def text(self):
+            return "raw response text"
+
         @property
         def content(self):
             class C:
@@ -1400,31 +1424,31 @@ async def test_enable_and_disable_filter_rules_and_nat_port_forward(make_client)
         url="http://localhost", username="u", password="p", session=session
     )
 
-    # enable_filter_rule_by_created_time: rule has 'disabled' -> should remove and call restore+configure
+    # enable_filter_rule_by_created_time_legacy: rule has 'disabled' -> should remove and call restore+configure
     cfg_enable = {"filter": {"rule": [{"created": {"time": "t-enable"}, "disabled": "1"}]}}
     client.get_config = AsyncMock(return_value=cfg_enable)
     client._restore_config_section = AsyncMock()
     client._filter_configure = AsyncMock()
-    await client.enable_filter_rule_by_created_time("t-enable")
-    client._restore_config_section.assert_called()
+    await client.enable_filter_rule_by_created_time_legacy("t-enable")
+    client._restore_config_section.assert_awaited()
     client._filter_configure.assert_awaited()
 
-    # disable_filter_rule_by_created_time: rule missing 'disabled' -> should add it and call restore+configure
+    # disable_filter_rule_by_created_time_legacy: rule missing 'disabled' -> should add it and call restore+configure
     cfg_disable = {"filter": {"rule": [{"created": {"time": "t-disable"}}]}}
     client.get_config = AsyncMock(return_value=cfg_disable)
     client._restore_config_section = AsyncMock()
     client._filter_configure = AsyncMock()
-    await client.disable_filter_rule_by_created_time("t-disable")
-    client._restore_config_section.assert_called()
+    await client.disable_filter_rule_by_created_time_legacy("t-disable")
+    client._restore_config_section.assert_awaited()
     client._filter_configure.assert_awaited()
 
-    # enable_nat_port_forward_rule_by_created_time: similar flow under 'nat' section
+    # enable_nat_port_forward_rule_by_created_time_legacy: similar flow under 'nat' section
     cfg_nat = {"nat": {"rule": [{"created": {"time": "t-nat"}, "disabled": "1"}]}}
     client.get_config = AsyncMock(return_value=cfg_nat)
     client._restore_config_section = AsyncMock()
     client._filter_configure = AsyncMock()
-    await client.enable_nat_port_forward_rule_by_created_time("t-nat")
-    client._restore_config_section.assert_called()
+    await client.enable_nat_port_forward_rule_by_created_time_legacy("t-nat")
+    client._restore_config_section.assert_awaited()
     client._filter_configure.assert_awaited()
 
 
@@ -1587,21 +1611,28 @@ async def test_compile_filesystem_sensors_and_filter_switches(make_config_entry)
 
     # filter switches: validate via public switch setup path as a smoke test
     state2 = {
-        "config": {
-            "filter": {
-                "rule": [
-                    {"descr": "Anti-Lockout Rule", "created": {"time": "t1"}},
-                    {"descr": "Normal", "created": {"time": "t2"}, "associated-rule-id": "r1"},
-                    {"descr": "Ok", "created": {"time": "t3"}},
-                ]
+        "host_firmware_version": "25.7.8",
+        "firewall": {
+            "config": {
+                "filter": {
+                    "rule": [
+                        {"description": "Anti-Lockout Rule", "created": {"time": "t1"}},
+                        {
+                            "description": "Normal",
+                            "created": {"time": "t2"},
+                            "associated-rule-id": "r1",
+                        },
+                        {"description": "Ok", "created": {"time": "t3"}},
+                    ]
+                }
             }
-        }
+        },
     }
     # prepare a switch config entry with filter sync enabled
     switch_cfg = make_config_entry(
         data={
             "device_unique_id": "dev1",
-            "sync_filters_and_nat": True,
+            CONF_SYNC_FIREWALL_AND_NAT: True,
             "sync_unbound": False,
             "sync_vpn": False,
             "sync_services": False,
@@ -2779,9 +2810,12 @@ async def test_get_config_and_rule_enable_disable_branches() -> None:
     }
 
     client._exec_php = AsyncMock(return_value=fake_config)
-
+    client._restore_config_section = AsyncMock()
+    client._filter_configure = AsyncMock()
     # calling enable should remove 'disabled' and call restore/configure (no exception)
-    await client.enable_filter_rule_by_created_time("t1")
+    await client.enable_filter_rule_by_created_time_legacy("t1")
+    client._restore_config_section.assert_awaited()
+    client._filter_configure.assert_awaited()
 
     # disable_nat_port_forward: add a rule without 'disabled' and expect it to set 'disabled'
     client._exec_php = AsyncMock(
@@ -2790,7 +2824,7 @@ async def test_get_config_and_rule_enable_disable_branches() -> None:
     # patch _restore_config_section and _filter_configure to be no-ops
     client._restore_config_section = AsyncMock()
     client._filter_configure = AsyncMock()
-    await client.disable_nat_port_forward_rule_by_created_time("n1")
+    await client.disable_nat_port_forward_rule_by_created_time_legacy("n1")
     await client.async_close()
 
 
@@ -2979,7 +3013,7 @@ async def test_reset_and_get_query_counts():
         ),
     ],
 )
-async def test_enable_filter_rule_by_created_time(
+async def test_enable_filter_rule_by_created_time_legacy(
     make_client, rules, created_time, should_call
 ) -> None:
     """Ensure enabling a filter rule removes 'disabled' and triggers restore/configure only when appropriate.
@@ -2995,7 +3029,7 @@ async def test_enable_filter_rule_by_created_time(
     client._restore_config_section = AsyncMock()
     client._filter_configure = AsyncMock()
 
-    await client.enable_filter_rule_by_created_time(created_time)
+    await client.enable_filter_rule_by_created_time_legacy(created_time)
 
     if should_call:
         client._restore_config_section.assert_awaited()
@@ -3142,7 +3176,7 @@ async def test_enable_disable_nat_outbound_rules(make_client) -> None:
     client.get_config = AsyncMock(return_value=cfg_enable)
     client._restore_config_section = AsyncMock()
     client._filter_configure = AsyncMock()
-    await client.enable_nat_outbound_rule_by_created_time("t1")
+    await client.enable_nat_outbound_rule_by_created_time_legacy("t1")
     client._restore_config_section.assert_awaited()
     client._filter_configure.assert_awaited()
 
@@ -3151,7 +3185,7 @@ async def test_enable_disable_nat_outbound_rules(make_client) -> None:
     client.get_config = AsyncMock(return_value=cfg_disable)
     client._restore_config_section = AsyncMock()
     client._filter_configure = AsyncMock()
-    await client.disable_nat_outbound_rule_by_created_time("t2")
+    await client.disable_nat_outbound_rule_by_created_time_legacy("t2")
     client._restore_config_section.assert_awaited()
     client._filter_configure.assert_awaited()
     await client.async_close()
@@ -3259,4 +3293,295 @@ async def test_get_device_unique_id_no_mac(make_client) -> None:
     client = make_client(session=session)
     client._safe_list_get = AsyncMock(return_value=[{"is_physical": False}])
     assert await client.get_device_unique_id() is None
+    await client.async_close()
+
+
+@pytest.mark.asyncio
+async def test_get_firewall_legacy_fallback(make_client) -> None:
+    """get_firewall falls back to legacy config for OPNsense < 26.1.1."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+    client._firmware_version = "25.7.0"
+
+    # Mock get_config for legacy fallback
+    client.get_config = AsyncMock(return_value={"filter": {"rule": []}})
+
+    result = await client.get_firewall()
+    assert result == {"config": {"filter": {"rule": []}}}
+    client.get_config.assert_awaited_once()
+    await client.async_close()
+
+
+@pytest.mark.asyncio
+async def test_get_firewall_new_api(make_client) -> None:
+    """get_firewall uses new API for OPNsense >= 26.1.1."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+    client._firmware_version = "26.1.1"
+
+    # Mock all the methods called in the new API path
+    client.is_plugin_installed = AsyncMock(return_value=True)
+    client.get_config = AsyncMock(return_value={"filter": {"rule": []}})
+    client._get_firewall_rules = AsyncMock(return_value={"rule1": {"uuid": "rule1"}})
+    client._get_nat_destination_rules = AsyncMock(return_value={"nat1": {"uuid": "nat1"}})
+    client._get_nat_one_to_one_rules = AsyncMock(return_value={"one1": {"uuid": "one1"}})
+    client._get_nat_source_rules = AsyncMock(return_value={"src1": {"uuid": "src1"}})
+    client._get_nat_npt_rules = AsyncMock(return_value={"npt1": {"uuid": "npt1"}})
+
+    result = await client.get_firewall()
+    expected = {
+        "config": {"filter": {"rule": []}},
+        "rules": {"rule1": {"uuid": "rule1"}},
+        "nat": {
+            "d_nat": {"nat1": {"uuid": "nat1"}},
+            "one_to_one": {"one1": {"uuid": "one1"}},
+            "source_nat": {"src1": {"uuid": "src1"}},
+            "npt": {"npt1": {"uuid": "npt1"}},
+        },
+    }
+    assert result == expected
+    client.is_plugin_installed.assert_awaited_once()
+    client.get_config.assert_awaited_once()
+    client._get_firewall_rules.assert_awaited_once()
+    client._get_nat_destination_rules.assert_awaited_once()
+    client._get_nat_one_to_one_rules.assert_awaited_once()
+    client._get_nat_source_rules.assert_awaited_once()
+    client._get_nat_npt_rules.assert_awaited_once()
+    await client.async_close()
+
+
+@pytest.mark.asyncio
+async def test_get_firewall_new_api_plugin_not_installed(make_client) -> None:
+    """get_firewall uses new API for OPNsense >= 26.1.1 but when plugin not installed it should skip config."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+    client._firmware_version = "26.1.1"
+
+    # Plugin not installed: shouldn't call get_config
+    client.is_plugin_installed = AsyncMock(return_value=False)
+    client.get_config = AsyncMock(return_value={"filter": {"rule": []}})
+    client._get_firewall_rules = AsyncMock(return_value={"rule1": {"uuid": "rule1"}})
+    client._get_nat_destination_rules = AsyncMock(return_value={"nat1": {"uuid": "nat1"}})
+    client._get_nat_one_to_one_rules = AsyncMock(return_value={"one1": {"uuid": "one1"}})
+    client._get_nat_source_rules = AsyncMock(return_value={"src1": {"uuid": "src1"}})
+    client._get_nat_npt_rules = AsyncMock(return_value={"npt1": {"uuid": "npt1"}})
+
+    result = await client.get_firewall()
+    expected = {
+        "rules": {"rule1": {"uuid": "rule1"}},
+        "nat": {
+            "d_nat": {"nat1": {"uuid": "nat1"}},
+            "one_to_one": {"one1": {"uuid": "one1"}},
+            "source_nat": {"src1": {"uuid": "src1"}},
+            "npt": {"npt1": {"uuid": "npt1"}},
+        },
+    }
+    assert result == expected
+    client.is_plugin_installed.assert_awaited_once()
+    client.get_config.assert_not_awaited()
+    client._get_firewall_rules.assert_awaited_once()
+    client._get_nat_destination_rules.assert_awaited_once()
+    client._get_nat_one_to_one_rules.assert_awaited_once()
+    client._get_nat_source_rules.assert_awaited_once()
+    client._get_nat_npt_rules.assert_awaited_once()
+    await client.async_close()
+
+
+@pytest.mark.asyncio
+async def test_get_firewall_version_compare_exception(make_client) -> None:
+    """get_firewall handles AwesomeVersionCompareException gracefully."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+    client._firmware_version = "invalid"
+
+    result = await client.get_firewall()
+    assert result == {}
+    await client.async_close()
+
+
+@pytest.mark.asyncio
+async def test_get_firewall_rules_successful_parsing(make_client) -> None:
+    """_get_firewall_rules successfully parses rows returned from the REST API."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+
+    rows = [
+        {
+            "uuid": "rule1",
+            "enabled": "1",
+            "action": "pass",
+            "interface": "lan",
+            "descr": "Allow HTTP",
+        },
+        {
+            "uuid": "rule2",
+            "enabled": "0",
+            "action": "block",
+            "interface": "wan",
+            "descr": "Block traffic",
+        },
+    ]
+
+    client._safe_dict_post = AsyncMock(return_value={"rows": rows})
+
+    result = await client._get_firewall_rules()
+
+    expected = {r["uuid"]: r.copy() for r in rows}
+    assert result == expected
+    client._safe_dict_post.assert_awaited_once_with(
+        "/api/firewall/filter/search_rule", payload={"current": 1, "sort": {}}
+    )
+    await client.async_close()
+
+
+@pytest.mark.asyncio
+async def test_get_firewall_rules_empty_response(make_client) -> None:
+    """_get_firewall_rules returns empty dict when API response has no rows."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+
+    client._safe_dict_post = AsyncMock(return_value={})
+
+    result = await client._get_firewall_rules()
+    assert result == {}
+    await client.async_close()
+
+
+@pytest.mark.asyncio
+async def test_get_firewall_rules_skips_invalid_rows(make_client) -> None:
+    """_get_firewall_rules skips rules without uuid and lockout rules."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+
+    rows = [
+        {"enabled": "1", "action": "pass"},  # missing uuid
+        {"uuid": "lockout-1", "enabled": "1"},  # lockout rule
+        {"uuid": "rule-ok", "enabled": "1"},  # valid
+    ]
+
+    client._safe_dict_post = AsyncMock(return_value={"rows": rows})
+
+    result = await client._get_firewall_rules()
+    assert list(result.keys()) == ["rule-ok"]
+    await client.async_close()
+
+
+@pytest.mark.parametrize(
+    ("method_name", "api_endpoint", "has_transformations"),
+    [
+        ("_get_nat_destination_rules", "/api/firewall/d_nat/search_rule", True),
+        ("_get_nat_one_to_one_rules", "/api/firewall/one_to_one/search_rule", False),
+        ("_get_nat_source_rules", "/api/firewall/source_nat/search_rule", False),
+        ("_get_nat_npt_rules", "/api/firewall/npt/search_rule", False),
+    ],
+)
+@pytest.mark.parametrize(
+    ("test_case", "expected_result"),
+    [
+        (
+            "successful_parsing",
+            {
+                "test-rule-1": {
+                    "uuid": "test-rule-1",
+                    "description": "Test rule 1",
+                    "enabled": "1",
+                    "interface": "wan",
+                    "protocol": "tcp",
+                },
+                "test-rule-2": {
+                    "uuid": "test-rule-2",
+                    "description": "Test rule 2",
+                    "enabled": "0",
+                    "interface": "lan",
+                    "protocol": "udp",
+                },
+            },
+        ),
+        (
+            "filters_lockout_rules",
+            {
+                "normal-rule": {
+                    "uuid": "normal-rule",
+                    "description": "Normal rule",
+                    "enabled": "1",
+                }
+            },
+        ),
+        ("empty_response", {}),
+        ("response_without_rows", {}),
+    ],
+)
+@pytest.mark.asyncio
+async def test_nat_rules_parsing(
+    make_client,
+    method_name,
+    api_endpoint,
+    has_transformations,
+    test_case,
+    expected_result,
+) -> None:
+    """Test NAT rules parsing for all NAT rule types."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+
+    # Build API-style mock response depending on whether the endpoint uses
+    # transformations (d_nat-like endpoints use 'descr'/'disabled').
+    mock_response: dict[str, Any]
+    if test_case == "empty_response":
+        mock_response = {}
+    elif test_case == "response_without_rows":
+        mock_response = {"some_other_key": "value"}
+    else:
+        normalized_rows: list[dict[str, Any]] = []
+        extra_rows: list[dict[str, Any]] = []
+        if test_case == "successful_parsing":
+            for uid, info in expected_result.items():
+                row = {"uuid": uid}
+                row["description"] = info.get("description")
+                row["enabled"] = info.get("enabled")
+                if "interface" in info:
+                    row["interface"] = info.get("interface")
+                if "protocol" in info:
+                    row["protocol"] = info.get("protocol")
+                normalized_rows.append(row)
+        elif test_case == "filters_lockout_rules":
+            normalized_rows = [
+                {"uuid": "normal-rule", "description": "Normal rule", "enabled": "1"}
+            ]
+            extra_rows = [
+                {"uuid": "lockout-rule", "description": "Lockout rule", "enabled": "1"},
+                {"uuid": "another-lockout", "description": "Another lockout", "enabled": "1"},
+                {"uuid": None, "description": "No UUID rule", "enabled": "1"},
+            ]
+
+        api_rows: list[dict[str, Any]] = []
+        for row in normalized_rows + extra_rows:
+            if has_transformations:
+                new_row = row.copy()
+                if "description" in new_row:
+                    new_row["descr"] = new_row.pop("description")
+                if "enabled" in new_row:
+                    new_row["disabled"] = "0" if new_row.pop("enabled") == "1" else "1"
+                api_rows.append(new_row)
+            else:
+                api_rows.append(row.copy())
+
+        mock_response = {"rows": api_rows}
+
+    client._safe_dict_post = AsyncMock(return_value=mock_response)
+
+    # Call the appropriate method
+    method = getattr(client, method_name)
+    result = await method()
+
+    # Make a deep copy of expected_result so we don't mutate the shared fixture
+    expected = copy.deepcopy(expected_result)
+
+    assert result == expected
+
+    # Verify the correct API endpoint was called
+    client._safe_dict_post.assert_awaited_once_with(
+        api_endpoint, payload={"current": 1, "sort": {}}
+    )
+
     await client.async_close()

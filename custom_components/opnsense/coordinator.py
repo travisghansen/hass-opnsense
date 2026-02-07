@@ -17,7 +17,7 @@ from .const import (
     CONF_SYNC_CARP,
     CONF_SYNC_CERTIFICATES,
     CONF_SYNC_DHCP_LEASES,
-    CONF_SYNC_FILTERS_AND_NAT,
+    CONF_SYNC_FIREWALL_AND_NAT,
     CONF_SYNC_FIRMWARE_UPDATES,
     CONF_SYNC_GATEWAYS,
     CONF_SYNC_INTERFACES,
@@ -114,6 +114,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 "function": "get_host_firmware_version",
                 "state_key": "host_firmware_version",
             },
+            {"function": "is_plugin_installed", "state_key": "plugin_installed"},
         ]
 
         if config.get(CONF_SYNC_TELEMETRY, DEFAULT_SYNC_OPTION_VALUE):
@@ -149,8 +150,8 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             categories.append({"function": "get_services", "state_key": "services"})
         if config.get(CONF_SYNC_NOTICES, DEFAULT_SYNC_OPTION_VALUE):
             categories.append({"function": "get_notices", "state_key": "notices"})
-        if config.get(CONF_SYNC_FILTERS_AND_NAT, DEFAULT_SYNC_OPTION_VALUE):
-            categories.append({"function": "get_config", "state_key": "config"})
+        if config.get(CONF_SYNC_FIREWALL_AND_NAT, DEFAULT_SYNC_OPTION_VALUE):
+            categories.append({"function": "get_firewall", "state_key": "firewall"})
         if config.get(CONF_SYNC_UNBOUND, DEFAULT_SYNC_OPTION_VALUE):
             categories.append(
                 {
