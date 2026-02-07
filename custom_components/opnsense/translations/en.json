@@ -85,13 +85,12 @@
           "sync_gateways": "Gateway information",
           "sync_services": "Service switches",
           "sync_notices": "Notice information",
-          "sync_filters_and_nat": "Firewall filter and NAT switches*",
+          "sync_filters_and_nat": "Firewall and NAT rules switches",
           "sync_unbound": "Unbound blocklist switch",
           "sync_interfaces": "Interface information",
           "sync_certificates": "Security certificate information"
         },
-        "title": "Choose what items to sync",
-        "description": "* requires the OPNsense plugin"
+        "title": "Choose what items to sync"
       },
       "device_tracker": {
         "description": "Choose which devices you want to track. If you don't select any devices, all devices will be tracked but will be disabled by default. If you do select any devices, only those devices will be tracked and will be enabled by default.",
