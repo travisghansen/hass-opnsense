@@ -88,13 +88,16 @@ async def validate_input(
     user_input: MutableMapping[str, Any],
     config_step: str,
     errors: dict[str, Any],
+    expected_id: str | None = None,
 ) -> dict[str, Any]:
     """Check user input for errors."""
     # filtered_user_input: MutableMapping[str, Any] = {key: value for key, value in user_input.items() if key != CONF_PASSWORD}
     # _LOGGER.debug("[validate_input] user_input: %s", filtered_user_input)
 
     try:
-        await _handle_user_input(hass=hass, user_input=user_input, config_step=config_step)
+        await _handle_user_input(
+            hass=hass, user_input=user_input, config_step=config_step, expected_id=expected_id
+        )
     except BelowMinFirmware:
         _log_and_set_error(
             errors=errors,
@@ -258,7 +261,10 @@ def _validate_firmware_version(firmware_version: str) -> None:
 
 
 async def _handle_user_input(
-    hass: HomeAssistant, user_input: MutableMapping[str, Any], config_step: str
+    hass: HomeAssistant,
+    user_input: MutableMapping[str, Any],
+    config_step: str,
+    expected_id: str | None = None,
 ) -> None:
     """Handle and validate the user input."""
     await _clean_and_parse_url(user_input)
@@ -305,7 +311,7 @@ async def _handle_user_input(
     if not user_input.get(CONF_NAME):
         user_input[CONF_NAME] = system_info.get("name") or "OPNsense"
 
-    user_input[CONF_DEVICE_UNIQUE_ID] = await client.get_device_unique_id()
+    user_input[CONF_DEVICE_UNIQUE_ID] = await client.get_device_unique_id(expected_id=expected_id)
     _LOGGER.debug("[handle_user_input] Device Unique ID: %s", user_input[CONF_DEVICE_UNIQUE_ID])
 
     if not user_input.get(CONF_DEVICE_UNIQUE_ID):
@@ -562,7 +568,11 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
             self._config.update(user_input)
             # _LOGGER.debug("[config_flow granular_sync] merged config: %s", self._config)
             errors = await validate_input(
-                hass=self.hass, user_input=self._config, config_step="granular_sync", errors=errors
+                hass=self.hass,
+                user_input=self._config,
+                config_step="granular_sync",
+                errors=errors,
+                expected_id=self._config.get(CONF_DEVICE_UNIQUE_ID),
             )
             if not errors:
                 return self.async_create_entry(
@@ -592,7 +602,11 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
             self._config.update(user_input)
             # _LOGGER.debug("[config_flow reconfigure] merged config: %s", self._config)
             errors = await validate_input(
-                hass=self.hass, user_input=self._config, config_step="reconfigure", errors=errors
+                hass=self.hass,
+                user_input=self._config,
+                config_step="reconfigure",
+                errors=errors,
+                expected_id=self._config.get(CONF_DEVICE_UNIQUE_ID),
             )
 
             if not errors:
@@ -701,7 +715,11 @@ class OPNsenseOptionsFlow(OptionsFlow):
             self._config.update(user_input)
             # _LOGGER.debug("[options_flow granular_sync] merged user_input. config: %s. options: %s", self._config, self._options)
             errors = await validate_input(
-                hass=self.hass, user_input=self._config, config_step="granular_sync", errors=errors
+                hass=self.hass,
+                user_input=self._config,
+                config_step="granular_sync",
+                errors=errors,
+                expected_id=self._config.get(CONF_DEVICE_UNIQUE_ID),
             )
             if not errors:
                 if self._options.get(CONF_DEVICE_TRACKER_ENABLED):

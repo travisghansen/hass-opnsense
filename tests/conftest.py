@@ -561,7 +561,7 @@ def fake_client():
                 self._query_counts_reset = False
                 self._query_counts = (1, 1)
 
-            async def get_device_unique_id(self):
+            async def get_device_unique_id(self, expected_id: str | None = None):
                 return self._device_id
 
             async def get_host_firmware_version(self):
@@ -682,7 +682,7 @@ def fake_flow_client():
             async def get_system_info(self) -> dict:
                 return {"name": "OPNsense"}
 
-            async def get_device_unique_id(self) -> str:
+            async def get_device_unique_id(self, expected_id: str | None = None) -> str:
                 return self._device_id
 
             async def is_plugin_installed(self) -> bool:

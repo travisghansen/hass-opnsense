@@ -61,7 +61,7 @@ class _FakeFlowClient:
     async def get_system_info(self) -> MutableMapping[str, Any]:
         return {"name": "OPNsenseTest"}
 
-    async def get_device_unique_id(self) -> str:
+    async def get_device_unique_id(self, expected_id: str | None = None) -> str:
         return self._device_id
 
     async def get_arp_table(self, resolve_hostnames: bool = False) -> list[dict[str, Any]]:
@@ -80,7 +80,9 @@ class _FakeRuntimeClient:
         self._firmware = firmware
         self._closed = False
 
-    async def get_device_unique_id(self) -> str:  # used by setup & coordinator
+    async def get_device_unique_id(
+        self, expected_id: str | None = None
+    ) -> str:  # used by setup & coordinator
         return self._device_id
 
     async def get_host_firmware_version(self) -> str:  # used by setup & coordinator

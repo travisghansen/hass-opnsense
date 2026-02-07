@@ -1,6 +1,6 @@
 """OPNsense Coordinator."""
 
-from collections.abc import Mapping, MutableMapping
+from collections.abc import Callable, Mapping, MutableMapping
 import copy
 from datetime import timedelta
 import logging
@@ -83,10 +83,14 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         state: MutableMapping[str, Any] = {}
         total_time: float = 0
         for cat in categories:
-            method = getattr(self._client, cat.get("function", ""), None)
-            if method:
+            method_name: str = cat.get("function", "")
+            method: Callable | None = getattr(self._client, method_name, None)
+            if method is not None:
                 start_time: float = time.perf_counter()
-                state[cat.get("state_key")] = await method()
+                if method_name == "get_device_unique_id":
+                    state[cat.get("state_key")] = await method(expected_id=self._device_unique_id)
+                else:
+                    state[cat.get("state_key")] = await method()
                 end_time: float = time.perf_counter()
                 elapsed_time: float = end_time - start_time
                 total_time += elapsed_time

@@ -684,21 +684,28 @@ clear_subsystem_dirty('filter');
         await self._exec_php(script)
 
     @_log_errors
-    async def get_device_unique_id(self) -> str | None:
+    async def get_device_unique_id(self, expected_id: str | None = None) -> str | None:
         """Get the OPNsense Unique ID."""
         instances = await self._safe_list_get("/api/interfaces/overview/export")
-        mac_addresses = [
-            d.get("macaddr_hw") for d in instances if d.get("is_physical") and "macaddr_hw" in d
-        ]
+        mac_addresses = {
+            d.get("macaddr_hw").replace(":", "_").strip()
+            for d in instances
+            if d.get("is_physical") and d.get("macaddr_hw")
+        }
 
-        unique_mac_addresses: list = sorted(set(mac_addresses))
-        device_unique_id: str | None = unique_mac_addresses[0] if unique_mac_addresses else None
-        if device_unique_id:
-            device_unique_id_fmt = device_unique_id.replace(":", "_").strip()
-            _LOGGER.debug("[get_device_unique_id] device_unique_id: %s", device_unique_id_fmt)
-            return device_unique_id_fmt
-        _LOGGER.debug("[get_device_unique_id] device_unique_id: None")
-        return None
+        if not mac_addresses:
+            _LOGGER.debug("[get_device_unique_id] device_unique_id: None")
+            return None
+
+        if expected_id and expected_id in mac_addresses:
+            _LOGGER.debug(
+                "[get_device_unique_id] device_unique_id (matched expected): %s", expected_id
+            )
+            return expected_id
+
+        device_unique_id = sorted(mac_addresses)[0]
+        _LOGGER.debug("[get_device_unique_id] device_unique_id (first): %s", device_unique_id)
+        return device_unique_id
 
     @_log_errors
     async def get_system_info(self) -> MutableMapping[str, Any]:
