@@ -264,30 +264,43 @@ async def test_opnsenseclient_async_close(make_client) -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_host_firmware_set_use_snake_case_and_plugin_installed(
-    monkeypatch, make_client
-) -> None:
-    """Ensure firmware parsing, snake_case detection and plugin detection work."""
-    # create client/session for this test
+async def test_get_host_firmware_version_and_fallback(make_client) -> None:
+    """Verify get_host_firmware_version returns product_version when valid and falls back to product_series."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session)
 
-    # firmware valid semver
+    # valid semver
     client._safe_dict_get = AsyncMock(return_value={"product": {"product_version": "25.8.0"}})
     fw = await client.get_host_firmware_version()
     assert fw == "25.8.0"
 
-    # set use snake case should detect >=25.7
-    client._firmware_version = "25.8.0"
-    await client.set_use_snake_case()
-    assert client._use_snake_case is True
+    # invalid semver -> fallback to product_series
+    client._safe_dict_get = AsyncMock(
+        return_value={"product": {"product_version": "weird", "product_series": "seriesX"}}
+    )
+    fw2 = await client.get_host_firmware_version()
+    assert fw2 == "seriesX"
+    await client.async_close()
 
-    # set use snake case should detect <25.7
-    client._firmware_version = "25.1.0"
-    await client.set_use_snake_case()
-    assert client._use_snake_case is False
 
-    # test AwesomeVersionCompareException handling
+@pytest.mark.asyncio
+@pytest.mark.parametrize("firmware,expected", [("25.8.0", True), ("25.1.0", False)])
+async def test_set_use_snake_case_detection(make_client, firmware, expected) -> None:
+    """set_use_snake_case should detect firmware ranges correctly."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+    client._firmware_version = firmware
+    await client.set_use_snake_case()
+    assert client._use_snake_case is expected
+    await client.async_close()
+
+
+@pytest.mark.asyncio
+async def test_set_use_snake_case_handles_compare_exception(monkeypatch, make_client) -> None:
+    """set_use_snake_case should default to snake_case True on comparison exception."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+
     def mock_compare(self, other):
         raise awesomeversion.exceptions.AwesomeVersionCompareException("test exception")
 
@@ -297,18 +310,26 @@ async def test_get_host_firmware_set_use_snake_case_and_plugin_installed(
     # Should default to True on exception
     assert client._use_snake_case is True
 
-    # invalid semver -> fallback to product_series
-    client._safe_dict_get = AsyncMock(
-        return_value={"product": {"product_version": "weird", "product_series": "seriesX"}}
-    )
-    fw2 = await client.get_host_firmware_version()
-    assert fw2 == "seriesX"
 
-    # is_plugin_installed when package list present
-    client._safe_dict_get = AsyncMock(
-        return_value={"package": [{"name": "os-homeassistant-maxit"}]}
-    )
-    assert await client.is_plugin_installed() is True
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "package_list,expected",
+    [
+        ({"package": [{"name": "os-homeassistant-maxit", "installed": "1"}]}, True),
+        ({"package": [{"name": "os-homeassistant-maxit", "installed": "0"}]}, False),
+        ({}, False),
+        ({"package": [{"name": "some-other", "installed": "1"}]}, False),
+    ],
+)
+async def test_is_plugin_installed_various(make_client, package_list, expected) -> None:
+    """Parameterize plugin installation detection for several package list shapes."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+    try:
+        client._safe_dict_get = AsyncMock(return_value=package_list)
+        assert await client.is_plugin_installed() is expected
+    finally:
+        await client.async_close()
 
 
 @pytest.mark.asyncio

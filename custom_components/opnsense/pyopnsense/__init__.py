@@ -349,7 +349,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         if not isinstance(firmware_info.get("package"), list):
             return False
         for pkg in firmware_info.get("package", []):
-            if pkg.get("name") == "os-homeassistant-maxit":
+            if pkg.get("name") == "os-homeassistant-maxit" and pkg.get("installed") == "1":
                 return True
         return False
 
