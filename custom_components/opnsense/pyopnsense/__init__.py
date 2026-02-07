@@ -626,6 +626,52 @@ $toreturn["real"] = json_encode($toreturn_real);
         result = await self._post(path=path, payload=payload)
         return result if isinstance(result, list) else []
 
+    async def _get_check(self, path: str) -> bool:
+        """Check if the given API path is accessible.
+
+        This method intentionally bypasses the request queue used by _get() and
+        _post() to provide fast, lightweight endpoint availability checks. This
+        is appropriate for plugin/service detection and initialization checks
+        where the 0.3s queue delay would harm user experience.
+
+        Parameters
+        ----------
+        path : str
+            The API path to check for accessibility.
+
+        Returns
+        -------
+        bool
+            True if the path is accessible (HTTP 2xx success), False otherwise.
+
+        """
+        # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
+        self._rest_api_query_count += 1
+        url: str = f"{self._url}{path}"
+        _LOGGER.debug("[get_check] url: %s", url)
+        try:
+            async with self._session.get(
+                url,
+                auth=aiohttp.BasicAuth(self._username, self._password),
+                timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
+                ssl=self._verify_ssl,
+            ) as response:
+                _LOGGER.debug("[get_check] Response %s: %s", response.status, response.reason)
+                if response.ok:
+                    return True
+                if response.status == 403:
+                    _LOGGER.error(
+                        "Permission Error in get_check. Path: %s. Ensure the OPNsense user connected to HA has appropriate access. Recommend full admin access",
+                        url,
+                    )
+                return False
+        except aiohttp.ClientError as e:
+            _LOGGER.error("Client error. %s: %s", type(e).__name__, e)
+            if self._initial:
+                raise
+
+        return False
+
     @_log_errors
     async def _filter_configure(self) -> None:
         script: str = r"""
@@ -1140,7 +1186,17 @@ $toreturn = [
         return leases
 
     async def _get_isc_dhcpv4_leases(self) -> list:
-        """Return IPv4 DHCP Leases by ISC."""
+        """Return IPv4 DHCP Leases by ISC.
+
+        Returns
+        -------
+        list
+            A list of dictionaries representing IPv4 DHCP leases.
+
+        """
+        if not await self._get_check("/api/dhcpv4/service/status"):
+            _LOGGER.debug("ISC DHCPv4 plugin/service not available, skipping lease retrieval")
+            return []
         if self._use_snake_case:
             response = await self._safe_dict_get("/api/dhcpv4/leases/search_lease")
         else:
@@ -1184,7 +1240,17 @@ $toreturn = [
         return leases
 
     async def _get_isc_dhcpv6_leases(self) -> list:
-        """Return IPv6 DHCP Leases by ISC."""
+        """Return IPv6 DHCP Leases by ISC.
+
+        Returns
+        -------
+        list
+            A list of dictionaries representing IPv6 DHCP leases.
+
+        """
+        if not await self._get_check("/api/dhcpv6/service/status"):
+            _LOGGER.debug("ISC DHCPv6 plugin/service not available, skipping lease retrieval")
+            return []
         if self._use_snake_case:
             response = await self._safe_dict_get("/api/dhcpv6/leases/search_lease")
         else:
