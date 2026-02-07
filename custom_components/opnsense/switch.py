@@ -52,8 +52,13 @@ async def _compile_filter_switches_legacy(
         A list of OPNsenseFilterSwitchLegacy entities.
 
     """
-    if not isinstance(state, MutableMapping) or not isinstance(
-        state.get("firewall", {}).get("config", {}).get("filter", {}).get("rule"), list
+    if (
+        not isinstance(state, dict)
+        or not isinstance(state.get("firewall", {}).get("config"), dict)
+        or not isinstance(state.get("firewall", {}).get("config", {}).get("filter"), dict)
+        or not isinstance(
+            state.get("firewall", {}).get("config", {}).get("filter", {}).get("rule"), list
+        )
     ):
         return []
     entities: list = []
@@ -117,8 +122,13 @@ async def _compile_port_forward_switches_legacy(
         A list of OPNsenseNatSwitchLegacy entities for port forward rules.
 
     """
-    if not isinstance(state, MutableMapping) or not isinstance(
-        state.get("firewall", {}).get("config", {}).get("nat", {}).get("rule"), list
+    if (
+        not isinstance(state, dict)
+        or not isinstance(state.get("firewall", {}).get("config"), dict)
+        or not isinstance(state.get("firewall", {}).get("config", {}).get("nat"), dict)
+        or not isinstance(
+            state.get("firewall", {}).get("config", {}).get("nat", {}).get("rule"), list
+        )
     ):
         return []
 
@@ -174,9 +184,21 @@ async def _compile_nat_outbound_switches_legacy(
         A list of OPNsenseNatSwitchLegacy entities for outbound rules.
 
     """
-    if not isinstance(state, MutableMapping) or not isinstance(
-        state.get("firewall", {}).get("config", {}).get("nat", {}).get("outbound", {}).get("rule"),
-        list,
+    if (
+        not isinstance(state, dict)
+        or not isinstance(state.get("firewall", {}).get("config"), dict)
+        or not isinstance(state.get("firewall", {}).get("config", {}).get("nat"), dict)
+        or not isinstance(
+            state.get("firewall", {}).get("config", {}).get("nat", {}).get("outbound"), dict
+        )
+        or not isinstance(
+            state.get("firewall", {})
+            .get("config", {})
+            .get("nat", {})
+            .get("outbound", {})
+            .get("rule"),
+            list,
+        )
     ):
         return []
     entities: list = []
