@@ -991,7 +991,7 @@ $toreturn = [
         )
         # _LOGGER.debug("[get_firewall_rules] response: %s", response)
         rules: list = response.get("rows", [])
-        _LOGGER.debug("[get_firewall_rules] rules: %s", rules)
+        # _LOGGER.debug("[get_firewall_rules] rules: %s", rules)
         rules_dict: dict[str, Any] = {}
         for rule in rules:
             if not rule.get("uuid") or "lockout" in rule.get("uuid"):
@@ -1046,7 +1046,7 @@ $toreturn = [
         )
         # _LOGGER.debug("[get_nat_one_to_one_rules] response: %s", response)
         rules: list = response.get("rows", [])
-        _LOGGER.debug("[get_nat_one_to_one_rules] rules: %s", rules)
+        # _LOGGER.debug("[get_nat_one_to_one_rules] rules: %s", rules)
         rules_dict: dict[str, Any] = {}
         for rule in rules:
             if not rule.get("uuid") or "lockout" in rule.get("uuid"):
