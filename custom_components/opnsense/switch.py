@@ -427,12 +427,15 @@ async def _compile_firewall_rules_switches(
     for rule in state.get("firewall", {}).get("rules", {}).values():
         if not isinstance(rule, dict):
             continue
+        interface = rule.get("%interface", "")
+        if "," in interface:
+            interface = "Floating"
         entity = OPNsenseFirewallRuleSwitch(
             config_entry=config_entry,
             coordinator=coordinator,
             entity_description=SwitchEntityDescription(
                 key=f"firewall.rule.{rule.get('uuid', 'unknown')}",
-                name=f"Firewall Rule: {rule.get('%interface', '')}: {rule.get('description', 'unknown')}",
+                name=f"Firewall Rule: {interface}: {rule.get('description', 'unknown')}",
                 icon="mdi:play-network-outline",
                 device_class=SwitchDeviceClass.SWITCH,
                 entity_registry_enabled_default=False,
@@ -585,7 +588,7 @@ async def _compile_nat_npt_rules_switches(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
-    """Compile NAT NPT rule switches from OPNsense state.
+    """Compile NAT NPTv6 rule switches from OPNsense state.
 
     Parameters
     ----------
@@ -599,7 +602,7 @@ async def _compile_nat_npt_rules_switches(
     Returns
     -------
     list
-        A list of OPNsenseNATRuleSwitch entities for NPT NAT rules.
+        A list of OPNsenseNATRuleSwitch entities for NPTv6 NAT rules.
 
     """
     if not isinstance(state, MutableMapping) or not isinstance(
@@ -616,7 +619,7 @@ async def _compile_nat_npt_rules_switches(
             coordinator=coordinator,
             entity_description=SwitchEntityDescription(
                 key=f"firewall.nat.npt.{rule.get('uuid', 'unknown')}",
-                name=f"NAT NPT Rule: {rule.get('%interface', '')}: {rule.get('description', 'unknown')}",
+                name=f"NAT NPTv6 Rule: {rule.get('%interface', '')}: {rule.get('description', 'unknown')}",
                 icon="mdi:network-outline",
                 device_class=SwitchDeviceClass.SWITCH,
                 entity_registry_enabled_default=False,
@@ -907,6 +910,24 @@ class OPNsenseFirewallRuleSwitch(OPNsenseSwitch):
             self.async_write_ha_state()
             return
         self._available = True
+        self._attr_extra_state_attributes = {}
+        properties: dict[str, str] = {
+            "description": "description",
+            "categories": "categories",
+            "state": "%statetype",
+            "action": "%action",
+            "direction": "%direction",
+            "interfaces": "%interface",
+            "version": "%ipprotocol",
+            "protocol": "protocol",
+            "source": "source_net",
+            "source_port": "source_port",
+            "destination": "destination_net",
+            "destination_port": "destination_port",
+            "gateway": "gateway",
+        }
+        for name, attr in properties.items():
+            self._attr_extra_state_attributes[name] = rule.get(attr, None)
         self.async_write_ha_state()
         _LOGGER.debug(
             "[OPNsenseFirewallRuleSwitch handle_coordinator_update] Name: %s, available: %s, is_on: %s, extra_state_attributes: %s",
@@ -1046,6 +1067,59 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
             self.async_write_ha_state()
             return
         self._available = True
+        self._attr_extra_state_attributes = {}
+        properties: dict[str, str] = {
+            "description": "description",
+            "categories": "categories",
+            "interface": "%interface",
+        }
+        match self._nat_rule_type:
+            case "d_nat":
+                properties.update(
+                    {
+                        "version": "%ipprotocol",
+                        "protocol": "%protocol",
+                        "source": "source.network",
+                        "source_port": "source.port",
+                        "destination": "destination.%network",
+                        "destination_port": "destination.port",
+                        "redirect_target": "target",
+                        "redirect_target_port": "local-port",
+                    }
+                )
+            case "source_nat":
+                properties.update(
+                    {
+                        "version": "%ipprotocol",
+                        "protocol": "protocol",
+                        "source": "source_net",
+                        "source_port": "source_port",
+                        "destination": "destination_net",
+                        "destination_port": "destination_port",
+                        "translate_source": "%target",
+                        "translate_source_port": "target_port",
+                    }
+                )
+            case "one_to_one":
+                properties.update(
+                    {
+                        "type": "%type",
+                        "external_network": "external",
+                        "source": "source_net",
+                        "destination": "destination_net",
+                    }
+                )
+            case "npt":
+                properties.update(
+                    {
+                        "internal_ipv6_prefix": "source_net",
+                        "external_ipv6_prefix": "destination_net",
+                        "track_interface": "trackif",
+                    }
+                )
+        for name, attr in properties.items():
+            self._attr_extra_state_attributes[name] = rule.get(attr, None)
+
         self.async_write_ha_state()
         _LOGGER.debug(
             "[OPNsenseNATRuleSwitch handle_coordinator_update] Name: %s, available: %s, is_on: %s, extra_state_attributes: %s",
