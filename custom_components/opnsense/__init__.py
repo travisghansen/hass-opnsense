@@ -211,7 +211,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     # Trigger repair task and shutdown if device id has changed
-    router_device_id: str = await client.get_device_unique_id()
+    router_device_id: str | None = await client.get_device_unique_id(expected_id=config_device_id)
     _LOGGER.debug(
         "[init async_setup_entry]: config device id: %s, router device id: %s",
         config_device_id,

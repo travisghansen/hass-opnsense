@@ -3297,6 +3297,29 @@ async def test_get_device_unique_id_no_mac(make_client) -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_device_unique_id_expected(make_client) -> None:
+    """get_device_unique_id returns expected_id if present even if not the first."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+    # aa_bb_cc is smaller than bb_cc_dd
+    client._safe_list_get = AsyncMock(
+        return_value=[
+            {"is_physical": True, "macaddr_hw": "aa:bb:cc"},
+            {"is_physical": True, "macaddr_hw": "bb:cc:dd"},
+        ]
+    )
+    # Without expected_id, it returns the first one (aa_bb_cc)
+    assert await client.get_device_unique_id() == "aa_bb_cc"
+
+    # With expected_id bb_cc_dd, it returns bb_cc_dd even if aa_bb_cc is smaller
+    assert await client.get_device_unique_id(expected_id="bb_cc_dd") == "bb_cc_dd"
+
+    # With expected_id not present, it returns the first one
+    assert await client.get_device_unique_id(expected_id="cc_dd_ee") == "aa_bb_cc"
+    await client.async_close()
+
+
+@pytest.mark.asyncio
 async def test_get_firewall_legacy_fallback(make_client) -> None:
     """get_firewall falls back to legacy config for OPNsense < 26.1.1."""
     session = MagicMock(spec=aiohttp.ClientSession)
