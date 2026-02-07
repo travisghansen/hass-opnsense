@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for custom_components/opnsense/pyopnsense/__init__.py: 86%</title>
+    <title>Coverage for custom_components/opnsense/pyopnsense/__init__.py: 87%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_c827f16f.png">
     <link rel="stylesheet" href="style_cb_9ff733b0.css" type="text/css">
     <script src="coverage_html_cb_dd2e7eb5.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>custom_components&#8201;/&#8201;opnsense&#8201;/&#8201;pyopnsense&#8201;/&#8201;__init__.py</b>:
-            <span class="pc_cov">86%</span>
+            <span class="pc_cov">87%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -56,10 +56,10 @@
         </aside>
         <h2>
             <span class="text">1505 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">1374<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">131<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">1375<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">130<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
-            <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">142<span class="text"> partial</span></button>
+            <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">140<span class="text"> partial</span></button>
         </h2>
         <p class="text">
             <a id="prevFileLink" class="nav" href="z_a139522e3a23c96e_models_py.html">&#xab; prev</a> &nbsp; &nbsp;
@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_8d042fd4c41619e0_const_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.13.1">coverage.py v7.13.1</a>,
-            created at 2026-02-07 22:16 +0000
+            created at 2026-02-07 23:10 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -432,10 +432,10 @@
     <p class="run"><span class="n"><a id="t348" href="#t348">348</a></span><span class="t">        <span class="nam">firmware_info</span> <span class="op">=</span> <span class="key">await</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_safe_dict_get</span><span class="op">(</span><span class="str">"/api/core/firmware/info"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t349" href="#t349">349</a></span><span class="t">        <span class="key">if</span> <span class="key">not</span> <span class="nam">isinstance</span><span class="op">(</span><span class="nam">firmware_info</span><span class="op">.</span><span class="nam">get</span><span class="op">(</span><span class="str">"package"</span><span class="op">)</span><span class="op">,</span> <span class="nam">list</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t350" href="#t350">350</a></span><span class="t">            <span class="key">return</span> <span class="key">False</span>&nbsp;</span><span class="r"></span></p>
-    <p class="par run show_par"><span class="n"><a id="t351" href="#t351">351</a></span><span class="t">        <span class="key">for</span> <span class="nam">pkg</span> <span class="key">in</span> <span class="nam">firmware_info</span><span class="op">.</span><span class="nam">get</span><span class="op">(</span><span class="str">"package"</span><span class="op">,</span> <span class="op">[</span><span class="op">]</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">351&#x202F;&#x219B;&#x202F;354</span><span class="annotate long">line 351 didn't jump to line 354 because the loop on line 351 didn't complete</span></span></p>
-    <p class="par run show_par"><span class="n"><a id="t352" href="#t352">352</a></span><span class="t">            <span class="key">if</span> <span class="nam">pkg</span><span class="op">.</span><span class="nam">get</span><span class="op">(</span><span class="str">"name"</span><span class="op">)</span> <span class="op">==</span> <span class="str">"os-homeassistant-maxit"</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">352&#x202F;&#x219B;&#x202F;351</span><span class="annotate long">line 352 didn't jump to line 351 because the condition on line 352 was always true</span></span></p>
+    <p class="run"><span class="n"><a id="t351" href="#t351">351</a></span><span class="t">        <span class="key">for</span> <span class="nam">pkg</span> <span class="key">in</span> <span class="nam">firmware_info</span><span class="op">.</span><span class="nam">get</span><span class="op">(</span><span class="str">"package"</span><span class="op">,</span> <span class="op">[</span><span class="op">]</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t352" href="#t352">352</a></span><span class="t">            <span class="key">if</span> <span class="nam">pkg</span><span class="op">.</span><span class="nam">get</span><span class="op">(</span><span class="str">"name"</span><span class="op">)</span> <span class="op">==</span> <span class="str">"os-homeassistant-maxit"</span> <span class="key">and</span> <span class="nam">pkg</span><span class="op">.</span><span class="nam">get</span><span class="op">(</span><span class="str">"installed"</span><span class="op">)</span> <span class="op">==</span> <span class="str">"1"</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t353" href="#t353">353</a></span><span class="t">                <span class="key">return</span> <span class="key">True</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t354" href="#t354">354</a></span><span class="t">        <span class="key">return</span> <span class="key">False</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t354" href="#t354">354</a></span><span class="t">        <span class="key">return</span> <span class="key">False</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t355" href="#t355">355</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t356" href="#t356">356</a></span><span class="t">    <span class="key">async</span> <span class="key">def</span> <span class="nam">_get_from_stream</span><span class="op">(</span><span class="nam">self</span><span class="op">,</span> <span class="nam">path</span><span class="op">:</span> <span class="nam">str</span><span class="op">)</span> <span class="op">-></span> <span class="nam">MutableMapping</span><span class="op">[</span><span class="nam">str</span><span class="op">,</span> <span class="nam">Any</span><span class="op">]</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t357" href="#t357">357</a></span><span class="t">        <span class="key">try</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -2880,7 +2880,7 @@
             <a class="nav" href="z_8d042fd4c41619e0_const_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.13.1">coverage.py v7.13.1</a>,
-            created at 2026-02-07 22:16 +0000
+            created at 2026-02-07 23:10 +0000
         </p>
     </div>
 </footer>
