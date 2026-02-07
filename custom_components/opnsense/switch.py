@@ -412,8 +412,10 @@ async def _compile_firewall_rules_switches(
     for rule in rules.values():
         if not isinstance(rule, dict):
             continue
-        interface = rule.get("%interface", "")
-        if "," in interface:
+        interface = rule.get("%interface", rule.get("interface", ""))
+        if not isinstance(interface, str):
+            continue
+        if "," in interface or interface == "":
             interface = "Floating"
         entity = OPNsenseFirewallRuleSwitch(
             config_entry=config_entry,
