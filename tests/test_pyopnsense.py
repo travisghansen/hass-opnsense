@@ -1154,7 +1154,7 @@ async def test_call_many_client_methods_to_exercise_branches(make_client) -> Non
             for name, func in _inspect.getmembers(
                 pyopnsense.OPNsenseClient, predicate=_inspect.iscoroutinefunction
             )
-            if name not in ("__init__",)
+            if name != "__init__"
         ]
 
         for name, _func in coros:
@@ -2647,6 +2647,7 @@ async def test_get_isc_dhcpv4_and_v6_parsing() -> None:
     # v4: ends present and in future
     future_dt = (datetime.now() + timedelta(hours=1)).strftime("%Y/%m/%d %H:%M:%S")
     client._use_snake_case = False
+    client._get_check = AsyncMock(return_value=True)
     client._safe_dict_get = AsyncMock(
         side_effect=[
             {
@@ -2670,6 +2671,7 @@ async def test_get_isc_dhcpv4_and_v6_parsing() -> None:
 
     # v6: ends missing -> field passed through
     client._use_snake_case = True
+    client._get_check = AsyncMock(return_value=True)
     client._safe_dict_get = AsyncMock(
         return_value={
             "rows": [

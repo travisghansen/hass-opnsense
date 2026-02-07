@@ -629,6 +629,11 @@ $toreturn["real"] = json_encode($toreturn_real);
     async def _get_check(self, path: str) -> bool:
         """Check if the given API path is accessible.
 
+        This method intentionally bypasses the request queue used by _get() and
+        _post() to provide fast, lightweight endpoint availability checks. This
+        is appropriate for plugin/service detection and initialization checks
+        where the 0.3s queue delay would harm user experience.
+
         Parameters
         ----------
         path : str
@@ -637,7 +642,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         Returns
         -------
         bool
-            True if the path is accessible (HTTP 200 OK), False otherwise.
+            True if the path is accessible (HTTP 2xx success), False otherwise.
 
         """
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
@@ -1190,7 +1195,7 @@ $toreturn = [
 
         """
         if not await self._get_check("/api/dhcpv4/service/status"):
-            _LOGGER.debug("ISC DHCPv4 service is not running, skipping lease retrieval")
+            _LOGGER.debug("ISC DHCPv4 plugin/service not available, skipping lease retrieval")
             return []
         if self._use_snake_case:
             response = await self._safe_dict_get("/api/dhcpv4/leases/search_lease")
@@ -1244,7 +1249,7 @@ $toreturn = [
 
         """
         if not await self._get_check("/api/dhcpv6/service/status"):
-            _LOGGER.debug("ISC DHCPv6 service is not running, skipping lease retrieval")
+            _LOGGER.debug("ISC DHCPv6 plugin/service not available, skipping lease retrieval")
             return []
         if self._use_snake_case:
             response = await self._safe_dict_get("/api/dhcpv6/leases/search_lease")

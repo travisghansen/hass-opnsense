@@ -26,7 +26,7 @@ Project structure expectations
 
 Coding standards
 - Add typing annotations to all functions and classes (including return types).
-- Add or update docstrings for all files, classes and methods, including private methods. Method docstrings much be in NumPy format.
+- Add or update docstrings for all files, classes and methods, including private methods. Method docstrings must be in NumPy format.
 - Preserve existing comments and keep imports at the top of files.
 - Follow existing repository style; run `pre-commit` and `ruff` where available.
 
