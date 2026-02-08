@@ -1,6 +1,7 @@
 <a id="v0.6.0"></a>
 # [v0.6.0](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.0) - 2026-02-08
 
+-
 
 # Important Breaking Changes: Please Read
 
