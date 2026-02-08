@@ -1,7 +1,46 @@
+<a id="v0.6.0"></a>
+# [v0.6.0](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.0) - 2026-02-08
+
+
+# Important Breaking Changes: Please Read
+
+**If you are running OPNsense firmware < 26.1.1, existing Firewall and NAT switches will remain and the plugin will continue to work (if you were using it).**
+
+With the addition of the Firewall and NAT Rules API in OPNsense 26.1.1 _**(note the extra .1)**_, the integration no longer needs to rely on the XMLRPC plugin for firewall and NAT rules and can now directly query the API. Additionally, with a future 26.1.x release, the plugin will [stop working altogether](https://github.com/opnsense/changelog/blob/5a6e7d3689da440e5eee6bcae9d5a2e679613917/community/26.1/26.1#L119).
+
+When you update to hass-opnsense v0.6.0 and are running OPNsense 26.1.1+, the legacy NAT Outbound and NAT Port Forward rule switches will be removed. When the OPNsense plugin is removed, hass-opnsense will also remove the legacy Firewall Filter switches. **Before you remove the plugin, be sure to complete the [firewall migration](https://github.com/opnsense/changelog/blob/5a6e7d3689da440e5eee6bcae9d5a2e679613917/community/26.1/26.1#L123) in OPNsense.**
+
+New, disabled switches will be added for new Firewall Rules, NAT Source Rules, NAT Destination Rules, NAT One to One Rules, and NAT NPTv6 Rules. *NAT Outbound Rule switches will no longer be supported in the integration until OPNsense adds them as an API.*
+
+**Any Automations, Scripts, Dashboards, etc. using Firewall or NAT switches will need to be updated.**
+
+## What's Changed
+### 💥 Breaking Changes
+* Implement new firewall api and deprecate plugin by [@Snuffy2](https://github.com/Snuffy2) in [#489](https://github.com/travisghansen/hass-opnsense/pull/489)
+### 🚀 Enhancements
+* Check for ISC DHCP plugin availability before querying for leases by [@Snuffy2](https://github.com/Snuffy2) in [#487](https://github.com/travisghansen/hass-opnsense/pull/487)
+* Relax Unique ID logic by [@Snuffy2](https://github.com/Snuffy2) in [#493](https://github.com/travisghansen/hass-opnsense/pull/493)
+### 🐛 Bug Fixes
+* Show Floating for Firewall Rules and add Extra State Attr by [@Snuffy2](https://github.com/Snuffy2) in [#491](https://github.com/travisghansen/hass-opnsense/pull/491)
+* Rename granular sync options by [@Snuffy2](https://github.com/Snuffy2) in [#492](https://github.com/travisghansen/hass-opnsense/pull/492)
+* Handle when legacy firewall and nat rules are empty by [@Snuffy2](https://github.com/Snuffy2) in [#494](https://github.com/travisghansen/hass-opnsense/pull/494)
+* Fix plugin check and plugin removal wording by [@Snuffy2](https://github.com/Snuffy2) in [#495](https://github.com/travisghansen/hass-opnsense/pull/495)
+* Better handle naming Floating Firewall Rules by [@Snuffy2](https://github.com/Snuffy2) in [#496](https://github.com/travisghansen/hass-opnsense/pull/496)
+* Shorten switch names by [@Snuffy2](https://github.com/Snuffy2) in [#497](https://github.com/travisghansen/hass-opnsense/pull/497)
+### 📚 Documentation
+* Update Documentation for Deprecating Plugin by [@Snuffy2](https://github.com/Snuffy2) in [#490](https://github.com/travisghansen/hass-opnsense/pull/490)
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.5.0...v0.6.0
+
+
+[Changes][v0.6.0]
+
+
 <a id="v0.5.0"></a>
 # [v0.5.0](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.5.0) - 2025-12-08
 
-<!-- Release notes generated using configuration in .github/release.yml at main -->
+<h3>OPNsense Minimum Firmware Required: 24.7</h3><h4>OPNsense Recommended Firmware: 25.1</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
 ## What's Changed
 ### 💥 Breaking Changes
@@ -19,7 +58,7 @@
 * Move requirements to pyproject.toml by [@Snuffy2](https://github.com/Snuffy2) in [#474](https://github.com/travisghansen/hass-opnsense/pull/474)
 
 
-**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.4.8...v0.5.0
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.4.8...v0.5.0<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
 
 [Changes][v0.5.0]
 
@@ -816,6 +855,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.6.0]: https://github.com/travisghansen/hass-opnsense/compare/v0.5.0...v0.6.0
 [v0.5.0]: https://github.com/travisghansen/hass-opnsense/compare/v0.4.8...v0.5.0
 [v0.4.8]: https://github.com/travisghansen/hass-opnsense/compare/v0.4.7...v0.4.8
 [v0.4.7]: https://github.com/travisghansen/hass-opnsense/compare/v0.4.6...v0.4.7
