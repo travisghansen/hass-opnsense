@@ -54,12 +54,28 @@
 | Interfaces: Virtual IPs: Status | /api/diagnostics/interface/get_vip_status |
 | Interfaces: Virtual IPs: Settings | /api/interfaces/vip_settings/get |
 
-## Firewall filter and NAT switches
+## Firewall rules and NAT rules switches
+
+### OPNsense Firmware 26.1.1+
+
+| OPNsense Permission | API Endpoints |
+| ----- | ----- |
+| Firewall: Rules [New] | /api/firewall/filter/search_rule<br>/api/firewall/filter/toggle_rule |
+| Firewall: NAT: Destination NAT | /api/firewall/d_nat/search_rule<br>/api/firewall/d_nat/toggle_rule |
+| Firewall: NAT: 1:1 | /api/firewall/one_to_one/search_rule<br>/api/firewall/one_to_one/toggle_rule |
+| Firewall: NAT: Source NAT | /api/firewall/source_nat/search_rule<br>/api/firewall/source_nat/toggle_rule |
+| Firewall: NAT: NPTv6 | /api/firewall/npt/search_rule<br>/api/firewall/npt/toggle_rule |
+
+<details>
+<summary><h3>OPNsense Firmware < 26.1.1</h3></summary>
+
 > **\*\*OPNsense plugin required\*\***
 
 | OPNsense Permission | API Endpoints |
 | ----- | ----- |
 | XMLRPC Library | _N/A – Operations are executed using the XMLRPC interface and OPNsense plugin_ |
+
+</details>
 
 ## Service switches
 
