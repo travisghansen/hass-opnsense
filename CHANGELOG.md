@@ -1,7 +1,6 @@
 <a id="v0.6.0"></a>
 # [v0.6.0](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.0) - 2026-02-08
 
-<h3>OPNsense Minimum Firmware Required: 24.7</h3><h4>OPNsense Recommended Firmware: 25.1</h4><p>
 
 # Important Breaking Changes: Please Read
 
@@ -33,7 +32,8 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 **Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.5.0...v0.6.0
-<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
+
+
 
 [Changes][v0.6.0]
 
