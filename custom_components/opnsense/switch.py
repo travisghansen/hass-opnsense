@@ -422,7 +422,7 @@ async def _compile_firewall_rules_switches(
             coordinator=coordinator,
             entity_description=SwitchEntityDescription(
                 key=f"firewall.rule.{rule.get('uuid', 'unknown')}",
-                name=f"Firewall Rule: {interface}: {rule.get('description', 'unknown')}",
+                name=f"Firewall: {interface}: {rule.get('description', 'unknown')}",
                 icon="mdi:play-network-outline",
                 device_class=SwitchDeviceClass.SWITCH,
                 entity_registry_enabled_default=False,
@@ -467,7 +467,7 @@ async def _compile_nat_source_rules_switches(
             coordinator=coordinator,
             entity_description=SwitchEntityDescription(
                 key=f"firewall.nat.source_nat.{rule.get('uuid', 'unknown')}",
-                name=f"NAT Source Rule: {rule.get('%interface', '')}: {rule.get('description', 'unknown')}",
+                name=f"NAT Source: {rule.get('%interface', '')}: {rule.get('description', 'unknown')}",
                 icon="mdi:network-outline",
                 device_class=SwitchDeviceClass.SWITCH,
                 entity_registry_enabled_default=False,
@@ -512,7 +512,7 @@ async def _compile_nat_destination_rules_switches(
             coordinator=coordinator,
             entity_description=SwitchEntityDescription(
                 key=f"firewall.nat.d_nat.{rule.get('uuid', 'unknown')}",
-                name=f"NAT Destination Rule: {rule.get('%interface', '')}: {rule.get('description', 'unknown')}",
+                name=f"NAT Destination: {rule.get('%interface', '')}: {rule.get('description', 'unknown')}",
                 icon="mdi:network-outline",
                 device_class=SwitchDeviceClass.SWITCH,
                 entity_registry_enabled_default=False,
@@ -557,7 +557,7 @@ async def _compile_nat_one_to_one_rules_switches(
             coordinator=coordinator,
             entity_description=SwitchEntityDescription(
                 key=f"firewall.nat.one_to_one.{rule.get('uuid', 'unknown')}",
-                name=f"NAT One to One Rule: {rule.get('%interface', '')}: {rule.get('description', 'unknown')}",
+                name=f"NAT One to One: {rule.get('%interface', '')}: {rule.get('description', 'unknown')}",
                 icon="mdi:network-outline",
                 device_class=SwitchDeviceClass.SWITCH,
                 entity_registry_enabled_default=False,
@@ -602,7 +602,7 @@ async def _compile_nat_npt_rules_switches(
             coordinator=coordinator,
             entity_description=SwitchEntityDescription(
                 key=f"firewall.nat.npt.{rule.get('uuid', 'unknown')}",
-                name=f"NAT NPTv6 Rule: {rule.get('%interface', '')}: {rule.get('description', 'unknown')}",
+                name=f"NAT NPTv6: {rule.get('%interface', '')}: {rule.get('description', 'unknown')}",
                 icon="mdi:network-outline",
                 device_class=SwitchDeviceClass.SWITCH,
                 entity_registry_enabled_default=False,

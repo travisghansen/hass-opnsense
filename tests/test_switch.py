@@ -2100,7 +2100,7 @@ async def test_firewall_rule_interface_name_override(
     assert len(ents) == 1
     ent = ents[0]
     assert isinstance(ent, OPNsenseFirewallRuleSwitch)
-    assert ent.entity_description.name == f"Firewall Rule: {expected_interface}: Test"
+    assert ent.entity_description.name == f"Firewall: {expected_interface}: Test"
 
 
 @pytest.mark.asyncio
@@ -2122,7 +2122,7 @@ async def test_firewall_rule_uses_interface_key_if_no_percent_key(coordinator, m
 
     ents = await _compile_firewall_rules_switches(config_entry, coordinator, state)
     assert len(ents) == 1
-    assert ents[0].entity_description.name == "Firewall Rule: lan: Test"
+    assert ents[0].entity_description.name == "Firewall: lan: Test"
 
 
 @pytest.mark.asyncio
