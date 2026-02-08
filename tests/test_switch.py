@@ -2069,6 +2069,84 @@ async def test_compile_firewall_rules_switches(coordinator, make_config_entry):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "if_value,expected_interface",
+    [
+        ("wan", "wan"),
+        ("lan, opt1", "Floating"),
+        ("lan,wan", "Floating"),
+        ("", "Floating"),
+    ],
+)
+async def test_firewall_rule_interface_name_override(
+    coordinator, make_config_entry, if_value, expected_interface
+):
+    """Interface should be overridden to 'Floating' when multiple interfaces are present."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    state = {
+        "firewall": {
+            "rules": {
+                "r1": {
+                    "uuid": "r1",
+                    "description": "Test",
+                    "%interface": if_value,
+                    "enabled": "1",
+                }
+            }
+        }
+    }
+
+    ents = await _compile_firewall_rules_switches(config_entry, coordinator, state)
+    assert len(ents) == 1
+    ent = ents[0]
+    assert isinstance(ent, OPNsenseFirewallRuleSwitch)
+    assert ent.entity_description.name == f"Firewall Rule: {expected_interface}: Test"
+
+
+@pytest.mark.asyncio
+async def test_firewall_rule_uses_interface_key_if_no_percent_key(coordinator, make_config_entry):
+    """If "%interface" is missing, the "interface" key should be used."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    state = {
+        "firewall": {
+            "rules": {
+                "r1": {
+                    "uuid": "r1",
+                    "description": "Test",
+                    "interface": "lan",
+                    "enabled": "1",
+                }
+            }
+        }
+    }
+
+    ents = await _compile_firewall_rules_switches(config_entry, coordinator, state)
+    assert len(ents) == 1
+    assert ents[0].entity_description.name == "Firewall Rule: lan: Test"
+
+
+@pytest.mark.asyncio
+async def test_firewall_rule_skips_non_string_interface(coordinator, make_config_entry):
+    """Rules with non-string interface values should be skipped."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    state = {
+        "firewall": {
+            "rules": {
+                "r1": {
+                    "uuid": "r1",
+                    "description": "Test",
+                    "%interface": ["not", "a", "string"],
+                    "enabled": "1",
+                }
+            }
+        }
+    }
+
+    ents = await _compile_firewall_rules_switches(config_entry, coordinator, state)
+    assert len(ents) == 0
+
+
+@pytest.mark.asyncio
 async def test_compile_nat_source_rules_switches(coordinator, make_config_entry):
     """Test compilation of NAT source rule switches."""
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
