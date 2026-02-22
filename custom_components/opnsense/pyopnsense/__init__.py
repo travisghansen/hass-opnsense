@@ -2289,10 +2289,30 @@ $toreturn = [
         endpoint = f"/api/unbound/settings/toggle_dnsbl/{uuid}/{'1' if set_state else '0'}"
         response = await self._safe_dict_post(endpoint)
         result = response.get("result")
-        if set_state and result == "Enabled":
-            return True
-        if not set_state and result == "Disabled":
-            return True
+        # If the toggle endpoint reports success, attempt to ensure the change is applied
+        if (set_state and result == "Enabled") or (not set_state and result == "Disabled"):
+            # Query DNSBL service status and trigger Apply to ensure settings take effect
+            try:
+                dnsbl_resp = await self._get("/api/unbound/service/dnsbl")
+                _LOGGER.debug(
+                    "[_toggle_unbound_blocklist] uuid: %s, set_state: %s, response: %s, dnsbl_resp: %s",
+                    uuid,
+                    "On" if set_state else "Off",
+                    response,
+                    dnsbl_resp,
+                )
+                if isinstance(dnsbl_resp, MutableMapping) and dnsbl_resp.get(
+                    "status", "failed"
+                ).startswith("OK"):
+                    return True
+            except (TimeoutError, aiohttp.ClientError, ValueError, TypeError) as e:
+                _LOGGER.error(
+                    "Error applying unbound blocklist change for uuid %s. %s: %s",
+                    uuid,
+                    type(e).__name__,
+                    e,
+                )
+            # Fall through to return False if Apply did not confirm
         return False
 
     @_log_errors
