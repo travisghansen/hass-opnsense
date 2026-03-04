@@ -298,11 +298,11 @@ $toreturn["real"] = json_encode($toreturn_real);
     @_log_errors
     async def get_host_firmware_version(self) -> None | str:
         """Return the OPNsense Firmware version."""
-        firmware_info = await self._safe_dict_get("/api/core/firmware/status")
-        firmware: str | None = firmware_info.get("product", {}).get("product_version")
+        firmware_info = await self._safe_dict_get("/api/core/firmware/info")
+        firmware: str | None = dict_get(firmware_info, "product.product_version")
         if not firmware or not awesomeversion.AwesomeVersion(firmware).valid:
             old = firmware
-            firmware = firmware_info.get("product", {}).get("product_series", old)
+            firmware = dict_get(firmware_info, "product.product_series", old)
             if firmware != old:
                 _LOGGER.debug(
                     "[get_host_firmware_version] firmware: %s not valid SemVer, using %s",
