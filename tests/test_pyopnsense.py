@@ -265,7 +265,7 @@ async def test_opnsenseclient_async_close(make_client) -> None:
 
 @pytest.mark.asyncio
 async def test_get_host_firmware_version_and_fallback(make_client) -> None:
-    """Verify get_host_firmware_version returns product_version when valid and falls back to product_series."""
+    """Verify firmware resolution uses version when valid and series fallback when invalid."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session)
 
@@ -273,14 +273,16 @@ async def test_get_host_firmware_version_and_fallback(make_client) -> None:
     client._safe_dict_get = AsyncMock(return_value={"product": {"product_version": "25.8.0"}})
     fw = await client.get_host_firmware_version()
     assert fw == "25.8.0"
+    await client.async_close()
 
-    # invalid semver -> fallback to product_series
-    client._safe_dict_get = AsyncMock(
+    # use a fresh client to validate fallback resolution (version is cached after first call)
+    fallback_client = make_client(session=session)
+    fallback_client._safe_dict_get = AsyncMock(
         return_value={"product": {"product_version": "weird", "product_series": "seriesX"}}
     )
-    fw2 = await client.get_host_firmware_version()
+    fw2 = await fallback_client.get_host_firmware_version()
     assert fw2 == "seriesX"
-    await client.async_close()
+    await fallback_client.async_close()
 
 
 @pytest.mark.asyncio
