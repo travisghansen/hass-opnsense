@@ -30,6 +30,21 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 def _log_errors(func: Callable) -> Any:
+    """Wrap coroutine methods with shared timeout/error logging behavior.
+
+    Parameters
+    ----------
+    func : Callable
+        Coroutine function to decorate and execute with shared behavior.
+
+    Returns
+    -------
+    Any
+    Decorator wrapper that applies shared exception logging and returns the wrapped coroutine result.
+
+
+    """
+
     async def inner(self: Any, *args: Any, **kwargs: Any) -> Any:
         try:
             return await func(self, *args, **kwargs)
@@ -55,6 +70,21 @@ def _log_errors(func: Callable) -> Any:
 
 
 def _xmlrpc_timeout(func: Callable) -> Any:
+    """Ensure XMLRPC calls obey the configured socket timeout.
+
+    Parameters
+    ----------
+    func : Callable
+        Coroutine function to decorate and execute with shared behavior.
+
+    Returns
+    -------
+    Any
+    Decorator wrapper that enforces socket timeout behavior and returns the wrapped coroutine result.
+
+
+    """
+
     async def inner(self: Any, *args: Any, **kwargs: Any) -> Any:
         response = None
         # timout applies to each recv() call, not the whole request
@@ -70,14 +100,40 @@ def _xmlrpc_timeout(func: Callable) -> Any:
 
 
 def wireguard_is_connected(past_time: datetime | None) -> bool:
-    """Return if Wireguard client is still connected."""
+    """Determine whether a Wireguard session is still considered active.
+
+    Parameters
+    ----------
+    past_time : datetime | None
+        Past time used by `wireguard_is_connected`.
+
+    Returns
+    -------
+    bool
+    True when the peer's last handshake is recent enough to consider the tunnel connected.
+
+
+    """
     if not past_time:
         return False
     return datetime.now().astimezone() - past_time <= timedelta(minutes=3)
 
 
 def human_friendly_duration(seconds: int) -> str:
-    """Convert the duration in seconds to human friendly."""
+    """Convert a duration in seconds into a human-readable string.
+
+    Parameters
+    ----------
+    seconds : int
+        Duration value, in seconds.
+
+    Returns
+    -------
+    str
+    Duration rendered as a readable string with month/week/day/hour/minute/second units.
+
+
+    """
     months, seconds = divmod(
         seconds, 2419200
     )  # 28 days in a month (28 * 24 * 60 * 60 = 2419200 seconds)
@@ -104,7 +160,20 @@ def human_friendly_duration(seconds: int) -> str:
 
 
 def get_ip_key(item: MutableMapping[str, Any]) -> tuple:
-    """Use to sort the DHCP Lease IPs."""
+    """Produce a sorting key for DHCP leases based on their IP addresses.
+
+    Parameters
+    ----------
+    item : MutableMapping[str, Any]
+        Lease record used to derive an IP-aware sort key.
+
+    Returns
+    -------
+    tuple
+    Sort key tuple that prioritizes valid IPv4/IPv6 addresses and pushes invalid/empty entries last.
+
+
+    """
     address = item.get("address", None)
 
     if not address:
@@ -120,7 +189,24 @@ def get_ip_key(item: MutableMapping[str, Any]) -> tuple:
 
 
 def dict_get(data: MutableMapping[str, Any], path: str, default: Any | None = None) -> Any | None:
-    """Parse the path to get the desired value out of the data."""
+    """Extract a nested value from a mapping using dot notation.
+
+    Parameters
+    ----------
+    data : MutableMapping[str, Any]
+        Input mapping used to build the request payload.
+    path : str
+        API endpoint path to call on the OPNsense host.
+    default : Any | None
+        Default used by `dict_get`. Defaults to None.
+
+    Returns
+    -------
+    Any | None
+    Nested value resolved from the provided dotted path, or the default when the path is missing.
+
+
+    """
     pathList: list = re.split(r"\.", path, flags=re.IGNORECASE)
     result: Any | None = data
     for key in pathList:
@@ -136,7 +222,20 @@ def dict_get(data: MutableMapping[str, Any], path: str, default: Any | None = No
 
 
 def timestamp_to_datetime(timestamp: int | None) -> datetime | None:
-    """Convert a timestamp to a timezone-aware datetime."""
+    """Convert a Unix timestamp into a timezone-aware datetime.
+
+    Parameters
+    ----------
+    timestamp : int | None
+        Unix timestamp value to convert.
+
+    Returns
+    -------
+    datetime | None
+    Timezone-aware datetime derived from the timestamp, or None if no timestamp was provided.
+
+
+    """
     if timestamp is None:
         return None
     return datetime.fromtimestamp(
@@ -150,7 +249,7 @@ class VoucherServerError(Exception):
 
 
 class OPNsenseClient(ABC):
-    """OPNsense Client."""
+    """Async client for OPNsense REST and XMLRPC endpoints."""
 
     def __init__(
         self,
@@ -162,7 +261,27 @@ class OPNsenseClient(ABC):
         initial: bool = False,
         name: str = "OPNsense",
     ) -> None:
-        """OPNsense Client initializer."""
+        """Initialize the OPNsense client.
+
+        Parameters
+        ----------
+        url : str
+            Base URL of the OPNsense instance.
+        username : str
+            API username used for authentication.
+        password : str
+            API password used for authentication.
+        session : aiohttp.ClientSession
+            Shared aiohttp client session used for HTTP requests.
+        opts : MutableMapping[str, Any] | None
+            Optional connection options (for example verify_ssl). Defaults to None.
+        initial : bool
+            Whether the call runs during initial setup/validation. Defaults to False.
+        name : str
+            Human-friendly name used in logs and identifiers. Defaults to 'OPNsense'.
+
+        """
+
         self._username: str = username
         self._password: str = password
         self._name: str = name
@@ -199,20 +318,45 @@ class OPNsenseClient(ABC):
 
     @property
     def name(self) -> str:
-        """Return the name of the client."""
+        """Return the name of the client.
+
+        Returns
+        -------
+        str
+        Configured client display name.
+
+
+        """
         return self._name
 
     async def reset_query_counts(self) -> None:
-        """Reset the number of queries counter."""
+        """Reset REST and XMLRPC query counters to zero."""
         self._xmlrpc_query_count = 0
         self._rest_api_query_count = 0
 
     async def get_query_counts(self) -> tuple:
-        """Return the number of REST and XMLRPC queries."""
+        """Return current REST and XMLRPC query counts.
+
+        Returns
+        -------
+        tuple
+        Two-item tuple containing REST query count and XMLRPC query count.
+
+
+        """
         return self._rest_api_query_count, self._xmlrpc_query_count
 
     # https://stackoverflow.com/questions/64983392/python-multiple-patch-gives-http-client-cannotsendrequest-request-sent
     def _get_proxy(self) -> xmlrpc.client.ServerProxy:
+        """Create an XMLRPC server proxy for the configured OPNsense host.
+
+        Returns
+        -------
+        xmlrpc.client.ServerProxy
+        XMLRPC ServerProxy configured for this client instance.
+
+
+        """
         # https://docs.python.org/3/library/xmlrpc.client.html#module-xmlrpc.client
         # https://stackoverflow.com/questions/30461969/disable-default-certificate-verification-in-python-2-7-9
         context = None
@@ -231,12 +375,36 @@ class OPNsenseClient(ABC):
     async def _restore_config_section(
         self, section_name: str, data: MutableMapping[str, Any]
     ) -> None:
+        """Restore a specific configuration section via XMLRPC.
+
+        Parameters
+        ----------
+        section_name : str
+            Configuration section name to restore.
+        data : MutableMapping[str, Any]
+            Input mapping used to build the request payload.
+
+        """
         params = {section_name: data}
         proxy_method = partial(self._get_proxy().opnsense.restore_config_section, params)
         await self._loop.run_in_executor(None, proxy_method)
 
     @_xmlrpc_timeout
     async def _exec_php(self, script: str) -> MutableMapping[str, Any]:
+        """Execute a PHP snippet through XMLRPC and decode the JSON payload.
+
+        Parameters
+        ----------
+        script : str
+            PHP script source executed through XMLRPC.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        JSON-decoded response mapping returned by the PHP helper, or an empty mapping on failure.
+
+
+        """
         self._xmlrpc_query_count += 1
         script = rf"""
 ini_set('display_errors', 0);
@@ -298,7 +466,15 @@ $toreturn["real"] = json_encode($toreturn_real);
 
     @_log_errors
     async def get_host_firmware_version(self) -> None | str:
-        """Return the OPNsense Firmware version."""
+        """Return the OPNsense Firmware version.
+
+        Returns
+        -------
+        None | str
+        Normalized get host firmware version data returned by OPNsense APIs.
+
+
+        """
         firmware_info = await self._safe_dict_get("/api/core/firmware/status")
         firmware: str | None = firmware_info.get("product", {}).get("product_version")
         if not firmware or not awesomeversion.AwesomeVersion(firmware).valid:
@@ -318,7 +494,11 @@ $toreturn["real"] = json_encode($toreturn_real);
     async def set_use_snake_case(self, initial: bool = False) -> None:
         """Set whether to use snake_case or camelCase for API calls.
 
-        In 25.7+ a number of API calls changed from camelCase to snake_case.
+        Parameters
+        ----------
+        initial : bool
+            Whether the call runs during initial setup/validation. Defaults to False.
+
         """
         if self._firmware_version is None:
             await self.get_host_firmware_version()
@@ -344,8 +524,18 @@ $toreturn["real"] = json_encode($toreturn_real);
             if initial:
                 raise UnknownFirmware from e
 
+
     async def _check_if_plugin_installed(self) -> bool:
-        """Retun whether OPNsense plugin is installed or not."""
+        """Retun whether OPNsense plugin is installed or not.
+
+        Returns
+        -------
+        bool
+        Result produced by this method.
+
+
+        """
+
         firmware_info = await self._safe_dict_get("/api/core/firmware/info")
         if not isinstance(firmware_info.get("package"), list):
             return False
@@ -388,6 +578,20 @@ $toreturn["real"] = json_encode($toreturn_real);
         return self._plugin_deprecated
 
     async def _get_from_stream(self, path: str) -> MutableMapping[str, Any]:
+        """Queue a streaming GET request and return the parsed payload.
+
+        Parameters
+        ----------
+        path : str
+            API endpoint path to call on the OPNsense host.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        Queued streaming-response payload parsed into a mapping.
+
+
+        """
         try:
             caller = inspect.stack()[1].function
         except (IndexError, AttributeError):
@@ -397,6 +601,20 @@ $toreturn["real"] = json_encode($toreturn_real);
         return await future
 
     async def _get(self, path: str) -> MutableMapping[str, Any] | list | None:
+        """Queue a GET request and return the result.
+
+        Parameters
+        ----------
+        path : str
+            API endpoint path to call on the OPNsense host.
+
+        Returns
+        -------
+        MutableMapping[str, Any] | list | None
+        Decoded JSON payload from a queued GET request, or None when request/parse fails.
+
+
+        """
         try:
             caller = inspect.stack()[1].function
         except (IndexError, AttributeError):
@@ -408,6 +626,22 @@ $toreturn["real"] = json_encode($toreturn_real);
     async def _post(
         self, path: str, payload: MutableMapping[str, Any] | None = None
     ) -> MutableMapping[str, Any] | list | None:
+        """Queue a POST request and return the result.
+
+        Parameters
+        ----------
+        path : str
+            API endpoint path to call on the OPNsense host.
+        payload : MutableMapping[str, Any] | None
+            JSON payload body sent with the API request. Defaults to None.
+
+        Returns
+        -------
+        MutableMapping[str, Any] | list | None
+        Decoded JSON payload from a queued POST request, or None when request/parse fails.
+
+
+        """
         try:
             caller = inspect.stack()[1].function
         except (IndexError, AttributeError):
@@ -417,6 +651,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         return await future
 
     async def _process_queue(self) -> None:
+        """Continuously process queued API requests and resolve waiting futures."""
         while True:
             method, path, payload, future, caller = await self._request_queue.get()
             try:
@@ -450,6 +685,7 @@ $toreturn["real"] = json_encode($toreturn_real);
             await asyncio.sleep(0.3)
 
     async def _monitor_queue(self) -> None:
+        """Periodically log request queue backlog size for diagnostics."""
         while True:
             try:
                 queue_size = self._request_queue.qsize()
@@ -462,6 +698,22 @@ $toreturn["real"] = json_encode($toreturn_real);
     async def _do_get_from_stream(
         self, path: str, caller: str = "Unknown"
     ) -> MutableMapping[str, Any]:
+        """Execute a streaming GET request immediately.
+
+        Parameters
+        ----------
+        path : str
+            API endpoint path to call on the OPNsense host.
+        caller : str
+            Name of the calling method used for log context. Defaults to 'Unknown'.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        Result produced by this method.
+
+
+        """
         self._rest_api_query_count += 1
         url: str = f"{self._url}{path}"
         _LOGGER.debug("[get_from_stream] url: %s", url)
@@ -545,6 +797,22 @@ $toreturn["real"] = json_encode($toreturn_real);
     async def _do_get(
         self, path: str, caller: str = "Unknown"
     ) -> MutableMapping[str, Any] | list | None:
+        """Execute a GET request immediately without queueing.
+
+        Parameters
+        ----------
+        path : str
+            API endpoint path to call on the OPNsense host.
+        caller : str
+            Name of the calling method used for log context. Defaults to 'Unknown'.
+
+        Returns
+        -------
+        MutableMapping[str, Any] | list | None
+        Decoded JSON payload from an immediate GET request, or None when request/parse fails.
+
+
+        """
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
         self._rest_api_query_count += 1
         url: str = f"{self._url}{path}"
@@ -589,18 +857,62 @@ $toreturn["real"] = json_encode($toreturn_real);
         return None
 
     async def _safe_dict_get(self, path: str) -> MutableMapping[str, Any]:
-        """Fetch data from the given path, ensuring the result is a dict."""
+        """Fetch data from the given path, ensuring the result is a dict.
+
+        Parameters
+        ----------
+        path : str
+            API endpoint path to call on the OPNsense host.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        Dictionary payload from the GET request, or an empty mapping if the response is not a dictionary.
+
+
+        """
         result = await self._get(path=path)
         return result if isinstance(result, MutableMapping) else {}
 
     async def _safe_list_get(self, path: str) -> list:
-        """Fetch data from the given path, ensuring the result is a list."""
+        """Fetch data from the given path, ensuring the result is a list.
+
+        Parameters
+        ----------
+        path : str
+            API endpoint path to call on the OPNsense host.
+
+        Returns
+        -------
+        list
+        List payload from the GET request, or an empty list if the response is not a list.
+
+
+        """
         result = await self._get(path=path)
         return result if isinstance(result, list) else []
 
     async def _do_post(
         self, path: str, payload: MutableMapping[str, Any] | None = None, caller: str = "Unknown"
     ) -> MutableMapping[str, Any] | list | None:
+        """Execute a POST request immediately without queueing.
+
+        Parameters
+        ----------
+        path : str
+            API endpoint path to call on the OPNsense host.
+        payload : MutableMapping[str, Any] | None
+            JSON payload body sent with the API request. Defaults to None.
+        caller : str
+            Name of the calling method used for log context. Defaults to 'Unknown'.
+
+        Returns
+        -------
+        MutableMapping[str, Any] | list | None
+        Decoded JSON payload from an immediate POST request, or None when request/parse fails.
+
+
+        """
         self._rest_api_query_count += 1
         url: str = f"{self._url}{path}"
         _LOGGER.debug("[post] url: %s", url)
@@ -651,34 +963,60 @@ $toreturn["real"] = json_encode($toreturn_real);
     async def _safe_dict_post(
         self, path: str, payload: MutableMapping[str, Any] | None = None
     ) -> MutableMapping[str, Any]:
-        """Fetch data from the given path, ensuring the result is a dict."""
+        """Fetch data from the given path, ensuring the result is a dict.
+
+        Parameters
+        ----------
+        path : str
+            API endpoint path to call on the OPNsense host.
+        payload : MutableMapping[str, Any] | None
+            JSON payload body sent with the API request. Defaults to None.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        Dictionary payload from the POST request, or an empty mapping if the response is not a dictionary.
+
+
+        """
         result = await self._post(path=path, payload=payload)
         return result if isinstance(result, MutableMapping) else {}
 
     async def _safe_list_post(
         self, path: str, payload: MutableMapping[str, Any] | None = None
     ) -> list:
-        """Fetch data from the given path, ensuring the result is a list."""
+        """Fetch data from the given path, ensuring the result is a list.
+
+        Parameters
+        ----------
+        path : str
+            API endpoint path to call on the OPNsense host.
+        payload : MutableMapping[str, Any] | None
+            JSON payload body sent with the API request. Defaults to None.
+
+        Returns
+        -------
+        list
+        List payload from the POST request, or an empty list if the response is not a list.
+
+
+        """
         result = await self._post(path=path, payload=payload)
         return result if isinstance(result, list) else []
 
     async def _get_check(self, path: str) -> bool:
         """Check if the given API path is accessible.
 
-        This method intentionally bypasses the request queue used by _get() and
-        _post() to provide fast, lightweight endpoint availability checks. This
-        is appropriate for plugin/service detection and initialization checks
-        where the 0.3s queue delay would harm user experience.
-
         Parameters
         ----------
         path : str
-            The API path to check for accessibility.
+            API endpoint path to call on the OPNsense host.
 
         Returns
         -------
         bool
-            True if the path is accessible (HTTP 2xx success), False otherwise.
+        True when the endpoint responds successfully; otherwise False.
+
 
         """
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
@@ -710,6 +1048,7 @@ $toreturn["real"] = json_encode($toreturn_real);
 
     @_log_errors
     async def _filter_configure(self) -> None:
+        """Apply pending firewall/NAT filter configuration changes."""
         script: str = r"""
 filter_configure();
 clear_subsystem_dirty('natconf');
@@ -719,7 +1058,20 @@ clear_subsystem_dirty('filter');
 
     @_log_errors
     async def get_device_unique_id(self, expected_id: str | None = None) -> str | None:
-        """Get the OPNsense Unique ID."""
+        """Get the OPNsense Unique ID.
+
+        Parameters
+        ----------
+        expected_id : str | None
+            Previously stored unique ID used to prefer a stable match. Defaults to None.
+
+        Returns
+        -------
+        str | None
+        Stable unique identifier derived from physical interface MAC addresses, or None when unavailable.
+
+
+        """
         instances = await self._safe_list_get("/api/interfaces/overview/export")
         mac_addresses = {
             d.get("macaddr_hw").replace(":", "_").strip()
@@ -743,7 +1095,15 @@ clear_subsystem_dirty('filter');
 
     @_log_errors
     async def get_system_info(self) -> MutableMapping[str, Any]:
-        """Return the system info from OPNsense."""
+        """Return the system info from OPNsense.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        Normalized get system info data returned by OPNsense APIs.
+
+
+        """
         system_info: MutableMapping[str, Any] = {}
         if self._use_snake_case:
             response = await self._safe_dict_get("/api/diagnostics/system/system_information")
@@ -754,7 +1114,15 @@ clear_subsystem_dirty('filter');
 
     @_log_errors
     async def get_firmware_update_info(self) -> MutableMapping[str, Any]:
-        """Get the details of available firmware updates."""
+        """Get the details of available firmware updates.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        Normalized get firmware update info data returned by OPNsense APIs.
+
+
+        """
         status = await self._safe_dict_get("/api/core/firmware/status")
 
         # if error or too old trigger check (only if check is not already in progress)
@@ -824,7 +1192,20 @@ clear_subsystem_dirty('filter');
 
     @_log_errors
     async def upgrade_firmware(self, type: str = "update") -> MutableMapping[str, Any] | None:
-        """Trigger a firmware upgrade."""
+        """Trigger a firmware upgrade.
+
+        Parameters
+        ----------
+        type : str
+            Firmware upgrade type (for example update or upgrade). Defaults to 'update'.
+
+        Returns
+        -------
+        MutableMapping[str, Any] | None
+        True when OPNsense reports the requested action succeeded; otherwise False.
+
+
+        """
         # minor updates of the same opnsense version
         if type == "update":
             # can watch the progress on the 'Updates' tab in the UI
@@ -838,17 +1219,46 @@ clear_subsystem_dirty('filter');
 
     @_log_errors
     async def upgrade_status(self) -> MutableMapping[str, Any]:
-        """Return the status of the firmware upgrade."""
+        """Return the status of the firmware upgrade.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        True when OPNsense reports the requested action succeeded; otherwise False.
+
+
+        """
         return await self._safe_dict_post("/api/core/firmware/upgradestatus")
 
     @_log_errors
     async def firmware_changelog(self, version: str) -> MutableMapping[str, Any]:
-        """Return the changelog for the firmware upgrade."""
+        """Return the changelog for the firmware upgrade.
+
+        Parameters
+        ----------
+        version : str
+            Firmware version string to fetch a changelog for.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        Result produced by this method.
+
+
+        """
         return await self._safe_dict_post(f"/api/core/firmware/changelog/{version}")
 
     @_log_errors
     async def get_config(self) -> MutableMapping[str, Any]:
-        """XMLRPC call to return all the config settings."""
+        """XMLRPC call to return all the config settings.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        Normalized get config data returned by OPNsense APIs.
+
+
+        """
         script: str = r"""
 global $config;
 
@@ -866,7 +1276,14 @@ $toreturn = [
 
     @_log_errors
     async def enable_filter_rule_by_created_time_legacy(self, created_time: str) -> None:
-        """Enable a filter rule."""
+        """Enable a filter rule.
+
+        Parameters
+        ----------
+        created_time : str
+            Rule creation timestamp used as a legacy unique identifier.
+
+        """
         config = await self.get_config()
         for rule in config["filter"]["rule"]:
             if "created" not in rule:
@@ -883,7 +1300,14 @@ $toreturn = [
 
     @_log_errors
     async def disable_filter_rule_by_created_time_legacy(self, created_time: str) -> None:
-        """Disable a filter rule."""
+        """Disable a filter rule.
+
+        Parameters
+        ----------
+        created_time : str
+            Rule creation timestamp used as a legacy unique identifier.
+
+        """
         config: MutableMapping[str, Any] = await self.get_config()
 
         for rule in config.get("filter", {}).get("rule", []):
@@ -902,7 +1326,14 @@ $toreturn = [
     # use created_time as a unique_id since none other exists
     @_log_errors
     async def enable_nat_port_forward_rule_by_created_time_legacy(self, created_time: str) -> None:
-        """Enable a NAT Port Forward rule."""
+        """Enable a NAT Port Forward rule.
+
+        Parameters
+        ----------
+        created_time : str
+            Rule creation timestamp used as a legacy unique identifier.
+
+        """
         config: MutableMapping[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("rule", []):
             if "created" not in rule:
@@ -920,7 +1351,14 @@ $toreturn = [
     # use created_time as a unique_id since none other exists
     @_log_errors
     async def disable_nat_port_forward_rule_by_created_time_legacy(self, created_time: str) -> None:
-        """Disable a NAT Port Forward rule."""
+        """Disable a NAT Port Forward rule.
+
+        Parameters
+        ----------
+        created_time : str
+            Rule creation timestamp used as a legacy unique identifier.
+
+        """
         config: MutableMapping[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("rule", []):
             if "created" not in rule:
@@ -938,7 +1376,14 @@ $toreturn = [
     # use created_time as a unique_id since none other exists
     @_log_errors
     async def enable_nat_outbound_rule_by_created_time_legacy(self, created_time: str) -> None:
-        """Enable NAT Outbound rule."""
+        """Enable NAT Outbound rule.
+
+        Parameters
+        ----------
+        created_time : str
+            Rule creation timestamp used as a legacy unique identifier.
+
+        """
         config: MutableMapping[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("outbound", {}).get("rule", []):
             if "created" not in rule:
@@ -956,7 +1401,14 @@ $toreturn = [
     # use created_time as a unique_id since none other exists
     @_log_errors
     async def disable_nat_outbound_rule_by_created_time_legacy(self, created_time: str) -> None:
-        """Disable NAT Outbound Rule."""
+        """Disable NAT Outbound Rule.
+
+        Parameters
+        ----------
+        created_time : str
+            Rule creation timestamp used as a legacy unique identifier.
+
+        """
         config: MutableMapping[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("outbound", {}).get("rule", []):
             if "created" not in rule or "time" not in rule["created"]:
@@ -975,8 +1427,9 @@ $toreturn = [
 
         Returns
         -------
-        dict
-            A dictionary representing the firewall and NAT rules.
+        dict[str, Any]
+        Normalized get firewall data returned by OPNsense APIs.
+
 
         """
         if self._firmware_version is None:
@@ -1006,17 +1459,11 @@ $toreturn = [
     async def _get_firewall_rules(self) -> dict[str, Any]:
         """Retrieve firewall rules from OPNsense.
 
-        Parameters
-        ----------
-        interface_map : dict[str, Any]
-            A mapping of interface names to firewall interface names.
-
         Returns
         -------
         dict[str, Any]
-            A dictionary of firewall rules, keyed by UUID, each representing a firewall rule parsed
-            from CSV format. Dictionary keys correspond to CSV headers such
-            as 'uuid', 'enabled', 'action', etc.
+        Normalized  get firewall rules data returned by OPNsense APIs.
+
 
         """
         request_body: MutableMapping[str, Any] = {"current": 1, "sort": {}}
@@ -1043,7 +1490,8 @@ $toreturn = [
         Returns
         -------
         dict[str, Any]
-            A dictionary of NAT destination rules, keyed by UUID.
+        Normalized  get nat destination rules data returned by OPNsense APIs.
+
 
         """
         request_body: MutableMapping[str, Any] = {"current": 1, "sort": {}}
@@ -1071,7 +1519,8 @@ $toreturn = [
         Returns
         -------
         dict[str, Any]
-            A dictionary of NAT one-to-one rules, keyed by UUID.
+        Normalized  get nat one to one rules data returned by OPNsense APIs.
+
 
         """
         request_body: MutableMapping[str, Any] = {"current": 1, "sort": {}}
@@ -1098,7 +1547,8 @@ $toreturn = [
         Returns
         -------
         dict[str, Any]
-            A dictionary of NAT source rules, keyed by UUID.
+        Normalized  get nat source rules data returned by OPNsense APIs.
+
 
         """
         request_body: MutableMapping[str, Any] = {"current": 1, "sort": {}}
@@ -1125,7 +1575,8 @@ $toreturn = [
         Returns
         -------
         dict[str, Any]
-            A dictionary of NAT NPT rules, keyed by UUID.
+        Normalized  get nat npt rules data returned by OPNsense APIs.
+
 
         """
         request_body: MutableMapping[str, Any] = {"current": 1, "sort": {}}
@@ -1149,14 +1600,15 @@ $toreturn = [
         Parameters
         ----------
         uuid : str
-            The UUID of the firewall rule to toggle.
-        toggle_on_off : str | None, optional
-            The action to perform: 'on' to enable, 'off' to disable, or None to toggle.
+            Target object UUID returned by OPNsense.
+        toggle_on_off : str | None
+            Explicit toggle directive ("on"/"off"); uses API toggle when omitted. Defaults to None.
 
         Returns
         -------
         bool
-            True if the operation was successful, False otherwise.
+        True when OPNsense reports the requested action succeeded; otherwise False.
+
 
         """
         payload: MutableMapping[str, Any] = {}
@@ -1193,16 +1645,17 @@ $toreturn = [
         Parameters
         ----------
         nat_rule_type : str
-            The type of NAT rule (e.g., 'd_nat', 'source_nat').
+            NAT rule type endpoint segment to target.
         uuid : str
-            The UUID of the NAT rule to toggle.
-        toggle_on_off : str | None, optional
-            The action to perform: 'on' to enable, 'off' to disable, or None to toggle.
+            Target object UUID returned by OPNsense.
+        toggle_on_off : str | None
+            Explicit toggle directive ("on"/"off"); uses API toggle when omitted. Defaults to None.
 
         Returns
         -------
         bool
-            True if the operation was successful, False otherwise.
+        True when OPNsense reports the requested action succeeded; otherwise False.
+
 
         """
         payload: MutableMapping[str, Any] = {}
@@ -1239,7 +1692,20 @@ $toreturn = [
 
     @_log_errors
     async def get_arp_table(self, resolve_hostnames: bool = False) -> list:
-        """Return the active ARP table."""
+        """Return the active ARP table.
+
+        Parameters
+        ----------
+        resolve_hostnames : bool
+            Whether reverse-DNS names should be resolved for ARP entries. Defaults to False.
+
+        Returns
+        -------
+        list
+        Normalized get arp table data returned by OPNsense APIs.
+
+
+        """
         # [{'hostname': '?', 'ip-address': '<ip>', 'mac-address': '<mac>', 'interface': 'em0', 'expires': 1199, 'type': 'ethernet'}, ...]
         request_body: MutableMapping[str, Any] = {"resolve": "yes"}
         arp_table_info = await self._safe_dict_post(
@@ -1252,7 +1718,15 @@ $toreturn = [
 
     @_log_errors
     async def get_services(self) -> list:
-        """Get the list of OPNsense services."""
+        """Get the list of OPNsense services.
+
+        Returns
+        -------
+        list
+        Normalized get services data returned by OPNsense APIs.
+
+
+        """
         response = await self._safe_dict_get("/api/core/service/search")
         # _LOGGER.debug(f"[get_services] response: {response}")
         services: list = response.get("rows", [])
@@ -1263,7 +1737,20 @@ $toreturn = [
 
     @_log_errors
     async def get_service_is_running(self, service: str) -> bool:
-        """Return if the OPNsense service is running."""
+        """Return if the OPNsense service is running.
+
+        Parameters
+        ----------
+        service : str
+            Service name or identifier recognized by OPNsense.
+
+        Returns
+        -------
+        bool
+        Normalized get service is running data returned by OPNsense APIs.
+
+
+        """
         services: list = await self.get_services()
         if services is None or not isinstance(services, list):
             return False
@@ -1275,6 +1762,22 @@ $toreturn = [
         return False
 
     async def _manage_service(self, action: str, service: str) -> bool:
+        """Run a service control action for a named service.
+
+        Parameters
+        ----------
+        action : str
+            Service action to perform (start, stop, restart, etc.).
+        service : str
+            Service name or identifier recognized by OPNsense.
+
+        Returns
+        -------
+        bool
+        Result produced by this method.
+
+
+        """
         if not service:
             return False
         api_addr: str = f"/api/core/service/{action}/{service}"
@@ -1284,29 +1787,89 @@ $toreturn = [
 
     @_log_errors
     async def start_service(self, service: str) -> bool:
-        """Start OPNsense service."""
+        """Start OPNsense service.
+
+        Parameters
+        ----------
+        service : str
+            Service name or identifier recognized by OPNsense.
+
+        Returns
+        -------
+        bool
+        True when OPNsense reports the requested action succeeded; otherwise False.
+
+
+        """
         return await self._manage_service("start", service)
 
     @_log_errors
     async def stop_service(self, service: str) -> bool:
-        """Stop OPNsense service."""
+        """Stop OPNsense service.
+
+        Parameters
+        ----------
+        service : str
+            Service name or identifier recognized by OPNsense.
+
+        Returns
+        -------
+        bool
+        True when OPNsense reports the requested action succeeded; otherwise False.
+
+
+        """
         return await self._manage_service("stop", service)
 
     @_log_errors
     async def restart_service(self, service: str) -> bool:
-        """Restart OPNsense service."""
+        """Restart OPNsense service.
+
+        Parameters
+        ----------
+        service : str
+            Service name or identifier recognized by OPNsense.
+
+        Returns
+        -------
+        bool
+        True when OPNsense reports the requested action succeeded; otherwise False.
+
+
+        """
         return await self._manage_service("restart", service)
 
     @_log_errors
     async def restart_service_if_running(self, service: str) -> bool:
-        """Restart OPNsense service only if it is running."""
+        """Restart OPNsense service only if it is running.
+
+        Parameters
+        ----------
+        service : str
+            Service name or identifier recognized by OPNsense.
+
+        Returns
+        -------
+        bool
+        True when OPNsense reports the requested action succeeded; otherwise False.
+
+
+        """
         if await self.get_service_is_running(service):
             return await self.restart_service(service)
         return True
 
     @_log_errors
     async def get_dhcp_leases(self) -> MutableMapping[str, Any]:
-        """Return list of DHCP leases."""
+        """Return list of DHCP leases.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        Normalized get dhcp leases data returned by OPNsense APIs.
+
+
+        """
         leases_raw: list = (
             await self._get_kea_dhcpv4_leases()
             + await self._get_isc_dhcpv4_leases()
@@ -1349,7 +1912,15 @@ $toreturn = [
         return dhcp_leases
 
     async def _get_kea_interfaces(self) -> MutableMapping[str, Any]:
-        """Return interfaces setup for Kea."""
+        """Return interfaces setup for Kea.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        Normalized  get kea interfaces data returned by OPNsense APIs.
+
+
+        """
         response = await self._safe_dict_get("/api/kea/dhcpv4/get")
         lease_interfaces: MutableMapping[str, Any] = {}
         general: MutableMapping[str, Any] = response.get("dhcpv4", {}).get("general", {})
@@ -1364,7 +1935,15 @@ $toreturn = [
         return lease_interfaces
 
     async def _get_kea_dhcpv4_leases(self) -> list:
-        """Return IPv4 DHCP Leases by Kea."""
+        """Return IPv4 DHCP Leases by Kea.
+
+        Returns
+        -------
+        list
+        Normalized  get kea dhcpv4 leases data returned by OPNsense APIs.
+
+
+        """
         response = await self._safe_dict_get("/api/kea/leases4/search")
         if not isinstance(response.get("rows", None), list):
             return []
@@ -1424,6 +2003,20 @@ $toreturn = [
         return leases
 
     def _keep_latest_leases(self, reservations: list[dict]) -> list[dict]:
+        """Deduplicate leases and keep the entry with the latest expiration.
+
+        Parameters
+        ----------
+        reservations : list[dict]
+            Reservations used by `_keep_latest_leases`.
+
+        Returns
+        -------
+        list[dict]
+        Result produced by this method.
+
+
+        """
         seen: dict[tuple, dict] = {}
 
         for entry in reservations:
@@ -1437,7 +2030,15 @@ $toreturn = [
         return list(seen.values())
 
     async def _get_dnsmasq_leases(self) -> list:
-        """Return Dnsmasq IPv4 and IPv6 DHCP Leases."""
+        """Return Dnsmasq IPv4 and IPv6 DHCP Leases.
+
+        Returns
+        -------
+        list
+        Normalized  get dnsmasq leases data returned by OPNsense APIs.
+
+
+        """
         if self._firmware_version is None:
             await self.get_host_firmware_version()
 
@@ -1508,7 +2109,8 @@ $toreturn = [
         Returns
         -------
         list
-            A list of dictionaries representing IPv4 DHCP leases.
+        Normalized  get isc dhcpv4 leases data returned by OPNsense APIs.
+
 
         """
         if not await self._get_check("/api/dhcpv4/service/status"):
@@ -1562,7 +2164,8 @@ $toreturn = [
         Returns
         -------
         list
-            A list of dictionaries representing IPv6 DHCP leases.
+        Normalized  get isc dhcpv6 leases data returned by OPNsense APIs.
+
 
         """
         if not await self._get_check("/api/dhcpv6/service/status"):
@@ -1612,14 +2215,30 @@ $toreturn = [
 
     @_log_errors
     async def get_carp_status(self) -> bool:
-        """Return the Carp status."""
+        """Return the Carp status.
+
+        Returns
+        -------
+        bool
+        Normalized get carp status data returned by OPNsense APIs.
+
+
+        """
         response = await self._safe_dict_get("/api/diagnostics/interface/get_vip_status")
         # _LOGGER.debug(f"[get_carp_status] response: {response}")
         return response.get("carp", {}).get("allow", "0") == "1"
 
     @_log_errors
     async def get_carp_interfaces(self) -> list:
-        """Return the interfaces used by Carp."""
+        """Return the interfaces used by Carp.
+
+        Returns
+        -------
+        list
+        Normalized get carp interfaces data returned by OPNsense APIs.
+
+
+        """
         vip_settings_raw = await self._safe_dict_get("/api/interfaces/vip_settings/get")
         if not isinstance(vip_settings_raw.get("rows", None), list):
             vip_settings: list = []
@@ -1651,7 +2270,15 @@ $toreturn = [
 
     @_log_errors
     async def system_reboot(self) -> bool:
-        """Reboot OPNsense."""
+        """Reboot OPNsense.
+
+        Returns
+        -------
+        bool
+        True when OPNsense reports the requested action succeeded; otherwise False.
+
+
+        """
         response = await self._safe_dict_post("/api/core/system/reboot")
         _LOGGER.debug("[system_reboot] response: %s", response)
         if response.get("status", "") == "ok":
@@ -1669,7 +2296,22 @@ $toreturn = [
 
     @_log_errors
     async def send_wol(self, interface: str, mac: str) -> bool:
-        """Send a wake on lan packet to the specified MAC address."""
+        """Send a wake on lan packet to the specified MAC address.
+
+        Parameters
+        ----------
+        interface : str
+            Interface identifier used by the Wake-on-LAN endpoint.
+        mac : str
+            MAC address of the target device.
+
+        Returns
+        -------
+        bool
+        True when OPNsense reports the requested action succeeded; otherwise False.
+
+
+        """
         payload: MutableMapping[str, Any] = {"wake": {"interface": interface, "mac": mac}}
         _LOGGER.debug("[send_wol] payload: %s", payload)
         response = await self._safe_dict_post("/api/wol/wol/set", payload)
@@ -1680,7 +2322,22 @@ $toreturn = [
 
     @staticmethod
     def _try_to_int(input: Any | None, retval: int | None = None) -> int | None:
-        """Return field to int."""
+        """Return field to int.
+
+        Parameters
+        ----------
+        input : Any | None
+            Raw input value to convert.
+        retval : int | None
+            Fallback value returned when conversion fails. Defaults to None.
+
+        Returns
+        -------
+        int | None
+        Converted integer value, or the provided fallback when conversion fails.
+
+
+        """
         if input is None:
             return retval
         try:
@@ -1690,7 +2347,22 @@ $toreturn = [
 
     @staticmethod
     def _try_to_float(input: Any | None, retval: float | None = None) -> float | None:
-        """Return field to float."""
+        """Return field to float.
+
+        Parameters
+        ----------
+        input : Any | None
+            Raw input value to convert.
+        retval : float | None
+            Fallback value returned when conversion fails. Defaults to None.
+
+        Returns
+        -------
+        float | None
+        Converted float value, or the provided fallback when conversion fails.
+
+
+        """
         if input is None:
             return retval
         try:
@@ -1700,7 +2372,15 @@ $toreturn = [
 
     @_log_errors
     async def get_telemetry(self) -> MutableMapping[str, Any]:
-        """Get telemetry data from OPNsense."""
+        """Get telemetry data from OPNsense.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        Normalized get telemetry data returned by OPNsense APIs.
+
+
+        """
         telemetry: MutableMapping[str, Any] = {}
         telemetry["mbuf"] = await self._get_telemetry_mbuf()
         telemetry["pfstate"] = await self._get_telemetry_pfstate()
@@ -1714,7 +2394,15 @@ $toreturn = [
 
     @_log_errors
     async def get_interfaces(self) -> MutableMapping[str, Any]:
-        """Return all OPNsense interfaces."""
+        """Return all OPNsense interfaces.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        Normalized get interfaces data returned by OPNsense APIs.
+
+
+        """
         interface_info = await self._safe_list_get("/api/interfaces/overview/export")
         # _LOGGER.debug(f"[get_interfaces] interface_info: {interface_info}")
         if not len(interface_info) > 0:
@@ -1774,6 +2462,15 @@ $toreturn = [
 
     @_log_errors
     async def _get_telemetry_mbuf(self) -> MutableMapping[str, Any]:
+        """Collect mbuf usage telemetry.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        Normalized  get telemetry mbuf data returned by OPNsense APIs.
+
+
+        """
         mbuf_info = await self._safe_dict_post("/api/diagnostics/system/system_mbuf")
         # _LOGGER.debug(f"[get_telemetry_mbuf] mbuf_info: {mbuf_info}")
         mbuf: MutableMapping[str, Any] = {}
@@ -1795,6 +2492,15 @@ $toreturn = [
 
     @_log_errors
     async def _get_telemetry_pfstate(self) -> MutableMapping[str, Any]:
+        """Collect PF state table telemetry.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        Normalized  get telemetry pfstate data returned by OPNsense APIs.
+
+
+        """
         pfstate_info = await self._safe_dict_post("/api/diagnostics/firewall/pf_states")
         # _LOGGER.debug(f"[get_telemetry_pfstate] pfstate_info: {pfstate_info}")
         pfstate: MutableMapping[str, Any] = {}
@@ -1812,6 +2518,15 @@ $toreturn = [
 
     @_log_errors
     async def _get_telemetry_memory(self) -> MutableMapping[str, Any]:
+        """Collect memory and swap telemetry.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        Normalized  get telemetry memory data returned by OPNsense APIs.
+
+
+        """
         if self._use_snake_case:
             memory_info = await self._safe_dict_post("/api/diagnostics/system/system_resources")
         else:
@@ -1853,6 +2568,15 @@ $toreturn = [
 
     @_log_errors
     async def _get_telemetry_system(self) -> MutableMapping[str, Any]:
+        """Collect system time, uptime, boottime, and load telemetry.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        Normalized  get telemetry system data returned by OPNsense APIs.
+
+
+        """
         if self._use_snake_case:
             time_info = await self._safe_dict_post("/api/diagnostics/system/system_time")
         else:
@@ -1934,6 +2658,15 @@ $toreturn = [
 
     @_log_errors
     async def _get_telemetry_cpu(self) -> MutableMapping[str, Any]:
+        """Collect CPU core count and usage telemetry.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        Normalized  get telemetry cpu data returned by OPNsense APIs.
+
+
+        """
         if self._use_snake_case:
             cputype_info = await self._safe_list_post("/api/diagnostics/cpu_usage/get_c_p_u_type")
         else:
@@ -1959,6 +2692,15 @@ $toreturn = [
 
     @_log_errors
     async def _get_telemetry_filesystems(self) -> list:
+        """Collect filesystem telemetry entries from diagnostics.
+
+        Returns
+        -------
+        list
+        Normalized  get telemetry filesystems data returned by OPNsense APIs.
+
+
+        """
         if self._use_snake_case:
             filesystems_info = await self._safe_dict_post("/api/diagnostics/system/system_disk")
         else:
@@ -1970,7 +2712,15 @@ $toreturn = [
 
     @_log_errors
     async def get_openvpn(self) -> MutableMapping[str, Any]:
-        """Return OpenVPN information."""
+        """Return OpenVPN information.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        Normalized get openvpn data returned by OPNsense APIs.
+
+
+        """
         # https://docs.opnsense.org/development/api/core/openvpn.html
         # https://github.com/opnsense/core/blob/master/src/opnsense/www/js/widgets/OpenVPNClients.js
         # https://github.com/opnsense/core/blob/master/src/opnsense/www/js/widgets/OpenVPNServers.js
@@ -2004,7 +2754,16 @@ $toreturn = [
     async def _process_openvpn_instances(
         instances_info: MutableMapping[str, Any], openvpn: MutableMapping[str, Any]
     ) -> None:
-        """Process OpenVPN instances into servers and clients."""
+        """Process OpenVPN instances into servers and clients.
+
+        Parameters
+        ----------
+        instances_info : MutableMapping[str, Any]
+            Raw OpenVPN instance payload returned by the API.
+        openvpn : MutableMapping[str, Any]
+            Mutable OpenVPN result structure updated in place.
+
+        """
         for instance in instances_info.get("rows", []):
             if not isinstance(instance, MutableMapping):
                 continue
@@ -2023,7 +2782,16 @@ $toreturn = [
     async def _add_openvpn_server(
         instance: MutableMapping[str, Any], openvpn: MutableMapping[str, Any]
     ) -> None:
-        """Add a server to the OpenVPN structure."""
+        """Add a server to the OpenVPN structure.
+
+        Parameters
+        ----------
+        instance : MutableMapping[str, Any]
+            Single OpenVPN instance record to transform.
+        openvpn : MutableMapping[str, Any]
+            Mutable OpenVPN result structure updated in place.
+
+        """
         uuid = instance.get("uuid")
         if not uuid:
             return
@@ -2040,7 +2808,16 @@ $toreturn = [
     async def _process_openvpn_providers(
         providers_info: MutableMapping[str, Any], openvpn: MutableMapping[str, Any]
     ) -> None:
-        """Process OpenVPN providers."""
+        """Process OpenVPN providers.
+
+        Parameters
+        ----------
+        providers_info : MutableMapping[str, Any]
+            Raw OpenVPN provider payload returned by the API.
+        openvpn : MutableMapping[str, Any]
+            Mutable OpenVPN result structure updated in place.
+
+        """
         for uuid, vpn_info in providers_info.items():
             if not uuid or not isinstance(vpn_info, MutableMapping):
                 continue
@@ -2053,7 +2830,16 @@ $toreturn = [
     async def _process_openvpn_sessions(
         sessions_info: MutableMapping[str, Any], openvpn: MutableMapping[str, Any]
     ) -> None:
-        """Process OpenVPN sessions."""
+        """Process OpenVPN sessions.
+
+        Parameters
+        ----------
+        sessions_info : MutableMapping[str, Any]
+            Raw OpenVPN session payload returned by the API.
+        openvpn : MutableMapping[str, Any]
+            Mutable OpenVPN result structure updated in place.
+
+        """
         for session in sessions_info.get("rows", []):
             if session.get("type") != "server":
                 continue
@@ -2066,7 +2852,16 @@ $toreturn = [
     async def _update_openvpn_server_status(
         server: MutableMapping[str, Any], session: MutableMapping[str, Any]
     ) -> None:
-        """Update server status based on session data."""
+        """Update server status based on session data.
+
+        Parameters
+        ----------
+        server : MutableMapping[str, Any]
+            OpenVPN server record to update.
+        session : MutableMapping[str, Any]
+            Shared aiohttp client session used for HTTP requests.
+
+        """
         status = session.get("status")
         if not session.get("is_client", False):
             server["status"] = (
@@ -2096,7 +2891,16 @@ $toreturn = [
     async def _process_openvpn_routes(
         routes_info: MutableMapping[str, Any], openvpn: MutableMapping[str, Any]
     ) -> None:
-        """Process OpenVPN routes."""
+        """Process OpenVPN routes.
+
+        Parameters
+        ----------
+        routes_info : MutableMapping[str, Any]
+            Raw OpenVPN route payload returned by the API.
+        openvpn : MutableMapping[str, Any]
+            Mutable OpenVPN result structure updated in place.
+
+        """
         for route in routes_info.get("rows", []):
             server_id = route.get("id")
             if not isinstance(route, MutableMapping) or server_id not in openvpn["servers"]:
@@ -2111,7 +2915,14 @@ $toreturn = [
             )
 
     async def _fetch_openvpn_server_details(self, openvpn: MutableMapping[str, Any]) -> None:
-        """Fetch detailed server information."""
+        """Fetch detailed server information.
+
+        Parameters
+        ----------
+        openvpn : MutableMapping[str, Any]
+            Mutable OpenVPN result structure updated in place.
+
+        """
         for uuid, server in openvpn["servers"].items():
             server.setdefault("total_bytes_sent", 0)
             server.setdefault("total_bytes_recv", 0)
@@ -2130,7 +2941,15 @@ $toreturn = [
 
     @_log_errors
     async def get_gateways(self) -> MutableMapping[str, Any]:
-        """Return OPNsense Gateway details."""
+        """Return OPNsense Gateway details.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        Normalized get gateways data returned by OPNsense APIs.
+
+
+        """
         gateways_info = await self._safe_dict_get("/api/routes/gateway/status")
         # _LOGGER.debug(f"[get_gateways] gateways_info: {gateways_info}")
         gateways: MutableMapping[str, Any] = {}
@@ -2144,6 +2963,15 @@ $toreturn = [
 
     @_log_errors
     async def _get_telemetry_temps(self) -> MutableMapping[str, Any]:
+        """Collect temperature sensor telemetry.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        Normalized  get telemetry temps data returned by OPNsense APIs.
+
+
+        """
         if self._use_snake_case:
             temps_info = await self._safe_list_get("/api/diagnostics/system/system_temperature")
         else:
@@ -2165,7 +2993,15 @@ $toreturn = [
 
     @_log_errors
     async def get_notices(self) -> MutableMapping[str, Any]:
-        """Get active OPNsense notices."""
+        """Get active OPNsense notices.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        Normalized get notices data returned by OPNsense APIs.
+
+
+        """
         notices_info = await self._safe_dict_get("/api/core/system/status")
         # _LOGGER.debug(f"[get_notices] notices_info: {notices_info}")
         pending_notices_present = False
@@ -2193,7 +3029,21 @@ $toreturn = [
 
     @_log_errors
     async def close_notice(self, id: str) -> bool:
-        """Close selected notices."""
+        """Close selected notices.
+
+        Parameters
+        ----------
+        id : str
+            Id used by `close_notice`.
+
+        Returns
+        -------
+        bool
+        True when OPNsense reports the requested action succeeded; otherwise False.
+
+
+        """
+
         dismiss_endpoint = (
             "/api/core/system/dismiss_status"
             if self._use_snake_case
@@ -2221,7 +3071,15 @@ $toreturn = [
 
     @_log_errors
     async def get_unbound_blocklist_legacy(self) -> MutableMapping[str, Any]:
-        """Return the Unbound Blocklist details."""
+        """Return the Unbound Blocklist details.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        Normalized get unbound blocklist legacy data returned by OPNsense APIs.
+
+
+        """
         response = await self._safe_dict_get("/api/unbound/settings/get")
         # _LOGGER.debug(f"[get_unbound_blocklist_legacy] response: {response}")
         dnsbl_settings = response.get("unbound", {}).get("dnsbl", {})
@@ -2246,6 +3104,20 @@ $toreturn = [
         return dnsbl
 
     async def _set_unbound_blocklist_legacy(self, set_state: bool) -> bool:
+        """Enable or disable legacy Unbound DNS blocklist settings.
+
+        Parameters
+        ----------
+        set_state : bool
+            Desired enabled state to apply.
+
+        Returns
+        -------
+        bool
+        Result produced by this method.
+
+
+        """
         payload: MutableMapping[str, Any] = {}
         payload["unbound"] = {}
         payload["unbound"]["dnsbl"] = await self.get_unbound_blocklist_legacy()
@@ -2277,7 +3149,15 @@ $toreturn = [
         )
 
     async def get_unbound_blocklist(self) -> dict[str, Any]:
-        """Return the Unbound Blocklist details."""
+        """Return the Unbound Blocklist details.
+
+        Returns
+        -------
+        dict[str, Any]
+        Normalized get unbound blocklist data returned by OPNsense APIs.
+
+
+        """
         if self._firmware_version is None:
             await self.get_host_firmware_version()
         try:
@@ -2315,22 +3195,70 @@ $toreturn = [
         return dnsbl_full
 
     async def _toggle_unbound_blocklist(self, set_state: bool, uuid: str | None) -> bool:
-        """Enable or disable the unbound blocklist."""
+        """Enable or disable the unbound blocklist.
+
+        Parameters
+        ----------
+        set_state : bool
+            Desired enabled state to apply.
+        uuid : str | None
+            Target object UUID returned by OPNsense.
+
+        Returns
+        -------
+        bool
+        Result produced by this method.
+
+
+        """
         if not uuid:
             _LOGGER.error("Blocklist uuid must be provided for Unbound Extended Blocklists")
             return False
         endpoint = f"/api/unbound/settings/toggle_dnsbl/{uuid}/{'1' if set_state else '0'}"
         response = await self._safe_dict_post(endpoint)
         result = response.get("result")
-        if set_state and result == "Enabled":
-            return True
-        if not set_state and result == "Disabled":
-            return True
+        # If the toggle endpoint reports success, attempt to ensure the change is applied
+        if (set_state and result == "Enabled") or (not set_state and result == "Disabled"):
+            # Query DNSBL service status and trigger Apply to ensure settings take effect
+            try:
+                dnsbl_resp = await self._get("/api/unbound/service/dnsbl")
+                _LOGGER.debug(
+                    "[_toggle_unbound_blocklist] uuid: %s, set_state: %s, response: %s, dnsbl_resp: %s",
+                    uuid,
+                    "On" if set_state else "Off",
+                    response,
+                    dnsbl_resp,
+                )
+                if isinstance(dnsbl_resp, MutableMapping) and dnsbl_resp.get(
+                    "status", "failed"
+                ).startswith("OK"):
+                    return True
+            except (TimeoutError, aiohttp.ClientError, ValueError, TypeError) as e:
+                _LOGGER.error(
+                    "Error applying unbound blocklist change for uuid %s. %s: %s",
+                    uuid,
+                    type(e).__name__,
+                    e,
+                )
+            # Fall through to return False if Apply did not confirm
         return False
 
     @_log_errors
     async def enable_unbound_blocklist(self, uuid: str | None = None) -> bool:
-        """Enable the unbound blocklist."""
+        """Enable the unbound blocklist.
+
+        Parameters
+        ----------
+        uuid : str | None
+            Target object UUID returned by OPNsense. Defaults to None.
+
+        Returns
+        -------
+        bool
+        True when OPNsense reports the requested action succeeded; otherwise False.
+
+
+        """
         if self._firmware_version is None:
             await self.get_host_firmware_version()
         try:
@@ -2358,7 +3286,20 @@ $toreturn = [
 
     @_log_errors
     async def disable_unbound_blocklist(self, uuid: str | None = None) -> bool:
-        """Disable the unbound blocklist."""
+        """Disable the unbound blocklist.
+
+        Parameters
+        ----------
+        uuid : str | None
+            Target object UUID returned by OPNsense. Defaults to None.
+
+        Returns
+        -------
+        bool
+        True when OPNsense reports the requested action succeeded; otherwise False.
+
+
+        """
         if self._firmware_version is None:
             await self.get_host_firmware_version()
         try:
@@ -2386,7 +3327,15 @@ $toreturn = [
 
     @_log_errors
     async def get_wireguard(self) -> MutableMapping[str, Any]:
-        """Get the details of the WireGuard services."""
+        """Get the details of the WireGuard services.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        Normalized get wireguard data returned by OPNsense APIs.
+
+
+        """
         data_sources = {
             "summary_raw": "/api/wireguard/service/show",
             "clients_raw": "/api/wireguard/client/get",
@@ -2426,7 +3375,24 @@ $toreturn = [
     async def _process_wireguard_server(
         uid: str, srv: MutableMapping[str, Any], client_summ: MutableMapping[str, Any]
     ) -> MutableMapping[str, Any]:
-        """Process a single WireGuard server entry."""
+        """Process a single WireGuard server entry.
+
+        Parameters
+        ----------
+        uid : str
+            UUID key for the current WireGuard/OpenVPN object.
+        srv : MutableMapping[str, Any]
+            WireGuard server record being processed.
+        client_summ : MutableMapping[str, Any]
+            WireGuard client summary mapping from API results.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        None. Updates the supplied data structures in place.
+
+
+        """
         return {
             "uuid": uid,
             "name": srv.get("name"),
@@ -2458,7 +3424,24 @@ $toreturn = [
     async def _process_wireguard_client(
         uid: str, clnt: MutableMapping[str, Any], servers: MutableMapping[str, Any]
     ) -> MutableMapping[str, Any]:
-        """Process a single WireGuard client entry."""
+        """Process a single WireGuard client entry.
+
+        Parameters
+        ----------
+        uid : str
+            UUID key for the current WireGuard/OpenVPN object.
+        clnt : MutableMapping[str, Any]
+            WireGuard client record being processed.
+        servers : MutableMapping[str, Any]
+            WireGuard servers mapping keyed by UUID.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        None. Updates the supplied data structures in place.
+
+
+        """
         return {
             "uuid": uid,
             "name": clnt.get("name"),
@@ -2483,7 +3466,24 @@ $toreturn = [
     async def _link_wireguard_client_to_server(
         srv_id: str, servers: MutableMapping[str, Any], srv: MutableMapping[str, Any]
     ) -> MutableMapping[str, Any]:
-        """Link a WireGuard client to its corresponding server."""
+        """Link a WireGuard client to its corresponding server.
+
+        Parameters
+        ----------
+        srv_id : str
+            WireGuard server UUID used for linkage.
+        servers : MutableMapping[str, Any]
+            WireGuard servers mapping keyed by UUID.
+        srv : MutableMapping[str, Any]
+            WireGuard server record being processed.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        None. Updates the supplied data structures in place.
+
+
+        """
         if srv_id in servers:
             server = servers[srv_id]
             return {
@@ -2506,7 +3506,18 @@ $toreturn = [
         servers: MutableMapping[str, Any],
         clients: MutableMapping[str, Any],
     ) -> None:
-        """Update WireGuard server and client statuses based on the summary."""
+        """Update WireGuard server and client statuses based on the summary.
+
+        Parameters
+        ----------
+        summary : list[MutableMapping[str, Any]]
+            WireGuard summary rows returned by the API.
+        servers : MutableMapping[str, Any]
+            WireGuard servers mapping keyed by UUID.
+        clients : MutableMapping[str, Any]
+            WireGuard clients mapping keyed by UUID.
+
+        """
         for entry in summary:
             if entry.get("type") == "interface":
                 for server in servers.values():
@@ -2521,7 +3532,18 @@ $toreturn = [
         servers: MutableMapping[str, Any],
         clients: MutableMapping[str, Any],
     ) -> None:
-        """Update the WireGuard peer status for clients and servers."""
+        """Update the WireGuard peer status for clients and servers.
+
+        Parameters
+        ----------
+        entry : MutableMapping[str, Any]
+            WireGuard summary row currently being processed.
+        servers : MutableMapping[str, Any]
+            WireGuard servers mapping keyed by UUID.
+        clients : MutableMapping[str, Any]
+            WireGuard clients mapping keyed by UUID.
+
+        """
         pubkey = entry.get("public-key", "-")
         interface = entry.get("if", "-")
         endpoint = entry.get("endpoint", None)
@@ -2574,7 +3596,28 @@ $toreturn = [
         is_connected: bool,
         connection_counter_key: str,
     ) -> None:
-        """Update details of WireGuard peers."""
+        """Update details of WireGuard peers.
+
+        Parameters
+        ----------
+        peer : MutableMapping[str, Any]
+            WireGuard peer record being updated.
+        server_or_client : MutableMapping[str, Any]
+            WireGuard server/client record owning the peer.
+        endpoint : str
+            Peer endpoint string (host:port) if available.
+        transfer_rx : int
+            Received byte counter for the peer.
+        transfer_tx : int
+            Transmitted byte counter for the peer.
+        handshake_time : datetime | None
+            Timestamp of the most recent peer handshake.
+        is_connected : bool
+            Whether the peer is currently considered connected.
+        connection_counter_key : str
+            Key name used to increment connection statistics.
+
+        """
         if endpoint and endpoint != "(none)":
             peer["endpoint"] = endpoint
         peer["bytes_recv"] = transfer_rx
@@ -2602,7 +3645,24 @@ $toreturn = [
                 server_or_client["latest_handshake"] = handshake_time
 
     async def toggle_vpn_instance(self, vpn_type: str, clients_servers: str, uuid: str) -> bool:
-        """Toggle the specified VPN instance on or off."""
+        """Toggle the specified VPN instance on or off.
+
+        Parameters
+        ----------
+        vpn_type : str
+            VPN family to toggle (openvpn or wireguard).
+        clients_servers : str
+            VPN instance group endpoint (clients or servers).
+        uuid : str
+            Target object UUID returned by OPNsense.
+
+        Returns
+        -------
+        bool
+        True when OPNsense reports the requested action succeeded; otherwise False.
+
+
+        """
         if vpn_type == "openvpn":
             success = await self._safe_dict_post(f"/api/openvpn/instances/toggle/{uuid}")
             if not success.get("changed", False):
@@ -2630,7 +3690,20 @@ $toreturn = [
         return False
 
     async def reload_interface(self, if_name: str) -> bool:
-        """Reload the specified interface."""
+        """Reload the specified interface.
+
+        Parameters
+        ----------
+        if_name : str
+            Interface name to reload.
+
+        Returns
+        -------
+        bool
+        True when OPNsense reports the requested action succeeded; otherwise False.
+
+
+        """
         if self._use_snake_case:
             reload = await self._safe_dict_post(
                 f"/api/interfaces/overview/reload_interface/{if_name}"
@@ -2642,7 +3715,15 @@ $toreturn = [
         return reload.get("message", "").startswith("OK")
 
     async def get_certificates(self) -> MutableMapping[str, Any]:
-        """Return the active encryption certificates."""
+        """Return the active encryption certificates.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        Normalized get certificates data returned by OPNsense APIs.
+
+
+        """
         certs_raw = await self._safe_dict_get("/api/trust/cert/search")
         if not isinstance(certs_raw.get("rows", None), list):
             return {}
@@ -2665,7 +3746,20 @@ $toreturn = [
         return certs
 
     async def generate_vouchers(self, data: MutableMapping[str, Any]) -> list:
-        """Generate vouchers from the Voucher Server."""
+        """Generate vouchers from the Voucher Server.
+
+        Parameters
+        ----------
+        data : MutableMapping[str, Any]
+            Input mapping used to build the request payload.
+
+        Returns
+        -------
+        list
+        List of generated voucher entries returned by the voucher service.
+
+
+        """
         if data.get("voucher_server", None):
             server = data.get("voucher_server")
         else:
@@ -2721,7 +3815,20 @@ $toreturn = [
         return vouchers
 
     async def kill_states(self, ip_addr: str) -> MutableMapping[str, Any]:
-        """Kill the active states of the IP address."""
+        """Kill the active states of the IP address.
+
+        Parameters
+        ----------
+        ip_addr : str
+            IP address whose states should be terminated.
+
+        Returns
+        -------
+        MutableMapping[str, Any]
+        Result produced by this method.
+
+
+        """
         payload: MutableMapping[str, Any] = {"filter": ip_addr}
         response = await self._safe_dict_post(
             "/api/diagnostics/firewall/kill_states/",
@@ -2734,7 +3841,22 @@ $toreturn = [
         }
 
     async def toggle_alias(self, alias: str, toggle_on_off: str | None = None) -> bool:
-        """Toggle alias on and off."""
+        """Toggle alias on and off.
+
+        Parameters
+        ----------
+        alias : str
+            Firewall alias name to toggle.
+        toggle_on_off : str | None
+            Explicit toggle directive ("on"/"off"); uses API toggle when omitted. Defaults to None.
+
+        Returns
+        -------
+        bool
+        True when OPNsense reports the requested action succeeded; otherwise False.
+
+
+        """
         if self._use_snake_case:
             alias_list_resp = await self._safe_dict_get("/api/firewall/alias/search_item")
         else:

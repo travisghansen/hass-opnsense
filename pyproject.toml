@@ -19,7 +19,12 @@ pytest = [
     "pytest-homeassistant-custom-component",
     "pytest-timeout",
 ]
-dev = [{ include-group = "lint" }, { include-group = "pytest" }]
+dev = [
+    { include-group = "lint" },
+    { include-group = "pytest" },
+    "pre-commit",
+    "ruff",
+]
 
 [tool.codespell]
 skip = "*.py,*.toml,CHANGELOG.*"
