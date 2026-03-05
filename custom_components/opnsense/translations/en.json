@@ -124,6 +124,10 @@
     "plugin_cleanup_done": {
       "title": "OPNsense 26.1.1 and Plugin cleanup completed",
       "description": "OPNsense Plugin is not installed. NAT Outbound, NAT Port Forward, and Firewall Filter rules removed."
+    },
+    "plugin_cleanup_deprecated": {
+      "title": "OPNsense 26.1.1 and Plugin cleanup completed",
+      "description": "OPNsense Plugin is deprecated. NAT Outbound, NAT Port Forward, and Firewall Filter rules removed."
     }
   },
   "selector": {

@@ -660,7 +660,9 @@ async def async_setup_entry(
                     )
                 else:
                     # TODO: Also disable once OPNsense 26.1.x drops support for the plugin
-                    if state.get("plugin_installed", False) is True:
+                    if not state.get("plugin_deprecated", False) and state.get(
+                        "plugin_installed", False
+                    ):
                         entities.extend(
                             await _compile_filter_switches_legacy(config_entry, coordinator, state)
                         )
@@ -1789,7 +1791,6 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
             Additional keyword arguments.
 
         """
-
         if self.is_on or not self._client:
             return
 
@@ -1813,7 +1814,6 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
             Additional keyword arguments.
 
         """
-
         if not self.is_on or not self._client:
             return
 

@@ -119,6 +119,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 "state_key": "host_firmware_version",
             },
             {"function": "is_plugin_installed", "state_key": "plugin_installed"},
+            {"function": "is_plugin_deprecated", "state_key": "plugin_deprecated"},
         ]
 
         if config.get(CONF_SYNC_TELEMETRY, DEFAULT_SYNC_OPTION_VALUE):
@@ -341,7 +342,6 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch the latest state from OPNsense."""
-
         if self._updating:
             _LOGGER.warning(
                 "Skipping %supdate because the previous update is still in progress",
