@@ -435,6 +435,21 @@ async def _deprecated_plugin_cleanup_26_1_1(
                 else "plugin_cleanup_done",
             )
 
+    if plugin_deprecated and plugin_installed:
+        _LOGGER.info(
+            "OPNsense Firmware is 26.1.3+ and the deprecated Plugin is still installed. Both because it will no longer work and for security reasons, please remove this plugin from OPNsense."
+        )
+        ir.async_create_issue(
+            hass,
+            DOMAIN,
+            f"{config_device_id}_remove_plugin",
+            is_fixable=False,
+            is_persistent=False,
+            issue_domain=DOMAIN,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key="remove_plugin",
+        )
+
 
 async def async_remove_config_entry_device(
     hass: HomeAssistant, config_entry: ConfigEntry, device_entry: dr.DeviceEntry

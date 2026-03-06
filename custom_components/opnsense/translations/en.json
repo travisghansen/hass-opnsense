@@ -128,6 +128,10 @@
     "plugin_cleanup_deprecated": {
       "title": "OPNsense 26.1.1 and Plugin cleanup completed",
       "description": "OPNsense Plugin is deprecated. NAT Outbound, NAT Port Forward, and Firewall Filter rules removed."
+    },
+    "remove_plugin": {
+      "title": "Remove Deprecated OPNsense Plugin",
+      "description": "OPNsense Firmware is 26.1.3+ and the deprecated Plugin is still installed. Both because it will no longer work and for security reasons, please remove this plugin from OPNsense."
     }
   },
   "selector": {

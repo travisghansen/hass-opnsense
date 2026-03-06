@@ -5,7 +5,7 @@ and removal/unload behaviors for the hass-opnsense integration.
 """
 
 import importlib
-from unittest.mock import ANY, AsyncMock, MagicMock
+from unittest.mock import ANY, AsyncMock, MagicMock, call
 
 import pytest
 
@@ -676,10 +676,72 @@ async def test_deprecated_plugin_cleanup_26_1_1_plugin_deprecated(monkeypatch):
         call.args[0] != "switch.opnsense_normal_rule"
         for call in entity_registry.async_remove.mock_calls
     )
-    # Verify issue created for completed cleanup
-    create_issue_mock.assert_called_once()
-    call_args = create_issue_mock.call_args
-    assert call_args[0][2] == f"{config_device_id}_plugin_cleanup_done"
+    # Verify cleanup-done issue plus remove-plugin issue are created
+    assert create_issue_mock.call_count == 2
+    create_issue_mock.assert_has_calls(
+        [
+            call(
+                hass,
+                init_mod.DOMAIN,
+                f"{config_device_id}_plugin_cleanup_done",
+                is_fixable=False,
+                is_persistent=False,
+                issue_domain=init_mod.DOMAIN,
+                severity=init_mod.ir.IssueSeverity.WARNING,
+                translation_key="plugin_cleanup_deprecated",
+            ),
+            call(
+                hass,
+                init_mod.DOMAIN,
+                f"{config_device_id}_remove_plugin",
+                is_fixable=False,
+                is_persistent=False,
+                issue_domain=init_mod.DOMAIN,
+                severity=init_mod.ir.IssueSeverity.WARNING,
+                translation_key="remove_plugin",
+            ),
+        ]
+    )
+
+
+@pytest.mark.asyncio
+async def test_deprecated_plugin_cleanup_26_1_1_plugin_deprecated_no_matching_entities(monkeypatch):
+    """_deprecated_plugin_cleanup_26_1_1 still creates remove-plugin issue when no entities match."""
+    hass = MagicMock(spec=HomeAssistant)
+    client = MagicMock()
+    client.is_plugin_installed = AsyncMock(return_value=True)
+    client.is_plugin_deprecated = AsyncMock(return_value=True)
+    entry_id = "test_entry_id"
+
+    entity_registry = MagicMock()
+    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+
+    normal_entity = MagicMock()
+    normal_entity.entity_id = "switch.opnsense_normal_rule"
+    normal_entity.unique_id = "dev1_normal_rule1"
+    monkeypatch.setattr(
+        init_mod.er,
+        "async_entries_for_config_entry",
+        MagicMock(return_value=[normal_entity]),
+    )
+
+    create_issue_mock = MagicMock()
+    monkeypatch.setattr(init_mod.ir, "async_create_issue", create_issue_mock)
+
+    config_device_id = "dev1"
+    await init_mod._deprecated_plugin_cleanup_26_1_1(hass, client, entry_id, config_device_id)
+
+    entity_registry.async_remove.assert_not_called()
+    create_issue_mock.assert_called_once_with(
+        hass,
+        init_mod.DOMAIN,
+        f"{config_device_id}_remove_plugin",
+        is_fixable=False,
+        is_persistent=False,
+        issue_domain=init_mod.DOMAIN,
+        severity=init_mod.ir.IssueSeverity.WARNING,
+        translation_key="remove_plugin",
+    )
 
 
 @pytest.mark.asyncio
