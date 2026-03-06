@@ -556,10 +556,21 @@ $toreturn["real"] = json_encode($toreturn_real);
         return self._plugin_installed
 
     async def _check_if_plugin_deprecated(self) -> bool:
-        if awesomeversion.AwesomeVersion(
-            await self.get_host_firmware_version()
-        ) > awesomeversion.AwesomeVersion("26.1.2"):
-            return True
+        try:
+            if awesomeversion.AwesomeVersion(
+                await self.get_host_firmware_version()
+            ) > awesomeversion.AwesomeVersion("26.1.2"):
+                return True
+        except (
+            awesomeversion.exceptions.AwesomeVersionCompareException,
+            TypeError,
+            ValueError,
+        ) as e:
+            _LOGGER.info(
+                "Unable to compare firmware version when checking if plugin is deprecated. %s: %s",
+                type(e).__name__,
+                e,
+            )
         return False
 
     async def is_plugin_deprecated(self) -> bool:
@@ -1184,6 +1195,8 @@ clear_subsystem_dirty('filter');
 
         if error_status or last_check_expired or missing_data or update_needs_info:
             _LOGGER.info("Triggering firmware check")
+            self._plugin_installed = None
+            self._plugin_deprecated = None
             await self._post("/api/core/firmware/check")
 
         return status

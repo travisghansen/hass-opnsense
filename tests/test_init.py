@@ -700,7 +700,8 @@ async def test_deprecated_plugin_cleanup_26_1_1_plugin_deprecated(monkeypatch):
                 severity=init_mod.ir.IssueSeverity.WARNING,
                 translation_key="remove_plugin",
             ),
-        ]
+        ],
+        any_order=True,
     )
 
 

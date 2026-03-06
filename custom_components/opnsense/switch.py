@@ -659,7 +659,6 @@ async def async_setup_entry(
                         )
                     )
                 else:
-                    # TODO: Also disable once OPNsense 26.1.x drops support for the plugin
                     if not state.get("plugin_deprecated", False) and state.get(
                         "plugin_installed", False
                     ):
