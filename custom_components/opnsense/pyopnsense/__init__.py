@@ -462,6 +462,22 @@ $toreturn["real"] = json_encode($toreturn_real);
             )
         return {}
 
+    async def _store_host_firmware_version(self) -> None:
+        firmware_info = await self._safe_dict_get("/api/core/firmware/status")
+        firmware: str | None = dict_get(firmware_info, "product.product_version")
+        if not firmware or not awesomeversion.AwesomeVersion(firmware).valid:
+            old = firmware
+            firmware = dict_get(firmware_info, "product.product_series", old)
+            if firmware != old:
+                _LOGGER.debug(
+                    "[get_host_firmware_version] firmware: %s not valid SemVer, using %s",
+                    old,
+                    firmware,
+                )
+        else:
+            _LOGGER.debug("[get_host_firmware_version] firmware: %s", firmware)
+        self._firmware_version = firmware
+
     @_log_errors
     async def get_host_firmware_version(self) -> None | str:
         """Return the OPNsense Firmware version.
@@ -473,21 +489,9 @@ $toreturn["real"] = json_encode($toreturn_real);
 
 
         """
-        firmware_info = await self._safe_dict_get("/api/core/firmware/status")
-        firmware: str | None = firmware_info.get("product", {}).get("product_version")
-        if not firmware or not awesomeversion.AwesomeVersion(firmware).valid:
-            old = firmware
-            firmware = firmware_info.get("product", {}).get("product_series", old)
-            if firmware != old:
-                _LOGGER.debug(
-                    "[get_host_firmware_version] firmware: %s not valid SemVer, using %s",
-                    old,
-                    firmware,
-                )
-        else:
-            _LOGGER.debug("[get_host_firmware_version] firmware: %s", firmware)
-        self._firmware_version = firmware
-        return firmware
+        if self._firmware_version is None:
+            await self._store_host_firmware_version()
+        return self._firmware_version
 
     async def set_use_snake_case(self, initial: bool = False) -> None:
         """Set whether to use snake_case or camelCase for API calls.
@@ -498,14 +502,11 @@ $toreturn["real"] = json_encode($toreturn_real);
             Whether the call runs during initial setup/validation. Defaults to False.
 
         """
-        if self._firmware_version is None:
-            await self.get_host_firmware_version()
+        firmware = await self.get_host_firmware_version()
 
         self._use_snake_case = True
         try:
-            if awesomeversion.AwesomeVersion(
-                self._firmware_version
-            ) < awesomeversion.AwesomeVersion("25.7"):
+            if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion("25.7"):
                 _LOGGER.debug("Using camelCase for OPNsense < 25.7")
                 self._use_snake_case = False
             else:
@@ -517,7 +518,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         ) as e:
             _LOGGER.error(
                 "Error comparing firmware version %s. Using snake_case by default",
-                self._firmware_version,
+                firmware,
             )
             if initial:
                 raise UnknownFirmware from e
@@ -1395,13 +1396,10 @@ $toreturn = [
 
 
         """
-        if self._firmware_version is None:
-            await self.get_host_firmware_version()
+        firmware = await self.get_host_firmware_version()
 
         try:
-            if awesomeversion.AwesomeVersion(
-                self._firmware_version
-            ) < awesomeversion.AwesomeVersion("26.1.1"):
+            if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion("26.1.1"):
                 _LOGGER.debug("Using legacy plugin for firewall filters for OPNsense < 26.1.1")
                 return {"config": await self.get_config()}
         except (awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError):
@@ -2002,18 +2000,13 @@ $toreturn = [
 
 
         """
-        if self._firmware_version is None:
-            await self.get_host_firmware_version()
+        firmware = await self.get_host_firmware_version()
 
         try:
-            if awesomeversion.AwesomeVersion(
-                self._firmware_version
-            ) < awesomeversion.AwesomeVersion("25.1"):
+            if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion("25.1"):
                 _LOGGER.debug("Skipping get_dnsmasq_leases for OPNsense < 25.1")
                 return []
-            if awesomeversion.AwesomeVersion(
-                self._firmware_version
-            ) < awesomeversion.AwesomeVersion("25.1.7"):
+            if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion("25.1.7"):
                 _LOGGER.debug("Skipping get_dnsmasq_leases for OPNsense < 25.1.7")
                 return []
         except (awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError):
@@ -3121,12 +3114,9 @@ $toreturn = [
 
 
         """
-        if self._firmware_version is None:
-            await self.get_host_firmware_version()
+        firmware = await self.get_host_firmware_version()
         try:
-            if awesomeversion.AwesomeVersion(
-                self._firmware_version
-            ) < awesomeversion.AwesomeVersion("25.7.8"):
+            if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion("25.7.8"):
                 _LOGGER.debug("Getting Unbound Regular Blocklists for OPNsense < 25.7.8")
                 return {"legacy": await self.get_unbound_blocklist_legacy()}
         except (
@@ -3136,7 +3126,7 @@ $toreturn = [
         ) as e:
             _LOGGER.error(
                 "Error comparing firmware version %s when determining which Unbound Blocklist method to use. %s: %s",
-                self._firmware_version,
+                firmware,
                 type(e).__name__,
                 e,
             )
@@ -3222,12 +3212,9 @@ $toreturn = [
 
 
         """
-        if self._firmware_version is None:
-            await self.get_host_firmware_version()
+        firmware = await self.get_host_firmware_version()
         try:
-            if awesomeversion.AwesomeVersion(
-                self._firmware_version
-            ) < awesomeversion.AwesomeVersion("25.7.8"):
+            if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion("25.7.8"):
                 _LOGGER.debug("Using Unbound Regular Blocklists for OPNsense < 25.7.8")
                 return await self._set_unbound_blocklist_legacy(set_state=True)
             _LOGGER.debug("Using Unbound Extended Blocklists for OPNsense >= 25.7.8")
@@ -3239,7 +3226,7 @@ $toreturn = [
         ) as e:
             _LOGGER.error(
                 "Error comparing firmware version %s when determining which Unbound Blocklist method to use. %s: %s",
-                self._firmware_version,
+                firmware,
                 type(e).__name__,
                 e,
             )
@@ -3263,12 +3250,9 @@ $toreturn = [
 
 
         """
-        if self._firmware_version is None:
-            await self.get_host_firmware_version()
+        firmware = await self.get_host_firmware_version()
         try:
-            if awesomeversion.AwesomeVersion(
-                self._firmware_version
-            ) < awesomeversion.AwesomeVersion("25.7.8"):
+            if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion("25.7.8"):
                 _LOGGER.debug("Using Unbound Regular Blocklists for OPNsense < 25.7.8")
                 return await self._set_unbound_blocklist_legacy(set_state=False)
             _LOGGER.debug("Using Unbound Extended Blocklists for OPNsense >= 25.7.8")
@@ -3280,7 +3264,7 @@ $toreturn = [
         ) as e:
             _LOGGER.error(
                 "Error comparing firmware version %s when determining which Unbound Blocklist method to use. %s: %s",
-                self._firmware_version,
+                firmware,
                 type(e).__name__,
                 e,
             )
