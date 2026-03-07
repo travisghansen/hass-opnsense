@@ -2046,38 +2046,22 @@ async def test_set_unbound_blocklist_legacy_scenarios(
 
 @pytest.mark.asyncio
 async def test_toggle_unbound_blocklist_success_and_errors() -> None:
-    """Ensure _toggle_unbound_blocklist returns True on happy path and handles expected errors.
-
-    The helper performs a follow‑up GET/POST after toggling.  Network issues or
-    malformed responses should be caught and simply result in False; we expect
-    aiohttp.ClientError, asyncio.TimeoutError, ValueError and TypeError to be
-    the common failure modes.
-    """
+    """Ensure _toggle_unbound_blocklist handles success, failure, and missing uuid."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
         url="http://localhost", username="u", password="p", session=session
     )
     try:
-        # happy path — toggle endpoint succeeded and service reports OK
         client._safe_dict_post = AsyncMock(return_value={"result": "Enabled"})
-        client._get = AsyncMock(return_value={"status": "OK"})
         assert await client._toggle_unbound_blocklist(True, "uuid") is True
 
-        # client error on dnsbl GET should be swallowed and return False
-        client._get = AsyncMock(side_effect=aiohttp.ClientError("boom"))
+        client._safe_dict_post = AsyncMock(return_value={"result": "Disabled"})
+        assert await client._toggle_unbound_blocklist(False, "uuid") is True
+
+        client._safe_dict_post = AsyncMock(return_value={"result": "failed"})
         assert await client._toggle_unbound_blocklist(True, "uuid") is False
 
-        # timeout while fetching service status should also be swallowed
-        client._get = AsyncMock(side_effect=TimeoutError())
-        assert await client._toggle_unbound_blocklist(True, "uuid") is False
-
-        # malformed response raising ValueError
-        client._get = AsyncMock(side_effect=ValueError("bad json"))
-        assert await client._toggle_unbound_blocklist(True, "uuid") is False
-
-        # type error from unexpected response structures
-        client._get = AsyncMock(side_effect=TypeError("not mapping"))
-        assert await client._toggle_unbound_blocklist(True, "uuid") is False
+        assert await client._toggle_unbound_blocklist(True, None) is False
     finally:
         await client.async_close()
 
