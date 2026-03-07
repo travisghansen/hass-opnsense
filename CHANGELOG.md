@@ -1,7 +1,27 @@
+<a id="v0.6.1"></a>
+# [v0.6.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.1) - 2026-03-07
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🚀 Enhancements
+* Stop using plugin for 26.1.3+ by [@Snuffy2](https://github.com/Snuffy2) in [#509](https://github.com/travisghansen/hass-opnsense/pull/509)
+### 🐛 Bug Fixes
+* Ensure apply is called after toggling unbound blocklists by [@Snuffy2](https://github.com/Snuffy2) in [#502](https://github.com/travisghansen/hass-opnsense/pull/502)
+* Fix excessive firmware checks by [@Snuffy2](https://github.com/Snuffy2) in [#510](https://github.com/travisghansen/hass-opnsense/pull/510)
+### 📚 Documentation
+* docs(pyopnsense): add NumPy-style docstrings for all methods by [@Snuffy2](https://github.com/Snuffy2) in [#506](https://github.com/travisghansen/hass-opnsense/pull/506)
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.6.0...v0.6.1
+
+[Changes][v0.6.1]
+
+
 <a id="v0.6.0"></a>
 # [v0.6.0](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.0) - 2026-02-08
 
--
+<h3>OPNsense Minimum Firmware Required: 24.7</h3><h4>OPNsense Recommended Firmware: 25.1</h4><p>-
 
 # Important Breaking Changes: Please Read
 
@@ -33,8 +53,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 **Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.5.0...v0.6.0
-
-
+<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
 
 [Changes][v0.6.0]
 
@@ -857,6 +876,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.6.1]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.0...v0.6.1
 [v0.6.0]: https://github.com/travisghansen/hass-opnsense/compare/v0.5.0...v0.6.0
 [v0.5.0]: https://github.com/travisghansen/hass-opnsense/compare/v0.4.8...v0.5.0
 [v0.4.8]: https://github.com/travisghansen/hass-opnsense/compare/v0.4.7...v0.4.8
