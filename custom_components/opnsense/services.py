@@ -474,7 +474,7 @@ async def _service_kill_states(hass: HomeAssistant, call: ServiceCall) -> Servic
     success: bool | None = None
     response_list: list = []
     for client in clients:
-        response: MutableMapping[str, Any] = await client.kill_states(call.data.get("ip_addr"))
+        response: dict[str, Any] = await client.kill_states(call.data.get("ip_addr"))
         _LOGGER.debug(
             "[service_kill_states] client: %s, ip_addr: %s, response: %s",
             client.name,

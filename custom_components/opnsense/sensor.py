@@ -451,7 +451,7 @@ async def async_setup_entry(
     """Set up the OPNsense sensors."""
 
     coordinator: OPNsenseDataUpdateCoordinator = getattr(config_entry.runtime_data, COORDINATOR)
-    state: MutableMapping[str, Any] = coordinator.data
+    state: dict[str, Any] = coordinator.data
     if not isinstance(state, MutableMapping):
         _LOGGER.error("Missing state data in sensor async_setup_entry")
         return
@@ -585,8 +585,8 @@ class OPNsenseFilesystemSensor(OPNsenseSensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        filesystem: MutableMapping[str, Any] = {}
-        state: MutableMapping[str, Any] = self.coordinator.data
+        filesystem: dict[str, Any] = {}
+        state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             self._available = False
             self.async_write_ha_state()
@@ -624,13 +624,13 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        state: MutableMapping[str, Any] = self.coordinator.data
+        state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             self._available = False
             self.async_write_ha_state()
             return
         interface_name: str = self.entity_description.key.split(".")[1]
-        interface: MutableMapping[str, Any] = {}
+        interface: dict[str, Any] = {}
         interfaces = state.get("interfaces")
         if not isinstance(interfaces, Mapping):
             self._available = False
@@ -687,8 +687,8 @@ class OPNsenseCarpInterfaceSensor(OPNsenseSensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        carp_interface: MutableMapping[str, Any] = {}
-        state: MutableMapping[str, Any] = self.coordinator.data
+        carp_interface: dict[str, Any] = {}
+        state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             self._available = False
             self.async_write_ha_state()
@@ -740,12 +740,12 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        state: MutableMapping[str, Any] = self.coordinator.data
+        state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             self._available = False
             self.async_write_ha_state()
             return
-        gateway: MutableMapping[str, Any] = {}
+        gateway: dict[str, Any] = {}
         gateway_name: str = self.entity_description.key.split(".")[1]
         for i_gateway_name, gway in state.get("gateways", {}).items():
             if i_gateway_name == gateway_name:
@@ -797,13 +797,13 @@ class OPNsenseVPNSensor(OPNsenseSensor):
     def _handle_coordinator_update(self) -> None:
         vpn_type: str = self.entity_description.key.split(".")[0]
         clients_servers: str = self.entity_description.key.split(".")[1]
-        state: MutableMapping[str, Any] = self.coordinator.data
+        state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             self._available = False
             self.async_write_ha_state()
             return
         uuid: str = self.entity_description.key.split(".")[2]
-        instance: MutableMapping[str, Any] = {}
+        instance: dict[str, Any] = {}
         for instance_uuid, ins in (
             dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
         ).items():
@@ -890,7 +890,7 @@ class OPNsenseVPNSensor(OPNsenseSensor):
         ):
             self._attr_extra_state_attributes["clients"] = []
             for clnt in instance.get("clients", {}):
-                client: MutableMapping[str, Any] = {}
+                client: dict[str, Any] = {}
                 for client_attr in (
                     "name",
                     "status",
@@ -919,13 +919,13 @@ class OPNsenseTempSensor(OPNsenseSensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        state: MutableMapping[str, Any] = self.coordinator.data
+        state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             self._available = False
             self.async_write_ha_state()
             return
         sensor_temp_device: str = self.entity_description.key.split(".")[2]
-        temp: MutableMapping[str, Any] = {}
+        temp: dict[str, Any] = {}
         for temp_device, temp_temp in state.get("telemetry", {}).get("temps", {}).items():
             if temp_device == sensor_temp_device:
                 temp = temp_temp
@@ -956,7 +956,7 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        state: MutableMapping[str, Any] = self.coordinator.data
+        state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             self._available = False
             self.async_write_ha_state()
@@ -976,7 +976,7 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
                 return
             self._available = True
             total_lease_count: int = 0
-            lease_counts: MutableMapping[str, Any] = {}
+            lease_counts: dict[str, Any] = {}
             try:
                 for ifn, if_descr in lease_interfaces.items():
                     if_count: int = sum(
@@ -993,7 +993,7 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
                 self._available = False
                 self.async_write_ha_state()
                 return
-            sorted_lease_counts: MutableMapping[str, Any] = {
+            sorted_lease_counts: dict[str, Any] = {
                 key: lease_counts[key] for key in sorted(lease_counts)
             }
             self._attr_extra_state_attributes = dict(sorted_lease_counts)

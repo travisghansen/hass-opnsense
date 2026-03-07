@@ -1,6 +1,5 @@
 """Define the base entities for OPNsense."""
 
-from collections.abc import MutableMapping
 import logging
 from typing import Any
 
@@ -73,13 +72,13 @@ class OPNsenseEntity(OPNsenseBaseEntity):
     @property
     def device_info(self) -> DeviceInfo | None:
         """Device info for the firewall."""
-        state: MutableMapping[str, Any] = self.coordinator.data
+        state: dict[str, Any] = self.coordinator.data
         model: str = "OPNsense"
         manufacturer: str = "Deciso B.V."
         if state is None:
             firmware: str | None = None
         else:
-            firmware = state.get("host_firmware_version", None)
+            firmware = state.get("host_firmware_version")
 
         device_info: DeviceInfo = {
             "identifiers": {(DOMAIN, self._device_unique_id)},

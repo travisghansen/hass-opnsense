@@ -52,7 +52,7 @@ class PyOPNsenseClientProtocol(Protocol):
         ...
 
     @abstractmethod
-    async def _get_from_stream(self, path: str) -> MutableMapping[str, Any]:
+    async def _get_from_stream(self, path: str) -> dict[str, Any]:
         """Queue a streaming GET request and parse the first data payload.
 
         Parameters
@@ -62,7 +62,7 @@ class PyOPNsenseClientProtocol(Protocol):
 
         Returns
         -------
-        MutableMapping[str, Any]
+        dict[str, Any]
             Parsed stream payload.
 
         """
@@ -86,7 +86,7 @@ class PyOPNsenseClientProtocol(Protocol):
         ...
 
     @abstractmethod
-    async def _safe_dict_get(self, path: str) -> MutableMapping[str, Any]:
+    async def _safe_dict_get(self, path: str) -> dict[str, Any]:
         """Fetch a GET payload and coerce non-mapping values to an empty mapping.
 
         Parameters
@@ -96,8 +96,8 @@ class PyOPNsenseClientProtocol(Protocol):
 
         Returns
         -------
-        MutableMapping[str, Any]
-            Mapping payload.
+        dict[str, Any]
+            Dictionary payload.
 
         """
         ...
@@ -122,7 +122,7 @@ class PyOPNsenseClientProtocol(Protocol):
     @abstractmethod
     async def _safe_dict_post(
         self, path: str, payload: MutableMapping[str, Any] | None = None
-    ) -> MutableMapping[str, Any]:
+    ) -> dict[str, Any]:
         """Fetch a POST payload and coerce non-mapping values to an empty mapping.
 
         Parameters
@@ -134,8 +134,8 @@ class PyOPNsenseClientProtocol(Protocol):
 
         Returns
         -------
-        MutableMapping[str, Any]
-            Mapping payload.
+        dict[str, Any]
+            Dictionary payload.
 
         """
         ...
@@ -162,7 +162,7 @@ class PyOPNsenseClientProtocol(Protocol):
         ...
 
     @abstractmethod
-    async def _exec_php(self, script: str) -> MutableMapping[str, Any]:
+    async def _exec_php(self, script: str) -> dict[str, Any]:
         """Execute a PHP script via XMLRPC and decode the JSON payload.
 
         Parameters
@@ -172,8 +172,8 @@ class PyOPNsenseClientProtocol(Protocol):
 
         Returns
         -------
-        MutableMapping[str, Any]
-            Decoded mapping payload.
+        dict[str, Any]
+            Decoded dictionary payload.
 
         """
         ...
@@ -210,13 +210,13 @@ class PyOPNsenseClientProtocol(Protocol):
         ...
 
     @abstractmethod
-    async def get_config(self) -> MutableMapping[str, Any]:
+    async def get_config(self) -> dict[str, Any]:
         """Return full OPNsense configuration payload.
 
         Returns
         -------
-        MutableMapping[str, Any]
-            Full configuration mapping.
+        dict[str, Any]
+            Full configuration dictionary.
 
         """
         ...

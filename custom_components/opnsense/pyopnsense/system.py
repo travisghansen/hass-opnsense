@@ -60,17 +60,17 @@ clear_subsystem_dirty('filter');
         return device_unique_id
 
     @_log_errors
-    async def get_system_info(self) -> MutableMapping[str, Any]:
+    async def get_system_info(self) -> dict[str, Any]:
         """Return the system info from OPNsense.
 
         Returns
         -------
-        MutableMapping[str, Any]
+        dict[str, Any]
         Parsed system info payload returned by OPNsense APIs.
 
 
         """
-        system_info: MutableMapping[str, Any] = {}
+        system_info: dict[str, Any] = {}
         if self._use_snake_case:
             response = await self._safe_dict_get("/api/diagnostics/system/system_information")
         else:
@@ -79,12 +79,12 @@ clear_subsystem_dirty('filter');
         return system_info
 
     @_log_errors
-    async def get_config(self) -> MutableMapping[str, Any]:
+    async def get_config(self) -> dict[str, Any]:
         """XMLRPC call to return all the config settings.
 
         Returns
         -------
-        MutableMapping[str, Any]
+        dict[str, Any]
         Parsed config payload returned by OPNsense APIs.
 
 
@@ -96,13 +96,11 @@ $toreturn = [
   "data" => $config,
 ];
 """
-        response: MutableMapping[str, Any] = await self._exec_php(script)
-        if not isinstance(response, MutableMapping):
-            return {}
+        response: dict[str, Any] = await self._exec_php(script)
         ret_data = response.get("data", {})
         if not isinstance(ret_data, MutableMapping):
             return {}
-        return ret_data
+        return dict(ret_data)
 
     @_log_errors
     async def get_carp_status(self) -> bool:
@@ -203,7 +201,7 @@ $toreturn = [
 
 
         """
-        payload: MutableMapping[str, Any] = {"wake": {"interface": interface, "mac": mac}}
+        payload: dict[str, Any] = {"wake": {"interface": interface, "mac": mac}}
         _LOGGER.debug("[send_wol] payload: %s", payload)
         response = await self._safe_dict_post("/api/wol/wol/set", payload)
         _LOGGER.debug("[send_wol] response: %s", response)
@@ -212,12 +210,12 @@ $toreturn = [
         return False
 
     @_log_errors
-    async def get_notices(self) -> MutableMapping[str, Any]:
+    async def get_notices(self) -> dict[str, Any]:
         """Get active OPNsense notices.
 
         Returns
         -------
-        MutableMapping[str, Any]
+        dict[str, Any]
         Parsed notices payload returned by OPNsense APIs.
 
 
@@ -315,21 +313,22 @@ $toreturn = [
         return reload.get("message", "").startswith("OK")
 
     @_log_errors
-    async def get_certificates(self) -> MutableMapping[str, Any]:
+    async def get_certificates(self) -> dict[str, Any]:
         """Return the active encryption certificates.
 
         Returns
         -------
-        MutableMapping[str, Any]
+        dict[str, Any]
         Parsed certificates payload returned by OPNsense APIs.
 
 
         """
         certs_raw = await self._safe_dict_get("/api/trust/cert/search")
-        if not isinstance(certs_raw.get("rows", None), list):
+        cert_rows = certs_raw.get("rows")
+        if not isinstance(cert_rows, list):
             return {}
-        certs: MutableMapping[str, Any] = {}
-        for cert in certs_raw.get("rows", None):
+        certs: dict[str, Any] = {}
+        for cert in cert_rows:
             if cert.get("descr", None):
                 certs[cert.get("descr")] = {
                     "uuid": cert.get("uuid", None),

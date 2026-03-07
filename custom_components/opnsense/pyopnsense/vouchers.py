@@ -42,7 +42,7 @@ class VouchersMixin(PyOPNsenseClientProtocol):
                 )
             server = servers[0]
         server_slug = quote(str(server), safe="")
-        payload: MutableMapping[str, Any] = dict(data).copy()
+        payload: dict[str, Any] = dict(data).copy()
         payload.pop("voucher_server", None)
         if self._use_snake_case:
             voucher_url: str = f"/api/captiveportal/voucher/generate_vouchers/{server_slug}/"
@@ -73,7 +73,7 @@ class VouchersMixin(PyOPNsenseClientProtocol):
                 voucher["expiry_timestamp"] = expiry_timestamp
                 voucher["expirytime"] = timestamp_to_datetime(expiry_timestamp)
 
-            rearranged_voucher: MutableMapping[str, Any] = {
+            rearranged_voucher: dict[str, Any] = {
                 key: voucher[key] for key in ordered_keys if key in voucher
             }
             voucher.clear()

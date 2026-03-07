@@ -59,7 +59,7 @@ class UnboundMixin(PyOPNsenseClientProtocol):
 
 
         """
-        payload: MutableMapping[str, Any] = {}
+        payload: dict[str, Any] = {}
         payload["unbound"] = {}
         payload["unbound"]["dnsbl"] = await self.get_unbound_blocklist_legacy()
         if not payload["unbound"]["dnsbl"]:
@@ -117,14 +117,14 @@ class UnboundMixin(PyOPNsenseClientProtocol):
                 e,
             )
         dnsbl_raw = await self._safe_dict_get("/api/unbound/settings/search_dnsbl")
-        if not isinstance(dnsbl_raw, dict):
+        if not isinstance(dnsbl_raw, MutableMapping):
             return {}
         dnsbl_rows = dnsbl_raw.get("rows", [])
         if not isinstance(dnsbl_rows, list) or not len(dnsbl_rows) > 0:
             return {}
         dnsbl_full: dict[str, Any] = {}
         for dnsbl in dnsbl_rows:
-            if not isinstance(dnsbl, dict):
+            if not isinstance(dnsbl, MutableMapping):
                 continue
             _LOGGER.debug("[get_unbound_blocklist] dnsbl: %s", dnsbl)
             if dnsbl.get("uuid"):

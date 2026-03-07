@@ -57,7 +57,7 @@ async def _compile_filter_switches_legacy(
         return []
     entities: list = []
     for rule in rules:
-        if not isinstance(rule, dict):
+        if not isinstance(rule, MutableMapping):
             continue
 
         # do NOT add rules that are NAT rules
@@ -118,7 +118,7 @@ async def _compile_port_forward_switches_legacy(
         return []
     entities: list = []
     for rule in rules:
-        if not isinstance(rule, dict):
+        if not isinstance(rule, MutableMapping):
             continue
 
         tracker = dict_get(rule, "created.time")
@@ -171,7 +171,7 @@ async def _compile_nat_outbound_switches_legacy(
     entities: list = []
 
     for rule in rules:
-        if not isinstance(rule, dict):
+        if not isinstance(rule, MutableMapping):
             continue
 
         tracker = dict_get(rule, "created.time")
@@ -362,7 +362,7 @@ async def _compile_unbound_switches(
         return []
     entities: list = []
     for uuid, dnsbl in state.get(ATTR_UNBOUND_BLOCKLIST, {}).items():
-        if not isinstance(dnsbl, dict):
+        if not isinstance(dnsbl, MutableMapping):
             continue
 
         entity = OPNsenseUnboundBlocklistSwitch(
@@ -405,12 +405,12 @@ async def _compile_firewall_rules_switches(
 
     """
     rules = dict_get(state, "firewall.rules")
-    if not isinstance(rules, dict):
+    if not isinstance(rules, MutableMapping):
         return []
 
     entities: list = []
     for rule in rules.values():
-        if not isinstance(rule, dict):
+        if not isinstance(rule, MutableMapping):
             continue
         interface = rule.get("%interface", rule.get("interface", ""))
         if not isinstance(interface, str):
@@ -455,12 +455,12 @@ async def _compile_nat_source_rules_switches(
 
     """
     rules = dict_get(state, "firewall.nat.source_nat")
-    if not isinstance(rules, dict):
+    if not isinstance(rules, MutableMapping):
         return []
 
     entities: list = []
     for rule in rules.values():
-        if not isinstance(rule, dict):
+        if not isinstance(rule, MutableMapping):
             continue
         entity = OPNsenseNATRuleSwitch(
             config_entry=config_entry,
@@ -500,12 +500,12 @@ async def _compile_nat_destination_rules_switches(
 
     """
     rules = dict_get(state, "firewall.nat.d_nat")
-    if not isinstance(rules, dict):
+    if not isinstance(rules, MutableMapping):
         return []
 
     entities: list = []
     for rule in rules.values():
-        if not isinstance(rule, dict):
+        if not isinstance(rule, MutableMapping):
             continue
         entity = OPNsenseNATRuleSwitch(
             config_entry=config_entry,
@@ -545,12 +545,12 @@ async def _compile_nat_one_to_one_rules_switches(
 
     """
     rules = dict_get(state, "firewall.nat.one_to_one")
-    if not isinstance(rules, dict):
+    if not isinstance(rules, MutableMapping):
         return []
 
     entities: list = []
     for rule in rules.values():
-        if not isinstance(rule, dict):
+        if not isinstance(rule, MutableMapping):
             continue
         entity = OPNsenseNATRuleSwitch(
             config_entry=config_entry,
@@ -590,12 +590,12 @@ async def _compile_nat_npt_rules_switches(
 
     """
     rules = dict_get(state, "firewall.nat.npt")
-    if not isinstance(rules, dict):
+    if not isinstance(rules, MutableMapping):
         return []
 
     entities: list = []
     for rule in rules.values():
-        if not isinstance(rule, dict):
+        if not isinstance(rule, MutableMapping):
             continue
         entity = OPNsenseNATRuleSwitch(
             config_entry=config_entry,
@@ -630,7 +630,7 @@ async def async_setup_entry(
 
     """
     coordinator: OPNsenseDataUpdateCoordinator = getattr(config_entry.runtime_data, COORDINATOR)
-    state: MutableMapping[str, Any] = coordinator.data
+    state: dict[str, Any] = coordinator.data
     if not isinstance(state, MutableMapping):
         _LOGGER.error("Missing state data in switch async_setup_entry")
         return
@@ -639,7 +639,7 @@ async def async_setup_entry(
     entities: list = []
 
     if config.get(CONF_SYNC_FIREWALL_AND_NAT, DEFAULT_SYNC_OPTION_VALUE):
-        firmware = state.get("host_firmware_version", None)
+        firmware = state.get("host_firmware_version")
         if firmware:
             try:
                 if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
@@ -701,7 +701,7 @@ async def async_setup_entry(
     if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_vpn_switches(config_entry, coordinator, state))
     if config.get(CONF_SYNC_UNBOUND, DEFAULT_SYNC_OPTION_VALUE):
-        firmware = state.get("host_firmware_version", None)
+        firmware = state.get("host_firmware_version")
         if firmware:
             try:
                 if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
@@ -869,7 +869,7 @@ class OPNsenseFirewallRuleSwitch(OPNsenseSwitch):
             The rule data if available, None otherwise.
 
         """
-        state: MutableMapping[str, Any] = self.coordinator.data
+        state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             return None
         return state.get("firewall", {}).get("rules", {}).get(self._rule_id, None)
@@ -1022,7 +1022,7 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
             The rule data if available, None otherwise.
 
         """
-        state: MutableMapping[str, Any] = self.coordinator.data
+        state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             return None
         return (
@@ -1199,7 +1199,7 @@ class OPNsenseFilterSwitchLegacy(OPNsenseSwitch):
             The rule data if available, None otherwise.
 
         """
-        state: MutableMapping[str, Any] = self.coordinator.data
+        state: dict[str, Any] = self.coordinator.data
         tracker: str = self._opnsense_get_tracker()
         if not isinstance(state, MutableMapping):
             return None
@@ -1323,7 +1323,7 @@ class OPNsenseNatSwitchLegacy(OPNsenseSwitch):
             The rule data if available, None otherwise.
 
         """
-        state: MutableMapping[str, Any] = self.coordinator.data
+        state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             return None
         rules: list = []
@@ -1465,7 +1465,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
             The service data if available, None otherwise.
 
         """
-        state: MutableMapping[str, Any] = self.coordinator.data
+        state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             return None
         service_id: str = self._opnsense_get_service_id()
@@ -1635,7 +1635,7 @@ class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
                 self.name,
             )
             return
-        state: MutableMapping[str, Any] = self.coordinator.data
+        state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             self._available = False
             self.async_write_ha_state()
@@ -1725,12 +1725,12 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
         if self.delay_update:
             _LOGGER.debug("Skipping coordinator update for VPN switch %s due to delay", self.name)
             return
-        state: MutableMapping[str, Any] = self.coordinator.data
+        state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             self._available = False
             self.async_write_ha_state()
             return
-        instance: MutableMapping[str, Any] = (
+        instance: dict[str, Any] = (
             state.get(self._vpn_type, {}).get(self._clients_servers, {}).get(self._uuid, {})
         )
         if not isinstance(instance, MutableMapping):
@@ -1776,7 +1776,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
             properties = ["uuid", "name"]
 
         for attr in properties:
-            if instance.get(attr, None):
+            if instance.get(attr):
                 self._attr_extra_state_attributes[attr] = instance.get(attr)
         self.async_write_ha_state()
         # _LOGGER.debug(f"[OPNsenseVPNSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")

@@ -44,7 +44,7 @@ class VPNMixin(PyOPNsenseClientProtocol):
         # https://docs.opnsense.org/development/api/core/openvpn.html
         # https://github.com/opnsense/core/blob/master/src/opnsense/www/js/widgets/OpenVPNClients.js
         # https://github.com/opnsense/core/blob/master/src/opnsense/www/js/widgets/OpenVPNServers.js
-        openvpn: MutableMapping[str, Any] = {"servers": {}, "clients": {}}
+        openvpn: dict[str, Any] = {"servers": {}, "clients": {}}
 
         # Fetch data
         if self._use_snake_case:

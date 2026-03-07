@@ -92,7 +92,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        state: MutableMapping[str, Any] = self.coordinator.data
+        state: dict[str, Any] = self.coordinator.data
         if not self._is_update_available(state):
             self._available = False
             self.async_write_ha_state()
@@ -297,7 +297,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
         self, version: str | None = None, backup: bool = False, **kwargs: Any
     ) -> None:
         """Install an update."""
-        state: MutableMapping[str, Any] = self.coordinator.data
+        state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             _LOGGER.error("Cannot update firmware, state data is missing")
             return

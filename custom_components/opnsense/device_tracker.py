@@ -49,7 +49,7 @@ async def async_setup_entry(
     coordinator: OPNsenseDataUpdateCoordinator = getattr(
         config_entry.runtime_data, DEVICE_TRACKER_COORDINATOR
     )
-    state: MutableMapping[str, Any] = coordinator.data
+    state: dict[str, Any] = coordinator.data
     if not isinstance(state, MutableMapping):
         _LOGGER.error("Missing state data in device tracker async_setup_entry")
         return
@@ -74,7 +74,7 @@ async def async_setup_entry(
         enabled_default = True
         mac_addresses = configured_mac_addresses
         for mac_address in mac_addresses:
-            device: MutableMapping[str, Any] = {"mac": mac_address}
+            device: dict[str, Any] = {"mac": mac_address}
             for arp_entry in arp_entries:
                 if mac_address == arp_entry.get("mac", ""):
                     try:
@@ -103,11 +103,14 @@ async def async_setup_entry(
                 devices.append(device)
 
     for device in devices:
+        mac = device.get("mac")
+        if not isinstance(mac, str):
+            continue
         entity = OPNsenseScannerEntity(
             config_entry=config_entry,
             coordinator=coordinator,
             enabled_default=enabled_default,
-            mac=device.get("mac", None),
+            mac=mac,
             mac_vendor=device.get("manufacturer", None),
             hostname=device.get("hostname", None),
         )
@@ -197,14 +200,14 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        state: MutableMapping[str, Any] = self.coordinator.data
+        state: dict[str, Any] = self.coordinator.data
         arp_table = dict_get(state, "arp_table")
         if not isinstance(arp_table, list) or not isinstance(state, MutableMapping):
             self._available = False
             self.async_write_ha_state()
             return
         self._available = True
-        entry: MutableMapping[str, Any] | None = None
+        entry: dict[str, Any] | None = None
         for arp_entry in arp_table:
             if arp_entry.get("mac", "").lower() == self._attr_mac_address:
                 entry = arp_entry
@@ -251,7 +254,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         else:
             # TODO: clear cache under certain scenarios?
 
-            update_time = state.get("update_time", None)
+            update_time = state.get("update_time")
             if isinstance(update_time, float):
                 self._last_known_connected_time = datetime.fromtimestamp(
                     int(update_time),
@@ -259,7 +262,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
                 )
             self._is_connected = True
 
-        ha_to_opnsense: MutableMapping[str, Any] = {
+        ha_to_opnsense: dict[str, Any] = {
             "interface": "intf_description",
             "expires": "expires",
             "type": "type",

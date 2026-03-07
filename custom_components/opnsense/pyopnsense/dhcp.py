@@ -30,7 +30,7 @@ class DHCPMixin(PyOPNsenseClientProtocol):
 
         """
         # [{'hostname': '?', 'ip-address': '<ip>', 'mac-address': '<mac>', 'interface': 'em0', 'expires': 1199, 'type': 'ethernet'}, ...]
-        request_body: MutableMapping[str, Any] = {"resolve": "yes" if resolve_hostnames else "no"}
+        request_body: dict[str, Any] = {"resolve": "yes" if resolve_hostnames else "no"}
         arp_table_info = await self._safe_dict_post(
             "/api/diagnostics/interface/search_arp", payload=request_body
         )
@@ -40,12 +40,12 @@ class DHCPMixin(PyOPNsenseClientProtocol):
         return arp_table
 
     @_log_errors
-    async def get_dhcp_leases(self) -> MutableMapping[str, Any]:
+    async def get_dhcp_leases(self) -> dict[str, Any]:
         """Return list of DHCP leases.
 
         Returns
         -------
-        MutableMapping[str, Any]
+        dict[str, Any]
         Parsed dhcp leases payload returned by OPNsense APIs.
 
 
@@ -59,8 +59,8 @@ class DHCPMixin(PyOPNsenseClientProtocol):
         # TODO: Add Kea dhcpv6 leases if API ever gets added
 
         # _LOGGER.debug(f"[get_dhcp_leases] leases_raw: {leases_raw}")
-        leases: MutableMapping[str, Any] = {}
-        lease_interfaces: MutableMapping[str, Any] = await self._get_kea_interfaces()
+        leases: dict[str, Any] = {}
+        lease_interfaces: dict[str, Any] = await self._get_kea_interfaces()
         for lease in leases_raw:
             if (
                 not isinstance(lease, MutableMapping)
@@ -75,15 +75,15 @@ class DHCPMixin(PyOPNsenseClientProtocol):
                 leases[if_name] = []
             leases[if_name].append(lease)
 
-        sorted_lease_interfaces: MutableMapping[str, Any] = {
+        sorted_lease_interfaces: dict[str, Any] = {
             key: lease_interfaces[key] for key in sorted(lease_interfaces)
         }
-        sorted_leases: MutableMapping[str, Any] = {}
+        sorted_leases: dict[str, Any] = {}
         for if_name in sorted(leases):
             if_subnet = leases[if_name]
             sorted_leases[if_name] = sorted(if_subnet, key=get_ip_key)
 
-        dhcp_leases: MutableMapping[str, Any] = {
+        dhcp_leases: dict[str, Any] = {
             "lease_interfaces": sorted_lease_interfaces,
             "leases": sorted_leases,
         }
@@ -91,19 +91,19 @@ class DHCPMixin(PyOPNsenseClientProtocol):
 
         return dhcp_leases
 
-    async def _get_kea_interfaces(self) -> MutableMapping[str, Any]:
+    async def _get_kea_interfaces(self) -> dict[str, Any]:
         """Return interfaces setup for Kea.
 
         Returns
         -------
-        MutableMapping[str, Any]
+        dict[str, Any]
         Parsed kea interfaces payload returned by OPNsense APIs.
 
 
         """
         response = await self._safe_dict_get("/api/kea/dhcpv4/get")
-        lease_interfaces: MutableMapping[str, Any] = {}
-        general: MutableMapping[str, Any] = response.get("dhcpv4", {}).get("general", {})
+        lease_interfaces: dict[str, Any] = {}
+        general: dict[str, Any] = response.get("dhcpv4", {}).get("general", {})
         if general.get("enabled", "0") != "1":
             return {}
         for if_name, iface in general.get("interfaces", {}).items():
@@ -153,7 +153,7 @@ class DHCPMixin(PyOPNsenseClientProtocol):
                 or not lease_info.get("hwaddr", None)
             ):
                 continue
-            lease: MutableMapping[str, Any] = {}
+            lease: dict[str, Any] = {}
             lease["address"] = lease_info.get("address", None)
             lease["hostname"] = (
                 lease_info.get("hostname", None).strip(".")
@@ -254,7 +254,7 @@ class DHCPMixin(PyOPNsenseClientProtocol):
             # _LOGGER.debug("[get_dnsmasq_leases] lease_info: %s", lease_info)
             if not isinstance(lease_info, MutableMapping):
                 continue
-            lease: MutableMapping[str, Any] = {}
+            lease: dict[str, Any] = {}
             lease["address"] = lease_info.get("address", None)
             lease["hostname"] = (
                 lease_info.get("hostname", None)
@@ -318,7 +318,7 @@ class DHCPMixin(PyOPNsenseClientProtocol):
                 or not lease_info.get("mac", None)
             ):
                 continue
-            lease: MutableMapping[str, Any] = {}
+            lease: dict[str, Any] = {}
             lease["address"] = lease_info.get("address", None)
             lease["hostname"] = (
                 lease_info.get("hostname", None)
@@ -378,7 +378,7 @@ class DHCPMixin(PyOPNsenseClientProtocol):
                 or not lease_info.get("mac", None)
             ):
                 continue
-            lease: MutableMapping[str, Any] = {}
+            lease: dict[str, Any] = {}
             lease["address"] = lease_info.get("address", None)
             lease["hostname"] = (
                 lease_info.get("hostname", None)

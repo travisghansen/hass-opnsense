@@ -79,8 +79,8 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         # await self._client.get_host_firmware_version() # Already triggered in __init__.py async_setup_entry
         await self._client.set_use_snake_case()
 
-    async def _get_states(self, categories: list) -> MutableMapping[str, Any]:
-        state: MutableMapping[str, Any] = {}
+    async def _get_states(self, categories: list) -> dict[str, Any]:
+        state: dict[str, Any] = {}
         total_time: float = 0
         for cat in categories:
             method_name: str = cat.get("function", "")
@@ -105,13 +105,13 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
 
         return state
 
-    def _build_categories(self) -> list[MutableMapping[str, str]]:
+    def _build_categories(self) -> list[dict[str, str]]:
         """Build the categories for fetching data."""
         if not self.config_entry:
             _LOGGER.error("Coordinator build_categories failed. No config entry found.")
             return []
         config: Mapping[str, Any] = self.config_entry.data
-        categories: list[MutableMapping[str, str]] = [
+        categories: list[dict[str, str]] = [
             {"function": "get_device_unique_id", "state_key": "device_unique_id"},
             {"function": "get_system_info", "state_key": "system_info"},
             {
@@ -267,12 +267,12 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                     ):
                         continue
 
-                    instance: MutableMapping[str, Any] = (
+                    instance: dict[str, Any] = (
                         self._state.get(vpn_type, {})
                         .get(clients_servers, {})
                         .get(instance_name, {})
                     )
-                    previous_instance: MutableMapping[str, Any] = (
+                    previous_instance: dict[str, Any] = (
                         self._state.get("previous_state", {})
                         .get(vpn_type, {})
                         .get(clients_servers, {})
@@ -357,7 +357,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             )
             await self._client.reset_query_counts()
 
-            previous_state: MutableMapping[str, Any] = copy.deepcopy(self._state)
+            previous_state: dict[str, Any] = copy.deepcopy(self._state)
             if "previous_state" in previous_state:
                 del previous_state["previous_state"]
 

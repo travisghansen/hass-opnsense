@@ -64,7 +64,7 @@ class ClientBaseMixin:
         self._password: str = password
         self._name: str = name
 
-        self._opts: MutableMapping[str, Any] = opts or {}
+        self._opts: dict[str, Any] = dict(opts or {})
         self._verify_ssl: bool = self._opts.get("verify_ssl", True)
         parts = urlparse(url.rstrip("/"))
         self._url: str = f"{parts.scheme}://{parts.netloc}"
@@ -185,7 +185,7 @@ class ClientBaseMixin:
         await loop.run_in_executor(None, proxy_method)
 
     @_xmlrpc_timeout
-    async def _exec_php(self, script: str) -> MutableMapping[str, Any]:
+    async def _exec_php(self, script: str) -> dict[str, Any]:
         """Execute a PHP snippet through XMLRPC and decode the JSON payload.
 
         Parameters
@@ -195,8 +195,8 @@ class ClientBaseMixin:
 
         Returns
         -------
-        MutableMapping[str, Any]
-        JSON-decoded response mapping returned by the PHP helper, or an empty mapping on failure.
+        dict[str, Any]
+        JSON-decoded response payload, or an empty dictionary on failure.
 
 
         """
@@ -218,7 +218,8 @@ $toreturn["real"] = json_encode($toreturn_real);
             if not isinstance(response, MutableMapping):
                 return {}
             if response.get("real"):
-                return json.loads(response.get("real", ""))
+                response_json = json.loads(response.get("real", ""))
+                return dict(response_json) if isinstance(response_json, MutableMapping) else {}
         except TypeError as e:
             stack = inspect.stack()
             calling_function = stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
@@ -288,7 +289,7 @@ $toreturn["real"] = json_encode($toreturn_real);
             if initial:
                 raise UnknownFirmware from e
 
-    async def _get_from_stream(self, path: str) -> MutableMapping[str, Any]:
+    async def _get_from_stream(self, path: str) -> dict[str, Any]:
         """Queue a streaming GET request and return the parsed payload.
 
         Parameters
@@ -298,8 +299,8 @@ $toreturn["real"] = json_encode($toreturn_real);
 
         Returns
         -------
-        MutableMapping[str, Any]
-        Queued streaming-response payload parsed into a mapping.
+        dict[str, Any]
+        Queued streaming-response payload parsed into a dictionary.
 
 
         """
@@ -369,7 +370,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         while True:
             method: str | None = None
             path: str | None = None
-            payload: MutableMapping[str, Any] | None = None
+            payload: dict[str, Any] | None = None
             future: asyncio.Future[Any] | None = None
             caller = "Unknown"
             try:
@@ -419,9 +420,7 @@ $toreturn["real"] = json_encode($toreturn_real);
                 _LOGGER.error("Error monitoring queue size. %s: %s", type(e).__name__, e)
             await asyncio.sleep(10)
 
-    async def _do_get_from_stream(
-        self, path: str, caller: str = "Unknown"
-    ) -> MutableMapping[str, Any]:
+    async def _do_get_from_stream(self, path: str, caller: str = "Unknown") -> dict[str, Any]:
         """Execute a streaming GET request immediately.
 
         Parameters
@@ -433,7 +432,7 @@ $toreturn["real"] = json_encode($toreturn_real);
 
         Returns
         -------
-        MutableMapping[str, Any]
+        dict[str, Any]
         Parsed JSON object extracted from the stream payload.
 
 
@@ -477,7 +476,7 @@ $toreturn["real"] = json_encode($toreturn_real);
                                             response_json,
                                         )
                                         return (
-                                            response_json
+                                            dict(response_json)
                                             if isinstance(response_json, MutableMapping)
                                             else {}
                                         )  # Exit after processing the second message
@@ -580,7 +579,7 @@ $toreturn["real"] = json_encode($toreturn_real);
 
         return None
 
-    async def _safe_dict_get(self, path: str) -> MutableMapping[str, Any]:
+    async def _safe_dict_get(self, path: str) -> dict[str, Any]:
         """Fetch data from the given path, ensuring the result is a dict.
 
         Parameters
@@ -590,13 +589,13 @@ $toreturn["real"] = json_encode($toreturn_real);
 
         Returns
         -------
-        MutableMapping[str, Any]
-        Dictionary payload from the GET request, or an empty mapping if the response is not a dictionary.
+        dict[str, Any]
+        Dictionary payload from the GET request, or an empty dictionary if the response is not a mapping.
 
 
         """
         result = await self._get(path=path)
-        return result if isinstance(result, MutableMapping) else {}
+        return dict(result) if isinstance(result, MutableMapping) else {}
 
     async def _safe_list_get(self, path: str) -> list:
         """Fetch data from the given path, ensuring the result is a list.
@@ -651,9 +650,7 @@ $toreturn["real"] = json_encode($toreturn_real);
             ) as response:
                 _LOGGER.debug("[post] Response %s: %s", response.status, response.reason)
                 if response.ok:
-                    response_json: MutableMapping[str, Any] | list = await response.json(
-                        content_type=None
-                    )
+                    response_json: dict[str, Any] | list = await response.json(content_type=None)
                     return response_json
                 if response.status == 403:
                     _LOGGER.error(
@@ -686,7 +683,7 @@ $toreturn["real"] = json_encode($toreturn_real);
 
     async def _safe_dict_post(
         self, path: str, payload: MutableMapping[str, Any] | None = None
-    ) -> MutableMapping[str, Any]:
+    ) -> dict[str, Any]:
         """Fetch data from the given path, ensuring the result is a dict.
 
         Parameters
@@ -698,13 +695,13 @@ $toreturn["real"] = json_encode($toreturn_real);
 
         Returns
         -------
-        MutableMapping[str, Any]
-        Dictionary payload from the POST request, or an empty mapping if the response is not a dictionary.
+        dict[str, Any]
+        Dictionary payload from the POST request, or an empty dictionary if the response is not a mapping.
 
 
         """
         result = await self._post(path=path, payload=payload)
-        return result if isinstance(result, MutableMapping) else {}
+        return dict(result) if isinstance(result, MutableMapping) else {}
 
     async def _safe_list_post(
         self, path: str, payload: MutableMapping[str, Any] | None = None

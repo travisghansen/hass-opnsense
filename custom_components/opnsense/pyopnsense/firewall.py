@@ -22,7 +22,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
             Rule creation timestamp used as a legacy unique identifier.
 
         """
-        config: MutableMapping[str, Any] = await self.get_config()
+        config: dict[str, Any] = await self.get_config()
         for rule in config.get("filter", {}).get("rule", []):
             if "created" not in rule:
                 continue
@@ -46,7 +46,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
             Rule creation timestamp used as a legacy unique identifier.
 
         """
-        config: MutableMapping[str, Any] = await self.get_config()
+        config: dict[str, Any] = await self.get_config()
 
         for rule in config.get("filter", {}).get("rule", []):
             if "created" not in rule:
@@ -71,7 +71,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
             Rule creation timestamp used as a legacy unique identifier.
 
         """
-        config: MutableMapping[str, Any] = await self.get_config()
+        config: dict[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("rule", []):
             if "created" not in rule:
                 continue
@@ -95,7 +95,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
             Rule creation timestamp used as a legacy unique identifier.
 
         """
-        config: MutableMapping[str, Any] = await self.get_config()
+        config: dict[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("rule", []):
             if "created" not in rule:
                 continue
@@ -119,7 +119,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
             Rule creation timestamp used as a legacy unique identifier.
 
         """
-        config: MutableMapping[str, Any] = await self.get_config()
+        config: dict[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("outbound", {}).get("rule", []):
             if "created" not in rule:
                 continue
@@ -143,7 +143,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
             Rule creation timestamp used as a legacy unique identifier.
 
         """
-        config: MutableMapping[str, Any] = await self.get_config()
+        config: dict[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("outbound", {}).get("rule", []):
             if "created" not in rule or "time" not in rule["created"]:
                 continue
@@ -197,7 +197,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
 
 
         """
-        request_body: MutableMapping[str, Any] = {"current": 1, "sort": {}}
+        request_body: dict[str, Any] = {"current": 1, "sort": {}}
         response = await self._safe_dict_post(
             "/api/firewall/filter/search_rule", payload=request_body
         )
@@ -228,7 +228,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
 
 
         """
-        request_body: MutableMapping[str, Any] = {"current": 1, "sort": {}}
+        request_body: dict[str, Any] = {"current": 1, "sort": {}}
         response = await self._safe_dict_post(
             "/api/firewall/d_nat/search_rule", payload=request_body
         )
@@ -260,7 +260,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
 
 
         """
-        request_body: MutableMapping[str, Any] = {"current": 1, "sort": {}}
+        request_body: dict[str, Any] = {"current": 1, "sort": {}}
         response = await self._safe_dict_post(
             "/api/firewall/one_to_one/search_rule", payload=request_body
         )
@@ -291,7 +291,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
 
 
         """
-        request_body: MutableMapping[str, Any] = {"current": 1, "sort": {}}
+        request_body: dict[str, Any] = {"current": 1, "sort": {}}
         response = await self._safe_dict_post(
             "/api/firewall/source_nat/search_rule", payload=request_body
         )
@@ -322,7 +322,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
 
 
         """
-        request_body: MutableMapping[str, Any] = {"current": 1, "sort": {}}
+        request_body: dict[str, Any] = {"current": 1, "sort": {}}
         response = await self._safe_dict_post("/api/firewall/npt/search_rule", payload=request_body)
         # _LOGGER.debug("[get_nat_npt_rules] response: %s", response)
         rules: list = response.get("rows", [])
@@ -357,7 +357,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
 
 
         """
-        payload: MutableMapping[str, Any] = {}
+        payload: dict[str, Any] = {}
         url = f"/api/firewall/filter/toggle_rule/{uuid}"
         if toggle_on_off == "on":
             url = f"{url}/1"
@@ -404,7 +404,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
 
 
         """
-        payload: MutableMapping[str, Any] = {}
+        payload: dict[str, Any] = {}
         url = f"/api/firewall/{nat_rule_type}/toggle_rule/{uuid}"
         # d_nat uses opposite logic for on/off
         if nat_rule_type == "d_nat" and toggle_on_off is not None:
@@ -451,7 +451,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
 
 
         """
-        payload: MutableMapping[str, Any] = {"filter": ip_addr}
+        payload: dict[str, Any] = {"filter": ip_addr}
         response = await self._safe_dict_post(
             "/api/diagnostics/firewall/kill_states/",
             payload=payload,
@@ -495,7 +495,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
                 break
         if not uuid:
             return False
-        payload: MutableMapping[str, Any] = {}
+        payload: dict[str, Any] = {}
         if self._use_snake_case:
             url: str = f"/api/firewall/alias/toggle_item/{uuid}"
         else:
