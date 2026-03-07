@@ -5,6 +5,8 @@ from typing import Any
 
 from dateutil.tz import gettz
 
+DEFAULT_TIMEOUT = 60
+
 AMBIGUOUS_TZINFOS: MutableMapping[str, Any] = {
     "ACST": gettz("Australia/Darwin"),  # Australian Central Standard Time
     "ACT": gettz("America/Rio_Branco"),  # Acre Time (Brazil)

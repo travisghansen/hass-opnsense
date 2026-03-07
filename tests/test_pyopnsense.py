@@ -6,6 +6,7 @@ integration module as required by the repository guidelines.
 """
 
 import asyncio
+from collections.abc import MutableMapping
 import contextlib
 import copy
 from datetime import datetime, timedelta
@@ -29,13 +30,18 @@ from custom_components.opnsense import (
     switch as switch_mod,
 )
 from custom_components.opnsense.const import CONF_SYNC_FIREWALL_AND_NAT
+from custom_components.opnsense.pyopnsense import (
+    client_base as pyopnsense_client_base,
+    helpers as pyopnsense_helpers,
+    vpn as pyopnsense_vpn,
+)
 
 
 def test_human_friendly_duration() -> None:
     """Convert seconds into a human-friendly duration string."""
-    assert pyopnsense.human_friendly_duration(65) == "1 minute, 5 seconds"
-    assert pyopnsense.human_friendly_duration(0) == "0 seconds"
-    assert "month" in pyopnsense.human_friendly_duration(2419200)
+    assert pyopnsense_helpers.human_friendly_duration(65) == "1 minute, 5 seconds"
+    assert pyopnsense_helpers.human_friendly_duration(0) == "0 seconds"
+    assert "month" in pyopnsense_helpers.human_friendly_duration(2419200)
 
 
 def test_human_friendly_duration_singular_and_plural() -> None:
@@ -46,52 +52,52 @@ def test_human_friendly_duration_singular_and_plural() -> None:
     otherwise.
     """
     # seconds
-    assert pyopnsense.human_friendly_duration(1) == "1 second"
-    assert pyopnsense.human_friendly_duration(2) == "2 seconds"
+    assert pyopnsense_helpers.human_friendly_duration(1) == "1 second"
+    assert pyopnsense_helpers.human_friendly_duration(2) == "2 seconds"
 
     # minutes + seconds
-    assert pyopnsense.human_friendly_duration(60) == "1 minute"
-    assert pyopnsense.human_friendly_duration(61) == "1 minute, 1 second"
+    assert pyopnsense_helpers.human_friendly_duration(60) == "1 minute"
+    assert pyopnsense_helpers.human_friendly_duration(61) == "1 minute, 1 second"
 
     # hours
-    assert pyopnsense.human_friendly_duration(3600) == "1 hour"
-    assert pyopnsense.human_friendly_duration(7200) == "2 hours"
+    assert pyopnsense_helpers.human_friendly_duration(3600) == "1 hour"
+    assert pyopnsense_helpers.human_friendly_duration(7200) == "2 hours"
 
     # days
-    assert pyopnsense.human_friendly_duration(86400) == "1 day"
+    assert pyopnsense_helpers.human_friendly_duration(86400) == "1 day"
 
     # weeks
-    assert pyopnsense.human_friendly_duration(604800) == "1 week"
-    assert pyopnsense.human_friendly_duration(1209600) == "2 weeks"
+    assert pyopnsense_helpers.human_friendly_duration(604800) == "1 week"
+    assert pyopnsense_helpers.human_friendly_duration(1209600) == "2 weeks"
 
     # months (28-day month used in implementation)
-    assert pyopnsense.human_friendly_duration(2419200) == "1 month"
-    assert pyopnsense.human_friendly_duration(4838400) == "2 months"
+    assert pyopnsense_helpers.human_friendly_duration(2419200) == "1 month"
+    assert pyopnsense_helpers.human_friendly_duration(4838400) == "2 months"
 
 
 def test_get_ip_key() -> None:
     """Compute sorting key for IP addresses across IPv4, IPv6, and invalid forms."""
-    assert pyopnsense.get_ip_key({"address": "192.168.1.1"})[0] == 0
-    assert pyopnsense.get_ip_key({"address": "::1"})[0] == 1
-    assert pyopnsense.get_ip_key({"address": "notanip"})[0] == 2
+    assert pyopnsense_helpers.get_ip_key({"address": "192.168.1.1"})[0] == 0
+    assert pyopnsense_helpers.get_ip_key({"address": "::1"})[0] == 1
+    assert pyopnsense_helpers.get_ip_key({"address": "notanip"})[0] == 2
 
-    assert pyopnsense.get_ip_key({})[0] == 3
+    assert pyopnsense_helpers.get_ip_key({})[0] == 3
 
 
 def test_dict_get() -> None:
     """Retrieve nested values from dicts and lists using dotted paths."""
     data = {"a": {"b": {"c": 1}}, "x": [0, 1, 2]}
-    assert pyopnsense.dict_get(data, "a.b.c") == 1
-    assert pyopnsense.dict_get(data, "x.1") == 1
-    assert pyopnsense.dict_get(data, "x.10", default=42) == 42
+    assert pyopnsense_helpers.dict_get(data, "a.b.c") == 1
+    assert pyopnsense_helpers.dict_get(data, "x.1") == 1
+    assert pyopnsense_helpers.dict_get(data, "x.10", default=42) == 42
 
 
 def test_timestamp_to_datetime() -> None:
     """Convert timestamp integers to datetime objects, handling None."""
     ts = int(datetime.now().timestamp())
-    dt = pyopnsense.timestamp_to_datetime(ts)
+    dt = pyopnsense_helpers.timestamp_to_datetime(ts)
     assert isinstance(dt, datetime)
-    assert pyopnsense.timestamp_to_datetime(None) is None
+    assert pyopnsense_helpers.timestamp_to_datetime(None) is None
 
 
 def test_voucher_server_error() -> None:
@@ -102,10 +108,10 @@ def test_voucher_server_error() -> None:
 
 def test_try_to_int_and_float() -> None:
     """Coerce numeric-like strings to int/float with defaults."""
-    assert pyopnsense.OPNsenseClient._try_to_int("5") == 5
-    assert pyopnsense.OPNsenseClient._try_to_int(None, 7) == 7
-    assert pyopnsense.OPNsenseClient._try_to_float("5.5") == 5.5
-    assert pyopnsense.OPNsenseClient._try_to_float(None, 3.3) == 3.3
+    assert pyopnsense_helpers.try_to_int("5") == 5
+    assert pyopnsense_helpers.try_to_int(None, 7) == 7
+    assert pyopnsense_helpers.try_to_float("5.5") == 5.5
+    assert pyopnsense_helpers.try_to_float(None, 3.3) == 3.3
 
 
 @pytest.mark.asyncio
@@ -226,7 +232,7 @@ async def test_get_ip_key_sorting(make_client) -> None:
         {"address": "notanip"},
         {},
     ]
-    sorted_items = sorted(items, key=pyopnsense.get_ip_key)
+    sorted_items = sorted(items, key=pyopnsense_helpers.get_ip_key)
     assert sorted_items[0]["address"] == "192.168.1.2"
     assert sorted_items[1]["address"] == "::1"
     assert sorted_items[2]["address"] == "notanip"
@@ -243,24 +249,27 @@ async def test_opnsenseclient_async_close(make_client) -> None:
         password="pass",
         session=session,
     )
-    # Patch background tasks to be not done
-    monitor = MagicMock()
-    worker1 = MagicMock()
-    worker2 = MagicMock()
+    initial_tasks = [t for t in [client._queue_monitor, *client._workers] if t is not None]
+    for task in initial_tasks:
+        task.cancel()
+    if initial_tasks:
+        await asyncio.gather(*initial_tasks, return_exceptions=True)
+
+    loop = asyncio.get_running_loop()
+    monitor = loop.create_task(asyncio.sleep(60))
+    worker1 = loop.create_task(asyncio.sleep(60))
+    worker2 = loop.create_task(asyncio.sleep(60))
     client._queue_monitor = monitor
-    # ensure .done() returns False so async_close will cancel
-    monitor.done.return_value = False
-    worker1.done.return_value = False
-    worker2.done.return_value = False
     client._workers = [worker1, worker2]
-    # use a real asyncio.Queue so async_close exercises real queue semantics
     client._request_queue = asyncio.Queue()
-    # put a dummy item so the while loop in async_close sees a non-empty queue
-    await client._request_queue.put(1)
+    future = loop.create_future()
+    await client._request_queue.put(("get", "/api/test", None, future, "test"))
     await client.async_close()
-    worker1.cancel.assert_called()
-    worker2.cancel.assert_called()
-    monitor.cancel.assert_called()
+    assert monitor.cancelled()
+    assert worker1.cancelled()
+    assert worker2.cancelled()
+    assert future.done()
+    assert isinstance(future.exception(), asyncio.CancelledError)
 
 
 @pytest.mark.asyncio
@@ -1373,7 +1382,7 @@ async def test_log_errors_decorator_re_raise_and_suppress(make_client) -> None:
         def __init__(self, initial: bool):
             self._initial = initial
 
-        @pyopnsense._log_errors
+        @pyopnsense_helpers._log_errors
         async def boom(self) -> None:
             raise RuntimeError("boom")
 
@@ -1534,22 +1543,22 @@ def test_dict_get_and_timestamp_and_ipkey_utils() -> None:
     """Unit test small utility functions: dict_get, timestamp_to_datetime, get_ip_key."""
     data = {"a": {"b": [10, {"c": 3}]}, "x": "y"}
     # dict_get supports numeric list indexing (see tests above); also verify mapping and defaults.
-    assert pyopnsense.dict_get(data, "a.b") == [10, {"c": 3}]
-    assert pyopnsense.dict_get(data, "missing.path", default=5) == 5
+    assert pyopnsense_helpers.dict_get(data, "a.b") == [10, {"c": 3}]
+    assert pyopnsense_helpers.dict_get(data, "missing.path", default=5) == 5
 
     # timestamp_to_datetime
-    assert pyopnsense.timestamp_to_datetime(None) is None
+    assert pyopnsense_helpers.timestamp_to_datetime(None) is None
     ts = int(datetime.now().timestamp())
-    dt = pyopnsense.timestamp_to_datetime(ts)
+    dt = pyopnsense_helpers.timestamp_to_datetime(ts)
     assert dt is not None and dt.tzinfo is not None
 
     # get_ip_key: missing address => placed at end
-    assert pyopnsense.get_ip_key({}) == (3, "")
+    assert pyopnsense_helpers.get_ip_key({}) == (3, "")
     # invalid address
-    assert pyopnsense.get_ip_key({"address": "notanip"}) == (2, "")
+    assert pyopnsense_helpers.get_ip_key({"address": "notanip"}) == (2, "")
     # IPv4 and IPv6 order
-    k4 = pyopnsense.get_ip_key({"address": "192.168.0.1"})
-    k6 = pyopnsense.get_ip_key({"address": "::1"})
+    k4 = pyopnsense_helpers.get_ip_key({"address": "192.168.0.1"})
+    k6 = pyopnsense_helpers.get_ip_key({"address": "::1"})
     assert k4[0] == 0 and k6[0] == 1
 
 
@@ -1567,6 +1576,11 @@ async def test_manage_service_and_restart_if_running(monkeypatch, make_client) -
     # when _safe_dict_post returns ok result, manage_service returns True
     client._safe_dict_post = AsyncMock(return_value={"result": "ok"})
     assert await client._manage_service("start", "svc1") is True
+    assert client._safe_dict_post.await_args.args[0] == "/api/core/service/start/svc1"
+
+    # service identifiers are URL-encoded before endpoint construction
+    assert await client._manage_service("restart", "svc /name") is True
+    assert client._safe_dict_post.await_args.args[0] == "/api/core/service/restart/svc%20%2Fname"
 
     # get_service_is_running uses get_services; test restart_service_if_running branches
     client.get_service_is_running = AsyncMock(return_value=True)
@@ -1844,13 +1858,13 @@ async def test_get_uses_unknown_when_inspect_stack_raises(monkeypatch, make_clie
         url="http://localhost", username="u", password="p", session=session
     )
 
-    # Replace pyopnsense.inspect.stack to raise an IndexError
+    # Replace client_base.inspect.stack to raise an IndexError
     class _BadInspect:
         @staticmethod
         def stack():
             raise IndexError("no stack")
 
-    monkeypatch.setattr(pyopnsense, "inspect", _BadInspect)
+    monkeypatch.setattr(pyopnsense_client_base, "inspect", _BadInspect)
 
     q: asyncio.Queue = asyncio.Queue()
     client._request_queue = q
@@ -1927,7 +1941,7 @@ async def test_post_uses_unknown_when_inspect_stack_raises(monkeypatch, make_cli
         def stack():
             raise IndexError("no stack")
 
-    monkeypatch.setattr(pyopnsense, "inspect", _BadInspect)
+    monkeypatch.setattr(pyopnsense_client_base, "inspect", _BadInspect)
 
     q: asyncio.Queue = asyncio.Queue()
     client._request_queue = q
@@ -1972,7 +1986,7 @@ async def test_exec_php_returns_real_json_and_xmlrpc_timeout_decorator() -> None
 
         # Test the _xmlrpc_timeout decorator: wrap a simple async function
         class D:
-            @pyopnsense._xmlrpc_timeout
+            @pyopnsense_helpers._xmlrpc_timeout
             async def wrapped(self) -> int:
                 return 7
 
@@ -2099,7 +2113,7 @@ async def test_log_errors_timeout_re_raise_and_suppress() -> None:
             raise TimeoutError("boom")
 
         # wrap the coroutine with the decorator
-        decorated = pyopnsense._log_errors(raising_timeout)
+        decorated = pyopnsense_helpers._log_errors(raising_timeout)
 
         # When initial is True we expect the TimeoutError to propagate
         client._initial = True
@@ -2123,7 +2137,7 @@ async def test_log_errors_server_timeout_re_raise_and_suppress() -> None:
     async def raising_server_timeout(*args, **kwargs):
         raise aiohttp.ServerTimeoutError("srv")
 
-    decorated = pyopnsense._log_errors(raising_server_timeout)
+    decorated = pyopnsense_helpers._log_errors(raising_server_timeout)
 
     client._initial = True
     with pytest.raises(aiohttp.ServerTimeoutError):
@@ -2135,33 +2149,24 @@ async def test_log_errors_server_timeout_re_raise_and_suppress() -> None:
 
 
 @pytest.mark.asyncio
-async def test_xmlrpc_timeout_restores_default(monkeypatch) -> None:
-    """_xmlrpc_timeout should set socket.setdefaulttimeout while running and restore afterwards."""
-    # track calls to get/set default timeout
-    state: dict[str, list] = {"set": [], "get": []}
+async def test_xmlrpc_timeout_uses_per_call_asyncio_timeout(monkeypatch) -> None:
+    """_xmlrpc_timeout should use asyncio.wait_for with DEFAULT_TIMEOUT."""
+    monkeypatch.setattr(pyopnsense_helpers, "DEFAULT_TIMEOUT", 0.01)
 
-    def fake_getdefault():
-        state["get"].append(True)
-        return 123
-
-    def fake_setdefault(v):
-        state["set"].append(v)
-
-    monkeypatch.setattr(pyopnsense.socket, "getdefaulttimeout", fake_getdefault)
-    monkeypatch.setattr(pyopnsense.socket, "setdefaulttimeout", fake_setdefault)
-
-    @pyopnsense._xmlrpc_timeout
-    async def func(self):
-        # inside the decorator the timeout should have been set to a numeric value
-        # ensure our fake setter was called with something
-        assert state["set"]
+    @pyopnsense_helpers._xmlrpc_timeout
+    async def fast_func(self):
         return "ok"
 
-    got = await func(None)
+    got = await fast_func(None)
     assert got == "ok"
-    # ensure getdefault called at least once and setdefault called to restore
-    assert state["get"]
-    assert state["set"]
+
+    @pyopnsense_helpers._xmlrpc_timeout
+    async def slow_func(self):
+        await asyncio.sleep(0.05)
+        return "late"
+
+    with pytest.raises(TimeoutError):
+        await slow_func(None)
 
 
 @pytest.mark.asyncio
@@ -2257,6 +2262,48 @@ async def test_process_queue_exception_sets_future_exception() -> None:
 
 
 @pytest.mark.asyncio
+async def test_process_queue_cancelled_sets_future_cancelled_error() -> None:
+    """Ensure cancelling _process_queue resolves in-flight futures with CancelledError."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = pyopnsense.OPNsenseClient(
+        url="http://localhost", username="u", password="p", session=session
+    )
+    for worker in client._workers:
+        worker.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await worker
+    client._workers.clear()
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def _blocked_get(_path: str, _caller: str) -> MutableMapping[str, Any]:
+        started.set()
+        await release.wait()
+        return {}
+
+    client._do_get = AsyncMock(side_effect=_blocked_get)
+
+    q: asyncio.Queue = asyncio.Queue()
+    client._request_queue = q
+
+    loop = asyncio.get_running_loop()
+    task = loop.create_task(client._process_queue())
+
+    fut = loop.create_future()
+    await q.put(("get", "/g", None, fut, "t"))
+
+    await asyncio.wait_for(started.wait(), timeout=2)
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+
+    assert fut.done()
+    with pytest.raises(asyncio.CancelledError):
+        await fut
+
+
+@pytest.mark.asyncio
 async def test_openvpn_processing_and_fetch_details() -> None:
     """Test processing of OpenVPN instances/providers/sessions/routes and fetching details."""
     session = MagicMock(spec=aiohttp.ClientSession)
@@ -2269,7 +2316,9 @@ async def test_openvpn_processing_and_fetch_details() -> None:
         if "searchSessions" in path or "search_sessions" in path:
             return {
                 "rows": [
-                    {"type": "server", "id": "srv1_1", "description": "S1", "status": "connected"}
+                    {"type": "server", "id": "srv1_1", "description": "S1", "status": "connected"},
+                    "malformed",
+                    {"type": "server"},
                 ]
             }
         if "searchRoutes" in path or "search_routes" in path:
@@ -2280,7 +2329,8 @@ async def test_openvpn_processing_and_fetch_details() -> None:
                         "common_name": "cname",
                         "real_address": "1.2.3.4",
                         "virtual_address": "10.0.0.1",
-                    }
+                    },
+                    None,
                 ]
             }
         if "providers" in path:
@@ -2478,6 +2528,27 @@ async def test_monitor_queue_handles_qsize_exception() -> None:
 
 
 @pytest.mark.asyncio
+async def test_client_base_workers_start_lazily_on_first_queued_request() -> None:
+    """Ensure loop/workers are initialized on first queued API request, not in __init__."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = pyopnsense.OPNsenseClient(
+        url="http://localhost", username="u", password="p", session=session
+    )
+    assert client._loop is None
+    assert client._queue_monitor is None
+    assert client._workers == []
+
+    client._do_get = AsyncMock(return_value={"ok": True})
+    result = await client._get("/api/test")
+
+    assert result == {"ok": True}
+    assert client._loop is asyncio.get_running_loop()
+    assert client._queue_monitor is not None
+    assert len(client._workers) == client._max_workers
+    await client.async_close()
+
+
+@pytest.mark.asyncio
 async def test_get_unbound_blocklist_legacy_parsing() -> None:
     """Ensure get_unbound_blocklist_legacy properly extracts and joins nested mappings."""
     session = MagicMock(spec=aiohttp.ClientSession)
@@ -2546,10 +2617,19 @@ async def test_get_services_and_service_is_running() -> None:
 
     # get_services returns rows
     client._safe_dict_get = AsyncMock(
-        return_value={"rows": [{"name": "svc", "running": 1, "id": "svc"}]}
+        return_value={
+            "rows": [
+                {"name": "svc", "running": 1, "id": "svc"},
+                "malformed",
+                123,
+                None,
+            ]
+        }
     )
     services = await client.get_services()
-    assert isinstance(services, list) and services[0]["status"] is True
+    assert isinstance(services, list)
+    assert len(services) == 1
+    assert services[0]["status"] is True
 
     # get_service_is_running
     assert await client.get_service_is_running("svc") is True
@@ -3012,13 +3092,16 @@ def test_wireguard_is_connected_variants(monkeypatch, delta_minutes: int, expect
     fixed_now = datetime.now().astimezone().replace(microsecond=0)
     # create a minimal fake datetime provider with a static now() returning fixed_now
     FakeDT = type("FakeDT", (), {"now": staticmethod(lambda: fixed_now)})
-    monkeypatch.setattr(pyopnsense, "datetime", FakeDT)
+    monkeypatch.setattr(pyopnsense_vpn, "datetime", FakeDT)
     assert (
-        pyopnsense.wireguard_is_connected(fixed_now - timedelta(minutes=delta_minutes)) is expected
+        pyopnsense.OPNsenseClient.wireguard_is_connected(
+            fixed_now - timedelta(minutes=delta_minutes)
+        )
+        is expected
     )
     # None always False
     if delta_minutes == 5:  # only need to assert once in param set
-        assert pyopnsense.wireguard_is_connected(None) is False
+        assert pyopnsense.OPNsenseClient.wireguard_is_connected(None) is False
 
 
 @pytest.mark.asyncio
@@ -3182,9 +3265,9 @@ async def test_get_wireguard_success_and_invalid(make_client) -> None:
         wg["clients"]["c1"].get("connected_servers"),
     )
 
-    # invalid structure (summary not list) -> {}
+    # invalid structure (summary not list) -> empty wireguard structure
     client._safe_dict_get = AsyncMock(return_value={"rows": {}})
-    assert await client.get_wireguard() == {}
+    assert await client.get_wireguard() == {"servers": {}, "clients": {}}
     await client.async_close()
 
 
@@ -3343,9 +3426,9 @@ async def test_set_use_snake_case_unknown_firmware_raise(monkeypatch, make_clien
             pass
 
         def __lt__(self, other):  # noqa: D401 - comparison triggers exception
-            raise pyopnsense.awesomeversion.exceptions.AwesomeVersionCompareException("bad")
+            raise awesomeversion.exceptions.AwesomeVersionCompareException("bad")
 
-    monkeypatch.setattr(pyopnsense.awesomeversion, "AwesomeVersion", BadAV)
+    monkeypatch.setattr(pyopnsense_client_base.awesomeversion, "AwesomeVersion", BadAV)
     with pytest.raises(pyopnsense.UnknownFirmware):
         await client.set_use_snake_case(initial=True)
     await client.async_close()
@@ -3542,6 +3625,8 @@ async def test_get_firewall_rules_skips_invalid_rows(make_client) -> None:
     client = make_client(session=session)
 
     rows = [
+        "bad-row",
+        None,
         {"enabled": "1", "action": "pass"},  # missing uuid
         {"uuid": "lockout-1", "enabled": "1"},  # lockout rule
         {"uuid": "rule-ok", "enabled": "1"},  # valid
@@ -3551,6 +3636,28 @@ async def test_get_firewall_rules_skips_invalid_rows(make_client) -> None:
 
     result = await client._get_firewall_rules()
     assert list(result.keys()) == ["rule-ok"]
+    await client.async_close()
+
+
+@pytest.mark.asyncio
+async def test_nat_rule_helpers_skip_non_mapping_rows(make_client) -> None:
+    """NAT rule helpers should skip malformed non-mapping rows safely."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+
+    methods = (
+        "_get_nat_destination_rules",
+        "_get_nat_one_to_one_rules",
+        "_get_nat_source_rules",
+        "_get_nat_npt_rules",
+    )
+    for method_name in methods:
+        rows: list[Any] = ["bad-row", None, {"uuid": "rule-ok", "descr": "d", "disabled": "0"}]
+        client._safe_dict_post = AsyncMock(return_value={"rows": rows})
+        method = getattr(client, method_name)
+        result = await method()
+        assert list(result.keys()) == ["rule-ok"]
+
     await client.async_close()
 
 
