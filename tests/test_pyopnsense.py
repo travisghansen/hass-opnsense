@@ -28,6 +28,8 @@ from custom_components.opnsense import (
     sensor as sensor_mod,
     switch as switch_mod,
 )
+from custom_components.opnsense.pyopnsense import client as pyopnsense_client
+from custom_components.opnsense.pyopnsense import helpers as pyopnsense_helpers
 from custom_components.opnsense.const import CONF_SYNC_FIREWALL_AND_NAT
 
 
@@ -1356,15 +1358,6 @@ async def test_toggle_alias_flows(make_client) -> None:
         await client.async_close()
 
 
-@pytest.fixture
-def toggle_alias_client(make_client):
-    """Provide a preconfigured OPNsenseClient for toggle_alias tests."""
-    session = MagicMock(spec=aiohttp.ClientSession)
-    return pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
-    )
-
-
 @pytest.mark.asyncio
 async def test_log_errors_decorator_re_raise_and_suppress(make_client) -> None:
     """The _log_errors decorator should re-raise when self._initial is True, otherwise suppress."""
@@ -1850,7 +1843,7 @@ async def test_get_uses_unknown_when_inspect_stack_raises(monkeypatch, make_clie
         def stack():
             raise IndexError("no stack")
 
-    monkeypatch.setattr(pyopnsense, "inspect", _BadInspect)
+    monkeypatch.setattr(pyopnsense_client, "inspect", _BadInspect)
 
     q: asyncio.Queue = asyncio.Queue()
     client._request_queue = q
@@ -1927,7 +1920,7 @@ async def test_post_uses_unknown_when_inspect_stack_raises(monkeypatch, make_cli
         def stack():
             raise IndexError("no stack")
 
-    monkeypatch.setattr(pyopnsense, "inspect", _BadInspect)
+    monkeypatch.setattr(pyopnsense_client, "inspect", _BadInspect)
 
     q: asyncio.Queue = asyncio.Queue()
     client._request_queue = q
@@ -1995,11 +1988,12 @@ async def test_exec_php_returns_real_json_and_xmlrpc_timeout_decorator() -> None
         ),
     ],
 )
-async def test_toggle_alias_scenarios(
-    safe_get_rows, safe_post_result, expected, toggle_alias_client
-) -> None:
+async def test_toggle_alias_scenarios(safe_get_rows, safe_post_result, expected) -> None:
     """Parametrized toggle_alias scenarios: not found, failed toggle, and full success."""
-    client = toggle_alias_client
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = pyopnsense.OPNsenseClient(
+        url="http://localhost", username="u", password="p", session=session
+    )
     try:
         client._safe_dict_get = AsyncMock(return_value={"rows": safe_get_rows})
 
@@ -2147,8 +2141,8 @@ async def test_xmlrpc_timeout_restores_default(monkeypatch) -> None:
     def fake_setdefault(v):
         state["set"].append(v)
 
-    monkeypatch.setattr(pyopnsense.socket, "getdefaulttimeout", fake_getdefault)
-    monkeypatch.setattr(pyopnsense.socket, "setdefaulttimeout", fake_setdefault)
+    monkeypatch.setattr(pyopnsense_helpers.socket, "getdefaulttimeout", fake_getdefault)
+    monkeypatch.setattr(pyopnsense_helpers.socket, "setdefaulttimeout", fake_setdefault)
 
     @pyopnsense._xmlrpc_timeout
     async def func(self):
@@ -3012,7 +3006,7 @@ def test_wireguard_is_connected_variants(monkeypatch, delta_minutes: int, expect
     fixed_now = datetime.now().astimezone().replace(microsecond=0)
     # create a minimal fake datetime provider with a static now() returning fixed_now
     FakeDT = type("FakeDT", (), {"now": staticmethod(lambda: fixed_now)})
-    monkeypatch.setattr(pyopnsense, "datetime", FakeDT)
+    monkeypatch.setattr(pyopnsense_helpers, "datetime", FakeDT)
     assert (
         pyopnsense.wireguard_is_connected(fixed_now - timedelta(minutes=delta_minutes)) is expected
     )
