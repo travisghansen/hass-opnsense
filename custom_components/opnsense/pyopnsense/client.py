@@ -9,6 +9,15 @@ from .client_shared import (
     VoucherServerError,
     inspect,
 )
+from . import core as _core
+from . import dhcp as _dhcp
+from . import firewall as _firewall
+from . import firmware as _firmware
+from . import system as _system
+from . import telemetry as _telemetry
+from . import vpn as _vpn
+
+# Compatibility shims for function globals while methods still originate in these modules.
 from . import client_methods_part1 as _client_methods_part1
 from . import client_methods_part2 as _client_methods_part2
 from . import client_methods_part3 as _client_methods_part3
@@ -20,20 +29,9 @@ class OPNsenseClient(ABC):
     """Async client for OPNsense REST and XMLRPC endpoints."""
 
 
-for _name in _client_methods_part1.__all__:
-    setattr(OPNsenseClient, _name, getattr(_client_methods_part1, _name))
-
-for _name in _client_methods_part2.__all__:
-    setattr(OPNsenseClient, _name, getattr(_client_methods_part2, _name))
-
-for _name in _client_methods_part3.__all__:
-    setattr(OPNsenseClient, _name, getattr(_client_methods_part3, _name))
-
-for _name in _client_methods_part4.__all__:
-    setattr(OPNsenseClient, _name, getattr(_client_methods_part4, _name))
-
-for _name in _client_methods_part5.__all__:
-    setattr(OPNsenseClient, _name, getattr(_client_methods_part5, _name))
+for _module in (_core, _firmware, _firewall, _dhcp, _telemetry, _vpn, _system):
+    for _name in _module.__all__:
+        setattr(OPNsenseClient, _name, getattr(_module, _name))
 
 
 class UnknownFirmware(Exception):
@@ -58,5 +56,6 @@ for _mod in (
     _mod.inspect = _InspectProxy
 
 del _mod
+del _module
 del _name
 del _InspectProxy
