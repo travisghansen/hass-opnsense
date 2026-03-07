@@ -297,6 +297,8 @@ class OPNsenseClient(ABC):
         self._session: aiohttp.ClientSession = session
         self._initial = initial
         self._firmware_version: str | None = None
+        self._plugin_installed: bool | None = None
+        self._plugin_deprecated: bool | None = None
         self._use_snake_case: bool = True
         self._xmlrpc_query_count = 0
         self._rest_api_query_count = 0
@@ -523,14 +525,13 @@ $toreturn["real"] = json_encode($toreturn_real);
             if initial:
                 raise UnknownFirmware from e
 
-    async def is_plugin_installed(self) -> bool:
-        """Retun whether OPNsense plugin is installed or not.
+    async def _check_if_plugin_installed(self) -> bool:
+        """Check using OPNsense API if plugin is installed or not.
 
         Returns
         -------
         bool
         Result produced by this method.
-
 
         """
         firmware_info = await self._safe_dict_get("/api/core/firmware/info")
@@ -540,6 +541,50 @@ $toreturn["real"] = json_encode($toreturn_real);
             if pkg.get("name") == "os-homeassistant-maxit" and pkg.get("installed") == "1":
                 return True
         return False
+
+    async def is_plugin_installed(self) -> bool:
+        """Return whether the Home Assistant OPNsense plugin is installed.
+
+        Returns
+        -------
+        bool
+            ``True`` when plugin installation is detected, otherwise ``False``.
+
+        """
+        if self._plugin_installed is None:
+            self._plugin_installed = await self._check_if_plugin_installed()
+        return self._plugin_installed
+
+    async def _check_if_plugin_deprecated(self) -> bool:
+        try:
+            if awesomeversion.AwesomeVersion(
+                await self.get_host_firmware_version()
+            ) > awesomeversion.AwesomeVersion("26.1.2"):
+                return True
+        except (
+            awesomeversion.exceptions.AwesomeVersionCompareException,
+            TypeError,
+            ValueError,
+        ) as e:
+            _LOGGER.info(
+                "Unable to compare firmware version when checking if plugin is deprecated. %s: %s",
+                type(e).__name__,
+                e,
+            )
+        return False
+
+    async def is_plugin_deprecated(self) -> bool:
+        """Return whether the installed plugin is considered deprecated.
+
+        Returns
+        -------
+        bool
+            ``True`` when the plugin is deprecated for the detected firmware.
+
+        """
+        if self._plugin_deprecated is None:
+            self._plugin_deprecated = await self._check_if_plugin_deprecated()
+        return self._plugin_deprecated
 
     async def _get_from_stream(self, path: str) -> MutableMapping[str, Any]:
         """Queue a streaming GET request and return the parsed payload.
@@ -1150,6 +1195,8 @@ clear_subsystem_dirty('filter');
 
         if error_status or last_check_expired or missing_data or update_needs_info:
             _LOGGER.info("Triggering firmware check")
+            self._plugin_installed = None
+            self._plugin_deprecated = None
             await self._post("/api/core/firmware/check")
 
         return status
@@ -1406,7 +1453,7 @@ $toreturn = [
             _LOGGER.warning("Error comparing firmware version. Skipping get_firewall.")
             return {}
         firewall: dict[str, Any] = {"nat": {}}
-        if await self.is_plugin_installed():
+        if await self.is_plugin_installed() and not await self.is_plugin_deprecated():
             firewall["config"] = await self.get_config()
         firewall["rules"] = await self._get_firewall_rules()
         firewall["nat"]["d_nat"] = await self._get_nat_destination_rules()
