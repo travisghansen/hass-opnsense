@@ -569,7 +569,7 @@ async def test_telemetry_and_temps_and_notices_and_unbound_blocklist(make_client
             ]
         )
         temps = await client._get_telemetry_temps()
-        assert isinstance(temps, dict)
+        assert isinstance(temps, MutableMapping)
 
         # notices
         client._safe_dict_get = AsyncMock(
@@ -1143,7 +1143,7 @@ async def test_get_from_stream_parsing(make_client, fake_stream_response_factory
     try:
         res = await client._do_get_from_stream("/stream", caller="tst")
         # implementation returns the second 'data' message parsed as JSON
-        assert isinstance(res, dict)
+        assert isinstance(res, MutableMapping)
         assert res.get("b") == 2
     finally:
         await client.async_close()
@@ -1167,7 +1167,7 @@ async def test_get_from_stream_ignores_first_message(
     )
     try:
         res = await client._do_get_from_stream("/stream", caller="tst")
-        assert isinstance(res, dict)
+        assert isinstance(res, MutableMapping)
         # ensure the second message was selected
         assert res.get("id") == "second"
         assert res.get("body") == "keep me"
@@ -1412,7 +1412,7 @@ async def test_get_from_stream_partial_chunks_accumulates_buffer(
     )
     try:
         res = await client._do_get_from_stream("/stream2", caller="tst")
-        assert isinstance(res, dict)
+        assert isinstance(res, MutableMapping)
     finally:
         await client.async_close()
 
@@ -1982,7 +1982,7 @@ async def test_exec_php_returns_real_json_and_xmlrpc_timeout_decorator() -> None
         proxy.opnsense.exec_php.return_value = {"real": '{"ok": true, "val": 5}'}
         client._get_proxy = MagicMock(return_value=proxy)
         res = await client._exec_php("echo ok;")
-        assert isinstance(res, dict) and res.get("val") == 5
+        assert isinstance(res, MutableMapping) and res.get("val") == 5
 
         # Test the _xmlrpc_timeout decorator: wrap a simple async function
         class D:
@@ -2211,7 +2211,7 @@ async def test_do_get_and_do_post_success_paths() -> None:
     )
 
     got = await client._do_get("/api/x", caller="t")
-    assert isinstance(got, dict) and got.get("a") == 1
+    assert isinstance(got, MutableMapping) and got.get("a") == 1
 
     posted = await client._do_post("/api/x", payload={"x": 1}, caller="t")
     assert isinstance(posted, list) and posted[0] == 1
@@ -2393,7 +2393,7 @@ async def test_telemetry_system_parsing_and_filesystems() -> None:
         client._safe_dict_post = AsyncMock(side_effect=fake_safe_post)
 
         sys = await client._get_telemetry_system()
-        assert isinstance(sys, dict)
+        assert isinstance(sys, MutableMapping)
         # At least one of the expected fields is normalized/present
         assert any(k in sys for k in ("uptime", "boottime", "loadavg"))
 
@@ -2690,7 +2690,7 @@ async def test_telemetry_mbuf_pfstate_and_temps() -> None:
             return_value=[{"temperature": "45.5", "type_translated": "CPU", "device_seq": 0}]
         )
         temps = await client._get_telemetry_temps()
-        assert isinstance(temps, dict) and len(temps) == 1
+        assert isinstance(temps, MutableMapping) and len(temps) == 1
     finally:
         await client.async_close()
 
@@ -2778,7 +2778,7 @@ async def test_exercise_many_misc_branches() -> None:
         }
         client._safe_dict_post = AsyncMock(return_value=ti)
         sys = await client._get_telemetry_system()
-        assert isinstance(sys, dict)
+        assert isinstance(sys, MutableMapping)
 
         # reload_interface paths (snake_case vs camelCase)
         client._use_snake_case = True
@@ -2800,14 +2800,14 @@ async def test_exercise_many_misc_branches() -> None:
         client._get_telemetry_filesystems = AsyncMock(return_value={})
         client._get_telemetry_temps = AsyncMock(return_value={})
         telem = await client.get_telemetry()
-        assert isinstance(telem, dict)
+        assert isinstance(telem, MutableMapping)
 
         # call get_openvpn with empty dicts to exercise early return and processing functions
         client._safe_dict_get = AsyncMock(
             side_effect=[{"rows": []}, {"rows": []}, {}, {"rows": []}, {}]
         )
         res = await client.get_openvpn()
-        assert isinstance(res, dict)
+        assert isinstance(res, MutableMapping)
     finally:
         await client.async_close()
 
@@ -2886,7 +2886,7 @@ async def test_get_dhcp_leases_combined_structure() -> None:
     client._get_kea_interfaces = AsyncMock(return_value={"em0": "eth0"})
 
     combined = await client.get_dhcp_leases()
-    assert isinstance(combined, dict)
+    assert isinstance(combined, MutableMapping)
     assert "lease_interfaces" in combined and "leases" in combined
     await client.async_close()
 
@@ -2911,7 +2911,7 @@ async def test_get_arp_table_and_manage_service_upgrade_flow() -> None:
     # upgrade_firmware: update -> calls safe_list_post
     client._safe_dict_post = AsyncMock(return_value={"status": "ok"})
     res = await client.upgrade_firmware("update")
-    assert isinstance(res, dict)
+    assert isinstance(res, MutableMapping)
 
     # upgrade_firmware: unknown type returns None
     assert await client.upgrade_firmware("noop") is None
@@ -3188,7 +3188,7 @@ async def test_enable_filter_rule_by_created_time_legacy(
         assert called[0] == "filter"
         # second arg is the filter section; ensure the matching rule no longer has 'disabled'
         filter_section = called[1]
-        assert isinstance(filter_section, dict)
+        assert isinstance(filter_section, MutableMapping)
         # find the matching rule inside the passed filter section
         rules_passed = filter_section.get("rule", [])
         matched = [r for r in rules_passed if r.get("created", {}).get("time") == created_time]

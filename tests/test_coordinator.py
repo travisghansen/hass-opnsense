@@ -5,6 +5,7 @@ category building, state fetching, device ID mismatch handling, speed
 calculations, and update flow.
 """
 
+from collections.abc import MutableMapping
 from datetime import timedelta
 import time
 from unittest.mock import AsyncMock, MagicMock
@@ -134,7 +135,7 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
     assert called["issue"] == 1
     assert called["shutdown"] == 1
     # validate the issue was created for the integration domain and expected id
-    assert isinstance(called["issue_kwargs"], dict)
+    assert isinstance(called["issue_kwargs"], MutableMapping)
     assert called["issue_kwargs"].get("domain") == coordinator_module.DOMAIN
     assert (
         called["issue_kwargs"].get("issue_id") == f"{coord._device_unique_id}_device_id_mismatched"
@@ -321,7 +322,7 @@ async def test_async_update_data_reentrancy_and_full_flow(
 
     # run update; should return a dict
     out = await coord._async_update_data()
-    assert isinstance(out, dict)
+    assert isinstance(out, MutableMapping)
     # Verify returned dict is the coordinator's state and bookkeeping completed
     assert out == coord._state
     assert coord._updating is False
@@ -487,7 +488,7 @@ async def test_async_update_data_strips_nested_previous_state(
     out = await coord._async_update_data()
 
     # previous_state assigned on the coordinator should not contain the nested key
-    assert isinstance(out, dict)
+    assert isinstance(out, MutableMapping)
     assert "previous_state" in out
     assert "previous_state" not in out["previous_state"]
     # other top-level keys from the original state should be preserved in the copy
@@ -645,7 +646,7 @@ async def test_async_update_dt_data_device_id_branches(
 
     if should_call_counts:
         # Should return the state and call get_query_counts
-        assert isinstance(res, dict)
+        assert isinstance(res, MutableMapping)
         assert res.get("device_unique_id") == "id"
         client.get_query_counts.assert_awaited_once()
     else:

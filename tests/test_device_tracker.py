@@ -4,6 +4,7 @@ These tests cover setup, coordinator update handling, restore state behavior,
 and device info formatting for the integration's device tracker entities.
 """
 
+from collections.abc import MutableMapping
 from datetime import datetime
 import importlib
 from unittest.mock import AsyncMock, MagicMock
@@ -256,7 +257,7 @@ async def test_restore_last_state_and_device_info(monkeypatch, coordinator, make
     # device_info should include the mac connection and via_device tuple
     devinfo = ent.device_info
     # support both DeviceInfo object and dict-shaped DeviceInfo used in tests
-    if isinstance(devinfo, dict):
+    if isinstance(devinfo, MutableMapping):
         connections = devinfo.get("connections", [])
         via = devinfo.get("via_device")
     else:

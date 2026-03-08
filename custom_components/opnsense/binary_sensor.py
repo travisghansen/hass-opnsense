@@ -96,7 +96,7 @@ class OPNsenseCarpStatusBinarySensor(OPNsenseBinarySensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        state: MutableMapping[str, Any] = self.coordinator.data
+        state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             self._available = False
             self.async_write_ha_state()
@@ -117,7 +117,7 @@ class OPNsensePendingNoticesPresentBinarySensor(OPNsenseBinarySensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        state: MutableMapping[str, Any] = self.coordinator.data
+        state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             self._available = False
             self.async_write_ha_state()

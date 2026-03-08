@@ -6,6 +6,7 @@ background tasks, and simplify Home Assistant testing.
 """
 
 import asyncio
+from collections.abc import MutableMapping
 import contextlib
 import inspect
 import logging
@@ -276,7 +277,7 @@ def _patch_asyncio_create_task(monkeypatch):
         if frame:
             try:
                 g = getattr(frame, "f_globals", None) or {}
-                module_name = g.get("__name__", "") if isinstance(g, dict) else ""
+                module_name = g.get("__name__", "") if isinstance(g, MutableMapping) else ""
             except (AttributeError, TypeError):
                 module_name = ""
 
@@ -434,7 +435,7 @@ def _neutralize_pyopnsense_background_tasks(monkeypatch, request):
                 if frame:
                     try:
                         g = getattr(frame, "f_globals", None) or {}
-                        module_name = g.get("__name__", "") if isinstance(g, dict) else ""
+                        module_name = g.get("__name__", "") if isinstance(g, MutableMapping) else ""
                     except (AttributeError, TypeError):
                         module_name = ""
 

@@ -26,7 +26,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
 
 
         """
-        telemetry: MutableMapping[str, Any] = {}
+        telemetry: dict[str, Any] = {}
         telemetry["mbuf"] = await self._get_telemetry_mbuf()
         telemetry["pfstate"] = await self._get_telemetry_pfstate()
         telemetry["memory"] = await self._get_telemetry_memory()
@@ -52,9 +52,9 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
         # _LOGGER.debug(f"[get_interfaces] interface_info: {interface_info}")
         if not len(interface_info) > 0:
             return {}
-        interfaces: MutableMapping[str, Any] = {}
+        interfaces: dict[str, Any] = {}
         for ifinfo in interface_info:
-            interface: MutableMapping[str, Any] = {}
+            interface: dict[str, Any] = {}
             if not isinstance(ifinfo, MutableMapping) or ifinfo.get("identifier", "") == "":
                 continue
             interface["inpkts"] = try_to_int(
@@ -116,7 +116,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
         """
         mbuf_info = await self._safe_dict_post("/api/diagnostics/system/system_mbuf")
         # _LOGGER.debug(f"[get_telemetry_mbuf] mbuf_info: {mbuf_info}")
-        mbuf: MutableMapping[str, Any] = {}
+        mbuf: dict[str, Any] = {}
         mbuf["used"] = try_to_int(mbuf_info.get("mbuf-statistics", {}).get("mbuf-current", None))
         mbuf["total"] = try_to_int(mbuf_info.get("mbuf-statistics", {}).get("mbuf-total", None))
         mbuf["used_percent"] = (
@@ -142,7 +142,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
         """
         pfstate_info = await self._safe_dict_post("/api/diagnostics/firewall/pf_states")
         # _LOGGER.debug(f"[get_telemetry_pfstate] pfstate_info: {pfstate_info}")
-        pfstate: MutableMapping[str, Any] = {}
+        pfstate: dict[str, Any] = {}
         pfstate["used"] = try_to_int(pfstate_info.get("current", None))
         pfstate["total"] = try_to_int(pfstate_info.get("limit", None))
         pfstate["used_percent"] = (
@@ -171,7 +171,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
         else:
             memory_info = await self._safe_dict_post("/api/diagnostics/system/systemResources")
         # _LOGGER.debug(f"[get_telemetry_memory] memory_info: {memory_info}")
-        memory: MutableMapping[str, Any] = {}
+        memory: dict[str, Any] = {}
         memory["physmem"] = try_to_int(memory_info.get("memory", {}).get("total", None))
         memory["used"] = try_to_int(memory_info.get("memory", {}).get("used", None))
         memory["used_percent"] = (
@@ -217,7 +217,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
         else:
             time_info = await self._safe_dict_post("/api/diagnostics/system/systemTime")
         # _LOGGER.debug("[get_telemetry_system] time_info: %s", time_info)
-        system: MutableMapping[str, Any] = {}
+        system: dict[str, Any] = {}
 
         try:
             systemtime: datetime = parse(time_info["datetime"], tzinfos=AMBIGUOUS_TZINFOS)
@@ -309,7 +309,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
         # _LOGGER.debug(f"[get_telemetry_cpu] cputype_info: {cputype_info}")
         if not len(cputype_info) > 0:
             return {}
-        cpu: MutableMapping[str, Any] = {}
+        cpu: dict[str, Any] = {}
         cores_match = re.search(r"\((\d+) cores", cputype_info[0])
         cpu["count"] = try_to_int(cores_match.group(1)) if cores_match else 0
 
@@ -358,7 +358,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
         """
         gateways_info = await self._safe_dict_get("/api/routes/gateway/status")
         # _LOGGER.debug(f"[get_gateways] gateways_info: {gateways_info}")
-        gateways: MutableMapping[str, Any] = {}
+        gateways: dict[str, Any] = {}
         for gw_info in gateways_info.get("items", []):
             if isinstance(gw_info, MutableMapping) and "name" in gw_info:
                 gateways[gw_info["name"]] = gw_info
@@ -385,9 +385,9 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
         # _LOGGER.debug(f"[get_telemetry_temps] temps_info: {temps_info}")
         if not len(temps_info) > 0:
             return {}
-        temps: MutableMapping[str, Any] = {}
+        temps: dict[str, Any] = {}
         for i, temp_info in enumerate(temps_info):
-            temp: MutableMapping[str, Any] = {}
+            temp: dict[str, Any] = {}
             temp["temperature"] = try_to_float(temp_info.get("temperature", 0), 0)
             temp["name"] = (
                 f"{temp_info.get('type_translated', 'Num')} {temp_info.get('device_seq', i)}"

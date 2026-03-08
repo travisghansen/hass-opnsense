@@ -5,6 +5,7 @@ async setup flows for the integration's switch platform.
 """
 
 import asyncio
+from collections.abc import MutableMapping
 import contextlib
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -591,7 +592,7 @@ async def test_unbound_and_vpn_variations(coordinator, ph_hass, make_config_entr
         vpn._handle_coordinator_update()
         assert vpn.available is True
         inst = state.get(vpn._vpn_type, {}).get(vpn._clients_servers, {}).get(vpn._uuid)
-        assert isinstance(inst, dict)
+        assert isinstance(inst, MutableMapping)
         assert vpn.is_on is bool(inst.get("enabled"))
 
 

@@ -305,7 +305,7 @@ async def _handle_user_input(
     if require_plugin_check and not await client.is_plugin_installed():
         raise PluginMissing
 
-    system_info: MutableMapping[str, Any] = await client.get_system_info()
+    system_info: dict[str, Any] = await client.get_system_info()
     _LOGGER.debug("[handle_user_input] system_info: %s", system_info)
 
     if not user_input.get(CONF_NAME):
@@ -382,7 +382,7 @@ def _build_granular_sync_schema(
     if fallback is None:
         fallback = {}
 
-    schema_dict: MutableMapping[Any, Any] = {}
+    schema_dict: dict[Any, Any] = {}
 
     for conf in GRANULAR_SYNC_ITEMS:
         schema_dict[
@@ -459,7 +459,7 @@ def _build_options_init_schema(
 
 async def _get_dt_entries(
     hass: HomeAssistant, config: Mapping[str, Any], selected_devices: list
-) -> MutableMapping[str, Any]:
+) -> dict[str, Any]:
     url = config[CONF_URL].strip()
     username: str = config[CONF_USERNAME]
     password: str = config[CONF_PASSWORD]
@@ -476,9 +476,7 @@ async def _get_dt_entries(
         opts={"verify_ssl": verify_ssl},
     )
     # dicts are ordered so put all previously selected items at the top
-    entries: MutableMapping[str, Any] = {}
-    for device in selected_devices:
-        entries[device] = device
+    entries: dict[str, Any] = {device: device for device in selected_devices}
     arp_table: list = await client.get_arp_table(resolve_hostnames=True)
     if arp_table:
         # follow with all arp table entries
@@ -492,7 +490,7 @@ async def _get_dt_entries(
             entries[mac] = label
 
         # Sort entries: MAC-only labels first, then by IP address (ascending)
-        sorted_entries: MutableMapping[str, Any] = dict(
+        sorted_entries: dict[str, Any] = dict(
             sorted(
                 entries.items(),
                 key=lambda item: (
@@ -517,7 +515,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         """Initialize the config flow."""
-        self._config: MutableMapping[str, Any] = {}
+        self._config: dict[str, Any] = {}
 
     # gets invoked without user input initially
     # when user submits has user_input
@@ -536,7 +534,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._abort_if_unique_id_configured()
 
                 if user_input[CONF_GRANULAR_SYNC_OPTIONS]:
-                    self._config = user_input
+                    self._config = dict(user_input)
                     return await self.async_step_granular_sync()
 
                 return self.async_create_entry(
@@ -656,8 +654,8 @@ class OPNsenseOptionsFlow(OptionsFlow):
         # `config_entry` on the flow; provide a backing attribute and a
         # property with a setter to maintain compatibility.
         self._config_entry: ConfigEntry = config_entry
-        self._config: MutableMapping[str, Any] = {}
-        self._options: MutableMapping[str, Any] = {}
+        self._config: dict[str, Any] = {}
+        self._options: dict[str, Any] = {}
 
     @property
     def config_entry(self) -> ConfigEntry:
@@ -775,7 +773,7 @@ class OPNsenseOptionsFlow(OptionsFlow):
                 return self.async_create_entry(data=self._options)
 
         selected_devices: list = self.config_entry.options.get(CONF_DEVICES, [])
-        dt_entries: MutableMapping[str, Any] = await _get_dt_entries(
+        dt_entries: dict[str, Any] = await _get_dt_entries(
             hass=self.hass, config=self.config_entry.data, selected_devices=selected_devices
         )
 
