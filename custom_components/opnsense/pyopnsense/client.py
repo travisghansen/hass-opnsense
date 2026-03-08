@@ -8,6 +8,7 @@ from .services import ServicesMixin
 from .system import SystemMixin
 from .telemetry import TelemetryMixin
 from .unbound import UnboundMixin
+from .vnstat import VnstatMixin
 from .vouchers import VouchersMixin
 from .vpn import VPNMixin
 
@@ -22,6 +23,7 @@ class OPNsenseClient(
     UnboundMixin,
     VouchersMixin,
     TelemetryMixin,
+    VnstatMixin,
     VPNMixin,
 ):
     """Async client for OPNsense REST and XMLRPC endpoints."""

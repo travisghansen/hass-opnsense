@@ -34,6 +34,7 @@
       "granular_sync": {
         "data": {
           "sync_telemetry": "Basic telemetry data",
+          "sync_vnstat": "vnStat bandwidth usage",
           "sync_vpn": "VPN information and switches",
           "sync_firmware_updates": "Firmware updates",
           "sync_carp": "CARP information",
@@ -78,6 +79,7 @@
       "granular_sync": {
         "data": {
           "sync_telemetry": "Basic telemetry data",
+          "sync_vnstat": "vnStat bandwidth usage",
           "sync_vpn": "VPN information and switches",
           "sync_firmware_updates": "Firmware updates",
           "sync_carp": "CARP information",
