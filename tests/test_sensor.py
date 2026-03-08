@@ -14,6 +14,7 @@ from custom_components.opnsense.const import (
     CONF_SYNC_GATEWAYS,
     CONF_SYNC_INTERFACES,
     CONF_SYNC_TELEMETRY,
+    CONF_SYNC_VNSTAT,
     CONF_SYNC_VPN,
     COORDINATOR,
 )
@@ -25,11 +26,13 @@ from custom_components.opnsense.sensor import (
     OPNsenseInterfaceSensor,
     OPNsenseStaticKeySensor,
     OPNsenseTempSensor,
+    OPNsenseVnstatSensor,
     OPNsenseVPNSensor,
     async_setup_entry,
     normalize_filesystem_mountpoint,
     slugify_filesystem_mountpoint,
 )
+from homeassistant.components.sensor import SensorStateClass
 
 
 @pytest.mark.asyncio
@@ -1016,6 +1019,7 @@ def _setup_entry_with_all_syncs(state: dict, make_config_entry):
     base.update(
         {
             CONF_SYNC_TELEMETRY: True,
+            CONF_SYNC_VNSTAT: True,
             CONF_SYNC_CERTIFICATES: True,
             CONF_SYNC_VPN: True,
             CONF_SYNC_GATEWAYS: True,
@@ -1173,6 +1177,105 @@ async def test_async_setup_entry_creates_entities(make_config_entry):
     # Ensure setup produced at least one created entity
     assert created, "no entities created"
     assert any(isinstance(e, OPNsenseStaticKeySensor) for e in created)
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_creates_vnstat_sensors(make_config_entry):
+    """VnStat sensors should be created with expected state classes and values."""
+    state = {
+        "telemetry": {"filesystems": [], "temps": {}},
+        "interfaces": {
+            "wan": {
+                "name": "WAN",
+                "device": "igc0",
+                "interface": "wan",
+            }
+        },
+        "vnstat": {
+            "interfaces": {
+                "igc0": {
+                    "metrics": {
+                        "vnstat_today": {"total_bytes": 1000, "rx_bytes": 700, "tx_bytes": 300},
+                        "vnstat_this_month": {
+                            "total_bytes": 2000,
+                            "rx_bytes": 1200,
+                            "tx_bytes": 800,
+                        },
+                        "vnstat_yesterday_total": {
+                            "total_bytes": 900,
+                            "rx_bytes": 600,
+                            "tx_bytes": 300,
+                        },
+                        "vnstat_last_month_total": {
+                            "total_bytes": 1500,
+                            "rx_bytes": 800,
+                            "tx_bytes": 700,
+                        },
+                        "vnstat_last_hour_total": {
+                            "total_bytes": 50,
+                            "rx_bytes": 30,
+                            "tx_bytes": 20,
+                        },
+                    }
+                }
+            }
+        },
+    }
+    entry, _coord = _setup_entry_with_all_syncs(state, make_config_entry)
+
+    created: list = []
+
+    def add_entities(ents):
+        created.extend(ents)
+
+    await async_setup_entry(MagicMock(), entry, add_entities)
+    key_to_entity = {
+        e.entity_description.key: e for e in created if isinstance(e, OPNsenseVnstatSensor)
+    }
+
+    assert key_to_entity["vnstat.igc0.vnstat_today"].entity_description.state_class is (
+        SensorStateClass.TOTAL_INCREASING
+    )
+    assert key_to_entity["vnstat.igc0.vnstat_this_month"].entity_description.state_class is (
+        SensorStateClass.TOTAL_INCREASING
+    )
+    assert key_to_entity["vnstat.igc0.vnstat_yesterday_total"].entity_description.state_class is (
+        SensorStateClass.MEASUREMENT
+    )
+    assert key_to_entity["vnstat.igc0.vnstat_last_month_total"].entity_description.state_class is (
+        SensorStateClass.MEASUREMENT
+    )
+    assert key_to_entity["vnstat.igc0.vnstat_last_hour_total"].entity_description.state_class is (
+        SensorStateClass.MEASUREMENT
+    )
+    assert key_to_entity["vnstat.igc0.vnstat_today"].entity_description.name == "vnStat: WAN: Today"
+    assert (
+        key_to_entity["vnstat.igc0.vnstat_last_month_total"].entity_description.name
+        == "vnStat: WAN: Last Month Total"
+    )
+
+    for key in (
+        "vnstat.igc0.vnstat_today",
+        "vnstat.igc0.vnstat_this_month",
+        "vnstat.igc0.vnstat_yesterday_total",
+        "vnstat.igc0.vnstat_last_month_total",
+        "vnstat.igc0.vnstat_last_hour_total",
+    ):
+        entity = key_to_entity[key]
+        entity.hass = MagicMock()
+        entity.entity_id = f"sensor.{entity.entity_description.key.replace('.', '_')}"
+        entity.async_write_ha_state = lambda: None
+        entity._handle_coordinator_update()
+        assert entity.available is True
+
+    today_entity = key_to_entity["vnstat.igc0.vnstat_today"]
+    assert today_entity.native_value == 1000
+    assert today_entity.extra_state_attributes.get("rx_bytes") == 700
+    assert today_entity.extra_state_attributes.get("tx_bytes") == 300
+    assert key_to_entity["vnstat.igc0.vnstat_this_month"].native_value == 2000
+    assert key_to_entity["vnstat.igc0.vnstat_yesterday_total"].native_value == 900
+    assert key_to_entity["vnstat.igc0.vnstat_last_month_total"].native_value == 1500
+    assert key_to_entity["vnstat.igc0.vnstat_last_hour_total"].native_value == 50
 
 
 @pytest.mark.asyncio

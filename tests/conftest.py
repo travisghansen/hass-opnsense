@@ -587,6 +587,9 @@ def fake_client():
             async def get_interfaces(self):
                 return {"eth0": {"inbytes": 200, "outbytes": 100}}
 
+            async def get_vnstat(self):
+                return {"interface_count": 0, "interfaces": {}}
+
             async def get_openvpn(self):
                 return {"servers": {}}
 

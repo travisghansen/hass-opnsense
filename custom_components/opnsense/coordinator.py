@@ -25,6 +25,7 @@ from .const import (
     CONF_SYNC_SERVICES,
     CONF_SYNC_TELEMETRY,
     CONF_SYNC_UNBOUND,
+    CONF_SYNC_VNSTAT,
     CONF_SYNC_VPN,
     DEFAULT_SYNC_OPTION_VALUE,
     DOMAIN,
@@ -124,6 +125,8 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
 
         if config.get(CONF_SYNC_TELEMETRY, DEFAULT_SYNC_OPTION_VALUE):
             categories.append({"function": "get_telemetry", "state_key": "telemetry"})
+        if config.get(CONF_SYNC_VNSTAT, DEFAULT_SYNC_OPTION_VALUE):
+            categories.append({"function": "get_vnstat", "state_key": "vnstat"})
         if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):
             categories.extend(
                 [
