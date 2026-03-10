@@ -1,7 +1,7 @@
 """Firmware and plugin-related methods for OPNsenseClient."""
 
 from collections.abc import MutableMapping
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any
 
 import awesomeversion
@@ -168,9 +168,8 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
             try:
                 last_check_dt = parse(last_check_str, tzinfos=AMBIGUOUS_TZINFOS)
                 if last_check_dt.tzinfo is None:
-                    last_check_dt = last_check_dt.replace(
-                        tzinfo=timezone(datetime.now().astimezone().utcoffset() or timedelta())
-                    )
+                    opnsense_tz = await self._get_opnsense_timezone()
+                    last_check_dt = last_check_dt.replace(tzinfo=opnsense_tz)
                 last_check_expired = (datetime.now().astimezone() - last_check_dt) > timedelta(
                     days=1
                 )

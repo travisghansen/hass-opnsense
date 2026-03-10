@@ -1,6 +1,6 @@
 """Tests for `pyopnsense.firmware` behaviors."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
@@ -87,8 +87,10 @@ async def test_get_firmware_update_info_triggers_check_when_missing() -> None:
             "last_check": old_time,
         }
         client._safe_dict_get = AsyncMock(return_value=status)
+        client._get_opnsense_timezone = AsyncMock(return_value=UTC)
         client._post = AsyncMock(return_value={})
         await client.get_firmware_update_info()
+        client._get_opnsense_timezone.assert_awaited_once_with()
         client._post.assert_awaited_once_with("/api/core/firmware/check")
     finally:
         await client.async_close()

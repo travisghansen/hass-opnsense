@@ -3,14 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, MutableMapping, Sequence
-from datetime import date, datetime, timedelta, timezone, tzinfo
+from datetime import date, datetime, timedelta, tzinfo
 import re
 from typing import Any
 
-from dateutil.parser import ParserError, UnknownTimezoneWarning, parse
-
 from ._typing import PyOPNsenseClientProtocol
-from .const import AMBIGUOUS_TZINFOS
 from .helpers import _LOGGER, _log_errors, try_to_float
 
 _VSTAT_HEADER_RE = re.compile(
@@ -120,37 +117,6 @@ class VnstatMixin(PyOPNsenseClientProtocol):
             "interfaces": interface_data,
             "interface_count": len(interface_names),
         }
-
-    async def _get_opnsense_timezone(self) -> tzinfo:
-        """Resolve timezone information from OPNsense system time endpoint.
-
-        Returns
-        -------
-        tzinfo
-            Parsed timezone from OPNsense ``system_time`` output, or a local
-            timezone-offset fallback when parsing fails.
-
-        """
-        path = (
-            "/api/diagnostics/system/system_time"
-            if self._use_snake_case
-            else "/api/diagnostics/system/systemTime"
-        )
-        time_info = await self._safe_dict_post(path)
-        datetime_str = time_info.get("datetime")
-        if isinstance(datetime_str, str):
-            try:
-                parsed_time = parse(datetime_str, tzinfos=AMBIGUOUS_TZINFOS)
-                if parsed_time.tzinfo is not None:
-                    return parsed_time.tzinfo
-            except (ValueError, TypeError, ParserError, UnknownTimezoneWarning) as err:
-                _LOGGER.debug(
-                    "Failed to parse OPNsense timezone from datetime '%s': %s: %s",
-                    datetime_str,
-                    type(err).__name__,
-                    err,
-                )
-        return timezone(datetime.now().astimezone().utcoffset() or timedelta())
 
     def _parse_vnstat_payload(
         self, payload: MutableMapping[str, Any], expected_period: str

@@ -1,6 +1,7 @@
 """Tests for `pyopnsense.telemetry`."""
 
 from collections.abc import MutableMapping
+from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
@@ -33,11 +34,13 @@ async def test_telemetry_system_parsing_and_filesystems() -> None:
             return {}
 
         client._safe_dict_post = AsyncMock(side_effect=fake_safe_post)
+        client._get_opnsense_timezone = AsyncMock(return_value=UTC)
 
         sys = await client._get_telemetry_system()
         assert isinstance(sys, MutableMapping)
         # At least one of the expected fields is normalized/present
         assert any(k in sys for k in ("uptime", "boottime", "loadavg"))
+        client._get_opnsense_timezone.assert_awaited_once_with("not-a-date")
 
         files = await client._get_telemetry_filesystems()
         assert files is None or isinstance(files, list)

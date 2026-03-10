@@ -1,7 +1,7 @@
 """Telemetry and interface statistics methods for OPNsenseClient."""
 
 from collections.abc import MutableMapping
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 import re
 from typing import Any
 
@@ -218,13 +218,12 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
             time_info = await self._safe_dict_post("/api/diagnostics/system/systemTime")
         # _LOGGER.debug("[get_telemetry_system] time_info: %s", time_info)
         system: dict[str, Any] = {}
+        opnsense_tz = await self._get_opnsense_timezone(time_info.get("datetime"))
 
         try:
             systemtime: datetime = parse(time_info["datetime"], tzinfos=AMBIGUOUS_TZINFOS)
             if systemtime.tzinfo is None:
-                systemtime = systemtime.replace(
-                    tzinfo=timezone(datetime.now().astimezone().utcoffset() or timedelta())
-                )
+                systemtime = systemtime.replace(tzinfo=opnsense_tz)
         except (KeyError, ValueError, TypeError, ParserError, UnknownTimezoneWarning) as e:
             _LOGGER.warning(
                 "Failed to parse opnsense system time (aka. datetime), using HA system time instead: %s. %s: %s",
@@ -250,9 +249,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
             try:
                 boottime = parse(time_info["boottime"], tzinfos=AMBIGUOUS_TZINFOS)
                 if boottime and boottime.tzinfo is None:
-                    boottime = boottime.replace(
-                        tzinfo=timezone(datetime.now().astimezone().utcoffset() or timedelta())
-                    )
+                    boottime = boottime.replace(tzinfo=opnsense_tz)
             except (ValueError, TypeError, ParserError, UnknownTimezoneWarning) as e:
                 _LOGGER.info(
                     "Failed to parse opnsense boottime: %s. %s: %s",
