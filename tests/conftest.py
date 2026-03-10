@@ -10,6 +10,7 @@ from collections.abc import MutableMapping
 import contextlib
 import inspect
 import logging
+from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
@@ -381,11 +382,18 @@ def _neutralize_pyopnsense_background_tasks(monkeypatch, request):
     # import-path based monkeypatching for resilience in different test envs.
     # Do not neutralize when running tests that exercise pyopnsense internals
     # directly (they need the real implementations). Skip patching for those
-    # test modules (e.g., tests/test_pyopnsense.py).
+    # test modules (legacy tests/test_pyopnsense.py and split tests/pyopnsense/*).
     try:
         test_path = getattr(request, "fspath", None)
-        if test_path and "test_pyopnsense.py" in str(test_path):
-            return
+        if test_path:
+            normalized_path = Path(str(test_path).replace("\\", "/"))
+            path_parts = tuple(part.lower() for part in normalized_path.parts)
+            has_pyopnsense_test_segments = any(
+                path_parts[index : index + 2] == ("tests", "pyopnsense")
+                for index in range(len(path_parts) - 1)
+            )
+            if normalized_path.name == "test_pyopnsense.py" or has_pyopnsense_test_segments:
+                return
     except (AttributeError, TypeError):
         # If we cannot determine the requesting test, continue with patching.
         pass
