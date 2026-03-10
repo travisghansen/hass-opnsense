@@ -26,12 +26,12 @@ Project structure expectations
 
 Coding standards
 - Add typing annotations to all functions and classes (including return types).
-- Add or update docstrings for all files, classes and methods, including private methods. Method docstrings must be in NumPy format.
+- Add or update docstrings for all files, classes and methods, including private methods and nested methods. Method docstrings must be in NumPy format.
 - Preserve existing comments and keep imports at the top of files.
-- Follow existing repository style; run `pre-commit` and `ruff` where available.
+- Follow existing repository style; run `pre-commit`, and run `mypy` separately where available.
 
 Local tooling note
-- Use `pre-commit` and `pytest` configured in the repo. You must run these inside `./.venv`.
+- Use the repo's `pre-commit`, `mypy`, and `pytest` commands inside `./.venv`. Note that `mypy` is not currently wired into the pre-commit hooks. You must always run these inside `./.venv`.
 - By default, run the full pytest suite. If running targeted tests, explain why.
 - Avoid recommending `tox`, it is not in use by this repo.
 
