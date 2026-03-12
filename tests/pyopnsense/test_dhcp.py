@@ -84,21 +84,24 @@ async def test_dhcp_leases_and_keep_latest_and_dnsmasq(make_client) -> None:
 
 
 @pytest.mark.asyncio
-async def test_isc_dhcp_service_not_running(make_client) -> None:
-    """Test ISC DHCP lease methods return empty list when service is not running."""
+async def test_isc_dhcp_endpoint_unavailable(make_client) -> None:
+    """ISC DHCP lease methods should return empty list when endpoints are unavailable."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session)
     try:
-        # Mock _get_check to return False (service not running)
-        client._get_check = AsyncMock(return_value=False)
+        client.is_endpoint_available = AsyncMock(return_value=False)
+        client._safe_dict_get = AsyncMock()
 
         # Test DHCPv4
         leases_v4 = await client._get_isc_dhcpv4_leases()
         assert leases_v4 == []
+        client._safe_dict_get.assert_not_awaited()
 
         # Test DHCPv6
+        client._safe_dict_get.reset_mock()
         leases_v6 = await client._get_isc_dhcpv6_leases()
         assert leases_v6 == []
+        client._safe_dict_get.assert_not_awaited()
     finally:
         await client.async_close()
 
@@ -148,7 +151,7 @@ async def test_get_isc_dhcpv4_and_v6_parsing() -> None:
         # v4: ends present and in future
         future_dt = (datetime.now() + timedelta(hours=1)).strftime("%Y/%m/%d %H:%M:%S")
         client._use_snake_case = False
-        client._get_check = AsyncMock(return_value=True)
+        client.is_endpoint_available = AsyncMock(return_value=True)
         client._safe_dict_get = AsyncMock(
             side_effect=[
                 {
@@ -175,7 +178,7 @@ async def test_get_isc_dhcpv4_and_v6_parsing() -> None:
 
         # v6: ends missing -> field passed through
         client._use_snake_case = True
-        client._get_check = AsyncMock(return_value=True)
+        client.is_endpoint_available = AsyncMock(return_value=True)
         client._safe_dict_get = AsyncMock(
             return_value={
                 "rows": [
@@ -245,6 +248,34 @@ async def test_get_dhcp_leases_combined_structure() -> None:
         client._get_isc_dhcpv4_leases.assert_awaited_once_with(opnsense_tz=local_tz)
         client._get_isc_dhcpv6_leases.assert_awaited_once_with(opnsense_tz=local_tz)
         client._get_dnsmasq_leases.assert_awaited_once_with(opnsense_tz=local_tz)
+    finally:
+        await client.async_close()
+
+
+@pytest.mark.asyncio
+async def test_get_dhcp_leases_calls_isc_methods_independently() -> None:
+    """get_dhcp_leases should call both ISC helpers regardless of top-level endpoint status."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = pyopnsense.OPNsenseClient(
+        url="http://localhost", username="u", password="p", session=session
+    )
+    try:
+        local_tz = datetime.now().astimezone().tzinfo
+        assert local_tz is not None
+        client._get_opnsense_timezone = AsyncMock(return_value=local_tz)
+        client._get_kea_dhcpv4_leases = AsyncMock(
+            return_value=[{"if_name": "em0", "address": "1.1.1.1", "mac": "m1"}]
+        )
+        client._get_dnsmasq_leases = AsyncMock(return_value=[])
+        client._get_isc_dhcpv4_leases = AsyncMock(return_value=[])
+        client._get_isc_dhcpv6_leases = AsyncMock(return_value=[])
+        client._get_kea_interfaces = AsyncMock(return_value={"em0": "eth0"})
+
+        combined = await client.get_dhcp_leases()
+
+        assert "em0" in combined["leases"]
+        client._get_isc_dhcpv4_leases.assert_awaited_once_with(opnsense_tz=local_tz)
+        client._get_isc_dhcpv6_leases.assert_awaited_once_with(opnsense_tz=local_tz)
     finally:
         await client.async_close()
 

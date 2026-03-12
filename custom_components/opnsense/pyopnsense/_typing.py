@@ -2,7 +2,7 @@
 
 from abc import abstractmethod
 from collections.abc import MutableMapping
-from datetime import tzinfo
+from datetime import datetime, tzinfo
 from typing import Any, Protocol
 
 
@@ -10,9 +10,16 @@ class PyOPNsenseClientProtocol(Protocol):
     """Structural typing contract used by split pyopnsense mixins."""
 
     _use_snake_case: bool
-    _plugin_installed: bool | None
     _plugin_deprecated: bool | None
     _firmware_version: str | None
+    _installed_plugins: set[str] | None
+    _installed_plugins_updated_at: datetime | None
+    _plugin_cache_ttl_seconds: int
+    _endpoint_availability: dict[str, bool]
+    _endpoint_checked_at: dict[str, datetime]
+    _endpoint_retry_after: dict[str, datetime]
+    _endpoint_failure_count: dict[str, int]
+    _endpoint_cache_ttl_seconds: int
 
     @abstractmethod
     async def _get(self, path: str) -> MutableMapping[str, Any] | list | None:
@@ -65,23 +72,6 @@ class PyOPNsenseClientProtocol(Protocol):
         -------
         dict[str, Any]
             Parsed stream payload.
-
-        """
-        ...
-
-    @abstractmethod
-    async def _get_check(self, path: str) -> bool:
-        """Check if an API endpoint is accessible.
-
-        Parameters
-        ----------
-        path : str
-            Relative API path.
-
-        Returns
-        -------
-        bool
-            ``True`` when the endpoint responds successfully.
 
         """
         ...
@@ -259,6 +249,42 @@ class PyOPNsenseClientProtocol(Protocol):
         -------
         bool
             ``True`` when the plugin is installed.
+
+        """
+        ...
+
+    @abstractmethod
+    async def is_named_plugin_installed(self, plugin_name: str) -> bool:
+        """Return whether a specific plugin package is installed.
+
+        Parameters
+        ----------
+        plugin_name : str
+            OPNsense package name (for example ``os-vnstat``).
+
+        Returns
+        -------
+        bool
+            ``True`` when the package is installed.
+
+        """
+        ...
+
+    @abstractmethod
+    async def is_endpoint_available(self, path: str, force_refresh: bool = False) -> bool:
+        """Return whether a specific API endpoint appears available.
+
+        Parameters
+        ----------
+        path : str
+            API path to probe.
+        force_refresh : bool
+            Whether to bypass cached probe results.
+
+        Returns
+        -------
+        bool
+            ``True`` when endpoint probe succeeds.
 
         """
         ...

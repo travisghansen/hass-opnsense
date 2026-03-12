@@ -3,6 +3,7 @@
 import asyncio
 from collections.abc import MutableMapping
 import contextlib
+from datetime import datetime, timedelta
 import socket
 from ssl import SSLError
 from typing import Any
@@ -68,20 +69,17 @@ async def test_safe_dict_post_and_list_post(monkeypatch, make_client) -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_check(make_client) -> None:
-    """Test _get_check method returns True for ok responses, False otherwise."""
+async def test_is_endpoint_available_caches_success(make_client) -> None:
+    """Endpoint probe should cache positive results and avoid repeated calls."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session)
+    calls = 0
 
-    # Fake response class for testing
     class FakeResp:
-        def __init__(self, status=500, ok=False):
+        def __init__(self, status: int, ok: bool) -> None:
             self.status = status
-            self.reason = "Test"
+            self.reason = "OK"
             self.ok = ok
-            self.request_info = MagicMock()
-            self.history = []
-            self.headers = {}
 
         async def __aenter__(self):
             return self
@@ -89,51 +87,80 @@ async def test_get_check(make_client) -> None:
         async def __aexit__(self, exc_type, exc, tb):
             return False
 
+    def _get(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return FakeResp(status=200, ok=True)
+
+    session.get = _get
     try:
-        # Test successful response (ok=True)
-        session.get = lambda *a, **k: FakeResp(status=200, ok=True)
-        result = await client._get_check("/api/test")
-        assert result is True
-
-        # Test failed response (ok=False)
-        session.get = lambda *a, **k: FakeResp(status=404, ok=False)
-        result = await client._get_check("/api/test")
-        assert result is False
-
-        # Test 403 response specifically
-        session.get = lambda *a, **k: FakeResp(status=403, ok=False)
-        result = await client._get_check("/api/test")
-        assert result is False
+        assert await client.is_endpoint_available("/api/test/endpoint") is True
+        assert await client.is_endpoint_available("/api/test/endpoint") is True
+        assert calls == 1
     finally:
         await client.async_close()
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("initial,should_raise", [(False, False), (True, True)])
-async def test_get_check_handles_client_error(make_client, initial, should_raise) -> None:
-    """Ensure _get_check handles aiohttp.ClientError correctly.
-
-    When client is not in initialization mode, the method should swallow the
-    ClientError and return False. When the client is in initialization mode
-    (used during setup), it should re-raise the exception.
-    """
+async def test_is_endpoint_available_negative_cache_and_force_refresh(make_client) -> None:
+    """Endpoint probe should negative-cache failures unless force refreshed."""
     session = MagicMock(spec=aiohttp.ClientSession)
-
-    def _raise(*a, **k):
-        raise aiohttp.ClientError("boom")
-
-    session.get = _raise
     client = make_client(session=session)
-    try:
-        # simulate the initialization flag behavior
-        client._initial = initial
+    calls = 0
 
-        if should_raise:
-            with pytest.raises(aiohttp.ClientError):
-                await client._get_check("/api/test")
-        else:
-            result = await client._get_check("/api/test")
-            assert result is False
+    class FakeResp:
+        def __init__(self, status: int, ok: bool) -> None:
+            self.status = status
+            self.reason = "ERR"
+            self.ok = ok
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    def _get(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return FakeResp(status=404, ok=False)
+        return FakeResp(status=200, ok=True)
+
+    session.get = _get
+    try:
+        path = "/api/test/endpoint"
+        assert await client.is_endpoint_available(path) is False
+        # Keep _endpoint_checked_at recent but expire _endpoint_retry_after to force a re-probe.
+        assert path in client._endpoint_checked_at
+        client._endpoint_retry_after[path] = datetime.now().astimezone() - timedelta(seconds=1)
+        assert await client.is_endpoint_available(path) is True
+        assert calls == 2
+        assert await client.is_endpoint_available(path) is True
+        assert calls == 2
+        assert await client.is_endpoint_available(path, force_refresh=True) is True
+        assert calls == 3
+    finally:
+        await client.async_close()
+
+
+@pytest.mark.asyncio
+async def test_is_endpoint_available_handles_timeout(make_client) -> None:
+    """Endpoint probe should return False and cache timeout failures."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+    calls = 0
+
+    def _get(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        raise TimeoutError("timeout")
+
+    session.get = _get
+    try:
+        assert await client.is_endpoint_available("/api/test/endpoint") is False
+        assert await client.is_endpoint_available("/api/test/endpoint") is False
+        assert calls == 1
     finally:
         await client.async_close()
 

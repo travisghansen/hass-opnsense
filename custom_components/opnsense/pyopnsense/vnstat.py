@@ -61,6 +61,10 @@ class VnstatMixin(PyOPNsenseClientProtocol):
             summary metrics for Home Assistant sensors.
 
         """
+        if not await self.is_endpoint_available("/api/vnstat/service/hourly"):
+            _LOGGER.debug("vnStat endpoint unavailable, skipping data retrieval")
+            return {"interfaces": {}, "interface_count": 0}
+
         opnsense_tz = await self._get_opnsense_timezone()
         hourly = self._parse_vnstat_payload(
             await self._safe_dict_get("/api/vnstat/service/hourly"),
