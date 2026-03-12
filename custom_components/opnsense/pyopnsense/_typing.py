@@ -2,6 +2,7 @@
 
 from abc import abstractmethod
 from collections.abc import MutableMapping
+from datetime import tzinfo
 from typing import Any, Protocol
 
 
@@ -157,6 +158,23 @@ class PyOPNsenseClientProtocol(Protocol):
         -------
         list
             List payload.
+
+        """
+        ...
+
+    @abstractmethod
+    async def _get_opnsense_timezone(self, datetime_str: str | None = None) -> tzinfo:
+        """Resolve timezone information from OPNsense system time data.
+
+        Parameters
+        ----------
+        datetime_str : str | None
+            Optional datetime string from OPNsense ``system_time`` output.
+
+        Returns
+        -------
+        tzinfo
+            Parsed timezone when available, otherwise a local fixed-offset fallback.
 
         """
         ...

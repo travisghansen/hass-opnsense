@@ -1,7 +1,7 @@
 """DHCP and ARP methods for OPNsenseClient."""
 
 from collections.abc import MutableMapping
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, tzinfo
 from typing import Any
 
 import awesomeversion
@@ -40,8 +40,13 @@ class DHCPMixin(PyOPNsenseClientProtocol):
         return arp_table
 
     @_log_errors
-    async def get_dhcp_leases(self) -> dict[str, Any]:
+    async def get_dhcp_leases(self, opnsense_tz: tzinfo | None = None) -> dict[str, Any]:
         """Return list of DHCP leases.
+
+        Parameters
+        ----------
+        opnsense_tz : tzinfo | None
+            Optional pre-fetched timezone for this refresh cycle.
 
         Returns
         -------
@@ -50,11 +55,13 @@ class DHCPMixin(PyOPNsenseClientProtocol):
 
 
         """
+        if opnsense_tz is None:
+            opnsense_tz = await self._get_opnsense_timezone()
         leases_raw: list = (
-            await self._get_kea_dhcpv4_leases()
-            + await self._get_isc_dhcpv4_leases()
-            + await self._get_isc_dhcpv6_leases()
-            + await self._get_dnsmasq_leases()
+            await self._get_kea_dhcpv4_leases(opnsense_tz=opnsense_tz)
+            + await self._get_isc_dhcpv4_leases(opnsense_tz=opnsense_tz)
+            + await self._get_isc_dhcpv6_leases(opnsense_tz=opnsense_tz)
+            + await self._get_dnsmasq_leases(opnsense_tz=opnsense_tz)
         )
         # TODO: Add Kea dhcpv6 leases if API ever gets added
 
@@ -114,8 +121,14 @@ class DHCPMixin(PyOPNsenseClientProtocol):
         # _LOGGER.debug(f"[get_kea_interfaces] lease_interfaces: {lease_interfaces}")
         return lease_interfaces
 
-    async def _get_kea_dhcpv4_leases(self) -> list:
+    async def _get_kea_dhcpv4_leases(self, opnsense_tz: tzinfo | None = None) -> list:
         """Return IPv4 DHCP Leases by Kea.
+
+        Parameters
+        ----------
+        opnsense_tz : tzinfo | None
+            Optional pre-fetched timezone for this refresh cycle. Kea lease timestamps
+            are parsed from epoch values and do not currently use this value.
 
         Returns
         -------
@@ -219,8 +232,14 @@ class DHCPMixin(PyOPNsenseClientProtocol):
 
         return list(seen.values())
 
-    async def _get_dnsmasq_leases(self) -> list:
+    async def _get_dnsmasq_leases(self, opnsense_tz: tzinfo | None = None) -> list:
         """Return Dnsmasq IPv4 and IPv6 DHCP Leases.
+
+        Parameters
+        ----------
+        opnsense_tz : tzinfo | None
+            Optional pre-fetched timezone for this refresh cycle. Dnsmasq lease timestamps
+            are parsed from epoch values and do not currently use this value.
 
         Returns
         -------
@@ -288,8 +307,13 @@ class DHCPMixin(PyOPNsenseClientProtocol):
         # _LOGGER.debug("[get_dnsmasq_leases] leases: %s", leases)
         return leases
 
-    async def _get_isc_dhcpv4_leases(self) -> list:
+    async def _get_isc_dhcpv4_leases(self, opnsense_tz: tzinfo | None = None) -> list:
         """Return IPv4 DHCP Leases by ISC.
+
+        Parameters
+        ----------
+        opnsense_tz : tzinfo | None
+            Optional pre-fetched timezone for this refresh cycle.
 
         Returns
         -------
@@ -308,6 +332,8 @@ class DHCPMixin(PyOPNsenseClientProtocol):
         leases_info: list = response.get("rows", [])
         if not isinstance(leases_info, list):
             return []
+        if opnsense_tz is None:
+            opnsense_tz = await self._get_opnsense_timezone()
         # _LOGGER.debug(f"[get_isc_dhcpv4_leases] leases_info: {leases_info}")
         leases: list = []
         for lease_info in leases_info:
@@ -337,9 +363,7 @@ class DHCPMixin(PyOPNsenseClientProtocol):
                     )
                 except (TypeError, ValueError):
                     continue
-                lease["expires"] = dt.replace(
-                    tzinfo=timezone(datetime.now().astimezone().utcoffset() or timedelta())
-                )
+                lease["expires"] = dt.replace(tzinfo=opnsense_tz)
                 if lease["expires"] < datetime.now().astimezone():
                     continue
             else:
@@ -348,8 +372,13 @@ class DHCPMixin(PyOPNsenseClientProtocol):
         # _LOGGER.debug(f"[get_isc_dhcpv4_leases] leases: {leases}")
         return leases
 
-    async def _get_isc_dhcpv6_leases(self) -> list:
+    async def _get_isc_dhcpv6_leases(self, opnsense_tz: tzinfo | None = None) -> list:
         """Return IPv6 DHCP Leases by ISC.
+
+        Parameters
+        ----------
+        opnsense_tz : tzinfo | None
+            Optional pre-fetched timezone for this refresh cycle.
 
         Returns
         -------
@@ -368,6 +397,8 @@ class DHCPMixin(PyOPNsenseClientProtocol):
         leases_info: list = response.get("rows", [])
         if not isinstance(leases_info, list):
             return []
+        if opnsense_tz is None:
+            opnsense_tz = await self._get_opnsense_timezone()
         # _LOGGER.debug(f"[get_isc_dhcpv6_leases] leases_info: {leases_info}")
         leases: list = []
         for lease_info in leases_info:
@@ -397,9 +428,7 @@ class DHCPMixin(PyOPNsenseClientProtocol):
                     )
                 except (TypeError, ValueError):
                     continue
-                lease["expires"] = dt.replace(
-                    tzinfo=timezone(datetime.now().astimezone().utcoffset() or timedelta())
-                )
+                lease["expires"] = dt.replace(tzinfo=opnsense_tz)
                 if lease["expires"] < datetime.now().astimezone():
                     continue
             else:

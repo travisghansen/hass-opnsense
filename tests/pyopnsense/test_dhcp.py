@@ -141,6 +141,10 @@ async def test_get_isc_dhcpv4_and_v6_parsing() -> None:
         url="http://localhost", username="u", password="p", session=session
     )
     try:
+        local_tz = datetime.now().astimezone().tzinfo
+        assert local_tz is not None
+        client._get_opnsense_timezone = AsyncMock(return_value=local_tz)
+
         # v4: ends present and in future
         future_dt = (datetime.now() + timedelta(hours=1)).strftime("%Y/%m/%d %H:%M:%S")
         client._use_snake_case = False
@@ -164,6 +168,9 @@ async def test_get_isc_dhcpv4_and_v6_parsing() -> None:
         )
         v4 = await client._get_isc_dhcpv4_leases()
         assert isinstance(v4, list) and len(v4) == 1
+        assert v4[0]["address"] == "10.0.0.1"
+        assert v4[0]["mac"] == "m1"
+        assert v4[0]["hostname"] == "h1"
         assert isinstance(v4[0].get("expires"), datetime)
 
         # v6: ends missing -> field passed through
@@ -203,6 +210,10 @@ async def test_get_dhcp_leases_combined_structure() -> None:
         url="http://localhost", username="u", password="p", session=session
     )
     try:
+        local_tz = datetime.now().astimezone().tzinfo
+        assert local_tz is not None
+        client._get_opnsense_timezone = AsyncMock(return_value=local_tz)
+
         # return one lease from each source and one interface mapping
         client._get_kea_dhcpv4_leases = AsyncMock(
             return_value=[{"if_name": "em0", "address": "1.1.1.1", "mac": "m1"}]
@@ -229,6 +240,11 @@ async def test_get_dhcp_leases_combined_structure() -> None:
             lease.get("address") == "1.1.1.2" and lease.get("mac") == "m2"
             for lease in combined["leases"]["em0"]
         )
+        client._get_opnsense_timezone.assert_awaited_once_with()
+        client._get_kea_dhcpv4_leases.assert_awaited_once_with(opnsense_tz=local_tz)
+        client._get_isc_dhcpv4_leases.assert_awaited_once_with(opnsense_tz=local_tz)
+        client._get_isc_dhcpv6_leases.assert_awaited_once_with(opnsense_tz=local_tz)
+        client._get_dnsmasq_leases.assert_awaited_once_with(opnsense_tz=local_tz)
     finally:
         await client.async_close()
 

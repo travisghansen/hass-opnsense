@@ -1,6 +1,6 @@
 """Tests for `pyopnsense.system`."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
@@ -30,6 +30,39 @@ async def test_get_device_unique_id_and_system_info(make_client) -> None:
         client._safe_dict_get = AsyncMock(return_value={"name": "foo"})
         info = await client.get_system_info()
         assert info["name"] == "foo"
+    finally:
+        await client.async_close()
+
+
+@pytest.mark.asyncio
+async def test_get_opnsense_timezone_parse_and_fallback(make_client) -> None:
+    """_get_opnsense_timezone should parse valid timezone strings and fallback on errors."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+    try:
+        client._use_snake_case = True
+        client._safe_dict_post = AsyncMock(return_value={"datetime": "2026-03-07 12:00:00 EST"})
+        parsed_tz = await client._get_opnsense_timezone()
+        assert parsed_tz is not None
+        parsed_dt = datetime(2026, 3, 7, 12, 0, 0, tzinfo=parsed_tz)
+        assert parsed_tz.utcoffset(parsed_dt) == timedelta(hours=-5)
+
+        client._safe_dict_post = AsyncMock(return_value={"datetime": "not-a-datetime"})
+        fallback_tz = await client._get_opnsense_timezone()
+        assert fallback_tz is not None
+        local_tz = datetime.now().astimezone().tzinfo
+        assert local_tz is not None
+        now_local = datetime.now().astimezone()
+        assert fallback_tz == local_tz or fallback_tz.utcoffset(now_local) == local_tz.utcoffset(
+            now_local
+        )
+
+        client._safe_dict_post = AsyncMock(side_effect=aiohttp.ClientError("transient fetch error"))
+        fetch_fallback_tz = await client._get_opnsense_timezone()
+        assert fetch_fallback_tz is not None
+        assert fetch_fallback_tz == local_tz or fetch_fallback_tz.utcoffset(
+            now_local
+        ) == local_tz.utcoffset(now_local)
     finally:
         await client.async_close()
 
