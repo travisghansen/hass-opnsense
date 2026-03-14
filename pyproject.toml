@@ -1,5 +1,6 @@
 [dependency-groups]
 lint = [
+    "aiohttp",
     "homeassistant-stubs",
     "mypy",
     "pre-commit",
@@ -13,6 +14,7 @@ lint = [
     "types-setuptools",
 ]
 pytest = [
+    "aiohttp",
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
@@ -22,8 +24,6 @@ pytest = [
 dev = [
     { include-group = "lint" },
     { include-group = "pytest" },
-    "pre-commit",
-    "ruff",
 ]
 
 [tool.codespell]

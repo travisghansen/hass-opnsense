@@ -1279,6 +1279,25 @@ async def test_async_setup_entry_creates_vnstat_sensors(make_config_entry):
 
 
 @pytest.mark.asyncio
+async def test_async_setup_entry_skips_vnstat_sensors_when_no_interfaces(make_config_entry):
+    """No vnStat entities should be created when vnStat interface payload is empty."""
+    state = {
+        "telemetry": {"filesystems": [], "temps": {}},
+        "interfaces": {"wan": {"name": "WAN", "device": "igc0", "interface": "wan"}},
+        "vnstat": {"interfaces": {}},
+    }
+    entry, _coord = _setup_entry_with_all_syncs(state, make_config_entry)
+
+    created: list = []
+
+    def add_entities(ents):
+        created.extend(ents)
+
+    await async_setup_entry(MagicMock(), entry, add_entities)
+    assert not any(isinstance(e, OPNsenseVnstatSensor) for e in created)
+
+
+@pytest.mark.asyncio
 async def test_compile_interface_sensors_values_end(make_config_entry):
     """Extra test to ensure interface sensors report expected numeric values."""
     state = {

@@ -53,6 +53,92 @@ async def test_is_plugin_installed_various(make_client, package_list, expected) 
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "plugin_name,expected",
+    [
+        ("os-homeassistant-maxit", True),
+        ("os-vnstat", True),
+        ("os-isc-dhcp", False),
+    ],
+)
+async def test_is_named_plugin_installed(make_client, plugin_name, expected) -> None:
+    """Detect named plugin installation from firmware package payload."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+    try:
+        client._safe_dict_get = AsyncMock(
+            return_value={
+                "package": [
+                    {"name": "os-homeassistant-maxit", "installed": "1"},
+                    {"name": "os-vnstat", "installed": "1"},
+                    {"name": "os-isc-dhcp", "installed": "0"},
+                ]
+            }
+        )
+        assert await client.is_named_plugin_installed(plugin_name) is expected
+    finally:
+        await client.async_close()
+
+
+@pytest.mark.asyncio
+async def test_plugin_cache_ttl_avoids_repeated_refresh(make_client) -> None:
+    """Plugin checks within TTL should refresh firmware info only once."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+    try:
+        client._safe_dict_get = AsyncMock(
+            return_value={"package": [{"name": "os-vnstat", "installed": "1"}]}
+        )
+        assert await client.is_named_plugin_installed("os-vnstat") is True
+        assert await client.is_named_plugin_installed("os-vnstat2") is False
+        client._safe_dict_get.assert_awaited_once_with("/api/core/firmware/info")
+    finally:
+        await client.async_close()
+
+
+@pytest.mark.asyncio
+async def test_plugin_cache_ttl_refreshes_when_expired(make_client) -> None:
+    """Plugin checks should refresh when cached plugin list is expired."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+    try:
+        client._safe_dict_get = AsyncMock(
+            side_effect=[
+                {"package": [{"name": "os-vnstat", "installed": "1"}]},
+                {"package": [{"name": "os-vnstat", "installed": "0"}]},
+            ]
+        )
+        assert await client.is_named_plugin_installed("os-vnstat") is True
+        client._plugin_cache_ttl_seconds = 1
+        client._installed_plugins_updated_at = datetime.now(UTC) - timedelta(seconds=2)
+        assert await client.is_named_plugin_installed("os-vnstat") is False
+        assert client._safe_dict_get.await_count == 2
+    finally:
+        await client.async_close()
+
+
+@pytest.mark.asyncio
+async def test_plugin_cache_not_poisoned_by_empty_firmware_info(make_client) -> None:
+    """Keep existing plugin cache when firmware info refresh returns an empty payload."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+    try:
+        client._safe_dict_get = AsyncMock(
+            side_effect=[
+                {"package": [{"name": "os-vnstat", "installed": "1"}]},
+                {},
+            ]
+        )
+        assert await client.is_named_plugin_installed("os-vnstat") is True
+        client._plugin_cache_ttl_seconds = 1
+        client._installed_plugins_updated_at = datetime.now(UTC) - timedelta(seconds=2)
+        assert await client.is_named_plugin_installed("os-vnstat") is True
+        assert client._safe_dict_get.await_count == 2
+    finally:
+        await client.async_close()
+
+
+@pytest.mark.asyncio
 async def test_get_firmware_update_info_triggers_check_on_conditions(make_client) -> None:
     """Trigger firmware update check when status is missing data or outdated."""
     session = MagicMock(spec=aiohttp.ClientSession)

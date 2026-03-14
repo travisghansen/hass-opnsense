@@ -16,8 +16,10 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
     """Firmware methods for OPNsenseClient."""
 
     _firmware_version: str | None
-    _plugin_installed: bool | None
     _plugin_deprecated: bool | None
+    _installed_plugins: set[str] | None
+    _installed_plugins_updated_at: datetime | None
+    _plugin_cache_ttl_seconds: int
 
     async def _store_host_firmware_version(self) -> None:
         firmware_info = await self._safe_dict_get("/api/core/firmware/status")
@@ -50,22 +52,46 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
             await self._store_host_firmware_version()
         return self._firmware_version
 
-    async def _check_if_plugin_installed(self) -> bool:
-        """Check using OPNsense API if plugin is installed or not.
+    async def _refresh_installed_plugins(self, force: bool = False) -> None:
+        """Refresh the cached set of installed plugin package names.
 
-        Returns
-        -------
-        bool
-        ``True`` when the Home Assistant plugin package is installed.
+        Parameters
+        ----------
+        force : bool
+            Whether to bypass TTL freshness checks and always refresh.
 
         """
+        if (
+            not force
+            and self._installed_plugins is not None
+            and self._installed_plugins_updated_at is not None
+            and (datetime.now().astimezone() - self._installed_plugins_updated_at).total_seconds()
+            < self._plugin_cache_ttl_seconds
+        ):
+            return
+
         firmware_info = await self._safe_dict_get("/api/core/firmware/info")
-        if not isinstance(firmware_info.get("package"), list):
-            return False
-        for pkg in firmware_info.get("package", []):
-            if pkg.get("name") == "os-homeassistant-maxit" and pkg.get("installed") == "1":
-                return True
-        return False
+        if not firmware_info:
+            return
+
+        package_list = (
+            firmware_info.get("package") if isinstance(firmware_info, MutableMapping) else None
+        )
+        if not isinstance(package_list, list):
+            return
+
+        now = datetime.now().astimezone()
+        installed_plugins: set[str] = set()
+        for pkg in package_list:
+            name = pkg.get("name") if isinstance(pkg, MutableMapping) else None
+            if (
+                isinstance(pkg, MutableMapping)
+                and isinstance(name, str)
+                and pkg.get("installed") == "1"
+            ):
+                installed_plugins.add(name)
+        self._installed_plugins = installed_plugins
+        self._installed_plugins_updated_at = now
 
     async def is_plugin_installed(self) -> bool:
         """Return whether the Home Assistant OPNsense plugin is installed.
@@ -76,9 +102,26 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
             ``True`` when plugin installation is detected, otherwise ``False``.
 
         """
-        if self._plugin_installed is None:
-            self._plugin_installed = await self._check_if_plugin_installed()
-        return self._plugin_installed
+        return await self.is_named_plugin_installed("os-homeassistant-maxit")
+
+    async def is_named_plugin_installed(self, plugin_name: str) -> bool:
+        """Return whether a named plugin package is installed.
+
+        Parameters
+        ----------
+        plugin_name : str
+            OPNsense package name (for example ``os-vnstat``).
+
+        Returns
+        -------
+        bool
+            ``True`` when the package is installed.
+
+        """
+        if not plugin_name:
+            return False
+        await self._refresh_installed_plugins()
+        return plugin_name in (self._installed_plugins or set())
 
     async def _check_if_plugin_deprecated(self) -> bool:
         try:
@@ -184,7 +227,8 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
 
         if error_status or last_check_expired or missing_data or update_needs_info:
             _LOGGER.info("Triggering firmware check")
-            self._plugin_installed = None
+            self._installed_plugins = None
+            self._installed_plugins_updated_at = None
             self._plugin_deprecated = None
             self._firmware_version = None
             await self._post("/api/core/firmware/check")
@@ -210,7 +254,8 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
         # update = minor updates of the same opnsense version
         # upgrade = major updates to a new opnsense version
         if type in ("update", "upgrade"):
-            self._plugin_installed = None
+            self._installed_plugins = None
+            self._installed_plugins_updated_at = None
             self._plugin_deprecated = None
             self._firmware_version = None
             return await self._safe_dict_post(f"/api/core/firmware/{type}")

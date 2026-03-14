@@ -52,6 +52,7 @@ async def test_get_vnstat_summary_from_hourly_daily_monthly(make_client) -> None
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session)
     try:
+        client.is_endpoint_available = AsyncMock(return_value=True)
         # Keep payload dates aligned with mocked OPNsense system time to avoid
         # day-boundary/timezone flakiness in CI.
         now = datetime(2000, 1, 15, 12, 0, 0)
@@ -142,6 +143,7 @@ async def test_get_vnstat_uses_systemtime_endpoint_path(make_client) -> None:
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session)
     try:
+        client.is_endpoint_available = AsyncMock(return_value=True)
         client._safe_dict_get = AsyncMock(return_value={"response": ""})
         client._safe_dict_post = AsyncMock(return_value={"datetime": "invalid"})
 
@@ -153,6 +155,26 @@ async def test_get_vnstat_uses_systemtime_endpoint_path(make_client) -> None:
         client._use_snake_case = False
         await client.get_vnstat()
         client._safe_dict_post.assert_awaited_with("/api/diagnostics/system/systemTime")
+    finally:
+        await client.async_close()
+
+
+@pytest.mark.asyncio
+async def test_get_vnstat_skips_calls_when_endpoint_missing(make_client) -> None:
+    """get_vnstat should return empty payload and skip API calls when endpoint is absent."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+    try:
+        client.is_endpoint_available = AsyncMock(return_value=False)
+        client._safe_dict_get = AsyncMock()
+        client._safe_dict_post = AsyncMock()
+
+        vnstat = await client.get_vnstat()
+
+        assert vnstat == {"interfaces": {}, "interface_count": 0}
+        client._safe_dict_get.assert_not_awaited()
+        client._safe_dict_post.assert_not_awaited()
+        client.is_endpoint_available.assert_awaited_once_with("/api/vnstat/service/hourly")
     finally:
         await client.async_close()
 
