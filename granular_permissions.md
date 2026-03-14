@@ -14,12 +14,6 @@
 | ----- | ----- |
 | Lobby: Dashboard | /api/diagnostics/system/system_mbuf<br>/api/diagnostics/firewall/pf_states<br>/api/diagnostics/system/system_resources (or systemResources)<br>/api/diagnostics/system/system_swap<br>/api/diagnostics/system/system_time (or systemTime)<br>/api/diagnostics/cpu_usage/get_c_p_u_type (or getCPUType)<br>/api/diagnostics/cpu_usage/stream<br>/api/diagnostics/system/system_disk (or systemDisk)<br>/api/diagnostics/system/system_temperature (or systemTemperature) |
 
-## Speedtest results
-
-| OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Services: Speedtest (plugin) | /api/speedtest/service/showrecent<br>/api/speedtest/service/showstat |
-
 ## Gateway information
 
 | OPNsense Permission | API Endpoints |
@@ -79,7 +73,7 @@
 
 | OPNsense Permission | API Endpoints |
 | ----- | ----- |
-| XMLRPC Library | _N/A – Operations are executed using the XMLRPC interface and OPNsense plugin_ |
+| XMLRPC Library | *N/A – Operations are executed using the XMLRPC interface and OPNsense plugin* |
 
 </details>
 
@@ -116,82 +110,94 @@
 | ----- | ----- |
 | Diagnostics: ARP Table | /api/diagnostics/interface/search_arp |
 
-# Action (Service) Permissions
+## Speedtest results
 
-## Close Notice _(opnsense.close_notice)_
+| OPNsense Permission | API Endpoints |
+| ----- | ----- |
+| Monitoring: Speedtest | /api/speedtest/service/showrecent<br>/api/speedtest/service/showstat |
+
+## vnStat metrics
+
+|  OPNsense Permission | API Endpoints |
+| ----- | ----- |
+| Services: Vnstat | /api/vnstat/service/hourly<br>/api/vnstat/service/daily<br>/api/vnstat/service/monthly |
+
+# Action *(Service)* Permissions
+
+## Close Notice *(opnsense.close_notice)*
 
 |  OPNsense Permission | API Endpoints |
 | ----- | ----- |
 | System: Status | /api/core/system/dismiss_status (or dismissStatus)<br>/api/core/system/status |
 
-## Shutdown OPNsense _(opnsense.system_halt)_
+## Shutdown OPNsense *(opnsense.system_halt)*
 
 |  OPNsense Permission | API Endpoints |
 | ----- | ----- |
 | Diagnostics: Halt system | /api/core/system/halt |
 
-## Reboot OPNsense _(opnsense.system_reboot)_
+## Reboot OPNsense *(opnsense.system_reboot)*
 
 |  OPNsense Permission | API Endpoints |
 | ----- | ----- |
 | Diagnostics: Reboot System | /api/core/system/reboot |
 
-## Start Service _(opnsense.start_service)_
+## Start Service *(opnsense.start_service)*
 
 |  OPNsense Permission | API Endpoints |
 | ----- | ----- |
 | Status: Services | /api/core/service/start |
 
-## Stop Service _(opnsense.stop_service)_
+## Stop Service *(opnsense.stop_service)*
 
 |  OPNsense Permission | API Endpoints |
 | ----- | ----- |
 | Status: Services | /api/core/service/stop |
 
-## Restart Service _(opnsense.restart_service)_
+## Restart Service *(opnsense.restart_service)*
 
 |  OPNsense Permission | API Endpoints |
 | ----- | ----- |
 | Status: Services | /api/core/service/restart |
 
-## Send Wake on LAN _(opnsense.send_wol)_
+## Send Wake on LAN *(opnsense.send_wol)*
 
 |  OPNsense Permission | API Endpoints |
 | ----- | ----- |
 | Services: Wake on LAN | /api/wol/wol/set |
 
-## Reload Interface _(opnsense.reload_interface)_
+## Reload Interface *(opnsense.reload_interface)*
 
 |  OPNsense Permission | API Endpoints |
 | ----- | ----- |
 | Status: Interfaces | /api/interfaces/overview/reload_interface (or reloadInterface) |
 
-## Kill States _(opnsense.kill_states)_
+## Kill States *(opnsense.kill_states)*
 
 |  OPNsense Permission | API Endpoints |
 | ----- | ----- |
 | Diagnostics: Show States | /api/diagnostics/firewall/kill_states |
 
-## Generate Captive Portal Vouchers _(opnsense.generate_vouchers)_
+## Generate Captive Portal Vouchers *(opnsense.generate_vouchers)*
 
 |  OPNsense Permission | API Endpoints |
 | ----- | ----- |
 | Services: Captive Portal | /api/captiveportal/voucher/generate_vouchers (or generateVouchers)<br>/api/captiveportal/voucher/list_providers (or listProviders) |
 
-## Run Speedtest _(opnsense.run_speedtest)_
-
-|  OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Services: Speedtest (plugin) | /api/speedtest/service/run |
-
-## Get vnStat Metrics _(opnsense.get_vnstat_metrics)_
-
-|  OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Services: vnStat (plugin) | /api/vnstat/service/hourly<br>/api/vnstat/service/daily<br>/api/vnstat/service/monthly<br>/api/vnstat/service/yearly |
-
-## Toggle Alias _(opnsense.toggle_alias)_
+## Toggle Alias *(opnsense.toggle_alias)*
 
 |  OPNsense Permission | API Endpoints |
 | ----- | ----- |
 | Firewall: Alias: Edit | /api/firewall/alias/reconfigure<br>/api/firewall/alias/search_item (or searchItem)<br>/api/firewall/alias/set<br>/api/firewall/alias/toggle_item (or toggleItem) |
+
+## Run Speedtest *(opnsense.run_speedtest)*
+
+|  OPNsense Permission | API Endpoints |
+| ----- | ----- |
+| Monitoring: Speedtest | /api/speedtest/service/run |
+
+## Get vnStat Metrics *(opnsense.get_vnstat_metrics)*
+
+|  OPNsense Permission | API Endpoints |
+| ----- | ----- |
+| Services: Vnstat | /api/vnstat/service/hourly<br>/api/vnstat/service/daily<br>/api/vnstat/service/monthly<br>/api/vnstat/service/yearly |
