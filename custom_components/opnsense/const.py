@@ -49,6 +49,7 @@ CONF_FIRMWARE_VERSION = "firmware_version"
 
 CONF_SYNC_TELEMETRY = "sync_telemetry"
 CONF_SYNC_VNSTAT = "sync_vnstat"
+CONF_SYNC_SPEEDTEST = "sync_speedtest"
 CONF_SYNC_VPN = "sync_vpn"
 CONF_SYNC_FIRMWARE_UPDATES = "sync_firmware_updates"
 CONF_SYNC_CARP = "sync_carp"
@@ -68,6 +69,7 @@ SYNC_ITEMS_REQUIRING_PLUGIN = (CONF_SYNC_FIREWALL_AND_NAT,)
 GRANULAR_SYNC_ITEMS = (
     CONF_SYNC_TELEMETRY,
     CONF_SYNC_VNSTAT,
+    CONF_SYNC_SPEEDTEST,
     CONF_SYNC_GATEWAYS,
     CONF_SYNC_INTERFACES,
     CONF_SYNC_DHCP_LEASES,
@@ -83,6 +85,7 @@ GRANULAR_SYNC_ITEMS = (
 GRANULAR_SYNC_PREFIX = {
     CONF_SYNC_TELEMETRY: ["telemetry"],
     CONF_SYNC_VNSTAT: ["vnstat"],
+    CONF_SYNC_SPEEDTEST: ["speedtest"],
     CONF_SYNC_VPN: ["wireguard", "openvpn"],
     CONF_SYNC_FIRMWARE_UPDATES: ["firmware"],
     CONF_SYNC_CARP: ["carp"],
@@ -339,3 +342,4 @@ SERVICE_RELOAD_INTERFACE = "reload_interface"
 SERVICE_GENERATE_VOUCHERS = "generate_vouchers"
 SERVICE_KILL_STATES = "kill_states"
 SERVICE_TOGGLE_ALIAS = "toggle_alias"
+SERVICE_RUN_SPEEDTEST = "run_speedtest"

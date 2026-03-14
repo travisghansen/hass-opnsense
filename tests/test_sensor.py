@@ -13,6 +13,7 @@ from custom_components.opnsense.const import (
     CONF_SYNC_DHCP_LEASES,
     CONF_SYNC_GATEWAYS,
     CONF_SYNC_INTERFACES,
+    CONF_SYNC_SPEEDTEST,
     CONF_SYNC_TELEMETRY,
     CONF_SYNC_VNSTAT,
     CONF_SYNC_VPN,
@@ -24,6 +25,7 @@ from custom_components.opnsense.sensor import (
     OPNsenseDHCPLeasesSensor,
     OPNsenseGatewaySensor,
     OPNsenseInterfaceSensor,
+    OPNsenseSpeedtestSensor,
     OPNsenseStaticKeySensor,
     OPNsenseTempSensor,
     OPNsenseVnstatSensor,
@@ -1020,6 +1022,7 @@ def _setup_entry_with_all_syncs(state: dict, make_config_entry):
         {
             CONF_SYNC_TELEMETRY: True,
             CONF_SYNC_VNSTAT: True,
+            CONF_SYNC_SPEEDTEST: True,
             CONF_SYNC_CERTIFICATES: True,
             CONF_SYNC_VPN: True,
             CONF_SYNC_GATEWAYS: True,
@@ -1295,6 +1298,237 @@ async def test_async_setup_entry_skips_vnstat_sensors_when_no_interfaces(make_co
 
     await async_setup_entry(MagicMock(), entry, add_entities)
     assert not any(isinstance(e, OPNsenseVnstatSensor) for e in created)
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_creates_speedtest_sensors(make_config_entry):
+    """Speedtest sensors should be created when speedtest data is available."""
+    state = {
+        "speedtest": {
+            "available": True,
+            "last": {
+                "download": {
+                    "value": 836.05,
+                    "date": "2026-03-14T03:09:45",
+                    "server_id": "72800",
+                    "server": "RippleFiber, Newark, NJ",
+                    "url": "https://www.speedtest.net/result/c/abc",
+                },
+                "upload": {
+                    "value": 832.97,
+                    "date": "2026-03-14T03:09:45",
+                    "server_id": "72800",
+                    "server": "RippleFiber, Newark, NJ",
+                    "url": "https://www.speedtest.net/result/c/abc",
+                },
+                "latency": {
+                    "value": 4.0,
+                    "date": "2026-03-14T03:09:45",
+                    "server_id": "72800",
+                    "server": "RippleFiber, Newark, NJ",
+                    "url": "https://www.speedtest.net/result/c/abc",
+                },
+            },
+            "average": {
+                "download": {
+                    "value": 723.83,
+                    "min": 4.18,
+                    "max": 942.02,
+                    "oldest": "2023-01-22 00:29:00",
+                    "youngest": "2026-03-14 03:09:45",
+                    "samples": 10717,
+                },
+                "upload": {
+                    "value": 706.7,
+                    "min": 1.54,
+                    "max": 890.32,
+                    "oldest": "2023-01-22 00:29:00",
+                    "youngest": "2026-03-14 03:09:45",
+                    "samples": 10717,
+                },
+                "latency": {
+                    "value": 13.42,
+                    "min": 2.35,
+                    "max": 1266.74,
+                    "oldest": "2023-01-22 00:29:00",
+                    "youngest": "2026-03-14 03:09:45",
+                    "samples": 10717,
+                },
+            },
+        }
+    }
+
+    entry = make_config_entry(
+        {
+            "device_unique_id": "id",
+            CONF_SYNC_TELEMETRY: False,
+            CONF_SYNC_VNSTAT: False,
+            CONF_SYNC_CERTIFICATES: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_GATEWAYS: False,
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_DHCP_LEASES: False,
+            CONF_SYNC_SPEEDTEST: True,
+        }
+    )
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+    setattr(entry.runtime_data, COORDINATOR, coordinator)
+
+    created: list = []
+
+    def add_entities(entities):
+        created.extend(entities)
+
+    await async_setup_entry(MagicMock(), entry, add_entities)
+    speedtest_entities = [e for e in created if isinstance(e, OPNsenseSpeedtestSensor)]
+    assert len(speedtest_entities) == 6
+    assert all(not e.entity_description.entity_registry_enabled_default for e in speedtest_entities)
+
+    entities_by_key = {e.entity_description.key: e for e in speedtest_entities}
+    for entity in speedtest_entities:
+        entity.hass = MagicMock()
+        entity.entity_id = f"sensor.{entity.entity_description.key.replace('.', '_')}"
+        entity.async_write_ha_state = lambda: None
+        entity._handle_coordinator_update()
+        assert entity.available is True
+
+    assert entities_by_key["speedtest.last.download"].native_value == 836.05
+    assert entities_by_key["speedtest.last.download"].extra_state_attributes["server_id"] == "72800"
+    assert entities_by_key["speedtest.average.latency"].native_value == 13.42
+    assert entities_by_key["speedtest.average.latency"].extra_state_attributes["samples"] == 10717
+
+
+@pytest.mark.parametrize(
+    "state,key",
+    [
+        ([], "speedtest.last.download"),
+        ({"speedtest": {"last": {"download": {"value": 100}}}}, "speedtest.last"),
+        ({"speedtest": {"last": {"download": 100}}}, "speedtest.last.download"),
+        ({"speedtest": {"last": {"download": {"value": "bad"}}}}, "speedtest.last.download"),
+    ],
+)
+def test_speedtest_sensor_unavailable_variants(state, key, make_config_entry):
+    """Speedtest sensors should be unavailable for malformed key/state/value variants."""
+    entry = make_config_entry()
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+
+    description = MagicMock()
+    description.key = key
+    description.name = "Speedtest Sensor"
+
+    sensor = OPNsenseSpeedtestSensor(
+        config_entry=entry,
+        coordinator=coordinator,
+        entity_description=description,
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = f"sensor.{key.replace('.', '_')}"
+    sensor.async_write_ha_state = lambda: None
+
+    sensor._handle_coordinator_update()
+    assert sensor.available is False
+
+
+def test_speedtest_sensor_attribute_filtering(make_config_entry):
+    """Speedtest sensors should only include non-None attributes."""
+    state = {
+        "speedtest": {
+            "last": {
+                "download": {
+                    "value": 850.5,
+                    "date": None,
+                    "server_id": "10001",
+                    "server": None,
+                    "url": "https://example.test/result/1",
+                }
+            },
+            "average": {
+                "download": {
+                    "value": 750.2,
+                    "min": None,
+                    "max": 901.3,
+                    "oldest": None,
+                    "youngest": "2026-03-14 03:09:45",
+                    "samples": 0,
+                }
+            },
+        }
+    }
+
+    entry = make_config_entry()
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+
+    last_description = MagicMock()
+    last_description.key = "speedtest.last.download"
+    last_description.name = "Speedtest Last Download"
+    last_sensor = OPNsenseSpeedtestSensor(
+        config_entry=entry,
+        coordinator=coordinator,
+        entity_description=last_description,
+    )
+    last_sensor.hass = MagicMock()
+    last_sensor.entity_id = "sensor.speedtest_last_download"
+    last_sensor.async_write_ha_state = lambda: None
+    last_sensor._handle_coordinator_update()
+    assert last_sensor.available is True
+    assert last_sensor.extra_state_attributes == {
+        "server_id": "10001",
+        "url": "https://example.test/result/1",
+    }
+
+    average_description = MagicMock()
+    average_description.key = "speedtest.average.download"
+    average_description.name = "Speedtest Average Download"
+    average_sensor = OPNsenseSpeedtestSensor(
+        config_entry=entry,
+        coordinator=coordinator,
+        entity_description=average_description,
+    )
+    average_sensor.hass = MagicMock()
+    average_sensor.entity_id = "sensor.speedtest_average_download"
+    average_sensor.async_write_ha_state = lambda: None
+    average_sensor._handle_coordinator_update()
+    assert average_sensor.available is True
+    assert average_sensor.extra_state_attributes == {
+        "max": 901.3,
+        "youngest": "2026-03-14 03:09:45",
+        "samples": 0,
+    }
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_skips_speedtest_sensors_when_unavailable(make_config_entry):
+    """Speedtest sensors should not be created when speedtest is unavailable."""
+    state = {"speedtest": {"available": False}}
+    entry = make_config_entry(
+        {
+            "device_unique_id": "id",
+            CONF_SYNC_TELEMETRY: False,
+            CONF_SYNC_VNSTAT: False,
+            CONF_SYNC_CERTIFICATES: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_GATEWAYS: False,
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_DHCP_LEASES: False,
+            CONF_SYNC_SPEEDTEST: True,
+        }
+    )
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+    setattr(entry.runtime_data, COORDINATOR, coordinator)
+
+    created: list = []
+
+    def add_entities(entities):
+        created.extend(entities)
+
+    await async_setup_entry(MagicMock(), entry, add_entities)
+    assert not any(isinstance(e, OPNsenseSpeedtestSensor) for e in created)
 
 
 @pytest.mark.asyncio

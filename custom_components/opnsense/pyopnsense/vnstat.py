@@ -62,7 +62,7 @@ class VnstatMixin(PyOPNsenseClientProtocol):
 
         """
         if not await self.is_endpoint_available("/api/vnstat/service/hourly"):
-            _LOGGER.debug("vnStat endpoint unavailable, skipping data retrieval")
+            _LOGGER.debug("vnStat not installed")
             return {"interfaces": {}, "interface_count": 0}
 
         opnsense_tz = await self._get_opnsense_timezone()

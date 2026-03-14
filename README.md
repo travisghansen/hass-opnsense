@@ -192,6 +192,8 @@ Many entities are created by `hass-opnsense` for statistics etc. Due to the volu
 
 * Certificates
 
+* Speedtest last and average results (download, upload, latency)
+
 ### Switch
 
 All of the switches are disabled by default
@@ -250,6 +252,9 @@ action: opnsense.kill_states
 data:
   ip_address: 192.168.0.100
 # Will optionally return the number of states dropped for each client
+
+action: opnsense.run_speedtest
+# Returns speedtest results as action response data
 
 action: opnsense.generate_vouchers
 data:

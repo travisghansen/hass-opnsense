@@ -25,6 +25,7 @@ from custom_components.opnsense.const import (
     CONF_SYNC_INTERFACES,
     CONF_SYNC_NOTICES,
     CONF_SYNC_SERVICES,
+    CONF_SYNC_SPEEDTEST,
     CONF_SYNC_TELEMETRY,
     CONF_SYNC_UNBOUND,
     CONF_SYNC_VNSTAT,
@@ -399,6 +400,7 @@ def test_build_categories_returns_empty_when_no_config(make_config_entry, fake_c
     [
         (CONF_SYNC_TELEMETRY, ["telemetry"]),
         (CONF_SYNC_VNSTAT, ["vnstat"]),
+        (CONF_SYNC_SPEEDTEST, ["speedtest"]),
         (CONF_SYNC_VPN, ["openvpn", "wireguard"]),
         (CONF_SYNC_FIRMWARE_UPDATES, ["firmware_update_info"]),
         (CONF_SYNC_CARP, ["carp_interfaces", "carp_status"]),

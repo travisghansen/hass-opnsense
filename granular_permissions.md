@@ -14,6 +14,12 @@
 | ----- | ----- |
 | Lobby: Dashboard | /api/diagnostics/system/system_mbuf<br>/api/diagnostics/firewall/pf_states<br>/api/diagnostics/system/system_resources (or systemResources)<br>/api/diagnostics/system/system_swap<br>/api/diagnostics/system/system_time (or systemTime)<br>/api/diagnostics/cpu_usage/get_c_p_u_type (or getCPUType)<br>/api/diagnostics/cpu_usage/stream<br>/api/diagnostics/system/system_disk (or systemDisk)<br>/api/diagnostics/system/system_temperature (or systemTemperature) |
 
+## Speedtest results
+
+| OPNsense Permission | API Endpoints |
+| ----- | ----- |
+| Services: Speedtest (plugin) | /api/speedtest/service/showrecent<br>/api/speedtest/service/showstat |
+
 ## Gateway information
 
 | OPNsense Permission | API Endpoints |
@@ -171,6 +177,12 @@
 |  OPNsense Permission | API Endpoints |
 | ----- | ----- |
 | Services: Captive Portal | /api/captiveportal/voucher/generate_vouchers (or generateVouchers)<br>/api/captiveportal/voucher/list_providers (or listProviders) |
+
+## Run Speedtest _(opnsense.run_speedtest)_
+
+|  OPNsense Permission | API Endpoints |
+| ----- | ----- |
+| Services: Speedtest (plugin) | /api/speedtest/service/run |
 
 ## Toggle Alias _(opnsense.toggle_alias)_
 

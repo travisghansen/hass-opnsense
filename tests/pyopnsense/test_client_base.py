@@ -69,6 +69,30 @@ async def test_safe_dict_post_and_list_post(monkeypatch, make_client) -> None:
 
 
 @pytest.mark.asyncio
+async def test_safe_dict_get_with_timeout(monkeypatch, make_client) -> None:
+    """Ensure custom-timeout safe getter coerces None to empty dict as expected."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session, username="user", password="pass")
+    try:
+        monkeypatch.setattr(
+            client, "_do_get", AsyncMock(return_value={"foo": "bar"}), raising=False
+        )
+        result_dict = await client._safe_dict_get_with_timeout("/fake", timeout_seconds=180)
+        assert result_dict == {"foo": "bar"}
+        client._do_get.assert_awaited_once_with(
+            path="/fake",
+            caller="_safe_dict_get_with_timeout",
+            timeout_seconds=180,
+        )
+
+        monkeypatch.setattr(client, "_do_get", AsyncMock(return_value=None), raising=False)
+        result_empty_dict = await client._safe_dict_get_with_timeout("/fake", timeout_seconds=180)
+        assert result_empty_dict == {}
+    finally:
+        await client.async_close()
+
+
+@pytest.mark.asyncio
 async def test_is_endpoint_available_caches_success(make_client) -> None:
     """Endpoint probe should cache positive results and avoid repeated calls."""
     session = MagicMock(spec=aiohttp.ClientSession)
