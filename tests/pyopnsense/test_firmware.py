@@ -139,6 +139,35 @@ async def test_plugin_cache_not_poisoned_by_empty_firmware_info(make_client) -> 
 
 
 @pytest.mark.asyncio
+async def test_plugin_cache_retries_after_failed_forced_refresh(make_client) -> None:
+    """Failed refresh attempts should be retried on the next plugin check."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+    try:
+        client._safe_dict_get = AsyncMock(
+            side_effect=[
+                {"package": [{"name": "os-vnstat", "installed": "1"}]},
+                {},
+                {"package": [{"name": "os-vnstat", "installed": "1"}]},
+            ]
+        )
+        assert await client.is_named_plugin_installed("os-vnstat") is True
+        assert client._installed_plugins_refresh_succeeded is True
+
+        # Force a refresh attempt that fails to mark cache as retry-required.
+        await client._refresh_installed_plugins(force=True)
+        assert client._installed_plugins_refresh_succeeded is False
+
+        # Next call should retry immediately even though the last successful
+        # timestamp is still recent.
+        assert await client.is_named_plugin_installed("os-vnstat") is True
+        assert client._safe_dict_get.await_count == 3
+        assert client._installed_plugins_refresh_succeeded is True
+    finally:
+        await client.async_close()
+
+
+@pytest.mark.asyncio
 async def test_get_firmware_update_info_triggers_check_on_conditions(make_client) -> None:
     """Trigger firmware update check when status is missing data or outdated."""
     session = MagicMock(spec=aiohttp.ClientSession)

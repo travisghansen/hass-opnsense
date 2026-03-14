@@ -68,19 +68,26 @@ async def test_get_speedtest_normalizes_recent_and_stat_payloads(make_client) ->
 
 
 @pytest.mark.asyncio
-async def test_get_speedtest_skips_calls_when_showstat_endpoint_missing(make_client) -> None:
-    """get_speedtest should stop when showstat endpoint is unavailable."""
+async def test_get_speedtest_fetches_showstat_without_endpoint_probe(make_client) -> None:
+    """get_speedtest should only probe showrecent and then fetch both payloads."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session)
     try:
-        client.is_endpoint_available = AsyncMock(side_effect=[True, False])
-        client._safe_dict_get = AsyncMock()
+        client.is_endpoint_available = AsyncMock(return_value=True)
+        client._safe_dict_get = AsyncMock(
+            side_effect=[
+                {"download": "1", "upload": "2", "latency": "3"},
+                {},
+            ]
+        )
 
         result = await client.get_speedtest()
 
-        assert result == {"available": False}
-        client._safe_dict_get.assert_not_awaited()
+        assert result["available"] is True
         assert client.is_endpoint_available.await_args_list == [
+            call("/api/speedtest/service/showrecent")
+        ]
+        assert client._safe_dict_get.await_args_list == [
             call("/api/speedtest/service/showrecent"),
             call("/api/speedtest/service/showstat"),
         ]
@@ -185,7 +192,7 @@ async def test_run_speedtest_returns_empty_when_endpoint_missing(make_client) ->
 
         assert result == {}
         client._safe_dict_get_with_timeout.assert_not_awaited()
-        client.is_endpoint_available.assert_awaited_once_with("/api/speedtest/service/run")
+        client.is_endpoint_available.assert_awaited_once_with("/api/speedtest/service/showrecent")
     finally:
         await client.async_close()
 
@@ -202,7 +209,7 @@ async def test_run_speedtest_returns_empty_for_non_mapping_response(make_client)
         result = await client.run_speedtest()
 
         assert result == {}
-        client.is_endpoint_available.assert_awaited_once_with("/api/speedtest/service/run")
+        client.is_endpoint_available.assert_awaited_once_with("/api/speedtest/service/showrecent")
         client._safe_dict_get_with_timeout.assert_awaited_once_with(
             "/api/speedtest/service/run", timeout_seconds=180
         )
