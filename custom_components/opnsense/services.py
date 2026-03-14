@@ -19,6 +19,7 @@ from .const import (
     DOMAIN,
     SERVICE_CLOSE_NOTICE,
     SERVICE_GENERATE_VOUCHERS,
+    SERVICE_GET_VNSTAT_METRICS,
     SERVICE_KILL_STATES,
     SERVICE_RELOAD_INTERFACE,
     SERVICE_RESTART_SERVICE,
@@ -33,6 +34,7 @@ from .const import (
 from .pyopnsense import VoucherServerError
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+_VNSTAT_PERIODS: tuple[str, ...] = ("hourly", "daily", "monthly", "yearly")
 
 
 async def async_setup_services(hass: HomeAssistant) -> None:
@@ -211,6 +213,20 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             }
         ),
         service_func=functools.partial(_service_run_speedtest, hass),
+        supports_response=SupportsResponse.ONLY,
+    )
+
+    hass.services.async_register(
+        domain=DOMAIN,
+        service=SERVICE_GET_VNSTAT_METRICS,
+        schema=vol.Schema(
+            {
+                vol.Required("period"): vol.All(cv.string, vol.Lower, vol.In(_VNSTAT_PERIODS)),
+                vol.Optional("device_id"): vol.Any(cv.string),
+                vol.Optional("entity_id"): vol.Any(cv.string),
+            }
+        ),
+        service_func=functools.partial(_service_get_vnstat_metrics, hass),
         supports_response=SupportsResponse.ONLY,
     )
 
@@ -550,6 +566,53 @@ async def _service_run_speedtest(hass: HomeAssistant, call: ServiceCall) -> Serv
         )
     return_response: dict[str, Any] = {"results": response_list}
     _LOGGER.debug("[service_run_speedtest] return_response: %s", return_response)
+    return return_response
+
+
+async def _service_get_vnstat_metrics(hass: HomeAssistant, call: ServiceCall) -> ServiceResponse:
+    """Return parsed vnStat metrics for a selected period as action response data.
+
+    Parameters
+    ----------
+    hass : HomeAssistant
+        Home Assistant instance.
+    call : ServiceCall
+        Service call payload containing the required ``period`` and optional
+        OPNsense device/entity selectors.
+
+    Returns
+    -------
+    ServiceResponse
+        Parsed per-client vnStat payloads from the requested endpoint.
+
+    """
+    clients: list = await _get_clients(
+        hass=hass,
+        opndevice_id=call.data.get("device_id", []),
+        opnentity_id=call.data.get("entity_id", []),
+    )
+    requested_period: str = call.data["period"]
+    response_list: list[dict[str, Any]] = []
+    for client in clients:
+        response = await client.get_vnstat_metrics(requested_period)
+        _LOGGER.debug(
+            "[service_get_vnstat_metrics] client: %s, period: %s, response: %s",
+            client.name,
+            requested_period,
+            response,
+        )
+        if not isinstance(response, MutableMapping) or len(response) == 0:
+            continue
+        metric_result: dict[str, Any] = {"client_name": client.name}
+        metric_result.update(dict(response))
+        response_list.append(metric_result)
+
+    if len(response_list) == 0:
+        raise ServiceValidationError(
+            "Get vnStat Metrics Failed. No selected OPNsense clients have a working vnStat endpoint."
+        )
+    return_response: dict[str, Any] = {"results": response_list}
+    _LOGGER.debug("[service_get_vnstat_metrics] return_response: %s", return_response)
     return return_response
 
 

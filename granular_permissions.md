@@ -184,6 +184,12 @@
 | ----- | ----- |
 | Services: Speedtest (plugin) | /api/speedtest/service/run |
 
+## Get vnStat Metrics _(opnsense.get_vnstat_metrics)_
+
+|  OPNsense Permission | API Endpoints |
+| ----- | ----- |
+| Services: vnStat (plugin) | /api/vnstat/service/hourly<br>/api/vnstat/service/daily<br>/api/vnstat/service/monthly<br>/api/vnstat/service/yearly |
+
 ## Toggle Alias _(opnsense.toggle_alias)_
 
 |  OPNsense Permission | API Endpoints |

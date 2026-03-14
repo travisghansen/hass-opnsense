@@ -47,6 +47,65 @@ async def test_parse_vnstat_month_label_apostrophe_format(make_client) -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_vnstat_metrics_yearly_parsing(make_client) -> None:
+    """get_vnstat_metrics should parse yearly vnStat payload rows."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+    try:
+        client.is_endpoint_available = AsyncMock(return_value=True)
+        client._safe_dict_get = AsyncMock(
+            return_value={
+                "response": """
+ igc0  /  yearly
+
+         year        rx      |     tx      |    total    |   avg. rate
+     ------------------------+-------------+-------------+---------------
+          2023     35.84 TiB |   27.41 TiB |   63.25 TiB |   17.64 Mbit/s
+          2024     36.88 TiB |   46.79 TiB |   83.68 TiB |   23.28 Mbit/s
+          2025     35.72 TiB |   27.26 TiB |   62.99 TiB |   17.57 Mbit/s
+          2026      7.74 TiB |    2.36 TiB |   10.09 TiB |   14.15 Mbit/s
+     ------------------------+-------------+-------------+---------------
+     estimated     38.88 TiB |   11.85 TiB |   50.73 TiB |
+"""
+            }
+        )
+
+        parsed = await client.get_vnstat_metrics("yearly")
+        rows = parsed["interfaces"]["igc0"]
+
+        tib = 1024**4
+        assert parsed["period"] == "yearly"
+        assert len(rows) == 4
+        assert rows[0]["label"] == "2023"
+        assert rows[0]["total_bytes"] == int(round(63.25 * tib))
+        assert rows[3]["label"] == "2026"
+        assert rows[3]["avg_rate_bits_per_second"] == 14150000
+        client._safe_dict_get.assert_awaited_once_with("/api/vnstat/service/yearly")
+    finally:
+        await client.async_close()
+
+
+@pytest.mark.asyncio
+async def test_get_vnstat_metrics_unsupported_period_or_endpoint_missing(make_client) -> None:
+    """get_vnstat_metrics should return empty data for unsupported/missing endpoints."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+    try:
+        client.is_endpoint_available = AsyncMock(return_value=False)
+        client._safe_dict_get = AsyncMock()
+
+        assert await client.get_vnstat_metrics("hourly") == {}
+        client._safe_dict_get.assert_not_awaited()
+        client.is_endpoint_available.assert_awaited_once_with("/api/vnstat/service/hourly")
+
+        client.is_endpoint_available.reset_mock()
+        assert await client.get_vnstat_metrics("weekly") == {}
+        client.is_endpoint_available.assert_not_awaited()
+    finally:
+        await client.async_close()
+
+
+@pytest.mark.asyncio
 async def test_get_vnstat_summary_from_hourly_daily_monthly(make_client) -> None:
     """get_vnstat should produce per-interface summary fields used by sensors."""
     session = MagicMock(spec=aiohttp.ClientSession)

@@ -24,6 +24,7 @@ _VSTAT_ROW_RE = re.compile(
 )
 _VSTAT_HOURLY_DAY_RE = re.compile(r"^\d{2}/\d{2}/\d{2}$")
 _VSTAT_HOURLY_TIME_RE = re.compile(r"^\d{2}:\d{2}$")
+_VSTAT_PERIODS: tuple[str, ...] = ("hourly", "daily", "monthly", "yearly")
 _BYTE_FACTORS = {
     "B": 1,
     "KIB": 1024,
@@ -49,6 +50,38 @@ _RATE_FACTORS = {
 
 class VnstatMixin(PyOPNsenseClientProtocol):
     """vnStat methods for OPNsenseClient."""
+
+    @_log_errors
+    async def get_vnstat_metrics(self, period: str) -> dict[str, Any]:
+        """Return parsed vnStat rows for the requested period endpoint.
+
+        Parameters
+        ----------
+        period : str
+            Requested vnStat period. Supported values are ``hourly``, ``daily``,
+            ``monthly``, and ``yearly``.
+
+        Returns
+        -------
+        dict[str, Any]
+            Parsed vnStat payload with ``period`` and per-interface rows.
+            Empty dictionary when the endpoint is unavailable or period is
+            unsupported.
+
+        """
+        requested_period = period.strip().lower() if isinstance(period, str) else ""
+        if requested_period not in _VSTAT_PERIODS:
+            return {}
+
+        endpoint = f"/api/vnstat/service/{requested_period}"
+        if not await self.is_endpoint_available(endpoint):
+            _LOGGER.debug("vnStat %s endpoint unavailable", requested_period)
+            return {}
+
+        return self._parse_vnstat_payload(
+            await self._safe_dict_get(endpoint),
+            expected_period=requested_period,
+        )
 
     @_log_errors
     async def get_vnstat(self) -> MutableMapping[str, Any]:
@@ -130,7 +163,7 @@ class VnstatMixin(PyOPNsenseClientProtocol):
         payload : MutableMapping[str, Any]
             Raw API response payload expected to contain a ``response`` string.
         expected_period : str
-            Period requested from the endpoint (hourly, daily, monthly).
+            Period requested from the endpoint (hourly, daily, monthly, yearly).
 
         Returns
         -------
