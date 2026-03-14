@@ -546,7 +546,10 @@ $toreturn["real"] = json_encode($toreturn_real);
         return {}
 
     async def _do_get(
-        self, path: str, caller: str = "Unknown"
+        self,
+        path: str,
+        caller: str = "Unknown",
+        timeout_seconds: float | None = None,
     ) -> MutableMapping[str, Any] | list | None:
         """Execute a GET request immediately without queueing.
 
@@ -556,6 +559,9 @@ $toreturn["real"] = json_encode($toreturn_real);
             API endpoint path to call on the OPNsense host.
         caller : str
             Name of the calling method used for log context. Defaults to 'Unknown'.
+        timeout_seconds : int | float | None
+            Optional timeout value in seconds for this request. Defaults to None,
+            which uses the shared default timeout.
 
         Returns
         -------
@@ -568,11 +574,12 @@ $toreturn["real"] = json_encode($toreturn_real);
         self._rest_api_query_count += 1
         url: str = f"{self._url}{path}"
         _LOGGER.debug("[get] url: %s", url)
+        timeout_total: float = self._normalize_timeout_seconds(timeout_seconds)
         try:
             async with self._session.get(
                 url,
                 auth=aiohttp.BasicAuth(self._username, self._password),
-                timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
+                timeout=aiohttp.ClientTimeout(total=timeout_total),
                 ssl=self._verify_ssl,
             ) as response:
                 _LOGGER.debug("[get] Response %s: %s", response.status, response.reason)
@@ -607,6 +614,30 @@ $toreturn["real"] = json_encode($toreturn_real);
 
         return None
 
+    def _normalize_timeout_seconds(self, timeout_seconds: float | None) -> float:
+        """Normalize per-call timeout values to a positive float in seconds.
+
+        Parameters
+        ----------
+        timeout_seconds : int | float | None
+            Requested timeout value in seconds.
+
+        Returns
+        -------
+        float
+            Positive timeout in seconds. Falls back to DEFAULT_TIMEOUT when invalid.
+
+        """
+        if timeout_seconds is None:
+            return float(DEFAULT_TIMEOUT)
+        try:
+            timeout_total = float(timeout_seconds)
+        except (TypeError, ValueError):
+            return float(DEFAULT_TIMEOUT)
+        if timeout_total <= 0:
+            return float(DEFAULT_TIMEOUT)
+        return timeout_total
+
     async def _safe_dict_get(self, path: str) -> dict[str, Any]:
         """Fetch data from the given path, ensuring the result is a dict.
 
@@ -623,6 +654,32 @@ $toreturn["real"] = json_encode($toreturn_real);
 
         """
         result = await self._get(path=path)
+        return dict(result) if isinstance(result, MutableMapping) else {}
+
+    async def _safe_dict_get_with_timeout(
+        self, path: str, timeout_seconds: float
+    ) -> dict[str, Any]:
+        """Fetch a GET payload with a custom timeout and coerce to a dictionary.
+
+        Parameters
+        ----------
+        path : str
+            API endpoint path to call on the OPNsense host.
+        timeout_seconds : int | float
+            Total timeout window in seconds for this request.
+
+        Returns
+        -------
+        dict[str, Any]
+            Dictionary payload from the GET request, or an empty dictionary if
+            the response is not a mapping.
+
+        """
+        result = await self._do_get(
+            path=path,
+            caller="_safe_dict_get_with_timeout",
+            timeout_seconds=timeout_seconds,
+        )
         return dict(result) if isinstance(result, MutableMapping) else {}
 
     async def _safe_list_get(self, path: str) -> list:

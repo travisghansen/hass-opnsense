@@ -22,6 +22,7 @@ from .const import (
     SERVICE_KILL_STATES,
     SERVICE_RELOAD_INTERFACE,
     SERVICE_RESTART_SERVICE,
+    SERVICE_RUN_SPEEDTEST,
     SERVICE_SEND_WOL,
     SERVICE_START_SERVICE,
     SERVICE_STOP_SERVICE,
@@ -198,6 +199,19 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         ),
         service_func=functools.partial(_service_kill_states, hass),
         supports_response=SupportsResponse.OPTIONAL,
+    )
+
+    hass.services.async_register(
+        domain=DOMAIN,
+        service=SERVICE_RUN_SPEEDTEST,
+        schema=vol.Schema(
+            {
+                vol.Optional("device_id"): vol.Any(cv.string),
+                vol.Optional("entity_id"): vol.Any(cv.string),
+            }
+        ),
+        service_func=functools.partial(_service_run_speedtest, hass),
+        supports_response=SupportsResponse.ONLY,
     )
 
     hass.services.async_register(
@@ -497,6 +511,46 @@ async def _service_kill_states(hass: HomeAssistant, call: ServiceCall) -> Servic
     if return_response:
         return return_response
     return None
+
+
+async def _service_run_speedtest(hass: HomeAssistant, call: ServiceCall) -> ServiceResponse:
+    """Run speedtest and return speedtest results in action response data.
+
+    Parameters
+    ----------
+    hass : HomeAssistant
+        Home Assistant instance.
+    call : ServiceCall
+        Service call payload that may contain ``device_id`` or ``entity_id``.
+
+    Returns
+    -------
+    ServiceResponse
+        Response payload containing per-client speedtest results.
+
+    """
+    clients: list = await _get_clients(
+        hass=hass,
+        opndevice_id=call.data.get("device_id", []),
+        opnentity_id=call.data.get("entity_id", []),
+    )
+    response_list: list[dict[str, Any]] = []
+    for client in clients:
+        response = await client.run_speedtest()
+        _LOGGER.debug("[service_run_speedtest] client: %s, response: %s", client.name, response)
+        if not isinstance(response, MutableMapping) or len(response) == 0:
+            continue
+        run_result: dict[str, Any] = {"client_name": client.name}
+        run_result.update(dict(response))
+        response_list.append(run_result)
+
+    if len(response_list) == 0:
+        raise ServiceValidationError(
+            "Run Speedtest Failed. No selected OPNsense clients have a working speedtest endpoint."
+        )
+    return_response: dict[str, Any] = {"results": response_list}
+    _LOGGER.debug("[service_run_speedtest] return_response: %s", return_response)
+    return return_response
 
 
 async def _service_toggle_alias(hass: HomeAssistant, call: ServiceCall) -> None:

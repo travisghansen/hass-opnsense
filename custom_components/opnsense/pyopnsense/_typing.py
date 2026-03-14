@@ -94,6 +94,27 @@ class PyOPNsenseClientProtocol(Protocol):
         ...
 
     @abstractmethod
+    async def _safe_dict_get_with_timeout(
+        self, path: str, timeout_seconds: float
+    ) -> dict[str, Any]:
+        """Fetch a GET payload with a custom timeout and coerce non-mapping values.
+
+        Parameters
+        ----------
+        path : str
+            Relative API path.
+        timeout_seconds : int | float
+            Total timeout window in seconds for the request.
+
+        Returns
+        -------
+        dict[str, Any]
+            Dictionary payload.
+
+        """
+        ...
+
+    @abstractmethod
     async def _safe_list_get(self, path: str) -> list:
         """Fetch a GET payload and coerce non-list values to an empty list.
 

@@ -31,6 +31,7 @@ from .const import (
     CONF_SYNC_DHCP_LEASES,
     CONF_SYNC_GATEWAYS,
     CONF_SYNC_INTERFACES,
+    CONF_SYNC_SPEEDTEST,
     CONF_SYNC_TELEMETRY,
     CONF_SYNC_VNSTAT,
     CONF_SYNC_VPN,
@@ -244,6 +245,80 @@ async def _compile_vnstat_sensors(
                 ),
             )
             entities.append(entity)
+    return entities
+
+
+async def _compile_speedtest_sensors(
+    config_entry: ConfigEntry,
+    coordinator: OPNsenseDataUpdateCoordinator,
+    state: MutableMapping[str, Any],
+) -> list:
+    """Compile speedtest sensors from normalized coordinator state."""
+    if not isinstance(state, MutableMapping):
+        return []
+    speedtest = state.get("speedtest")
+    if not isinstance(speedtest, MutableMapping) or not speedtest.get("available", False):
+        return []
+
+    metric_definitions: tuple[tuple[str, str, Any, str], ...] = (
+        (
+            "speedtest.last.download",
+            "Speedtest Last Download",
+            UnitOfDataRate.MEGABITS_PER_SECOND,
+            "mdi:download-network",
+        ),
+        (
+            "speedtest.last.upload",
+            "Speedtest Last Upload",
+            UnitOfDataRate.MEGABITS_PER_SECOND,
+            "mdi:upload-network",
+        ),
+        (
+            "speedtest.last.latency",
+            "Speedtest Last Latency",
+            UnitOfTime.MILLISECONDS,
+            "mdi:timer-outline",
+        ),
+        (
+            "speedtest.average.download",
+            "Speedtest Average Download",
+            UnitOfDataRate.MEGABITS_PER_SECOND,
+            "mdi:download-network",
+        ),
+        (
+            "speedtest.average.upload",
+            "Speedtest Average Upload",
+            UnitOfDataRate.MEGABITS_PER_SECOND,
+            "mdi:upload-network",
+        ),
+        (
+            "speedtest.average.latency",
+            "Speedtest Average Latency",
+            UnitOfTime.MILLISECONDS,
+            "mdi:timer-outline",
+        ),
+    )
+    entities: list = []
+    for key, name, native_unit, icon in metric_definitions:
+        device_class: SensorDeviceClass | None = None
+        if not key.endswith(".latency"):
+            device_class = SensorDeviceClass.DATA_RATE
+
+        entities.append(
+            OPNsenseSpeedtestSensor(
+                config_entry=config_entry,
+                coordinator=coordinator,
+                entity_description=SensorEntityDescription(
+                    key=key,
+                    name=name,
+                    native_unit_of_measurement=native_unit,
+                    device_class=device_class,
+                    icon=icon,
+                    state_class=SensorStateClass.MEASUREMENT,
+                    entity_registry_enabled_default=False,
+                ),
+            )
+        )
     return entities
 
 
@@ -635,6 +710,8 @@ async def async_setup_entry(
         entities.extend(await _compile_temperature_sensors(config_entry, coordinator, state))
     if config.get(CONF_SYNC_VNSTAT, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_vnstat_sensors(config_entry, coordinator, state))
+    if config.get(CONF_SYNC_SPEEDTEST, DEFAULT_SYNC_OPTION_VALUE):
+        entities.extend(await _compile_speedtest_sensors(config_entry, coordinator, state))
     if config.get(CONF_SYNC_CERTIFICATES, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_static_certificate_sensors(config_entry, coordinator))
     if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):
@@ -793,6 +870,52 @@ class OPNsenseVnstatSensor(OPNsenseSensor):
         if isinstance(tx_bytes, int):
             self._attr_extra_state_attributes["tx_bytes"] = tx_bytes
 
+        self.async_write_ha_state()
+
+
+class OPNsenseSpeedtestSensor(OPNsenseSensor):
+    """Class for OPNsense Speedtest sensors."""
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle coordinator updates for speedtest sensors."""
+        state: dict[str, Any] = self.coordinator.data
+        if not isinstance(state, MutableMapping):
+            self._available = False
+            self.async_write_ha_state()
+            return
+
+        key_parts = self.entity_description.key.split(".")
+        if len(key_parts) != 3:
+            self._available = False
+            self.async_write_ha_state()
+            return
+        _, speedtest_section, metric_name = key_parts
+
+        metric = dict_get(state, f"speedtest.{speedtest_section}.{metric_name}", {})
+        if not isinstance(metric, MutableMapping):
+            self._available = False
+            self.async_write_ha_state()
+            return
+
+        value = metric.get("value")
+        if not isinstance(value, (int, float)):
+            self._available = False
+            self.async_write_ha_state()
+            return
+
+        self._available = True
+        self._attr_native_value = float(value)
+        self._attr_extra_state_attributes = {}
+
+        if speedtest_section == "last":
+            for attr in ("date", "server_id", "server", "url"):
+                if metric.get(attr) is not None:
+                    self._attr_extra_state_attributes[attr] = metric.get(attr)
+        else:
+            for attr in ("min", "max", "oldest", "youngest", "samples"):
+                if metric.get(attr) is not None:
+                    self._attr_extra_state_attributes[attr] = metric.get(attr)
         self.async_write_ha_state()
 
 

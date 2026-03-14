@@ -35,6 +35,7 @@
         "data": {
           "sync_telemetry": "Basic telemetry data",
           "sync_vnstat": "vnStat bandwidth usage",
+          "sync_speedtest": "Speedtest results",
           "sync_vpn": "VPN information and switches",
           "sync_firmware_updates": "Firmware updates",
           "sync_carp": "CARP information",
@@ -80,6 +81,7 @@
         "data": {
           "sync_telemetry": "Basic telemetry data",
           "sync_vnstat": "vnStat bandwidth usage",
+          "sync_speedtest": "Speedtest results",
           "sync_vpn": "VPN information and switches",
           "sync_firmware_updates": "Firmware updates",
           "sync_carp": "CARP information",
@@ -401,6 +403,25 @@
           "name": "IP Address",
           "description": "The IP Address to kill all states for. ipv4 or ipv6 accepted"
         },
+        "device_id": {
+          "name": "OPNsense Device",
+          "description": "Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        },
+        "entity_id": {
+          "name": "OPNsense Entity",
+          "description": "Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        }
+      },
+      "sections": {
+        "multiple_opnsense": {
+          "name": "Only needed if there is more than one OPNsense Router"
+        }
+      }
+    },
+    "run_speedtest": {
+      "name": "Run Speedtest",
+      "description": "Run an OPNsense speedtest and return results as action response data",
+      "fields": {
         "device_id": {
           "name": "OPNsense Device",
           "description": "Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."

@@ -286,6 +286,39 @@ async def test_kill_states_success_and_failure(monkeypatch, ph_hass):
 
 
 @pytest.mark.asyncio
+async def test_run_speedtest_success_and_unavailable(monkeypatch, ph_hass):
+    """run_speedtest should return per-client results and raise when unavailable."""
+    hass = ph_hass
+    hass.data = {}
+    c1 = MagicMock()
+    c1.name = "c1"
+    c1.run_speedtest = AsyncMock(
+        return_value={"timestamp": "2026-03-14T03:09:45Z", "download": 836.05, "upload": 832.97}
+    )
+    c2 = MagicMock()
+    c2.name = "c2"
+    c2.run_speedtest = AsyncMock(return_value={})
+
+    async def fake_get(*args, **kwargs):
+        return [c1, c2]
+
+    monkeypatch.setattr(services_mod, "_get_clients", fake_get)
+    call = MagicMock()
+    call.data = {}
+
+    response = await services_mod._service_run_speedtest(hass, call)
+    assert "results" in response
+    assert len(response["results"]) == 1
+    assert response["results"][0]["client_name"] == "c1"
+    assert response["results"][0]["download"] == 836.05
+
+    c1.run_speedtest = AsyncMock(return_value={})
+    c2.run_speedtest = AsyncMock(return_value={})
+    with pytest.raises(ServiceValidationError):
+        await services_mod._service_run_speedtest(hass, call)
+
+
+@pytest.mark.asyncio
 async def test_get_clients_no_data_returns_empty():
     """_get_clients returns an empty list when hass.data has no domain."""
     hass = MagicMock(spec=HomeAssistant)
