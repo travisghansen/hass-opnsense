@@ -321,7 +321,7 @@ class DHCPMixin(PyOPNsenseClientProtocol):
 
         """
         if not await self.is_endpoint_available("/api/dhcpv4/service/status"):
-            _LOGGER.debug("ISC DHCPv4 endpoint unavailable, skipping lease retrieval")
+            _LOGGER.debug("ISC DHCP not installed")
             return []
         if self._use_snake_case:
             response = await self._safe_dict_get("/api/dhcpv4/leases/search_lease")
@@ -386,7 +386,7 @@ class DHCPMixin(PyOPNsenseClientProtocol):
 
         """
         if not await self.is_endpoint_available("/api/dhcpv6/service/status"):
-            _LOGGER.debug("ISC DHCPv6 endpoint unavailable, skipping lease retrieval")
+            _LOGGER.debug("ISC DHCP not installed")
             return []
         if self._use_snake_case:
             response = await self._safe_dict_get("/api/dhcpv6/leases/search_lease")

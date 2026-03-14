@@ -35,10 +35,7 @@ class SpeedtestMixin(PyOPNsenseClientProtocol):
 
         """
         if not await self.is_endpoint_available("/api/speedtest/service/showrecent"):
-            _LOGGER.debug("Speedtest recent endpoint unavailable, skipping speedtest retrieval")
-            return {"available": False}
-        if not await self.is_endpoint_available("/api/speedtest/service/showstat"):
-            _LOGGER.debug("Speedtest stat endpoint unavailable, skipping speedtest retrieval")
+            _LOGGER.debug("Speedtest not installed")
             return {"available": False}
 
         show_recent = await self._safe_dict_get("/api/speedtest/service/showrecent")
@@ -120,8 +117,8 @@ class SpeedtestMixin(PyOPNsenseClientProtocol):
             Raw speedtest run result payload. Empty dictionary when unavailable.
 
         """
-        if not await self.is_endpoint_available("/api/speedtest/service/run"):
-            _LOGGER.debug("Speedtest run endpoint unavailable, skipping speedtest action")
+        if not await self.is_endpoint_available("/api/speedtest/service/showrecent"):
+            _LOGGER.debug("Speedtest not installed")
             return {}
 
         response = await self._safe_dict_get_with_timeout(

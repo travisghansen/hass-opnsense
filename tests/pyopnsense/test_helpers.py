@@ -174,8 +174,8 @@ async def test_log_errors_server_timeout_re_raise_and_suppress() -> None:
 
 @pytest.mark.asyncio
 async def test_xmlrpc_timeout_uses_per_call_asyncio_timeout(monkeypatch) -> None:
-    """_xmlrpc_timeout should use asyncio.wait_for with DEFAULT_TIMEOUT."""
-    monkeypatch.setattr(pyopnsense_helpers, "DEFAULT_TIMEOUT", 0.01)
+    """_xmlrpc_timeout should use asyncio.wait_for with DEFAULT_REQUEST_TIMEOUT_SECONDS."""
+    monkeypatch.setattr(pyopnsense_helpers, "DEFAULT_REQUEST_TIMEOUT_SECONDS", 0.01)
 
     @pyopnsense_helpers._xmlrpc_timeout
     async def fast_func(self):

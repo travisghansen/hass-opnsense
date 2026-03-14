@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import aiohttp
 
-from .const import DEFAULT_TIMEOUT
+from .const import DEFAULT_REQUEST_TIMEOUT_SECONDS
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -80,7 +80,7 @@ def _xmlrpc_timeout(func: Callable) -> Any:
 
     async def inner(self: Any, *args: Any, **kwargs: Any) -> Any:
         """Execute wrapped coroutine with a per-call asyncio timeout window."""
-        return await asyncio.wait_for(func(self, *args, **kwargs), DEFAULT_TIMEOUT)
+        return await asyncio.wait_for(func(self, *args, **kwargs), DEFAULT_REQUEST_TIMEOUT_SECONDS)
 
     return inner
 

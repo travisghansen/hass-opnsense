@@ -4,14 +4,12 @@ from typing import Any
 
 from dateutil.tz import gettz
 
-DEFAULT_TIMEOUT = 60
-DEFAULT_PLUGIN_CACHE_TTL_SECONDS = 6 * 60 * 60
-MIN_PLUGIN_CACHE_TTL_SECONDS = 60
-DEFAULT_ENDPOINT_CACHE_TTL_SECONDS = 60 * 60
-MIN_ENDPOINT_CACHE_TTL_SECONDS = 30
-DEFAULT_ENDPOINT_NEGATIVE_CACHE_SECONDS = 5 * 60
-MAX_ENDPOINT_NEGATIVE_CACHE_SECONDS = 60 * 60
+# Default timeout, in seconds, for HTTP/XMLRPC requests.
+DEFAULT_REQUEST_TIMEOUT_SECONDS = 60
+# Shared cache time-to-live, in seconds, for plugin and endpoint availability state.
+DEFAULT_CACHE_TTL_SECONDS = 6 * 60 * 60
 
+# Mapping of ambiguous timezone abbreviations to explicit IANA timezones.
 AMBIGUOUS_TZINFOS: dict[str, Any] = {
     "ACST": gettz("Australia/Darwin"),  # Australian Central Standard Time
     "ACT": gettz("America/Rio_Branco"),  # Acre Time (Brazil)

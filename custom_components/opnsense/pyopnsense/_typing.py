@@ -14,11 +14,10 @@ class PyOPNsenseClientProtocol(Protocol):
     _firmware_version: str | None
     _installed_plugins: set[str] | None
     _installed_plugins_updated_at: datetime | None
+    _installed_plugins_refresh_succeeded: bool
     _plugin_cache_ttl_seconds: int
     _endpoint_availability: dict[str, bool]
     _endpoint_checked_at: dict[str, datetime]
-    _endpoint_retry_after: dict[str, datetime]
-    _endpoint_failure_count: dict[str, int]
     _endpoint_cache_ttl_seconds: int
 
     @abstractmethod
@@ -306,6 +305,15 @@ class PyOPNsenseClientProtocol(Protocol):
         -------
         bool
             ``True`` when endpoint probe succeeds.
+
+        Notes
+        -----
+        Implementations cache per-endpoint availability using a TTL window.
+        Successful probes and HTTP 404 "not found" probes are cached until TTL
+        expiry.
+        Other probe failures are treated as transient and retried on the next
+        check.
+        ``force_refresh=True`` bypasses cache freshness checks.
 
         """
         ...

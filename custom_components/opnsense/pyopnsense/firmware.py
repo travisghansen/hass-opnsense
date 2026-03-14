@@ -19,6 +19,7 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
     _plugin_deprecated: bool | None
     _installed_plugins: set[str] | None
     _installed_plugins_updated_at: datetime | None
+    _installed_plugins_refresh_succeeded: bool
     _plugin_cache_ttl_seconds: int
 
     async def _store_host_firmware_version(self) -> None:
@@ -53,16 +54,30 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
         return self._firmware_version
 
     async def _refresh_installed_plugins(self, force: bool = False) -> None:
-        """Refresh the cached set of installed plugin package names.
+        """Refresh cached installed plugin package names from firmware metadata.
+
+        This method reads ``/api/core/firmware/info`` and rebuilds
+        ``self._installed_plugins`` with package names whose ``installed`` flag
+        equals ``"1"``. Cache refreshes are skipped while cached plugin data is
+        still fresh according to ``self._plugin_cache_ttl_seconds``, unless
+        ``force`` is ``True``.
+        TTL cache reuse only applies after a successful refresh. If the refresh
+        attempt fails (for example missing/invalid payload), the previous cache
+        is retained and the next call retries immediately.
 
         Parameters
         ----------
         force : bool
-            Whether to bypass TTL freshness checks and always refresh.
+            Whether to bypass TTL freshness checks and force a refresh attempt.
+
+        Returns
+        -------
+        None
 
         """
         if (
             not force
+            and self._installed_plugins_refresh_succeeded
             and self._installed_plugins is not None
             and self._installed_plugins_updated_at is not None
             and (datetime.now().astimezone() - self._installed_plugins_updated_at).total_seconds()
@@ -72,12 +87,14 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
 
         firmware_info = await self._safe_dict_get("/api/core/firmware/info")
         if not firmware_info:
+            self._installed_plugins_refresh_succeeded = False
             return
 
         package_list = (
             firmware_info.get("package") if isinstance(firmware_info, MutableMapping) else None
         )
         if not isinstance(package_list, list):
+            self._installed_plugins_refresh_succeeded = False
             return
 
         now = datetime.now().astimezone()
@@ -92,6 +109,7 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
                 installed_plugins.add(name)
         self._installed_plugins = installed_plugins
         self._installed_plugins_updated_at = now
+        self._installed_plugins_refresh_succeeded = True
 
     async def is_plugin_installed(self) -> bool:
         """Return whether the Home Assistant OPNsense plugin is installed.

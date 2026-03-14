@@ -92,6 +92,29 @@ async def test_safe_dict_get_with_timeout(monkeypatch, make_client) -> None:
         await client.async_close()
 
 
+@pytest.mark.parametrize(
+    ("timeout_seconds", "expected"),
+    [
+        ("bad", float(pyopnsense_client_base.DEFAULT_REQUEST_TIMEOUT_SECONDS)),
+        (object(), float(pyopnsense_client_base.DEFAULT_REQUEST_TIMEOUT_SECONDS)),
+        (0, float(pyopnsense_client_base.DEFAULT_REQUEST_TIMEOUT_SECONDS)),
+        (-5, float(pyopnsense_client_base.DEFAULT_REQUEST_TIMEOUT_SECONDS)),
+        (1.75, 1.75),
+    ],
+)
+@pytest.mark.asyncio
+async def test_normalize_timeout_seconds(
+    timeout_seconds: Any, expected: float, make_client
+) -> None:
+    """_normalize_timeout_seconds should coerce invalid values to the default timeout."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+    try:
+        assert client._normalize_timeout_seconds(timeout_seconds) == expected
+    finally:
+        await client.async_close()
+
+
 @pytest.mark.asyncio
 async def test_is_endpoint_available_caches_success(make_client) -> None:
     """Endpoint probe should cache positive results and avoid repeated calls."""
@@ -126,8 +149,8 @@ async def test_is_endpoint_available_caches_success(make_client) -> None:
 
 
 @pytest.mark.asyncio
-async def test_is_endpoint_available_negative_cache_and_force_refresh(make_client) -> None:
-    """Endpoint probe should negative-cache failures unless force refreshed."""
+async def test_is_endpoint_available_cache_false_by_ttl_and_force_refresh(make_client) -> None:
+    """Endpoint probe should cache False results until TTL expiry or force refresh."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session)
     calls = 0
@@ -155,9 +178,12 @@ async def test_is_endpoint_available_negative_cache_and_force_refresh(make_clien
     try:
         path = "/api/test/endpoint"
         assert await client.is_endpoint_available(path) is False
-        # Keep _endpoint_checked_at recent but expire _endpoint_retry_after to force a re-probe.
+        assert await client.is_endpoint_available(path) is False
+        assert calls == 1
         assert path in client._endpoint_checked_at
-        client._endpoint_retry_after[path] = datetime.now().astimezone() - timedelta(seconds=1)
+        client._endpoint_checked_at[path] = datetime.now().astimezone() - timedelta(
+            seconds=client._endpoint_cache_ttl_seconds + 1
+        )
         assert await client.is_endpoint_available(path) is True
         assert calls == 2
         assert await client.is_endpoint_available(path) is True
@@ -170,7 +196,7 @@ async def test_is_endpoint_available_negative_cache_and_force_refresh(make_clien
 
 @pytest.mark.asyncio
 async def test_is_endpoint_available_handles_timeout(make_client) -> None:
-    """Endpoint probe should return False and cache timeout failures."""
+    """Endpoint probe should return False and retry after timeout failures."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session)
     calls = 0
@@ -184,7 +210,43 @@ async def test_is_endpoint_available_handles_timeout(make_client) -> None:
     try:
         assert await client.is_endpoint_available("/api/test/endpoint") is False
         assert await client.is_endpoint_available("/api/test/endpoint") is False
-        assert calls == 1
+        assert calls == 2
+    finally:
+        await client.async_close()
+
+
+@pytest.mark.asyncio
+async def test_is_endpoint_available_does_not_cache_non_404_http_errors(make_client) -> None:
+    """Endpoint probe should retry when non-404 HTTP status codes are returned."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    client = make_client(session=session)
+    calls = 0
+
+    class FakeResp:
+        def __init__(self, status: int, ok: bool) -> None:
+            self.status = status
+            self.reason = "ERR"
+            self.ok = ok
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    def _get(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return FakeResp(status=500, ok=False)
+
+    session.get = _get
+    try:
+        path = "/api/test/endpoint"
+        assert await client.is_endpoint_available(path) is False
+        assert await client.is_endpoint_available(path) is False
+        assert calls == 2
+        assert path not in client._endpoint_checked_at
+        assert path not in client._endpoint_availability
     finally:
         await client.async_close()
 

@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import MutableMapping
-from datetime import datetime, timedelta
+from datetime import datetime
 from functools import partial
 import inspect
 import json
@@ -15,15 +15,7 @@ import xmlrpc.client
 import aiohttp
 import awesomeversion
 
-from .const import (
-    DEFAULT_ENDPOINT_CACHE_TTL_SECONDS,
-    DEFAULT_ENDPOINT_NEGATIVE_CACHE_SECONDS,
-    DEFAULT_PLUGIN_CACHE_TTL_SECONDS,
-    DEFAULT_TIMEOUT,
-    MAX_ENDPOINT_NEGATIVE_CACHE_SECONDS,
-    MIN_ENDPOINT_CACHE_TTL_SECONDS,
-    MIN_PLUGIN_CACHE_TTL_SECONDS,
-)
+from .const import DEFAULT_CACHE_TTL_SECONDS, DEFAULT_REQUEST_TIMEOUT_SECONDS
 from .exceptions import UnknownFirmware
 from .helpers import _LOGGER, _xmlrpc_timeout
 
@@ -87,24 +79,11 @@ class ClientBaseMixin:
         self._plugin_deprecated: bool | None = None
         self._installed_plugins: set[str] | None = None
         self._installed_plugins_updated_at: datetime | None = None
+        self._installed_plugins_refresh_succeeded: bool = False
         self._endpoint_availability: dict[str, bool] = {}
         self._endpoint_checked_at: dict[str, datetime] = {}
-        self._endpoint_retry_after: dict[str, datetime] = {}
-        self._endpoint_failure_count: dict[str, int] = {}
-        requested_ttl = self._opts.get("plugin_cache_ttl_seconds", DEFAULT_PLUGIN_CACHE_TTL_SECONDS)
-        try:
-            ttl_seconds = int(requested_ttl)
-        except (TypeError, ValueError):
-            ttl_seconds = DEFAULT_PLUGIN_CACHE_TTL_SECONDS
-        self._plugin_cache_ttl_seconds = max(ttl_seconds, MIN_PLUGIN_CACHE_TTL_SECONDS)
-        requested_endpoint_ttl = self._opts.get(
-            "endpoint_cache_ttl_seconds", DEFAULT_ENDPOINT_CACHE_TTL_SECONDS
-        )
-        try:
-            endpoint_ttl_seconds = int(requested_endpoint_ttl)
-        except (TypeError, ValueError):
-            endpoint_ttl_seconds = DEFAULT_ENDPOINT_CACHE_TTL_SECONDS
-        self._endpoint_cache_ttl_seconds = max(endpoint_ttl_seconds, MIN_ENDPOINT_CACHE_TTL_SECONDS)
+        self._plugin_cache_ttl_seconds = DEFAULT_CACHE_TTL_SECONDS
+        self._endpoint_cache_ttl_seconds = DEFAULT_CACHE_TTL_SECONDS
         self._use_snake_case: bool = True
         self._xmlrpc_query_count = 0
         self._rest_api_query_count = 0
@@ -472,7 +451,7 @@ $toreturn["real"] = json_encode($toreturn_real);
             async with self._session.get(
                 url,
                 auth=aiohttp.BasicAuth(self._username, self._password),
-                timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
+                timeout=aiohttp.ClientTimeout(total=DEFAULT_REQUEST_TIMEOUT_SECONDS),
                 ssl=self._verify_ssl,
             ) as response:
                 _LOGGER.debug(
@@ -625,17 +604,18 @@ $toreturn["real"] = json_encode($toreturn_real);
         Returns
         -------
         float
-            Positive timeout in seconds. Falls back to DEFAULT_TIMEOUT when invalid.
+            Positive timeout in seconds. Falls back to
+            DEFAULT_REQUEST_TIMEOUT_SECONDS when invalid.
 
         """
         if timeout_seconds is None:
-            return float(DEFAULT_TIMEOUT)
+            return float(DEFAULT_REQUEST_TIMEOUT_SECONDS)
         try:
             timeout_total = float(timeout_seconds)
         except (TypeError, ValueError):
-            return float(DEFAULT_TIMEOUT)
+            return float(DEFAULT_REQUEST_TIMEOUT_SECONDS)
         if timeout_total <= 0:
-            return float(DEFAULT_TIMEOUT)
+            return float(DEFAULT_REQUEST_TIMEOUT_SECONDS)
         return timeout_total
 
     async def _safe_dict_get(self, path: str) -> dict[str, Any]:
@@ -730,7 +710,7 @@ $toreturn["real"] = json_encode($toreturn_real);
                 url,
                 json=payload,
                 auth=aiohttp.BasicAuth(self._username, self._password),
-                timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
+                timeout=aiohttp.ClientTimeout(total=DEFAULT_REQUEST_TIMEOUT_SECONDS),
                 ssl=self._verify_ssl,
             ) as response:
                 _LOGGER.debug("[post] Response %s: %s", response.status, response.reason)
@@ -825,6 +805,18 @@ $toreturn["real"] = json_encode($toreturn_real);
         bool
             ``True`` when endpoint probe succeeded, otherwise ``False``.
 
+        Notes
+        -----
+        Availability is cached per endpoint path in ``self._endpoint_availability`` and
+        timestamped in ``self._endpoint_checked_at``.
+        Cached entries are considered fresh for ``self._endpoint_cache_ttl_seconds``
+        seconds.
+        Successful checks (HTTP 2xx) and definitive "not found" checks (HTTP 404)
+        are cached and returned until TTL expiry.
+        Other HTTP failures (for example 4xx except 404, and 5xx) plus transport
+        exceptions are treated as transient failures and are not cached.
+        ``force_refresh=True`` bypasses cache freshness and probes immediately.
+
         """
         if not isinstance(path, str) or not path:
             return False
@@ -835,14 +827,6 @@ $toreturn["real"] = json_encode($toreturn_real);
             and (now - self._endpoint_checked_at[path]).total_seconds()
             < self._endpoint_cache_ttl_seconds
         )
-        retry_after = self._endpoint_retry_after.get(path)
-        availability = self._endpoint_availability.get(path)
-
-        if not force_refresh and availability is False and isinstance(retry_after, datetime):
-            if retry_after > now:
-                return False
-            # Retry window has elapsed, so probe again even if the TTL cache is still fresh.
-            cache_is_fresh = False
 
         if not force_refresh and cache_is_fresh and path in self._endpoint_availability:
             return self._endpoint_availability[path]
@@ -855,51 +839,38 @@ $toreturn["real"] = json_encode($toreturn_real);
             async with self._session.get(
                 url,
                 auth=aiohttp.BasicAuth(self._username, self._password),
-                timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
+                timeout=aiohttp.ClientTimeout(total=DEFAULT_REQUEST_TIMEOUT_SECONDS),
                 ssl=self._verify_ssl,
             ) as response:
-                available = bool(response.ok)
-                self._endpoint_availability[path] = available
-                self._endpoint_checked_at[path] = now
-
-                if available:
-                    self._endpoint_failure_count[path] = 0
-                    self._endpoint_retry_after.pop(path, None)
+                if response.ok:
+                    self._endpoint_availability[path] = True
+                    self._endpoint_checked_at[path] = now
                     return True
+                if response.status == 404:
+                    self._endpoint_availability[path] = False
+                    self._endpoint_checked_at[path] = now
+                    return False
 
-                failures = self._endpoint_failure_count.get(path, 0) + 1
-                self._endpoint_failure_count[path] = failures
-                retry_seconds = min(
-                    DEFAULT_ENDPOINT_NEGATIVE_CACHE_SECONDS * (2 ** (failures - 1)),
-                    MAX_ENDPOINT_NEGATIVE_CACHE_SECONDS,
-                )
-                self._endpoint_retry_after[path] = now + timedelta(seconds=retry_seconds)
-
+                self._endpoint_availability.pop(path, None)
+                self._endpoint_checked_at.pop(path, None)
                 if response.status == 403:
                     _LOGGER.error(
                         "Permission Error in is_endpoint_available. Path: %s. Ensure the OPNsense user connected to HA has appropriate access. Recommend full admin access",
                         url,
                     )
                 else:
-                    _LOGGER.debug(
-                        "Endpoint check failed for %s with status %s: %s",
+                    _LOGGER.warning(
+                        "Transient endpoint check failure for %s. Response %s: %s. Not caching result.",
                         path,
                         response.status,
                         response.reason,
                     )
                 return False
         except (aiohttp.ClientError, TimeoutError) as e:
-            failures = self._endpoint_failure_count.get(path, 0) + 1
-            self._endpoint_failure_count[path] = failures
-            retry_seconds = min(
-                DEFAULT_ENDPOINT_NEGATIVE_CACHE_SECONDS * (2 ** (failures - 1)),
-                MAX_ENDPOINT_NEGATIVE_CACHE_SECONDS,
-            )
-            self._endpoint_retry_after[path] = now + timedelta(seconds=retry_seconds)
-            self._endpoint_availability[path] = False
-            self._endpoint_checked_at[path] = now
+            self._endpoint_availability.pop(path, None)
+            self._endpoint_checked_at.pop(path, None)
             _LOGGER.warning(
-                "Endpoint availability check failed for %s. %s: %s",
+                "Endpoint availability check failed for %s. %s: %s. Not caching result.",
                 path,
                 type(e).__name__,
                 e,
