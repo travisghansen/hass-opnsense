@@ -121,18 +121,18 @@ async def test_get_vnstat_summary_from_hourly_daily_monthly(make_client) -> None
         assert igc0_metrics["vnstat_today"]["rx_bytes"] == 2 * gib
         assert igc0_metrics["vnstat_today"]["tx_bytes"] == 2 * gib
         assert igc0_metrics["vnstat_this_month"]["total_bytes"] == 8 * gib
-        assert igc0_metrics["vnstat_yesterday_total"]["total_bytes"] == 2 * gib
-        assert igc0_metrics["vnstat_last_month_total"]["total_bytes"] == 6 * gib
-        assert igc0_metrics["vnstat_last_hour_total"]["total_bytes"] == 3 * gib
+        assert igc0_metrics["vnstat_yesterday"]["total_bytes"] == 2 * gib
+        assert igc0_metrics["vnstat_last_month"]["total_bytes"] == 6 * gib
+        assert igc0_metrics["vnstat_last_hour"]["total_bytes"] == 3 * gib
 
         igc1_metrics = vnstat["interfaces"]["igc1"]["metrics"]
         assert igc1_metrics["vnstat_today"]["total_bytes"] == int(1.5 * gib)
         assert igc1_metrics["vnstat_today"]["rx_bytes"] == 1 * gib
         assert igc1_metrics["vnstat_today"]["tx_bytes"] == int(0.5 * gib)
         assert igc1_metrics["vnstat_this_month"]["total_bytes"] == 3 * gib
-        assert igc1_metrics["vnstat_yesterday_total"]["total_bytes"] == 1 * gib
-        assert igc1_metrics["vnstat_last_month_total"]["total_bytes"] == 2 * gib
-        assert igc1_metrics["vnstat_last_hour_total"]["total_bytes"] == int(1.5 * gib)
+        assert igc1_metrics["vnstat_yesterday"]["total_bytes"] == 1 * gib
+        assert igc1_metrics["vnstat_last_month"]["total_bytes"] == 2 * gib
+        assert igc1_metrics["vnstat_last_hour"]["total_bytes"] == int(1.5 * gib)
     finally:
         await client.async_close()
 
