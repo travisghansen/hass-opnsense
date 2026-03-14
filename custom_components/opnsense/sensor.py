@@ -150,9 +150,9 @@ def _vnstat_metric_display_name(metric_name: str) -> str:
     metric_names: dict[str, str] = {
         "vnstat_today": "Today",
         "vnstat_this_month": "This Month",
-        "vnstat_yesterday_total": "Yesterday Total",
-        "vnstat_last_month_total": "Last Month Total",
-        "vnstat_last_hour_total": "Last Hour Total",
+        "vnstat_yesterday": "Yesterday",
+        "vnstat_last_month": "Last Month",
+        "vnstat_last_hour": "Last Hour",
     }
     return metric_names.get(metric_name, metric_name)
 
@@ -209,15 +209,15 @@ async def _compile_vnstat_sensors(
             "state_class": SensorStateClass.TOTAL_INCREASING,
             "icon": "mdi:calendar-month",
         },
-        "vnstat_yesterday_total": {
+        "vnstat_yesterday": {
             "state_class": SensorStateClass.MEASUREMENT,
             "icon": "mdi:calendar-arrow-left",
         },
-        "vnstat_last_month_total": {
+        "vnstat_last_month": {
             "state_class": SensorStateClass.MEASUREMENT,
             "icon": "mdi:calendar-text",
         },
-        "vnstat_last_hour_total": {
+        "vnstat_last_hour": {
             "state_class": SensorStateClass.MEASUREMENT,
             "icon": "mdi:clock-time-four-outline",
         },

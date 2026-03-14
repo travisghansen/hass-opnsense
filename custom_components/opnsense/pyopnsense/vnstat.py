@@ -92,15 +92,13 @@ class VnstatMixin(PyOPNsenseClientProtocol):
                 "vnstat_this_month": self._pick_monthly_row(
                     rows_monthly, months_ago=0, current_tz=opnsense_tz
                 ),
-                "vnstat_yesterday_total": self._pick_daily_row(
+                "vnstat_yesterday": self._pick_daily_row(
                     rows_daily, days_ago=1, current_tz=opnsense_tz
                 ),
-                "vnstat_last_month_total": self._pick_monthly_row(
+                "vnstat_last_month": self._pick_monthly_row(
                     rows_monthly, months_ago=1, current_tz=opnsense_tz
                 ),
-                "vnstat_last_hour_total": self._pick_last_hour_row(
-                    rows_hourly, current_tz=opnsense_tz
-                ),
+                "vnstat_last_hour": self._pick_last_hour_row(rows_hourly, current_tz=opnsense_tz),
             }
             metrics: dict[str, dict[str, int | None]] = {}
             for metric_name, metric_row in selected_rows.items():

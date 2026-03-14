@@ -1204,17 +1204,17 @@ async def test_async_setup_entry_creates_vnstat_sensors(make_config_entry):
                             "rx_bytes": 1200,
                             "tx_bytes": 800,
                         },
-                        "vnstat_yesterday_total": {
+                        "vnstat_yesterday": {
                             "total_bytes": 900,
                             "rx_bytes": 600,
                             "tx_bytes": 300,
                         },
-                        "vnstat_last_month_total": {
+                        "vnstat_last_month": {
                             "total_bytes": 1500,
                             "rx_bytes": 800,
                             "tx_bytes": 700,
                         },
-                        "vnstat_last_hour_total": {
+                        "vnstat_last_hour": {
                             "total_bytes": 50,
                             "rx_bytes": 30,
                             "tx_bytes": 20,
@@ -1242,27 +1242,27 @@ async def test_async_setup_entry_creates_vnstat_sensors(make_config_entry):
     assert key_to_entity["vnstat.igc0.vnstat_this_month"].entity_description.state_class is (
         SensorStateClass.TOTAL_INCREASING
     )
-    assert key_to_entity["vnstat.igc0.vnstat_yesterday_total"].entity_description.state_class is (
+    assert key_to_entity["vnstat.igc0.vnstat_yesterday"].entity_description.state_class is (
         SensorStateClass.MEASUREMENT
     )
-    assert key_to_entity["vnstat.igc0.vnstat_last_month_total"].entity_description.state_class is (
+    assert key_to_entity["vnstat.igc0.vnstat_last_month"].entity_description.state_class is (
         SensorStateClass.MEASUREMENT
     )
-    assert key_to_entity["vnstat.igc0.vnstat_last_hour_total"].entity_description.state_class is (
+    assert key_to_entity["vnstat.igc0.vnstat_last_hour"].entity_description.state_class is (
         SensorStateClass.MEASUREMENT
     )
     assert key_to_entity["vnstat.igc0.vnstat_today"].entity_description.name == "vnStat: WAN: Today"
     assert (
-        key_to_entity["vnstat.igc0.vnstat_last_month_total"].entity_description.name
-        == "vnStat: WAN: Last Month Total"
+        key_to_entity["vnstat.igc0.vnstat_last_month"].entity_description.name
+        == "vnStat: WAN: Last Month"
     )
 
     for key in (
         "vnstat.igc0.vnstat_today",
         "vnstat.igc0.vnstat_this_month",
-        "vnstat.igc0.vnstat_yesterday_total",
-        "vnstat.igc0.vnstat_last_month_total",
-        "vnstat.igc0.vnstat_last_hour_total",
+        "vnstat.igc0.vnstat_yesterday",
+        "vnstat.igc0.vnstat_last_month",
+        "vnstat.igc0.vnstat_last_hour",
     ):
         entity = key_to_entity[key]
         entity.hass = MagicMock()
@@ -1276,9 +1276,9 @@ async def test_async_setup_entry_creates_vnstat_sensors(make_config_entry):
     assert today_entity.extra_state_attributes.get("rx_bytes") == 700
     assert today_entity.extra_state_attributes.get("tx_bytes") == 300
     assert key_to_entity["vnstat.igc0.vnstat_this_month"].native_value == 2000
-    assert key_to_entity["vnstat.igc0.vnstat_yesterday_total"].native_value == 900
-    assert key_to_entity["vnstat.igc0.vnstat_last_month_total"].native_value == 1500
-    assert key_to_entity["vnstat.igc0.vnstat_last_hour_total"].native_value == 50
+    assert key_to_entity["vnstat.igc0.vnstat_yesterday"].native_value == 900
+    assert key_to_entity["vnstat.igc0.vnstat_last_month"].native_value == 1500
+    assert key_to_entity["vnstat.igc0.vnstat_last_hour"].native_value == 50
 
 
 @pytest.mark.asyncio
