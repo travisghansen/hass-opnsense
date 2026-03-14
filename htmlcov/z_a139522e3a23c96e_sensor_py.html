@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_a139522e3a23c96e_services_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.13.1">coverage.py v7.13.1</a>,
-            created at 2026-03-14 13:32 +0000
+            created at 2026-03-14 18:54 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -234,9 +234,9 @@
     <p class="run"><span class="n"><a id="t150" href="#t150">150</a></span><span class="t">    <span class="nam">metric_names</span><span class="op">:</span> <span class="nam">dict</span><span class="op">[</span><span class="nam">str</span><span class="op">,</span> <span class="nam">str</span><span class="op">]</span> <span class="op">=</span> <span class="op">{</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t151" href="#t151">151</a></span><span class="t">        <span class="str">"vnstat_today"</span><span class="op">:</span> <span class="str">"Today"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t152" href="#t152">152</a></span><span class="t">        <span class="str">"vnstat_this_month"</span><span class="op">:</span> <span class="str">"This Month"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t153" href="#t153">153</a></span><span class="t">        <span class="str">"vnstat_yesterday_total"</span><span class="op">:</span> <span class="str">"Yesterday Total"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t154" href="#t154">154</a></span><span class="t">        <span class="str">"vnstat_last_month_total"</span><span class="op">:</span> <span class="str">"Last Month Total"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t155" href="#t155">155</a></span><span class="t">        <span class="str">"vnstat_last_hour_total"</span><span class="op">:</span> <span class="str">"Last Hour Total"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t153" href="#t153">153</a></span><span class="t">        <span class="str">"vnstat_yesterday"</span><span class="op">:</span> <span class="str">"Yesterday"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t154" href="#t154">154</a></span><span class="t">        <span class="str">"vnstat_last_month"</span><span class="op">:</span> <span class="str">"Last Month"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t155" href="#t155">155</a></span><span class="t">        <span class="str">"vnstat_last_hour"</span><span class="op">:</span> <span class="str">"Last Hour"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t156" href="#t156">156</a></span><span class="t">    <span class="op">}</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t157" href="#t157">157</a></span><span class="t">    <span class="key">return</span> <span class="nam">metric_names</span><span class="op">.</span><span class="nam">get</span><span class="op">(</span><span class="nam">metric_name</span><span class="op">,</span> <span class="nam">metric_name</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t158" href="#t158">158</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
@@ -293,15 +293,15 @@
     <p class="run run2"><span class="n"><a id="t209" href="#t209">209</a></span><span class="t">            <span class="str">"state_class"</span><span class="op">:</span> <span class="nam">SensorStateClass</span><span class="op">.</span><span class="nam">TOTAL_INCREASING</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t210" href="#t210">210</a></span><span class="t">            <span class="str">"icon"</span><span class="op">:</span> <span class="str">"mdi:calendar-month"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t211" href="#t211">211</a></span><span class="t">        <span class="op">}</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t212" href="#t212">212</a></span><span class="t">        <span class="str">"vnstat_yesterday_total"</span><span class="op">:</span> <span class="op">{</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t212" href="#t212">212</a></span><span class="t">        <span class="str">"vnstat_yesterday"</span><span class="op">:</span> <span class="op">{</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t213" href="#t213">213</a></span><span class="t">            <span class="str">"state_class"</span><span class="op">:</span> <span class="nam">SensorStateClass</span><span class="op">.</span><span class="nam">MEASUREMENT</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t214" href="#t214">214</a></span><span class="t">            <span class="str">"icon"</span><span class="op">:</span> <span class="str">"mdi:calendar-arrow-left"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t215" href="#t215">215</a></span><span class="t">        <span class="op">}</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t216" href="#t216">216</a></span><span class="t">        <span class="str">"vnstat_last_month_total"</span><span class="op">:</span> <span class="op">{</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t216" href="#t216">216</a></span><span class="t">        <span class="str">"vnstat_last_month"</span><span class="op">:</span> <span class="op">{</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t217" href="#t217">217</a></span><span class="t">            <span class="str">"state_class"</span><span class="op">:</span> <span class="nam">SensorStateClass</span><span class="op">.</span><span class="nam">MEASUREMENT</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t218" href="#t218">218</a></span><span class="t">            <span class="str">"icon"</span><span class="op">:</span> <span class="str">"mdi:calendar-text"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t219" href="#t219">219</a></span><span class="t">        <span class="op">}</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t220" href="#t220">220</a></span><span class="t">        <span class="str">"vnstat_last_hour_total"</span><span class="op">:</span> <span class="op">{</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t220" href="#t220">220</a></span><span class="t">        <span class="str">"vnstat_last_hour"</span><span class="op">:</span> <span class="op">{</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t221" href="#t221">221</a></span><span class="t">            <span class="str">"state_class"</span><span class="op">:</span> <span class="nam">SensorStateClass</span><span class="op">.</span><span class="nam">MEASUREMENT</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t222" href="#t222">222</a></span><span class="t">            <span class="str">"icon"</span><span class="op">:</span> <span class="str">"mdi:clock-time-four-outline"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t223" href="#t223">223</a></span><span class="t">        <span class="op">}</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
@@ -1448,7 +1448,7 @@
             <a class="nav" href="z_a139522e3a23c96e_services_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.13.1">coverage.py v7.13.1</a>,
-            created at 2026-03-14 13:32 +0000
+            created at 2026-03-14 18:54 +0000
         </p>
     </div>
 </footer>
