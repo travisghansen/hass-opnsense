@@ -256,6 +256,11 @@ data:
 action: opnsense.run_speedtest
 # Returns speedtest results as action response data
 
+action: opnsense.get_vnstat_metrics
+data:
+  period: "hourly" # hourly|daily|monthly|yearly
+# Returns parsed vnStat endpoint data as action response data
+
 action: opnsense.generate_vouchers
 data:
   validity: "14400"  # seconds

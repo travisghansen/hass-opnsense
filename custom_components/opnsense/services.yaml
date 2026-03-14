@@ -359,6 +359,44 @@ run_speedtest:
                 - integration: opnsense
                   domain: sensor
 
+get_vnstat_metrics:
+  fields:
+    period:
+      required: true
+      default: "hourly"
+      selector:
+        select:
+          multiple: false
+          custom_value: false
+          mode: dropdown
+          translation_key: "vnstat_metric_period"
+          options:
+            - "hourly"
+            - "daily"
+            - "monthly"
+            - "yearly"
+    multiple_opnsense:
+      collapsed: true
+      fields:
+        device_id:
+          required: false
+          selector:
+            device:
+              multiple: false
+              filter:
+                - integration: opnsense
+              entity:
+                - domain: sensor
+        entity_id:
+          example: "sensor.opnsense_interface_lan_status"
+          required: false
+          selector:
+            entity:
+              multiple: false
+              filter:
+                - integration: opnsense
+                  domain: sensor
+
 toggle_alias:
   fields:
     alias:

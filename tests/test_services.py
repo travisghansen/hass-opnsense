@@ -7,12 +7,40 @@ for operations such as starting/stopping services and generating vouchers.
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import voluptuous as vol
 
 from custom_components.opnsense import services as services_mod
-from custom_components.opnsense.const import DOMAIN
+from custom_components.opnsense.const import DOMAIN, SERVICE_GET_VNSTAT_METRICS
 from custom_components.opnsense.pyopnsense import VoucherServerError
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
+
+
+@pytest.mark.asyncio
+async def test_async_setup_services_registers_get_vnstat_metrics_case_insensitive_period():
+    """Service setup should register get_vnstat_metrics with normalized period schema."""
+    hass = MagicMock(spec=HomeAssistant)
+    hass.services = MagicMock()
+    hass.services.async_register = MagicMock()
+
+    await services_mod.async_setup_services(hass)
+
+    registered_kwargs = None
+    for call in hass.services.async_register.call_args_list:
+        kwargs = call.kwargs
+        if kwargs.get("service") == SERVICE_GET_VNSTAT_METRICS:
+            registered_kwargs = kwargs
+            break
+
+    assert registered_kwargs is not None
+    assert registered_kwargs["domain"] == DOMAIN
+    assert registered_kwargs["supports_response"] == SupportsResponse.ONLY
+
+    schema = registered_kwargs["schema"]
+    validated = schema({"period": "Yearly"})
+    assert validated["period"] == "yearly"
+    with pytest.raises(vol.Invalid):
+        schema({"period": "weekly"})
 
 
 @pytest.mark.asyncio
@@ -316,6 +344,46 @@ async def test_run_speedtest_success_and_unavailable(monkeypatch, ph_hass):
     c2.run_speedtest = AsyncMock(return_value={})
     with pytest.raises(ServiceValidationError):
         await services_mod._service_run_speedtest(hass, call)
+
+
+@pytest.mark.asyncio
+async def test_get_vnstat_metrics_success_and_unavailable(monkeypatch, ph_hass):
+    """get_vnstat_metrics should return parsed per-client data or raise when unavailable."""
+    hass = ph_hass
+    hass.data = {}
+    c1 = MagicMock()
+    c1.name = "c1"
+    c1.get_vnstat_metrics = AsyncMock(
+        return_value={
+            "period": "yearly",
+            "interfaces": {
+                "igc0": [{"label": "2026", "rx_bytes": 1, "tx_bytes": 2, "total_bytes": 3}],
+            },
+        }
+    )
+    c2 = MagicMock()
+    c2.name = "c2"
+    c2.get_vnstat_metrics = AsyncMock(return_value={})
+
+    async def fake_get(*args, **kwargs):
+        return [c1, c2]
+
+    monkeypatch.setattr(services_mod, "_get_clients", fake_get)
+    call = MagicMock()
+    call.data = {"period": "yearly"}
+
+    response = await services_mod._service_get_vnstat_metrics(hass, call)
+    assert "results" in response
+    assert len(response["results"]) == 1
+    assert response["results"][0]["client_name"] == "c1"
+    assert response["results"][0]["period"] == "yearly"
+    c1.get_vnstat_metrics.assert_awaited_once_with("yearly")
+    c2.get_vnstat_metrics.assert_awaited_once_with("yearly")
+
+    c1.get_vnstat_metrics = AsyncMock(return_value={})
+    c2.get_vnstat_metrics = AsyncMock(return_value={})
+    with pytest.raises(ServiceValidationError):
+        await services_mod._service_get_vnstat_metrics(hass, call)
 
 
 @pytest.mark.asyncio
