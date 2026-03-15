@@ -34,22 +34,21 @@
       "granular_sync": {
         "data": {
           "sync_telemetry": "Basic telemetry data",
-          "sync_vnstat": "vnStat bandwidth usage",
-          "sync_speedtest": "Speedtest results",
-          "sync_vpn": "VPN information and switches",
-          "sync_firmware_updates": "Firmware updates",
-          "sync_carp": "CARP information",
+          "sync_interfaces": "Interface information",
           "sync_dhcp_leases": "DHCP leases",
           "sync_gateways": "Gateway information",
+          "sync_firmware_updates": "Firmware updates",
+          "sync_vpn": "VPN information and switches",
+          "sync_carp": "CARP information",
           "sync_services": "Service switches",
           "sync_notices": "Notice information",
-          "sync_filters_and_nat": "Firewall filter and NAT switches*",
-          "sync_unbound": "Unbound blocklist switch",
-          "sync_interfaces": "Interface information",
-          "sync_certificates": "Security certificate information"
+          "sync_filters_and_nat": "Firewall filter and NAT switches",
+          "sync_unbound": "Unbound blocklist switches",
+          "sync_certificates": "Security certificate information",
+          "sync_vnstat": "vnStat bandwidth usage",
+          "sync_speedtest": "Speedtest results"
         },
-        "title": "Choose what items to sync",
-        "description": "* requires the OPNsense plugin"
+        "title": "Choose what items to sync"
       },
       "reconfigure": {
         "data": {
@@ -71,10 +70,13 @@
       "init": {
         "data": {
           "scan_interval": "Scan Interval (seconds)",
-          "device_tracker_enabled": "Enable Device Tracker",
+          "device_tracking_mode": "Device Tracker Mode",
           "device_tracker_scan_interval": "Device Tracker Scan Interval (seconds)",
           "device_tracker_consider_home": "Device Tracker Consider Home (seconds)",
           "granular_sync_options": "Enable Granular Sync Options"
+        },
+        "data_description": {
+          "device_tracking_mode": "For `Track only selected devices`, a next step lets you pick devices from recent ARP detections and add MAC addresses manually"
         }
       },
       "granular_sync": {
@@ -90,20 +92,21 @@
           "sync_services": "Service switches",
           "sync_notices": "Notice information",
           "sync_filters_and_nat": "Firewall and NAT rules switches",
-          "sync_unbound": "Unbound blocklist switch",
+          "sync_unbound": "Unbound blocklist switches",
           "sync_interfaces": "Interface information",
           "sync_certificates": "Security certificate information"
         },
         "title": "Choose what items to sync"
       },
       "device_tracker": {
-        "description": "Choose which devices you want to track. If you don't select any devices, all devices will be tracked but will be disabled by default. If you do select any devices, only those devices will be tracked and will be enabled by default.",
+        "description": "Choose the devices to track. Automatically detected devices come from the current OPNsense ARP table, so only recently seen devices appear in this list. If no devices are selected or manually entered, trackers for all detected devices will be created and entities are disabled by default",
         "data": {
           "devices": "Devices to Track",
-          "manual_devices": "Manual MAC Addresses to Track"
+          "manual_devices": "Additional MAC addresses not currently detected"
         },
         "data_description": {
-          "manual_devices": "Separate multiple MAC Addresses with a comma. Invalid MAC Addresses will be ignored. ex. 00:00:00:00:00:00, 11:11:11:11:11:11"
+          "devices": "Only recently detected devices appear here. Previously selected devices that are not currently detected stay available in the list.",
+          "manual_devices": "Enter MAC addresses separated by commas or new lines. Invalid MAC addresses are ignored. Example: 00:00:00:00:00:00"
         }
       }
     }
@@ -185,6 +188,13 @@
         "daily": "Daily",
         "monthly": "Monthly",
         "yearly": "Yearly"
+      }
+    },
+    "device_tracking_mode": {
+      "options": {
+        "disabled": "Disabled",
+        "all_detected": "Track all detected devices (entities are disabled by default)",
+        "selected_only": "Track only selected devices (choose devices in a next step)"
       }
     }
   },
