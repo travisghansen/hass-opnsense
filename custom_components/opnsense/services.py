@@ -562,7 +562,7 @@ async def _service_run_speedtest(hass: HomeAssistant, call: ServiceCall) -> Serv
 
     if len(response_list) == 0:
         raise ServiceValidationError(
-            "Run Speedtest Failed. No selected OPNsense clients have a working speedtest endpoint."
+            "Run Speedtest Failed. No selected OPNsense clients have Speedtest installed"
         )
     return_response: dict[str, Any] = {"results": response_list}
     _LOGGER.debug("[service_run_speedtest] return_response: %s", return_response)
@@ -609,7 +609,7 @@ async def _service_get_vnstat_metrics(hass: HomeAssistant, call: ServiceCall) ->
 
     if len(response_list) == 0:
         raise ServiceValidationError(
-            "Get vnStat Metrics Failed. No selected OPNsense clients have a working vnStat endpoint."
+            "Get vnStat Metrics Failed. No selected OPNsense clients vnStat installed"
         )
     return_response: dict[str, Any] = {"results": response_list}
     _LOGGER.debug("[service_get_vnstat_metrics] return_response: %s", return_response)
