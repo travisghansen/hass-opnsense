@@ -27,7 +27,6 @@ import pytest
 import custom_components.opnsense as init_mod
 from custom_components.opnsense import config_flow as cf_mod
 from custom_components.opnsense.const import (
-    CONF_DEVICE_TRACKER_ENABLED,
     CONF_DEVICE_UNIQUE_ID,
     CONF_DEVICES,
     CONF_GRANULAR_SYNC_OPTIONS,
@@ -315,7 +314,10 @@ async def test_e2e_granular_sync_and_options_device_tracker(
     opt_flow.config_entry = entry
     # initial options step: enable device tracker & granular sync
     opt_init = await opt_flow.async_step_init(
-        user_input={CONF_DEVICE_TRACKER_ENABLED: True, CONF_GRANULAR_SYNC_OPTIONS: True}
+        user_input={
+            cf_mod.CONF_DEVICE_TRACKING_MODE: cf_mod.DEVICE_TRACKING_MODE_SELECTED,
+            CONF_GRANULAR_SYNC_OPTIONS: True,
+        }
     )
     assert opt_init["type"] == "form" and opt_init["step_id"] == "granular_sync"
 
@@ -328,14 +330,14 @@ async def test_e2e_granular_sync_and_options_device_tracker(
     opt_final = await opt_flow.async_step_device_tracker(
         user_input={
             CONF_DEVICES: ["aa:bb:cc:dd:ee:ff"],
-            CONF_MANUAL_DEVICES: "11:22:33:44:55:66, 77:88:99:aa:bb:cc",  # valid MACs
+            CONF_MANUAL_DEVICES: "11:22:33:44:55:66\n77:88:99:aa:bb:cc",  # valid MACs
         }
     )
     assert opt_final["type"] == "create_entry"
     # Options merged list should contain unique MACs (order not strictly enforced)
     devices_set = set(entry.options.get(CONF_DEVICES, []))
     assert {"aa:bb:cc:dd:ee:ff", "11:22:33:44:55:66", "77:88:99:aa:bb:cc"}.issubset(devices_set)
-    assert entry.options.get(CONF_DEVICE_TRACKER_ENABLED) is True
+    assert entry.options.get(cf_mod.CONF_DEVICE_TRACKER_ENABLED) is True
 
     # Patch runtime setup components (client + coordinator) to count device tracker coordinator instantiation
     monkeypatch.setattr(
