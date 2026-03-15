@@ -129,27 +129,28 @@ At minimum, the following permissions are required:
 * Status: Interfaces
 * System: Firmware
 
-[The list of what other permissions are needed for the Granular Sync Options and for the Actions can be reviewed here.](granular_permissions.md)
+[The list of what other permissions are needed for the Granular Sync Options and for the Actions can be reviewed here.](docs/granular_permissions.md)
 
 ### Basic Configuration
 
 | Option | Required | Default | Description |
 | --- | :---: | --- | --- |
-| URL | X | | The full URL to the <ins>OPNsense</ins> UI (ie: `https://192.168.1.1`). Supported format is `<scheme>://<ip or host>[:<port>]` |
+| URL | ✅ | | The full URL to the <ins>OPNsense</ins> UI (ie: `https://192.168.1.1`). Supported format is `<scheme>://<ip or host>[:<port>]` |
 | Verify SSL Certificate | | True | If the SSL certificate should be verified or not *(if receiving an SSL error, try unchecking this)* |
-| API Key | X | | The API key of the OPNsense usercreated previously |
-| API Secret | X | | The API secret of the API key |
-| Firewall Name | | | A custom name to be used for `entity` naming (if blank: use the `OPNsense hostname`) |
+| API Key | ✅ | | The API key of the OPNsense user created previously |
+| API Secret | ✅ | | The API secret of the API key |
+| Firewall Name | | Uses the `OPNsense hostname` | A custom name to be used for device and entity naming |
 | Enable Granular Sync Options | | False | See [Granular Sync Options](#granular-sync-options) |
 
 ### Options
-| Option | Required | Default | Description |
-| --- | :---: | --- | --- |
-| Scan Interval (seconds) | | 30 | Scan interval to use for state polling |
-| Enable Device Tracker | | False | Enable the device tracker integration using <ins>OPNsense</ins> ARP table | 
-| Device Tracker Scan Interval (seconds) | | 60 | Scan interval to use for ARP updates | 
-| Device Tracker Consider Home (seconds) | | 0 | Seconds to wait until marking a device as not home after not being seen:<br>* 0 - Disabled *(if device is not present during any given scan interval it is considered away)*<br>* > 0 - Should be a multiple of the configured scan interval |
-| Enable Granular Sync Options | | False | See Granular Sync Options |
+
+| Option | Default | Description |
+| --- | --- | --- |
+| Scan Interval (seconds) | 30 | Scan interval to use for state polling |
+| Device Tracker Mode | Disabled | • Disabled<br>• Track all detected devices<br>• Track only selected devices |
+| Device Tracker Scan Interval (seconds) | 60 | Scan interval to use for ARP updates |
+| Device Tracker Consider Home (seconds) | 0 | Seconds to wait until marking a device as not home after not being seen:<br>• 0 : Disabled *(if device is not present during any given scan interval it is considered away)*<br>• > 0 : Should be a multiple of the Device Tracker Scan Interval |
+| Enable Granular Sync Options | False | See Granular Sync Options |
 
 ## Entities
 
@@ -158,7 +159,7 @@ Many entities are created by `hass-opnsense` for statistics etc. Due to the volu
 ### Binary Sensor
 
 * CARP Status (enabled/disabled)
-* System Notices present (the circle icon in the upper right of the UI)
+* System Notices present *(the circle icon in the upper right of the UI)*
 * Firmware updates available
 
 ### Sensor
@@ -192,7 +193,15 @@ Many entities are created by `hass-opnsense` for statistics etc. Due to the volu
 
 Entities are created for selected devices to track whether they are connected to the network. This feature is disabled by default and can be enabled in the Options.
 
-By default, OPNsense/FreeBSD, uses a max age of 20 minutes for ARP entries (sysctl `net.link.ether.inet.max_age`). This can be lowered in <ins>OPNsense</ins> from `System -> Settings -> Tunables` if desired.
+The options flow supports three modes:
+
+* Disabled
+* Track all detected devices
+* Track only selected devices
+
+The selectable device list is built from the current OPNsense ARP table, so only recently seen devices appear automatically. Devices that are not currently visible can still be added manually by MAC address.
+
+See [Device Tracker Guide](docs/device_tracker.md) for setup details, ARP behavior, and troubleshooting.
 
 ## Actions *(Services)*
 
