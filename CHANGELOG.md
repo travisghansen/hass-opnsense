@@ -1,7 +1,36 @@
+<a id="v0.6.2"></a>
+# [v0.6.2](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.2) - 2026-03-15
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### ✨ New Features
+* Add vnStat Sensors by [@Snuffy2](https://github.com/Snuffy2) in [#514](https://github.com/travisghansen/hass-opnsense/pull/514)
+* Implement speedtest via undocumented API by [@Snuffy2](https://github.com/Snuffy2) in [#520](https://github.com/travisghansen/hass-opnsense/pull/520)
+* Add get_vntstat_metrics action by [@Snuffy2](https://github.com/Snuffy2) in [#523](https://github.com/travisghansen/hass-opnsense/pull/523)
+### 🚀 Enhancements
+* Implement plugin check to query api only for installed plugins by [@Snuffy2](https://github.com/Snuffy2) in [#518](https://github.com/travisghansen/hass-opnsense/pull/518)
+* Refine vnStat Names by [@Snuffy2](https://github.com/Snuffy2) in [#521](https://github.com/travisghansen/hass-opnsense/pull/521)
+* Simplify plugin check logic by [@Snuffy2](https://github.com/Snuffy2) in [#522](https://github.com/travisghansen/hass-opnsense/pull/522)
+### 📚 Documentation
+* Update Documentation by [@Snuffy2](https://github.com/Snuffy2) in [#524](https://github.com/travisghansen/hass-opnsense/pull/524)
+### 🎓 Code Quality
+* refactor(pyopnsense): split into multiple files by [@Snuffy2](https://github.com/Snuffy2) in [#512](https://github.com/travisghansen/hass-opnsense/pull/512)
+* refactor/Move from MutableMapping to dict by [@Snuffy2](https://github.com/Snuffy2) in [#513](https://github.com/travisghansen/hass-opnsense/pull/513)
+* Split test_pyopnsense by [@Snuffy2](https://github.com/Snuffy2) in [#515](https://github.com/travisghansen/hass-opnsense/pull/515)
+* Standardize timezone function by [@Snuffy2](https://github.com/Snuffy2) in [#517](https://github.com/travisghansen/hass-opnsense/pull/517)
+* Minor error refinement by [@Snuffy2](https://github.com/Snuffy2) in [#525](https://github.com/travisghansen/hass-opnsense/pull/525)
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.6.1...v0.6.2
+
+[Changes][v0.6.2]
+
+
 <a id="v0.6.1"></a>
 # [v0.6.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.1) - 2026-03-07
 
-<!-- Release notes generated using configuration in .github/release.yml at main -->
+<h3>OPNsense Minimum Firmware Required: 24.7</h3><h4>OPNsense Recommended Firmware: 25.1</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
 ## What's Changed
 ### 🚀 Enhancements
@@ -13,7 +42,7 @@
 * docs(pyopnsense): add NumPy-style docstrings for all methods by [@Snuffy2](https://github.com/Snuffy2) in [#506](https://github.com/travisghansen/hass-opnsense/pull/506)
 
 
-**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.6.0...v0.6.1
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.6.0...v0.6.1<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
 
 [Changes][v0.6.1]
 
@@ -876,6 +905,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.6.2]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.1...v0.6.2
 [v0.6.1]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.0...v0.6.1
 [v0.6.0]: https://github.com/travisghansen/hass-opnsense/compare/v0.5.0...v0.6.0
 [v0.5.0]: https://github.com/travisghansen/hass-opnsense/compare/v0.4.8...v0.5.0
