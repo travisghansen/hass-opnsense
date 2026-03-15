@@ -1,6 +1,6 @@
-name: "Pull Request Labeler"
+name: 'Pull Request Labeler'
 on:
-    pull_request_target:
+  pull_request_target:
 
 jobs:
   labeler:
@@ -9,7 +9,7 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
-    - name: Pull Request Labeler
-      uses: srvaroa/labeler@v1.14.0
-      env:
-        GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+      - name: Pull Request Labeler
+        uses: srvaroa/labeler@v1.14.0
+        env:
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
