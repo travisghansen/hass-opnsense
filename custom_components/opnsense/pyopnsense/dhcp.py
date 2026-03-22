@@ -135,6 +135,9 @@ class DHCPMixin(PyOPNsenseClientProtocol):
 
 
         """
+        if not await self.is_endpoint_available("/api/kea/leases4/search"):
+            _LOGGER.debug("Kea DHCP not installed")
+            return []
         response = await self._safe_dict_get("/api/kea/leases4/search")
         if not isinstance(response.get("rows", None), list):
             return []
@@ -257,6 +260,10 @@ class DHCPMixin(PyOPNsenseClientProtocol):
                 return []
         except (awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError):
             pass
+
+        if not await self.is_endpoint_available("/api/dnsmasq/leases/search"):
+            _LOGGER.debug("Dnsmasq DHCP not installed")
+            return []
 
         response = await self._safe_dict_get("/api/dnsmasq/leases/search")
         leases_info: list = response.get("rows", [])
