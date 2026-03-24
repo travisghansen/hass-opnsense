@@ -12,6 +12,8 @@ import aiohttp
 import pytest
 from yarl import URL
 
+from tests.utilities import patch_client_factory
+
 cf_mod = importlib.import_module("custom_components.opnsense.config_flow")
 
 
@@ -116,6 +118,7 @@ async def test_clean_and_parse_url_success_and_failure():
     [
         ("below_min", "below_min_firmware"),
         ("unknown_fw", "unknown_firmware"),
+        ("missing_external_dep", "missing_external_aiopnsense"),
         ("missing_id", "missing_device_unique_id"),
         ("plugin_missing", "plugin_missing"),
         ("invalid_url", "invalid_url_format"),
@@ -145,6 +148,8 @@ async def test_validate_input_exception_mapping(monkeypatch, exc_key, expected):
         exc = cf_mod.BelowMinFirmware()
     elif exc_key == "unknown_fw":
         exc = cf_mod.UnknownFirmware()
+    elif exc_key == "missing_external_dep":
+        exc = cf_mod.MissingExternalAiopnsenseDependency()
     elif exc_key == "missing_id":
         exc = cf_mod.MissingDeviceUniqueID("x")
     elif exc_key == "plugin_missing":
@@ -255,7 +260,7 @@ async def test_get_dt_entries_sorts_and_includes_selected(monkeypatch, fake_clie
         ]
 
     setattr(client_cls, "get_arp_table", _get_arp_table)
-    monkeypatch.setattr(cf_mod, "OPNsenseClient", client_cls)
+    patch_client_factory(monkeypatch, cf_mod, client_cls)
 
     # Patch async_create_clientsession on the module under test to avoid real network I/O
     def _fake_create_clientsession(*args, **kwargs):
@@ -306,7 +311,7 @@ async def test_get_dt_entries_preserves_missing_selected_devices(monkeypatch, fa
         return [{"mac": "11:22:33:44:55:66", "hostname": "", "ip": "10.0.0.5"}]
 
     setattr(client_cls, "get_arp_table", _get_arp_table)
-    monkeypatch.setattr(cf_mod, "OPNsenseClient", client_cls)
+    patch_client_factory(monkeypatch, cf_mod, client_cls)
     monkeypatch.setattr(cf_mod, "async_create_clientsession", lambda *a, **k: MagicMock())
 
     res = await cf_mod._get_dt_entries(
@@ -315,6 +320,76 @@ async def test_get_dt_entries_preserves_missing_selected_devices(monkeypatch, fa
         selected_devices=["AA-BB-CC-DD-EE-FF"],
     )
     assert res["aa:bb:cc:dd:ee:ff"] == "Not currently detected [aa:bb:cc:dd:ee:ff]"
+
+
+@pytest.mark.asyncio
+async def test_get_dt_entries_closes_client(monkeypatch):
+    """_get_dt_entries should always close the temporary client."""
+
+    class _Client:
+        last_instance = None
+
+        def __init__(self, *args, **kwargs):
+            type(self).last_instance = self
+            self.async_close = AsyncMock()
+
+        async def get_arp_table(self, resolve_hostnames=True):
+            return []
+
+    patch_client_factory(monkeypatch, cf_mod, _Client)
+    monkeypatch.setattr(cf_mod, "async_create_clientsession", lambda *a, **k: MagicMock())
+
+    await cf_mod._get_dt_entries(
+        hass=MagicMock(),
+        config={cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"},
+        selected_devices=[],
+    )
+    assert _Client.last_instance is not None
+    _Client.last_instance.async_close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_user_input_closes_client(monkeypatch):
+    """_handle_user_input should always close the temporary client."""
+
+    class _Client:
+        last_instance = None
+
+        def __init__(self, *args, **kwargs):
+            type(self).last_instance = self
+            self.async_close = AsyncMock()
+
+        async def get_host_firmware_version(self):
+            return "26.1.1"
+
+        async def set_use_snake_case(self, initial: bool = False):
+            return None
+
+        async def is_plugin_installed(self):
+            return True
+
+        async def get_system_info(self):
+            return {"name": "OPNsense"}
+
+        async def get_device_unique_id(self, expected_id: str | None = None):
+            return "dev123"
+
+    patch_client_factory(monkeypatch, cf_mod, _Client)
+    monkeypatch.setattr(cf_mod, "async_create_clientsession", lambda *a, **k: MagicMock())
+
+    user_input = {
+        cf_mod.CONF_URL: "https://router.example",
+        cf_mod.CONF_USERNAME: "u",
+        cf_mod.CONF_PASSWORD: "p",
+        cf_mod.CONF_GRANULAR_SYNC_OPTIONS: False,
+    }
+    await cf_mod._handle_user_input(
+        hass=MagicMock(),
+        user_input=user_input,
+        config_step="user",
+    )
+    assert _Client.last_instance is not None
+    _Client.last_instance.async_close.assert_awaited_once()
 
 
 def test_build_user_input_and_granular_and_options_schemas_defaults():
@@ -490,8 +565,15 @@ async def test_device_tracker_shows_form_when_no_user_input(monkeypatch, make_co
 
 
 @pytest.mark.asyncio
-async def test_device_tracker_handles_arp_lookup_failure(monkeypatch, make_config_entry):
-    """ARP lookup failures should not abort the options flow form rendering."""
+@pytest.mark.parametrize(
+    "exc",
+    [
+        aiohttp.ClientError("boom"),
+        cf_mod.MissingExternalAiopnsenseDependency("missing"),
+    ],
+)
+async def test_device_tracker_handles_arp_lookup_failure(monkeypatch, make_config_entry, exc):
+    """ARP/dependency lookup failures should not abort device tracker form rendering."""
     cfg = make_config_entry(
         data={cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"},
         options={cf_mod.CONF_DEVICES: ["AA-BB-CC-DD-EE-FF"]},
@@ -651,7 +733,7 @@ async def test_validate_input_user_respects_granular_flag_for_plugin_check(
     """Plugin check not required for config step of user. Otherwise, plugin check is required if granular sync options is enabled."""
     # Use shared fake_flow_client fixture to supply a FakeClient class
     client_cls = fake_flow_client()
-    monkeypatch.setattr(cf_mod, "OPNsenseClient", client_cls)
+    patch_client_factory(monkeypatch, cf_mod, client_cls)
 
     # avoid real network sessions
     monkeypatch.setattr(cf_mod, "async_create_clientsession", lambda *a, **k: MagicMock())
@@ -738,7 +820,7 @@ async def test_granular_sync_flow_plugin_check(
     """Test plugin check behavior when granular sync is enabled and granular items are set. For granular_sync step from both ConfigFlow and OptionsFlow: - If any SYNC_ITEMS_REQUIRING_PLUGIN is True -> is_plugin_installed should be called. - If none are True -> is_plugin_installed should NOT be called."""
     # Use shared fake_flow_client fixture
     client_cls = fake_flow_client()
-    monkeypatch.setattr(cf_mod, "OPNsenseClient", client_cls)
+    patch_client_factory(monkeypatch, cf_mod, client_cls)
     monkeypatch.setattr(cf_mod, "async_create_clientsession", lambda *a, **k: MagicMock())
 
     # Build a user_input payload for granular sync where items in SYNC_ITEMS_REQUIRING_PLUGIN are toggled

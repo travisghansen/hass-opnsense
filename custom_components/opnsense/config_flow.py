@@ -30,6 +30,8 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 import homeassistant.helpers.config_validation as cv
 
+from .client_factory import MissingExternalAiopnsenseDependency, create_opnsense_client
+from .client_protocol import OPNsenseClientProtocol
 from .const import (
     CONF_DEVICE_TRACKER_CONSIDER_HOME,
     CONF_DEVICE_TRACKER_ENABLED,
@@ -53,7 +55,7 @@ from .const import (
     TRACKED_MACS,
 )
 from .helpers import is_private_ip
-from .pyopnsense import OPNsenseClient, UnknownFirmware
+from .pyopnsense import UnknownFirmware
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -291,6 +293,12 @@ async def validate_input(
             key="unknown_firmware",
             message="Unable to get OPNsense Firmware version",
         )
+    except MissingExternalAiopnsenseDependency:
+        _log_and_set_error(
+            errors=errors,
+            key="missing_external_aiopnsense",
+            message="OPNsense firmware requires external aiopnsense package",
+        )
     except MissingDeviceUniqueID as e:
         _log_and_set_error(
             errors=errors,
@@ -417,9 +425,11 @@ async def _clean_and_parse_url(user_input: MutableMapping[str, Any]) -> None:
     _LOGGER.debug("[config_flow] Cleaned URL: %s", user_input[CONF_URL])
 
 
-async def _get_client(user_input: MutableMapping[str, Any], hass: HomeAssistant) -> OPNsenseClient:
+async def _get_client(
+    user_input: MutableMapping[str, Any], hass: HomeAssistant
+) -> OPNsenseClientProtocol:
     """Create and return the OPNsense client."""
-    return OPNsenseClient(
+    return await create_opnsense_client(
         url=user_input[CONF_URL],
         username=user_input[CONF_USERNAME],
         password=user_input[CONF_PASSWORD],
@@ -450,53 +460,65 @@ async def _handle_user_input(
     """Handle and validate the user input."""
     await _clean_and_parse_url(user_input)
 
-    client: OPNsenseClient = await _get_client(user_input, hass)
-
-    user_input[CONF_FIRMWARE_VERSION] = await client.get_host_firmware_version()
-    _LOGGER.debug("[handle_user_input] Firmware Version: %s", user_input[CONF_FIRMWARE_VERSION])
-
+    client: OPNsenseClientProtocol = await _get_client(user_input, hass)
     try:
-        _validate_firmware_version(user_input[CONF_FIRMWARE_VERSION])
-    except (awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError) as e:
-        raise UnknownFirmware from e
+        user_input[CONF_FIRMWARE_VERSION] = await client.get_host_firmware_version()
+        _LOGGER.debug("[handle_user_input] Firmware Version: %s", user_input[CONF_FIRMWARE_VERSION])
 
-    await client.set_use_snake_case(initial=True)
+        try:
+            _validate_firmware_version(user_input[CONF_FIRMWARE_VERSION])
+        except (
+            awesomeversion.exceptions.AwesomeVersionCompareException,
+            TypeError,
+            ValueError,
+        ) as e:
+            raise UnknownFirmware from e
 
-    # Plugin check not required for config step of user. Otherwise, plugin check is required if
-    # granular sync options is enabled
-    try:
-        require_plugin_check = (
-            config_step != "user"
-            and user_input.get(CONF_GRANULAR_SYNC_OPTIONS, DEFAULT_GRANULAR_SYNC_OPTIONS)
-            and any(
-                user_input.get(item, DEFAULT_SYNC_OPTION_VALUE)
-                for item in SYNC_ITEMS_REQUIRING_PLUGIN
+        await client.set_use_snake_case(initial=True)
+
+        # Plugin check not required for config step of user. Otherwise, plugin check is required if
+        # granular sync options is enabled
+        try:
+            require_plugin_check = (
+                config_step != "user"
+                and user_input.get(CONF_GRANULAR_SYNC_OPTIONS, DEFAULT_GRANULAR_SYNC_OPTIONS)
+                and any(
+                    user_input.get(item, DEFAULT_SYNC_OPTION_VALUE)
+                    for item in SYNC_ITEMS_REQUIRING_PLUGIN
+                )
+                and awesomeversion.AwesomeVersion(user_input[CONF_FIRMWARE_VERSION])
+                < awesomeversion.AwesomeVersion("26.1.1")
             )
-            and awesomeversion.AwesomeVersion(user_input[CONF_FIRMWARE_VERSION])
-            < awesomeversion.AwesomeVersion("26.1.1")
+        except (
+            awesomeversion.exceptions.AwesomeVersionCompareException,
+            TypeError,
+            ValueError,
+        ) as e:
+            raise UnknownFirmware from e
+
+        _LOGGER.debug(
+            "[handle_user_input] config_step: %s, require_plugin_check: %s",
+            config_step,
+            require_plugin_check,
         )
-    except (awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError) as e:
-        raise UnknownFirmware from e
+        if require_plugin_check and not await client.is_plugin_installed():
+            raise PluginMissing
 
-    _LOGGER.debug(
-        "[handle_user_input] config_step: %s, require_plugin_check: %s",
-        config_step,
-        require_plugin_check,
-    )
-    if require_plugin_check and not await client.is_plugin_installed():
-        raise PluginMissing
+        system_info: dict[str, Any] = await client.get_system_info()
+        _LOGGER.debug("[handle_user_input] system_info: %s", system_info)
 
-    system_info: dict[str, Any] = await client.get_system_info()
-    _LOGGER.debug("[handle_user_input] system_info: %s", system_info)
+        if not user_input.get(CONF_NAME):
+            user_input[CONF_NAME] = system_info.get("name") or "OPNsense"
 
-    if not user_input.get(CONF_NAME):
-        user_input[CONF_NAME] = system_info.get("name") or "OPNsense"
+        user_input[CONF_DEVICE_UNIQUE_ID] = await client.get_device_unique_id(
+            expected_id=expected_id
+        )
+        _LOGGER.debug("[handle_user_input] Device Unique ID: %s", user_input[CONF_DEVICE_UNIQUE_ID])
 
-    user_input[CONF_DEVICE_UNIQUE_ID] = await client.get_device_unique_id(expected_id=expected_id)
-    _LOGGER.debug("[handle_user_input] Device Unique ID: %s", user_input[CONF_DEVICE_UNIQUE_ID])
-
-    if not user_input.get(CONF_DEVICE_UNIQUE_ID):
-        raise MissingDeviceUniqueID
+        if not user_input.get(CONF_DEVICE_UNIQUE_ID):
+            raise MissingDeviceUniqueID
+    finally:
+        await client.async_close()
 
 
 def _log_and_set_error(errors: MutableMapping[str, Any], key: str, message: str) -> None:
@@ -714,7 +736,7 @@ async def _get_dt_entries(
     username: str = config[CONF_USERNAME]
     password: str = config[CONF_PASSWORD]
     verify_ssl: bool = config.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
-    client = OPNsenseClient(
+    client = await create_opnsense_client(
         url=url,
         username=username,
         password=password,
@@ -725,30 +747,33 @@ async def _get_dt_entries(
         ),
         opts={"verify_ssl": verify_ssl},
     )
-    # dicts are ordered so put all previously selected items at the top
-    entries: dict[str, Any] = _build_selected_device_entries(selected_devices)
-    arp_table: list = await client.get_arp_table(resolve_hostnames=True)
-    if arp_table:
-        ip_by_mac: dict[str, str] = {}
-        # follow with all arp table entries
-        for entry in arp_table:
-            normalized_mac = normalize_mac_address(str(entry.get("mac", "")))
-            mac: str = normalized_mac or str(entry.get("mac", "")).lower().strip()
-            if len(mac) < 1:
-                continue
-            ip_by_mac[mac] = str(entry.get("ip", "")).strip()
-            label: str = _format_detected_device_label(entry)
-            entries[mac] = label
+    try:
+        # dicts are ordered so put all previously selected items at the top
+        entries: dict[str, Any] = _build_selected_device_entries(selected_devices)
+        arp_table: list = await client.get_arp_table(resolve_hostnames=True)
+        if arp_table:
+            ip_by_mac: dict[str, str] = {}
+            # follow with all arp table entries
+            for entry in arp_table:
+                normalized_mac = normalize_mac_address(str(entry.get("mac", "")))
+                mac: str = normalized_mac or str(entry.get("mac", "")).lower().strip()
+                if len(mac) < 1:
+                    continue
+                ip_by_mac[mac] = str(entry.get("ip", "")).strip()
+                label: str = _format_detected_device_label(entry)
+                entries[mac] = label
 
-        # Sort entries: fallback labels first, then by IP address (ascending)
-        sorted_entries: dict[str, Any] = dict(
-            sorted(
-                entries.items(),
-                key=lambda item: _device_entry_sort_key(item[0], item[1], ip_by_mac),
+            # Sort entries: fallback labels first, then by IP address (ascending)
+            sorted_entries: dict[str, Any] = dict(
+                sorted(
+                    entries.items(),
+                    key=lambda item: _device_entry_sort_key(item[0], item[1], ip_by_mac),
+                )
             )
-        )
-        return sorted_entries
-    return entries
+            return sorted_entries
+        return entries
+    finally:
+        await client.async_close()
 
 
 class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -1053,7 +1078,13 @@ class OPNsenseOptionsFlow(OptionsFlow):
             dt_entries: dict[str, Any] = await _get_dt_entries(
                 hass=self.hass, config=self.config_entry.data, selected_devices=selected_devices
             )
-        except (aiohttp.ClientError, TimeoutError, OSError, xmlrpc.client.Error) as err:
+        except (
+            aiohttp.ClientError,
+            MissingExternalAiopnsenseDependency,
+            OSError,
+            TimeoutError,
+            xmlrpc.client.Error,
+        ) as err:
             _LOGGER.warning("Failed to load device tracker entries: %s", err)
             errors["base"] = "cannot_connect"
             dt_entries = {

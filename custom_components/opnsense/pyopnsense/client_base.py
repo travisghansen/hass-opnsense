@@ -123,7 +123,7 @@ class ClientBaseMixin:
         self._xmlrpc_query_count = 0
         self._rest_api_query_count = 0
 
-    async def get_query_counts(self) -> tuple:
+    async def get_query_counts(self) -> tuple[int, int]:
         """Return current REST and XMLRPC query counts.
 
         Returns:

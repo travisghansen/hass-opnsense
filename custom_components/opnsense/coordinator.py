@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
+from .client_protocol import OPNsenseClientProtocol
 from .const import (
     ATTR_UNBOUND_BLOCKLIST,
     CONF_SYNC_CARP,
@@ -32,7 +33,6 @@ from .const import (
     DOMAIN,
 )
 from .helpers import dict_get
-from .pyopnsense import OPNsenseClient
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
     def __init__(
         self,
         hass: HomeAssistant,
-        client: OPNsenseClient,
+        client: OPNsenseClientProtocol,
         name: str,
         update_interval: timedelta,
         device_unique_id: str,
@@ -57,7 +57,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         )
         if config_entry is None:
             raise ValueError("config_entry is required for OPNsenseDataUpdateCoordinator")
-        self._client: OPNsenseClient = client
+        self._client: OPNsenseClientProtocol = client
         self._state: dict[str, Any] = {}
         self._device_tracker_coordinator: bool = device_tracker_coordinator
         self._mismatched_count = 0

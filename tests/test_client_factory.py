@@ -1,0 +1,444 @@
+"""Tests for firmware-based OPNsense client factory routing."""
+
+from __future__ import annotations
+
+from types import SimpleNamespace
+from typing import Any
+
+import pytest
+
+from custom_components.opnsense import client_factory as factory_mod
+
+
+def test_coerce_query_counts_variants() -> None:
+    """_coerce_query_counts should normalize tuple/list/mapping/scalar forms."""
+    assert factory_mod._coerce_query_counts([1, 2, 3]) == (1, 2)
+    assert factory_mod._coerce_query_counts([9]) == (9, 0)
+    assert factory_mod._coerce_query_counts([]) == (0, 0)
+    assert factory_mod._coerce_query_counts({"rest_api_count": "7", "xmlrpc_count": 8}) == (7, 8)
+    assert factory_mod._coerce_query_counts({"rest": 4, "xmlrpc": "5"}) == (4, 5)
+    assert factory_mod._coerce_query_counts("11") == (11, 0)
+    assert factory_mod._coerce_query_counts("not-a-number") == (0, 0)
+    assert factory_mod._coerce_query_counts(object()) == (0, 0)
+
+
+@pytest.mark.asyncio
+async def test_add_query_count_compat_noop_when_get_query_counts_exists() -> None:
+    """Compatibility shim should preserve tuple results from get_query_counts."""
+
+    class _Client:
+        async def get_query_counts(self) -> tuple[int, int]:
+            return (1, 2)
+
+    client = _Client()
+    patched: Any = factory_mod._add_query_count_compat(client)
+    assert await patched.get_query_counts() == (1, 2)
+
+
+@pytest.mark.asyncio
+async def test_add_query_count_compat_normalizes_existing_get_query_counts() -> None:
+    """Compatibility shim should normalize scalar return types from get_query_counts."""
+
+    class _Client:
+        async def get_query_counts(self) -> int:
+            return 7
+
+    client = _Client()
+    patched: Any = factory_mod._add_query_count_compat(client)
+    assert await patched.get_query_counts() == (7, 0)
+
+
+@pytest.mark.asyncio
+async def test_add_plugin_compat_noop_when_plugin_methods_exist() -> None:
+    """Plugin compatibility shim should not override existing plugin methods."""
+
+    class _Client:
+        async def is_plugin_installed(self) -> bool:
+            return True
+
+        async def is_plugin_deprecated(self) -> bool:
+            return True
+
+    client = _Client()
+    patched: Any = factory_mod._add_plugin_compat(client)
+    assert await patched.is_plugin_installed() is True
+    assert await patched.is_plugin_deprecated() is True
+
+
+@pytest.mark.asyncio
+async def test_add_plugin_compat_uses_is_named_plugin_installed() -> None:
+    """Plugin compatibility shim should use is_named_plugin_installed when available."""
+
+    class _Client:
+        async def is_named_plugin_installed(self, plugin_name: str) -> bool:
+            return plugin_name == "os-homeassistant-maxit"
+
+    client = _Client()
+    patched: Any = factory_mod._add_plugin_compat(client)
+    assert await patched.is_plugin_installed() is True
+    assert await patched.is_plugin_deprecated() is False
+
+
+@pytest.mark.asyncio
+async def test_add_plugin_compat_uses_installed_plugins_collection() -> None:
+    """Plugin compatibility shim should detect plugin from installed-plugin collection."""
+
+    class _Client:
+        async def get_installed_plugins(self) -> set[str]:
+            return {"os-vnstat", "os-homeassistant-maxit"}
+
+    client = _Client()
+    patched: Any = factory_mod._add_plugin_compat(client)
+    assert await patched.is_plugin_installed() is True
+    assert await patched.is_plugin_deprecated() is False
+
+
+@pytest.mark.asyncio
+async def test_add_plugin_compat_uses_installed_plugins_package_rows() -> None:
+    """Plugin compatibility shim should parse package rows from installed plugins."""
+
+    class _Client:
+        async def get_installed_plugins(self) -> list[dict[str, str]]:
+            return [
+                {"name": "os-vnstat", "installed": "1"},
+                {"name": "os-homeassistant-maxit", "installed": "1"},
+            ]
+
+    client = _Client()
+    patched: Any = factory_mod._add_plugin_compat(client)
+    assert await patched.is_plugin_installed() is True
+    assert await patched.is_plugin_deprecated() is False
+
+
+@pytest.mark.asyncio
+async def test_add_plugin_compat_uses_firmware_info_when_plugin_helpers_missing() -> None:
+    """Plugin compatibility shim should fallback to firmware info package payload."""
+
+    class _Client:
+        async def get_firmware_info(self) -> dict[str, Any]:
+            return {
+                "package": [
+                    {"name": "os-homeassistant-maxit", "installed": "1"},
+                ]
+            }
+
+    client = _Client()
+    patched: Any = factory_mod._add_plugin_compat(client)
+    assert await patched.is_plugin_installed() is True
+    assert await patched.is_plugin_deprecated() is False
+
+
+@pytest.mark.asyncio
+async def test_add_plugin_compat_defaults_to_false_without_helpers() -> None:
+    """Plugin compatibility shim should return False when no plugin helpers exist."""
+
+    class _Client:
+        pass
+
+    client = _Client()
+    patched: Any = factory_mod._add_plugin_compat(client)
+    assert await patched.is_plugin_installed() is False
+    assert await patched.is_plugin_deprecated() is False
+
+
+@pytest.mark.asyncio
+async def test_add_core_compat_noop_when_core_methods_exist() -> None:
+    """Core compatibility shim should not override existing core methods."""
+
+    class _Client:
+        async def set_use_snake_case(self, initial: bool = False) -> None:
+            return None
+
+        async def reset_query_counts(self) -> None:
+            return None
+
+        async def get_query_counts(self) -> tuple[int, int]:
+            return (3, 4)
+
+    client = _Client()
+    patched: Any = factory_mod._add_core_compat(client)
+    await patched.set_use_snake_case(initial=True)
+    await patched.reset_query_counts()
+    assert await patched.get_query_counts() == (3, 4)
+
+
+@pytest.mark.asyncio
+async def test_add_core_compat_defaults_when_core_methods_missing() -> None:
+    """Core compatibility shim should attach defaults when methods are missing."""
+
+    class _Client:
+        pass
+
+    client = _Client()
+    patched: Any = factory_mod._add_core_compat(client)
+    await patched.set_use_snake_case(initial=True)
+    await patched.reset_query_counts()
+    assert await patched.get_query_counts() == (0, 0)
+
+
+def test_add_query_count_compat_noop_without_query_methods() -> None:
+    """Compatibility shim should return original client when no query methods exist."""
+
+    class _Client:
+        pass
+
+    client = _Client()
+    patched: Any = factory_mod._add_query_count_compat(client)
+    assert not hasattr(patched, "get_query_counts")
+
+
+@pytest.mark.asyncio
+async def test_create_client_uses_legacy_for_old_firmware(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Factory should return the bundled legacy client for old firmware."""
+
+    class _LegacyClient:
+        def __init__(self, **kwargs: Any) -> None:
+            self.closed = False
+
+        async def get_host_firmware_version(self) -> str:
+            return "25.7"
+
+        async def async_close(self) -> None:
+            self.closed = True
+
+    monkeypatch.setattr(factory_mod, "LegacyOPNsenseClient", _LegacyClient)
+
+    client = await factory_mod.create_opnsense_client(
+        url="https://router",
+        username="u",
+        password="p",
+        session=SimpleNamespace(),
+        opts={"verify_ssl": True},
+    )
+    assert isinstance(client, _LegacyClient)
+    assert client.closed is False
+
+
+@pytest.mark.asyncio
+async def test_create_client_uses_external_for_new_firmware(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Factory should route firmware >= 26.1.1 to external aiopnsense client."""
+    created: dict[str, Any] = {"legacy_closed": False, "attempts": 0}
+
+    class _LegacyClient:
+        def __init__(self, **kwargs: Any) -> None:
+            return
+
+        async def get_host_firmware_version(self) -> str:
+            return "26.1.1"
+
+        async def async_close(self) -> None:
+            created["legacy_closed"] = True
+
+    class _ExternalClient:
+        def __init__(self, **kwargs: Any) -> None:
+            created["attempts"] += 1
+            self.attempt = created["attempts"]
+            if self.attempt == 1:
+                raise TypeError("unsupported kwargs")
+            self.kwargs = kwargs
+
+        async def get_query_count(self) -> int:
+            return 5
+
+    monkeypatch.setattr(factory_mod, "LegacyOPNsenseClient", _LegacyClient)
+    monkeypatch.setattr(
+        factory_mod,
+        "import_module",
+        lambda module_name: SimpleNamespace(OPNsenseClient=_ExternalClient),
+    )
+
+    client = await factory_mod.create_opnsense_client(
+        url="https://router",
+        username="u",
+        password="p",
+        session=SimpleNamespace(),
+        opts={"verify_ssl": True},
+        name="Test Router",
+    )
+    assert isinstance(client, _ExternalClient)
+    assert client.attempt == 2
+    assert created["legacy_closed"] is True
+    assert "name" not in client.kwargs
+    assert "initial" not in client.kwargs
+    assert await client.get_query_counts() == (5, 0)
+
+
+@pytest.mark.asyncio
+async def test_create_external_client_retries_without_name_and_initial(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """External constructor should retry when first call rejects name/initial kwargs."""
+    calls: list[dict[str, Any]] = []
+
+    class _ExternalClient:
+        def __init__(self, **kwargs: Any) -> None:
+            calls.append(kwargs)
+            if "name" in kwargs or "initial" in kwargs:
+                raise TypeError("unsupported kwargs")
+
+    monkeypatch.setattr(
+        factory_mod,
+        "import_module",
+        lambda module_name: SimpleNamespace(OPNsenseClient=_ExternalClient),
+    )
+
+    client = await factory_mod._create_external_client(
+        url="https://router",
+        username="u",
+        password="p",
+        session=SimpleNamespace(),
+        opts={"verify_ssl": True},
+        name="Router",
+        initial=True,
+    )
+    assert isinstance(client, _ExternalClient)
+    assert len(calls) == 2
+    assert "name" in calls[0] and "initial" in calls[0]
+    assert "name" not in calls[1] and "initial" not in calls[1]
+
+
+@pytest.mark.asyncio
+async def test_create_external_client_raises_when_missing_class(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """External client creation should fail when module misses OPNsenseClient attribute."""
+    monkeypatch.setattr(factory_mod, "import_module", lambda module_name: SimpleNamespace())
+
+    with pytest.raises(factory_mod.MissingExternalAiopnsenseDependency):
+        await factory_mod._create_external_client(
+            url="https://router",
+            username="u",
+            password="p",
+            session=SimpleNamespace(),
+            opts={"verify_ssl": True},
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_external_client_raises_when_retry_still_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """External client creation should fail when both constructor attempts fail."""
+
+    class _ExternalClient:
+        def __init__(self, **kwargs: Any) -> None:
+            raise TypeError("always fails")
+
+    monkeypatch.setattr(
+        factory_mod,
+        "import_module",
+        lambda module_name: SimpleNamespace(OPNsenseClient=_ExternalClient),
+    )
+
+    with pytest.raises(factory_mod.MissingExternalAiopnsenseDependency):
+        await factory_mod._create_external_client(
+            url="https://router",
+            username="u",
+            password="p",
+            session=SimpleNamespace(),
+            opts={"verify_ssl": True},
+            name="Router",
+            initial=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_client_raises_when_external_dependency_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Factory should raise dedicated dependency error for new firmware."""
+
+    class _LegacyClient:
+        def __init__(self, **kwargs: Any) -> None:
+            return
+
+        async def get_host_firmware_version(self) -> str:
+            return "26.2"
+
+        async def async_close(self) -> None:
+            return
+
+    monkeypatch.setattr(factory_mod, "LegacyOPNsenseClient", _LegacyClient)
+
+    def _raise_import_error(module_name: str) -> Any:
+        raise ImportError("not found")
+
+    monkeypatch.setattr(factory_mod, "import_module", _raise_import_error)
+
+    with pytest.raises(factory_mod.MissingExternalAiopnsenseDependency):
+        await factory_mod.create_opnsense_client(
+            url="https://router",
+            username="u",
+            password="p",
+            session=SimpleNamespace(),
+            opts={"verify_ssl": True},
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_client_falls_back_to_legacy_on_uncomparable_firmware(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Factory should keep legacy backend when firmware comparison raises."""
+
+    class _LegacyClient:
+        def __init__(self, **kwargs: Any) -> None:
+            self.closed = False
+
+        async def get_host_firmware_version(self) -> str:
+            return "weird"
+
+        async def async_close(self) -> None:
+            self.closed = True
+
+    class _BrokenAwesomeVersion:
+        def __init__(self, value: Any) -> None:
+            self.value = value
+
+        def __ge__(self, other: Any) -> bool:
+            raise ValueError("cannot compare")
+
+    monkeypatch.setattr(factory_mod, "LegacyOPNsenseClient", _LegacyClient)
+    monkeypatch.setattr(factory_mod.awesomeversion, "AwesomeVersion", _BrokenAwesomeVersion)
+
+    client = await factory_mod.create_opnsense_client(
+        url="https://router",
+        username="u",
+        password="p",
+        session=SimpleNamespace(),
+        opts={"verify_ssl": True},
+    )
+    assert isinstance(client, _LegacyClient)
+    assert client.closed is False
+
+
+@pytest.mark.asyncio
+async def test_create_client_closes_probe_when_firmware_probe_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Factory should close the probe client and re-raise when probe fails."""
+    closed = {"value": False}
+
+    class _LegacyClient:
+        def __init__(self, **kwargs: Any) -> None:
+            return
+
+        async def get_host_firmware_version(self) -> str:
+            raise RuntimeError("probe failed")
+
+        async def async_close(self) -> None:
+            closed["value"] = True
+
+    monkeypatch.setattr(factory_mod, "LegacyOPNsenseClient", _LegacyClient)
+
+    with pytest.raises(RuntimeError, match="probe failed"):
+        await factory_mod.create_opnsense_client(
+            url="https://router",
+            username="u",
+            password="p",
+            session=SimpleNamespace(),
+            opts={"verify_ssl": True},
+        )
+    assert closed["value"] is True

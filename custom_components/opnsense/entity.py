@@ -8,10 +8,10 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import slugify
 
+from .client_protocol import OPNsenseClientProtocol
 from .const import CONF_DEVICE_UNIQUE_ID, DOMAIN, OPNSENSE_CLIENT
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .helpers import dict_get
-from .pyopnsense import OPNsenseClient
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
             self._attr_unique_id: str = slugify(f"{self._device_unique_id}_{unique_id_suffix}")
         if name_suffix:
             self._attr_name: str | None = f"{self.opnsense_device_name or 'OPNsense'} {name_suffix}"
-        self._client: OPNsenseClient | None = None
+        self._client: OPNsenseClientProtocol | None = None
         self._attr_extra_state_attributes: dict[str, Any] = {}
         self._available: bool = False
         super().__init__(self.coordinator, self._attr_unique_id)

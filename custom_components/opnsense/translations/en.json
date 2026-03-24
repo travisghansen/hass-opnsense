@@ -17,7 +17,8 @@
       "url_redirect": "Incorrect URL (redirect)",
       "missing_device_unique_id": "Unable to get MAC addresses from OPNsense to use as Device Unique ID",
       "below_min_firmware": "OPNsense Firmware of {firmware} is below the minimum supported version of {min_firmware}",
-      "unknown_firmware": "Unable to get OPNsense Firmware version"
+      "unknown_firmware": "Unable to get OPNsense Firmware version",
+      "missing_external_aiopnsense": "OPNsense firmware 26.1.1+ requires external aiopnsense package"
     },
     "step": {
       "user": {
@@ -64,7 +65,8 @@
   "options": {
     "error": {
       "cannot_connect": "Failed to connect",
-      "unknown": "Unexpected error"
+      "unknown": "Unexpected error",
+      "missing_external_aiopnsense": "OPNsense firmware 26.1.1+ requires external aiopnsense package"
     },
     "step": {
       "init": {
@@ -139,6 +141,10 @@
     "remove_plugin": {
       "title": "Remove Deprecated OPNsense Plugin",
       "description": "OPNsense Firmware is 26.1.3+ and the deprecated Plugin is still installed. Both because it will no longer work and for security reasons, please remove this plugin from OPNsense."
+    },
+    "missing_external_aiopnsense": {
+      "title": "Missing aiopnsense Dependency",
+      "description": "This OPNsense firmware requires the external aiopnsense package. Update/reinstall hass-opnsense so aiopnsense is available, then reload the integration."
     }
   },
   "selector": {

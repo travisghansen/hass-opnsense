@@ -835,6 +835,9 @@ def fake_flow_client():
                 self._is_plugin_called += 1
                 return self._plugin_installed
 
+            async def async_close(self) -> None:
+                return None
+
         return FakeFlowClient
 
     return _make
