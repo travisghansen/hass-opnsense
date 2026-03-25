@@ -20,11 +20,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
         """Get telemetry data from OPNsense.
 
         Returns:
-        -------
-        MutableMapping[str, Any]
-        Parsed telemetry payload returned by OPNsense APIs.
-
-
+            MutableMapping[str, Any]: Parsed telemetry payload returned by OPNsense APIs.
         """
         telemetry: dict[str, Any] = {}
         telemetry["mbuf"] = await self._get_telemetry_mbuf()
@@ -42,11 +38,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
         """Return all OPNsense interfaces.
 
         Returns:
-        -------
-        MutableMapping[str, Any]
-        Parsed interfaces payload returned by OPNsense APIs.
-
-
+            MutableMapping[str, Any]: Parsed interfaces payload returned by OPNsense APIs.
         """
         interface_info = await self._safe_list_get("/api/interfaces/overview/export")
         # _LOGGER.debug(f"[get_interfaces] interface_info: {interface_info}")
@@ -108,11 +100,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
         """Collect mbuf usage telemetry.
 
         Returns:
-        -------
-        MutableMapping[str, Any]
-        Parsed telemetry mbuf payload returned by OPNsense APIs.
-
-
+            MutableMapping[str, Any]: Parsed telemetry mbuf payload returned by OPNsense APIs.
         """
         mbuf_info = await self._safe_dict_post("/api/diagnostics/system/system_mbuf")
         # _LOGGER.debug(f"[get_telemetry_mbuf] mbuf_info: {mbuf_info}")
@@ -134,11 +122,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
         """Collect PF state table telemetry.
 
         Returns:
-        -------
-        MutableMapping[str, Any]
-        Parsed telemetry pfstate payload returned by OPNsense APIs.
-
-
+            MutableMapping[str, Any]: Parsed telemetry pfstate payload returned by OPNsense APIs.
         """
         pfstate_info = await self._safe_dict_post("/api/diagnostics/firewall/pf_states")
         # _LOGGER.debug(f"[get_telemetry_pfstate] pfstate_info: {pfstate_info}")
@@ -160,11 +144,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
         """Collect memory and swap telemetry.
 
         Returns:
-        -------
-        MutableMapping[str, Any]
-        Parsed telemetry memory payload returned by OPNsense APIs.
-
-
+            MutableMapping[str, Any]: Parsed telemetry memory payload returned by OPNsense APIs.
         """
         if self._use_snake_case:
             memory_info = await self._safe_dict_post("/api/diagnostics/system/system_resources")
@@ -206,11 +186,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
         """Collect system time, uptime, boottime, and load telemetry.
 
         Returns:
-        -------
-        MutableMapping[str, Any]
-        Parsed telemetry system payload returned by OPNsense APIs.
-
-
+            MutableMapping[str, Any]: Parsed telemetry system payload returned by OPNsense APIs.
         """
         if self._use_snake_case:
             time_info = await self._safe_dict_post("/api/diagnostics/system/system_time")
@@ -293,11 +269,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
         """Collect CPU core count and usage telemetry.
 
         Returns:
-        -------
-        MutableMapping[str, Any]
-        Parsed telemetry cpu payload returned by OPNsense APIs.
-
-
+            MutableMapping[str, Any]: Parsed telemetry cpu payload returned by OPNsense APIs.
         """
         if self._use_snake_case:
             cputype_info = await self._safe_list_post("/api/diagnostics/cpu_usage/get_c_p_u_type")
@@ -327,11 +299,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
         """Collect filesystem telemetry entries from diagnostics.
 
         Returns:
-        -------
-        list
-        Parsed telemetry filesystems payload returned by OPNsense APIs.
-
-
+            list: Parsed telemetry filesystems payload returned by OPNsense APIs.
         """
         if self._use_snake_case:
             filesystems_info = await self._safe_dict_post("/api/diagnostics/system/system_disk")
@@ -347,11 +315,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
         """Return OPNsense Gateway details.
 
         Returns:
-        -------
-        MutableMapping[str, Any]
-        Parsed gateways payload returned by OPNsense APIs.
-
-
+            MutableMapping[str, Any]: Parsed gateways payload returned by OPNsense APIs.
         """
         gateways_info = await self._safe_dict_get("/api/routes/gateway/status")
         # _LOGGER.debug(f"[get_gateways] gateways_info: {gateways_info}")
@@ -369,11 +333,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
         """Collect temperature sensor telemetry.
 
         Returns:
-        -------
-        MutableMapping[str, Any]
-        Parsed telemetry temps payload returned by OPNsense APIs.
-
-
+            MutableMapping[str, Any]: Parsed telemetry temps payload returned by OPNsense APIs.
         """
         if self._use_snake_case:
             temps_info = await self._safe_list_get("/api/diagnostics/system/system_temperature")

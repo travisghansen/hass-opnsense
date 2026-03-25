@@ -55,19 +55,11 @@ class VnstatMixin(PyOPNsenseClientProtocol):
     async def get_vnstat_metrics(self, period: str) -> dict[str, Any]:
         """Return parsed vnStat rows for the requested period endpoint.
 
-        Parameters
-        ----------
-        period : str
-            Requested vnStat period. Supported values are ``hourly``, ``daily``,
-            ``monthly``, and ``yearly``.
+        Args:
+            period: Requested vnStat period. Supported values are ``hourly``, ``daily``, ``monthly``, and ``yearly``.
 
         Returns:
-        -------
-        dict[str, Any]
-            Parsed vnStat payload with ``period`` and per-interface rows.
-            Empty dictionary when the endpoint is unavailable or period is
-            unsupported.
-
+            dict[str, Any]: Parsed vnStat payload with ``period`` and per-interface rows. Empty dictionary when the endpoint is unavailable or period is unsupported.
         """
         requested_period = period.strip().lower() if isinstance(period, str) else ""
         if requested_period not in _VSTAT_PERIODS:
@@ -88,11 +80,7 @@ class VnstatMixin(PyOPNsenseClientProtocol):
         """Collect vnStat hourly, daily, and monthly usage data.
 
         Returns:
-        -------
-        MutableMapping[str, Any]
-            Parsed vnStat payload with per-interface rows and per-interface
-            summary metrics for Home Assistant sensors.
-
+            MutableMapping[str, Any]: Parsed vnStat payload with per-interface rows and per-interface summary metrics for Home Assistant sensors.
         """
         if not await self.is_endpoint_available("/api/vnstat/service/hourly"):
             _LOGGER.debug("vnStat not installed")
@@ -158,18 +146,12 @@ class VnstatMixin(PyOPNsenseClientProtocol):
     ) -> dict[str, Any]:
         """Parse a vnStat endpoint payload into normalized rows.
 
-        Parameters
-        ----------
-        payload : MutableMapping[str, Any]
-            Raw API response payload expected to contain a ``response`` string.
-        expected_period : str
-            Period requested from the endpoint (hourly, daily, monthly, yearly).
+        Args:
+            payload: Raw API response payload expected to contain a ``response`` string.
+            expected_period: Period requested from the endpoint (hourly, daily, monthly, yearly).
 
         Returns:
-        -------
-        dict[str, Any]
-            Dictionary containing parsed period and per-interface row data.
-
+            dict[str, Any]: Dictionary containing parsed period and per-interface row data.
         """
         response_text = payload.get("response", "")
         if not isinstance(response_text, str):
@@ -228,16 +210,11 @@ class VnstatMixin(PyOPNsenseClientProtocol):
     def _parse_vnstat_row(self, line: str) -> dict[str, Any] | None:
         """Parse a single vnStat data row from fixed-width text output.
 
-        Parameters
-        ----------
-        line : str
-            Raw line from vnStat table output.
+        Args:
+            line: Raw line from vnStat table output.
 
         Returns:
-        -------
-        dict[str, Any] | None
-            Normalized row dictionary when parsing succeeds; otherwise ``None``.
-
+            dict[str, Any] | None: Normalized row dictionary when parsing succeeds; otherwise ``None``.
         """
         lowered = line.lower()
         if lowered.startswith(("-", "estimated")):
@@ -266,18 +243,12 @@ class VnstatMixin(PyOPNsenseClientProtocol):
     def _to_bytes(self, value: str, unit: str) -> int | None:
         """Convert vnStat byte strings into integer bytes.
 
-        Parameters
-        ----------
-        value : str
-            Numeric string representing byte quantity.
-        unit : str
-            Unit string such as ``GiB`` or ``MiB``.
+        Args:
+            value: Numeric string representing byte quantity.
+            unit: Unit string such as ``GiB`` or ``MiB``.
 
         Returns:
-        -------
-        int | None
-            Byte count as integer when conversion succeeds; otherwise ``None``.
-
+            int | None: Byte count as integer when conversion succeeds; otherwise ``None``.
         """
         parsed_value = try_to_float(value)
         factor = _BYTE_FACTORS.get(unit.upper())
@@ -288,19 +259,12 @@ class VnstatMixin(PyOPNsenseClientProtocol):
     def _to_bits_per_second(self, value: str, unit: str) -> int | None:
         """Convert vnStat rate strings into integer bits-per-second.
 
-        Parameters
-        ----------
-        value : str
-            Numeric rate value string.
-        unit : str
-            Rate unit string such as ``Mbit/s``.
+        Args:
+            value: Numeric rate value string.
+            unit: Rate unit string such as ``Mbit/s``.
 
         Returns:
-        -------
-        int | None
-            Rate in bits-per-second as integer when conversion succeeds;
-            otherwise ``None``.
-
+            int | None: Rate in bits-per-second as integer when conversion succeeds; otherwise ``None``.
         """
         parsed_value = try_to_float(value)
         factor = _RATE_FACTORS.get(unit.upper())
@@ -313,20 +277,13 @@ class VnstatMixin(PyOPNsenseClientProtocol):
     ) -> dict[str, Any] | None:
         """Select a daily row by matching day label or falling back by position.
 
-        Parameters
-        ----------
-        rows : Sequence[dict[str, Any]]
-            Parsed daily rows.
-        days_ago : int
-            Offset from today where ``0`` is today and ``1`` is yesterday.
-        current_tz : tzinfo
-            Timezone used for determining the current day.
+        Args:
+            rows: Parsed daily rows.
+            days_ago: Offset from today where ``0`` is today and ``1`` is yesterday.
+            current_tz: Timezone used for determining the current day.
 
         Returns:
-        -------
-        dict[str, Any] | None
-            Selected daily row, or ``None`` when unavailable.
-
+            dict[str, Any] | None: Selected daily row, or ``None`` when unavailable.
         """
         target_day = datetime.now(tz=current_tz).date() - timedelta(days=days_ago)
         for row in rows:
@@ -344,21 +301,13 @@ class VnstatMixin(PyOPNsenseClientProtocol):
     ) -> dict[str, Any] | None:
         """Select a monthly row by matching month label or fallback position.
 
-        Parameters
-        ----------
-        rows : Sequence[dict[str, Any]]
-            Parsed monthly rows.
-        months_ago : int
-            Offset from current month where ``0`` is this month and ``1`` is
-            last month.
-        current_tz : tzinfo
-            Timezone used for determining the current month.
+        Args:
+            rows: Parsed monthly rows.
+            months_ago: Offset from current month where ``0`` is this month and ``1`` is last month.
+            current_tz: Timezone used for determining the current month.
 
         Returns:
-        -------
-        dict[str, Any] | None
-            Selected monthly row, or ``None`` when unavailable.
-
+            dict[str, Any] | None: Selected monthly row, or ``None`` when unavailable.
         """
         now = datetime.now(tz=current_tz).date()
         target_year = now.year
@@ -382,19 +331,12 @@ class VnstatMixin(PyOPNsenseClientProtocol):
     ) -> dict[str, Any] | None:
         """Select the last complete hour row from parsed hourly rows.
 
-        Parameters
-        ----------
-        rows : Sequence[dict[str, Any]]
-            Parsed hourly rows.
-        current_tz : tzinfo
-            Timezone used for determining the current and previous hour.
+        Args:
+            rows: Parsed hourly rows.
+            current_tz: Timezone used for determining the current and previous hour.
 
         Returns:
-        -------
-        dict[str, Any] | None
-            Row for the previous hour, or a fallback row when labels cannot be
-            matched.
-
+            dict[str, Any] | None: Row for the previous hour, or a fallback row when labels cannot be matched.
         """
         now = datetime.now(tz=current_tz)
         current_hour = now.replace(minute=0, second=0, microsecond=0)
@@ -413,16 +355,11 @@ class VnstatMixin(PyOPNsenseClientProtocol):
     def _metric_values(self, row: Mapping[str, Any] | None) -> dict[str, int] | None:
         """Extract metric values from a parsed row.
 
-        Parameters
-        ----------
-        row : Mapping[str, Any] | None
-            Parsed vnStat row payload.
+        Args:
+            row: Parsed vnStat row payload.
 
         Returns:
-        -------
-        dict[str, int] | None
-            ``total_bytes``, ``rx_bytes``, and ``tx_bytes`` when available.
-
+            dict[str, int] | None: ``total_bytes``, ``rx_bytes``, and ``tx_bytes`` when available.
         """
         if not isinstance(row, Mapping):
             return None
@@ -438,16 +375,11 @@ class VnstatMixin(PyOPNsenseClientProtocol):
     ) -> list[str]:
         """Collect interface names present across parsed vnStat payloads.
 
-        Parameters
-        ----------
-        payloads : Mapping[str, Any] | MutableMapping[str, Any]
-            Parsed payloads from hourly, daily, and monthly endpoints.
+        Args:
+            payloads: Parsed payloads from hourly, daily, and monthly endpoints.
 
         Returns:
-        -------
-        list[str]
-            Sorted list of interface names found in payloads.
-
+            list[str]: Sorted list of interface names found in payloads.
         """
         interfaces: set[str] = set()
         for payload in payloads:
@@ -462,18 +394,12 @@ class VnstatMixin(PyOPNsenseClientProtocol):
     def _interface_rows(self, payload: Mapping[str, Any], interface: str) -> list[dict[str, Any]]:
         """Return parsed rows for a specific interface from a payload.
 
-        Parameters
-        ----------
-        payload : Mapping[str, Any]
-            Parsed endpoint payload.
-        interface : str
-            Interface name to retrieve.
+        Args:
+            payload: Parsed endpoint payload.
+            interface: Interface name to retrieve.
 
         Returns:
-        -------
-        list[dict[str, Any]]
-            Parsed rows for the interface, or an empty list.
-
+            list[dict[str, Any]]: Parsed rows for the interface, or an empty list.
         """
         by_interface = payload.get("interfaces", {})
         if not isinstance(by_interface, Mapping):
@@ -484,16 +410,11 @@ class VnstatMixin(PyOPNsenseClientProtocol):
     def _parse_daily_label(self, label: Any) -> date | None:
         """Parse daily row labels into ``date`` values.
 
-        Parameters
-        ----------
-        label : Any
-            Raw daily label string.
+        Args:
+            label: Raw daily label string.
 
         Returns:
-        -------
-        date | None
-            Parsed date value or ``None`` when parsing fails.
-
+            date | None: Parsed date value or ``None`` when parsing fails.
         """
         if not isinstance(label, str):
             return None
@@ -507,16 +428,11 @@ class VnstatMixin(PyOPNsenseClientProtocol):
     def _parse_month_label(self, label: Any) -> tuple[int, int] | None:
         """Parse monthly row labels into year/month tuples.
 
-        Parameters
-        ----------
-        label : Any
-            Raw monthly label string.
+        Args:
+            label: Raw monthly label string.
 
         Returns:
-        -------
-        tuple[int, int] | None
-            ``(year, month)`` tuple or ``None`` when parsing fails.
-
+            tuple[int, int] | None: ``(year, month)`` tuple or ``None`` when parsing fails.
         """
         if not isinstance(label, str):
             return None
@@ -532,18 +448,12 @@ class VnstatMixin(PyOPNsenseClientProtocol):
     def _parse_hourly_label(self, label: Any, current_tz: tzinfo) -> datetime | None:
         """Parse hourly row labels into minute-precision datetimes.
 
-        Parameters
-        ----------
-        label : Any
-            Raw hourly label string.
-        current_tz : tzinfo
-            Timezone assigned to parsed hourly values.
+        Args:
+            label: Raw hourly label string.
+            current_tz: Timezone assigned to parsed hourly values.
 
         Returns:
-        -------
-        datetime | None
-            Parsed local datetime value or ``None`` when parsing fails.
-
+            datetime | None: Parsed local datetime value or ``None`` when parsing fails.
         """
         if not isinstance(label, str):
             return None

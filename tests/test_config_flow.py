@@ -200,6 +200,15 @@ async def test_validate_input_exception_mapping(monkeypatch, exc_key, expected):
         exc = OSError("unknown")
 
     async def _raiser(*args, **kwargs):
+        """Raise the prepared exception so input error mapping can be validated.
+
+        Args:
+            *args: Additional positional arguments forwarded by the function.
+            **kwargs: Additional keyword arguments forwarded by the function.
+
+        Raises:
+            OSError: Raised with the prepared message for the current parametrized case.
+        """
         raise exc
 
     monkeypatch.setattr(cf_mod, "_handle_user_input", _raiser)
@@ -233,6 +242,11 @@ async def test_get_dt_entries_sorts_and_includes_selected(monkeypatch, fake_clie
     client_cls = fake_client()
 
     async def _get_arp_table(self, resolve_hostnames=True):
+        """Return arp table.
+
+        Args:
+            resolve_hostnames: Resolve hostnames provided by pytest or the test case.
+        """
         return [
             {"mac": "aa:bb:cc:00:00:01", "hostname": "hostb", "ip": "192.168.1.20"},
             {"mac": "aa:bb:cc:00:00:03", "hostname": "hostc", "ip": "192.168.1.100"},
@@ -245,6 +259,12 @@ async def test_get_dt_entries_sorts_and_includes_selected(monkeypatch, fake_clie
 
     # Patch async_create_clientsession on the module under test to avoid real network I/O
     def _fake_create_clientsession(*args, **kwargs):
+        """Return a mock client session so the test avoids real network I/O.
+
+        Args:
+            *args: Positional arguments forwarded from the patched helper and ignored.
+            **kwargs: Keyword arguments forwarded from the patched helper and ignored.
+        """
         return MagicMock()
 
     monkeypatch.setattr(cf_mod, "async_create_clientsession", _fake_create_clientsession)
@@ -278,6 +298,11 @@ async def test_get_dt_entries_preserves_missing_selected_devices(monkeypatch, fa
     client_cls = fake_client()
 
     async def _get_arp_table(self, resolve_hostnames=True):
+        """Return arp table.
+
+        Args:
+            resolve_hostnames: Resolve hostnames provided by pytest or the test case.
+        """
         return [{"mac": "11:22:33:44:55:66", "hostname": "", "ip": "10.0.0.5"}]
 
     setattr(client_cls, "get_arp_table", _get_arp_table)
@@ -398,6 +423,14 @@ async def test_options_flow_granular_sync_calls_validate_and_updates(monkeypatch
 
     # monkeypatch validate_input to return no errors
     async def fake_validate(hass, user_input, errors, **kwargs):
+        """Return an empty error mapping so the options flow can proceed.
+
+        Args:
+            hass: Home Assistant instance that owns the integration state, entity registry, and services.
+            user_input: Values submitted for the current configuration or options flow step.
+            errors: Mutable error mapping that would normally be populated by validation.
+            **kwargs: Additional validation context forwarded by the caller and ignored here.
+        """
         return {}
 
     monkeypatch.setattr(cf_mod, "validate_input", fake_validate)
@@ -430,6 +463,13 @@ async def test_device_tracker_shows_form_when_no_user_input(monkeypatch, make_co
 
     # monkeypatch _get_dt_entries to return an ordered dict-like mapping
     async def fake_get_dt_entries(hass, config, selected_devices):
+        """Return a deterministic mapping of selectable device-tracker entries.
+
+        Args:
+            hass: Home Assistant instance that owns the integration state, entity registry, and services.
+            config: Integration configuration used to build the selector entries.
+            selected_devices: MAC addresses that should remain selected in the form.
+        """
         return {"11:22:33:44:55:66": "label1", "aa:bb:cc:dd:ee:ff": "label2"}
 
     monkeypatch.setattr(cf_mod, "_get_dt_entries", fake_get_dt_entries)
@@ -464,6 +504,15 @@ async def test_device_tracker_handles_arp_lookup_failure(monkeypatch, make_confi
     flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=cfg)
 
     async def _raise(*args, **kwargs):
+        """Raise ``ClientError`` so device-tracker lookup failures can be tested.
+
+        Args:
+            *args: Additional positional arguments forwarded by the function.
+            **kwargs: Additional keyword arguments forwarded by the function.
+
+        Raises:
+            aiohttp.ClientError: Always raised to exercise error handling in the options flow.
+        """
         raise aiohttp.ClientError("boom")
 
     monkeypatch.setattr(cf_mod, "_get_dt_entries", _raise)
@@ -599,10 +648,7 @@ async def test_options_flow_init_selected_mode_shows_picker_step(monkeypatch, ma
 async def test_validate_input_user_respects_granular_flag_for_plugin_check(
     monkeypatch, granular_flag, config_step, expected_called, fake_flow_client
 ):
-    """Plugin check not required for config step of user.
-
-    Otherwise, plugin check is required if granular sync options is enabled
-    """
+    """Plugin check not required for config step of user. Otherwise, plugin check is required if granular sync options is enabled."""
     # Use shared fake_flow_client fixture to supply a FakeClient class
     client_cls = fake_flow_client()
     monkeypatch.setattr(cf_mod, "OPNsenseClient", client_cls)
@@ -623,7 +669,13 @@ async def test_validate_input_user_respects_granular_flag_for_plugin_check(
     flow.hass = MagicMock()
 
     async def _noop(*args, **kwargs):
-        return None
+        """Noop.
+
+        Args:
+            *args: Additional positional arguments forwarded by the function.
+            **kwargs: Additional keyword arguments forwarded by the function.
+        """
+        return
 
     # Prevent base ConfigFlow methods from touching HA internals during unit test
     flow.async_set_unique_id = _noop
@@ -683,12 +735,7 @@ async def test_validate_input_user_respects_granular_flag_for_plugin_check(
 async def test_granular_sync_flow_plugin_check(
     monkeypatch, flow_type, require_plugin, expected_called, fake_flow_client
 ):
-    """Test plugin check behavior when granular sync is enabled and granular items are set.
-
-        For granular_sync step from both ConfigFlow and OptionsFlow:
-    - If any SYNC_ITEMS_REQUIRING_PLUGIN is True -> is_plugin_installed should be called.
-    - If none are True -> is_plugin_installed should NOT be called.
-    """
+    """Test plugin check behavior when granular sync is enabled and granular items are set. For granular_sync step from both ConfigFlow and OptionsFlow: - If any SYNC_ITEMS_REQUIRING_PLUGIN is True -> is_plugin_installed should be called. - If none are True -> is_plugin_installed should NOT be called."""
     # Use shared fake_flow_client fixture
     client_cls = fake_flow_client()
     monkeypatch.setattr(cf_mod, "OPNsenseClient", client_cls)

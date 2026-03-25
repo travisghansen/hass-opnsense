@@ -24,16 +24,11 @@ class PyOPNsenseClientProtocol(Protocol):
     async def _get(self, path: str) -> MutableMapping[str, Any] | list | None:
         """Queue a GET request and return the decoded payload.
 
-        Parameters
-        ----------
-        path : str
-            Relative API path.
+        Args:
+            path: Relative API path.
 
         Returns:
-        -------
-        MutableMapping[str, Any] | list | None
-            Decoded JSON payload, or ``None`` when unavailable.
-
+            MutableMapping[str, Any] | list | None: Decoded JSON payload, or ``None`` when unavailable.
         """
         ...
 
@@ -43,18 +38,12 @@ class PyOPNsenseClientProtocol(Protocol):
     ) -> MutableMapping[str, Any] | list | None:
         """Queue a POST request and return the decoded payload.
 
-        Parameters
-        ----------
-        path : str
-            Relative API path.
-        payload : MutableMapping[str, Any] | None
-            Optional request body.
+        Args:
+            path: Relative API path.
+            payload: Optional request body.
 
         Returns:
-        -------
-        MutableMapping[str, Any] | list | None
-            Decoded JSON payload, or ``None`` when unavailable.
-
+            MutableMapping[str, Any] | list | None: Decoded JSON payload, or ``None`` when unavailable.
         """
         ...
 
@@ -62,16 +51,11 @@ class PyOPNsenseClientProtocol(Protocol):
     async def _get_from_stream(self, path: str) -> dict[str, Any]:
         """Queue a streaming GET request and parse the first data payload.
 
-        Parameters
-        ----------
-        path : str
-            Relative API path.
+        Args:
+            path: Relative API path.
 
         Returns:
-        -------
-        dict[str, Any]
-            Parsed stream payload.
-
+            dict[str, Any]: Parsed stream payload.
         """
         ...
 
@@ -79,16 +63,11 @@ class PyOPNsenseClientProtocol(Protocol):
     async def _safe_dict_get(self, path: str) -> dict[str, Any]:
         """Fetch a GET payload and coerce non-mapping values to an empty mapping.
 
-        Parameters
-        ----------
-        path : str
-            Relative API path.
+        Args:
+            path: Relative API path.
 
         Returns:
-        -------
-        dict[str, Any]
-            Dictionary payload.
-
+            dict[str, Any]: Dictionary payload.
         """
         ...
 
@@ -98,18 +77,12 @@ class PyOPNsenseClientProtocol(Protocol):
     ) -> dict[str, Any]:
         """Fetch a GET payload with a custom timeout and coerce non-mapping values.
 
-        Parameters
-        ----------
-        path : str
-            Relative API path.
-        timeout_seconds : int | float
-            Total timeout window in seconds for the request.
+        Args:
+            path: Relative API path.
+            timeout_seconds: Total timeout window in seconds for the request.
 
         Returns:
-        -------
-        dict[str, Any]
-            Dictionary payload.
-
+            dict[str, Any]: Dictionary payload.
         """
         ...
 
@@ -117,16 +90,11 @@ class PyOPNsenseClientProtocol(Protocol):
     async def _safe_list_get(self, path: str) -> list:
         """Fetch a GET payload and coerce non-list values to an empty list.
 
-        Parameters
-        ----------
-        path : str
-            Relative API path.
+        Args:
+            path: Relative API path.
 
         Returns:
-        -------
-        list
-            List payload.
-
+            list: List payload.
         """
         ...
 
@@ -136,18 +104,12 @@ class PyOPNsenseClientProtocol(Protocol):
     ) -> dict[str, Any]:
         """Fetch a POST payload and coerce non-mapping values to an empty mapping.
 
-        Parameters
-        ----------
-        path : str
-            Relative API path.
-        payload : MutableMapping[str, Any] | None
-            Optional request body.
+        Args:
+            path: Relative API path.
+            payload: Optional request body.
 
         Returns:
-        -------
-        dict[str, Any]
-            Dictionary payload.
-
+            dict[str, Any]: Dictionary payload.
         """
         ...
 
@@ -157,18 +119,12 @@ class PyOPNsenseClientProtocol(Protocol):
     ) -> list:
         """Fetch a POST payload and coerce non-list values to an empty list.
 
-        Parameters
-        ----------
-        path : str
-            Relative API path.
-        payload : MutableMapping[str, Any] | None
-            Optional request body.
+        Args:
+            path: Relative API path.
+            payload: Optional request body.
 
         Returns:
-        -------
-        list
-            List payload.
-
+            list: List payload.
         """
         ...
 
@@ -176,16 +132,11 @@ class PyOPNsenseClientProtocol(Protocol):
     async def _get_opnsense_timezone(self, datetime_str: str | None = None) -> tzinfo:
         """Resolve timezone information from OPNsense system time data.
 
-        Parameters
-        ----------
-        datetime_str : str | None
-            Optional datetime string from OPNsense ``system_time`` output.
+        Args:
+            datetime_str: Optional datetime string from OPNsense ``system_time`` output.
 
         Returns:
-        -------
-        tzinfo
-            Parsed timezone when available, otherwise a local fixed-offset fallback.
-
+            tzinfo: Parsed timezone when available, otherwise a local fixed-offset fallback.
         """
         ...
 
@@ -193,16 +144,11 @@ class PyOPNsenseClientProtocol(Protocol):
     async def _exec_php(self, script: str) -> dict[str, Any]:
         """Execute a PHP script via XMLRPC and decode the JSON payload.
 
-        Parameters
-        ----------
-        script : str
-            PHP source snippet.
+        Args:
+            script: PHP source snippet.
 
         Returns:
-        -------
-        dict[str, Any]
-            Decoded dictionary payload.
-
+            dict[str, Any]: Decoded dictionary payload.
         """
         ...
 
@@ -212,17 +158,12 @@ class PyOPNsenseClientProtocol(Protocol):
     ) -> None:
         """Restore a configuration section via XMLRPC.
 
-        Parameters
-        ----------
-        section_name : str
-            Config section key.
-        data : MutableMapping[str, Any]
-            Replacement section payload.
+        Args:
+            section_name: Config section key.
+            data: Replacement section payload.
 
         Returns:
-        -------
-        None
-
+            None: Restores the named configuration section in place.
         """
         ...
 
@@ -231,9 +172,7 @@ class PyOPNsenseClientProtocol(Protocol):
         """Apply pending firewall and NAT filter configuration changes.
 
         Returns:
-        -------
-        None
-
+            None: Applies the queued configuration changes on the firewall.
         """
         ...
 
@@ -242,10 +181,7 @@ class PyOPNsenseClientProtocol(Protocol):
         """Return full OPNsense configuration payload.
 
         Returns:
-        -------
-        dict[str, Any]
-            Full configuration dictionary.
-
+            dict[str, Any]: Full configuration dictionary.
         """
         ...
 
@@ -254,10 +190,7 @@ class PyOPNsenseClientProtocol(Protocol):
         """Return the host firmware version string.
 
         Returns:
-        -------
-        str | None
-            Parsed firmware version, if available.
-
+            str | None: Parsed firmware version, if available.
         """
         ...
 
@@ -266,10 +199,7 @@ class PyOPNsenseClientProtocol(Protocol):
         """Return whether plugin installation is detected.
 
         Returns:
-        -------
-        bool
-            ``True`` when the plugin is installed.
-
+            bool: ``True`` when the plugin is installed.
         """
         ...
 
@@ -277,16 +207,11 @@ class PyOPNsenseClientProtocol(Protocol):
     async def is_named_plugin_installed(self, plugin_name: str) -> bool:
         """Return whether a specific plugin package is installed.
 
-        Parameters
-        ----------
-        plugin_name : str
-            OPNsense package name (for example ``os-vnstat``).
+        Args:
+            plugin_name: OPNsense package name (for example ``os-vnstat``).
 
         Returns:
-        -------
-        bool
-            ``True`` when the package is installed.
-
+            bool: ``True`` when the package is installed.
         """
         ...
 
@@ -294,27 +219,20 @@ class PyOPNsenseClientProtocol(Protocol):
     async def is_endpoint_available(self, path: str, force_refresh: bool = False) -> bool:
         """Return whether a specific API endpoint appears available.
 
-        Parameters
-        ----------
-        path : str
-            API path to probe.
-        force_refresh : bool
-            Whether to bypass cached probe results.
+        Args:
+            path: API path to probe.
+            force_refresh: Whether to bypass cached probe results.
 
         Returns:
-        -------
-        bool
-            ``True`` when endpoint probe succeeds.
+            bool: ``True`` when endpoint probe succeeds.
 
         Notes:
-        -----
-        Implementations cache per-endpoint availability using a TTL window.
-        Successful probes and HTTP 404 "not found" probes are cached until TTL
-        expiry.
-        Other probe failures are treated as transient and retried on the next
-        check.
-        ``force_refresh=True`` bypasses cache freshness checks.
-
+            Implementations cache per-endpoint availability using a TTL window.
+            Successful probes and HTTP 404 "not found" probes are cached until TTL
+            expiry.
+            Other probe failures are treated as transient and retried on the next
+            check.
+            ``force_refresh=True`` bypasses cache freshness checks.
         """
         ...
 
@@ -323,9 +241,6 @@ class PyOPNsenseClientProtocol(Protocol):
         """Return whether plugin is deprecated for host firmware.
 
         Returns:
-        -------
-        bool
-            ``True`` when the plugin should be considered deprecated.
-
+            bool: ``True`` when the plugin should be considered deprecated.
         """
         ...

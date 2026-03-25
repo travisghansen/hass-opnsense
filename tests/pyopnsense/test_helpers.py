@@ -19,12 +19,7 @@ def test_human_friendly_duration() -> None:
 
 
 def test_human_friendly_duration_singular_and_plural() -> None:
-    """Verify singular and plural forms for all supported units.
-
-    This covers seconds, minutes, hours, days, weeks and months and ensures
-    the function emits the singular form when the value is 1 and plural
-    otherwise.
-    """
+    """Verify singular and plural forms for all supported units. This covers seconds, minutes, hours, days, weeks and months and ensures the function emits the singular form when the value is 1 and plural otherwise."""
     # seconds
     assert pyopnsense_helpers.human_friendly_duration(1) == "1 second"
     assert pyopnsense_helpers.human_friendly_duration(2) == "2 seconds"
@@ -107,10 +102,16 @@ async def test_log_errors_decorator_re_raise_and_suppress() -> None:
 
     class Dummy:
         def __init__(self, initial: bool):
+            """Initialize Dummy."""
             self._initial = initial
 
         @pyopnsense_helpers._log_errors
         async def boom(self) -> None:
+            """Raise a runtime error so `_log_errors` can be exercised.
+
+            Raises:
+                RuntimeError: Always raised to test generic exception handling.
+            """
             raise RuntimeError("boom")
 
     # When not initial, errors are logged and suppressed (function returns None)
@@ -132,6 +133,15 @@ async def test_log_errors_timeout_re_raise_and_suppress() -> None:
     try:
 
         async def raising_timeout(*args, **kwargs):
+            """Raise ``TimeoutError`` so the timeout branch of `_log_errors` runs.
+
+            Args:
+                *args: Additional positional arguments forwarded by the function.
+                **kwargs: Additional keyword arguments forwarded by the function.
+
+            Raises:
+                TimeoutError: Always raised to test timeout suppression and re-raise behavior.
+            """
             raise TimeoutError("boom")
 
         # wrap the coroutine with the decorator
@@ -158,6 +168,15 @@ async def test_log_errors_server_timeout_re_raise_and_suppress() -> None:
     try:
 
         async def raising_server_timeout(*args, **kwargs):
+            """Raise ``ServerTimeoutError`` for the server-timeout error branch.
+
+            Args:
+                *args: Additional positional arguments forwarded by the function.
+                **kwargs: Additional keyword arguments forwarded by the function.
+
+            Raises:
+                aiohttp.ServerTimeoutError: Always raised to test server-timeout handling.
+            """
             raise aiohttp.ServerTimeoutError("srv")
 
         decorated = pyopnsense_helpers._log_errors(raising_server_timeout)
@@ -179,6 +198,7 @@ async def test_xmlrpc_timeout_uses_per_call_asyncio_timeout(monkeypatch) -> None
 
     @pyopnsense_helpers._xmlrpc_timeout
     async def fast_func(self):
+        """Fast func."""
         return "ok"
 
     got = await fast_func(None)
@@ -186,6 +206,7 @@ async def test_xmlrpc_timeout_uses_per_call_asyncio_timeout(monkeypatch) -> None
 
     @pyopnsense_helpers._xmlrpc_timeout
     async def slow_func(self):
+        """Slow func."""
         await asyncio.sleep(0.05)
         return "late"
 

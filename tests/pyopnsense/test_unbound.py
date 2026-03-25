@@ -219,13 +219,7 @@ async def test_set_unbound_blocklist_legacy_scenarios(
 
 @pytest.mark.asyncio
 async def test_toggle_unbound_blocklist_success_and_errors() -> None:
-    """Ensure _toggle_unbound_blocklist returns True on happy path and handles expected errors.
-
-    The helper performs a follow‑up GET/POST after toggling.  Network issues or
-    malformed responses should be caught and simply result in False; we expect
-    aiohttp.ClientError, asyncio.TimeoutError, ValueError and TypeError to be
-    the common failure modes.
-    """
+    """Ensure _toggle_unbound_blocklist returns True on happy path and handles expected errors. The helper performs a follow-up GET/POST after toggling.  Network issues or malformed responses should be caught and simply result in False; we expect aiohttp.ClientError, asyncio.TimeoutError, ValueError and TypeError to be the common failure modes."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
         url="http://localhost", username="u", password="p", session=session

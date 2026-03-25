@@ -87,6 +87,7 @@ async def test_async_added_to_hass_sets_client_and_calls_update(
     called = {"count": 0}
 
     def fake_handle():
+        """Record that the entity update callback was invoked."""
         called["count"] += 1
 
     ent._handle_coordinator_update = fake_handle

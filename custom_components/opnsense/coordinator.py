@@ -82,6 +82,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         await self._client.set_use_snake_case()
 
     async def _get_states(self, categories: list) -> dict[str, Any]:
+        """Return states."""
         state: dict[str, Any] = {}
         total_time: float = 0
         for cat in categories:
@@ -254,6 +255,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         return self._state
 
     async def _calculate_vpn_speeds(self, elapsed_time: float) -> None:
+        """Calculate vpn speeds."""
         for vpn_type in ("openvpn", "wireguard"):
             cs = ["servers"]
             if vpn_type == "wireguard":
@@ -303,6 +305,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                         instance[new_property] = value
 
     async def _calculate_interface_speeds(self, elapsed_time: float) -> None:
+        """Calculate interface speeds."""
         for interface_name, interface in (dict_get(self._state, "interfaces", {}) or {}).items():
             previous_interface = dict_get(
                 self._state,
@@ -399,6 +402,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         current_parent_value: float,
         previous_parent_value: float,
     ) -> tuple[str, int]:
+        """Calculate speed."""
         try:
             change: float = abs(current_parent_value - previous_parent_value)
             rate: float = change / elapsed_time

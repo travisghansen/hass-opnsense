@@ -124,17 +124,21 @@ async def test_is_endpoint_available_caches_success(make_client) -> None:
 
     class FakeResp:
         def __init__(self, status: int, ok: bool) -> None:
+            """Initialize FakeResp."""
             self.status = status
             self.reason = "OK"
             self.ok = ok
 
         async def __aenter__(self):
+            """Yield the fake response object to the async context manager."""
             return self
 
         async def __aexit__(self, exc_type, exc, tb):
+            """Perform no cleanup and return False so exceptions propagate."""
             return False
 
     def _get(*args, **kwargs):
+        """Return a successful fake response and record the request count."""
         nonlocal calls
         calls += 1
         return FakeResp(status=200, ok=True)
@@ -157,17 +161,21 @@ async def test_is_endpoint_available_cache_false_by_ttl_and_force_refresh(make_c
 
     class FakeResp:
         def __init__(self, status: int, ok: bool) -> None:
+            """Initialize FakeResp."""
             self.status = status
             self.reason = "ERR"
             self.ok = ok
 
         async def __aenter__(self):
+            """Yield the fake response object to the async context manager."""
             return self
 
         async def __aexit__(self, exc_type, exc, tb):
+            """Perform no cleanup and return False so exceptions propagate."""
             return False
 
     def _get(*args, **kwargs):
+        """Return cached-failure and success responses across repeated calls."""
         nonlocal calls
         calls += 1
         if calls == 1:
@@ -202,6 +210,12 @@ async def test_is_endpoint_available_handles_timeout(make_client) -> None:
     calls = 0
 
     def _get(*args, **kwargs):
+        """Simulate a timed-out GET probe for retry behavior tests.
+
+        This helper increments the nonlocal ``calls`` counter on every invocation and
+        then raises ``TimeoutError("timeout")`` so the test can verify timeout
+        failures are treated as transient and are not cached between endpoint checks.
+        """
         nonlocal calls
         calls += 1
         raise TimeoutError("timeout")
@@ -224,17 +238,25 @@ async def test_is_endpoint_available_does_not_cache_non_404_http_errors(make_cli
 
     class FakeResp:
         def __init__(self, status: int, ok: bool) -> None:
+            """Initialize FakeResp."""
             self.status = status
             self.reason = "ERR"
             self.ok = ok
 
         async def __aenter__(self):
+            """Enter the fake response context and expose this response instance."""
             return self
 
         async def __aexit__(self, exc_type, exc, tb):
+            """Exit the fake response context without suppressing raised exceptions."""
             return False
 
     def _get(*args, **kwargs):
+        """Return a fake HTTP 500 probe response and count each attempted request.
+
+        The helper mutates the nonlocal ``calls`` counter so the test can assert that
+        non-404 HTTP failures are retried instead of cached as endpoint availability.
+        """
         nonlocal calls
         calls += 1
         return FakeResp(status=500, ok=False)
@@ -307,6 +329,7 @@ async def test_set_use_snake_case_handles_compare_exception(monkeypatch, make_cl
     try:
 
         def mock_compare(self, other):
+            """Raise a version-compare error to exercise the fallback path."""
             raise awesomeversion.exceptions.AwesomeVersionCompareException("test exception")
 
         monkeypatch.setattr(awesomeversion.AwesomeVersion, "__lt__", mock_compare)
@@ -332,14 +355,11 @@ async def test_set_use_snake_case_handles_compare_exception(monkeypatch, make_cl
 )
 @pytest.mark.asyncio
 async def test_exec_php_error_paths(exc_factory, initial: bool, make_client) -> None:
-    """_exec_php should swallow known exceptions and return {} regardless of initial flag.
+    """Verify that ``_exec_php`` returns an empty mapping for known error paths.
 
-    Consolidates previous exec_php tests into one parameterized function covering:
-    - TypeError JSON issues
-    - xmlrpc.client.Fault
-    - socket.gaierror
-    - ssl.SSLError
-    With both initial False and initial True states.
+    The parameterized cases cover JSON decoding issues, XMLRPC faults, DNS
+    failures, and SSL failures across both initial and non-initial client
+    states.
     """
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session)
@@ -371,6 +391,12 @@ async def test_do_get_post_error_initial_behavior(
     # create a fake response context manager
     class FakeResp:
         def __init__(self, status=500, ok=False):
+            """Initialize FakeResp.
+
+            Args:
+                status: Status provided by pytest or the test case.
+                ok: Ok provided by pytest or the test case.
+            """
             self.status = status
             self.reason = "Err"
             self.ok = ok
@@ -384,21 +410,38 @@ async def test_do_get_post_error_initial_behavior(
             self.headers = {}
 
         async def __aenter__(self):
+            """Enter the fake response context for HTTP error handling tests."""
             return self
 
         async def __aexit__(self, exc_type, exc, tb):
+            """Exit the fake response context without swallowing test exceptions."""
             return False
 
         async def json(self, content_type=None):
+            """Return a small JSON payload for HTTP error response parsing tests.
+
+            Args:
+                content_type: Optional content type hint accepted for aiohttp API
+                    compatibility and ignored by the fake response.
+            """
             return {"x": 1}
 
         async def text(self):
+            """Return raw response text used by fallback parsing assertions."""
             return "raw response text"
 
         @property
         def content(self):
+            """Provide a minimal async stream interface for SSE-style test payloads."""
+
             class C:
                 async def iter_chunked(self, n):
+                    """Yield one serialized event chunk regardless of requested size.
+
+                    Args:
+                        n: Requested chunk size from the caller, accepted only to
+                            match the aiohttp stream reader contract.
+                    """
                     yield b"data:{}\n\n" % b"{}"
 
             return C()
@@ -486,12 +529,7 @@ async def test_get_from_stream_partial_chunks_accumulates_buffer(
 
 @pytest.mark.asyncio
 async def test_get_proxy_https_unverified_returns_serverproxy() -> None:
-    """When scheme is https and verify_ssl is False, _get_proxy returns ServerProxy.
-
-    Make this an async test and instantiate the client while the event loop is
-    running so any background tasks are created on the active loop; ensure we
-    close the client afterwards to avoid leaking tasks.
-    """
+    """Verify that ``_get_proxy`` returns a ``ServerProxy`` for unverified HTTPS."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
         url="https://localhost",
@@ -548,6 +586,11 @@ async def test_do_get_from_stream_error_initial_raises(make_client) -> None:
 
     class FakeBadResp:
         def __init__(self, status=403):
+            """Initialize FakeBadResp.
+
+            Args:
+                status: Status provided by pytest or the test case.
+            """
             self.status = status
             self.reason = "Forbidden"
             self.ok = False
@@ -560,20 +603,26 @@ async def test_do_get_from_stream_error_initial_raises(make_client) -> None:
             self.headers = {}
 
         async def __aenter__(self):
+            """Yield the failing response object to the async context manager."""
             return self
 
         async def __aexit__(self, exc_type, exc, tb):
+            """Perform no cleanup and return False so exceptions propagate."""
             return False
 
         @property
         def content(self):
+            """Provide a minimal streaming-content stub for the response."""
+
             class C:
                 async def iter_chunked(self, n):
+                    """Yield an empty chunk sequence for the test response."""
                     yield b""
 
             return C()
 
     def fake_get(*args, **kwargs):
+        """Return a failing response object for stream error handling tests."""
         return FakeBadResp()
 
     session.get = fake_get
@@ -641,10 +690,7 @@ async def test_process_queue_handles_requests(make_client) -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("returned", [{"ok": 1}, [1, 2, 3], None])
 async def test_get_enqueues_and_processes(returned, make_client) -> None:
-    """Ensure `_get` enqueues a request and `_process_queue` calls `_do_get` and returns value.
-
-    Parameterized to cover mapping, list and None return types.
-    """
+    """Verify that ``_get`` enqueues work and returns the processed result."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
         url="http://localhost", username="u", password="p", session=session
@@ -659,6 +705,12 @@ async def test_get_enqueues_and_processes(returned, make_client) -> None:
 
         async def fake_do_get(path, caller="x"):
             # capture the caller name supplied by _get
+            """Capture the caller label and return the queued GET result.
+
+            Args:
+                path: Path provided by pytest or the test case.
+                caller: Caller provided by pytest or the test case.
+            """
             called["caller"] = caller
             return returned
 
@@ -694,6 +746,11 @@ async def test_get_uses_unknown_when_inspect_stack_raises(monkeypatch, make_clie
         class _BadInspect:
             @staticmethod
             def stack():
+                """Raise ``IndexError`` so `_get` falls back to the default caller name.
+
+                Raises:
+                    IndexError: Always raised to simulate inspect stack lookup failure.
+                """
                 raise IndexError("no stack")
 
         monkeypatch.setattr(pyopnsense_client_base, "inspect", _BadInspect)
@@ -704,6 +761,12 @@ async def test_get_uses_unknown_when_inspect_stack_raises(monkeypatch, make_clie
         captured = {}
 
         async def fake_do_get(path, caller="x"):
+            """Capture the fallback caller label and return the queued GET result.
+
+            Args:
+                path: Path provided by pytest or the test case.
+                caller: Caller provided by pytest or the test case.
+            """
             captured["caller"] = caller
             return {"ok": True}
 
@@ -725,10 +788,7 @@ async def test_get_uses_unknown_when_inspect_stack_raises(monkeypatch, make_clie
 @pytest.mark.asyncio
 @pytest.mark.parametrize("returned", [{"ok": 1}, [1, 2, 3], None])
 async def test_post_enqueues_and_processes(returned, make_client) -> None:
-    """Ensure `_post` enqueues a request and `_process_queue` calls `_do_post` and returns value.
-
-    Parameterized to cover mapping, list and None return types. Also verify payload is forwarded.
-    """
+    """Verify that ``_post`` enqueues work, forwards payloads, and returns results."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
         url="http://localhost", username="u", password="p", session=session
@@ -741,6 +801,7 @@ async def test_post_enqueues_and_processes(returned, make_client) -> None:
         captured = {}
 
         async def fake_do_post(path, payload=None, caller="x"):
+            """Capture POST call details and return the parameterized result."""
             captured["caller"] = caller
             captured["payload"] = payload
             return returned
@@ -776,6 +837,7 @@ async def test_post_uses_unknown_when_inspect_stack_raises(monkeypatch, make_cli
         class _BadInspect:
             @staticmethod
             def stack():
+                """Raise ``IndexError`` so the caller falls back to ``Unknown``."""
                 raise IndexError("no stack")
 
         monkeypatch.setattr(pyopnsense_client_base, "inspect", _BadInspect)
@@ -786,6 +848,7 @@ async def test_post_uses_unknown_when_inspect_stack_raises(monkeypatch, make_cli
         captured = {}
 
         async def fake_do_post(path, payload=None, caller="x"):
+            """Capture POST call details while simulating a successful request."""
             captured["caller"] = caller
             captured["payload"] = payload
             return {"ok": True}
@@ -826,6 +889,7 @@ async def test_exec_php_returns_real_json_and_xmlrpc_timeout_decorator() -> None
         class D:
             @pyopnsense_helpers._xmlrpc_timeout
             async def wrapped(self) -> int:
+                """Return a sentinel value through the XMLRPC timeout wrapper."""
                 return 7
 
         d = D()
@@ -841,32 +905,45 @@ async def test_do_get_and_do_post_success_paths() -> None:
 
     class FakeOKResp:
         def __init__(self, payload):
+            """Initialize FakeOKResp.
+
+            Args:
+                payload: Payload provided by pytest or the test case.
+            """
             self.status = 200
             self.reason = "OK"
             self.ok = True
             self._payload = payload
 
         async def __aenter__(self):
+            """Yield the successful response object to the async context manager."""
             return self
 
         async def __aexit__(self, exc_type, exc, tb):
+            """Perform no cleanup and return False so exceptions propagate."""
             return False
 
         async def json(self, content_type=None):
+            """Return the preloaded JSON payload for the fake response."""
             return self._payload
 
         @property
         def content(self):
+            """Provide a minimal streaming-content stub for compatibility."""
+
             class C:
                 async def iter_chunked(self, n):
+                    """Yield an empty chunk because stream data is unused here."""
                     yield b""  # not used here
 
             return C()
 
     def fake_get(*args, **kwargs):
+        """Return a fake successful GET response with a mapping payload."""
         return FakeOKResp({"a": 1})
 
     def fake_post(*args, **kwargs):
+        """Return a fake successful POST response with a list payload."""
         return FakeOKResp([1, 2, 3])
 
     session.get = fake_get
@@ -955,6 +1032,7 @@ async def test_process_queue_cancelled_sets_future_cancelled_error() -> None:
         release = asyncio.Event()
 
         async def _blocked_get(_path: str, _caller: str) -> MutableMapping[str, Any]:
+            """Block until released so the test can cancel an in-flight request."""
             started.set()
             await release.wait()
             return {}
@@ -998,12 +1076,18 @@ async def test_monitor_queue_handles_qsize_exception() -> None:
         # make qsize raise
         class BadQ:
             def qsize(self):
+                """Raise ``RuntimeError`` so queue-size error handling is exercised.
+
+                Raises:
+                    RuntimeError: Always raised to test async-close fallback handling.
+                """
                 raise RuntimeError("boom")
 
             def empty(self):
                 # indicate there are no queued items so async_close won't attempt to
                 # drain a non-standard queue object; this keeps the test focused on
                 # the qsize exception handling in _monitor_queue.
+                """Empty."""
                 return True
 
         client._request_queue = BadQ()  # type: ignore[assignment]
@@ -1055,6 +1139,7 @@ async def test_do_get_post_and_stream_permission_errors(make_client) -> None:
 
     class Fake403:
         def __init__(self):
+            """Initialize Fake403."""
             self.status = 403
             self.reason = "Forbidden"
             self.ok = False
@@ -1067,18 +1152,34 @@ async def test_do_get_post_and_stream_permission_errors(make_client) -> None:
             self.headers = {}
 
         async def __aenter__(self):
+            """Enter the fake 403 response context for permission error tests."""
             return self
 
         async def __aexit__(self, exc_type, exc, tb):
+            """Exit the fake 403 response context and propagate any exception."""
             return False
 
         async def json(self, content_type=None):
+            """Return a minimal error payload for forbidden-response handling paths.
+
+            Args:
+                content_type: Optional content type hint accepted for aiohttp API
+                    compatibility and ignored by the fake response.
+            """
             return {"err": 1}
 
         @property
         def content(self):  # for stream variant
+            """Expose an empty async stream to simulate a forbidden stream response."""
+
             class C:
                 async def iter_chunked(self, n):
+                    """Yield a single empty chunk for stream permission error tests.
+
+                    Args:
+                        n: Requested chunk size from the caller, accepted only to
+                            match the aiohttp stream reader contract.
+                    """
                     if False:  # pragma: no cover
                         yield b""  # never executed; placeholder
                         return
@@ -1111,6 +1212,11 @@ async def test_restore_config_section_executes_in_executor(make_client) -> None:
         class opnsense:  # noqa: D401 - minimal container for restore_config_section
             @staticmethod
             def restore_config_section(params):  # pragma: no cover - executed in executor
+                """Restore config section.
+
+                Args:
+                    params: Params provided by pytest or the test case.
+                """
                 called["params"] = params
 
     client._get_proxy = MagicMock(return_value=FakeProxy())
@@ -1163,9 +1269,15 @@ async def test_set_use_snake_case_unknown_firmware_raise(monkeypatch, make_clien
 
     class BadAV:
         def __init__(self, *_args, **_kwargs):
-            pass
+            """Initialize BadAV.
+
+            Args:
+                *_args: Additional positional arguments forwarded by the function.
+                **_kwargs: Additional keyword arguments forwarded by the function.
+            """
 
         def __lt__(self, other):  # noqa: D401 - comparison triggers exception
+            """Raise a compare exception so initial setup treats the version as unknown."""
             raise awesomeversion.exceptions.AwesomeVersionCompareException("bad")
 
     monkeypatch.setattr(pyopnsense_client_base.awesomeversion, "AwesomeVersion", BadAV)

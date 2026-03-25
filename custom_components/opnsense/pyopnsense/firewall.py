@@ -16,11 +16,8 @@ class FirewallMixin(PyOPNsenseClientProtocol):
     async def enable_filter_rule_by_created_time_legacy(self, created_time: str) -> None:
         """Enable a filter rule.
 
-        Parameters
-        ----------
-        created_time : str
-            Rule creation timestamp used as a legacy unique identifier.
-
+        Args:
+            created_time: Rule creation timestamp used as a legacy unique identifier.
         """
         config: dict[str, Any] = await self.get_config()
         for rule in config.get("filter", {}).get("rule", []):
@@ -40,11 +37,8 @@ class FirewallMixin(PyOPNsenseClientProtocol):
     async def disable_filter_rule_by_created_time_legacy(self, created_time: str) -> None:
         """Disable a filter rule.
 
-        Parameters
-        ----------
-        created_time : str
-            Rule creation timestamp used as a legacy unique identifier.
-
+        Args:
+            created_time: Rule creation timestamp used as a legacy unique identifier.
         """
         config: dict[str, Any] = await self.get_config()
 
@@ -65,11 +59,8 @@ class FirewallMixin(PyOPNsenseClientProtocol):
     async def enable_nat_port_forward_rule_by_created_time_legacy(self, created_time: str) -> None:
         """Enable a NAT Port Forward rule.
 
-        Parameters
-        ----------
-        created_time : str
-            Rule creation timestamp used as a legacy unique identifier.
-
+        Args:
+            created_time: Rule creation timestamp used as a legacy unique identifier.
         """
         config: dict[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("rule", []):
@@ -89,11 +80,8 @@ class FirewallMixin(PyOPNsenseClientProtocol):
     async def disable_nat_port_forward_rule_by_created_time_legacy(self, created_time: str) -> None:
         """Disable a NAT Port Forward rule.
 
-        Parameters
-        ----------
-        created_time : str
-            Rule creation timestamp used as a legacy unique identifier.
-
+        Args:
+            created_time: Rule creation timestamp used as a legacy unique identifier.
         """
         config: dict[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("rule", []):
@@ -113,11 +101,8 @@ class FirewallMixin(PyOPNsenseClientProtocol):
     async def enable_nat_outbound_rule_by_created_time_legacy(self, created_time: str) -> None:
         """Enable NAT Outbound rule.
 
-        Parameters
-        ----------
-        created_time : str
-            Rule creation timestamp used as a legacy unique identifier.
-
+        Args:
+            created_time: Rule creation timestamp used as a legacy unique identifier.
         """
         config: dict[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("outbound", {}).get("rule", []):
@@ -137,11 +122,8 @@ class FirewallMixin(PyOPNsenseClientProtocol):
     async def disable_nat_outbound_rule_by_created_time_legacy(self, created_time: str) -> None:
         """Disable NAT Outbound Rule.
 
-        Parameters
-        ----------
-        created_time : str
-            Rule creation timestamp used as a legacy unique identifier.
-
+        Args:
+            created_time: Rule creation timestamp used as a legacy unique identifier.
         """
         config: dict[str, Any] = await self.get_config()
         for rule in config.get("nat", {}).get("outbound", {}).get("rule", []):
@@ -160,11 +142,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
         """Retrieve all firewall and NAT rules from OPNsense.
 
         Returns:
-        -------
-        dict[str, Any]
-        Parsed firewall payload returned by OPNsense APIs.
-
-
+            dict[str, Any]: Parsed firewall payload returned by OPNsense APIs.
         """
         firmware = await self.get_host_firmware_version()
 
@@ -191,11 +169,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
         """Retrieve firewall rules from OPNsense.
 
         Returns:
-        -------
-        dict[str, Any]
-        Parsed firewall rules payload returned by OPNsense APIs.
-
-
+            dict[str, Any]: Parsed firewall rules payload returned by OPNsense APIs.
         """
         request_body: dict[str, Any] = {"current": 1, "sort": {}}
         response = await self._safe_dict_post(
@@ -222,11 +196,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
         """Retrieve NAT destination rules from OPNsense.
 
         Returns:
-        -------
-        dict[str, Any]
-        Parsed nat destination rules payload returned by OPNsense APIs.
-
-
+            dict[str, Any]: Parsed nat destination rules payload returned by OPNsense APIs.
         """
         request_body: dict[str, Any] = {"current": 1, "sort": {}}
         response = await self._safe_dict_post(
@@ -254,11 +224,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
         """Retrieve NAT one-to-one rules from OPNsense.
 
         Returns:
-        -------
-        dict[str, Any]
-        Parsed nat one to one rules payload returned by OPNsense APIs.
-
-
+            dict[str, Any]: Parsed nat one to one rules payload returned by OPNsense APIs.
         """
         request_body: dict[str, Any] = {"current": 1, "sort": {}}
         response = await self._safe_dict_post(
@@ -285,11 +251,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
         """Retrieve NAT source rules from OPNsense.
 
         Returns:
-        -------
-        dict[str, Any]
-        Parsed nat source rules payload returned by OPNsense APIs.
-
-
+            dict[str, Any]: Parsed nat source rules payload returned by OPNsense APIs.
         """
         request_body: dict[str, Any] = {"current": 1, "sort": {}}
         response = await self._safe_dict_post(
@@ -316,11 +278,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
         """Retrieve NAT NPT rules from OPNsense.
 
         Returns:
-        -------
-        dict[str, Any]
-        Parsed nat npt rules payload returned by OPNsense APIs.
-
-
+            dict[str, Any]: Parsed nat npt rules payload returned by OPNsense APIs.
         """
         request_body: dict[str, Any] = {"current": 1, "sort": {}}
         response = await self._safe_dict_post("/api/firewall/npt/search_rule", payload=request_body)
@@ -343,19 +301,12 @@ class FirewallMixin(PyOPNsenseClientProtocol):
     async def toggle_firewall_rule(self, uuid: str, toggle_on_off: str | None = None) -> bool:
         """Toggle Firewall Rule on and off.
 
-        Parameters
-        ----------
-        uuid : str
-            Target object UUID returned by OPNsense.
-        toggle_on_off : str | None
-            Explicit toggle directive ("on"/"off"); uses API toggle when omitted. Defaults to None.
+        Args:
+            uuid: Target object UUID returned by OPNsense.
+            toggle_on_off: Explicit toggle directive ("on"/"off"); uses API toggle when omitted. Defaults to None.
 
         Returns:
-        -------
-        bool
-        True when OPNsense reports the requested action succeeded; otherwise False.
-
-
+            bool: True when OPNsense reports the requested action succeeded; otherwise False.
         """
         payload: dict[str, Any] = {}
         url = f"/api/firewall/filter/toggle_rule/{uuid}"
@@ -388,21 +339,13 @@ class FirewallMixin(PyOPNsenseClientProtocol):
     ) -> bool:
         """Toggle NAT Rule on and off.
 
-        Parameters
-        ----------
-        nat_rule_type : str
-            NAT rule type endpoint segment to target.
-        uuid : str
-            Target object UUID returned by OPNsense.
-        toggle_on_off : str | None
-            Explicit toggle directive ("on"/"off"); uses API toggle when omitted. Defaults to None.
+        Args:
+            nat_rule_type: NAT rule type endpoint segment to target.
+            uuid: Target object UUID returned by OPNsense.
+            toggle_on_off: Explicit toggle directive ("on"/"off"); uses API toggle when omitted. Defaults to None.
 
         Returns:
-        -------
-        bool
-        True when OPNsense reports the requested action succeeded; otherwise False.
-
-
+            bool: True when OPNsense reports the requested action succeeded; otherwise False.
         """
         payload: dict[str, Any] = {}
         url = f"/api/firewall/{nat_rule_type}/toggle_rule/{uuid}"
@@ -439,17 +382,11 @@ class FirewallMixin(PyOPNsenseClientProtocol):
     async def kill_states(self, ip_addr: str) -> MutableMapping[str, Any]:
         """Kill the active states of the IP address.
 
-        Parameters
-        ----------
-        ip_addr : str
-            IP address whose states should be terminated.
+        Args:
+            ip_addr: IP address whose states should be terminated.
 
         Returns:
-        -------
-        MutableMapping[str, Any]
-        API response describing whether matching states were terminated.
-
-
+            MutableMapping[str, Any]: API response describing whether matching states were terminated.
         """
         payload: dict[str, Any] = {"filter": ip_addr}
         response = await self._safe_dict_post(
@@ -465,19 +402,12 @@ class FirewallMixin(PyOPNsenseClientProtocol):
     async def toggle_alias(self, alias: str, toggle_on_off: str | None = None) -> bool:
         """Toggle alias on and off.
 
-        Parameters
-        ----------
-        alias : str
-            Firewall alias name to toggle.
-        toggle_on_off : str | None
-            Explicit toggle directive ("on"/"off"); uses API toggle when omitted. Defaults to None.
+        Args:
+            alias: Firewall alias name to toggle.
+            toggle_on_off: Explicit toggle directive ("on"/"off"); uses API toggle when omitted. Defaults to None.
 
         Returns:
-        -------
-        bool
-        True when OPNsense reports the requested action succeeded; otherwise False.
-
-
+            bool: True when OPNsense reports the requested action succeeded; otherwise False.
         """
         if self._use_snake_case:
             alias_list_resp = await self._safe_dict_get("/api/firewall/alias/search_item")

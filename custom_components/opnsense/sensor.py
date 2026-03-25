@@ -56,17 +56,11 @@ def _build_interface_device_description_map(
 ) -> dict[str, str]:
     """Build lookup map from interface device/identifier names to friendly descriptions.
 
-    Parameters
-    ----------
-    interfaces : Mapping[str, Any] | None
-        Interface payload in ``get_interfaces`` shape.
+    Args:
+        interfaces: Interface payload in ``get_interfaces`` shape.
 
     Returns:
-    -------
-    dict[str, str]
-        Mapping of possible interface identifiers (device, logical name, key) to
-        user-facing description names.
-
+        dict[str, str]: Mapping of possible interface identifiers (device, logical name, key) to user-facing description names.
     """
     if not isinstance(interfaces, Mapping):
         return {}
@@ -98,18 +92,12 @@ async def _resolve_vnstat_interface_descriptions(
 ) -> dict[str, str]:
     """Resolve vnStat interface display names from existing state with client fallback.
 
-    Parameters
-    ----------
-    config_entry : ConfigEntry
-        Config entry containing runtime client reference.
-    state : MutableMapping[str, Any]
-        Coordinator state payload.
+    Args:
+        config_entry: Config entry containing runtime client reference.
+        state: Coordinator state payload.
 
     Returns:
-    -------
-    dict[str, str]
-        Interface identifier to description mapping used for sensor naming.
-
+        dict[str, str]: Interface identifier to description mapping used for sensor naming.
     """
     descriptions = _build_interface_device_description_map(dict_get(state, "interfaces", {}) or {})
     if descriptions:
@@ -136,16 +124,11 @@ async def _resolve_vnstat_interface_descriptions(
 def _vnstat_metric_display_name(metric_name: str) -> str:
     """Return display label for vnStat metric names.
 
-    Parameters
-    ----------
-    metric_name : str
-        Internal vnStat metric key.
+    Args:
+        metric_name: Internal vnStat metric key.
 
     Returns:
-    -------
-    str
-        Human-readable metric label for the entity name.
-
+        str: Human-readable metric label for the entity name.
     """
     metric_names: dict[str, str] = {
         "vnstat_today": "Today",
@@ -161,6 +144,12 @@ async def _compile_static_telemetry_sensors(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
 ) -> list:
+    """Compile static telemetry sensors.
+
+    Args:
+        config_entry: Config entry being exercised by the helper or test.
+        coordinator: Data update coordinator that caches OPNsense state for entities.
+    """
     entities: list = []
     for static_sensor in STATIC_TELEMETRY_SENSORS.values():
         entity = OPNsenseStaticKeySensor(
@@ -176,6 +165,12 @@ async def _compile_static_certificate_sensors(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
 ) -> list:
+    """Compile static certificate sensors.
+
+    Args:
+        config_entry: Config entry being exercised by the helper or test.
+        coordinator: Data update coordinator that caches OPNsense state for entities.
+    """
     entities: list = []
     for static_sensor in STATIC_CERTIFICATE_SENSORS.values():
         entity = OPNsenseStaticKeySensor(
@@ -327,6 +322,13 @@ async def _compile_filesystem_sensors(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
+    """Compile filesystem sensors.
+
+    Args:
+        config_entry: Config entry being exercised by the helper or test.
+        coordinator: Data update coordinator that caches OPNsense state for entities.
+        state: Coordinator state snapshot that contains filesystem telemetry data.
+    """
     if not isinstance(state, MutableMapping):
         return []
     entities: list = []
@@ -361,6 +363,13 @@ async def _compile_carp_interface_sensors(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
+    """Compile carp interface sensors.
+
+    Args:
+        config_entry: Config entry being exercised by the helper or test.
+        coordinator: Data update coordinator that caches OPNsense state for entities.
+        state: Coordinator state snapshot that contains CARP interface status data.
+    """
     if not isinstance(state, MutableMapping):
         return []
     entities: list = []
@@ -389,6 +398,13 @@ async def _compile_interface_sensors(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
+    """Compile interface sensors.
+
+    Args:
+        config_entry: Config entry being exercised by the helper or test.
+        coordinator: Data update coordinator that caches OPNsense state for entities.
+        state: Coordinator state snapshot that contains network interface statistics.
+    """
     if not isinstance(state, MutableMapping):
         return []
     entities: list = []
@@ -481,6 +497,13 @@ async def _compile_gateway_sensors(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
+    """Compile gateway sensors.
+
+    Args:
+        config_entry: Config entry being exercised by the helper or test.
+        coordinator: Data update coordinator that caches OPNsense state for entities.
+        state: Coordinator state snapshot that contains gateway latency, loss, and status data.
+    """
     if not isinstance(state, MutableMapping):
         return []
     entities: list = []
@@ -529,6 +552,13 @@ async def _compile_temperature_sensors(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
+    """Compile temperature sensors.
+
+    Args:
+        config_entry: Config entry being exercised by the helper or test.
+        coordinator: Data update coordinator that caches OPNsense state for entities.
+        state: Coordinator state snapshot that contains hardware temperature telemetry.
+    """
     if not isinstance(state, MutableMapping):
         return []
     entities: list = []
@@ -560,6 +590,13 @@ async def _compile_dhcp_leases_sensors(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
+    """Compile dhcp leases sensors.
+
+    Args:
+        config_entry: Config entry being exercised by the helper or test.
+        coordinator: Data update coordinator that caches OPNsense state for entities.
+        state: Coordinator state snapshot that contains DHCP lease counts per interface.
+    """
     if not isinstance(state, MutableMapping):
         return []
     entities: list = []
@@ -608,6 +645,13 @@ async def _compile_vpn_sensors(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
+    """Compile vpn sensors.
+
+    Args:
+        config_entry: Config entry being exercised by the helper or test.
+        coordinator: Data update coordinator that caches OPNsense state for entities.
+        state: Coordinator state snapshot that contains OpenVPN and WireGuard metrics.
+    """
     if not isinstance(state, MutableMapping):
         return []
     entities: list = []
@@ -779,6 +823,7 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        """Handle coordinator update."""
         value = self._get_opnsense_state_value(self.entity_description.key)
         if value is None:
             self._available = False
@@ -834,6 +879,7 @@ class OPNsenseVnstatSensor(OPNsenseSensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        """Handle coordinator update."""
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             self._available = False
@@ -924,6 +970,7 @@ class OPNsenseFilesystemSensor(OPNsenseSensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        """Handle coordinator update."""
         filesystem: dict[str, Any] = {}
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
@@ -959,10 +1006,12 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
     """Class for OPNsense Interface Sensors."""
 
     def _opnsense_get_interface_property_name(self) -> str:
+        """Opnsense get interface property name."""
         return self.entity_description.key.split(".")[2]
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        """Handle coordinator update."""
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             self._available = False
@@ -1026,6 +1075,7 @@ class OPNsenseCarpInterfaceSensor(OPNsenseSensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        """Handle coordinator update."""
         carp_interface: dict[str, Any] = {}
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
@@ -1075,10 +1125,12 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
     """Class for OPNsense Gateway Sensors."""
 
     def _opnsense_get_gateway_property_name(self) -> str:
+        """Opnsense get gateway property name."""
         return self.entity_description.key.split(".")[2]
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        """Handle coordinator update."""
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             self._available = False
@@ -1130,10 +1182,12 @@ class OPNsenseVPNSensor(OPNsenseSensor):
     """Class for OPNsense VPN Sensors."""
 
     def _get_property_name(self) -> str:
+        """Return property name."""
         return self.entity_description.key.split(".")[3]
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        """Handle coordinator update."""
         vpn_type: str = self.entity_description.key.split(".")[0]
         clients_servers: str = self.entity_description.key.split(".")[1]
         state: dict[str, Any] = self.coordinator.data
@@ -1258,6 +1312,7 @@ class OPNsenseTempSensor(OPNsenseSensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        """Handle coordinator update."""
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             self._available = False
@@ -1295,6 +1350,7 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        """Handle coordinator update."""
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             self._available = False

@@ -5,9 +5,9 @@ async setup flows for the integration's switch platform.
 """
 
 import asyncio
-from collections.abc import MutableMapping
+from collections.abc import Callable, MutableMapping, Sequence
 import contextlib
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -44,7 +44,7 @@ from custom_components.opnsense.switch import (
     _compile_unbound_switches,
     _compile_vpn_switches,
 )
-from homeassistant.components.switch import SwitchEntityDescription
+from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
 from homeassistant.core import HomeAssistant
 
 
@@ -351,7 +351,12 @@ async def test_async_setup_entry_all_flags(coordinator, ph_hass, make_config_ent
     """Async setup should create entities for all enabled sync flags."""
     calls = {}
 
-    def fake_add_entities(entities):
+    def fake_add_entities(entities: Sequence[SwitchEntity]) -> None:
+        """Capture the entities created during setup for later assertions.
+
+        Args:
+            entities: Sequence of switch entities added by ``async_setup_entry``.
+        """
         calls["len"] = len(entities)
 
     # create a state that contains one of each entity type
@@ -416,7 +421,12 @@ async def test_async_setup_entry_new_firewall_api(coordinator, ph_hass, make_con
     """Async setup should create entities for new firewall API (>= 26.1.1)."""
     calls = {}
 
-    def fake_add_entities(entities):
+    def fake_add_entities(entities: Sequence[SwitchEntity]) -> None:
+        """Capture the entities created during setup for later assertions.
+
+        Args:
+            entities: Sequence of switch entities added by ``async_setup_entry``.
+        """
         calls["len"] = len(entities)
 
     # create a state that contains new firewall API structure
@@ -540,7 +550,14 @@ async def test_unbound_and_vpn_variations(coordinator, ph_hass, make_config_entr
     created: list = []
 
     async def run_setup():
-        def add_entities(ents):
+        """Run the public setup flow and collect the created switch entities."""
+
+        def add_entities(ents: Sequence[SwitchEntity]) -> None:
+            """Collect the switch entities created by ``async_setup_entry``.
+
+            Args:
+                ents: Sequence of switch entities emitted by setup.
+            """
             created.extend(ents)
 
         await switch_mod.async_setup_entry(MagicMock(), config_entry, add_entities)
@@ -616,8 +633,16 @@ def test_delay_update_setter(monkeypatch, coordinator, make_config_entry):
         ent.hass = hass_local
         called = {"removed": False}
 
-        def fake_async_call_later(*args, **kwargs):
-            def remover():
+        def fake_async_call_later(*args: object, **kwargs: object) -> Callable[[], None]:
+            """Return a removable callback stub instead of scheduling real work.
+
+            Args:
+                *args: Positional arguments normally passed to ``async_call_later``.
+                **kwargs: Keyword arguments normally passed to ``async_call_later``.
+            """
+
+            def remover() -> None:
+                """Record that the delayed callback remover was invoked."""
                 called["removed"] = True
 
             return remover
@@ -645,9 +670,20 @@ async def test_vpn_turn_on_off_calls_client_and_sets_delay(
     """VPN switch should call toggle_vpn_instance, update state, and enable delay_update."""
 
     # replace async_call_later so tests don't schedule real callbacks
-    def fake_async_call_later(hass, delay, action):
-        def remover():
-            return None
+    def fake_async_call_later(
+        hass: HomeAssistant, delay: float, action: Callable[..., None]
+    ) -> Callable[[], None]:
+        """Return a no-op remover instead of scheduling a delayed callback.
+
+        Args:
+            hass: Home Assistant instance that would own the scheduled callback.
+            delay: Delay value that would normally be used for scheduling.
+            action: Callback that would normally run after the delay expires.
+        """
+
+        def remover() -> None:
+            """Discard the delayed callback without executing any work."""
+            return
 
         return remover
 
@@ -1052,7 +1088,12 @@ async def test_async_setup_entry_missing_state(
     """Async setup should handle missing coordinator state without adding entities."""
     calls = {}
 
-    def fake_add_entities(entities):
+    def fake_add_entities(entities: Sequence[SwitchEntity]) -> None:
+        """Capture entities emitted by setup so the test can count them.
+
+        Args:
+            entities: Sequence of switch entities added by ``async_setup_entry``.
+        """
         calls["len"] = len(entities)
 
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -1095,7 +1136,8 @@ async def test_switch_handle_error_sets_unavailable(
             ent.entity_id = f"switch.{ent._attr_unique_id}"
             ent.async_write_ha_state = lambda: None
 
-            def _fake_get_rule_filter() -> Any:
+            def _fake_get_rule_filter() -> int:
+                """Return a non-mapping value to exercise filter error handling."""
                 return 5
 
             ent._opnsense_get_rule = _fake_get_rule_filter
@@ -1113,10 +1155,11 @@ async def test_switch_handle_error_sets_unavailable(
             ent.entity_id = "switch.nat"
             ent.async_write_ha_state = lambda: None
 
-            def _fake_get_rule_nat() -> Any:
-                return 123
+            def _fake_get_rule_nat() -> MutableMapping[str, Any] | None:
+                """Return a non-mapping value to exercise NAT error handling."""
+                return cast("MutableMapping[str, Any] | None", 123)
 
-            ent._opnsense_get_rule = _fake_get_rule_nat
+            setattr(ent, "_opnsense_get_rule", cast("Any", _fake_get_rule_nat))
         else:  # service
             desc = SwitchEntityDescription(key="service.svc1.status", name="Svc")
             config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -1131,10 +1174,11 @@ async def test_switch_handle_error_sets_unavailable(
             ent.entity_id = "switch.svc"
             ent.async_write_ha_state = lambda: None
 
-            def _fake_get_service() -> Any:
-                return 5
+            def _fake_get_service() -> MutableMapping[str, Any] | None:
+                """Return a non-mapping value to exercise service error handling."""
+                return cast("MutableMapping[str, Any] | None", 5)
 
-            ent._opnsense_get_service = _fake_get_service
+            setattr(ent, "_opnsense_get_service", cast("Any", _fake_get_service))
 
         # Exercise the update logic; ensure the handler did not raise and
         # availability is reported as a boolean (handlers may early-return).
@@ -1258,11 +1302,7 @@ async def test_vpn_toggle_parametrized(
     expect_on,
     make_config_entry,
 ):
-    """Parameterized VPN client/server/toggle behaviors.
-
-    Covers: client present and toggle succeeds, server present and toggle succeeds,
-    and client toggle failure (should not set is_on).
-    """
+    """Parameterized VPN client/server/toggle behaviors. Covers: client present and toggle succeeds, server present and toggle succeeds, and client toggle failure (should not set is_on)."""
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     coordinator.data = state
@@ -1323,10 +1363,12 @@ def test_reset_delay_calls_existing_remover(monkeypatch, make_config_entry):
     )
     called = {"old_removed": False, "new_removed": False}
 
-    def old_remover():
+    def old_remover() -> None:
+        """Old remover."""
         called["old_removed"] = True
 
-    def new_remover():
+    def new_remover() -> None:
+        """New remover."""
         called["new_removed"] = True
 
     ent._delay_update_remove = old_remover
@@ -1422,7 +1464,12 @@ async def test_async_setup_entry_respects_config_flags(
     """Async setup respects per-entry configuration flags when creating entities."""
     calls = {}
 
-    def fake_add_entities(entities):
+    def fake_add_entities(entities: Sequence[SwitchEntity]) -> None:
+        """Record how many entities setup created for the enabled platforms.
+
+        Args:
+            entities: Entities emitted by ``async_setup_entry`` for this config.
+        """
         calls["len"] = len(entities)
 
     # create config where only unbound is enabled
@@ -1473,7 +1520,14 @@ async def test_vpn_servers_properties_and_toggle(coordinator, ph_hass, make_conf
     created: list = []
 
     async def run_setup():
-        def add_entities(ents):
+        """Run the public setup flow and collect the created switch entities."""
+
+        def add_entities(ents: Sequence[SwitchEntity]) -> None:
+            """Collect the switch entities created by ``async_setup_entry``.
+
+            Args:
+                ents: Sequence of switch entities emitted by setup.
+            """
             created.extend(ents)
 
         await switch_mod.async_setup_entry(MagicMock(), config_entry, add_entities)
@@ -1857,12 +1911,20 @@ def test_filter_handle_exceptions_sets_unavailable(
     # prepare a mapping-like object whose get() raises the desired exception
     class BadGet(dict):
         def get(self, _k, _d=None):
+            """Raise the parameterized exception when the handler calls ``get``.
+
+            Raises:
+                TypeError: If ``exc_type`` is ``TypeError`` for this parameterized case.
+                KeyError: If ``exc_type`` is ``KeyError`` for this parameterized case.
+                AttributeError: If ``exc_type`` is ``AttributeError`` for this parameterized case.
+            """
             raise exc_type("boom")
 
     # make the entity's _opnsense_get_rule return the BadGet so the
     # handler receives it when it calls the method (production overrides
     # _rule otherwise). This ensures the .get() raising path is exercised.
-    def _fake_get_rule_filter() -> Any:
+    def _fake_get_rule_filter() -> MutableMapping[str, str]:
+        """Return a mapping whose ``get`` method raises to test handler resilience."""
         return BadGet({"disabled": "0"})
 
     ent._opnsense_get_rule = _fake_get_rule_filter
@@ -1891,6 +1953,13 @@ def test_nat_handle_exceptions_sets_unavailable(exc_type, coordinator, make_conf
     # create a mapping whose __contains__ raises the exception when checking 'disabled'
     class BadContains(dict):
         def __contains__(self, _k):
+            """Raise the parameterized exception when membership is evaluated.
+
+            Raises:
+                TypeError: If ``exc_type`` is ``TypeError`` for this parameterized case.
+                KeyError: If ``exc_type`` is ``KeyError`` for this parameterized case.
+                AttributeError: If ``exc_type`` is ``AttributeError`` for this parameterized case.
+            """
             raise exc_type("boom")
 
     # Return a mapping whose __contains__ raises to exercise the exception path
@@ -1919,6 +1988,13 @@ def test_vpn_handle_exceptions_sets_unavailable(exc_type, coordinator, make_conf
     # create a dict subclass that raises when __getitem__ is used for ['enabled']
     class BadIndex(dict):
         def __getitem__(self, _k):
+            """Raise the parameterized exception when the VPN handler indexes the mapping.
+
+            Raises:
+                TypeError: If ``exc_type`` is ``TypeError`` for this parameterized case.
+                KeyError: If ``exc_type`` is ``KeyError`` for this parameterized case.
+                AttributeError: If ``exc_type`` is ``AttributeError`` for this parameterized case.
+            """
             raise exc_type("boom")
 
     # ensure coordinator.data returns a mapping with our bad instance
@@ -1951,6 +2027,13 @@ def test_service_handle_exceptions_sets_unavailable(
     # create an object that raises when __getitem__ is used (service[prop])
     class BadIndex(dict):
         def __getitem__(self, _k):
+            """Raise the parameterized exception when the service handler indexes the mapping.
+
+            Raises:
+                TypeError: If ``exc_type`` is ``TypeError`` for this parameterized case.
+                KeyError: If ``exc_type`` is ``KeyError`` for this parameterized case.
+                AttributeError: If ``exc_type`` is ``AttributeError`` for this parameterized case.
+            """
             raise exc_type("boom")
 
     # Ensure handler receives a mapping-like that raises on indexing

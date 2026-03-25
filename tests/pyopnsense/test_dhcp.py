@@ -307,6 +307,11 @@ async def test_get_kea_leases_with_reservations_and_expiry_handling() -> None:
         ]
 
         async def fake_safe(path):
+            """Return the canned reservation search payload for matching DHCP paths.
+
+            Args:
+                path: Path provided by pytest or the test case.
+            """
             if "search_reservation" in path or "searchReservation" in path:
                 return {"rows": res_rows}
             if "leases4/search" in path:

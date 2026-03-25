@@ -280,7 +280,14 @@ async def test_compile_filesystem_sensors_and_filter_switches(make_config_entry)
     created: list = []
 
     async def run_setup():
+        """Run setup."""
+
         def add_entities(ents):
+            """Add entities.
+
+            Args:
+                ents: Ents provided by pytest or the test case.
+            """
             created.extend(ents)
 
         await sensor_mod.async_setup_entry(MagicMock(), cfg, add_entities)
@@ -329,7 +336,14 @@ async def test_compile_filesystem_sensors_and_filter_switches(make_config_entry)
     created_switches: list = []
 
     async def run_switch_setup():
+        """Run switch setup."""
+
         def add_switches(ents):
+            """Add switches.
+
+            Args:
+                ents: Ents provided by pytest or the test case.
+            """
             created_switches.extend(ents)
 
         await switch_mod.async_setup_entry(MagicMock(), switch_cfg, add_switches)

@@ -52,6 +52,7 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
         return self._get_opnsense_state_value("system_info.name")
 
     def _get_opnsense_state_value(self, path: str) -> Any | None:
+        """Return opnsense state value."""
         state = self.coordinator.data
         return dict_get(state, path)
 

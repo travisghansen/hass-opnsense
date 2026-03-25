@@ -61,6 +61,11 @@ async def test_get_clients_single_and_multiple(monkeypatch):
 
     class DevReg:
         def async_get(self, device_id):
+            """Async get.
+
+            Args:
+                device_id: Device identifier used to target the correct OPNsense device or config entry.
+            """
             m = MagicMock()
             m.primary_config_entry = "e2"
             return m
@@ -72,6 +77,11 @@ async def test_get_clients_single_and_multiple(monkeypatch):
     # filter by entity_id
     class EntReg:
         def async_get(self, entity_id):
+            """Async get.
+
+            Args:
+                entity_id: Entity identifier used to resolve the matching OPNsense entity.
+            """
             m = MagicMock()
             m.config_entry_id = "e1"
             return m
@@ -83,16 +93,28 @@ async def test_get_clients_single_and_multiple(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_get_clients_registry_errors_are_ignored(monkeypatch):
-    """Verify that _get_clients returns all configured clients even when registry lookups raise exceptions.
-
-    Device or entity registry lookups may raise exceptions; ensure these are ignored.
-    """
+    """Verify that _get_clients returns all configured clients even when registry lookups raise exceptions. Device or entity registry lookups may raise exceptions; ensure these are ignored."""
     hass_local = MagicMock(spec=HomeAssistant)
     c1, c2 = MagicMock(name="c1"), MagicMock(name="c2")
     hass_local.data = {DOMAIN: {"e1": c1, "e2": c2}}
 
     def _raises(exc):
+        """Raises.
+
+        Args:
+            exc: Exc provided by pytest or the test case.
+        """
+
         def _r(*_a, **_k):
+            """Raise the provided registry exception for the patched helper.
+
+            Args:
+                *_a: Additional positional arguments forwarded by the function.
+                **_k: Additional keyword arguments forwarded by the function.
+
+            Raises:
+                Exception: Raised with the exception instance supplied to ``_raises``.
+            """
             raise exc
 
         return _r
@@ -128,6 +150,12 @@ async def test_service_start_stop_restart_success_and_failure(monkeypatch, ph_ha
 
     # monkeypatch _get_clients to return our clients
     async def fake_get(*args, **kwargs):
+        """Return both fake clients for the service start/stop/restart tests.
+
+        Args:
+            *args: Positional arguments forwarded to ``_get_clients`` and ignored.
+            **kwargs: Keyword arguments forwarded to ``_get_clients`` and ignored.
+        """
         return [c1, c2]
 
     monkeypatch.setattr(services_mod, "_get_clients", fake_get)
@@ -184,6 +212,12 @@ async def test_service_restart_only_if_running_and_reload_interface(monkeypatch,
     call.data = {"service_id": "svc", "only_if_running": True}
 
     async def fake_get(*args, **kwargs):
+        """Return the single fake client for restart-if-running tests.
+
+        Args:
+            *args: Additional positional arguments forwarded by the function.
+            **kwargs: Additional keyword arguments forwarded by the function.
+        """
         return [c1]
 
     monkeypatch.setattr(services_mod, "_get_clients", fake_get)
@@ -198,6 +232,12 @@ async def test_service_restart_only_if_running_and_reload_interface(monkeypatch,
 
     # ensure _get_clients still returns our single client
     async def fake_get_single(*args, **kwargs):
+        """Return the same fake client for the restart failure branch.
+
+        Args:
+            *args: Additional positional arguments forwarded by the function.
+            **kwargs: Additional keyword arguments forwarded by the function.
+        """
         return [c1]
 
     monkeypatch.setattr(services_mod, "_get_clients", fake_get_single)
@@ -229,11 +269,7 @@ async def test_service_restart_only_if_running_and_reload_interface(monkeypatch,
 async def test_service_start_stop_restart_failure_variants(
     monkeypatch, ph_hass, method_name, method_attr
 ):
-    """Parameterized failure tests for start/stop/restart service handlers.
-
-    For each handler, ensure that if any client returns False the handler
-    raises ServiceValidationError.
-    """
+    """Parameterized failure tests for start/stop/restart service handlers. For each handler, ensure that if any client returns False the handler raises ServiceValidationError."""
     hass = ph_hass
     hass.data = {}
     # ok client returns True, bad client returns False for the method under test
@@ -246,6 +282,12 @@ async def test_service_start_stop_restart_failure_variants(
     setattr(bad_client, method_attr, AsyncMock(return_value=False))
 
     async def fake_get(*args, **kwargs):
+        """Return both clients so the service handler sees one success and one failure.
+
+        Args:
+            *args: Additional positional arguments forwarded by the function.
+            **kwargs: Additional keyword arguments forwarded by the function.
+        """
         return [ok_client, bad_client]
 
     monkeypatch.setattr(services_mod, "_get_clients", fake_get)
@@ -272,6 +314,12 @@ async def test_generate_vouchers_success_and_server_error(monkeypatch, ph_hass):
     call.data = {"validity": "1", "expirytime": "2", "count": "2", "vouchergroup": "g1"}
 
     async def fake_get(*args, **kwargs):
+        """Return the voucher-generating fake client for this service call.
+
+        Args:
+            *args: Additional positional arguments forwarded by the function.
+            **kwargs: Additional keyword arguments forwarded by the function.
+        """
         return [c1]
 
     monkeypatch.setattr(services_mod, "_get_clients", fake_get)
@@ -299,6 +347,12 @@ async def test_kill_states_success_and_failure(monkeypatch, ph_hass):
     call.data = {"ip_addr": "1.2.3.4"}
 
     async def fake_get(*args, **kwargs):
+        """Return the fake client used by the kill-states service test.
+
+        Args:
+            *args: Additional positional arguments forwarded by the function.
+            **kwargs: Additional keyword arguments forwarded by the function.
+        """
         return [c1]
 
     monkeypatch.setattr(services_mod, "_get_clients", fake_get)
@@ -328,6 +382,12 @@ async def test_run_speedtest_success_and_unavailable(monkeypatch, ph_hass):
     c2.run_speedtest = AsyncMock(return_value={})
 
     async def fake_get(*args, **kwargs):
+        """Return both vnStat clients so the service can aggregate their results.
+
+        Args:
+            *args: Additional positional arguments forwarded by the function.
+            **kwargs: Additional keyword arguments forwarded by the function.
+        """
         return [c1, c2]
 
     monkeypatch.setattr(services_mod, "_get_clients", fake_get)
@@ -366,6 +426,12 @@ async def test_get_vnstat_metrics_success_and_unavailable(monkeypatch, ph_hass):
     c2.get_vnstat_metrics = AsyncMock(return_value={})
 
     async def fake_get(*args, **kwargs):
+        """Return both vnStat clients so the service can aggregate their results.
+
+        Args:
+            *args: Additional positional arguments forwarded by the function.
+            **kwargs: Additional keyword arguments forwarded by the function.
+        """
         return [c1, c2]
 
     monkeypatch.setattr(services_mod, "_get_clients", fake_get)
@@ -400,6 +466,12 @@ def fake_get_empty(monkeypatch):
     """Fixture that monkeypatches services_mod._get_clients to return an empty list."""
 
     async def _fake_get_empty(*args, **kwargs):
+        """Return no clients so service handlers exercise their validation errors.
+
+        Args:
+            *args: Additional positional arguments forwarded by the function.
+            **kwargs: Additional keyword arguments forwarded by the function.
+        """
         return []
 
     monkeypatch.setattr(services_mod, "_get_clients", _fake_get_empty)
@@ -457,6 +529,12 @@ async def test_close_send_wol_and_system_calls(monkeypatch):
     c.system_reboot = AsyncMock(return_value=None)
 
     async def fake_get(*args, **kwargs):
+        """Return the single client used for notice, WOL, and system action tests.
+
+        Args:
+            *args: Additional positional arguments forwarded by the function.
+            **kwargs: Additional keyword arguments forwarded by the function.
+        """
         return [c]
 
     monkeypatch.setattr(services_mod, "_get_clients", fake_get)
@@ -494,6 +572,12 @@ async def test_toggle_alias_success_and_failure(monkeypatch):
     c1.toggle_alias = AsyncMock(return_value=True)
 
     async def fake_get_ok(*args, **kwargs):
+        """Return the client that reports alias toggling success.
+
+        Args:
+            *args: Positional arguments forwarded to ``_get_clients`` and ignored.
+            **kwargs: Keyword arguments forwarded to ``_get_clients`` and ignored.
+        """
         return [c1]
 
     monkeypatch.setattr(services_mod, "_get_clients", fake_get_ok)
@@ -510,6 +594,12 @@ async def test_toggle_alias_success_and_failure(monkeypatch):
     c2.toggle_alias = AsyncMock(return_value=False)
 
     async def fake_get_fail(*args, **kwargs):
+        """Return the client that reports alias toggling failure.
+
+        Args:
+            *args: Positional arguments forwarded to ``_get_clients`` and ignored.
+            **kwargs: Keyword arguments forwarded to ``_get_clients`` and ignored.
+        """
         return [c2]
 
     monkeypatch.setattr(services_mod, "_get_clients", fake_get_fail)

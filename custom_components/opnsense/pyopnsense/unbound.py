@@ -18,11 +18,8 @@ class UnboundMixin(PyOPNsenseClientProtocol):
         """Return the Unbound Blocklist details.
 
         Returns:
-        -------
-        MutableMapping[str, Any]
-        Parsed unbound blocklist legacy payload returned by OPNsense APIs.
-
-
+            MutableMapping[str, Any]: Parsed unbound blocklist legacy payload
+            returned by OPNsense APIs.
         """
         response = await self._safe_dict_get("/api/unbound/settings/get")
         dnsbl_settings = response.get("unbound", {}).get("dnsbl", {})
@@ -47,17 +44,12 @@ class UnboundMixin(PyOPNsenseClientProtocol):
     async def _set_unbound_blocklist_legacy(self, set_state: bool) -> bool:
         """Enable or disable legacy Unbound DNS blocklist settings.
 
-        Parameters
-        ----------
-        set_state : bool
-            Desired enabled state to apply.
+        Args:
+            set_state: Desired enabled state to apply.
 
         Returns:
-        -------
-        bool
-        ``True`` when legacy DNSBL configuration and restart both succeed.
-
-
+            bool: ``True`` when legacy DNSBL configuration and restart both
+            succeed.
         """
         payload: dict[str, Any] = {}
         payload["unbound"] = {}
@@ -94,11 +86,8 @@ class UnboundMixin(PyOPNsenseClientProtocol):
         """Return the Unbound Blocklist details.
 
         Returns:
-        -------
-        dict[str, Any]
-        Parsed unbound blocklist payload returned by OPNsense APIs.
-
-
+            dict[str, Any]: Parsed unbound blocklist payload returned by
+            OPNsense APIs.
         """
         firmware = await self.get_host_firmware_version()
         try:
@@ -135,19 +124,13 @@ class UnboundMixin(PyOPNsenseClientProtocol):
     async def _toggle_unbound_blocklist(self, set_state: bool, uuid: str | None) -> bool:
         """Enable or disable the unbound blocklist.
 
-        Parameters
-        ----------
-        set_state : bool
-            Desired enabled state to apply.
-        uuid : str | None
-            Target object UUID returned by OPNsense.
+        Args:
+            set_state: Desired enabled state to apply.
+            uuid: Target object UUID returned by OPNsense.
 
         Returns:
-        -------
-        bool
-        ``True`` when the target blocklist toggles successfully and DNSBL reports OK.
-
-
+            bool: ``True`` when the target blocklist toggles successfully and
+            DNSBL reports OK.
         """
         if not uuid:
             _LOGGER.error("Blocklist uuid must be provided for Unbound Extended Blocklists")
@@ -182,17 +165,12 @@ class UnboundMixin(PyOPNsenseClientProtocol):
     async def enable_unbound_blocklist(self, uuid: str | None = None) -> bool:
         """Enable the unbound blocklist.
 
-        Parameters
-        ----------
-        uuid : str | None
-            Target object UUID returned by OPNsense. Defaults to None.
+        Args:
+            uuid: Target object UUID returned by OPNsense. Defaults to None.
 
         Returns:
-        -------
-        bool
-        True when OPNsense reports the requested action succeeded; otherwise False.
-
-
+            bool: True when OPNsense reports the requested action succeeded;
+            otherwise False.
         """
         firmware = await self.get_host_firmware_version()
         try:
@@ -220,17 +198,12 @@ class UnboundMixin(PyOPNsenseClientProtocol):
     async def disable_unbound_blocklist(self, uuid: str | None = None) -> bool:
         """Disable the unbound blocklist.
 
-        Parameters
-        ----------
-        uuid : str | None
-            Target object UUID returned by OPNsense. Defaults to None.
+        Args:
+            uuid: Target object UUID returned by OPNsense. Defaults to None.
 
         Returns:
-        -------
-        bool
-        True when OPNsense reports the requested action succeeded; otherwise False.
-
-
+            bool: True when OPNsense reports the requested action succeeded;
+            otherwise False.
         """
         firmware = await self.get_host_firmware_version()
         try:
