@@ -15,23 +15,40 @@ repos:
     rev: v1.7.11
     hooks:
       - id: actionlint
-    # Note: shellcheck cannot directly parse YAML; actionlint extracts workflow
-    # shell blocks and calls shellcheck when available.
-  - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.11.0.1
-    hooks:
-      - id: shellcheck
-        # Match by detected shell file type (extensions or shebang)
-        types: [shell]
-        args: ['-x']
+        additional_dependencies: ['github.com/wasilibs/go-shellcheck/cmd/shellcheck@v0.11.1']
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.1
+    rev: v2.4.2
     hooks:
       - id: codespell
+        args:
+          - --ignore-words-list=hass
         additional_dependencies:
           - tomli
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.19.1
+    hooks:
+      - id: mypy
+        language_version: python3.14
+        args: [--config-file=pyproject.toml]
+        additional_dependencies:
+          - 'aiohttp'
+          - 'awesomeversion'
+          - 'homeassistant-stubs'
+          - 'pytest-asyncio'
+          - 'pytest'
+          - 'pytest-cov'
+          - 'pytest-homeassistant-custom-component'
+          - 'pytest-timeout'
+          - 'python-dateutil'
+          - 'types-cffi'
+          - 'types-PyMySQL'
+          - 'types-pyRFC3339'
+          - 'types-python-dateutil'
+          - 'types-PyYAML'
+          - 'types-requests'
+          - 'types-setuptools'
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.4
+    rev: v0.15.7
     hooks:
       # Run the linter.
       - id: ruff-check

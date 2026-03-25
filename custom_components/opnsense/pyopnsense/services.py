@@ -14,7 +14,7 @@ class ServicesMixin(PyOPNsenseClientProtocol):
     async def get_services(self) -> list:
         """Get the list of OPNsense services.
 
-        Returns
+        Returns:
         -------
         list
             Parsed services payload returned by OPNsense APIs.
@@ -31,7 +31,7 @@ class ServicesMixin(PyOPNsenseClientProtocol):
             running = service.get("running", 0)
             try:
                 is_running = int(running) == 1
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 is_running = str(running) == "1"
             service["status"] = is_running
             normalized_services.append(service)
@@ -46,7 +46,7 @@ class ServicesMixin(PyOPNsenseClientProtocol):
         service : str
             Service name or identifier recognized by OPNsense.
 
-        Returns
+        Returns:
         -------
         bool
             ``True`` when the named service is reported as running.
@@ -72,7 +72,7 @@ class ServicesMixin(PyOPNsenseClientProtocol):
         service : str
             Service name or identifier recognized by OPNsense.
 
-        Returns
+        Returns:
         -------
         bool
             ``True`` when the service action reports success.
@@ -95,7 +95,7 @@ class ServicesMixin(PyOPNsenseClientProtocol):
         service : str
             Service name or identifier recognized by OPNsense.
 
-        Returns
+        Returns:
         -------
         bool
             ``True`` when OPNsense reports the requested action succeeded.
@@ -112,7 +112,7 @@ class ServicesMixin(PyOPNsenseClientProtocol):
         service : str
             Service name or identifier recognized by OPNsense.
 
-        Returns
+        Returns:
         -------
         bool
             ``True`` when OPNsense reports the requested action succeeded.
@@ -129,7 +129,7 @@ class ServicesMixin(PyOPNsenseClientProtocol):
         service : str
             Service name or identifier recognized by OPNsense.
 
-        Returns
+        Returns:
         -------
         bool
             ``True`` when OPNsense reports the requested action succeeded.
@@ -146,7 +146,7 @@ class ServicesMixin(PyOPNsenseClientProtocol):
         service : str
             Service name or identifier recognized by OPNsense.
 
-        Returns
+        Returns:
         -------
         bool
             ``True`` when no restart is required or when restart succeeds.

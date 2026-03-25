@@ -22,7 +22,7 @@ class DHCPMixin(PyOPNsenseClientProtocol):
         resolve_hostnames : bool
             Whether reverse-DNS names should be resolved for ARP entries. Defaults to False.
 
-        Returns
+        Returns:
         -------
         list
         Parsed arp table payload returned by OPNsense APIs.
@@ -48,7 +48,7 @@ class DHCPMixin(PyOPNsenseClientProtocol):
         opnsense_tz : tzinfo | None
             Optional pre-fetched timezone for this refresh cycle.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
         Parsed dhcp leases payload returned by OPNsense APIs.
@@ -99,7 +99,7 @@ class DHCPMixin(PyOPNsenseClientProtocol):
     async def _get_kea_interfaces(self) -> dict[str, Any]:
         """Return interfaces setup for Kea.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
         Parsed kea interfaces payload returned by OPNsense APIs.
@@ -128,7 +128,7 @@ class DHCPMixin(PyOPNsenseClientProtocol):
             Optional pre-fetched timezone for this refresh cycle. Kea lease timestamps
             are parsed from epoch values and do not currently use this value.
 
-        Returns
+        Returns:
         -------
         list
         Parsed kea dhcpv4 leases payload returned by OPNsense APIs.
@@ -206,7 +206,7 @@ class DHCPMixin(PyOPNsenseClientProtocol):
         reservations : list[dict]
             Reservations used by `_keep_latest_leases`.
 
-        Returns
+        Returns:
         -------
         list[dict]
         De-duplicated reservations retaining the latest expiration per unique lease.
@@ -242,7 +242,7 @@ class DHCPMixin(PyOPNsenseClientProtocol):
             Optional pre-fetched timezone for this refresh cycle. Dnsmasq lease timestamps
             are parsed from epoch values and do not currently use this value.
 
-        Returns
+        Returns:
         -------
         list
         Parsed dnsmasq leases payload returned by OPNsense APIs.
@@ -258,7 +258,7 @@ class DHCPMixin(PyOPNsenseClientProtocol):
             if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion("25.1.7"):
                 _LOGGER.debug("Skipping get_dnsmasq_leases for OPNsense < 25.1.7")
                 return []
-        except (awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError):
+        except awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError:
             pass
 
         if not await self.is_endpoint_available("/api/dnsmasq/leases/search"):
@@ -320,7 +320,7 @@ class DHCPMixin(PyOPNsenseClientProtocol):
         opnsense_tz : tzinfo | None
             Optional pre-fetched timezone for this refresh cycle.
 
-        Returns
+        Returns:
         -------
         list
         Parsed isc dhcpv4 leases payload returned by OPNsense APIs.
@@ -366,7 +366,7 @@ class DHCPMixin(PyOPNsenseClientProtocol):
                     dt: datetime = datetime.strptime(
                         lease_info.get("ends", None), "%Y/%m/%d %H:%M:%S"
                     )
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     continue
                 lease["expires"] = dt.replace(tzinfo=opnsense_tz)
                 if lease["expires"] < datetime.now().astimezone():
@@ -385,7 +385,7 @@ class DHCPMixin(PyOPNsenseClientProtocol):
         opnsense_tz : tzinfo | None
             Optional pre-fetched timezone for this refresh cycle.
 
-        Returns
+        Returns:
         -------
         list
         Parsed isc dhcpv6 leases payload returned by OPNsense APIs.
@@ -431,7 +431,7 @@ class DHCPMixin(PyOPNsenseClientProtocol):
                     dt: datetime = datetime.strptime(
                         lease_info.get("ends", None), "%Y/%m/%d %H:%M:%S"
                     )
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     continue
                 lease["expires"] = dt.replace(tzinfo=opnsense_tz)
                 if lease["expires"] < datetime.now().astimezone():

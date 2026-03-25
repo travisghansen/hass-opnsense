@@ -76,7 +76,7 @@ def normalize_mac_address(mac: str) -> str | None:
     mac : str
         Raw MAC address input.
 
-    Returns
+    Returns:
     -------
     str | None
         Normalized MAC (`aa:bb:cc:dd:ee:ff`) when valid, otherwise ``None``.
@@ -103,7 +103,7 @@ def _get_device_tracking_mode(
     selected_devices : list[str] | None
         Persisted tracked MAC addresses from the config entry options.
 
-    Returns
+    Returns:
     -------
     str
         The UI mode matching the stored options.
@@ -122,7 +122,7 @@ def _parse_manual_devices(manual_devices: str | None) -> list[str]:
     manual_devices : str | None
         Comma- or newline-separated MAC address input.
 
-    Returns
+    Returns:
     -------
     list[str]
         Valid normalized MAC addresses in input order.
@@ -149,7 +149,7 @@ def _merge_selected_devices(*device_groups: Iterable[str]) -> list[str]:
     *device_groups : Iterable[str]
         MAC address iterables to merge.
 
-    Returns
+    Returns:
     -------
     list[str]
         Unique MAC addresses in first-seen order.
@@ -174,7 +174,7 @@ def _apply_device_tracking_mode(options: MutableMapping[str, Any], tracking_mode
     tracking_mode : str
         Selected UI tracking mode.
 
-    Returns
+    Returns:
     -------
     None
         This function mutates ``options`` in place.
@@ -193,7 +193,7 @@ def _build_selected_device_entries(selected_devices: list[str]) -> dict[str, Any
     selected_devices : list[str]
         Persisted tracked MAC addresses from the options entry.
 
-    Returns
+    Returns:
     -------
     dict[str, Any]
         Mapping of normalized MAC addresses to fallback labels.
@@ -216,7 +216,7 @@ def _format_selected_device_label(mac: str) -> str:
     mac : str
         MAC address to display.
 
-    Returns
+    Returns:
     -------
     str
         Human-readable fallback label.
@@ -233,7 +233,7 @@ def _format_detected_device_label(entry: Mapping[str, Any]) -> str:
     entry : Mapping[str, Any]
         ARP entry returned by the OPNsense client.
 
-    Returns
+    Returns:
     -------
     str
         Human-readable device label for the options form.
@@ -277,7 +277,7 @@ def _device_entry_sort_key(
     ip_by_mac : Mapping[str, str]
         Detected IP addresses keyed by MAC address.
 
-    Returns
+    Returns:
     -------
     tuple[int, tuple[int, int] | str]
         Key used to sort fallback labels first and detected devices by IP.
@@ -718,7 +718,7 @@ def _build_device_tracker_schema(
     dt_entries : Mapping[str, Any]
         Device choices built from the current ARP table and stored MACs.
 
-    Returns
+    Returns:
     -------
     vol.Schema
         Device tracker form schema.
@@ -747,7 +747,7 @@ async def _get_dt_entries(
         Persisted MAC addresses that should remain selectable even when not
         currently present in the ARP table.
 
-    Returns
+    Returns:
     -------
     dict[str, Any]
         Mapping of MAC addresses to user-facing labels.
@@ -1065,7 +1065,7 @@ class OPNsenseOptionsFlow(OptionsFlow):
         user_input : MutableMapping[str, Any] | None
             User-submitted form data.
 
-        Returns
+        Returns:
         -------
         ConfigFlowResult
             The next form step or the saved options entry.

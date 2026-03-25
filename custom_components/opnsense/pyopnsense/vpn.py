@@ -20,7 +20,7 @@ class VPNMixin(PyOPNsenseClientProtocol):
         past_time : datetime | None
             Last peer handshake timestamp to evaluate.
 
-        Returns
+        Returns:
         -------
         bool
         True when the peer handshake is within 3 minutes; otherwise False.
@@ -34,7 +34,7 @@ class VPNMixin(PyOPNsenseClientProtocol):
     async def get_openvpn(self) -> MutableMapping[str, Any]:
         """Return OpenVPN information.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any]
         Parsed openvpn payload returned by OPNsense APIs.
@@ -266,7 +266,7 @@ class VPNMixin(PyOPNsenseClientProtocol):
     async def get_wireguard(self) -> MutableMapping[str, Any]:
         """Get the details of the WireGuard services.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any]
         Parsed wireguard payload returned by OPNsense APIs.
@@ -323,7 +323,7 @@ class VPNMixin(PyOPNsenseClientProtocol):
         client_summ : MutableMapping[str, Any]
             WireGuard client summary mapping from API results.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any]
         None. Updates the supplied data structures in place.
@@ -372,7 +372,7 @@ class VPNMixin(PyOPNsenseClientProtocol):
         servers : MutableMapping[str, Any]
             WireGuard servers mapping keyed by UUID.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any]
         None. Updates the supplied data structures in place.
@@ -414,7 +414,7 @@ class VPNMixin(PyOPNsenseClientProtocol):
         srv : MutableMapping[str, Any]
             WireGuard server record being processed.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any]
         None. Updates the supplied data structures in place.
@@ -595,7 +595,7 @@ class VPNMixin(PyOPNsenseClientProtocol):
         uuid : str
             Target object UUID returned by OPNsense.
 
-        Returns
+        Returns:
         -------
         bool
         True when OPNsense reports the requested action succeeded; otherwise False.

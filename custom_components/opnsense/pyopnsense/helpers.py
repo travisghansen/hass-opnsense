@@ -25,7 +25,7 @@ def _log_errors(func: Callable) -> Any:
     func : Callable
         Coroutine function to decorate and execute with shared behavior.
 
-    Returns
+    Returns:
     -------
     Any
     Decorator wrapper that applies shared exception logging and returns the wrapped coroutine result.
@@ -70,7 +70,7 @@ def _xmlrpc_timeout(func: Callable) -> Any:
     func : Callable
         Coroutine function to decorate and execute with shared behavior.
 
-    Returns
+    Returns:
     -------
     Any
     Decorator wrapper that enforces an `asyncio.wait_for` timeout and returns the wrapped result.
@@ -93,7 +93,7 @@ def human_friendly_duration(seconds: int) -> str:
     seconds : int
         Duration value, in seconds.
 
-    Returns
+    Returns:
     -------
     str
     Duration rendered as a readable string with month/week/day/hour/minute/second units.
@@ -133,7 +133,7 @@ def get_ip_key(item: MutableMapping[str, Any]) -> tuple:
     item : MutableMapping[str, Any]
         Lease record used to derive an IP-aware sort key.
 
-    Returns
+    Returns:
     -------
     tuple
     Sort key tuple that prioritizes valid IPv4/IPv6 addresses and pushes invalid/empty entries last.
@@ -166,7 +166,7 @@ def dict_get(data: MutableMapping[str, Any], path: str, default: Any | None = No
     default : Any | None
         Fallback value returned when the path does not exist.
 
-    Returns
+    Returns:
     -------
     Any | None
     Nested value resolved from the provided dotted path, or the default when the path is missing.
@@ -197,7 +197,7 @@ def timestamp_to_datetime(timestamp: int | None) -> datetime | None:
     timestamp : int | None
         Unix timestamp value to convert.
 
-    Returns
+    Returns:
     -------
     datetime | None
     Timezone-aware datetime derived from the timestamp, or None if no timestamp was provided.
@@ -229,7 +229,7 @@ def try_to_int(input: Any | None, retval: int | None = None) -> int | None:
     retval : int | None
         Value returned when conversion fails.
 
-    Returns
+    Returns:
     -------
     int | None
         Converted integer value, or ``retval`` when conversion is not possible.
@@ -239,7 +239,7 @@ def try_to_int(input: Any | None, retval: int | None = None) -> int | None:
         return retval
     try:
         return int(input)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return retval
 
 
@@ -253,7 +253,7 @@ def try_to_float(input: Any | None, retval: float | None = None) -> float | None
     retval : float | None
         Value returned when conversion fails.
 
-    Returns
+    Returns:
     -------
     float | None
         Converted float value, or ``retval`` when conversion is not possible.
@@ -263,5 +263,5 @@ def try_to_float(input: Any | None, retval: float | None = None) -> float | None
         return retval
     try:
         return float(input)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return retval

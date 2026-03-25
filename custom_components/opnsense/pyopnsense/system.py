@@ -19,7 +19,7 @@ class SystemMixin(PyOPNsenseClientProtocol):
     def _get_local_timezone(self) -> tzinfo:
         """Return a local timezone fallback with fixed UTC offset.
 
-        Returns
+        Returns:
         -------
         tzinfo
             Local timezone fallback using the host UTC offset.
@@ -36,7 +36,7 @@ class SystemMixin(PyOPNsenseClientProtocol):
             Optional datetime string from the system-time endpoint. When omitted,
             the method queries OPNsense for current system-time data.
 
-        Returns
+        Returns:
         -------
         tzinfo
             Parsed timezone from OPNsense datetime output, or a local fixed-offset
@@ -99,7 +99,7 @@ clear_subsystem_dirty('filter');
         expected_id : str | None
             Previously stored unique ID used to prefer a stable match. Defaults to None.
 
-        Returns
+        Returns:
         -------
         str | None
         Stable unique identifier derived from physical interface MAC addresses, or None when unavailable.
@@ -133,7 +133,7 @@ clear_subsystem_dirty('filter');
     async def get_system_info(self) -> dict[str, Any]:
         """Return the system info from OPNsense.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
         Parsed system info payload returned by OPNsense APIs.
@@ -152,7 +152,7 @@ clear_subsystem_dirty('filter');
     async def get_config(self) -> dict[str, Any]:
         """XMLRPC call to return all the config settings.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
         Parsed config payload returned by OPNsense APIs.
@@ -176,7 +176,7 @@ $toreturn = [
     async def get_carp_status(self) -> bool:
         """Return the Carp status.
 
-        Returns
+        Returns:
         -------
         bool
         Parsed carp status payload returned by OPNsense APIs.
@@ -191,7 +191,7 @@ $toreturn = [
     async def get_carp_interfaces(self) -> list:
         """Return the interfaces used by Carp.
 
-        Returns
+        Returns:
         -------
         list
         Parsed carp interfaces payload returned by OPNsense APIs.
@@ -231,7 +231,7 @@ $toreturn = [
     async def system_reboot(self) -> bool:
         """Reboot OPNsense.
 
-        Returns
+        Returns:
         -------
         bool
         True when OPNsense reports the requested action succeeded; otherwise False.
@@ -264,7 +264,7 @@ $toreturn = [
         mac : str
             MAC address of the target device.
 
-        Returns
+        Returns:
         -------
         bool
         True when OPNsense reports the requested action succeeded; otherwise False.
@@ -283,7 +283,7 @@ $toreturn = [
     async def get_notices(self) -> dict[str, Any]:
         """Get active OPNsense notices.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
         Parsed notices payload returned by OPNsense APIs.
@@ -321,7 +321,7 @@ $toreturn = [
         id : str
             Notice identifier to dismiss, or ``"all"`` to dismiss all active notices.
 
-        Returns
+        Returns:
         -------
         bool
         True when OPNsense reports the requested action succeeded; otherwise False.
@@ -365,7 +365,7 @@ $toreturn = [
         if_name : str
             Interface name to reload.
 
-        Returns
+        Returns:
         -------
         bool
         True when OPNsense reports the requested action succeeded; otherwise False.
@@ -386,7 +386,7 @@ $toreturn = [
     async def get_certificates(self) -> dict[str, Any]:
         """Return the active encryption certificates.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
         Parsed certificates payload returned by OPNsense APIs.

@@ -61,7 +61,7 @@ def _build_interface_device_description_map(
     interfaces : Mapping[str, Any] | None
         Interface payload in ``get_interfaces`` shape.
 
-    Returns
+    Returns:
     -------
     dict[str, str]
         Mapping of possible interface identifiers (device, logical name, key) to
@@ -105,7 +105,7 @@ async def _resolve_vnstat_interface_descriptions(
     state : MutableMapping[str, Any]
         Coordinator state payload.
 
-    Returns
+    Returns:
     -------
     dict[str, str]
         Interface identifier to description mapping used for sensor naming.
@@ -141,7 +141,7 @@ def _vnstat_metric_display_name(metric_name: str) -> str:
     metric_name : str
         Internal vnStat metric key.
 
-    Returns
+    Returns:
     -------
     str
         Human-readable metric label for the entity name.
@@ -943,7 +943,7 @@ class OPNsenseFilesystemSensor(OPNsenseSensor):
 
         try:
             self._attr_native_value = filesystem["used_pct"]
-        except (TypeError, KeyError, AttributeError):
+        except TypeError, KeyError, AttributeError:
             self._available = False
             self.async_write_ha_state()
             return
@@ -986,7 +986,7 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
         prop_name: str = self._opnsense_get_interface_property_name()
         try:
             self._attr_native_value = interface[prop_name]
-        except (TypeError, KeyError, ZeroDivisionError):
+        except TypeError, KeyError, ZeroDivisionError:
             self._available = False
             self.async_write_ha_state()
             return
@@ -1044,7 +1044,7 @@ class OPNsenseCarpInterfaceSensor(OPNsenseSensor):
 
         try:
             self._attr_native_value = carp_interface["status"]
-        except (TypeError, KeyError, ZeroDivisionError):
+        except TypeError, KeyError, ZeroDivisionError:
             self._available = False
             self.async_write_ha_state()
             return
@@ -1109,7 +1109,7 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
                 return
 
             self._attr_native_value = value
-        except (TypeError, KeyError, ZeroDivisionError):
+        except TypeError, KeyError, ZeroDivisionError:
             self._available = False
             self.async_write_ha_state()
             return
@@ -1168,7 +1168,7 @@ class OPNsenseVPNSensor(OPNsenseSensor):
                 self._attr_native_value = "disabled"
             else:
                 self._attr_native_value = instance.get(prop_name)
-        except (TypeError, KeyError, ZeroDivisionError):
+        except TypeError, KeyError, ZeroDivisionError:
             self._available = False
             self.async_write_ha_state()
             return
@@ -1276,7 +1276,7 @@ class OPNsenseTempSensor(OPNsenseSensor):
 
         try:
             self._attr_native_value = temp["temperature"]
-        except (TypeError, KeyError, ZeroDivisionError):
+        except TypeError, KeyError, ZeroDivisionError:
             self._available = False
             self.async_write_ha_state()
             return
@@ -1328,7 +1328,7 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
                         if_descr,
                         if_count,
                     )
-            except (TypeError, KeyError, ZeroDivisionError):
+            except TypeError, KeyError, ZeroDivisionError:
                 self._available = False
                 self.async_write_ha_state()
                 return
@@ -1348,7 +1348,7 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
                 self._attr_native_value = sum(
                     1 for d in interface if d.get("address") not in {None, ""}
                 )
-            except (TypeError, KeyError, ZeroDivisionError):
+            except TypeError, KeyError, ZeroDivisionError:
                 self._available = False
                 self.async_write_ha_state()
                 return

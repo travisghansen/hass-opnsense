@@ -159,7 +159,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
     async def get_firewall(self) -> dict[str, Any]:
         """Retrieve all firewall and NAT rules from OPNsense.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
         Parsed firewall payload returned by OPNsense APIs.
@@ -172,7 +172,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
             if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion("26.1.1"):
                 _LOGGER.debug("Using legacy plugin for firewall filters for OPNsense < 26.1.1")
                 return {"config": await self.get_config()}
-        except (awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError):
+        except awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError:
             _LOGGER.warning("Error comparing firmware version. Skipping get_firewall.")
             return {}
         firewall: dict[str, Any] = {"nat": {}}
@@ -190,7 +190,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
     async def _get_firewall_rules(self) -> dict[str, Any]:
         """Retrieve firewall rules from OPNsense.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
         Parsed firewall rules payload returned by OPNsense APIs.
@@ -221,7 +221,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
     async def _get_nat_destination_rules(self) -> dict[str, Any]:
         """Retrieve NAT destination rules from OPNsense.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
         Parsed nat destination rules payload returned by OPNsense APIs.
@@ -253,7 +253,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
     async def _get_nat_one_to_one_rules(self) -> dict[str, Any]:
         """Retrieve NAT one-to-one rules from OPNsense.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
         Parsed nat one to one rules payload returned by OPNsense APIs.
@@ -284,7 +284,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
     async def _get_nat_source_rules(self) -> dict[str, Any]:
         """Retrieve NAT source rules from OPNsense.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
         Parsed nat source rules payload returned by OPNsense APIs.
@@ -315,7 +315,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
     async def _get_nat_npt_rules(self) -> dict[str, Any]:
         """Retrieve NAT NPT rules from OPNsense.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
         Parsed nat npt rules payload returned by OPNsense APIs.
@@ -350,7 +350,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
         toggle_on_off : str | None
             Explicit toggle directive ("on"/"off"); uses API toggle when omitted. Defaults to None.
 
-        Returns
+        Returns:
         -------
         bool
         True when OPNsense reports the requested action succeeded; otherwise False.
@@ -397,7 +397,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
         toggle_on_off : str | None
             Explicit toggle directive ("on"/"off"); uses API toggle when omitted. Defaults to None.
 
-        Returns
+        Returns:
         -------
         bool
         True when OPNsense reports the requested action succeeded; otherwise False.
@@ -444,7 +444,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
         ip_addr : str
             IP address whose states should be terminated.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any]
         API response describing whether matching states were terminated.
@@ -472,7 +472,7 @@ class FirewallMixin(PyOPNsenseClientProtocol):
         toggle_on_off : str | None
             Explicit toggle directive ("on"/"off"); uses API toggle when omitted. Defaults to None.
 
-        Returns
+        Returns:
         -------
         bool
         True when OPNsense reports the requested action succeeded; otherwise False.

@@ -28,7 +28,7 @@ class SpeedtestMixin(PyOPNsenseClientProtocol):
     async def get_speedtest(self) -> dict[str, Any]:
         """Return normalized speedtest summary payload for sensors.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
             Normalized speedtest state including last and average metrics.
@@ -90,7 +90,7 @@ class SpeedtestMixin(PyOPNsenseClientProtocol):
         server_text : Any
             Raw ``server`` field from the speedtest ``showrecent`` endpoint.
 
-        Returns
+        Returns:
         -------
         tuple[str | None, str | None]
             Parsed ``(server_id, server_name)`` tuple.
@@ -111,7 +111,7 @@ class SpeedtestMixin(PyOPNsenseClientProtocol):
     async def run_speedtest(self) -> dict[str, Any]:
         """Run speedtest and return the endpoint response payload.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
             Raw speedtest run result payload. Empty dictionary when unavailable.

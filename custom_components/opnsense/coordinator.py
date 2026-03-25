@@ -402,7 +402,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             change: float = abs(current_parent_value - previous_parent_value)
             rate: float = change / elapsed_time
-        except (TypeError, KeyError, ZeroDivisionError):
+        except TypeError, KeyError, ZeroDivisionError:
             rate = 0
 
         value: float = 0

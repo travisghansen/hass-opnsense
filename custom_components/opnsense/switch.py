@@ -46,7 +46,7 @@ async def _compile_filter_switches_legacy(
     state : MutableMapping[str, Any]
         The current state data from OPNsense.
 
-    Returns
+    Returns:
     -------
     list
         A list of OPNsenseFilterSwitchLegacy entities.
@@ -107,7 +107,7 @@ async def _compile_port_forward_switches_legacy(
     state : MutableMapping[str, Any]
         The current state data from OPNsense.
 
-    Returns
+    Returns:
     -------
     list
         A list of OPNsenseNatSwitchLegacy entities for port forward rules.
@@ -159,7 +159,7 @@ async def _compile_nat_outbound_switches_legacy(
     state : MutableMapping[str, Any]
         The current state data from OPNsense.
 
-    Returns
+    Returns:
     -------
     list
         A list of OPNsenseNatSwitchLegacy entities for outbound rules.
@@ -215,7 +215,7 @@ async def _compile_service_switches(
     state : MutableMapping[str, Any]
         The current state data from OPNsense.
 
-    Returns
+    Returns:
     -------
     list
         A list of OPNsenseServiceSwitch entities.
@@ -262,7 +262,7 @@ async def _compile_vpn_switches(
     state : MutableMapping[str, Any]
         The current state data from OPNsense.
 
-    Returns
+    Returns:
     -------
     list
         A list of OPNsenseVPNSwitch entities.
@@ -312,7 +312,7 @@ async def _compile_static_unbound_switch_legacy(
     state : MutableMapping[str, Any]
         The current state data from OPNsense.
 
-    Returns
+    Returns:
     -------
     list
         A list containing a single OPNsenseUnboundBlocklistSwitchLegacy entity.
@@ -352,7 +352,7 @@ async def _compile_unbound_switches(
     state : MutableMapping[str, Any]
         The current state data from OPNsense.
 
-    Returns
+    Returns:
     -------
     list
         A list of OPNsenseUnboundBlocklistSwitch entities.
@@ -398,7 +398,7 @@ async def _compile_firewall_rules_switches(
     state : MutableMapping[str, Any]
         The current state data from OPNsense.
 
-    Returns
+    Returns:
     -------
     list
         A list of OPNsenseFirewallRuleSwitch entities.
@@ -448,7 +448,7 @@ async def _compile_nat_source_rules_switches(
     state : MutableMapping[str, Any]
         The current state data from OPNsense.
 
-    Returns
+    Returns:
     -------
     list
         A list of OPNsenseNATRuleSwitch entities for source NAT rules.
@@ -493,7 +493,7 @@ async def _compile_nat_destination_rules_switches(
     state : MutableMapping[str, Any]
         The current state data from OPNsense.
 
-    Returns
+    Returns:
     -------
     list
         A list of OPNsenseNATRuleSwitch entities for destination NAT rules.
@@ -538,7 +538,7 @@ async def _compile_nat_one_to_one_rules_switches(
     state : MutableMapping[str, Any]
         The current state data from OPNsense.
 
-    Returns
+    Returns:
     -------
     list
         A list of OPNsenseNATRuleSwitch entities for one-to-one NAT rules.
@@ -583,7 +583,7 @@ async def _compile_nat_npt_rules_switches(
     state : MutableMapping[str, Any]
         The current state data from OPNsense.
 
-    Returns
+    Returns:
     -------
     list
         A list of OPNsenseNATRuleSwitch entities for NPTv6 NAT rules.
@@ -777,7 +777,7 @@ class OPNsenseSwitch(OPNsenseEntity, SwitchEntity):
     def delay_update(self) -> bool:
         """Return whether to process the coordinator update or not.
 
-        Returns
+        Returns:
         -------
         bool
             True if updates should be delayed, False otherwise.
@@ -852,7 +852,7 @@ class OPNsenseFirewallRuleSwitch(OPNsenseSwitch):
     def _opnsense_get_rule_id(self) -> str:
         """Get the rule ID from the entity description.
 
-        Returns
+        Returns:
         -------
         str
             The rule ID.
@@ -863,7 +863,7 @@ class OPNsenseFirewallRuleSwitch(OPNsenseSwitch):
     def _opnsense_get_rule(self) -> MutableMapping[str, Any] | None:
         """Get the firewall rule data from the coordinator.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any] | None
             The rule data if available, None otherwise.
@@ -889,7 +889,7 @@ class OPNsenseFirewallRuleSwitch(OPNsenseSwitch):
             return
         try:
             self._attr_is_on = bool(rule.get("enabled", "1") == "1")
-        except (TypeError, KeyError, AttributeError):
+        except TypeError, KeyError, AttributeError:
             self._available = False
             self.async_write_ha_state()
             return
@@ -994,7 +994,7 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
     def _get_nat_rule_type(self) -> str:
         """Get the NAT rule type from the entity description.
 
-        Returns
+        Returns:
         -------
         str
             The NAT rule type.
@@ -1005,7 +1005,7 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
     def _opnsense_get_rule_id(self) -> str:
         """Get the rule ID from the entity description.
 
-        Returns
+        Returns:
         -------
         str
             The rule ID.
@@ -1016,7 +1016,7 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
     def _opnsense_get_rule(self) -> MutableMapping[str, Any] | None:
         """Get the NAT rule data from the coordinator.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any] | None
             The rule data if available, None otherwise.
@@ -1046,7 +1046,7 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
             return
         try:
             self._attr_is_on = bool(rule.get("enabled", "1") == "1")
-        except (TypeError, KeyError, AttributeError):
+        except TypeError, KeyError, AttributeError:
             self._available = False
             self.async_write_ha_state()
             return
@@ -1180,7 +1180,7 @@ class OPNsenseFilterSwitchLegacy(OPNsenseSwitch):
     def _opnsense_get_tracker(self) -> str:
         """Get the tracker from the entity description.
 
-        Returns
+        Returns:
         -------
         str
             The tracker string.
@@ -1193,7 +1193,7 @@ class OPNsenseFilterSwitchLegacy(OPNsenseSwitch):
     def _opnsense_get_rule(self) -> MutableMapping[str, Any] | None:
         """Get the filter rule data from the coordinator.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any] | None
             The rule data if available, None otherwise.
@@ -1223,7 +1223,7 @@ class OPNsenseFilterSwitchLegacy(OPNsenseSwitch):
             return
         try:
             self._attr_is_on = bool(self._rule.get("disabled", "0") != "1")
-        except (TypeError, KeyError, AttributeError):
+        except TypeError, KeyError, AttributeError:
             self._available = False
             self.async_write_ha_state()
             return
@@ -1293,7 +1293,7 @@ class OPNsenseNatSwitchLegacy(OPNsenseSwitch):
     def _opnsense_get_rule_type(self) -> str:
         """Get the rule type from the entity description.
 
-        Returns
+        Returns:
         -------
         str
             The rule type.
@@ -1304,7 +1304,7 @@ class OPNsenseNatSwitchLegacy(OPNsenseSwitch):
     def _opnsense_get_tracker(self) -> str:
         """Get the tracker from the entity description.
 
-        Returns
+        Returns:
         -------
         str
             The tracker string.
@@ -1317,7 +1317,7 @@ class OPNsenseNatSwitchLegacy(OPNsenseSwitch):
     def _opnsense_get_rule(self) -> MutableMapping[str, Any] | None:
         """Get the NAT rule data from the coordinator.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any] | None
             The rule data if available, None otherwise.
@@ -1356,7 +1356,7 @@ class OPNsenseNatSwitchLegacy(OPNsenseSwitch):
             return
         try:
             self._attr_is_on = "disabled" not in self._rule
-        except (TypeError, KeyError, AttributeError):
+        except TypeError, KeyError, AttributeError:
             self._available = False
             self.async_write_ha_state()
             return
@@ -1437,7 +1437,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
     def _opnsense_get_property_name(self) -> str:
         """Get the property name from the entity description.
 
-        Returns
+        Returns:
         -------
         str
             The property name.
@@ -1448,7 +1448,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
     def _opnsense_get_service_id(self) -> str:
         """Get the service ID from the entity description.
 
-        Returns
+        Returns:
         -------
         str
             The service ID.
@@ -1459,7 +1459,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
     def _opnsense_get_service(self) -> MutableMapping[str, Any] | None:
         """Get the service data from the coordinator.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any] | None
             The service data if available, None otherwise.
@@ -1487,7 +1487,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
             return
         try:
             self._attr_is_on = self._service[self._prop_name]
-        except (TypeError, KeyError, AttributeError):
+        except TypeError, KeyError, AttributeError:
             self._available = False
             self.async_write_ha_state()
             return
@@ -1739,7 +1739,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
             return
         try:
             self._attr_is_on = instance["enabled"]
-        except (TypeError, KeyError, AttributeError):
+        except TypeError, KeyError, AttributeError:
             self._available = False
             self.async_write_ha_state()
             return

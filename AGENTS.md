@@ -8,7 +8,7 @@ General Guidelines
 - Be concise and explain coding steps briefly when making code changes; include code snippets and tests where relevant.
 - For non-trivial edits, provide a short plan. For small, low-risk edits, implement and include a one-line summary.
 - Focus on a single conceptual change at a time when public APIs or multiple modules are affected.
-- Maintain project style and Python 3.13+ compatibility. Target latest Home Assistant core.
+- Maintain project style and Python 3.14+ compatibility. Target latest Home Assistant core.
 - If deviating from these guidelines, explicitly state which guideline is deviated from and why.
 
 Agent permissions and venv policy
@@ -26,12 +26,12 @@ Project structure expectations
 
 Coding standards
 - Add typing annotations to all functions and classes (including return types).
-- Add or update docstrings for all files, classes and methods, including private methods and nested methods. Method docstrings must be in NumPy format.
+- Add or update docstrings for all files, classes and methods, including private methods and nested methods. Method docstrings must follow the Google Style.
 - Preserve existing comments and keep imports at the top of files.
-- Follow existing repository style; run `pre-commit`, and run `mypy` separately where available.
+- Follow existing repository style; run `prek`.
 
 Local tooling note
-- Use the repo's `pre-commit`, `mypy`, and `pytest` commands inside `./.venv`. Note that `mypy` is not currently wired into the pre-commit hooks. You must always run these inside `./.venv`.
+- Use the repo's `prek` and `pytest` commands inside `./.venv`. You must always run these inside `./.venv`.
 - By default, run the full pytest suite. If running targeted tests, explain why.
 - Avoid recommending `tox`, it is not in use by this repo.
 

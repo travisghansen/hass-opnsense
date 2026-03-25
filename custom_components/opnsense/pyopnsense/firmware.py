@@ -42,7 +42,7 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
     async def get_host_firmware_version(self) -> None | str:
         """Return the OPNsense Firmware version.
 
-        Returns
+        Returns:
         -------
         None | str
         Parsed host firmware version payload returned by OPNsense APIs.
@@ -70,7 +70,7 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
         force : bool
             Whether to bypass TTL freshness checks and force a refresh attempt.
 
-        Returns
+        Returns:
         -------
         None
 
@@ -114,7 +114,7 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
     async def is_plugin_installed(self) -> bool:
         """Return whether the Home Assistant OPNsense plugin is installed.
 
-        Returns
+        Returns:
         -------
         bool
             ``True`` when plugin installation is detected, otherwise ``False``.
@@ -130,7 +130,7 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
         plugin_name : str
             OPNsense package name (for example ``os-vnstat``).
 
-        Returns
+        Returns:
         -------
         bool
             ``True`` when the package is installed.
@@ -162,7 +162,7 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
     async def is_plugin_deprecated(self) -> bool:
         """Return whether the installed plugin is considered deprecated.
 
-        Returns
+        Returns:
         -------
         bool
             ``True`` when the plugin is deprecated for the detected firmware.
@@ -176,7 +176,7 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
     async def get_firmware_update_info(self) -> MutableMapping[str, Any]:
         """Get the details of available firmware updates.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any]
         Parsed firmware update info payload returned by OPNsense APIs.
@@ -262,7 +262,7 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
         type : str
             Firmware upgrade type (for example update or upgrade). Defaults to 'update'.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any] | None
         True when OPNsense reports the requested action succeeded; otherwise False.
@@ -283,7 +283,7 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
     async def upgrade_status(self) -> MutableMapping[str, Any]:
         """Return the status of the firmware upgrade.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any]
         True when OPNsense reports the requested action succeeded; otherwise False.
@@ -301,7 +301,7 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
         version : str
             Firmware version string to fetch a changelog for.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any]
         Firmware changelog payload returned by OPNsense.
