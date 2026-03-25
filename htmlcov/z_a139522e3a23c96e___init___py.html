@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_a139522e3a23c96e_binary_sensor_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.13.1">coverage.py v7.13.1</a>,
-            created at 2026-03-22 22:55 +0000
+            created at 2026-03-25 22:06 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -219,7 +219,7 @@
     <p class="pln"><span class="n"><a id="t135" href="#t135">135</a></span><span class="t"><span class="str">    config : ConfigType</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t136" href="#t136">136</a></span><span class="t"><span class="str">        The configuration dictionary (unused for config entry only integrations).</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t137" href="#t137">137</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t138" href="#t138">138</a></span><span class="t"><span class="str">    Returns</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t138" href="#t138">138</a></span><span class="t"><span class="str">    Returns:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t139" href="#t139">139</a></span><span class="t"><span class="str">    -------</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t140" href="#t140">140</a></span><span class="t"><span class="str">    bool</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t141" href="#t141">141</a></span><span class="t"><span class="str">        Always returns True to indicate successful setup.</span>&nbsp;</span><span class="r"></span></p>
@@ -244,12 +244,12 @@
     <p class="pln"><span class="n"><a id="t160" href="#t160">160</a></span><span class="t"><span class="str">    entry : ConfigEntry</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t161" href="#t161">161</a></span><span class="t"><span class="str">        The configuration entry containing OPNsense connection details.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t162" href="#t162">162</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t163" href="#t163">163</a></span><span class="t"><span class="str">    Returns</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t163" href="#t163">163</a></span><span class="t"><span class="str">    Returns:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t164" href="#t164">164</a></span><span class="t"><span class="str">    -------</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t165" href="#t165">165</a></span><span class="t"><span class="str">    bool</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t166" href="#t166">166</a></span><span class="t"><span class="str">        True if setup was successful, False otherwise.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t167" href="#t167">167</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t168" href="#t168">168</a></span><span class="t"><span class="str">    Raises</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t168" href="#t168">168</a></span><span class="t"><span class="str">    Raises:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t169" href="#t169">169</a></span><span class="t"><span class="str">    ------</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t170" href="#t170">170</a></span><span class="t"><span class="str">    Various exceptions may be raised during client initialization or firmware</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t171" href="#t171">171</a></span><span class="t"><span class="str">    checks, but they are handled internally with appropriate logging and issue</span>&nbsp;</span><span class="r"></span></p>
@@ -371,7 +371,7 @@
     <p class="run run2"><span class="n"><a id="t287" href="#t287">287</a></span><span class="t">                <span class="nam">DOMAIN</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t288" href="#t288">288</a></span><span class="t">                <span class="fst">f"</span><span class="op">{</span><span class="nam">config_device_id</span><span class="op">}</span><span class="fst">_opnsense_below_ltd_firmware_</span><span class="op">{</span><span class="nam">OPNSENSE_LTD_FIRMWARE</span><span class="op">}</span><span class="fst">"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t289" href="#t289">289</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t290" href="#t290">290</a></span><span class="t">    <span class="key">except</span> <span class="op">(</span><span class="nam">awesomeversion</span><span class="op">.</span><span class="nam">exceptions</span><span class="op">.</span><span class="nam">AwesomeVersionCompareException</span><span class="op">,</span> <span class="nam">TypeError</span><span class="op">,</span> <span class="nam">ValueError</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t290" href="#t290">290</a></span><span class="t">    <span class="key">except</span> <span class="nam">awesomeversion</span><span class="op">.</span><span class="nam">exceptions</span><span class="op">.</span><span class="nam">AwesomeVersionCompareException</span><span class="op">,</span> <span class="nam">TypeError</span><span class="op">,</span> <span class="nam">ValueError</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t291" href="#t291">291</a></span><span class="t">        <span class="nam">_LOGGER</span><span class="op">.</span><span class="nam">warning</span><span class="op">(</span><span class="str">"Unable to confirm OPNsense Firmware version"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t292" href="#t292">292</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t293" href="#t293">293</a></span><span class="t">    <span class="key">try</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -384,7 +384,7 @@
     <p class="run run2"><span class="n"><a id="t300" href="#t300">300</a></span><span class="t">                <span class="nam">entry_id</span><span class="op">=</span><span class="nam">entry</span><span class="op">.</span><span class="nam">entry_id</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t301" href="#t301">301</a></span><span class="t">                <span class="nam">config_device_id</span><span class="op">=</span><span class="nam">config_device_id</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t302" href="#t302">302</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t303" href="#t303">303</a></span><span class="t">    <span class="key">except</span> <span class="op">(</span><span class="nam">awesomeversion</span><span class="op">.</span><span class="nam">exceptions</span><span class="op">.</span><span class="nam">AwesomeVersionCompareException</span><span class="op">,</span> <span class="nam">TypeError</span><span class="op">,</span> <span class="nam">ValueError</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t303" href="#t303">303</a></span><span class="t">    <span class="key">except</span> <span class="nam">awesomeversion</span><span class="op">.</span><span class="nam">exceptions</span><span class="op">.</span><span class="nam">AwesomeVersionCompareException</span><span class="op">,</span> <span class="nam">TypeError</span><span class="op">,</span> <span class="nam">ValueError</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t304" href="#t304">304</a></span><span class="t">        <span class="nam">_LOGGER</span><span class="op">.</span><span class="nam">warning</span><span class="op">(</span><span class="str">"Unable to confirm OPNsense Firmware version"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t305" href="#t305">305</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t306" href="#t306">306</a></span><span class="t">    <span class="key">await</span> <span class="nam">coordinator</span><span class="op">.</span><span class="nam">async_config_entry_first_refresh</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
@@ -552,7 +552,7 @@
     <p class="pln"><span class="n"><a id="t468" href="#t468">468</a></span><span class="t"><span class="str">    device_entry : dr.DeviceEntry</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t469" href="#t469">469</a></span><span class="t"><span class="str">        The device entry to be removed.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t470" href="#t470">470</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t471" href="#t471">471</a></span><span class="t"><span class="str">    Returns</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t471" href="#t471">471</a></span><span class="t"><span class="str">    Returns:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t472" href="#t472">472</a></span><span class="t"><span class="str">    -------</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t473" href="#t473">473</a></span><span class="t"><span class="str">    bool</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t474" href="#t474">474</a></span><span class="t"><span class="str">        True if the device can be removed, False otherwise.</span>&nbsp;</span><span class="r"></span></p>
@@ -582,7 +582,7 @@
     <p class="pln"><span class="n"><a id="t498" href="#t498">498</a></span><span class="t"><span class="str">    entry : ConfigEntry</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t499" href="#t499">499</a></span><span class="t"><span class="str">        The configuration entry to unload.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t500" href="#t500">500</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t501" href="#t501">501</a></span><span class="t"><span class="str">    Returns</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t501" href="#t501">501</a></span><span class="t"><span class="str">    Returns:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t502" href="#t502">502</a></span><span class="t"><span class="str">    -------</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t503" href="#t503">503</a></span><span class="t"><span class="str">    bool</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t504" href="#t504">504</a></span><span class="t"><span class="str">        True if unloading was successful, False otherwise.</span>&nbsp;</span><span class="r"></span></p>
@@ -614,7 +614,7 @@
     <p class="pln"><span class="n"><a id="t530" href="#t530">530</a></span><span class="t"><span class="str">    config_entry : ConfigEntry</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t531" href="#t531">531</a></span><span class="t"><span class="str">        The configuration entry to migrate.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t532" href="#t532">532</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t533" href="#t533">533</a></span><span class="t"><span class="str">    Returns</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t533" href="#t533">533</a></span><span class="t"><span class="str">    Returns:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t534" href="#t534">534</a></span><span class="t"><span class="str">    -------</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t535" href="#t535">535</a></span><span class="t"><span class="str">    bool</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t536" href="#t536">536</a></span><span class="t"><span class="str">        Always returns True.</span>&nbsp;</span><span class="r"></span></p>
@@ -649,7 +649,7 @@
     <p class="pln"><span class="n"><a id="t565" href="#t565">565</a></span><span class="t"><span class="str">    config_entry : ConfigEntry</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t566" href="#t566">566</a></span><span class="t"><span class="str">        The configuration entry to migrate.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t567" href="#t567">567</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t568" href="#t568">568</a></span><span class="t"><span class="str">    Returns</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t568" href="#t568">568</a></span><span class="t"><span class="str">    Returns:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t569" href="#t569">569</a></span><span class="t"><span class="str">    -------</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t570" href="#t570">570</a></span><span class="t"><span class="str">    bool</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t571" href="#t571">571</a></span><span class="t"><span class="str">        True if migration was successful, False otherwise.</span>&nbsp;</span><span class="r"></span></p>
@@ -777,7 +777,7 @@
     <p class="pln"><span class="n"><a id="t693" href="#t693">693</a></span><span class="t"><span class="str">    config_entry : ConfigEntry</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t694" href="#t694">694</a></span><span class="t"><span class="str">        The configuration entry to migrate.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t695" href="#t695">695</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t696" href="#t696">696</a></span><span class="t"><span class="str">    Returns</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t696" href="#t696">696</a></span><span class="t"><span class="str">    Returns:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t697" href="#t697">697</a></span><span class="t"><span class="str">    -------</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t698" href="#t698">698</a></span><span class="t"><span class="str">    bool</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t699" href="#t699">699</a></span><span class="t"><span class="str">        True if migration was successful, False otherwise.</span>&nbsp;</span><span class="r"></span></p>
@@ -898,7 +898,7 @@
     <p class="pln"><span class="n"><a id="t814" href="#t814">814</a></span><span class="t"><span class="str">    config_entry : ConfigEntry</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t815" href="#t815">815</a></span><span class="t"><span class="str">        The configuration entry to migrate.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t816" href="#t816">816</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t817" href="#t817">817</a></span><span class="t"><span class="str">    Returns</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t817" href="#t817">817</a></span><span class="t"><span class="str">    Returns:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t818" href="#t818">818</a></span><span class="t"><span class="str">    -------</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t819" href="#t819">819</a></span><span class="t"><span class="str">    bool</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t820" href="#t820">820</a></span><span class="t"><span class="str">        True if migration was successful, False otherwise.</span>&nbsp;</span><span class="r"></span></p>
@@ -947,7 +947,7 @@
             <a class="nav" href="z_a139522e3a23c96e_binary_sensor_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.13.1">coverage.py v7.13.1</a>,
-            created at 2026-03-22 22:55 +0000
+            created at 2026-03-25 22:06 +0000
         </p>
     </div>
 </footer>

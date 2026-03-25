@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_8d042fd4c41619e0_exceptions_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.13.1">coverage.py v7.13.1</a>,
-            created at 2026-03-22 22:55 +0000
+            created at 2026-03-25 22:06 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -106,7 +106,7 @@
     <p class="pln"><span class="n"><a id="t22" href="#t22">22</a></span><span class="t"><span class="str">        resolve_hostnames : bool</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t23" href="#t23">23</a></span><span class="t"><span class="str">            Whether reverse-DNS names should be resolved for ARP entries. Defaults to False.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t24" href="#t24">24</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t25" href="#t25">25</a></span><span class="t"><span class="str">        Returns</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t25" href="#t25">25</a></span><span class="t"><span class="str">        Returns:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t26" href="#t26">26</a></span><span class="t"><span class="str">        -------</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t27" href="#t27">27</a></span><span class="t"><span class="str">        list</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t28" href="#t28">28</a></span><span class="t"><span class="str">        Parsed arp table payload returned by OPNsense APIs.</span>&nbsp;</span><span class="r"></span></p>
@@ -132,7 +132,7 @@
     <p class="pln"><span class="n"><a id="t48" href="#t48">48</a></span><span class="t"><span class="str">        opnsense_tz : tzinfo | None</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t49" href="#t49">49</a></span><span class="t"><span class="str">            Optional pre-fetched timezone for this refresh cycle.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t50" href="#t50">50</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t51" href="#t51">51</a></span><span class="t"><span class="str">        Returns</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t51" href="#t51">51</a></span><span class="t"><span class="str">        Returns:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t52" href="#t52">52</a></span><span class="t"><span class="str">        -------</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t53" href="#t53">53</a></span><span class="t"><span class="str">        dict[str, Any]</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t54" href="#t54">54</a></span><span class="t"><span class="str">        Parsed dhcp leases payload returned by OPNsense APIs.</span>&nbsp;</span><span class="r"></span></p>
@@ -183,7 +183,7 @@
     <p class="run"><span class="n"><a id="t99" href="#t99">99</a></span><span class="t">    <span class="key">async</span> <span class="key">def</span> <span class="nam">_get_kea_interfaces</span><span class="op">(</span><span class="nam">self</span><span class="op">)</span> <span class="op">-></span> <span class="nam">dict</span><span class="op">[</span><span class="nam">str</span><span class="op">,</span> <span class="nam">Any</span><span class="op">]</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t100" href="#t100">100</a></span><span class="t">        <span class="str">"""Return interfaces setup for Kea.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t101" href="#t101">101</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t102" href="#t102">102</a></span><span class="t"><span class="str">        Returns</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t102" href="#t102">102</a></span><span class="t"><span class="str">        Returns:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t103" href="#t103">103</a></span><span class="t"><span class="str">        -------</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t104" href="#t104">104</a></span><span class="t"><span class="str">        dict[str, Any]</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t105" href="#t105">105</a></span><span class="t"><span class="str">        Parsed kea interfaces payload returned by OPNsense APIs.</span>&nbsp;</span><span class="r"></span></p>
@@ -212,7 +212,7 @@
     <p class="pln"><span class="n"><a id="t128" href="#t128">128</a></span><span class="t"><span class="str">            Optional pre-fetched timezone for this refresh cycle. Kea lease timestamps</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t129" href="#t129">129</a></span><span class="t"><span class="str">            are parsed from epoch values and do not currently use this value.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t130" href="#t130">130</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t131" href="#t131">131</a></span><span class="t"><span class="str">        Returns</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t131" href="#t131">131</a></span><span class="t"><span class="str">        Returns:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t132" href="#t132">132</a></span><span class="t"><span class="str">        -------</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t133" href="#t133">133</a></span><span class="t"><span class="str">        list</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t134" href="#t134">134</a></span><span class="t"><span class="str">        Parsed kea dhcpv4 leases payload returned by OPNsense APIs.</span>&nbsp;</span><span class="r"></span></p>
@@ -290,7 +290,7 @@
     <p class="pln"><span class="n"><a id="t206" href="#t206">206</a></span><span class="t"><span class="str">        reservations : list[dict]</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t207" href="#t207">207</a></span><span class="t"><span class="str">            Reservations used by `_keep_latest_leases`.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t208" href="#t208">208</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t209" href="#t209">209</a></span><span class="t"><span class="str">        Returns</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t209" href="#t209">209</a></span><span class="t"><span class="str">        Returns:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t210" href="#t210">210</a></span><span class="t"><span class="str">        -------</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t211" href="#t211">211</a></span><span class="t"><span class="str">        list[dict]</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t212" href="#t212">212</a></span><span class="t"><span class="str">        De-duplicated reservations retaining the latest expiration per unique lease.</span>&nbsp;</span><span class="r"></span></p>
@@ -326,7 +326,7 @@
     <p class="pln"><span class="n"><a id="t242" href="#t242">242</a></span><span class="t"><span class="str">            Optional pre-fetched timezone for this refresh cycle. Dnsmasq lease timestamps</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t243" href="#t243">243</a></span><span class="t"><span class="str">            are parsed from epoch values and do not currently use this value.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t244" href="#t244">244</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t245" href="#t245">245</a></span><span class="t"><span class="str">        Returns</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t245" href="#t245">245</a></span><span class="t"><span class="str">        Returns:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t246" href="#t246">246</a></span><span class="t"><span class="str">        -------</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t247" href="#t247">247</a></span><span class="t"><span class="str">        list</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t248" href="#t248">248</a></span><span class="t"><span class="str">        Parsed dnsmasq leases payload returned by OPNsense APIs.</span>&nbsp;</span><span class="r"></span></p>
@@ -342,7 +342,7 @@
     <p class="par run show_par"><span class="n"><a id="t258" href="#t258">258</a></span><span class="t">            <span class="key">if</span> <span class="nam">awesomeversion</span><span class="op">.</span><span class="nam">AwesomeVersion</span><span class="op">(</span><span class="nam">firmware</span><span class="op">)</span> <span class="op">&lt;</span> <span class="nam">awesomeversion</span><span class="op">.</span><span class="nam">AwesomeVersion</span><span class="op">(</span><span class="str">"25.1.7"</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">258&#x202F;&#x219B;&#x202F;259</span><span class="annotate long">line 258 didn't jump to line 259 because the condition on line 258 was never true</span></span></p>
     <p class="mis show_mis"><span class="n"><a id="t259" href="#t259">259</a></span><span class="t">                <span class="nam">_LOGGER</span><span class="op">.</span><span class="nam">debug</span><span class="op">(</span><span class="str">"Skipping get_dnsmasq_leases for OPNsense &lt; 25.1.7"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t260" href="#t260">260</a></span><span class="t">                <span class="key">return</span> <span class="op">[</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t261" href="#t261">261</a></span><span class="t">        <span class="key">except</span> <span class="op">(</span><span class="nam">awesomeversion</span><span class="op">.</span><span class="nam">exceptions</span><span class="op">.</span><span class="nam">AwesomeVersionCompareException</span><span class="op">,</span> <span class="nam">TypeError</span><span class="op">,</span> <span class="nam">ValueError</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t261" href="#t261">261</a></span><span class="t">        <span class="key">except</span> <span class="nam">awesomeversion</span><span class="op">.</span><span class="nam">exceptions</span><span class="op">.</span><span class="nam">AwesomeVersionCompareException</span><span class="op">,</span> <span class="nam">TypeError</span><span class="op">,</span> <span class="nam">ValueError</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t262" href="#t262">262</a></span><span class="t">            <span class="key">pass</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t263" href="#t263">263</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="par run show_par"><span class="n"><a id="t264" href="#t264">264</a></span><span class="t">        <span class="key">if</span> <span class="key">not</span> <span class="key">await</span> <span class="nam">self</span><span class="op">.</span><span class="nam">is_endpoint_available</span><span class="op">(</span><span class="str">"/api/dnsmasq/leases/search"</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">264&#x202F;&#x219B;&#x202F;265</span><span class="annotate long">line 264 didn't jump to line 265 because the condition on line 264 was never true</span></span></p>
@@ -404,7 +404,7 @@
     <p class="pln"><span class="n"><a id="t320" href="#t320">320</a></span><span class="t"><span class="str">        opnsense_tz : tzinfo | None</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t321" href="#t321">321</a></span><span class="t"><span class="str">            Optional pre-fetched timezone for this refresh cycle.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t322" href="#t322">322</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t323" href="#t323">323</a></span><span class="t"><span class="str">        Returns</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t323" href="#t323">323</a></span><span class="t"><span class="str">        Returns:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t324" href="#t324">324</a></span><span class="t"><span class="str">        -------</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t325" href="#t325">325</a></span><span class="t"><span class="str">        list</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t326" href="#t326">326</a></span><span class="t"><span class="str">        Parsed isc dhcpv4 leases payload returned by OPNsense APIs.</span>&nbsp;</span><span class="r"></span></p>
@@ -450,7 +450,7 @@
     <p class="run"><span class="n"><a id="t366" href="#t366">366</a></span><span class="t">                    <span class="nam">dt</span><span class="op">:</span> <span class="nam">datetime</span> <span class="op">=</span> <span class="nam">datetime</span><span class="op">.</span><span class="nam">strptime</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t367" href="#t367">367</a></span><span class="t">                        <span class="nam">lease_info</span><span class="op">.</span><span class="nam">get</span><span class="op">(</span><span class="str">"ends"</span><span class="op">,</span> <span class="key">None</span><span class="op">)</span><span class="op">,</span> <span class="str">"%Y/%m/%d %H:%M:%S"</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t368" href="#t368">368</a></span><span class="t">                    <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t369" href="#t369">369</a></span><span class="t">                <span class="key">except</span> <span class="op">(</span><span class="nam">TypeError</span><span class="op">,</span> <span class="nam">ValueError</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t369" href="#t369">369</a></span><span class="t">                <span class="key">except</span> <span class="nam">TypeError</span><span class="op">,</span> <span class="nam">ValueError</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t370" href="#t370">370</a></span><span class="t">                    <span class="key">continue</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t371" href="#t371">371</a></span><span class="t">                <span class="nam">lease</span><span class="op">[</span><span class="str">"expires"</span><span class="op">]</span> <span class="op">=</span> <span class="nam">dt</span><span class="op">.</span><span class="nam">replace</span><span class="op">(</span><span class="nam">tzinfo</span><span class="op">=</span><span class="nam">opnsense_tz</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="par run show_par"><span class="n"><a id="t372" href="#t372">372</a></span><span class="t">                <span class="key">if</span> <span class="nam">lease</span><span class="op">[</span><span class="str">"expires"</span><span class="op">]</span> <span class="op">&lt;</span> <span class="nam">datetime</span><span class="op">.</span><span class="nam">now</span><span class="op">(</span><span class="op">)</span><span class="op">.</span><span class="nam">astimezone</span><span class="op">(</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">372&#x202F;&#x219B;&#x202F;373</span><span class="annotate long">line 372 didn't jump to line 373 because the condition on line 372 was never true</span></span></p>
@@ -469,7 +469,7 @@
     <p class="pln"><span class="n"><a id="t385" href="#t385">385</a></span><span class="t"><span class="str">        opnsense_tz : tzinfo | None</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t386" href="#t386">386</a></span><span class="t"><span class="str">            Optional pre-fetched timezone for this refresh cycle.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t387" href="#t387">387</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t388" href="#t388">388</a></span><span class="t"><span class="str">        Returns</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t388" href="#t388">388</a></span><span class="t"><span class="str">        Returns:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t389" href="#t389">389</a></span><span class="t"><span class="str">        -------</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t390" href="#t390">390</a></span><span class="t"><span class="str">        list</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t391" href="#t391">391</a></span><span class="t"><span class="str">        Parsed isc dhcpv6 leases payload returned by OPNsense APIs.</span>&nbsp;</span><span class="r"></span></p>
@@ -515,7 +515,7 @@
     <p class="mis show_mis"><span class="n"><a id="t431" href="#t431">431</a></span><span class="t">                    <span class="nam">dt</span><span class="op">:</span> <span class="nam">datetime</span> <span class="op">=</span> <span class="nam">datetime</span><span class="op">.</span><span class="nam">strptime</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t432" href="#t432">432</a></span><span class="t">                        <span class="nam">lease_info</span><span class="op">.</span><span class="nam">get</span><span class="op">(</span><span class="str">"ends"</span><span class="op">,</span> <span class="key">None</span><span class="op">)</span><span class="op">,</span> <span class="str">"%Y/%m/%d %H:%M:%S"</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t433" href="#t433">433</a></span><span class="t">                    <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t434" href="#t434">434</a></span><span class="t">                <span class="key">except</span> <span class="op">(</span><span class="nam">TypeError</span><span class="op">,</span> <span class="nam">ValueError</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t434" href="#t434">434</a></span><span class="t">                <span class="key">except</span> <span class="nam">TypeError</span><span class="op">,</span> <span class="nam">ValueError</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t435" href="#t435">435</a></span><span class="t">                    <span class="key">continue</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t436" href="#t436">436</a></span><span class="t">                <span class="nam">lease</span><span class="op">[</span><span class="str">"expires"</span><span class="op">]</span> <span class="op">=</span> <span class="nam">dt</span><span class="op">.</span><span class="nam">replace</span><span class="op">(</span><span class="nam">tzinfo</span><span class="op">=</span><span class="nam">opnsense_tz</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t437" href="#t437">437</a></span><span class="t">                <span class="key">if</span> <span class="nam">lease</span><span class="op">[</span><span class="str">"expires"</span><span class="op">]</span> <span class="op">&lt;</span> <span class="nam">datetime</span><span class="op">.</span><span class="nam">now</span><span class="op">(</span><span class="op">)</span><span class="op">.</span><span class="nam">astimezone</span><span class="op">(</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -534,7 +534,7 @@
             <a class="nav" href="z_8d042fd4c41619e0_exceptions_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.13.1">coverage.py v7.13.1</a>,
-            created at 2026-03-22 22:55 +0000
+            created at 2026-03-25 22:06 +0000
         </p>
     </div>
 </footer>

@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_a139522e3a23c96e_switch_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.13.1">coverage.py v7.13.1</a>,
-            created at 2026-03-22 22:55 +0000
+            created at 2026-03-25 22:06 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -355,7 +355,7 @@
     <p class="run"><span class="n"><a id="t271" href="#t271">271</a></span><span class="t">    <span class="key">if</span> <span class="nam">opndevice_id</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t272" href="#t272">272</a></span><span class="t">        <span class="key">try</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t273" href="#t273">273</a></span><span class="t">            <span class="nam">device_entry</span> <span class="op">=</span> <span class="nam">dr</span><span class="op">.</span><span class="nam">async_get</span><span class="op">(</span><span class="nam">hass</span><span class="op">)</span><span class="op">.</span><span class="nam">async_get</span><span class="op">(</span><span class="nam">opndevice_id</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t274" href="#t274">274</a></span><span class="t">        <span class="key">except</span> <span class="op">(</span><span class="nam">TypeError</span><span class="op">,</span> <span class="nam">AttributeError</span><span class="op">,</span> <span class="nam">HomeAssistantError</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t274" href="#t274">274</a></span><span class="t">        <span class="key">except</span> <span class="nam">TypeError</span><span class="op">,</span> <span class="nam">AttributeError</span><span class="op">,</span> <span class="nam">HomeAssistantError</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t275" href="#t275">275</a></span><span class="t">            <span class="key">pass</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t276" href="#t276">276</a></span><span class="t">        <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t277" href="#t277">277</a></span><span class="t">            <span class="com"># _LOGGER.debug(f"[get_clients] device_id: {opndevice_id}, device_entry: {device_entry}")</span>&nbsp;</span><span class="r"></span></p>
@@ -364,7 +364,7 @@
     <p class="run"><span class="n"><a id="t280" href="#t280">280</a></span><span class="t">    <span class="key">if</span> <span class="nam">opnentity_id</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t281" href="#t281">281</a></span><span class="t">        <span class="key">try</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t282" href="#t282">282</a></span><span class="t">            <span class="nam">entity_entry</span> <span class="op">=</span> <span class="nam">er</span><span class="op">.</span><span class="nam">async_get</span><span class="op">(</span><span class="nam">hass</span><span class="op">)</span><span class="op">.</span><span class="nam">async_get</span><span class="op">(</span><span class="nam">opnentity_id</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t283" href="#t283">283</a></span><span class="t">        <span class="key">except</span> <span class="op">(</span><span class="nam">TypeError</span><span class="op">,</span> <span class="nam">AttributeError</span><span class="op">,</span> <span class="nam">HomeAssistantError</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t283" href="#t283">283</a></span><span class="t">        <span class="key">except</span> <span class="nam">TypeError</span><span class="op">,</span> <span class="nam">AttributeError</span><span class="op">,</span> <span class="nam">HomeAssistantError</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t284" href="#t284">284</a></span><span class="t">            <span class="key">pass</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t285" href="#t285">285</a></span><span class="t">        <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t286" href="#t286">286</a></span><span class="t">            <span class="com"># _LOGGER.debug(f"[get_clients] entity_id: {opnentity_id}, entity_entry: {entity_entry}")</span>&nbsp;</span><span class="r"></span></p>
@@ -623,7 +623,7 @@
     <p class="pln"><span class="n"><a id="t539" href="#t539">539</a></span><span class="t"><span class="str">    call : ServiceCall</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t540" href="#t540">540</a></span><span class="t"><span class="str">        Service call payload that may contain ``device_id`` or ``entity_id``.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t541" href="#t541">541</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t542" href="#t542">542</a></span><span class="t"><span class="str">    Returns</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t542" href="#t542">542</a></span><span class="t"><span class="str">    Returns:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t543" href="#t543">543</a></span><span class="t"><span class="str">    -------</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t544" href="#t544">544</a></span><span class="t"><span class="str">    ServiceResponse</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t545" href="#t545">545</a></span><span class="t"><span class="str">        Response payload containing per-client speedtest results.</span>&nbsp;</span><span class="r"></span></p>
@@ -664,7 +664,7 @@
     <p class="pln"><span class="n"><a id="t580" href="#t580">580</a></span><span class="t"><span class="str">        Service call payload containing the required ``period`` and optional</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t581" href="#t581">581</a></span><span class="t"><span class="str">        OPNsense device/entity selectors.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t582" href="#t582">582</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t583" href="#t583">583</a></span><span class="t"><span class="str">    Returns</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t583" href="#t583">583</a></span><span class="t"><span class="str">    Returns:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t584" href="#t584">584</a></span><span class="t"><span class="str">    -------</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t585" href="#t585">585</a></span><span class="t"><span class="str">    ServiceResponse</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t586" href="#t586">586</a></span><span class="t"><span class="str">        Parsed per-client vnStat payloads from the requested endpoint.</span>&nbsp;</span><span class="r"></span></p>
@@ -730,7 +730,7 @@
             <a class="nav" href="z_a139522e3a23c96e_switch_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.13.1">coverage.py v7.13.1</a>,
-            created at 2026-03-22 22:55 +0000
+            created at 2026-03-25 22:06 +0000
         </p>
     </div>
 </footer>
