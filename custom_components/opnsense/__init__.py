@@ -135,7 +135,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     config : ConfigType
         The configuration dictionary (unused for config entry only integrations).
 
-    Returns
+    Returns:
     -------
     bool
         Always returns True to indicate successful setup.
@@ -160,12 +160,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry : ConfigEntry
         The configuration entry containing OPNsense connection details.
 
-    Returns
+    Returns:
     -------
     bool
         True if setup was successful, False otherwise.
 
-    Raises
+    Raises:
     ------
     Various exceptions may be raised during client initialization or firmware
     checks, but they are handled internally with appropriate logging and issue
@@ -287,7 +287,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 DOMAIN,
                 f"{config_device_id}_opnsense_below_ltd_firmware_{OPNSENSE_LTD_FIRMWARE}",
             )
-    except (awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError):
+    except awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError:
         _LOGGER.warning("Unable to confirm OPNsense Firmware version")
 
     try:
@@ -300,7 +300,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 entry_id=entry.entry_id,
                 config_device_id=config_device_id,
             )
-    except (awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError):
+    except awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError:
         _LOGGER.warning("Unable to confirm OPNsense Firmware version")
 
     await coordinator.async_config_entry_first_refresh()
@@ -468,7 +468,7 @@ async def async_remove_config_entry_device(
     device_entry : dr.DeviceEntry
         The device entry to be removed.
 
-    Returns
+    Returns:
     -------
     bool
         True if the device can be removed, False otherwise.
@@ -498,7 +498,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry : ConfigEntry
         The configuration entry to unload.
 
-    Returns
+    Returns:
     -------
     bool
         True if unloading was successful, False otherwise.
@@ -530,7 +530,7 @@ async def _migrate_1_to_2(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
     config_entry : ConfigEntry
         The configuration entry to migrate.
 
-    Returns
+    Returns:
     -------
     bool
         Always returns True.
@@ -565,7 +565,7 @@ async def _migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
     config_entry : ConfigEntry
         The configuration entry to migrate.
 
-    Returns
+    Returns:
     -------
     bool
         True if migration was successful, False otherwise.
@@ -693,7 +693,7 @@ async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
     config_entry : ConfigEntry
         The configuration entry to migrate.
 
-    Returns
+    Returns:
     -------
     bool
         True if migration was successful, False otherwise.
@@ -814,7 +814,7 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
     config_entry : ConfigEntry
         The configuration entry to migrate.
 
-    Returns
+    Returns:
     -------
     bool
         True if migration was successful, False otherwise.

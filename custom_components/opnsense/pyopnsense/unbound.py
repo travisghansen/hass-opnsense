@@ -17,7 +17,7 @@ class UnboundMixin(PyOPNsenseClientProtocol):
     async def get_unbound_blocklist_legacy(self) -> MutableMapping[str, Any]:
         """Return the Unbound Blocklist details.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any]
         Parsed unbound blocklist legacy payload returned by OPNsense APIs.
@@ -52,7 +52,7 @@ class UnboundMixin(PyOPNsenseClientProtocol):
         set_state : bool
             Desired enabled state to apply.
 
-        Returns
+        Returns:
         -------
         bool
         ``True`` when legacy DNSBL configuration and restart both succeed.
@@ -93,7 +93,7 @@ class UnboundMixin(PyOPNsenseClientProtocol):
     async def get_unbound_blocklist(self) -> dict[str, Any]:
         """Return the Unbound Blocklist details.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
         Parsed unbound blocklist payload returned by OPNsense APIs.
@@ -142,7 +142,7 @@ class UnboundMixin(PyOPNsenseClientProtocol):
         uuid : str | None
             Target object UUID returned by OPNsense.
 
-        Returns
+        Returns:
         -------
         bool
         ``True`` when the target blocklist toggles successfully and DNSBL reports OK.
@@ -187,7 +187,7 @@ class UnboundMixin(PyOPNsenseClientProtocol):
         uuid : str | None
             Target object UUID returned by OPNsense. Defaults to None.
 
-        Returns
+        Returns:
         -------
         bool
         True when OPNsense reports the requested action succeeded; otherwise False.
@@ -225,7 +225,7 @@ class UnboundMixin(PyOPNsenseClientProtocol):
         uuid : str | None
             Target object UUID returned by OPNsense. Defaults to None.
 
-        Returns
+        Returns:
         -------
         bool
         True when OPNsense reports the requested action succeeded; otherwise False.

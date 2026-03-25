@@ -20,7 +20,7 @@ class VouchersMixin(PyOPNsenseClientProtocol):
         data : MutableMapping[str, Any]
             Input mapping used to build the request payload.
 
-        Returns
+        Returns:
         -------
         list
         List of generated voucher entries returned by the voucher service.

@@ -29,7 +29,7 @@ class PyOPNsenseClientProtocol(Protocol):
         path : str
             Relative API path.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any] | list | None
             Decoded JSON payload, or ``None`` when unavailable.
@@ -50,7 +50,7 @@ class PyOPNsenseClientProtocol(Protocol):
         payload : MutableMapping[str, Any] | None
             Optional request body.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any] | list | None
             Decoded JSON payload, or ``None`` when unavailable.
@@ -67,7 +67,7 @@ class PyOPNsenseClientProtocol(Protocol):
         path : str
             Relative API path.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
             Parsed stream payload.
@@ -84,7 +84,7 @@ class PyOPNsenseClientProtocol(Protocol):
         path : str
             Relative API path.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
             Dictionary payload.
@@ -105,7 +105,7 @@ class PyOPNsenseClientProtocol(Protocol):
         timeout_seconds : int | float
             Total timeout window in seconds for the request.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
             Dictionary payload.
@@ -122,7 +122,7 @@ class PyOPNsenseClientProtocol(Protocol):
         path : str
             Relative API path.
 
-        Returns
+        Returns:
         -------
         list
             List payload.
@@ -143,7 +143,7 @@ class PyOPNsenseClientProtocol(Protocol):
         payload : MutableMapping[str, Any] | None
             Optional request body.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
             Dictionary payload.
@@ -164,7 +164,7 @@ class PyOPNsenseClientProtocol(Protocol):
         payload : MutableMapping[str, Any] | None
             Optional request body.
 
-        Returns
+        Returns:
         -------
         list
             List payload.
@@ -181,7 +181,7 @@ class PyOPNsenseClientProtocol(Protocol):
         datetime_str : str | None
             Optional datetime string from OPNsense ``system_time`` output.
 
-        Returns
+        Returns:
         -------
         tzinfo
             Parsed timezone when available, otherwise a local fixed-offset fallback.
@@ -198,7 +198,7 @@ class PyOPNsenseClientProtocol(Protocol):
         script : str
             PHP source snippet.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
             Decoded dictionary payload.
@@ -219,7 +219,7 @@ class PyOPNsenseClientProtocol(Protocol):
         data : MutableMapping[str, Any]
             Replacement section payload.
 
-        Returns
+        Returns:
         -------
         None
 
@@ -230,7 +230,7 @@ class PyOPNsenseClientProtocol(Protocol):
     async def _filter_configure(self) -> None:
         """Apply pending firewall and NAT filter configuration changes.
 
-        Returns
+        Returns:
         -------
         None
 
@@ -241,7 +241,7 @@ class PyOPNsenseClientProtocol(Protocol):
     async def get_config(self) -> dict[str, Any]:
         """Return full OPNsense configuration payload.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
             Full configuration dictionary.
@@ -253,7 +253,7 @@ class PyOPNsenseClientProtocol(Protocol):
     async def get_host_firmware_version(self) -> str | None:
         """Return the host firmware version string.
 
-        Returns
+        Returns:
         -------
         str | None
             Parsed firmware version, if available.
@@ -265,7 +265,7 @@ class PyOPNsenseClientProtocol(Protocol):
     async def is_plugin_installed(self) -> bool:
         """Return whether plugin installation is detected.
 
-        Returns
+        Returns:
         -------
         bool
             ``True`` when the plugin is installed.
@@ -282,7 +282,7 @@ class PyOPNsenseClientProtocol(Protocol):
         plugin_name : str
             OPNsense package name (for example ``os-vnstat``).
 
-        Returns
+        Returns:
         -------
         bool
             ``True`` when the package is installed.
@@ -301,12 +301,12 @@ class PyOPNsenseClientProtocol(Protocol):
         force_refresh : bool
             Whether to bypass cached probe results.
 
-        Returns
+        Returns:
         -------
         bool
             ``True`` when endpoint probe succeeds.
 
-        Notes
+        Notes:
         -----
         Implementations cache per-endpoint availability using a TTL window.
         Successful probes and HTTP 404 "not found" probes are cached until TTL
@@ -322,7 +322,7 @@ class PyOPNsenseClientProtocol(Protocol):
     async def is_plugin_deprecated(self) -> bool:
         """Return whether plugin is deprecated for host firmware.
 
-        Returns
+        Returns:
         -------
         bool
             ``True`` when the plugin should be considered deprecated.

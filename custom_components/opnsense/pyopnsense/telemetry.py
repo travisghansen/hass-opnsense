@@ -19,7 +19,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
     async def get_telemetry(self) -> MutableMapping[str, Any]:
         """Get telemetry data from OPNsense.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any]
         Parsed telemetry payload returned by OPNsense APIs.
@@ -41,7 +41,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
     async def get_interfaces(self) -> MutableMapping[str, Any]:
         """Return all OPNsense interfaces.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any]
         Parsed interfaces payload returned by OPNsense APIs.
@@ -107,7 +107,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
     async def _get_telemetry_mbuf(self) -> MutableMapping[str, Any]:
         """Collect mbuf usage telemetry.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any]
         Parsed telemetry mbuf payload returned by OPNsense APIs.
@@ -133,7 +133,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
     async def _get_telemetry_pfstate(self) -> MutableMapping[str, Any]:
         """Collect PF state table telemetry.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any]
         Parsed telemetry pfstate payload returned by OPNsense APIs.
@@ -159,7 +159,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
     async def _get_telemetry_memory(self) -> MutableMapping[str, Any]:
         """Collect memory and swap telemetry.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any]
         Parsed telemetry memory payload returned by OPNsense APIs.
@@ -205,7 +205,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
     async def _get_telemetry_system(self) -> MutableMapping[str, Any]:
         """Collect system time, uptime, boottime, and load telemetry.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any]
         Parsed telemetry system payload returned by OPNsense APIs.
@@ -292,7 +292,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
     async def _get_telemetry_cpu(self) -> MutableMapping[str, Any]:
         """Collect CPU core count and usage telemetry.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any]
         Parsed telemetry cpu payload returned by OPNsense APIs.
@@ -326,7 +326,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
     async def _get_telemetry_filesystems(self) -> list:
         """Collect filesystem telemetry entries from diagnostics.
 
-        Returns
+        Returns:
         -------
         list
         Parsed telemetry filesystems payload returned by OPNsense APIs.
@@ -346,7 +346,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
     async def get_gateways(self) -> MutableMapping[str, Any]:
         """Return OPNsense Gateway details.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any]
         Parsed gateways payload returned by OPNsense APIs.
@@ -368,7 +368,7 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
     async def _get_telemetry_temps(self) -> MutableMapping[str, Any]:
         """Collect temperature sensor telemetry.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any]
         Parsed telemetry temps payload returned by OPNsense APIs.

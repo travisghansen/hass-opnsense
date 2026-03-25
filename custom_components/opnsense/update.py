@@ -145,13 +145,13 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
     def _is_update_available(self, state: MutableMapping[str, Any]) -> bool:
         try:
             return state["firmware_update_info"]["status"] != "error"
-        except (TypeError, KeyError, AttributeError):
+        except TypeError, KeyError, AttributeError:
             return False
 
     def _get_installed_version(self, state: MutableMapping[str, Any]) -> str | None:
         try:
             return dict_get(state, "firmware_update_info.product.product_version")
-        except (TypeError, KeyError, AttributeError):
+        except TypeError, KeyError, AttributeError:
             return None
 
     def _get_versions(
@@ -195,7 +195,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
                         if "." in product_latest
                         else product_latest
                     )
-        except (TypeError, KeyError, AttributeError):
+        except TypeError, KeyError, AttributeError:
             return None, None, None
         else:
             return product_version, product_latest, product_series

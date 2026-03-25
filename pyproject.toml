@@ -3,7 +3,7 @@ lint = [
     "aiohttp",
     "homeassistant-stubs",
     "mypy",
-    "pre-commit",
+    "prek",
     "ruff",
     "types-cffi",
     "types-PyMySQL",
@@ -54,7 +54,7 @@ parallel = false
 show_missing = true
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.14"
 platform = "linux"
 local_partial_types = true
 strict_equality = true
@@ -105,8 +105,8 @@ line-length = 100
 indent-width = 4
 fix = true
 force-exclude = true
-target-version = "py313"
-required-version = ">=0.8.0"
+target-version = "py314"
+required-version = ">=0.15.0"
 
 [tool.ruff.format]
 quote-style = "double"
@@ -349,4 +349,5 @@ split-on-trailing-comma = false
 max-complexity = 25
 
 [tool.ruff.lint.pydocstyle]
-property-decorators = ["propcache.cached_property"]
+convention = "google"
+property-decorators = ["propcache.api.cached_property"]

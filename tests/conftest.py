@@ -279,7 +279,7 @@ def _patch_asyncio_create_task(monkeypatch):
             try:
                 g = getattr(frame, "f_globals", None) or {}
                 module_name = g.get("__name__", "") if isinstance(g, MutableMapping) else ""
-            except (AttributeError, TypeError):
+            except AttributeError, TypeError:
                 module_name = ""
 
         # Match module names that include 'pyopnsense' (e.g. 'custom_components.opnsense.pyopnsense')
@@ -394,7 +394,7 @@ def _neutralize_pyopnsense_background_tasks(monkeypatch, request):
             )
             if normalized_path.name == "test_pyopnsense.py" or has_pyopnsense_test_segments:
                 return
-    except (AttributeError, TypeError):
+    except AttributeError, TypeError:
         # If we cannot determine the requesting test, continue with patching.
         pass
 
@@ -406,7 +406,7 @@ def _neutralize_pyopnsense_background_tasks(monkeypatch, request):
             monkeypatch.setattr(
                 pyopnsense.OPNsenseClient, "_process_queue", _noop_async, raising=False
             )
-    except (AttributeError, TypeError):
+    except AttributeError, TypeError:
         # best-effort; continue to fallback below
         pass
 
@@ -444,7 +444,7 @@ def _neutralize_pyopnsense_background_tasks(monkeypatch, request):
                     try:
                         g = getattr(frame, "f_globals", None) or {}
                         module_name = g.get("__name__", "") if isinstance(g, MutableMapping) else ""
-                    except (AttributeError, TypeError):
+                    except AttributeError, TypeError:
                         module_name = ""
 
                 # If the coroutine originates from a test-local no-op but is a
@@ -461,7 +461,7 @@ def _neutralize_pyopnsense_background_tasks(monkeypatch, request):
                             and isinstance(self_obj, pyopnsense.OPNsenseClient)
                         ):
                             is_pyopnsense_bound = True
-                    except (AttributeError, TypeError):
+                    except AttributeError, TypeError:
                         is_pyopnsense_bound = False
 
                 if is_pyopnsense_bound or (
@@ -506,7 +506,7 @@ def _neutralize_pyopnsense_background_tasks(monkeypatch, request):
                 return orig(coro, *args, **kwargs)
 
             monkeypatch.setattr(target_asyncio, "create_task", _wrap_create_task, raising=False)
-    except (AttributeError, TypeError):
+    except AttributeError, TypeError:
         # Best-effort; do not fail tests if this decoration cannot be applied.
         pass
 
@@ -676,7 +676,7 @@ def fake_flow_client():
 
             """
 
-            last_instance: "FakeFlowClient | None" = None
+            last_instance: FakeFlowClient | None = None
 
             def __init__(self, *args, **kwargs):
                 FakeFlowClient.last_instance = self
@@ -908,7 +908,7 @@ def pytest_runtest_teardown(item: Any, nextitem: Any) -> None:
         try:
             # Prefer the fixture value for the current test if present.
             replace_loop = bool(item.funcargs.get("expected_lingering_timers", False))
-        except (AttributeError, KeyError):
+        except AttributeError, KeyError:
             replace_loop = False
 
         if replace_loop:
@@ -916,7 +916,7 @@ def pytest_runtest_teardown(item: Any, nextitem: Any) -> None:
                 new_loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(new_loop)
                 event_loop = new_loop
-            except (OSError, RuntimeError):
+            except OSError, RuntimeError:
                 # Best-effort: if we cannot recreate the loop, continue and
                 # let teardown attempt to proceed (it may still error).
                 pass
@@ -926,7 +926,7 @@ def pytest_runtest_teardown(item: Any, nextitem: Any) -> None:
     # gracefully.
     try:
         handles = get_scheduled_timer_handles(event_loop)
-    except (RuntimeError, OSError):
+    except RuntimeError, OSError:
         handles = []
 
     for handle in handles:

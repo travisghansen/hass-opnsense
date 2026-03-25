@@ -61,7 +61,7 @@ class VnstatMixin(PyOPNsenseClientProtocol):
             Requested vnStat period. Supported values are ``hourly``, ``daily``,
             ``monthly``, and ``yearly``.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
             Parsed vnStat payload with ``period`` and per-interface rows.
@@ -87,7 +87,7 @@ class VnstatMixin(PyOPNsenseClientProtocol):
     async def get_vnstat(self) -> MutableMapping[str, Any]:
         """Collect vnStat hourly, daily, and monthly usage data.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any]
             Parsed vnStat payload with per-interface rows and per-interface
@@ -165,7 +165,7 @@ class VnstatMixin(PyOPNsenseClientProtocol):
         expected_period : str
             Period requested from the endpoint (hourly, daily, monthly, yearly).
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
             Dictionary containing parsed period and per-interface row data.
@@ -233,7 +233,7 @@ class VnstatMixin(PyOPNsenseClientProtocol):
         line : str
             Raw line from vnStat table output.
 
-        Returns
+        Returns:
         -------
         dict[str, Any] | None
             Normalized row dictionary when parsing succeeds; otherwise ``None``.
@@ -273,7 +273,7 @@ class VnstatMixin(PyOPNsenseClientProtocol):
         unit : str
             Unit string such as ``GiB`` or ``MiB``.
 
-        Returns
+        Returns:
         -------
         int | None
             Byte count as integer when conversion succeeds; otherwise ``None``.
@@ -295,7 +295,7 @@ class VnstatMixin(PyOPNsenseClientProtocol):
         unit : str
             Rate unit string such as ``Mbit/s``.
 
-        Returns
+        Returns:
         -------
         int | None
             Rate in bits-per-second as integer when conversion succeeds;
@@ -322,7 +322,7 @@ class VnstatMixin(PyOPNsenseClientProtocol):
         current_tz : tzinfo
             Timezone used for determining the current day.
 
-        Returns
+        Returns:
         -------
         dict[str, Any] | None
             Selected daily row, or ``None`` when unavailable.
@@ -354,7 +354,7 @@ class VnstatMixin(PyOPNsenseClientProtocol):
         current_tz : tzinfo
             Timezone used for determining the current month.
 
-        Returns
+        Returns:
         -------
         dict[str, Any] | None
             Selected monthly row, or ``None`` when unavailable.
@@ -389,7 +389,7 @@ class VnstatMixin(PyOPNsenseClientProtocol):
         current_tz : tzinfo
             Timezone used for determining the current and previous hour.
 
-        Returns
+        Returns:
         -------
         dict[str, Any] | None
             Row for the previous hour, or a fallback row when labels cannot be
@@ -418,7 +418,7 @@ class VnstatMixin(PyOPNsenseClientProtocol):
         row : Mapping[str, Any] | None
             Parsed vnStat row payload.
 
-        Returns
+        Returns:
         -------
         dict[str, int] | None
             ``total_bytes``, ``rx_bytes``, and ``tx_bytes`` when available.
@@ -443,7 +443,7 @@ class VnstatMixin(PyOPNsenseClientProtocol):
         payloads : Mapping[str, Any] | MutableMapping[str, Any]
             Parsed payloads from hourly, daily, and monthly endpoints.
 
-        Returns
+        Returns:
         -------
         list[str]
             Sorted list of interface names found in payloads.
@@ -469,7 +469,7 @@ class VnstatMixin(PyOPNsenseClientProtocol):
         interface : str
             Interface name to retrieve.
 
-        Returns
+        Returns:
         -------
         list[dict[str, Any]]
             Parsed rows for the interface, or an empty list.
@@ -489,7 +489,7 @@ class VnstatMixin(PyOPNsenseClientProtocol):
         label : Any
             Raw daily label string.
 
-        Returns
+        Returns:
         -------
         date | None
             Parsed date value or ``None`` when parsing fails.
@@ -512,7 +512,7 @@ class VnstatMixin(PyOPNsenseClientProtocol):
         label : Any
             Raw monthly label string.
 
-        Returns
+        Returns:
         -------
         tuple[int, int] | None
             ``(year, month)`` tuple or ``None`` when parsing fails.
@@ -539,7 +539,7 @@ class VnstatMixin(PyOPNsenseClientProtocol):
         current_tz : tzinfo
             Timezone assigned to parsed hourly values.
 
-        Returns
+        Returns:
         -------
         datetime | None
             Parsed local datetime value or ``None`` when parsing fails.

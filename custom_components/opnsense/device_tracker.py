@@ -82,7 +82,7 @@ async def async_setup_entry(
                             value = arp_entry.get(attr, None)
                             if value:
                                 device.update({attr: value})
-                    except (TypeError, KeyError, AttributeError):
+                    except TypeError, KeyError, AttributeError:
                         pass
 
             devices.append(device)
@@ -96,7 +96,7 @@ async def async_setup_entry(
                         value = arp_entry.get(attr, None)
                         if value:
                             device.update({attr: value})
-                except (TypeError, KeyError, AttributeError):
+                except TypeError, KeyError, AttributeError:
                     pass
 
                 mac_addresses.append(mac_address)
@@ -217,7 +217,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         # _LOGGER.debug(f"[OPNsenseScannerEntity handle_coordinator_update] entry: {entry}")
         try:
             self._attr_ip_address = entry.get("ip") if len(entry.get("ip", 0)) > 0 else None
-        except (TypeError, KeyError, AttributeError):
+        except TypeError, KeyError, AttributeError:
             self._attr_ip_address = None
 
         if self._attr_ip_address:
@@ -229,7 +229,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
                 if len(entry.get("hostname", "").strip("?")) > 0
                 else None
             )
-        except (TypeError, KeyError, AttributeError):
+        except TypeError, KeyError, AttributeError:
             self._attr_hostname = None
 
         if self._attr_hostname:
@@ -280,7 +280,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
                             )
                     else:
                         self._attr_extra_state_attributes[prop_name] = prop
-        except (TypeError, KeyError, AttributeError):
+        except TypeError, KeyError, AttributeError:
             pass
 
         if self._attr_hostname is None and self._last_known_hostname:
@@ -300,7 +300,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
 
         try:
             self._attr_icon = "mdi:lan-connect" if self.is_connected else "mdi:lan-disconnect"
-        except (TypeError, KeyError, AttributeError):
+        except TypeError, KeyError, AttributeError:
             self._attr_icon = "mdi:lan-disconnect"
 
         self.async_write_ha_state()
@@ -339,7 +339,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
                 value = state.get(attr, None)
                 if value:
                     self._attr_extra_state_attributes[attr] = value
-        except (TypeError, KeyError, AttributeError):
+        except TypeError, KeyError, AttributeError:
             pass
 
         lkct = state.get("last_known_connected_time", None)

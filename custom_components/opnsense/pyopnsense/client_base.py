@@ -122,7 +122,7 @@ class ClientBaseMixin:
     def name(self) -> str:
         """Return the name of the client.
 
-        Returns
+        Returns:
         -------
         str
         Configured client display name.
@@ -139,7 +139,7 @@ class ClientBaseMixin:
     async def get_query_counts(self) -> tuple:
         """Return current REST and XMLRPC query counts.
 
-        Returns
+        Returns:
         -------
         tuple
         Two-item tuple containing REST query count and XMLRPC query count.
@@ -151,7 +151,7 @@ class ClientBaseMixin:
     def _get_proxy(self) -> xmlrpc.client.ServerProxy:
         """Create an XMLRPC server proxy for the configured OPNsense host.
 
-        Returns
+        Returns:
         -------
         xmlrpc.client.ServerProxy
         XMLRPC ServerProxy configured for this client instance.
@@ -200,7 +200,7 @@ class ClientBaseMixin:
         script : str
             PHP script source executed through XMLRPC.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
         JSON-decoded response payload, or an empty dictionary on failure.
@@ -304,7 +304,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         path : str
             API endpoint path to call on the OPNsense host.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
         Queued streaming-response payload parsed into a dictionary.
@@ -314,7 +314,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         loop = await self._get_active_loop()
         try:
             caller = inspect.stack()[1].function
-        except (IndexError, AttributeError):
+        except IndexError, AttributeError:
             caller = "Unknown"
         future = loop.create_future()
         await self._request_queue.put(("get_from_stream", path, None, future, caller))
@@ -328,7 +328,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         path : str
             API endpoint path to call on the OPNsense host.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any] | list | None
         Decoded JSON payload from a queued GET request, or None when request/parse fails.
@@ -338,7 +338,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         loop = await self._get_active_loop()
         try:
             caller = inspect.stack()[1].function
-        except (IndexError, AttributeError):
+        except IndexError, AttributeError:
             caller = "Unknown"
         future = loop.create_future()
         await self._request_queue.put(("get", path, None, future, caller))
@@ -356,7 +356,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         payload : MutableMapping[str, Any] | None
             JSON payload body sent with the API request. Defaults to None.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any] | list | None
         Decoded JSON payload from a queued POST request, or None when request/parse fails.
@@ -366,7 +366,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         loop = await self._get_active_loop()
         try:
             caller = inspect.stack()[1].function
-        except (IndexError, AttributeError):
+        except IndexError, AttributeError:
             caller = "Unknown"
         future = loop.create_future()
         await self._request_queue.put(("post", path, payload, future, caller))
@@ -437,7 +437,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         caller : str
             Name of the calling method used for log context. Defaults to 'Unknown'.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
         Parsed JSON object extracted from the stream payload.
@@ -542,7 +542,7 @@ $toreturn["real"] = json_encode($toreturn_real);
             Optional timeout value in seconds for this request. Defaults to None,
             which uses the shared default timeout.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any] | list | None
         Decoded JSON payload from an immediate GET request, or None when request/parse fails.
@@ -601,7 +601,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         timeout_seconds : int | float | None
             Requested timeout value in seconds.
 
-        Returns
+        Returns:
         -------
         float
             Positive timeout in seconds. Falls back to
@@ -612,7 +612,7 @@ $toreturn["real"] = json_encode($toreturn_real);
             return float(DEFAULT_REQUEST_TIMEOUT_SECONDS)
         try:
             timeout_total = float(timeout_seconds)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return float(DEFAULT_REQUEST_TIMEOUT_SECONDS)
         if timeout_total <= 0:
             return float(DEFAULT_REQUEST_TIMEOUT_SECONDS)
@@ -626,7 +626,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         path : str
             API endpoint path to call on the OPNsense host.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
         Dictionary payload from the GET request, or an empty dictionary if the response is not a mapping.
@@ -648,7 +648,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         timeout_seconds : int | float
             Total timeout window in seconds for this request.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
             Dictionary payload from the GET request, or an empty dictionary if
@@ -670,7 +670,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         path : str
             API endpoint path to call on the OPNsense host.
 
-        Returns
+        Returns:
         -------
         list
         List payload from the GET request, or an empty list if the response is not a list.
@@ -694,7 +694,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         caller : str
             Name of the calling method used for log context. Defaults to 'Unknown'.
 
-        Returns
+        Returns:
         -------
         MutableMapping[str, Any] | list | None
         Decoded JSON payload from an immediate POST request, or None when request/parse fails.
@@ -758,7 +758,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         payload : MutableMapping[str, Any] | None
             JSON payload body sent with the API request. Defaults to None.
 
-        Returns
+        Returns:
         -------
         dict[str, Any]
         Dictionary payload from the POST request, or an empty dictionary if the response is not a mapping.
@@ -780,7 +780,7 @@ $toreturn["real"] = json_encode($toreturn_real);
         payload : MutableMapping[str, Any] | None
             JSON payload body sent with the API request. Defaults to None.
 
-        Returns
+        Returns:
         -------
         list
         List payload from the POST request, or an empty list if the response is not a list.
@@ -800,12 +800,12 @@ $toreturn["real"] = json_encode($toreturn_real);
         force_refresh : bool
             Whether to bypass cached availability state and perform a new probe.
 
-        Returns
+        Returns:
         -------
         bool
             ``True`` when endpoint probe succeeded, otherwise ``False``.
 
-        Notes
+        Notes:
         -----
         Availability is cached per endpoint path in ``self._endpoint_availability`` and
         timestamped in ``self._endpoint_checked_at``.

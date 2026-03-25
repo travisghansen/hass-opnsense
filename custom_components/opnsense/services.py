@@ -271,7 +271,7 @@ async def _get_clients(
     if opndevice_id:
         try:
             device_entry = dr.async_get(hass).async_get(opndevice_id)
-        except (TypeError, AttributeError, HomeAssistantError):
+        except TypeError, AttributeError, HomeAssistantError:
             pass
         else:
             # _LOGGER.debug(f"[get_clients] device_id: {opndevice_id}, device_entry: {device_entry}")
@@ -280,7 +280,7 @@ async def _get_clients(
     if opnentity_id:
         try:
             entity_entry = er.async_get(hass).async_get(opnentity_id)
-        except (TypeError, AttributeError, HomeAssistantError):
+        except TypeError, AttributeError, HomeAssistantError:
             pass
         else:
             # _LOGGER.debug(f"[get_clients] entity_id: {opnentity_id}, entity_entry: {entity_entry}")
@@ -539,7 +539,7 @@ async def _service_run_speedtest(hass: HomeAssistant, call: ServiceCall) -> Serv
     call : ServiceCall
         Service call payload that may contain ``device_id`` or ``entity_id``.
 
-    Returns
+    Returns:
     -------
     ServiceResponse
         Response payload containing per-client speedtest results.
@@ -580,7 +580,7 @@ async def _service_get_vnstat_metrics(hass: HomeAssistant, call: ServiceCall) ->
         Service call payload containing the required ``period`` and optional
         OPNsense device/entity selectors.
 
-    Returns
+    Returns:
     -------
     ServiceResponse
         Parsed per-client vnStat payloads from the requested endpoint.
