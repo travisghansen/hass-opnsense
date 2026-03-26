@@ -32,6 +32,8 @@ from homeassistant.helpers import (
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.typing import ConfigType
 
+from .client_factory import MissingExternalAiopnsenseDependency, create_opnsense_client
+from .client_protocol import OPNsenseClientProtocol
 from .const import (
     CONF_DEVICE_TRACKER_ENABLED,
     CONF_DEVICE_TRACKER_SCAN_INTERVAL,
@@ -56,7 +58,6 @@ from .const import (
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .helpers import is_private_ip
 from .models import OPNsenseData
-from .pyopnsense import OPNsenseClient
 from .services import async_setup_services
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -64,11 +65,11 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Handle options update for the OPNsense integration. This function is called when the configuration entry options are updated. It handles reloading the integration if necessary, removing entities that are no longer enabled based on granular sync options, and cleaning up device tracker devices if device tracking is disabled.
+    """Handle config-entry option updates and schedule integration reload.
 
     Args:
-        hass: The Home Assistant instance.
-        entry: The configuration entry for the OPNsense integration.
+        hass: Home Assistant instance.
+        entry: OPNsense config entry whose options were updated.
     """
     # _LOGGER.debug("[async_update_listener] entry: %s", entry.as_dict())
     if getattr(entry.runtime_data, SHOULD_RELOAD, True):
@@ -114,28 +115,28 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up the OPNsense integration at the domain level. This function is called during Home Assistant startup to initialize integration-level services for the OPNsense domain.
+    """Set up domain-level OPNsense services.
 
     Args:
-        hass: The Home Assistant instance.
-        config: The configuration dictionary (unused for config entry only integrations).
+        hass: Home Assistant instance.
+        config: YAML configuration mapping (unused for config-entry setup).
 
     Returns:
-        bool: Always returns True to indicate successful setup.
+        bool: Always `True` after service setup succeeds.
     """
     await async_setup_services(hass)
     return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up the OPNsense integration from a configuration entry. This function initializes the OPNsense client, coordinators, and platforms based on the provided configuration entry. It performs firmware version checks, handles device ID validation, and sets up data coordinators for state updates and device tracking.
+    """Set up OPNsense integration state for a config entry.
 
     Args:
-        hass: The Home Assistant instance.
-        entry: The configuration entry containing OPNsense connection details.
+        hass: Home Assistant instance.
+        entry: Config entry containing OPNsense connection credentials and options.
 
     Returns:
-        bool: True if setup was successful, False otherwise.
+        bool: `True` when setup and initial refresh succeed; otherwise `False`.
 
     Raises:
         aiohttp.ClientResponseError: Raised when the initial API probes or first
@@ -159,18 +160,37 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     config_device_id: str = config[CONF_DEVICE_UNIQUE_ID]
 
-    client = OPNsenseClient(
-        url=url,
-        username=username,
-        password=password,
-        session=async_create_clientsession(
-            hass=hass,
-            raise_for_status=False,
-            cookie_jar=aiohttp.CookieJar(unsafe=is_private_ip(url)),
-        ),
-        opts={"verify_ssl": verify_ssl},
-        name=entry.title,
-    )
+    client: OPNsenseClientProtocol | None = None
+    try:
+        client = await create_opnsense_client(
+            url=url,
+            username=username,
+            password=password,
+            session=async_create_clientsession(
+                hass=hass,
+                raise_for_status=False,
+                cookie_jar=aiohttp.CookieJar(unsafe=is_private_ip(url)),
+            ),
+            opts={"verify_ssl": verify_ssl},
+            name=entry.title,
+        )
+    except MissingExternalAiopnsenseDependency:
+        if client is not None:
+            await client.async_close()
+        ir.async_create_issue(
+            hass,
+            DOMAIN,
+            f"{config_device_id}_missing_external_aiopnsense",
+            is_fixable=False,
+            is_persistent=False,
+            issue_domain=DOMAIN,
+            severity=ir.IssueSeverity.ERROR,
+            translation_key="missing_external_aiopnsense",
+        )
+        _LOGGER.error(
+            "OPNsense firmware requires external aiopnsense package, but it is not available."
+        )
+        return False
 
     scan_interval: int = options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     _LOGGER.info("Starting hass-opnsense %s", VERSION)
@@ -183,161 +203,186 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         device_unique_id=config_device_id,
         config_entry=entry,
     )
+    device_tracker_coordinator: OPNsenseDataUpdateCoordinator | None = None
 
-    # Trigger repair task and shutdown if device id has changed
-    router_device_id: str | None = await client.get_device_unique_id(expected_id=config_device_id)
-    _LOGGER.debug(
-        "[init async_setup_entry]: config device id: %s, router device id: %s",
-        config_device_id,
-        router_device_id,
-    )
-    if router_device_id != config_device_id and router_device_id:
-        ir.async_create_issue(
-            hass=hass,
-            domain=DOMAIN,
-            issue_id=f"{config_device_id}_device_id_mismatched",
-            is_fixable=False,
-            is_persistent=False,
-            severity=ir.IssueSeverity.ERROR,
-            translation_key="device_id_mismatched",
-        )
-        _LOGGER.error(
-            "OPNsense Device ID has changed which indicates new or changed hardware. "
-            "In order to accomodate this, hass-opnsense needs to be removed and reinstalled for this router. "
-            "hass-opnsense is shutting down."
-        )
-        await coordinator.async_shutdown()
-        return False
-
-    firmware: str | None = await client.get_host_firmware_version()
-    _LOGGER.info("OPNsense Firmware %s", firmware)
+    setup_succeeded: bool = False
     try:
-        if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
-            OPNSENSE_MIN_FIRMWARE
-        ):
+        # Trigger repair task and shutdown if device id has changed
+        router_device_id: str | None = await client.get_device_unique_id(
+            expected_id=config_device_id
+        )
+        _LOGGER.debug(
+            "[init async_setup_entry]: config device id: %s, router device id: %s",
+            config_device_id,
+            router_device_id,
+        )
+        if router_device_id != config_device_id and router_device_id:
             ir.async_create_issue(
-                hass,
-                DOMAIN,
-                f"{config_device_id}_opnsense_below_min_firmware_{OPNSENSE_MIN_FIRMWARE}",
-                is_fixable=False,
-                is_persistent=False,
-                issue_domain=DOMAIN,
-                severity=ir.IssueSeverity.ERROR,
-                translation_key="below_min_firmware",
-                translation_placeholders={
-                    "version": str(VERSION),
-                    "min_firmware": str(OPNSENSE_MIN_FIRMWARE),
-                    "firmware": firmware or "Unknown",
-                },
-            )
-            await coordinator.async_shutdown()
-            return False
-        if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
-            OPNSENSE_LTD_FIRMWARE
-        ):
-            ir.async_create_issue(
-                hass,
-                DOMAIN,
-                f"{config_device_id}_opnsense_below_ltd_firmware_{OPNSENSE_LTD_FIRMWARE}",
-                is_fixable=False,
-                is_persistent=False,
-                issue_domain=DOMAIN,
-                severity=ir.IssueSeverity.WARNING,
-                translation_key="below_ltd_firmware",
-                translation_placeholders={
-                    "version": str(VERSION),
-                    "ltd_firmware": str(OPNSENSE_LTD_FIRMWARE),
-                    "firmware": firmware or "Unknown",
-                },
-            )
-        else:
-            ir.async_delete_issue(
-                hass,
-                DOMAIN,
-                f"{config_device_id}_opnsense_below_min_firmware_{OPNSENSE_MIN_FIRMWARE}",
-            )
-            ir.async_delete_issue(
-                hass,
-                DOMAIN,
-                f"{config_device_id}_opnsense_below_ltd_firmware_{OPNSENSE_LTD_FIRMWARE}",
-            )
-    except awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError:
-        _LOGGER.warning("Unable to confirm OPNsense Firmware version")
-
-    try:
-        if awesomeversion.AwesomeVersion(firmware) > awesomeversion.AwesomeVersion(
-            "26.1"
-        ) and awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion("26.7"):
-            await _deprecated_plugin_cleanup_26_1_1(
                 hass=hass,
-                client=client,
-                entry_id=entry.entry_id,
-                config_device_id=config_device_id,
+                domain=DOMAIN,
+                issue_id=f"{config_device_id}_device_id_mismatched",
+                is_fixable=False,
+                is_persistent=False,
+                severity=ir.IssueSeverity.ERROR,
+                translation_key="device_id_mismatched",
             )
-    except awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError:
-        _LOGGER.warning("Unable to confirm OPNsense Firmware version")
+            _LOGGER.error(
+                "OPNsense Device ID has changed which indicates new or changed hardware. "
+                "In order to accomodate this, hass-opnsense needs to be removed and reinstalled for this router. "
+                "hass-opnsense is shutting down."
+            )
+            return False
 
-    await coordinator.async_config_entry_first_refresh()
+        firmware: str | None = await client.get_host_firmware_version()
+        _LOGGER.info("OPNsense Firmware %s", firmware)
+        try:
+            if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
+                OPNSENSE_MIN_FIRMWARE
+            ):
+                ir.async_create_issue(
+                    hass,
+                    DOMAIN,
+                    f"{config_device_id}_opnsense_below_min_firmware_{OPNSENSE_MIN_FIRMWARE}",
+                    is_fixable=False,
+                    is_persistent=False,
+                    issue_domain=DOMAIN,
+                    severity=ir.IssueSeverity.ERROR,
+                    translation_key="below_min_firmware",
+                    translation_placeholders={
+                        "version": str(VERSION),
+                        "min_firmware": str(OPNSENSE_MIN_FIRMWARE),
+                        "firmware": firmware or "Unknown",
+                    },
+                )
+                return False
+            if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
+                OPNSENSE_LTD_FIRMWARE
+            ):
+                ir.async_create_issue(
+                    hass,
+                    DOMAIN,
+                    f"{config_device_id}_opnsense_below_ltd_firmware_{OPNSENSE_LTD_FIRMWARE}",
+                    is_fixable=False,
+                    is_persistent=False,
+                    issue_domain=DOMAIN,
+                    severity=ir.IssueSeverity.WARNING,
+                    translation_key="below_ltd_firmware",
+                    translation_placeholders={
+                        "version": str(VERSION),
+                        "ltd_firmware": str(OPNSENSE_LTD_FIRMWARE),
+                        "firmware": firmware or "Unknown",
+                    },
+                )
+            else:
+                ir.async_delete_issue(
+                    hass,
+                    DOMAIN,
+                    f"{config_device_id}_opnsense_below_min_firmware_{OPNSENSE_MIN_FIRMWARE}",
+                )
+                ir.async_delete_issue(
+                    hass,
+                    DOMAIN,
+                    f"{config_device_id}_opnsense_below_ltd_firmware_{OPNSENSE_LTD_FIRMWARE}",
+                )
+        except awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError:
+            _LOGGER.warning("Unable to confirm OPNsense Firmware version")
 
-    platforms: list[Platform] = PLATFORMS.copy()
-    device_tracker_coordinator = None
-    if not device_tracker_enabled and Platform.DEVICE_TRACKER in platforms:
-        platforms.remove(Platform.DEVICE_TRACKER)
-    else:
-        device_tracker_scan_interval = options.get(
-            CONF_DEVICE_TRACKER_SCAN_INTERVAL, DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL
-        )
+        try:
+            if awesomeversion.AwesomeVersion(firmware) > awesomeversion.AwesomeVersion(
+                "26.1"
+            ) and awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion("26.7"):
+                await _deprecated_plugin_cleanup_26_1_1(
+                    hass=hass,
+                    client=client,
+                    entry_id=entry.entry_id,
+                    config_device_id=config_device_id,
+                    firmware=firmware,
+                )
+        except awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError:
+            _LOGGER.warning("Unable to confirm OPNsense Firmware version")
 
-        device_tracker_coordinator = OPNsenseDataUpdateCoordinator(
-            hass=hass,
-            name=f"{entry.title} Device Tracker state",
-            update_interval=timedelta(seconds=device_tracker_scan_interval),
-            client=client,
-            config_entry=entry,
+        await coordinator.async_config_entry_first_refresh()
+
+        platforms: list[Platform] = PLATFORMS.copy()
+        if not device_tracker_enabled and Platform.DEVICE_TRACKER in platforms:
+            platforms.remove(Platform.DEVICE_TRACKER)
+        else:
+            device_tracker_scan_interval = options.get(
+                CONF_DEVICE_TRACKER_SCAN_INTERVAL, DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL
+            )
+
+            device_tracker_coordinator = OPNsenseDataUpdateCoordinator(
+                hass=hass,
+                name=f"{entry.title} Device Tracker state",
+                update_interval=timedelta(seconds=device_tracker_scan_interval),
+                client=client,
+                config_entry=entry,
+                device_unique_id=config_device_id,
+                device_tracker_coordinator=True,
+            )
+
+        entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+
+        hass.data.setdefault(DOMAIN, {})
+        hass.data[DOMAIN][entry.entry_id] = client
+
+        entry.runtime_data = OPNsenseData(
+            coordinator=coordinator,
+            device_tracker_coordinator=device_tracker_coordinator,
+            opnsense_client=client,
             device_unique_id=config_device_id,
-            device_tracker_coordinator=True,
+            loaded_platforms=platforms,
         )
+        setup_succeeded = True
 
-    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+        if device_tracker_enabled and device_tracker_coordinator:
+            # Fetch initial data so we have data when entities subscribe
+            await device_tracker_coordinator.async_config_entry_first_refresh()
 
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = client
+        await hass.config_entries.async_forward_entry_setups(entry, platforms)
 
-    entry.runtime_data = OPNsenseData(
-        coordinator=coordinator,
-        device_tracker_coordinator=device_tracker_coordinator,
-        opnsense_client=client,
-        device_unique_id=config_device_id,
-        loaded_platforms=platforms,
-    )
-
-    if device_tracker_enabled and device_tracker_coordinator:
-        # Fetch initial data so we have data when entities subscribe
-        await device_tracker_coordinator.async_config_entry_first_refresh()
-
-    await hass.config_entries.async_forward_entry_setups(entry, platforms)
-
-    return True
+        return True
+    finally:
+        if not setup_succeeded:
+            if device_tracker_coordinator is not None:
+                await device_tracker_coordinator.async_shutdown()
+            await coordinator.async_shutdown()
+            if DOMAIN in hass.data:
+                hass.data[DOMAIN].pop(entry.entry_id, None)
+            await client.async_close()
 
 
 async def _deprecated_plugin_cleanup_26_1_1(
     hass: HomeAssistant,
-    client: OPNsenseClient,
+    client: OPNsenseClientProtocol,
     entry_id: str,
     config_device_id: str,
+    firmware: str | None = None,
 ) -> None:
-    """Clean up deprecated entities for OPNsense 26.1.1 and plugin compatibility. This function removes switch entities that are no longer supported in OPNsense 26.1, specifically firewall filter rules (when plugin not installed) and NAT port forward/outbound rules. It creates appropriate issues to inform the user about the cleanup.
+    """Remove deprecated switch entities tied to plugin migration behavior.
 
     Args:
-        hass: The Home Assistant instance.
-        client: The OPNsense client instance.
-        entry_id: The configuration entry ID.
-        config_device_id: The device unique ID from the configuration.
+        hass: Home Assistant instance.
+        client: OPNsense API client used to inspect plugin status.
+        entry_id: Config entry identifier whose entities are evaluated for cleanup.
+        config_device_id: Router unique ID used in generated repair issue IDs.
+        firmware: Optional firmware string used to infer plugin deprecation behavior.
     """
     _LOGGER.debug("Starting OPNsense 26.1.1 and Plugin cleanup")
     entity_registry = er.async_get(hass)
     plugin_installed: bool = await client.is_plugin_installed()
-    plugin_deprecated: bool = await client.is_plugin_deprecated()
+    plugin_deprecated: bool = False
+    if firmware:
+        try:
+            plugin_deprecated = awesomeversion.AwesomeVersion(
+                firmware
+            ) >= awesomeversion.AwesomeVersion("26.1.3")
+        except awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError:
+            _LOGGER.debug(
+                "Unable to compare firmware '%s' for plugin cleanup deprecation fallback.",
+                firmware,
+            )
+    plugin_deprecated = plugin_deprecated or await client.is_plugin_deprecated()
     cleanup_started: bool = False
 
     for ent in er.async_entries_for_config_entry(entity_registry, entry_id):
@@ -417,15 +462,15 @@ async def _deprecated_plugin_cleanup_26_1_1(
 async def async_remove_config_entry_device(
     hass: HomeAssistant, config_entry: ConfigEntry, device_entry: dr.DeviceEntry
 ) -> bool:
-    """Remove OPNsense devices that are not device tracker devices and have no linked entities. This function checks if an OPNsense device can be safely removed. It prevents removal of device tracker devices and devices that still have linked entities.
+    """Decide whether a device can be removed from this config entry.
 
     Args:
-        hass: The Home Assistant instance.
-        config_entry: The configuration entry for the OPNsense integration.
-        device_entry: The device entry to be removed.
+        hass: Home Assistant instance.
+        config_entry: Config entry owning the target device.
+        device_entry: Device registry entry proposed for removal.
 
     Returns:
-        bool: True if the device can be removed, False otherwise.
+        bool: `True` when the device has no linked entities and is not a tracker child.
     """
     if device_entry.via_device_id:
         _LOGGER.error("Remove OPNsense Device Tracker Devices via the Integration Configuration")
@@ -439,18 +484,18 @@ async def async_remove_config_entry_device(
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload the OPNsense integration configuration entry. This function unloads all platforms associated with the configuration entry, closes the OPNsense client connection, and cleans up the entry data.
+    """Unload all platforms and runtime resources for a config entry.
 
     Args:
-        hass: The Home Assistant instance.
-        entry: The configuration entry to unload.
+        hass: Home Assistant instance.
+        entry: Config entry to unload.
 
     Returns:
-        bool: True if unloading was successful, False otherwise.
+        bool: `True` when platforms unload successfully, otherwise `False`.
     """
     _LOGGER.info("Unloading: %s", entry.as_dict())
     platforms: list[Platform] = getattr(entry.runtime_data, LOADED_PLATFORMS)
-    client: OPNsenseClient = getattr(entry.runtime_data, OPNSENSE_CLIENT)
+    client: OPNsenseClientProtocol = getattr(entry.runtime_data, OPNSENSE_CLIENT)
     unload_ok: bool = await hass.config_entries.async_unload_platforms(entry, platforms)
 
     await client.async_close()
@@ -462,14 +507,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _migrate_1_to_2(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    """Migrate configuration entry from version 1 to version 2. This migration replaces the deprecated 'tls_insecure' option with 'verify_ssl' for SSL certificate verification.
+    """Migrate config entry data from version 1 to version 2.
 
     Args:
-        hass: The Home Assistant instance.
-        config_entry: The configuration entry to migrate.
+        hass: Home Assistant instance.
+        config_entry: Config entry being migrated.
 
     Returns:
-        bool: Always returns True.
+        bool: Always `True` after updating entry data.
     """
     tls_insecure = config_entry.data.get(CONF_TLS_INSECURE, DEFAULT_TLS_INSECURE)
     data: dict[str, Any] = dict(config_entry.data)
@@ -487,14 +532,14 @@ async def _migrate_1_to_2(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
 
 
 async def _migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    """Migrate configuration entry from version 2 to version 3. This migration updates device unique IDs to use the lowest MAC address and updates entity unique IDs accordingly. It also updates device identifiers in the device registry.
+    """Migrate config entry identifiers from version 2 to version 3.
 
     Args:
-        hass: The Home Assistant instance.
-        config_entry: The configuration entry to migrate.
+        hass: Home Assistant instance.
+        config_entry: Config entry being migrated.
 
     Returns:
-        bool: True if migration was successful, False otherwise.
+        bool: `True` when device/entity identifier migration succeeds.
     """
     _LOGGER.debug("[migrate_2_to_3] Initial Version: %s", config_entry.version)
     entity_registry = er.async_get(hass)
@@ -505,114 +550,138 @@ async def _migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
     username: str = config[CONF_USERNAME]
     password: str = config[CONF_PASSWORD]
     verify_ssl: bool = config.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
-
-    client = OPNsenseClient(
-        url=url,
-        username=username,
-        password=password,
-        session=async_create_clientsession(
-            hass=hass,
-            raise_for_status=False,
-            cookie_jar=aiohttp.CookieJar(unsafe=is_private_ip(url)),
-        ),
-        opts={"verify_ssl": verify_ssl},
+    config_device_id: str = str(
+        config.get(CONF_DEVICE_UNIQUE_ID, config_entry.unique_id or config_entry.entry_id)
     )
-    new_device_unique_id: str | None = await client.get_device_unique_id()
-    if not new_device_unique_id:
-        _LOGGER.error("Missing Device Unique ID for Migration to Version 3")
-        return False
-    _LOGGER.debug("[migrate_2_to_3] new_device_unique_id: %s", new_device_unique_id)
 
-    for dev in dr.async_entries_for_config_entry(
-        device_registry, config_entry_id=config_entry.entry_id
-    ):
-        _LOGGER.debug("[migrate_2_to_3] dev: %s", dev)
-        is_main_dev: bool = any(t[0] == "opnsense" for t in dev.identifiers)
-        if is_main_dev:
-            new_identifiers = {
-                (t[0], new_device_unique_id) if t[0] == "opnsense" else t for t in dev.identifiers
-            }
+    try:
+        client = await create_opnsense_client(
+            url=url,
+            username=username,
+            password=password,
+            session=async_create_clientsession(
+                hass=hass,
+                raise_for_status=False,
+                cookie_jar=aiohttp.CookieJar(unsafe=is_private_ip(url)),
+            ),
+            opts={"verify_ssl": verify_ssl},
+        )
+    except MissingExternalAiopnsenseDependency:
+        ir.async_create_issue(
+            hass,
+            DOMAIN,
+            f"{config_device_id}_missing_external_aiopnsense",
+            is_fixable=False,
+            is_persistent=False,
+            issue_domain=DOMAIN,
+            severity=ir.IssueSeverity.ERROR,
+            translation_key="missing_external_aiopnsense",
+        )
+        _LOGGER.error(
+            "OPNsense firmware requires external aiopnsense package, but it is not available."
+        )
+        return False
+    try:
+        new_device_unique_id: str | None = await client.get_device_unique_id()
+        if not new_device_unique_id:
+            _LOGGER.error("Missing Device Unique ID for Migration to Version 3")
+            return False
+        _LOGGER.debug("[migrate_2_to_3] new_device_unique_id: %s", new_device_unique_id)
+
+        for dev in dr.async_entries_for_config_entry(
+            device_registry, config_entry_id=config_entry.entry_id
+        ):
+            _LOGGER.debug("[migrate_2_to_3] dev: %s", dev)
+            is_main_dev: bool = any(t[0] == "opnsense" for t in dev.identifiers)
+            if is_main_dev:
+                new_identifiers = {
+                    (t[0], new_device_unique_id) if t[0] == "opnsense" else t
+                    for t in dev.identifiers
+                }
+                _LOGGER.debug(
+                    "[migrate_2_to_3] dev.identifiers: %s, new_identifiers: %s",
+                    dev.identifiers,
+                    new_identifiers,
+                )
+                try:
+                    new_dev = device_registry.async_update_device(
+                        dev.id, new_identifiers=new_identifiers
+                    )
+                    _LOGGER.debug("[migrate_2_to_3] new_main_dev: %s", new_dev)
+                except dr.DeviceIdentifierCollisionError as e:
+                    _LOGGER.error(
+                        "Error migrating device: %s. %s: %s",
+                        dev.identifiers,
+                        type(e).__name__,
+                        e,
+                    )
+
+        for ent in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
+            # _LOGGER.debug(f"[migrate_2_to_3] ent: {ent}")
+            platform = ent.entity_id.split(".")[0]
+            try:
+                _, unique_id_suffix = ent.unique_id.split("_", 1)
+            except ValueError:
+                unique_id_suffix = f"mac_{ent.unique_id}"
+            new_unique_id: str = (
+                (f"{new_device_unique_id}_{unique_id_suffix}").replace(":", "_").strip()
+            )
             _LOGGER.debug(
-                "[migrate_2_to_3] dev.identifiers: %s, new_identifiers: %s",
-                dev.identifiers,
-                new_identifiers,
+                "[migrate_2_to_3] ent: %s, platform: %s, unique_id: %s, new_unique_id: %s",
+                ent.entity_id,
+                platform,
+                ent.unique_id,
+                new_unique_id,
             )
             try:
-                new_dev = device_registry.async_update_device(
-                    dev.id, new_identifiers=new_identifiers
+                new_ent = entity_registry.async_update_entity(
+                    ent.entity_id, new_unique_id=new_unique_id
                 )
-                _LOGGER.debug("[migrate_2_to_3] new_main_dev: %s", new_dev)
-            except dr.DeviceIdentifierCollisionError as e:
+                _LOGGER.debug(
+                    "[migrate_2_to_3] new_ent: %s, unique_id: %s",
+                    new_ent.entity_id,
+                    new_ent.unique_id,
+                )
+            except ValueError as e:
                 _LOGGER.error(
-                    "Error migrating device: %s. %s: %s",
-                    dev.identifiers,
+                    "Error migrating entity: %s. %s: %s",
+                    ent.entity_id,
                     type(e).__name__,
                     e,
                 )
 
-    for ent in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
-        # _LOGGER.debug(f"[migrate_2_to_3] ent: {ent}")
-        platform = ent.entity_id.split(".")[0]
-        try:
-            _, unique_id_suffix = ent.unique_id.split("_", 1)
-        except ValueError:
-            unique_id_suffix = f"mac_{ent.unique_id}"
-        new_unique_id: str = (
-            (f"{new_device_unique_id}_{unique_id_suffix}").replace(":", "_").strip()
-        )
+        new_data: dict[str, Any] = dict(config_entry.data)
+        new_data.update({CONF_DEVICE_UNIQUE_ID: new_device_unique_id})
         _LOGGER.debug(
-            "[migrate_2_to_3] ent: %s, platform: %s, unique_id: %s, new_unique_id: %s",
-            ent.entity_id,
-            platform,
-            ent.unique_id,
-            new_unique_id,
+            "[migrate_2_to_3] data: %s, new_data: %s, unique_id: %s, new_unique_id: %s",
+            config_entry.data,
+            new_data,
+            config_entry.unique_id,
+            new_device_unique_id,
         )
-        try:
-            new_ent = entity_registry.async_update_entity(
-                ent.entity_id, new_unique_id=new_unique_id
-            )
-            _LOGGER.debug(
-                "[migrate_2_to_3] new_ent: %s, unique_id: %s",
-                new_ent.entity_id,
-                new_ent.unique_id,
-            )
-        except ValueError as e:
-            _LOGGER.error(
-                "Error migrating entity: %s. %s: %s",
-                ent.entity_id,
-                type(e).__name__,
-                e,
-            )
-
-    new_data: dict[str, Any] = dict(config_entry.data)
-    new_data.update({CONF_DEVICE_UNIQUE_ID: new_device_unique_id})
-    _LOGGER.debug(
-        "[migrate_2_to_3] data: %s, new_data: %s, unique_id: %s, new_unique_id: %s",
-        config_entry.data,
-        new_data,
-        config_entry.unique_id,
-        new_device_unique_id,
-    )
-    new_entry_bool = hass.config_entries.async_update_entry(
-        config_entry, data=new_data, unique_id=new_device_unique_id, version=3
-    )
-    if new_entry_bool:
-        _LOGGER.debug("[migrate_2_to_3] config_entry update sucessful")
-    else:
-        _LOGGER.error("Migration of config_entry to version 3 unsucessful")
-        return False
-    return True
+        new_entry_bool = hass.config_entries.async_update_entry(
+            config_entry, data=new_data, unique_id=new_device_unique_id, version=3
+        )
+        if new_entry_bool:
+            _LOGGER.debug("[migrate_2_to_3] config_entry update sucessful")
+        else:
+            _LOGGER.error("Migration of config_entry to version 3 unsucessful")
+            return False
+        return True
+    finally:
+        if client is not None:
+            await client.async_close()
 
 
 async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    """Migrate configuration entry from version 3 to version 4. This migration moves telemetry-based entities (interfaces, gateways, openvpn) out of the telemetry namespace and updates their unique IDs. It also removes deprecated connected client count sensors.
+    """Migrate telemetry entity identifiers from version 3 to version 4.
 
     Args:
-        hass: The Home Assistant instance.
-        config_entry: The configuration entry to migrate.
+        hass: Home Assistant instance.
+        config_entry: Config entry being migrated.
 
     Returns:
-        bool: True if migration was successful, False otherwise.
+        bool: `True` when all migration updates complete successfully.
     """
     _LOGGER.debug("[migrate_3_to_4] Initial Version: %s", config_entry.version)
     entity_registry = er.async_get(hass)
@@ -622,109 +691,133 @@ async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
     username: str = config[CONF_USERNAME]
     password: str = config[CONF_PASSWORD]
     verify_ssl: bool = config.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
-
-    client = OPNsenseClient(
-        url=url,
-        username=username,
-        password=password,
-        session=async_create_clientsession(
-            hass=hass,
-            raise_for_status=False,
-            cookie_jar=aiohttp.CookieJar(unsafe=is_private_ip(url)),
-        ),
-        opts={"verify_ssl": verify_ssl},
+    config_device_id: str = str(
+        config.get(CONF_DEVICE_UNIQUE_ID, config_entry.unique_id or config_entry.entry_id)
     )
-    telemetry = await client.get_telemetry()
 
-    for ent in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
-        platform = ent.entity_id.split(".")[0]
-        if platform == Platform.SENSOR:
-            # _LOGGER.debug("[migrate_3_to_4] ent: %s", ent)
-            if "_telemetry_interface_" in ent.unique_id:
-                new_unique_id: str | None = ent.unique_id.replace(
-                    "_telemetry_interface_", "_interface_"
+    client: OPNsenseClientProtocol | None = None
+    try:
+        client = await create_opnsense_client(
+            url=url,
+            username=username,
+            password=password,
+            session=async_create_clientsession(
+                hass=hass,
+                raise_for_status=False,
+                cookie_jar=aiohttp.CookieJar(unsafe=is_private_ip(url)),
+            ),
+            opts={"verify_ssl": verify_ssl},
+        )
+    except MissingExternalAiopnsenseDependency:
+        ir.async_create_issue(
+            hass,
+            DOMAIN,
+            f"{config_device_id}_missing_external_aiopnsense",
+            is_fixable=False,
+            is_persistent=False,
+            issue_domain=DOMAIN,
+            severity=ir.IssueSeverity.ERROR,
+            translation_key="missing_external_aiopnsense",
+        )
+        _LOGGER.error(
+            "OPNsense firmware requires external aiopnsense package, but it is not available."
+        )
+        return False
+    try:
+        telemetry = await client.get_telemetry()
+
+        for ent in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
+            platform = ent.entity_id.split(".")[0]
+            if platform == Platform.SENSOR:
+                # _LOGGER.debug("[migrate_3_to_4] ent: %s", ent)
+                if "_telemetry_interface_" in ent.unique_id:
+                    new_unique_id: str | None = ent.unique_id.replace(
+                        "_telemetry_interface_", "_interface_"
+                    )
+                elif "_telemetry_gateway_" in ent.unique_id:
+                    new_unique_id = ent.unique_id.replace("_telemetry_gateway_", "_gateway_")
+                elif "_connected_client_count" in ent.unique_id:
+                    try:
+                        entity_registry.async_remove(ent.entity_id)
+                        _LOGGER.debug("[migrate_3_to_4] removed_entity_id: %s", ent.entity_id)
+                    except (KeyError, ValueError) as e:
+                        _LOGGER.error(
+                            "Error removing entity: %s. %s: %s",
+                            ent.entity_id,
+                            type(e).__name__,
+                            e,
+                        )
+                    continue
+                elif "_telemetry_openvpn_" in ent.unique_id:
+                    new_unique_id = ent.unique_id.replace("_telemetry_openvpn_", "_openvpn_")
+                elif "_telemetry_filesystems_" in ent.unique_id:
+                    new_unique_id = None
+                    for filesystem in telemetry.get("filesystems", []):
+                        device_name: str = (
+                            filesystem.get("device", "").replace("/", "_slash_").strip("_")
+                        ).lower()
+                        unique_id_device_name: str = (
+                            ent.unique_id.split("_telemetry_filesystems_")[1]
+                        ).lower()
+                        if device_name == unique_id_device_name:
+                            mpoint: str = filesystem.get("mountpoint", "")
+                            if mpoint == "/":
+                                mountpoint = "root"
+                            else:
+                                mountpoint = mpoint.replace("/", "_").strip("_")
+                            new_unique_id = ent.unique_id.replace(device_name, mountpoint)
+                            break
+                    if not new_unique_id or ent.unique_id == new_unique_id:
+                        continue
+                else:
+                    continue
+                _LOGGER.debug(
+                    "[migrate_3_to_4] ent: %s, platform: %s, unique_id: %s, new_unique_id: %s",
+                    ent.entity_id,
+                    platform,
+                    ent.unique_id,
+                    new_unique_id,
                 )
-            elif "_telemetry_gateway_" in ent.unique_id:
-                new_unique_id = ent.unique_id.replace("_telemetry_gateway_", "_gateway_")
-            elif "_connected_client_count" in ent.unique_id:
+                if not new_unique_id:
+                    _LOGGER.error("Error migrating entity: %s", ent.entity_id)
+                    continue
                 try:
-                    entity_registry.async_remove(ent.entity_id)
-                    _LOGGER.debug("[migrate_3_to_4] removed_entity_id: %s", ent.entity_id)
-                except (KeyError, ValueError) as e:
+                    updated_ent = entity_registry.async_update_entity(
+                        ent.entity_id, new_unique_id=new_unique_id
+                    )
+                    _LOGGER.debug(
+                        "[migrate_3_to_4] updated_entity_id: %s, updated_unique_id: %s",
+                        updated_ent.entity_id,
+                        updated_ent.unique_id,
+                    )
+                except ValueError as e:
                     _LOGGER.error(
-                        "Error removing entity: %s. %s: %s",
+                        "Error migrating entity: %s. %s: %s",
                         ent.entity_id,
                         type(e).__name__,
                         e,
                     )
-                continue
-            elif "_telemetry_openvpn_" in ent.unique_id:
-                new_unique_id = ent.unique_id.replace("_telemetry_openvpn_", "_openvpn_")
-            elif "_telemetry_filesystems_" in ent.unique_id:
-                new_unique_id = None
-                for filesystem in telemetry.get("filesystems", []):
-                    device_name: str = (
-                        filesystem.get("device", "").replace("/", "_slash_").strip("_")
-                    ).lower()
-                    unique_id_device_name: str = (
-                        ent.unique_id.split("_telemetry_filesystems_")[1]
-                    ).lower()
-                    if device_name == unique_id_device_name:
-                        mpoint: str = filesystem.get("mountpoint", "")
-                        if mpoint == "/":
-                            mountpoint = "root"
-                        else:
-                            mountpoint = mpoint.replace("/", "_").strip("_")
-                        new_unique_id = ent.unique_id.replace(device_name, mountpoint)
-                        break
-                if not new_unique_id or ent.unique_id == new_unique_id:
-                    continue
-            else:
-                continue
-            _LOGGER.debug(
-                "[migrate_3_to_4] ent: %s, platform: %s, unique_id: %s, new_unique_id: %s",
-                ent.entity_id,
-                platform,
-                ent.unique_id,
-                new_unique_id,
-            )
-            if not new_unique_id:
-                _LOGGER.error("Error migrating entity: %s", ent.entity_id)
-                continue
-            try:
-                updated_ent = entity_registry.async_update_entity(
-                    ent.entity_id, new_unique_id=new_unique_id
-                )
-                _LOGGER.debug(
-                    "[migrate_3_to_4] updated_entity_id: %s, updated_unique_id: %s",
-                    updated_ent.entity_id,
-                    updated_ent.unique_id,
-                )
-            except ValueError as e:
-                _LOGGER.error(
-                    "Error migrating entity: %s. %s: %s",
-                    ent.entity_id,
-                    type(e).__name__,
-                    e,
-                )
-    new_entry_bool = hass.config_entries.async_update_entry(config_entry, version=4)
-    if new_entry_bool:
-        _LOGGER.debug("[migrate_3_to_4] config_entry update sucessful")
-    else:
-        _LOGGER.error("Migration of config_entry to version 4 unsucessful")
-        return False
-    return True
+        new_entry_bool = hass.config_entries.async_update_entry(config_entry, version=4)
+        if new_entry_bool:
+            _LOGGER.debug("[migrate_3_to_4] config_entry update sucessful")
+        else:
+            _LOGGER.error("Migration of config_entry to version 4 unsucessful")
+            return False
+        return True
+    finally:
+        if client is not None:
+            await client.async_close()
 
 
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    """Migrate an old configuration entry to the latest version. This function handles migration of configuration entries from older versions to the current version by applying sequential migration steps.
+    """Migrate a stored config entry to the latest supported schema.
 
     Args:
-        hass: The Home Assistant instance.
-        config_entry: The configuration entry to migrate.
+        hass: Home Assistant instance.
+        config_entry: Config entry to migrate.
 
     Returns:
-        bool: True if migration was successful, False otherwise.
+        bool: `True` when all required migration steps succeed.
     """
     version = config_entry.version
 

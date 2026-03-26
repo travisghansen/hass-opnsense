@@ -330,6 +330,7 @@ async def test_async_update_data_reentrancy_and_full_flow(
     # Spy on client's reset_query_counts before running the update so we can
     # assert the public method was awaited during the update flow.
     client.reset_query_counts = AsyncMock(wraps=getattr(client, "reset_query_counts", None))
+    client.get_query_counts = AsyncMock(return_value=(7, 0))
 
     # run update; should return a dict
     out = await coord._async_update_data()

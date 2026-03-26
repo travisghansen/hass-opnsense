@@ -30,6 +30,8 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 import homeassistant.helpers.config_validation as cv
 
+from .client_factory import MissingExternalAiopnsenseDependency, create_opnsense_client
+from .client_protocol import OPNsenseClientProtocol
 from .const import (
     CONF_DEVICE_TRACKER_CONSIDER_HOME,
     CONF_DEVICE_TRACKER_ENABLED,
@@ -53,7 +55,7 @@ from .const import (
     TRACKED_MACS,
 )
 from .helpers import is_private_ip
-from .pyopnsense import OPNsenseClient, UnknownFirmware
+from .pyopnsense import UnknownFirmware
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -64,7 +66,14 @@ DEVICE_TRACKING_MODE_SELECTED = "selected_only"
 
 
 def is_valid_mac_address(mac: str) -> bool:
-    """Check if string is a valid MAC address."""
+    """Validate that the input is a normalized MAC-compatible string.
+
+    Args:
+        mac: Raw MAC address value to validate.
+
+    Returns:
+        bool: `True` when the input can be normalized as a MAC address.
+    """
     return normalize_mac_address(mac) is not None
 
 
@@ -245,7 +254,14 @@ def _device_entry_sort_key(
 
 
 def is_ip_address(value: str) -> bool:
-    """Check if string is a valid IP address."""
+    """Validate whether a string contains an IPv4 or IPv6 address.
+
+    Args:
+        value: Candidate IP address string.
+
+    Returns:
+        bool: `True` when `value` parses as a valid IP address.
+    """
     try:
         ipaddress.ip_address(value)
     except ValueError:
@@ -255,7 +271,15 @@ def is_ip_address(value: str) -> bool:
 
 
 def cleanse_sensitive_data(message: str, secrets: list | None = None) -> str:
-    """Remove sensitive data from logging messages."""
+    """Redact secret values from a log message.
+
+    Args:
+        message: Message text that may include credentials.
+        secrets: Secret values to replace, including raw and URL-encoded forms.
+
+    Returns:
+        str: Message with matching secrets replaced by `[redacted]`.
+    """
     secrets = secrets or []
     for secret in secrets:
         if secret is not None:
@@ -271,7 +295,18 @@ async def validate_input(
     errors: dict[str, Any],
     expected_id: str | None = None,
 ) -> dict[str, Any]:
-    """Check user input for errors."""
+    """Validate user input and map failures to config-flow error keys.
+
+    Args:
+        hass: Home Assistant instance.
+        user_input: Input payload being validated for this flow step.
+        config_step: Flow step identifier (for example `user` or `granular_sync`).
+        errors: Mutable error mapping populated by this validator.
+        expected_id: Expected device unique ID for reconfigure and options validation.
+
+    Returns:
+        dict[str, Any]: Updated error mapping suitable for form rendering.
+    """
     # filtered_user_input: MutableMapping[str, Any] = {key: value for key, value in user_input.items() if key != CONF_PASSWORD}
     # _LOGGER.debug("[validate_input] user_input: %s", filtered_user_input)
 
@@ -290,6 +325,12 @@ async def validate_input(
             errors=errors,
             key="unknown_firmware",
             message="Unable to get OPNsense Firmware version",
+        )
+    except MissingExternalAiopnsenseDependency:
+        _log_and_set_error(
+            errors=errors,
+            key="missing_external_aiopnsense",
+            message="OPNsense firmware requires external aiopnsense package",
         )
     except MissingDeviceUniqueID as e:
         _log_and_set_error(
@@ -402,7 +443,14 @@ async def validate_input(
 
 
 async def _clean_and_parse_url(user_input: MutableMapping[str, Any]) -> None:
-    """Clean and parse the URL."""
+    """Normalize and validate the configured OPNsense base URL.
+
+    Args:
+        user_input: Mutable form payload containing `CONF_URL`.
+
+    Raises:
+        InvalidURL: URL is missing a host after normalization.
+    """
     fix_url: str = user_input.get(CONF_URL, "").strip()
     url_parts: ParseResult = urlparse(fix_url)
 
@@ -417,9 +465,19 @@ async def _clean_and_parse_url(user_input: MutableMapping[str, Any]) -> None:
     _LOGGER.debug("[config_flow] Cleaned URL: %s", user_input[CONF_URL])
 
 
-async def _get_client(user_input: MutableMapping[str, Any], hass: HomeAssistant) -> OPNsenseClient:
-    """Create and return the OPNsense client."""
-    return OPNsenseClient(
+async def _get_client(
+    user_input: MutableMapping[str, Any], hass: HomeAssistant
+) -> OPNsenseClientProtocol:
+    """Create a temporary OPNsense client for flow validation calls.
+
+    Args:
+        user_input: User input containing URL, credentials, and SSL preference.
+        hass: Home Assistant instance used to create the aiohttp session.
+
+    Returns:
+        OPNsenseClientProtocol: Connected client used for validation probes.
+    """
+    return await create_opnsense_client(
         url=user_input[CONF_URL],
         username=user_input[CONF_USERNAME],
         password=user_input[CONF_PASSWORD],
@@ -434,7 +492,14 @@ async def _get_client(user_input: MutableMapping[str, Any], hass: HomeAssistant)
 
 
 def _validate_firmware_version(firmware_version: str) -> None:
-    """Validate the firmware version."""
+    """Validate that firmware meets the minimum supported version.
+
+    Args:
+        firmware_version: Firewall firmware string returned by the backend.
+
+    Raises:
+        BelowMinFirmware: Firmware is older than the supported minimum.
+    """
     if awesomeversion.AwesomeVersion(firmware_version) < awesomeversion.AwesomeVersion(
         OPNSENSE_MIN_FIRMWARE
     ):
@@ -447,60 +512,91 @@ async def _handle_user_input(
     config_step: str,
     expected_id: str | None = None,
 ) -> None:
-    """Handle and validate the user input."""
+    """Run end-to-end validation against a live OPNsense endpoint.
+
+    Args:
+        hass: Home Assistant instance.
+        user_input: Mutable user input mapping to validate and enrich.
+        config_step: Flow step identifier controlling plugin-check behavior.
+        expected_id: Expected device unique ID for reconfigure/options validation.
+
+    Raises:
+        UnknownFirmware: Firmware could not be parsed or compared safely.
+        BelowMinFirmware: Firmware is below the minimum supported version.
+        PluginMissing: Plugin is required for enabled sync options but not installed.
+        MissingDeviceUniqueID: Backend did not return a device unique ID.
+    """
     await _clean_and_parse_url(user_input)
 
-    client: OPNsenseClient = await _get_client(user_input, hass)
-
-    user_input[CONF_FIRMWARE_VERSION] = await client.get_host_firmware_version()
-    _LOGGER.debug("[handle_user_input] Firmware Version: %s", user_input[CONF_FIRMWARE_VERSION])
-
+    client: OPNsenseClientProtocol = await _get_client(user_input, hass)
     try:
-        _validate_firmware_version(user_input[CONF_FIRMWARE_VERSION])
-    except (awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError) as e:
-        raise UnknownFirmware from e
+        user_input[CONF_FIRMWARE_VERSION] = await client.get_host_firmware_version()
+        _LOGGER.debug("[handle_user_input] Firmware Version: %s", user_input[CONF_FIRMWARE_VERSION])
 
-    await client.set_use_snake_case(initial=True)
+        try:
+            _validate_firmware_version(user_input[CONF_FIRMWARE_VERSION])
+        except (
+            awesomeversion.exceptions.AwesomeVersionCompareException,
+            TypeError,
+            ValueError,
+        ) as e:
+            raise UnknownFirmware from e
 
-    # Plugin check not required for config step of user. Otherwise, plugin check is required if
-    # granular sync options is enabled
-    try:
-        require_plugin_check = (
-            config_step != "user"
-            and user_input.get(CONF_GRANULAR_SYNC_OPTIONS, DEFAULT_GRANULAR_SYNC_OPTIONS)
-            and any(
-                user_input.get(item, DEFAULT_SYNC_OPTION_VALUE)
-                for item in SYNC_ITEMS_REQUIRING_PLUGIN
+        await client.set_use_snake_case(initial=True)
+
+        # Plugin check not required for config step of user. Otherwise, plugin check is required if
+        # granular sync options is enabled
+        try:
+            require_plugin_check = (
+                config_step != "user"
+                and user_input.get(CONF_GRANULAR_SYNC_OPTIONS, DEFAULT_GRANULAR_SYNC_OPTIONS)
+                and any(
+                    user_input.get(item, DEFAULT_SYNC_OPTION_VALUE)
+                    for item in SYNC_ITEMS_REQUIRING_PLUGIN
+                )
+                and awesomeversion.AwesomeVersion(user_input[CONF_FIRMWARE_VERSION])
+                < awesomeversion.AwesomeVersion("26.1.1")
             )
-            and awesomeversion.AwesomeVersion(user_input[CONF_FIRMWARE_VERSION])
-            < awesomeversion.AwesomeVersion("26.1.1")
+        except (
+            awesomeversion.exceptions.AwesomeVersionCompareException,
+            TypeError,
+            ValueError,
+        ) as e:
+            raise UnknownFirmware from e
+
+        _LOGGER.debug(
+            "[handle_user_input] config_step: %s, require_plugin_check: %s",
+            config_step,
+            require_plugin_check,
         )
-    except (awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError) as e:
-        raise UnknownFirmware from e
+        if require_plugin_check and not await client.is_plugin_installed():
+            raise PluginMissing
 
-    _LOGGER.debug(
-        "[handle_user_input] config_step: %s, require_plugin_check: %s",
-        config_step,
-        require_plugin_check,
-    )
-    if require_plugin_check and not await client.is_plugin_installed():
-        raise PluginMissing
+        system_info: dict[str, Any] = await client.get_system_info()
+        _LOGGER.debug("[handle_user_input] system_info: %s", system_info)
 
-    system_info: dict[str, Any] = await client.get_system_info()
-    _LOGGER.debug("[handle_user_input] system_info: %s", system_info)
+        if not user_input.get(CONF_NAME):
+            user_input[CONF_NAME] = system_info.get("name") or "OPNsense"
 
-    if not user_input.get(CONF_NAME):
-        user_input[CONF_NAME] = system_info.get("name") or "OPNsense"
+        user_input[CONF_DEVICE_UNIQUE_ID] = await client.get_device_unique_id(
+            expected_id=expected_id
+        )
+        _LOGGER.debug("[handle_user_input] Device Unique ID: %s", user_input[CONF_DEVICE_UNIQUE_ID])
 
-    user_input[CONF_DEVICE_UNIQUE_ID] = await client.get_device_unique_id(expected_id=expected_id)
-    _LOGGER.debug("[handle_user_input] Device Unique ID: %s", user_input[CONF_DEVICE_UNIQUE_ID])
-
-    if not user_input.get(CONF_DEVICE_UNIQUE_ID):
-        raise MissingDeviceUniqueID
+        if not user_input.get(CONF_DEVICE_UNIQUE_ID):
+            raise MissingDeviceUniqueID
+    finally:
+        await client.async_close()
 
 
 def _log_and_set_error(errors: MutableMapping[str, Any], key: str, message: str) -> None:
-    """Log the error and set it in the errors dictionary."""
+    """Log an error and set the form-level `base` error key.
+
+    Args:
+        errors: Mutable errors mapping for the current flow step.
+        key: Translation key to store in `errors["base"]`.
+        message: Log message describing the validation failure.
+    """
     _LOGGER.error(message)
     errors["base"] = key
 
@@ -516,6 +612,9 @@ def _build_user_input_schema(
         user_input: Values submitted for the current configuration or options flow step.
         fallback: Fallback values used when the current form input does not include a field.
         reconf: Whether the schema is being built for the reconfigure flow instead of initial setup.
+
+    Returns:
+        vol.Schema: Form schema for the base connection step.
     """
     if user_input is None:
         user_input = {}
@@ -570,6 +669,9 @@ def _build_granular_sync_schema(
     Args:
         user_input: Values submitted for the current configuration or options flow step.
         fallback: Stored sync option values used to prefill the granular sync form.
+
+    Returns:
+        vol.Schema: Form schema containing all granular sync toggles.
     """
     if user_input is None:
         user_input = {}
@@ -603,6 +705,9 @@ def _build_options_init_schema(
         user_input: Values submitted for the current configuration or options flow step.
         fallback_config: Config-entry data used when an option has not been overridden yet.
         fallback_options: Existing options used to populate the initial options-flow form.
+
+    Returns:
+        vol.Schema: Form schema for the options-flow initial step.
     """
     if user_input is None:
         user_input = {}
@@ -714,7 +819,7 @@ async def _get_dt_entries(
     username: str = config[CONF_USERNAME]
     password: str = config[CONF_PASSWORD]
     verify_ssl: bool = config.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
-    client = OPNsenseClient(
+    client = await create_opnsense_client(
         url=url,
         username=username,
         password=password,
@@ -725,30 +830,33 @@ async def _get_dt_entries(
         ),
         opts={"verify_ssl": verify_ssl},
     )
-    # dicts are ordered so put all previously selected items at the top
-    entries: dict[str, Any] = _build_selected_device_entries(selected_devices)
-    arp_table: list = await client.get_arp_table(resolve_hostnames=True)
-    if arp_table:
-        ip_by_mac: dict[str, str] = {}
-        # follow with all arp table entries
-        for entry in arp_table:
-            normalized_mac = normalize_mac_address(str(entry.get("mac", "")))
-            mac: str = normalized_mac or str(entry.get("mac", "")).lower().strip()
-            if len(mac) < 1:
-                continue
-            ip_by_mac[mac] = str(entry.get("ip", "")).strip()
-            label: str = _format_detected_device_label(entry)
-            entries[mac] = label
+    try:
+        # dicts are ordered so put all previously selected items at the top
+        entries: dict[str, Any] = _build_selected_device_entries(selected_devices)
+        arp_table: list = await client.get_arp_table(resolve_hostnames=True)
+        if arp_table:
+            ip_by_mac: dict[str, str] = {}
+            # follow with all arp table entries
+            for entry in arp_table:
+                normalized_mac = normalize_mac_address(str(entry.get("mac", "")))
+                mac: str = normalized_mac or str(entry.get("mac", "")).lower().strip()
+                if len(mac) < 1:
+                    continue
+                ip_by_mac[mac] = str(entry.get("ip", "")).strip()
+                label: str = _format_detected_device_label(entry)
+                entries[mac] = label
 
-        # Sort entries: fallback labels first, then by IP address (ascending)
-        sorted_entries: dict[str, Any] = dict(
-            sorted(
-                entries.items(),
-                key=lambda item: _device_entry_sort_key(item[0], item[1], ip_by_mac),
+            # Sort entries: fallback labels first, then by IP address (ascending)
+            sorted_entries: dict[str, Any] = dict(
+                sorted(
+                    entries.items(),
+                    key=lambda item: _device_entry_sort_key(item[0], item[1], ip_by_mac),
+                )
             )
-        )
-        return sorted_entries
-    return entries
+            return sorted_entries
+        return entries
+    finally:
+        await client.async_close()
 
 
 class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -758,7 +866,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 4
 
     def __init__(self) -> None:
-        """Initialize the config flow."""
+        """Initialize transient config-flow storage."""
         self._config: dict[str, Any] = {}
 
     # gets invoked without user input initially
@@ -766,7 +874,14 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: MutableMapping[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the initial step."""
+        """Handle the initial user config step.
+
+        Args:
+            user_input: Submitted form payload, or `None` for first render.
+
+        Returns:
+            ConfigFlowResult: Next flow step or created config entry.
+        """
         errors: dict[str, Any] = {}
         if user_input is not None:
             errors = await validate_input(
@@ -803,7 +918,14 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_granular_sync(
         self, user_input: MutableMapping[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the step for initial granular sync options."""
+        """Handle the granular sync configuration step.
+
+        Args:
+            user_input: Submitted granular sync payload, or `None` for first render.
+
+        Returns:
+            ConfigFlowResult: Next flow step or created config entry.
+        """
         errors: dict[str, Any] = {}
         if user_input is not None:
             # _LOGGER.debug("[config_flow granular_sync] raw user_input: %s", user_input)
@@ -834,7 +956,14 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_reconfigure(
         self, user_input: MutableMapping[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Config flow reconfigure step."""
+        """Handle reconfigure flow step for an existing entry.
+
+        Args:
+            user_input: Submitted reconfigure payload, or `None` for first render.
+
+        Returns:
+            ConfigFlowResult: Updated-and-reloaded entry result or form response.
+        """
         errors: dict[str, Any] = {}
         reconfigure_entry = self._get_reconfigure_entry()
         self._config = dict(reconfigure_entry.data)
@@ -878,13 +1007,27 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_import(self, user_input: MutableMapping[str, Any]) -> ConfigFlowResult:
-        """Handle import."""
+        """Handle YAML import by delegating to the user step.
+
+        Args:
+            user_input: Imported configuration payload.
+
+        Returns:
+            ConfigFlowResult: Result from `async_step_user`.
+        """
         return await self.async_step_user(user_input)
 
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: ConfigEntry) -> OPNsenseOptionsFlow:
-        """Get the options flow for this handler."""
+        """Create options flow handler for an existing config entry.
+
+        Args:
+            config_entry: Config entry whose options are being edited.
+
+        Returns:
+            OPNsenseOptionsFlow: Options flow instance bound to the entry.
+        """
         return OPNsenseOptionsFlow(config_entry)
 
 
@@ -892,7 +1035,11 @@ class OPNsenseOptionsFlow(OptionsFlow):
     """Handle option flow for OPNsense."""
 
     def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialize options flow."""
+        """Initialize options flow state.
+
+        Args:
+            config_entry: Config entry whose options are being edited.
+        """
         # Store the config entry passed by the ConfigFlow helper so tests and
         # runtime code can access it. Some test harnesses assign directly to
         # `config_entry` on the flow; provide a backing attribute and a
@@ -903,18 +1050,33 @@ class OPNsenseOptionsFlow(OptionsFlow):
 
     @property
     def config_entry(self) -> ConfigEntry:
-        """Return the config entry associated with this options flow."""
+        """Return the config entry associated with this options flow.
+
+        Returns:
+            ConfigEntry: Backing config entry for this options flow instance.
+        """
         return self._config_entry
 
     @config_entry.setter
     def config_entry(self, entry: ConfigEntry) -> None:
-        """Allow assigning the config entry."""
+        """Set the config entry backing this options flow.
+
+        Args:
+            entry: Config entry to associate with the flow.
+        """
         self._config_entry = entry
 
     async def async_step_init(
         self, user_input: MutableMapping[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle options flow."""
+        """Handle the initial options-flow step.
+
+        Args:
+            user_input: Submitted options payload, or `None` for first render.
+
+        Returns:
+            ConfigFlowResult: Next options step or saved options entry result.
+        """
         errors: dict[str, Any] = {}
         self._config = dict(self.config_entry.data)
         self._options = dict(self.config_entry.options)
@@ -967,7 +1129,14 @@ class OPNsenseOptionsFlow(OptionsFlow):
     async def async_step_granular_sync(
         self, user_input: MutableMapping[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the step for granular sync options."""
+        """Handle granular sync options in options flow.
+
+        Args:
+            user_input: Submitted granular sync payload, or `None` for first render.
+
+        Returns:
+            ConfigFlowResult: Next options step or saved options entry result.
+        """
         errors: dict[str, Any] = {}
         if user_input is not None:
             # _LOGGER.debug("[options_flow granular_sync] raw user_input: %s", user_input)
@@ -1053,7 +1222,13 @@ class OPNsenseOptionsFlow(OptionsFlow):
             dt_entries: dict[str, Any] = await _get_dt_entries(
                 hass=self.hass, config=self.config_entry.data, selected_devices=selected_devices
             )
-        except (aiohttp.ClientError, TimeoutError, OSError, xmlrpc.client.Error) as err:
+        except (
+            aiohttp.ClientError,
+            MissingExternalAiopnsenseDependency,
+            OSError,
+            TimeoutError,
+            xmlrpc.client.Error,
+        ) as err:
             _LOGGER.warning("Failed to load device tracker entries: %s", err)
             errors["base"] = "cannot_connect"
             dt_entries = {
