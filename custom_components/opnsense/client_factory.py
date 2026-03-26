@@ -32,30 +32,19 @@ def _build_client_kwargs(
     initial: bool = False,
     name: str | None = None,
 ) -> dict[str, Any]:
-    """Build normalized client constructor kwargs.
+    """Build normalized keyword arguments for client construction.
 
-    Parameters
-    ----------
-    url : str
-        OPNsense base URL.
-    username : str
-        API username.
-    password : str
-        API password.
-    session : aiohttp.ClientSession
-        Shared aiohttp session.
-    opts : MutableMapping[str, Any] | None
-        Optional connection options.
-    initial : bool
-        Whether client is created for initial setup.
-    name : str | None
-        Optional display name.
+    Args:
+        url: Base URL for the OPNsense host.
+        username: API username used for authentication.
+        password: API password used for authentication.
+        session: Shared aiohttp session used by the client.
+        opts: Optional transport options, such as SSL verification flags.
+        initial: Whether the client is being created for initial setup validation.
+        name: Optional display name for logs and diagnostics.
 
-    Returns
-    -------
-    dict[str, Any]
-        Keyword arguments for client construction.
-
+    Returns:
+        dict[str, Any]: Constructor kwargs accepted by legacy and external client classes.
     """
     kwargs: dict[str, Any] = {
         "url": url,
@@ -71,18 +60,13 @@ def _build_client_kwargs(
 
 
 def _coerce_query_counts(count_value: Any) -> tuple[int, int]:
-    """Normalize heterogeneous query count payloads to an integer tuple.
+    """Normalize query count payloads to `(rest_api_count, xmlrpc_count)`.
 
-    Parameters
-    ----------
-    count_value : Any
-        Value returned by compatibility query count methods.
+    Args:
+        count_value: Raw value returned by backend query-count helpers.
 
-    Returns
-    -------
-    tuple[int, int]
-        ``(rest_api_count, xmlrpc_count)``.
-
+    Returns:
+        tuple[int, int]: REST and XML-RPC query totals coerced to integers.
     """
     if isinstance(count_value, tuple | list):
         if len(count_value) >= 2:
@@ -97,29 +81,29 @@ def _coerce_query_counts(count_value: Any) -> tuple[int, int]:
     if isinstance(count_value, int | float | str):
         try:
             return int(count_value), 0
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return (0, 0)
     return (0, 0)
 
 
 def _add_query_count_compat(client: OPNsenseClientProtocol) -> OPNsenseClientProtocol:
-    """Attach query-count compatibility shim when needed.
+    """Attach query-count compatibility wrappers for backend differences.
 
-    Parameters
-    ----------
-    client : OPNsenseClientProtocol
-        Client instance to patch when required.
+    Args:
+        client: Client instance that may expose non-uniform query count helpers.
 
-    Returns
-    -------
-    OPNsenseClientProtocol
-        The original client with potential compatibility method attached.
-
+    Returns:
+        OPNsenseClientProtocol: The same client instance with normalized query count behavior.
     """
     get_query_counts: Callable[[], Any] | None = getattr(client, "get_query_counts", None)
     if get_query_counts is not None:
 
         async def _get_query_counts() -> tuple[int, int]:
+            """Return normalized query counters from `get_query_counts`.
+
+            Returns:
+                tuple[int, int]: REST and XML-RPC query totals.
+            """
             count_value = await get_query_counts()
             return _coerce_query_counts(count_value)
 
@@ -131,6 +115,11 @@ def _add_query_count_compat(client: OPNsenseClientProtocol) -> OPNsenseClientPro
     if get_query_count is not None:
 
         async def _get_query_counts() -> tuple[int, int]:
+            """Return normalized query counters from legacy `get_query_count`.
+
+            Returns:
+                tuple[int, int]: REST and XML-RPC query totals.
+            """
             count_value = await get_query_count()
             return _coerce_query_counts(count_value)
 
@@ -141,18 +130,13 @@ def _add_query_count_compat(client: OPNsenseClientProtocol) -> OPNsenseClientPro
 
 
 def _add_plugin_compat(client: OPNsenseClientProtocol) -> OPNsenseClientProtocol:
-    """Attach plugin compatibility shims when external backends lack methods.
+    """Attach plugin capability shims when backend methods are missing.
 
-    Parameters
-    ----------
-    client : OPNsenseClientProtocol
-        Client instance to patch when required.
+    Args:
+        client: Client instance to patch with plugin-related compatibility methods.
 
-    Returns
-    -------
-    OPNsenseClientProtocol
-        The original client with potential plugin compatibility methods attached.
-
+    Returns:
+        OPNsenseClientProtocol: The same client instance with plugin compatibility methods.
     """
     if not hasattr(client, "is_plugin_installed"):
         is_named_plugin_installed: Callable[[str], Any] | None = getattr(
@@ -165,7 +149,21 @@ def _add_plugin_compat(client: OPNsenseClientProtocol) -> OPNsenseClientProtocol
         safe_dict_get: Callable[[str], Any] | None = getattr(client, "_safe_dict_get", None)
 
         async def _is_plugin_installed() -> bool:
+            """Detect whether the Home Assistant OPNsense plugin is installed.
+
+            Returns:
+                bool: `True` when `os-homeassistant-maxit` is present, otherwise `False`.
+            """
+
             def _plugin_present_from_payload(payload: Any) -> bool:
+                """Determine plugin presence from a backend payload.
+
+                Args:
+                    payload: Firmware or plugin payload returned by backend helper methods.
+
+                Returns:
+                    bool: `True` if the payload indicates the plugin is installed.
+                """
                 if isinstance(payload, Mapping):
                     if "os-homeassistant-maxit" in payload:
                         return True
@@ -214,6 +212,11 @@ def _add_plugin_compat(client: OPNsenseClientProtocol) -> OPNsenseClientProtocol
     if not hasattr(client, "is_plugin_deprecated"):
 
         async def _is_plugin_deprecated() -> bool:
+            """Return a default deprecation state for unsupported backends.
+
+            Returns:
+                bool: Always `False` when backend deprecation metadata is unavailable.
+            """
             return False
 
         setattr(client, "is_plugin_deprecated", _is_plugin_deprecated)
@@ -223,22 +226,22 @@ def _add_plugin_compat(client: OPNsenseClientProtocol) -> OPNsenseClientProtocol
 
 
 def _add_core_compat(client: OPNsenseClientProtocol) -> OPNsenseClientProtocol:
-    """Attach compatibility shims for core client lifecycle/query methods.
+    """Attach default implementations for required core client methods.
 
-    Parameters
-    ----------
-    client : OPNsenseClientProtocol
-        Client instance to patch when required.
+    Args:
+        client: Client instance that may be missing required lifecycle/query methods.
 
-    Returns
-    -------
-    OPNsenseClientProtocol
-        The original client with potential core compatibility methods attached.
-
+    Returns:
+        OPNsenseClientProtocol: The same client instance with required core compatibility shims.
     """
     if not hasattr(client, "set_use_snake_case"):
 
         async def _set_use_snake_case(initial: bool = False) -> None:
+            """Provide a no-op naming-mode setter for backends without support.
+
+            Args:
+                initial: Whether the call occurs during initial setup.
+            """
             _ = initial
 
         setattr(client, "set_use_snake_case", _set_use_snake_case)
@@ -247,7 +250,8 @@ def _add_core_compat(client: OPNsenseClientProtocol) -> OPNsenseClientProtocol:
     if not hasattr(client, "reset_query_counts"):
 
         async def _reset_query_counts() -> None:
-            return None
+            """Provide a no-op query-counter reset for backends without support."""
+            return
 
         setattr(client, "reset_query_counts", _reset_query_counts)
         _LOGGER.debug("Applied aiopnsense core compatibility shim for reset_query_counts()")
@@ -255,6 +259,11 @@ def _add_core_compat(client: OPNsenseClientProtocol) -> OPNsenseClientProtocol:
     if not hasattr(client, "get_query_counts"):
 
         async def _get_query_counts() -> tuple[int, int]:
+            """Provide default zero query counters for backends without support.
+
+            Returns:
+                tuple[int, int]: A zeroed `(rest_api_count, xmlrpc_count)` tuple.
+            """
             return (0, 0)
 
         setattr(client, "get_query_counts", _get_query_counts)
@@ -264,23 +273,16 @@ def _add_core_compat(client: OPNsenseClientProtocol) -> OPNsenseClientProtocol:
 
 
 async def _create_external_client(**kwargs: Any) -> OPNsenseClientProtocol:
-    """Create external ``aiopnsense`` client instance.
+    """Create an external `aiopnsense` client instance.
 
-    Parameters
-    ----------
-    **kwargs : Any
-        Client construction kwargs.
+    Args:
+        **kwargs: Normalized constructor kwargs for the external client class.
 
-    Returns
-    -------
-    OPNsenseClientProtocol
-        External client instance.
+    Returns:
+        OPNsenseClientProtocol: Instantiated external client implementation.
 
-    Raises
-    ------
-    MissingExternalAiopnsenseDependency
-        Raised when package import or construction fails.
-
+    Raises:
+        MissingExternalAiopnsenseDependency: External package import or construction failed.
     """
     try:
         external_module = await asyncio.to_thread(import_module, "aiopnsense")
@@ -316,35 +318,22 @@ async def create_opnsense_client(
     initial: bool = False,
     name: str | None = None,
 ) -> OPNsenseClientProtocol:
-    """Create firmware-routed OPNsense client backend.
+    """Create the backend client selected by detected firmware.
 
-    Parameters
-    ----------
-    url : str
-        OPNsense base URL.
-    username : str
-        API username.
-    password : str
-        API password.
-    session : aiohttp.ClientSession
-        Shared aiohttp session.
-    opts : MutableMapping[str, Any] | None
-        Optional connection options.
-    initial : bool
-        Whether this client is created during initial setup.
-    name : str | None
-        Optional display name.
+    Args:
+        url: Base URL for the OPNsense host.
+        username: API username used for authentication.
+        password: API password used for authentication.
+        session: Shared aiohttp session used by created clients.
+        opts: Optional transport options, such as SSL verification flags.
+        initial: Whether the client is being created for initial setup validation.
+        name: Optional display name for logs and diagnostics.
 
-    Returns
-    -------
-    OPNsenseClientProtocol
-        Firmware-routed client backend.
+    Returns:
+        OPNsenseClientProtocol: Client implementation appropriate for the detected firmware.
 
-    Raises
-    ------
-    MissingExternalAiopnsenseDependency
-        Raised when firmware requires external backend but dependency is absent.
-
+    Raises:
+        MissingExternalAiopnsenseDependency: Firmware requires external backend but dependency is unavailable.
     """
     kwargs = _build_client_kwargs(
         url=url,
@@ -375,7 +364,7 @@ async def create_opnsense_client(
                 AI_OPNSENSE_MIN_FIRMWARE,
             )
             return await _create_external_client(**kwargs)
-    except (awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError):
+    except awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError:
         _LOGGER.debug(
             "Unable to compare firmware '%s' in client factory. Falling back to legacy backend.",
             firmware,

@@ -93,7 +93,8 @@ class _FakeFlowClient:
         ]
 
     async def async_close(self) -> None:
-        return None
+        """Satisfy client close calls from flow validation paths."""
+        return
 
 
 class _FakeRuntimeClient:
@@ -676,7 +677,8 @@ async def test_e2e_full_migration_chain(monkeypatch, make_config_entry):
             return "newmacid"
 
         async def async_close(self) -> None:
-            return None
+            """Satisfy migration helper cleanup calls in the fake migration client."""
+            return
 
         async def get_host_firmware_version(self):  # not used in migration chain here
             """Return a placeholder firmware version for migration compatibility."""

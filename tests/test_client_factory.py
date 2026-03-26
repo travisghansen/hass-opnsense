@@ -28,6 +28,7 @@ async def test_add_query_count_compat_noop_when_get_query_counts_exists() -> Non
 
     class _Client:
         async def get_query_counts(self) -> tuple[int, int]:
+            """Return already-normalized query counters for compatibility testing."""
             return (1, 2)
 
     client = _Client()
@@ -41,6 +42,7 @@ async def test_add_query_count_compat_normalizes_existing_get_query_counts() -> 
 
     class _Client:
         async def get_query_counts(self) -> int:
+            """Return scalar query counter to test normalization behavior."""
             return 7
 
     client = _Client()
@@ -54,9 +56,11 @@ async def test_add_plugin_compat_noop_when_plugin_methods_exist() -> None:
 
     class _Client:
         async def is_plugin_installed(self) -> bool:
+            """Return installed state so shim does not override existing method."""
             return True
 
         async def is_plugin_deprecated(self) -> bool:
+            """Return deprecated state so shim does not override existing method."""
             return True
 
     client = _Client()
@@ -71,6 +75,14 @@ async def test_add_plugin_compat_uses_is_named_plugin_installed() -> None:
 
     class _Client:
         async def is_named_plugin_installed(self, plugin_name: str) -> bool:
+            """Return whether requested plugin name matches the test plugin.
+
+            Args:
+                plugin_name: Plugin name checked by the compatibility shim.
+
+            Returns:
+                bool: `True` when requested plugin is `os-homeassistant-maxit`.
+            """
             return plugin_name == "os-homeassistant-maxit"
 
     client = _Client()
@@ -85,6 +97,7 @@ async def test_add_plugin_compat_uses_installed_plugins_collection() -> None:
 
     class _Client:
         async def get_installed_plugins(self) -> set[str]:
+            """Return installed plugin names for collection-based detection tests."""
             return {"os-vnstat", "os-homeassistant-maxit"}
 
     client = _Client()
@@ -99,6 +112,7 @@ async def test_add_plugin_compat_uses_installed_plugins_package_rows() -> None:
 
     class _Client:
         async def get_installed_plugins(self) -> list[dict[str, str]]:
+            """Return package rows for row-based plugin detection tests."""
             return [
                 {"name": "os-vnstat", "installed": "1"},
                 {"name": "os-homeassistant-maxit", "installed": "1"},
@@ -116,6 +130,7 @@ async def test_add_plugin_compat_uses_firmware_info_when_plugin_helpers_missing(
 
     class _Client:
         async def get_firmware_info(self) -> dict[str, Any]:
+            """Return firmware payload containing package metadata for plugin detection."""
             return {
                 "package": [
                     {"name": "os-homeassistant-maxit", "installed": "1"},
@@ -147,12 +162,19 @@ async def test_add_core_compat_noop_when_core_methods_exist() -> None:
 
     class _Client:
         async def set_use_snake_case(self, initial: bool = False) -> None:
-            return None
+            """Accept naming-mode call so shim preserves existing implementation.
+
+            Args:
+                initial: Initial-setup flag passed by caller.
+            """
+            return
 
         async def reset_query_counts(self) -> None:
-            return None
+            """Accept query-counter reset call in no-op compatibility test."""
+            return
 
         async def get_query_counts(self) -> tuple[int, int]:
+            """Return query counters so shim preserves existing implementation."""
             return (3, 4)
 
     client = _Client()
@@ -193,12 +215,19 @@ async def test_create_client_uses_legacy_for_old_firmware(monkeypatch: pytest.Mo
 
     class _LegacyClient:
         def __init__(self, **kwargs: Any) -> None:
+            """Initialize fake legacy client used for old-firmware routing tests.
+
+            Args:
+                **kwargs: Unused constructor kwargs passed by factory.
+            """
             self.closed = False
 
         async def get_host_firmware_version(self) -> str:
+            """Return old firmware value so factory keeps legacy backend."""
             return "25.7"
 
         async def async_close(self) -> None:
+            """Record close calls from factory probe cleanup."""
             self.closed = True
 
     monkeypatch.setattr(factory_mod, "LegacyOPNsenseClient", _LegacyClient)
@@ -223,16 +252,31 @@ async def test_create_client_uses_external_for_new_firmware(
 
     class _LegacyClient:
         def __init__(self, **kwargs: Any) -> None:
+            """Initialize fake legacy probe client for external-routing tests.
+
+            Args:
+                **kwargs: Unused constructor kwargs passed by factory.
+            """
             return
 
         async def get_host_firmware_version(self) -> str:
+            """Return new firmware value so factory routes to external backend."""
             return "26.1.1"
 
         async def async_close(self) -> None:
+            """Record that probe client was closed before switching backends."""
             created["legacy_closed"] = True
 
     class _ExternalClient:
         def __init__(self, **kwargs: Any) -> None:
+            """Simulate first-attempt constructor failure and second-attempt success.
+
+            Args:
+                **kwargs: Constructor kwargs passed by factory.
+
+            Raises:
+                TypeError: Raised on first invocation to trigger fallback kwargs retry.
+            """
             created["attempts"] += 1
             self.attempt = created["attempts"]
             if self.attempt == 1:
@@ -240,6 +284,7 @@ async def test_create_client_uses_external_for_new_firmware(
             self.kwargs = kwargs
 
         async def get_query_count(self) -> int:
+            """Return scalar query count so compatibility shim can normalize it."""
             return 5
 
     monkeypatch.setattr(factory_mod, "LegacyOPNsenseClient", _LegacyClient)
@@ -274,6 +319,14 @@ async def test_create_external_client_retries_without_name_and_initial(
 
     class _ExternalClient:
         def __init__(self, **kwargs: Any) -> None:
+            """Capture kwargs and fail on unsupported keys to test retry behavior.
+
+            Args:
+                **kwargs: Constructor kwargs passed by factory.
+
+            Raises:
+                TypeError: Raised when unsupported kwargs are present.
+            """
             calls.append(kwargs)
             if "name" in kwargs or "initial" in kwargs:
                 raise TypeError("unsupported kwargs")
@@ -324,6 +377,14 @@ async def test_create_external_client_raises_when_retry_still_fails(
 
     class _ExternalClient:
         def __init__(self, **kwargs: Any) -> None:
+            """Always fail constructor to validate dependency-wrapping path.
+
+            Args:
+                **kwargs: Constructor kwargs passed by factory.
+
+            Raises:
+                TypeError: Always raised by this stub.
+            """
             raise TypeError("always fails")
 
     monkeypatch.setattr(
@@ -352,17 +413,32 @@ async def test_create_client_raises_when_external_dependency_missing(
 
     class _LegacyClient:
         def __init__(self, **kwargs: Any) -> None:
+            """Initialize fake legacy probe for missing-dependency test.
+
+            Args:
+                **kwargs: Unused constructor kwargs passed by factory.
+            """
             return
 
         async def get_host_firmware_version(self) -> str:
+            """Return new firmware so external backend path is exercised."""
             return "26.2"
 
         async def async_close(self) -> None:
+            """Provide cleanup hook expected by factory code paths."""
             return
 
     monkeypatch.setattr(factory_mod, "LegacyOPNsenseClient", _LegacyClient)
 
     def _raise_import_error(module_name: str) -> Any:
+        """Raise import error to emulate missing external dependency.
+
+        Args:
+            module_name: Module name requested by the factory.
+
+        Raises:
+            ImportError: Always raised by this stub.
+        """
         raise ImportError("not found")
 
     monkeypatch.setattr(factory_mod, "import_module", _raise_import_error)
@@ -385,19 +461,39 @@ async def test_create_client_falls_back_to_legacy_on_uncomparable_firmware(
 
     class _LegacyClient:
         def __init__(self, **kwargs: Any) -> None:
+            """Initialize fake legacy client used in compare-failure fallback tests.
+
+            Args:
+                **kwargs: Unused constructor kwargs passed by factory.
+            """
             self.closed = False
 
         async def get_host_firmware_version(self) -> str:
+            """Return non-comparable firmware string for fallback scenario."""
             return "weird"
 
         async def async_close(self) -> None:
+            """Record close calls from factory cleanup paths."""
             self.closed = True
 
     class _BrokenAwesomeVersion:
         def __init__(self, value: Any) -> None:
+            """Store wrapped version value for comparison-stub parity.
+
+            Args:
+                value: Version payload passed by factory compare logic.
+            """
             self.value = value
 
         def __ge__(self, other: Any) -> bool:
+            """Raise compare error to force legacy fallback behavior.
+
+            Args:
+                other: Comparison target ignored by this stub.
+
+            Raises:
+                ValueError: Always raised by this comparison stub.
+            """
             raise ValueError("cannot compare")
 
     monkeypatch.setattr(factory_mod, "LegacyOPNsenseClient", _LegacyClient)
@@ -423,12 +519,23 @@ async def test_create_client_closes_probe_when_firmware_probe_raises(
 
     class _LegacyClient:
         def __init__(self, **kwargs: Any) -> None:
+            """Initialize fake probe client used in probe-failure tests.
+
+            Args:
+                **kwargs: Unused constructor kwargs passed by factory.
+            """
             return
 
         async def get_host_firmware_version(self) -> str:
+            """Raise probe error to test close-and-reraise behavior.
+
+            Raises:
+                RuntimeError: Always raised by this stub.
+            """
             raise RuntimeError("probe failed")
 
         async def async_close(self) -> None:
+            """Record close call after probe failure."""
             closed["value"] = True
 
     monkeypatch.setattr(factory_mod, "LegacyOPNsenseClient", _LegacyClient)

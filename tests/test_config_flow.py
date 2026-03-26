@@ -330,10 +330,24 @@ async def test_get_dt_entries_closes_client(monkeypatch):
         last_instance = None
 
         def __init__(self, *args, **kwargs):
+            """Capture last created client instance for close assertions.
+
+            Args:
+                *args: Unused positional constructor args from factory helper.
+                **kwargs: Unused keyword constructor args from factory helper.
+            """
             type(self).last_instance = self
             self.async_close = AsyncMock()
 
         async def get_arp_table(self, resolve_hostnames=True):
+            """Return an empty ARP table for close-path testing.
+
+            Args:
+                resolve_hostnames: Hostname-resolution flag passed by caller and ignored.
+
+            Returns:
+                list: Empty ARP-table payload.
+            """
             return []
 
     patch_client_factory(monkeypatch, cf_mod, _Client)
@@ -356,22 +370,56 @@ async def test_handle_user_input_closes_client(monkeypatch):
         last_instance = None
 
         def __init__(self, *args, **kwargs):
+            """Capture last created client instance for close assertions.
+
+            Args:
+                *args: Unused positional constructor args from factory helper.
+                **kwargs: Unused keyword constructor args from factory helper.
+            """
             type(self).last_instance = self
             self.async_close = AsyncMock()
 
         async def get_host_firmware_version(self):
+            """Return firmware that passes minimum-version validation.
+
+            Returns:
+                str: Firmware version used by the test.
+            """
             return "26.1.1"
 
         async def set_use_snake_case(self, initial: bool = False):
-            return None
+            """Accept naming-mode call from validation flow.
+
+            Args:
+                initial: Initial-setup flag passed by validation logic.
+            """
+            return
 
         async def is_plugin_installed(self):
+            """Report plugin as installed for this validation path.
+
+            Returns:
+                bool: Always `True`.
+            """
             return True
 
         async def get_system_info(self):
+            """Return minimal system metadata for name derivation.
+
+            Returns:
+                dict[str, str]: Mapping containing router display name.
+            """
             return {"name": "OPNsense"}
 
         async def get_device_unique_id(self, expected_id: str | None = None):
+            """Return deterministic device identifier for validation.
+
+            Args:
+                expected_id: Expected device ID from caller and ignored in this stub.
+
+            Returns:
+                str: Fake device identifier.
+            """
             return "dev123"
 
     patch_client_factory(monkeypatch, cf_mod, _Client)

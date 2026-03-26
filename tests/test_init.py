@@ -150,6 +150,14 @@ async def test_async_setup_entry_missing_external_dependency(
     """async_setup_entry should fail and create issue when external backend is required."""
 
     async def _raise_missing_dep(**kwargs: Any) -> Any:
+        """Raise missing-dependency error to exercise setup failure handling.
+
+        Args:
+            **kwargs: Unused client-constructor kwargs from setup code.
+
+        Raises:
+            MissingExternalAiopnsenseDependency: Always raised by this test stub.
+        """
         raise init_mod.MissingExternalAiopnsenseDependency("missing")
 
     monkeypatch.setattr(init_mod, "create_opnsense_client", _raise_missing_dep)
@@ -945,6 +953,14 @@ async def test_migrate_2_to_3_missing_external_dependency(monkeypatch):
     """_migrate_2_to_3 should return False when router requires missing external backend."""
 
     async def _raise_missing_dep(**kwargs: Any) -> Any:
+        """Raise missing-dependency error to exercise migration failure handling.
+
+        Args:
+            **kwargs: Unused client-constructor kwargs from migration code.
+
+        Raises:
+            MissingExternalAiopnsenseDependency: Always raised by this test stub.
+        """
         raise init_mod.MissingExternalAiopnsenseDependency("missing")
 
     monkeypatch.setattr(init_mod, "create_opnsense_client", _raise_missing_dep)
@@ -1187,6 +1203,14 @@ async def test_migrate_3_to_4_missing_external_dependency(monkeypatch):
     """_migrate_3_to_4 should return False when router requires missing external backend."""
 
     async def _raise_missing_dep(**kwargs: Any) -> Any:
+        """Raise missing-dependency error to exercise migration failure handling.
+
+        Args:
+            **kwargs: Unused client-constructor kwargs from migration code.
+
+        Raises:
+            MissingExternalAiopnsenseDependency: Always raised by this test stub.
+        """
         raise init_mod.MissingExternalAiopnsenseDependency("missing")
 
     monkeypatch.setattr(init_mod, "create_opnsense_client", _raise_missing_dep)

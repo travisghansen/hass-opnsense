@@ -50,7 +50,20 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         config_entry: ConfigEntry,
         device_tracker_coordinator: bool = False,
     ) -> None:
-        """Initialize the data object."""
+        """Initialize the coordinator for standard or device-tracker polling.
+
+        Args:
+            hass: Home Assistant instance.
+            client: OPNsense API client used to fetch data.
+            name: Coordinator name shown in logs.
+            update_interval: Polling interval for coordinator refreshes.
+            device_unique_id: Expected router unique ID from the config entry.
+            config_entry: Config entry that owns this coordinator.
+            device_tracker_coordinator: Whether this coordinator handles device-tracker data.
+
+        Raises:
+            ValueError: `config_entry` is required but was not provided.
+        """
         _LOGGER.info(
             "Initializing OPNsense Data Update Coordinator %s",
             "for Device Tracker" if device_tracker_coordinator else "",
@@ -73,7 +86,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         self._categories = self._build_categories()
 
     async def _async_setup(self) -> None:
-        """Set up the coordinator."""
+        """Prepare coordinator client options before the first refresh."""
         _LOGGER.debug(
             "Setting up %sCoordinator",
             "DT " if self._device_tracker_coordinator else "",
@@ -82,7 +95,14 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         await self._client.set_use_snake_case()
 
     async def _get_states(self, categories: list) -> dict[str, Any]:
-        """Return states."""
+        """Fetch state payloads for the requested category call definitions.
+
+        Args:
+            categories: Sequence of category mappings with `function` and `state_key` entries.
+
+        Returns:
+            dict[str, Any]: State mapping keyed by each category `state_key`.
+        """
         state: dict[str, Any] = {}
         total_time: float = 0
         for cat in categories:
@@ -109,7 +129,11 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         return state
 
     def _build_categories(self) -> list[dict[str, str]]:
-        """Build the categories for fetching data."""
+        """Build API call categories based on integration sync options.
+
+        Returns:
+            list[dict[str, str]]: Ordered call definitions for coordinator refreshes.
+        """
         if not self.config_entry:
             _LOGGER.error("Coordinator build_categories failed. No config entry found.")
             return []
@@ -181,7 +205,11 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         return categories
 
     async def _check_device_unique_id(self) -> bool:
-        """Check if the device unique ID matches the one in the config."""
+        """Validate that the runtime router ID matches the configured device ID.
+
+        Returns:
+            bool: `True` when IDs match; otherwise `False` after mismatch handling.
+        """
         if self._state.get("device_unique_id") is None:
             _LOGGER.warning("Coordinator failed to confirm OPNsense Router Unique ID. Will retry")
             self._mismatched_count = 0
@@ -221,7 +249,11 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         return True
 
     async def _async_update_dt_data(self) -> dict[str, Any]:
-        """Update data for device tracker."""
+        """Refresh the reduced state payload used by the device-tracker coordinator.
+
+        Returns:
+            dict[str, Any]: Refreshed device-tracker state, or an empty mapping on validation failure.
+        """
         categories: list = [
             {"function": "get_device_unique_id", "state_key": "device_unique_id"},
             {
@@ -255,7 +287,11 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         return self._state
 
     async def _calculate_vpn_speeds(self, elapsed_time: float) -> None:
-        """Calculate vpn speeds."""
+        """Calculate VPN byte-rate metrics for OpenVPN and WireGuard instances.
+
+        Args:
+            elapsed_time: Seconds between current and previous coordinator updates.
+        """
         for vpn_type in ("openvpn", "wireguard"):
             cs = ["servers"]
             if vpn_type == "wireguard":
@@ -305,7 +341,11 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                         instance[new_property] = value
 
     async def _calculate_interface_speeds(self, elapsed_time: float) -> None:
-        """Calculate interface speeds."""
+        """Calculate interface packet/byte rate metrics from counter deltas.
+
+        Args:
+            elapsed_time: Seconds between current and previous coordinator updates.
+        """
         for interface_name, interface in (dict_get(self._state, "interfaces", {}) or {}).items():
             previous_interface = dict_get(
                 self._state,
@@ -334,7 +374,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                     interface[new_property] = value
 
     async def _calculate_entity_speeds(self) -> None:
-        """Calculate speeds for interfaces and VPNs."""
+        """Populate derived speed metrics for enabled interface and VPN categories."""
         update_time = dict_get(self._state, "update_time")
         previous_update_time = dict_get(self._state, "previous_state.update_time")
         if not previous_update_time or not self.config_entry:
@@ -350,7 +390,11 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             await self._calculate_vpn_speeds(elapsed_time=elapsed_time)
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch the latest state from OPNsense."""
+        """Perform one coordinator refresh cycle.
+
+        Returns:
+            dict[str, Any]: Latest coordinator state payload for entities.
+        """
         if self._updating:
             _LOGGER.warning(
                 "Skipping %supdate because the previous update is still in progress",
@@ -402,7 +446,17 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         current_parent_value: float,
         previous_parent_value: float,
     ) -> tuple[str, int]:
-        """Calculate speed."""
+        """Calculate a rounded per-second rate and derived metric name.
+
+        Args:
+            prop_name: Counter property name, such as `inbytes` or `inpkts`.
+            elapsed_time: Seconds elapsed between counter samples.
+            current_parent_value: Current counter value.
+            previous_parent_value: Previous counter value.
+
+        Returns:
+            tuple[str, int]: Tuple of derived property name and rounded rate value.
+        """
         try:
             change: float = abs(current_parent_value - previous_parent_value)
             rate: float = change / elapsed_time

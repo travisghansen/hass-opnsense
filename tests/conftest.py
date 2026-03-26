@@ -836,7 +836,8 @@ def fake_flow_client():
                 return self._plugin_installed
 
             async def async_close(self) -> None:
-                return None
+                """Record a successful close operation for flow-client assertions."""
+                return
 
         return FakeFlowClient
 
