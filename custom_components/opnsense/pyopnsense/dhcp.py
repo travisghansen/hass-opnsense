@@ -216,9 +216,6 @@ class DHCPMixin(PyOPNsenseClientProtocol):
         firmware = await self.get_host_firmware_version()
 
         try:
-            if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion("25.1"):
-                _LOGGER.debug("Skipping get_dnsmasq_leases for OPNsense < 25.1")
-                return []
             if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion("25.1.7"):
                 _LOGGER.debug("Skipping get_dnsmasq_leases for OPNsense < 25.1.7")
                 return []
