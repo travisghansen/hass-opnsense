@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Mapping, MutableMapping
 from importlib import import_module
+from importlib.metadata import PackageNotFoundError, version as package_version
 import logging
 from typing import Any
 
@@ -15,11 +16,32 @@ from .client_protocol import OPNsenseClientProtocol
 from .pyopnsense import OPNsenseClient as LegacyOPNsenseClient
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
-AI_OPNSENSE_MIN_FIRMWARE = "26.1.1"
+AIOPNSENSE_MIN_FIRMWARE = "26.1.1"
 
 
 class MissingExternalAiopnsenseDependency(ImportError):
     """Raised when external ``aiopnsense`` is required but unavailable."""
+
+
+async def _get_external_aiopnsense_version() -> str | None:
+    """Resolve installed external aiopnsense version in a non-blocking way.
+
+    Returns:
+        str | None: aiopnsense package version string when available, else `None`.
+    """
+    try:
+        external_module = await asyncio.to_thread(import_module, "aiopnsense")
+    except ImportError:
+        return None
+
+    module_version: Any = getattr(external_module, "__version__", None)
+    if isinstance(module_version, str) and module_version.strip():
+        return module_version.strip()
+
+    try:
+        return await asyncio.to_thread(package_version, "aiopnsense")
+    except PackageNotFoundError:
+        return None
 
 
 def _build_client_kwargs(
@@ -352,18 +374,27 @@ async def create_opnsense_client(
             await probe_client.async_close()
         finally:
             raise
-    _LOGGER.debug("Client factory detected firmware: %s", firmware)
+    # _LOGGER.debug("Client factory detected firmware: %s", firmware)
 
     try:
         if awesomeversion.AwesomeVersion(firmware) >= awesomeversion.AwesomeVersion(
-            AI_OPNSENSE_MIN_FIRMWARE
+            AIOPNSENSE_MIN_FIRMWARE
         ):
             await probe_client.async_close()
-            _LOGGER.debug(
-                "Using external aiopnsense backend for firmware >= %s",
-                AI_OPNSENSE_MIN_FIRMWARE,
-            )
-            return await _create_external_client(**kwargs)
+            client = await _create_external_client(**kwargs)
+            aiopnsense_version: str | None = await _get_external_aiopnsense_version()
+            if aiopnsense_version:
+                _LOGGER.info(
+                    "Using aiopnsense %s for firmware >= %s",
+                    aiopnsense_version,
+                    AIOPNSENSE_MIN_FIRMWARE,
+                )
+            else:
+                _LOGGER.info(
+                    "Using aiopnsense for firmware >= %s",
+                    AIOPNSENSE_MIN_FIRMWARE,
+                )
+            return client
     except awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError:
         _LOGGER.debug(
             "Unable to compare firmware '%s' in client factory. Falling back to legacy backend.",
