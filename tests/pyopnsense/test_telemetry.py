@@ -27,6 +27,13 @@ async def test_telemetry_system_parsing_and_filesystems() -> None:
         }
 
         async def fake_safe_post(path, *args, **kwargs):
+            """Return the canned telemetry payload for every posted diagnostics path.
+
+            Args:
+                path: Path provided by pytest or the test case.
+                *args: Additional positional arguments forwarded by the function.
+                **kwargs: Additional keyword arguments forwarded by the function.
+            """
             if "systemTime" in path or "system_time" in path:
                 return time_info
             if "systemDisk" in path or "system_disk" in path:
@@ -163,6 +170,13 @@ async def test_telemetry_memory_swap_branches() -> None:
         swap = {"swap": [{"total": "1000", "used": "200"}]}
 
         async def fake_post(path, *args, **kwargs):
+            """Return memory or swap payloads based on the requested diagnostics path.
+
+            Args:
+                path: Path provided by pytest or the test case.
+                *args: Additional positional arguments forwarded by the function.
+                **kwargs: Additional keyword arguments forwarded by the function.
+            """
             if "systemResources" in path or "system_resources" in path:
                 return mem
             if "systemSwap" in path or "system_swap" in path:

@@ -71,16 +71,11 @@ def is_valid_mac_address(mac: str) -> bool:
 def normalize_mac_address(mac: str) -> str | None:
     """Normalize MAC addresses to lowercase colon-separated format.
 
-    Parameters
-    ----------
-    mac : str
-        Raw MAC address input.
+    Args:
+        mac: Raw MAC address input.
 
     Returns:
-    -------
-    str | None
-        Normalized MAC (`aa:bb:cc:dd:ee:ff`) when valid, otherwise ``None``.
-
+        str | None: Normalized MAC (`aa:bb:cc:dd:ee:ff`) when valid, otherwise ``None``.
     """
     if not isinstance(mac, str):
         return None
@@ -96,18 +91,12 @@ def _get_device_tracking_mode(
 ) -> str:
     """Return the UI tracking mode for the current options.
 
-    Parameters
-    ----------
-    device_tracker_enabled : bool
-        Whether device tracker is enabled in options.
-    selected_devices : list[str] | None
-        Persisted tracked MAC addresses from the config entry options.
+    Args:
+        device_tracker_enabled: Whether device tracker is enabled in options.
+        selected_devices: Persisted tracked MAC addresses from the config entry options.
 
     Returns:
-    -------
-    str
-        The UI mode matching the stored options.
-
+        str: The UI mode matching the stored options.
     """
     if not device_tracker_enabled:
         return DEVICE_TRACKING_MODE_DISABLED
@@ -117,16 +106,11 @@ def _get_device_tracking_mode(
 def _parse_manual_devices(manual_devices: str | None) -> list[str]:
     """Parse manually entered MAC addresses from the options form.
 
-    Parameters
-    ----------
-    manual_devices : str | None
-        Comma- or newline-separated MAC address input.
+    Args:
+        manual_devices: Comma- or newline-separated MAC address input.
 
     Returns:
-    -------
-    list[str]
-        Valid normalized MAC addresses in input order.
-
+        list[str]: Valid normalized MAC addresses in input order.
     """
     if not isinstance(manual_devices, str):
         return []
@@ -144,16 +128,11 @@ def _parse_manual_devices(manual_devices: str | None) -> list[str]:
 def _merge_selected_devices(*device_groups: Iterable[str]) -> list[str]:
     """Merge MAC addresses while preserving order and removing duplicates.
 
-    Parameters
-    ----------
-    *device_groups : Iterable[str]
-        MAC address iterables to merge.
+    Args:
+        *device_groups: MAC address iterables to merge.
 
     Returns:
-    -------
-    list[str]
-        Unique MAC addresses in first-seen order.
-
+        list[str]: Unique MAC addresses in first-seen order.
     """
     ordered_devices: OrderedDict[str, None] = OrderedDict()
     for group in device_groups:
@@ -167,18 +146,12 @@ def _merge_selected_devices(*device_groups: Iterable[str]) -> list[str]:
 def _apply_device_tracking_mode(options: MutableMapping[str, Any], tracking_mode: str) -> None:
     """Apply UI tracking mode to persisted options.
 
-    Parameters
-    ----------
-    options : MutableMapping[str, Any]
-        Options mapping to update.
-    tracking_mode : str
-        Selected UI tracking mode.
+    Args:
+        options: Options mapping to update.
+        tracking_mode: Selected UI tracking mode.
 
     Returns:
-    -------
-    None
-        This function mutates ``options`` in place.
-
+        None: This function mutates ``options`` in place.
     """
     options[CONF_DEVICE_TRACKER_ENABLED] = tracking_mode != DEVICE_TRACKING_MODE_DISABLED
     if tracking_mode == DEVICE_TRACKING_MODE_ALL:
@@ -188,16 +161,11 @@ def _apply_device_tracking_mode(options: MutableMapping[str, Any], tracking_mode
 def _build_selected_device_entries(selected_devices: list[str]) -> dict[str, Any]:
     """Build selector entries from currently configured devices.
 
-    Parameters
-    ----------
-    selected_devices : list[str]
-        Persisted tracked MAC addresses from the options entry.
+    Args:
+        selected_devices: Persisted tracked MAC addresses from the options entry.
 
     Returns:
-    -------
-    dict[str, Any]
-        Mapping of normalized MAC addresses to fallback labels.
-
+        dict[str, Any]: Mapping of normalized MAC addresses to fallback labels.
     """
     entries: dict[str, Any] = {}
     for device in selected_devices:
@@ -211,16 +179,11 @@ def _build_selected_device_entries(selected_devices: list[str]) -> dict[str, Any
 def _format_selected_device_label(mac: str) -> str:
     """Format a fallback label for configured MACs not currently detected.
 
-    Parameters
-    ----------
-    mac : str
-        MAC address to display.
+    Args:
+        mac: MAC address to display.
 
     Returns:
-    -------
-    str
-        Human-readable fallback label.
-
+        str: Human-readable fallback label.
     """
     return f"Not currently detected [{mac}]"
 
@@ -228,16 +191,11 @@ def _format_selected_device_label(mac: str) -> str:
 def _format_detected_device_label(entry: Mapping[str, Any]) -> str:
     """Format a device label from an ARP table entry.
 
-    Parameters
-    ----------
-    entry : Mapping[str, Any]
-        ARP entry returned by the OPNsense client.
+    Args:
+        entry: ARP entry returned by the OPNsense client.
 
     Returns:
-    -------
-    str
-        Human-readable device label for the options form.
-
+        str: Human-readable device label for the options form.
     """
     normalized_mac = normalize_mac_address(str(entry.get("mac", "")))
     mac = normalized_mac or str(entry.get("mac", "")).lower().strip()
@@ -268,20 +226,13 @@ def _device_entry_sort_key(
 ) -> tuple[int, tuple[int, int] | str]:
     """Return the sort key for device selector entries.
 
-    Parameters
-    ----------
-    mac : str
-        MAC address for the selector option.
-    label : str
-        User-facing selector label.
-    ip_by_mac : Mapping[str, str]
-        Detected IP addresses keyed by MAC address.
+    Args:
+        mac: MAC address for the selector option.
+        label: User-facing selector label.
+        ip_by_mac: Detected IP addresses keyed by MAC address.
 
     Returns:
-    -------
-    tuple[int, tuple[int, int] | str]
-        Key used to sort fallback labels first and detected devices by IP.
-
+        tuple[int, tuple[int, int] | str]: Key used to sort fallback labels first and detected devices by IP.
     """
     if label.startswith("Not currently detected"):
         return (0, label)
@@ -559,6 +510,13 @@ def _build_user_input_schema(
     fallback: MutableMapping[str, Any] | None = None,
     reconf: bool = False,
 ) -> vol.Schema:
+    """Build user input schema.
+
+    Args:
+        user_input: Values submitted for the current configuration or options flow step.
+        fallback: Fallback values used when the current form input does not include a field.
+        reconf: Whether the schema is being built for the reconfigure flow instead of initial setup.
+    """
     if user_input is None:
         user_input = {}
     if fallback is None:
@@ -607,6 +565,12 @@ def _build_granular_sync_schema(
     user_input: MutableMapping[str, Any] | None,
     fallback: MutableMapping[str, Any] | None = None,
 ) -> vol.Schema:
+    """Build granular sync schema.
+
+    Args:
+        user_input: Values submitted for the current configuration or options flow step.
+        fallback: Stored sync option values used to prefill the granular sync form.
+    """
     if user_input is None:
         user_input = {}
     if fallback is None:
@@ -633,6 +597,13 @@ def _build_options_init_schema(
     fallback_config: MutableMapping[str, Any] | None = None,
     fallback_options: MutableMapping[str, Any] | None = None,
 ) -> vol.Schema:
+    """Build options init schema.
+
+    Args:
+        user_input: Values submitted for the current configuration or options flow step.
+        fallback_config: Config-entry data used when an option has not been overridden yet.
+        fallback_options: Existing options used to populate the initial options-flow form.
+    """
     if user_input is None:
         user_input = {}
     if fallback_config is None:
@@ -711,18 +682,12 @@ def _build_device_tracker_schema(
 ) -> vol.Schema:
     """Build the device tracker options schema.
 
-    Parameters
-    ----------
-    selected_devices : list[str]
-        Previously configured MAC addresses.
-    dt_entries : Mapping[str, Any]
-        Device choices built from the current ARP table and stored MACs.
+    Args:
+        selected_devices: Previously configured MAC addresses.
+        dt_entries: Device choices built from the current ARP table and stored MACs.
 
     Returns:
-    -------
-    vol.Schema
-        Device tracker form schema.
-
+        vol.Schema: Device tracker form schema.
     """
     return vol.Schema(
         {
@@ -737,21 +702,13 @@ async def _get_dt_entries(
 ) -> dict[str, Any]:
     """Return device-tracker selector entries.
 
-    Parameters
-    ----------
-    hass : HomeAssistant
-        Home Assistant instance.
-    config : Mapping[str, Any]
-        Config entry data used to build the OPNsense client.
-    selected_devices : list
-        Persisted MAC addresses that should remain selectable even when not
-        currently present in the ARP table.
+    Args:
+        hass: Home Assistant instance.
+        config: Config entry data used to build the OPNsense client.
+        selected_devices: Persisted MAC addresses that should remain selectable even when not currently present in the ARP table.
 
     Returns:
-    -------
-    dict[str, Any]
-        Mapping of MAC addresses to user-facing labels.
-
+        dict[str, Any]: Mapping of MAC addresses to user-facing labels.
     """
     url = config[CONF_URL].strip()
     username: str = config[CONF_USERNAME]
@@ -1060,16 +1017,11 @@ class OPNsenseOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         """Handle the device tracker options step.
 
-        Parameters
-        ----------
-        user_input : MutableMapping[str, Any] | None
-            User-submitted form data.
+        Args:
+            user_input: User-submitted form data.
 
         Returns:
-        -------
-        ConfigFlowResult
-            The next form step or the saved options entry.
-
+            ConfigFlowResult: The next form step or the saved options entry.
         """
         errors: dict[str, Any] = {}
         selected_devices: list[str] = _merge_selected_devices(self._options.get(CONF_DEVICES, []))

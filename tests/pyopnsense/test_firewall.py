@@ -198,10 +198,7 @@ async def test_get_config_and_rule_enable_disable_branches() -> None:
 async def test_enable_filter_rule_by_created_time_legacy(
     make_client, rules, created_time, should_call
 ) -> None:
-    """Ensure enabling a filter rule removes 'disabled' and triggers restore/configure only when appropriate.
-
-    Parameterized to exercise matching and non-matching branches.
-    """
+    """Ensure enabling a filter rule removes 'disabled' and triggers restore/configure only when appropriate. Parameterized to exercise matching and non-matching branches."""
 
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session)

@@ -92,6 +92,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        """Handle coordinator update."""
         state: dict[str, Any] = self.coordinator.data
         if not self._is_update_available(state):
             self._available = False
@@ -143,12 +144,18 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
         self.async_write_ha_state()
 
     def _is_update_available(self, state: MutableMapping[str, Any]) -> bool:
+        """Return whether update available.
+
+        Returns:
+            bool: True if update available; otherwise, False.
+        """
         try:
             return state["firmware_update_info"]["status"] != "error"
         except TypeError, KeyError, AttributeError:
             return False
 
     def _get_installed_version(self, state: MutableMapping[str, Any]) -> str | None:
+        """Return installed version."""
         try:
             return dict_get(state, "firmware_update_info.product.product_version")
         except TypeError, KeyError, AttributeError:
@@ -157,6 +164,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
     def _get_versions(
         self, state: MutableMapping[str, Any]
     ) -> tuple[str | None, str | None, str | None]:
+        """Return versions."""
         try:
             product_version = dict_get(state, "firmware_update_info.product.product_version")
             product_latest = dict_get(state, "firmware_update_info.product.product_latest")
@@ -201,6 +209,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
             return product_version, product_latest, product_series
 
     def _get_product_class(self, product_series: str | None) -> str | None:
+        """Return product class."""
         if product_series:
             try:
                 series_minor: str | None = str(product_series).split(".")[1]
@@ -218,6 +227,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
         product_latest: str | None,
         product_version: str | None,
     ) -> str | None:
+        """Return release notes."""
         try:
             status = dict_get(state, "firmware_update_info.status")
             if status == "update":

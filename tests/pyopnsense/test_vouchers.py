@@ -36,10 +36,7 @@ from custom_components.opnsense import pyopnsense
 async def test_generate_vouchers_server_selection_errors_and_success(
     safe_get_ret, safe_post_ret, data, expect_exc, expect_username, expect_extras
 ):
-    """generate_vouchers: no servers / multiple servers -> error, provided server -> success.
-
-    Consolidated test covering error cases and success with optional extra fields.
-    """
+    """generate_vouchers: no servers / multiple servers -> error, provided server -> success. Consolidated test covering error cases and success with optional extra fields."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
         url="http://localhost", username="u", password="p", session=session

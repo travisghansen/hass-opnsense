@@ -8,6 +8,7 @@ calculations, and update flow.
 from collections.abc import MutableMapping
 from datetime import timedelta
 import time
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -118,11 +119,17 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
     # patch issue registry and async_shutdown to avoid side effects
     called = {"issue": 0, "shutdown": 0, "issue_kwargs": None}
 
-    async def fake_shutdown():
+    async def fake_shutdown() -> None:
+        """Record that the coordinator requested shutdown after repeated mismatches."""
         called["shutdown"] += 1
 
-    def fake_async_create_issue(**kwargs):
+    def fake_async_create_issue(**kwargs: Any) -> None:
         # record the kwargs so tests can validate domain and issue_id
+        """Capture the issue payload emitted for a device-ID mismatch.
+
+        Args:
+            **kwargs: Issue fields passed to ``issue_registry.async_create_issue``.
+        """
         called["issue"] += 1
         called["issue_kwargs"] = kwargs
 
@@ -308,14 +315,16 @@ async def test_async_update_data_reentrancy_and_full_flow(
     coord._updating = False
 
     # full flow: monkeypatch _check_device_unique_id to True and ensure functions called
-    async def true_check():
+    async def true_check() -> bool:
+        """Force the device-ID validation step to succeed."""
         return True
 
     monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
 
     # ensure calculate_entity_speeds is callable
-    async def fake_calc():
-        return None
+    async def fake_calc() -> None:
+        """Skip entity-speed calculation while still satisfying the update flow."""
+        return
 
     monkeypatch.setattr(coord, "_calculate_entity_speeds", fake_calc)
     # Spy on client's reset_query_counts before running the update so we can
@@ -341,7 +350,8 @@ async def test_async_setup_calls_client_set_use_snake_case(
     """Coordinator setup invokes client set_use_snake_case when appropriate."""
     called = {"count": 0}
 
-    async def fake_set_use_snake_case():
+    async def fake_set_use_snake_case() -> None:
+        """Record that coordinator setup invoked the client snake-case toggle."""
         called["count"] += 1
 
     entry = make_config_entry()
@@ -452,12 +462,7 @@ async def test_build_categories_flag_true_and_false(
 async def test_async_update_data_strips_nested_previous_state(
     monkeypatch, make_config_entry, fake_client
 ):
-    """Ensure nested 'previous_state' key is removed from the copied previous_state.
-
-    The coordinator copies its current _state into previous_state, then removes any
-    nested 'previous_state' key from that copy before assigning it back. This test
-    verifies that behavior.
-    """
+    """Ensure nested 'previous_state' key is removed from the copied previous_state. The coordinator copies its current _state into previous_state, then removes any nested 'previous_state' key from that copy before assigning it back. This test verifies that behavior."""
     entry = make_config_entry({"device_unique_id": "id", CONF_SYNC_INTERFACES: True})
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -477,11 +482,13 @@ async def test_async_update_data_strips_nested_previous_state(
     }
 
     # Make device id check pass and skip heavy calculations
-    async def true_check():
+    async def true_check() -> bool:
+        """Force device-ID validation to pass for previous-state assertions."""
         return True
 
-    async def noop_calc():
-        return None
+    async def noop_calc() -> None:
+        """Skip speed calculation so the test can focus on state copying."""
+        return
 
     monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
     monkeypatch.setattr(coord, "_calculate_entity_speeds", noop_calc)
@@ -519,7 +526,8 @@ async def test_async_update_data_device_tracker_branch(monkeypatch, make_config_
     # patch the device tracker update to return a specific dict and record calls
     called = {"dt_called": 0}
 
-    async def fake_dt_update():
+    async def fake_dt_update() -> dict[str, Any]:
+        """Return a canned device-tracker payload and record the call count."""
         called["dt_called"] += 1
         return {"dt": True}
 
@@ -550,7 +558,8 @@ async def test_async_update_data_returns_empty_when_device_id_check_fails(
         config_entry=entry,
     )
 
-    async def false_check():
+    async def false_check() -> bool:
+        """Force device-ID validation to fail for the early-return branch."""
         return False
 
     # make the device id check return False
@@ -638,7 +647,12 @@ async def test_async_update_dt_data_device_id_branches(
         "arp_table": {"a": 1},
     }
 
-    async def fake_get_states(categories):
+    async def fake_get_states(categories: list[dict[str, str]]) -> dict[str, Any]:
+        """Return the canned state payload used by the device-tracker branch test.
+
+        Args:
+            categories: Categories requested by the coordinator and ignored by this fake.
+        """
         return fake_state
 
     monkeypatch.setattr(coord, "_get_states", fake_get_states)

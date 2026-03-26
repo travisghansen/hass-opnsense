@@ -47,6 +47,11 @@ async def test_async_setup_entry_configured_devices(
     added = []
 
     def async_add_entities(ents):
+        """Async add entities.
+
+        Args:
+            ents: Ents provided by pytest or the test case.
+        """
         added.extend(ents)
 
     await dt_mod.async_setup_entry(hass, entry, async_add_entities)
@@ -111,6 +116,11 @@ async def test_async_setup_entry_removes_nonmatching_tracked_macs(
     added = []
 
     def async_add_entities(ents):
+        """Async add entities.
+
+        Args:
+            ents: Ents provided by pytest or the test case.
+        """
         added.extend(ents)
 
     await dt_mod.async_setup_entry(hass, entry, async_add_entities)

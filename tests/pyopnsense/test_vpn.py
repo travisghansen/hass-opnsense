@@ -47,6 +47,11 @@ async def test_get_openvpn_and_fetch_details(monkeypatch, make_client) -> None:
         }
 
         async def fake_safe_dict_get(path):
+            """Return canned OpenVPN mapping payloads based on the requested path.
+
+            Args:
+                path: Path provided by pytest or the test case.
+            """
             if "search_sessions" in path or "searchSessions" in path:
                 return sessions_info
             if "search_routes" in path or "searchRoutes" in path:
@@ -65,6 +70,11 @@ async def test_get_openvpn_and_fetch_details(monkeypatch, make_client) -> None:
             return {}
 
         async def fake_safe_list_get(path):
+            """Return an empty list for list-based VPN API lookups in this test.
+
+            Args:
+                path: Path provided by pytest or the test case.
+            """
             return []
 
         monkeypatch.setattr(
@@ -178,6 +188,11 @@ async def test_openvpn_more_detail_parsing(monkeypatch, make_client) -> None:
     instances_info = {"rows": [{"role": "client", "uuid": "c1", "enabled": "0"}]}
 
     async def fake_safe_dict_get(path):
+        """Return canned OpenVPN mappings for the reduced-details test case.
+
+        Args:
+            path: Path provided by pytest or the test case.
+        """
         if "search_sessions" in path or "searchSessions" in path:
             return sessions_info
         if "search_routes" in path or "searchRoutes" in path:
@@ -208,6 +223,11 @@ async def test_openvpn_processing_and_fetch_details() -> None:
     try:
         # prepare fake responses for _safe_dict_get based on path
         def fake_safe_dict_get(path):
+            """Return canned OpenVPN payloads for the detail-fetching test.
+
+            Args:
+                path: Path provided by pytest or the test case.
+            """
             if "searchSessions" in path or "search_sessions" in path:
                 return {
                     "rows": [
@@ -316,6 +336,11 @@ async def test_fetch_openvpn_server_details_missing_server_field() -> None:
 
         async def fake_safe_dict_get(path):
             # return instance details with no 'server' key
+            """Return instance details without a server field for this edge case.
+
+            Args:
+                path: Path provided by pytest or the test case.
+            """
             if "/instances/get/" in path:
                 return {"instance": {}}
             return {}
@@ -369,11 +394,7 @@ async def test_get_wireguard_full_processing_and_peer_details() -> None:
     ],
 )
 def test_wireguard_is_connected_variants(monkeypatch, delta_minutes: int, expected: bool) -> None:
-    """WireGuard connection considered active when last handshake within threshold.
-
-    Monkeypatch `datetime.now` in the module under test to a fixed value with no
-    microseconds so comparisons at the 3-minute boundary are deterministic.
-    """
+    """WireGuard connection considered active when last handshake within threshold. Monkeypatch `datetime.now` in the module under test to a fixed value with no microseconds so comparisons at the 3-minute boundary are deterministic."""
     fixed_now = datetime.now().astimezone().replace(microsecond=0)
     # create a minimal fake datetime provider with a static now() returning fixed_now
     FakeDT = type("FakeDT", (), {"now": staticmethod(lambda: fixed_now)})

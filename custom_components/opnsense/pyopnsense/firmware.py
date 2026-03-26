@@ -23,6 +23,7 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
     _plugin_cache_ttl_seconds: int
 
     async def _store_host_firmware_version(self) -> None:
+        """Store host firmware version."""
         firmware_info = await self._safe_dict_get("/api/core/firmware/status")
         firmware: str | None = dict_get(firmware_info, "product.product_version")
         if not firmware or not awesomeversion.AwesomeVersion(firmware).valid:
@@ -43,11 +44,7 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
         """Return the OPNsense Firmware version.
 
         Returns:
-        -------
-        None | str
-        Parsed host firmware version payload returned by OPNsense APIs.
-
-
+            None | str: Parsed host firmware version payload returned by OPNsense APIs.
         """
         if self._firmware_version is None:
             await self._store_host_firmware_version()
@@ -60,20 +57,16 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
         ``self._installed_plugins`` with package names whose ``installed`` flag
         equals ``"1"``. Cache refreshes are skipped while cached plugin data is
         still fresh according to ``self._plugin_cache_ttl_seconds``, unless
-        ``force`` is ``True``.
-        TTL cache reuse only applies after a successful refresh. If the refresh
-        attempt fails (for example missing/invalid payload), the previous cache
-        is retained and the next call retries immediately.
+        ``force`` is ``True``. TTL cache reuse only applies after a successful
+        refresh. If the refresh attempt fails (for example missing/invalid
+        payload), the previous cache is retained and the next call retries
+        immediately.
 
-        Parameters
-        ----------
-        force : bool
-            Whether to bypass TTL freshness checks and force a refresh attempt.
+        Args:
+            force: Whether to bypass TTL freshness checks and force a refresh attempt.
 
         Returns:
-        -------
-        None
-
+            None: Updates the cached plugin metadata in place when a refresh is needed.
         """
         if (
             not force
@@ -115,26 +108,18 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
         """Return whether the Home Assistant OPNsense plugin is installed.
 
         Returns:
-        -------
-        bool
-            ``True`` when plugin installation is detected, otherwise ``False``.
-
+            bool: ``True`` when plugin installation is detected, otherwise ``False``.
         """
         return await self.is_named_plugin_installed("os-homeassistant-maxit")
 
     async def is_named_plugin_installed(self, plugin_name: str) -> bool:
         """Return whether a named plugin package is installed.
 
-        Parameters
-        ----------
-        plugin_name : str
-            OPNsense package name (for example ``os-vnstat``).
+        Args:
+            plugin_name: OPNsense package name (for example ``os-vnstat``).
 
         Returns:
-        -------
-        bool
-            ``True`` when the package is installed.
-
+            bool: ``True`` when the package is installed.
         """
         if not plugin_name:
             return False
@@ -142,6 +127,11 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
         return plugin_name in (self._installed_plugins or set())
 
     async def _check_if_plugin_deprecated(self) -> bool:
+        """Check if plugin deprecated.
+
+        Returns:
+            bool: True if plugin deprecated; otherwise, False.
+        """
         try:
             if awesomeversion.AwesomeVersion(
                 await self.get_host_firmware_version()
@@ -163,10 +153,7 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
         """Return whether the installed plugin is considered deprecated.
 
         Returns:
-        -------
-        bool
-            ``True`` when the plugin is deprecated for the detected firmware.
-
+            bool: ``True`` when the plugin is deprecated for the detected firmware.
         """
         if self._plugin_deprecated is None:
             self._plugin_deprecated = await self._check_if_plugin_deprecated()
@@ -177,11 +164,7 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
         """Get the details of available firmware updates.
 
         Returns:
-        -------
-        MutableMapping[str, Any]
-        Parsed firmware update info payload returned by OPNsense APIs.
-
-
+            MutableMapping[str, Any]: Parsed firmware update info payload returned by OPNsense APIs.
         """
         status = await self._safe_dict_get("/api/core/firmware/status")
 
@@ -257,17 +240,13 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
     async def upgrade_firmware(self, type: str = "update") -> MutableMapping[str, Any] | None:
         """Trigger a firmware upgrade.
 
-        Parameters
-        ----------
-        type : str
-            Firmware upgrade type (for example update or upgrade). Defaults to 'update'.
+        Args:
+            type: Firmware upgrade type (for example update or upgrade). Defaults to 'update'.
 
         Returns:
-        -------
-        MutableMapping[str, Any] | None
-        True when OPNsense reports the requested action succeeded; otherwise False.
-
-
+            MutableMapping[str, Any] | None: The response payload returned by
+            OPNsense when the action succeeds, or None when the request is not
+            issued or fails.
         """
         # update = minor updates of the same opnsense version
         # upgrade = major updates to a new opnsense version
@@ -284,11 +263,8 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
         """Return the status of the firmware upgrade.
 
         Returns:
-        -------
-        MutableMapping[str, Any]
-        True when OPNsense reports the requested action succeeded; otherwise False.
-
-
+            MutableMapping[str, Any]: The status payload returned by OPNsense for
+            the current firmware upgrade operation.
         """
         return await self._safe_dict_post("/api/core/firmware/upgradestatus")
 
@@ -296,16 +272,10 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
     async def firmware_changelog(self, version: str) -> MutableMapping[str, Any]:
         """Return the changelog for the firmware upgrade.
 
-        Parameters
-        ----------
-        version : str
-            Firmware version string to fetch a changelog for.
+        Args:
+            version: Firmware version string to fetch a changelog for.
 
         Returns:
-        -------
-        MutableMapping[str, Any]
-        Firmware changelog payload returned by OPNsense.
-
-
+            MutableMapping[str, Any]: Firmware changelog payload returned by OPNsense.
         """
         return await self._safe_dict_post(f"/api/core/firmware/changelog/{version}")

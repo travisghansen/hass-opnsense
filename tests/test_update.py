@@ -1,6 +1,7 @@
 """Unit tests for custom_components.opnsense.update."""
 
 import asyncio
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -238,8 +239,9 @@ def test_handle_coordinator_update_sets_attributes(make_config_entry, dummy_coor
 def test_handle_coordinator_update_upgrade_sets_release_url(make_config_entry, dummy_coordinator):
     """Upgrade state should compute a release URL and provide release notes.
 
-    This also asserts normalization of product_latest and correct derivation of
-    the series_minor (from product_series) which affects the release URL.
+    This also asserts normalization of ``product_latest`` and correct
+    derivation of ``series_minor`` from ``product_series``, which affects the
+    generated release URL.
     """
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -483,23 +485,32 @@ async def test_async_install_reboots_when_needed(monkeypatch, make_config_entry,
     class FakeClient:
         def __init__(self):
             # planned sequence: first 'running', then 'done'
+            """Initialize a fake client that simulates a successful update flow."""
             self._status_calls = [
                 {"status": "running"},
                 {"status": "done"},
             ]
             self.rebooted = False
 
-        async def upgrade_firmware(self, upgrade_type):
+        async def upgrade_firmware(self, _upgrade_type: Any) -> dict[str, Any]:
+            """Simulate starting a firmware upgrade request.
+
+            Args:
+                _upgrade_type: Upgrade mode requested by the entity and ignored by this fake client.
+            """
             return {"started": True}
 
-        async def upgrade_status(self):
+        async def upgrade_status(self) -> dict[str, str]:
             # placeholder; will be replaced by AsyncMock in test below
+            """Return the next queued upgrade status payload."""
             return self._status_calls.pop(0)
 
-        async def get_firmware_update_info(self):
+        async def get_firmware_update_info(self) -> dict[str, Any]:
+            """Return update metadata indicating that a reboot is required."""
             return {"needs_reboot": "1", "upgrade_needs_reboot": None}
 
-        async def system_reboot(self):
+        async def system_reboot(self) -> None:
+            """Record that the update entity requested a system reboot."""
             self.rebooted = True
 
     fake = FakeClient()
@@ -594,6 +605,15 @@ def test_get_versions_exception_path(monkeypatch, make_config_entry, dummy_coord
     )
 
     def raise_type(*args, **kwargs):
+        """Raise ``TypeError`` so version parsing error handling can be exercised.
+
+        Args:
+            *args: Additional positional arguments forwarded by the function.
+            **kwargs: Additional keyword arguments forwarded by the function.
+
+        Raises:
+            TypeError: If a supplied argument has an unsupported type.
+        """
         raise TypeError("boom")
 
     monkeypatch.setattr(update_module, "dict_get", raise_type)
@@ -614,6 +634,15 @@ def test_get_release_notes_exception_path(monkeypatch, make_config_entry, dummy_
     )
 
     def raise_key(*args, **kwargs):
+        """Raise ``KeyError`` so release-note fallback handling can be exercised.
+
+        Args:
+            *args: Additional positional arguments forwarded by the function.
+            **kwargs: Additional keyword arguments forwarded by the function.
+
+        Raises:
+            KeyError: Always raised to test the release-note exception path.
+        """
         raise KeyError("nope")
 
     monkeypatch.setattr(update_module, "dict_get", raise_key)
@@ -635,18 +664,32 @@ async def test_async_install_exceptions_loop(monkeypatch, make_config_entry, dum
 
     class BadClient:
         def __init__(self):
+            """Initialize a fake client that fails during upgrade polling."""
             self.rebooted = False
 
-        async def upgrade_firmware(self, upgrade_type):
+        async def upgrade_firmware(self, _upgrade_type: Any) -> dict[str, Any]:
+            """Simulate accepting an upgrade request before polling fails.
+
+            Args:
+                _upgrade_type: Upgrade mode requested by the entity and ignored by this fake client.
+            """
             return {"started": True}
 
-        async def upgrade_status(self):
+        async def upgrade_status(self) -> dict[str, Any]:
+            """Raise a runtime error while the entity polls upgrade status.
+
+            Raises:
+                RuntimeError: Always raised to exercise the entity's exception
+                    handling path.
+            """
             raise RuntimeError("fail")
 
-        async def get_firmware_update_info(self):
+        async def get_firmware_update_info(self) -> dict[str, Any]:
+            """Return update metadata showing that no reboot is required."""
             return {"needs_reboot": None, "upgrade_needs_reboot": None}
 
-        async def system_reboot(self):
+        async def system_reboot(self) -> None:
+            """Record whether a reboot was incorrectly requested after failure."""
             self.rebooted = True
 
     bad = BadClient()

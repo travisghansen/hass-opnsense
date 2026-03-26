@@ -200,6 +200,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        """Handle coordinator update."""
         state: dict[str, Any] = self.coordinator.data
         arp_table = dict_get(state, "arp_table")
         if not isinstance(arp_table, list) or not isinstance(state, MutableMapping):
@@ -325,6 +326,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         )
 
     async def _restore_last_state(self) -> None:
+        """Restore last state."""
         last_state = await self.async_get_last_state()
         if last_state is None or last_state.attributes is None:
             return

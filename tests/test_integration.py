@@ -44,27 +44,48 @@ class _FakeFlowClient:
     """
 
     def __init__(self, device_id: str = "dev-flow", firmware: str = "25.1") -> None:
+        """Store the device identity and firmware used by flow tests.
+
+        Args:
+            device_id: Device identifier returned by the fake client during
+                flow validation.
+            firmware: Firmware version returned during config-flow checks.
+        """
         self._device_id = device_id
         self._firmware = firmware
 
     async def get_host_firmware_version(self) -> str:
+        """Return the firmware version configured for this fake flow client."""
         return self._firmware
 
     async def set_use_snake_case(self, initial: bool = False) -> None:
-        """No-op used by config flow validation path."""
+        """Accept the snake-case toggle call used by flow validation without side effects."""
         return
 
     async def is_plugin_installed(self) -> bool:  # for SYNC_ITEMS_REQUIRING_PLUGIN path
+        """Report plugin availability for config-flow validation checks.
+
+        Returns:
+            bool: Always returns ``True`` so plugin-gated flow branches remain enabled.
+        """
         return True
 
     async def get_system_info(self) -> MutableMapping[str, Any]:
+        """Return a minimal system info payload used by flow validation."""
         return {"name": "OPNsenseTest"}
 
     async def get_device_unique_id(self, expected_id: str | None = None) -> str:
+        """Return the fake router identifier used by the flow tests.
+
+        Args:
+            expected_id: Expected device identifier supplied by the caller and
+                ignored by this fake implementation.
+        """
         return self._device_id
 
     async def get_arp_table(self, resolve_hostnames: bool = False) -> list[dict[str, Any]]:
         # Used by options flow device tracker step
+        """Return two static ARP entries for device-tracker options tests."""
         return [
             {"mac": "aa:bb:cc:dd:ee:ff", "hostname": "host1", "ip": "192.168.1.10"},
             {"mac": "11:22:33:44:55:66", "hostname": "", "ip": "192.168.1.11"},
@@ -75,6 +96,12 @@ class _FakeRuntimeClient:
     """Fake client used during async_setup_entry (main integration path)."""
 
     def __init__(self, device_id: str = "dev-runtime", firmware: str = "25.1") -> None:
+        """Store fake runtime client state used during integration setup tests.
+
+        Args:
+            device_id: Device identifier returned during setup-time probes.
+            firmware: Firmware version returned during setup-time probes.
+        """
         self._device_id = device_id
         self._firmware = firmware
         self._closed = False
@@ -82,12 +109,24 @@ class _FakeRuntimeClient:
     async def get_device_unique_id(
         self, expected_id: str | None = None
     ) -> str:  # used by setup & coordinator
+        """Return the fake runtime device identifier for setup and refresh calls.
+
+        Args:
+            expected_id: Expected device identifier supplied by the caller and
+                ignored by this fake implementation.
+        """
         return self._device_id
 
     async def get_host_firmware_version(self) -> str:  # used by setup & coordinator
+        """Return the fake firmware version used by setup and coordinator refreshes."""
         return self._firmware
 
     async def async_close(self) -> bool:
+        """Record that the fake runtime client was closed.
+
+        Returns:
+            bool: Always returns ``True`` after setting the closed flag.
+        """
         self._closed = True
         return True
 
@@ -95,15 +134,19 @@ class _FakeRuntimeClient:
         self, initial: bool = False
     ) -> None:  # called during coordinator _async_setup
         # Accept the optional `initial` flag like the production client. No-op for tests.
-        return None
+        """Accept the snake-case toggle call used during coordinator setup."""
+        return
 
     async def reset_query_counts(self) -> None:
-        return None
+        """Accept query-count reset calls without changing test state."""
+        return
 
     async def get_query_counts(self) -> tuple[int, int]:
+        """Return a fixed pair of query counters for coordinator assertions."""
         return (0, 0)
 
     async def get_system_info(self):  # first refresh path
+        """Return minimal system information for the initial refresh path."""
         return {"name": "sys"}
 
 
@@ -112,18 +155,35 @@ class _FakeCoordinator:
 
     def __init__(self, **kwargs: Any) -> None:  # pragma: no cover - simple init
         # capture flags we care about for assertions if needed
+        """Capture the flags needed by async setup tests.
+
+        Args:
+            **kwargs: Coordinator construction arguments, including the optional
+                device-tracker flag.
+        """
         self._device_tracker = kwargs.get("device_tracker_coordinator", False)
         self._refreshed = False
 
     async def async_config_entry_first_refresh(self) -> bool:
+        """Record that the fake coordinator performed its initial refresh.
+
+        Returns:
+            bool: Always returns ``True`` after marking the coordinator refreshed.
+        """
         self._refreshed = True
         return True
 
     async def async_shutdown(self) -> bool:  # pragma: no cover - not used in happy path
+        """Return a successful shutdown result for setup failure branches.
+
+        Returns:
+            bool: Always returns ``True`` in this fake coordinator.
+        """
         return True
 
 
 def _make_basic_user_input() -> dict[str, Any]:
+    """Create basic user input."""
     return {
         CONF_URL: "https://router.example",
         CONF_USERNAME: "user",
@@ -142,6 +202,7 @@ def _build_mock_hass() -> Any:
     # config_entries API surface used inside tests
     class _Cfg:
         def __init__(self) -> None:
+            """Initialize _Cfg."""
             self._entries: dict[str, Any] = {}
 
         def async_update_entry(
@@ -154,6 +215,16 @@ def _build_mock_hass() -> Any:
             **kwargs,
         ):
             # Bypass ConfigEntry attribute protections using object.__setattr__
+            """Async update entry.
+
+            Args:
+                entry: Config entry being set up, unloaded, migrated, or reloaded.
+                data: Data provided by pytest or the test case.
+                options: Options mapping that stores the integration settings being updated.
+                version: Version provided by pytest or the test case.
+                unique_id: Identifier for unique.
+                **kwargs: Additional keyword arguments forwarded by the function.
+            """
             if data is not None:
                 object.__setattr__(entry, "data", data)
             if options is not None:
@@ -165,13 +236,30 @@ def _build_mock_hass() -> Any:
             return True
 
         async def async_forward_entry_setups(self, entry, platforms):  # pragma: no cover
+            """Async forward entry setups.
+
+            Args:
+                entry: Config entry being set up, unloaded, migrated, or reloaded.
+                platforms: Platforms provided by pytest or the test case.
+            """
             return True
 
         async def async_unload_platforms(self, entry, platforms):  # pragma: no cover
+            """Async unload platforms.
+
+            Args:
+                entry: Config entry being set up, unloaded, migrated, or reloaded.
+                platforms: Platforms provided by pytest or the test case.
+            """
             return True
 
         async def async_reload(self, entry_id):  # pragma: no cover - reload path not asserted
-            return None
+            """Async reload.
+
+            Args:
+                entry_id: Config entry identifier for the integration instance being referenced.
+            """
+            return
 
     hass.config_entries = _Cfg()
     hass.async_create_task = MagicMock(side_effect=asyncio.create_task)
@@ -196,7 +284,13 @@ async def test_e2e_basic_config_flow_and_setup(monkeypatch, make_config_entry):
 
     # Bypass HA flow unique-id internals (we don't implement hass.config_entries.flow)
     async def _noop_unique_id(*a, **k):
-        return None
+        """Bypass Home Assistant unique-ID bookkeeping for this flow test.
+
+        Args:
+            *a: Additional positional arguments forwarded by the function.
+            **k: Additional keyword arguments forwarded by the function.
+        """
+        return
 
     flow.async_set_unique_id = _noop_unique_id
     flow._abort_if_unique_id_configured = lambda: None
@@ -242,13 +336,14 @@ async def test_e2e_basic_config_flow_and_setup(monkeypatch, make_config_entry):
 async def test_e2e_granular_sync_and_options_device_tracker(
     monkeypatch, make_config_entry, coordinator_capture
 ):
-    """E2E: multi-step config flow (granular sync) + options enabling device tracker list.
+    """Exercise granular sync config flow and device tracker options flow end to end.
 
     Validates:
-    - user step with granular option -> granular step -> entry created
-    - options flow: enable granular sync again + enable device tracker -> granular sync step
-      -> device tracker step -> final options (devices merged with manual list)
-    - subsequent async_setup_entry honors device tracker enabled (coordinator instantiated twice)
+        - User step with granular option leads to granular sync and entry creation.
+        - Options flow re-enables granular sync and device tracker, then advances
+          through granular sync and device tracker steps to final merged options.
+        - Subsequent ``async_setup_entry`` honors device tracker enabled and
+          instantiates two coordinators.
     """
 
     # Patch flow client
@@ -262,7 +357,13 @@ async def test_e2e_granular_sync_and_options_device_tracker(
     flow.hass = hass
 
     async def _noop_unique_id(*a, **k):  # redefined for this test context
-        return None
+        """Bypass Home Assistant unique-ID bookkeeping for this flow test.
+
+        Args:
+            *a: Additional positional arguments forwarded by the function.
+            **k: Additional keyword arguments forwarded by the function.
+        """
+        return
 
     flow.async_set_unique_id = _noop_unique_id
     flow._abort_if_unique_id_configured = lambda: None
@@ -356,12 +457,14 @@ async def test_e2e_granular_sync_and_options_device_tracker(
 
 @pytest.mark.asyncio
 async def test_e2e_reload_and_unload(monkeypatch, make_config_entry):
-    """E2E: validate update-listener triggered reload and full unload cleanup.
+    """Validate update-listener reload handling and full unload cleanup end to end.
 
     Steps:
-    1. Perform basic config flow / setup.
-    2. Trigger update listener (SHOULD_RELOAD True) and assert reload scheduled.
-    3. Unload entry; confirm client closed and data removed.
+        - Perform the basic config flow and integration setup.
+        - Trigger the update listener with ``SHOULD_RELOAD`` set and assert a
+          reload is scheduled.
+        - Unload the entry and confirm the client is closed and stored data is
+          removed.
     """
 
     # Patch config flow client
@@ -375,7 +478,13 @@ async def test_e2e_reload_and_unload(monkeypatch, make_config_entry):
     flow.hass = hass
 
     async def _noop_unique_id(*a, **k):
-        return None
+        """Bypass Home Assistant unique-ID bookkeeping for this flow test.
+
+        Args:
+            *a: Additional positional arguments forwarded by the function.
+            **k: Additional keyword arguments forwarded by the function.
+        """
+        return
 
     flow.async_set_unique_id = _noop_unique_id
     flow._abort_if_unique_id_configured = lambda: None
@@ -433,12 +542,13 @@ async def test_e2e_reload_and_unload(monkeypatch, make_config_entry):
 
 @pytest.mark.asyncio
 async def test_e2e_full_migration_chain(monkeypatch, make_config_entry):
-    """E2E: exercise async_migrate_entry path from version 1 -> 4.
+    """Exercise the full ``async_migrate_entry`` path from version 1 to 4.
 
     Verifies:
-    - v1->2 removes tls_insecure and adds verify_ssl (inverse of tls_insecure)
-    - v2->3 updates device unique id across entry + entities + devices
-    - v3->4 transforms telemetry-related sensor unique ids and removes *_connected_client_count
+        - v1 to v2 removes ``tls_insecure`` and adds ``verify_ssl`` as its inverse.
+        - v2 to v3 updates the device unique ID across the entry, entities, and devices.
+        - v3 to v4 transforms telemetry-related sensor unique IDs and removes
+          ``*_connected_client_count`` entities.
     """
 
     # Build hass mock with update_entry bypass logic
@@ -447,11 +557,13 @@ async def test_e2e_full_migration_chain(monkeypatch, make_config_entry):
     # Fake device & entity registry implementations
     class FakeDevice:
         def __init__(self, id_: str, identifiers: set[tuple[str, str]]):
+            """Initialize FakeDevice."""
             self.id = id_
             self.identifiers = identifiers
 
     class FakeDeviceRegistry:
         def __init__(self):
+            """Initialize FakeDeviceRegistry."""
             self._devices: list[FakeDevice] = [
                 FakeDevice("dev-main", {("opnsense", "oldmacid"), ("other", "x")}),
                 FakeDevice("dev-other", {("misc", "abc")}),
@@ -459,6 +571,14 @@ async def test_e2e_full_migration_chain(monkeypatch, make_config_entry):
             self.updated: list[FakeDevice] = []
 
         def async_update_device(self, device_id: str, new_identifiers: set[tuple[str, str]]):
+            """Async update device.
+
+            Args:
+                device_id: Device identifier used to target the correct OPNsense device or config entry.
+
+            Raises:
+                ValueError: If an input value cannot be parsed or normalized.
+            """
             for d in self._devices:
                 if d.id == device_id:
                     d.identifiers = new_identifiers
@@ -468,12 +588,20 @@ async def test_e2e_full_migration_chain(monkeypatch, make_config_entry):
 
     class FakeEntity:
         def __init__(self, entity_id: str, unique_id: str, device_id: str):
+            """Initialize FakeEntity.
+
+            Args:
+                entity_id: Entity identifier used to resolve the matching OPNsense entity.
+                unique_id: Identifier for unique.
+                device_id: Device identifier used to target the correct OPNsense device or config entry.
+            """
             self.entity_id = entity_id
             self.unique_id = unique_id
             self.device_id = device_id
 
     class FakeEntityRegistry:
         def __init__(self):
+            """Initialize FakeEntityRegistry."""
             self._entities: dict[str, FakeEntity] = {}
             # initial telemetry / non-telemetry examples
             ents = [
@@ -500,6 +628,13 @@ async def test_e2e_full_migration_chain(monkeypatch, make_config_entry):
         def async_update_entity(self, entity_id: str, new_unique_id: str, **kwargs):
             # Accept HA's keyword-based calls (e.g. new_unique_id=...) while
             # preserving existing positional behavior. Prefer kwarg when present.
+            """Async update entity.
+
+            Args:
+                entity_id: Entity identifier used to resolve the matching OPNsense entity.
+                new_unique_id: Identifier for new unique.
+                **kwargs: Additional keyword arguments forwarded by the function.
+            """
             new_unique_id = kwargs.get("new_unique_id", new_unique_id)
             ent = self._entities[entity_id]
             ent.unique_id = new_unique_id
@@ -507,6 +642,11 @@ async def test_e2e_full_migration_chain(monkeypatch, make_config_entry):
             return ent
 
         def async_remove(self, entity_id: str):
+            """Async remove.
+
+            Args:
+                entity_id: Entity identifier used to resolve the matching OPNsense entity.
+            """
             self.removed.append(entity_id)
             self._entities.pop(entity_id, None)
 
@@ -530,12 +670,15 @@ async def test_e2e_full_migration_chain(monkeypatch, make_config_entry):
     # Patch client used during migrations (v2->3 get_device_unique_id, v3->4 get_telemetry)
     class _MigClient:
         async def get_device_unique_id(self) -> str:
+            """Return the migrated device identifier used by the migration test."""
             return "newmacid"
 
         async def get_host_firmware_version(self):  # not used in migration chain here
+            """Return a placeholder firmware version for migration compatibility."""
             return "25.1"
 
         async def get_telemetry(self) -> dict[str, Any]:
+            """Return minimal telemetry so migration code can inspect filesystems."""
             return {"filesystems": []}  # keep simple to avoid extra branches
 
     monkeypatch.setattr(init_mod, "OPNsenseClient", lambda **k: _MigClient())

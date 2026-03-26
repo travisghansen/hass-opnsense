@@ -256,6 +256,13 @@ async def _get_clients(
     opndevice_id: str | None = None,
     opnentity_id: str | None = None,
 ) -> list:
+    """Resolve the OPNsense clients targeted by the current request.
+
+    Args:
+        hass: Home Assistant instance that owns the integration state, entity registry, and services.
+        opndevice_id: Device identifier used to target the correct OPNsense device or config entry.
+        opnentity_id: Entity identifier used to resolve the matching OPNsense entity.
+    """
     if (
         DOMAIN not in hass.data
         or not isinstance(hass.data[DOMAIN], MutableMapping)
@@ -296,6 +303,12 @@ async def _get_clients(
 
 
 async def _service_close_notice(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Handle the close notice service call.
+
+    Args:
+        hass: Home Assistant instance that owns the integration state, entity registry, and services.
+        call: Service call payload received from Home Assistant.
+    """
     clients: list = await _get_clients(
         hass=hass,
         opndevice_id=call.data.get("device_id", []),
@@ -311,6 +324,15 @@ async def _service_close_notice(hass: HomeAssistant, call: ServiceCall) -> None:
 
 
 async def _service_start_service(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Handle the start service call.
+
+    Args:
+        hass: Home Assistant instance that owns the integration state, entity registry, and services.
+        call: Service call payload received from Home Assistant.
+
+    Raises:
+        ServiceValidationError: If the service call payload is missing a valid target or required value.
+    """
     clients: list = await _get_clients(
         hass=hass,
         opndevice_id=call.data.get("device_id", []),
@@ -336,6 +358,15 @@ async def _service_start_service(hass: HomeAssistant, call: ServiceCall) -> None
 
 
 async def _service_stop_service(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Handle the stop service call.
+
+    Args:
+        hass: Home Assistant instance that owns the integration state, entity registry, and services.
+        call: Service call payload received from Home Assistant.
+
+    Raises:
+        ServiceValidationError: If the service call payload is missing a valid target or required value.
+    """
     clients: list = await _get_clients(
         hass=hass,
         opndevice_id=call.data.get("device_id", []),
@@ -361,6 +392,15 @@ async def _service_stop_service(hass: HomeAssistant, call: ServiceCall) -> None:
 
 
 async def _service_restart_service(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Handle the restart service call.
+
+    Args:
+        hass: Home Assistant instance that owns the integration state, entity registry, and services.
+        call: Service call payload received from Home Assistant.
+
+    Raises:
+        ServiceValidationError: If the service call payload is missing a valid target or required value.
+    """
     clients: list = await _get_clients(
         hass=hass,
         opndevice_id=call.data.get("device_id", []),
@@ -405,6 +445,12 @@ async def _service_restart_service(hass: HomeAssistant, call: ServiceCall) -> No
 
 
 async def _service_system_halt(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Handle the system halt service call.
+
+    Args:
+        hass: Home Assistant instance that owns the integration state, entity registry, and services.
+        call: Service call payload received from Home Assistant.
+    """
     clients: list = await _get_clients(
         hass=hass,
         opndevice_id=call.data.get("device_id", []),
@@ -416,6 +462,12 @@ async def _service_system_halt(hass: HomeAssistant, call: ServiceCall) -> None:
 
 
 async def _service_system_reboot(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Handle the system reboot service call.
+
+    Args:
+        hass: Home Assistant instance that owns the integration state, entity registry, and services.
+        call: Service call payload received from Home Assistant.
+    """
     clients: list = await _get_clients(
         hass=hass,
         opndevice_id=call.data.get("device_id", []),
@@ -427,6 +479,12 @@ async def _service_system_reboot(hass: HomeAssistant, call: ServiceCall) -> None
 
 
 async def _service_send_wol(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Handle the send Wake-on-LAN service call.
+
+    Args:
+        hass: Home Assistant instance that owns the integration state, entity registry, and services.
+        call: Service call payload received from Home Assistant.
+    """
     clients: list = await _get_clients(
         hass=hass,
         opndevice_id=call.data.get("device_id", []),
@@ -443,6 +501,15 @@ async def _service_send_wol(hass: HomeAssistant, call: ServiceCall) -> None:
 
 
 async def _service_reload_interface(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Handle the reload interface service call.
+
+    Args:
+        hass: Home Assistant instance that owns the integration state, entity registry, and services.
+        call: Service call payload received from Home Assistant.
+
+    Raises:
+        ServiceValidationError: If the service call payload is missing a valid target or required value.
+    """
     clients: list = await _get_clients(
         hass=hass,
         opndevice_id=call.data.get("device_id", []),
@@ -464,6 +531,15 @@ async def _service_reload_interface(hass: HomeAssistant, call: ServiceCall) -> N
 
 
 async def _service_generate_vouchers(hass: HomeAssistant, call: ServiceCall) -> ServiceResponse:
+    """Handle the generate vouchers service call.
+
+    Args:
+        hass: Home Assistant instance that owns the integration state, entity registry, and services.
+        call: Service call payload received from Home Assistant.
+
+    Raises:
+        ServiceValidationError: If the service call payload is missing a valid target or required value.
+    """
     clients: list = await _get_clients(
         hass=hass,
         opndevice_id=call.data.get("device_id", []),
@@ -496,6 +572,15 @@ async def _service_generate_vouchers(hass: HomeAssistant, call: ServiceCall) -> 
 
 
 async def _service_kill_states(hass: HomeAssistant, call: ServiceCall) -> ServiceResponse:
+    """Handle the kill states service call.
+
+    Args:
+        hass: Home Assistant instance that owns the integration state, entity registry, and services.
+        call: Service call payload received from Home Assistant.
+
+    Raises:
+        ServiceValidationError: If the service call payload is missing a valid target or required value.
+    """
     clients: list = await _get_clients(
         hass=hass,
         opndevice_id=call.data.get("device_id", []),
@@ -532,18 +617,12 @@ async def _service_kill_states(hass: HomeAssistant, call: ServiceCall) -> Servic
 async def _service_run_speedtest(hass: HomeAssistant, call: ServiceCall) -> ServiceResponse:
     """Run speedtest and return speedtest results in action response data.
 
-    Parameters
-    ----------
-    hass : HomeAssistant
-        Home Assistant instance.
-    call : ServiceCall
-        Service call payload that may contain ``device_id`` or ``entity_id``.
+    Args:
+        hass: Home Assistant instance.
+        call: Service call payload that may contain ``device_id`` or ``entity_id``.
 
     Returns:
-    -------
-    ServiceResponse
-        Response payload containing per-client speedtest results.
-
+        ServiceResponse: Response payload containing per-client speedtest results.
     """
     clients: list = await _get_clients(
         hass=hass,
@@ -572,19 +651,12 @@ async def _service_run_speedtest(hass: HomeAssistant, call: ServiceCall) -> Serv
 async def _service_get_vnstat_metrics(hass: HomeAssistant, call: ServiceCall) -> ServiceResponse:
     """Return parsed vnStat metrics for a selected period as action response data.
 
-    Parameters
-    ----------
-    hass : HomeAssistant
-        Home Assistant instance.
-    call : ServiceCall
-        Service call payload containing the required ``period`` and optional
-        OPNsense device/entity selectors.
+    Args:
+        hass: Home Assistant instance.
+        call: Service call payload containing the required ``period`` and optional OPNsense device/entity selectors.
 
     Returns:
-    -------
-    ServiceResponse
-        Parsed per-client vnStat payloads from the requested endpoint.
-
+        ServiceResponse: Parsed per-client vnStat payloads from the requested endpoint.
     """
     clients: list = await _get_clients(
         hass=hass,
@@ -617,6 +689,15 @@ async def _service_get_vnstat_metrics(hass: HomeAssistant, call: ServiceCall) ->
 
 
 async def _service_toggle_alias(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Handle the toggle alias service call.
+
+    Args:
+        hass: Home Assistant instance that owns the integration state, entity registry, and services.
+        call: Service call payload received from Home Assistant.
+
+    Raises:
+        ServiceValidationError: If the service call payload is missing a valid target or required value.
+    """
     clients: list = await _get_clients(
         hass=hass,
         opndevice_id=call.data.get("device_id", []),

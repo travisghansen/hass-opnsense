@@ -18,23 +18,28 @@ init_mod = importlib.import_module("custom_components.opnsense")
 
 @pytest.fixture(autouse=True)
 def _patch_hass_async_create_clientsession(monkeypatch):
-    """Autouse fixture to stub Home Assistant's async_create_clientsession.
-
-    Some tests use a minimal `hass` object (SimpleNamespace) which does not
-    provide the full helper; patch the helper to return a lightweight
-    session-like object to avoid opening real network resources.
-    """
+    """Autouse fixture to stub Home Assistant's async_create_clientsession. Some tests use a minimal `hass` object (SimpleNamespace) which does not provide the full helper; patch the helper to return a lightweight session-like object to avoid opening real network resources."""
 
     def _fake_create_clientsession(*args, **kwargs):
+        """Return a lightweight fake client session for Home Assistant tests.
+
+        Args:
+            *args: Positional arguments forwarded from the patched helper and ignored.
+            **kwargs: Keyword arguments forwarded from the patched helper and ignored.
+        """
+
         class _FakeSession:
             async def __aenter__(self):
+                """Yield the fake client session to the async context manager."""
                 return self
 
             async def __aexit__(self, exc_type, exc, tb):
+                """Close the fake session and return False so exceptions propagate."""
                 await self.close()
                 return False
 
             async def close(self):
+                """Simulate closing the fake session successfully."""
                 return True
 
         return _FakeSession()
@@ -328,6 +333,7 @@ async def test_async_update_listener_reload_and_remove(monkeypatch, ph_hass, mak
     # construct an entity that should be removed by unique_id prefix
     class Ent:
         def __init__(self, entity_id, unique_id):
+            """Store the entity and unique IDs used by the update-listener test."""
             self.entity_id = entity_id
             self.unique_id = unique_id
 
@@ -834,9 +840,11 @@ async def test_async_setup_entry_awesomeversion_exception(
     # monkeypatch AwesomeVersion to a class that raises on comparison
     class DummyAV:
         def __init__(self, v):
+            """Store the version string used by the comparison stub."""
             self.v = v
 
         def __lt__(self, other):
+            """Raise a compare exception so setup falls back to the safe path."""
             raise init_mod.awesomeversion.exceptions.AwesomeVersionCompareException
 
     monkeypatch.setattr(init_mod, "OPNsenseClient", fake_client())
@@ -1255,10 +1263,11 @@ async def test_migrate_2_to_3_handles_identifier_collision(monkeypatch, fake_cli
 
     class DR:
         def __init__(self):
-            pass
+            """Provide a fake device registry object for the collision test."""
 
         def async_update_device(self, *a, **k):
             # DeviceIdentifierCollisionError requires an existing_device argument
+            """Raise the collision error expected by the registry migration test."""
             raise init_mod.dr.DeviceIdentifierCollisionError("collision", MagicMock(id="other"))
 
     monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: DR())

@@ -20,17 +20,12 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 def _log_errors(func: Callable) -> Any:
     """Wrap coroutine methods with shared timeout/error logging behavior.
 
-    Parameters
-    ----------
-    func : Callable
-        Coroutine function to decorate and execute with shared behavior.
+    Args:
+        func: Coroutine function to decorate and execute with shared behavior.
 
     Returns:
-    -------
-    Any
-    Decorator wrapper that applies shared exception logging and returns the wrapped coroutine result.
-
-
+        Any: Decorator wrapper that applies shared exception logging and returns
+        the wrapped coroutine result.
     """
 
     async def inner(self: Any, *args: Any, **kwargs: Any) -> Any:
@@ -65,17 +60,12 @@ def _log_errors(func: Callable) -> Any:
 def _xmlrpc_timeout(func: Callable) -> Any:
     """Ensure XMLRPC calls obey the configured per-call timeout.
 
-    Parameters
-    ----------
-    func : Callable
-        Coroutine function to decorate and execute with shared behavior.
+    Args:
+        func: Coroutine function to decorate and execute with shared behavior.
 
     Returns:
-    -------
-    Any
-    Decorator wrapper that enforces an `asyncio.wait_for` timeout and returns the wrapped result.
-
-
+        Any: Decorator wrapper that enforces an `asyncio.wait_for` timeout and
+        returns the wrapped result.
     """
 
     async def inner(self: Any, *args: Any, **kwargs: Any) -> Any:
@@ -88,17 +78,12 @@ def _xmlrpc_timeout(func: Callable) -> Any:
 def human_friendly_duration(seconds: int) -> str:
     """Convert a duration in seconds into a human-readable string.
 
-    Parameters
-    ----------
-    seconds : int
-        Duration value, in seconds.
+    Args:
+        seconds: Duration value, in seconds.
 
     Returns:
-    -------
-    str
-    Duration rendered as a readable string with month/week/day/hour/minute/second units.
-
-
+        str: Duration rendered as a readable string with
+        month/week/day/hour/minute/second units.
     """
     months, seconds = divmod(
         seconds, 2419200
@@ -128,17 +113,12 @@ def human_friendly_duration(seconds: int) -> str:
 def get_ip_key(item: MutableMapping[str, Any]) -> tuple:
     """Produce a sorting key for DHCP leases based on their IP addresses.
 
-    Parameters
-    ----------
-    item : MutableMapping[str, Any]
-        Lease record used to derive an IP-aware sort key.
+    Args:
+        item: Lease record used to derive an IP-aware sort key.
 
     Returns:
-    -------
-    tuple
-    Sort key tuple that prioritizes valid IPv4/IPv6 addresses and pushes invalid/empty entries last.
-
-
+        tuple: Sort key tuple that prioritizes valid IPv4/IPv6 addresses and
+        pushes invalid/empty entries last.
     """
     address = item.get("address", None)
 
@@ -157,21 +137,14 @@ def get_ip_key(item: MutableMapping[str, Any]) -> tuple:
 def dict_get(data: MutableMapping[str, Any], path: str, default: Any | None = None) -> Any | None:
     """Extract a nested value from a mapping using dot notation.
 
-    Parameters
-    ----------
-    data : MutableMapping[str, Any]
-        Source mapping to traverse.
-    path : str
-        Dot-separated lookup path (supports numeric list indexes).
-    default : Any | None
-        Fallback value returned when the path does not exist.
+    Args:
+        data: Source mapping to traverse.
+        path: Dot-separated lookup path (supports numeric list indexes).
+        default: Fallback value returned when the path does not exist.
 
     Returns:
-    -------
-    Any | None
-    Nested value resolved from the provided dotted path, or the default when the path is missing.
-
-
+        Any | None: Nested value resolved from the provided dotted path, or the
+        default when the path is missing.
     """
     pathList: list = re.split(r"\.", path, flags=re.IGNORECASE)
     result: Any | None = data
@@ -192,17 +165,12 @@ def dict_get(data: MutableMapping[str, Any], path: str, default: Any | None = No
 def timestamp_to_datetime(timestamp: int | None) -> datetime | None:
     """Convert a Unix timestamp into a timezone-aware datetime.
 
-    Parameters
-    ----------
-    timestamp : int | None
-        Unix timestamp value to convert.
+    Args:
+        timestamp: Unix timestamp value to convert.
 
     Returns:
-    -------
-    datetime | None
-    Timezone-aware datetime derived from the timestamp, or None if no timestamp was provided.
-
-
+        datetime | None: Timezone-aware datetime derived from the timestamp, or
+        None if no timestamp was provided.
     """
     if timestamp is None:
         return None
@@ -222,18 +190,12 @@ def timestamp_to_datetime(timestamp: int | None) -> datetime | None:
 def try_to_int(input: Any | None, retval: int | None = None) -> int | None:
     """Convert a value to ``int`` and return a fallback on conversion failure.
 
-    Parameters
-    ----------
-    input : Any | None
-        Value to coerce.
-    retval : int | None
-        Value returned when conversion fails.
+    Args:
+        input: Value to coerce.
+        retval: Value returned when conversion fails.
 
     Returns:
-    -------
-    int | None
-        Converted integer value, or ``retval`` when conversion is not possible.
-
+        int | None: Converted integer value, or ``retval`` when conversion is not possible.
     """
     if input is None:
         return retval
@@ -246,18 +208,12 @@ def try_to_int(input: Any | None, retval: int | None = None) -> int | None:
 def try_to_float(input: Any | None, retval: float | None = None) -> float | None:
     """Convert a value to ``float`` and return a fallback on conversion failure.
 
-    Parameters
-    ----------
-    input : Any | None
-        Value to coerce.
-    retval : float | None
-        Value returned when conversion fails.
+    Args:
+        input: Value to coerce.
+        retval: Value returned when conversion fails.
 
     Returns:
-    -------
-    float | None
-        Converted float value, or ``retval`` when conversion is not possible.
-
+        float | None: Converted float value, or ``retval`` when conversion is not possible.
     """
     if input is None:
         return retval

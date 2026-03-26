@@ -20,28 +20,18 @@ class SystemMixin(PyOPNsenseClientProtocol):
         """Return a local timezone fallback with fixed UTC offset.
 
         Returns:
-        -------
-        tzinfo
-            Local timezone fallback using the host UTC offset.
-
+            tzinfo: Local timezone fallback using the host UTC offset.
         """
         return timezone(datetime.now().astimezone().utcoffset() or timedelta())
 
     async def _get_opnsense_timezone(self, datetime_str: str | None = None) -> tzinfo:
         """Resolve timezone information from OPNsense system time data.
 
-        Parameters
-        ----------
-        datetime_str : str | None
-            Optional datetime string from the system-time endpoint. When omitted,
-            the method queries OPNsense for current system-time data.
+        Args:
+            datetime_str: Optional datetime string from the system-time endpoint. When omitted, the method queries OPNsense for current system-time data.
 
         Returns:
-        -------
-        tzinfo
-            Parsed timezone from OPNsense datetime output, or a local fixed-offset
-            fallback when parsing fails.
-
+            tzinfo: Parsed timezone from OPNsense datetime output, or a local fixed-offset fallback when parsing fails.
         """
         if datetime_str is None:
             path = (
@@ -94,17 +84,11 @@ clear_subsystem_dirty('filter');
     async def get_device_unique_id(self, expected_id: str | None = None) -> str | None:
         """Get the OPNsense Unique ID.
 
-        Parameters
-        ----------
-        expected_id : str | None
-            Previously stored unique ID used to prefer a stable match. Defaults to None.
+        Args:
+            expected_id: Previously stored unique ID used to prefer a stable match. Defaults to None.
 
         Returns:
-        -------
-        str | None
-        Stable unique identifier derived from physical interface MAC addresses, or None when unavailable.
-
-
+            str | None: Stable unique identifier derived from physical interface MAC addresses, or None when unavailable.
         """
         instances = await self._safe_list_get("/api/interfaces/overview/export")
         mac_addresses: set[str] = set()
@@ -134,11 +118,7 @@ clear_subsystem_dirty('filter');
         """Return the system info from OPNsense.
 
         Returns:
-        -------
-        dict[str, Any]
-        Parsed system info payload returned by OPNsense APIs.
-
-
+            dict[str, Any]: Parsed system info payload returned by OPNsense APIs.
         """
         system_info: dict[str, Any] = {}
         if self._use_snake_case:
@@ -153,11 +133,7 @@ clear_subsystem_dirty('filter');
         """XMLRPC call to return all the config settings.
 
         Returns:
-        -------
-        dict[str, Any]
-        Parsed config payload returned by OPNsense APIs.
-
-
+            dict[str, Any]: Parsed config payload returned by OPNsense APIs.
         """
         script: str = r"""
 global $config;
@@ -177,11 +153,7 @@ $toreturn = [
         """Return the Carp status.
 
         Returns:
-        -------
-        bool
-        Parsed carp status payload returned by OPNsense APIs.
-
-
+            bool: Parsed carp status payload returned by OPNsense APIs.
         """
         response = await self._safe_dict_get("/api/diagnostics/interface/get_vip_status")
         # _LOGGER.debug(f"[get_carp_status] response: {response}")
@@ -192,11 +164,7 @@ $toreturn = [
         """Return the interfaces used by Carp.
 
         Returns:
-        -------
-        list
-        Parsed carp interfaces payload returned by OPNsense APIs.
-
-
+            list: Parsed carp interfaces payload returned by OPNsense APIs.
         """
         vip_settings_raw = await self._safe_dict_get("/api/interfaces/vip_settings/get")
         if not isinstance(vip_settings_raw.get("rows", None), list):
@@ -232,11 +200,7 @@ $toreturn = [
         """Reboot OPNsense.
 
         Returns:
-        -------
-        bool
-        True when OPNsense reports the requested action succeeded; otherwise False.
-
-
+            bool: True when OPNsense reports the requested action succeeded; otherwise False.
         """
         response = await self._safe_dict_post("/api/core/system/reboot")
         _LOGGER.debug("[system_reboot] response: %s", response)
@@ -257,19 +221,12 @@ $toreturn = [
     async def send_wol(self, interface: str, mac: str) -> bool:
         """Send a wake on lan packet to the specified MAC address.
 
-        Parameters
-        ----------
-        interface : str
-            Interface identifier used by the Wake-on-LAN endpoint.
-        mac : str
-            MAC address of the target device.
+        Args:
+            interface: Interface identifier used by the Wake-on-LAN endpoint.
+            mac: MAC address of the target device.
 
         Returns:
-        -------
-        bool
-        True when OPNsense reports the requested action succeeded; otherwise False.
-
-
+            bool: True when OPNsense reports the requested action succeeded; otherwise False.
         """
         payload: dict[str, Any] = {"wake": {"interface": interface, "mac": mac}}
         _LOGGER.debug("[send_wol] payload: %s", payload)
@@ -284,11 +241,7 @@ $toreturn = [
         """Get active OPNsense notices.
 
         Returns:
-        -------
-        dict[str, Any]
-        Parsed notices payload returned by OPNsense APIs.
-
-
+            dict[str, Any]: Parsed notices payload returned by OPNsense APIs.
         """
         notices_info = await self._safe_dict_get("/api/core/system/status")
         # _LOGGER.debug(f"[get_notices] notices_info: {notices_info}")
@@ -316,17 +269,11 @@ $toreturn = [
     async def close_notice(self, id: str) -> bool:
         """Close selected notices.
 
-        Parameters
-        ----------
-        id : str
-            Notice identifier to dismiss, or ``"all"`` to dismiss all active notices.
+        Args:
+            id: Notice identifier to dismiss, or ``"all"`` to dismiss all active notices.
 
         Returns:
-        -------
-        bool
-        True when OPNsense reports the requested action succeeded; otherwise False.
-
-
+            bool: True when OPNsense reports the requested action succeeded; otherwise False.
         """
 
         dismiss_endpoint = (
@@ -360,17 +307,11 @@ $toreturn = [
     async def reload_interface(self, if_name: str) -> bool:
         """Reload the specified interface.
 
-        Parameters
-        ----------
-        if_name : str
-            Interface name to reload.
+        Args:
+            if_name: Interface name to reload.
 
         Returns:
-        -------
-        bool
-        True when OPNsense reports the requested action succeeded; otherwise False.
-
-
+            bool: True when OPNsense reports the requested action succeeded; otherwise False.
         """
         if self._use_snake_case:
             reload = await self._safe_dict_post(
@@ -387,11 +328,7 @@ $toreturn = [
         """Return the active encryption certificates.
 
         Returns:
-        -------
-        dict[str, Any]
-        Parsed certificates payload returned by OPNsense APIs.
-
-
+            dict[str, Any]: Parsed certificates payload returned by OPNsense APIs.
         """
         certs_raw = await self._safe_dict_get("/api/trust/cert/search")
         cert_rows = certs_raw.get("rows")

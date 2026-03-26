@@ -49,6 +49,11 @@ async def test_async_setup_entry_invalid_state(make_config_entry):
     called = False
 
     def add_entities(entities):
+        """Add entities.
+
+        Args:
+            entities: Entities provided by pytest or the test case.
+        """
         nonlocal called
         called = True
 
@@ -462,17 +467,31 @@ def test_vpn_sensor_variants(
 
 @pytest.mark.parametrize("exc_type", [TypeError, KeyError, ZeroDivisionError])
 def test_vpn_sensor_handles_exceptions_from_instance_get(exc_type, make_config_entry):
-    """VPNSensor should mark itself unavailable when instance.get() raises common exceptions.
+    """VPNSensor marks itself unavailable when instance access raises.
 
-    We simulate broken instance objects by providing an object with a `get` method
-    that raises the desired exception to exercise the except block in the handler.
+    The test injects a broken instance object whose ``get`` method raises the
+    requested exception so the handler exercises its defensive exception path.
     """
 
     class BrokenInstance:
         def __init__(self, exc):
+            """Initialize BrokenInstance.
+
+            Args:
+                exc: Exc provided by pytest or the test case.
+            """
             self._exc = exc
 
         def get(self, *args, **kwargs):
+            """Raise the configured exception when the sensor reads the mapping.
+
+            Args:
+                *args: Additional positional arguments forwarded by the function.
+                **kwargs: Additional keyword arguments forwarded by the function.
+
+            Raises:
+                Exception: Raised using ``self._exc`` to exercise sensor exception handling.
+            """
             raise self._exc("simulated")
 
     entry = make_config_entry()
@@ -542,13 +561,27 @@ def test_temp_sensor_handles_index_exceptions(exc_type, make_config_entry):
 
     class BrokenTemp:
         def __init__(self, exc):
+            """Initialize BrokenTemp.
+
+            Args:
+                exc: Exc provided by pytest or the test case.
+            """
             self._exc = exc
 
         def __bool__(self):
             # truthy so code proceeds to try block
+            """Bool."""
             return True
 
         def __getitem__(self, key):
+            """Raise the configured exception when the sensor indexes the temperature mapping.
+
+            Args:
+                key: Key provided by pytest or the test case.
+
+            Raises:
+                Exception: Raised using ``self._exc`` to exercise temperature sensor handling.
+            """
             raise self._exc("simulated")
 
     entry = make_config_entry()
@@ -669,9 +702,10 @@ def test_static_cpu_zero_variants(
     expected_value: int | None,
     make_config_entry,
 ) -> None:
-    """Zero CPU total should mark sensor unavailable unless previous value exists.
+    """Zero CPU totals make the sensor unavailable unless a previous value exists.
 
-    Consolidates unavailable and use_previous behaviors into a single parameterized test.
+    This parameterized test covers both the unavailable path and the branch
+    that reuses the previous sensor value.
     """
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord.data = {"telemetry": {"cpu": cpu_map}}
@@ -763,17 +797,31 @@ def test_dhcp_leases_all_non_mapping(leases_val, lease_interfaces_val, make_conf
 
 @pytest.mark.parametrize("exc_type", [TypeError, KeyError, ZeroDivisionError])
 def test_dhcp_leases_handles_exceptions(exc_type, make_config_entry):
-    """DHCP Leases 'all' sensor should mark itself unavailable when iterating leases raises exceptions.
+    """DHCP lease aggregation marks the sensor unavailable on lease errors.
 
-    We simulate a broken lease object whose `.get` method raises the requested exception to
-    exercise the except block inside the handler's aggregation loop.
+    The test injects a broken lease object whose ``get`` method raises the
+    requested exception so the aggregation loop exercises its exception path.
     """
 
     class BrokenLease:
         def __init__(self, exc):
+            """Initialize BrokenLease.
+
+            Args:
+                exc: Exc provided by pytest or the test case.
+            """
             self._exc = exc
 
         def get(self, *args, **kwargs):
+            """Raise the configured exception when the DHCP lease mapping is read.
+
+            Args:
+                *args: Additional positional arguments forwarded by the function.
+                **kwargs: Additional keyword arguments forwarded by the function.
+
+            Raises:
+                Exception: Raised using ``self._exc`` to exercise lease sensor handling.
+            """
             raise self._exc("simulated")
 
     entry = make_config_entry()
@@ -805,6 +853,11 @@ def test_dhcp_lease_interfaces_items_raises(exc_type, make_config_entry):
 
     class BrokenLeaseInterfaces(dict):
         def items(self):
+            """Raise the parametrized exception when lease interfaces are iterated.
+
+            Raises:
+                Exception: Raised using ``exc_type`` to test interface iteration failures.
+            """
             raise exc_type("simulated")
 
     entry = make_config_entry()
@@ -835,6 +888,11 @@ def test_dhcp_leases_iterable_raises_on_iter(exc_type, make_config_entry):
 
     class BrokenLeaseList(list):
         def __iter__(self):
+            """Raise the parametrized exception when the lease list is iterated.
+
+            Raises:
+                Exception: Raised using ``exc_type`` to test iterable failure handling.
+            """
             raise exc_type("simulated")
 
     entry = make_config_entry()
@@ -860,16 +918,23 @@ def test_dhcp_leases_iterable_raises_on_iter(exc_type, make_config_entry):
 
 
 def test_dhcp_leases_inner_except_writes_unavailable(make_config_entry):
-    """Verify the inner except block sets available False and calls async_write_ha_state.
+    """Inner DHCP lease errors write an unavailable state to Home Assistant.
 
-    This test replaces the instance's async_write_ha_state with a collector that records
-    the value of `self._available` at each write. If the except branch runs it will
-    set `_available = False` then call `async_write_ha_state`, so a recorded False
-    proves the except block executed.
+    The test records ``self._available`` at each write so a captured ``False``
+    proves the inner exception branch executed before the state update.
     """
 
     class BrokenLease:
         def get(self, *args, **kwargs):
+            """Raise ``KeyError`` when the sensor reads the lease mapping.
+
+            Args:
+                *args: Additional positional arguments forwarded by the function.
+                **kwargs: Additional keyword arguments forwarded by the function.
+
+            Raises:
+                TypeError: If a supplied argument has an unsupported type.
+            """
             raise TypeError("simulated")
 
     entry = make_config_entry()
@@ -893,6 +958,7 @@ def test_dhcp_leases_inner_except_writes_unavailable(make_config_entry):
 
     def collector():
         # capture the availability at the time async_write_ha_state is invoked
+        """Collector."""
         writes.append(bool(getattr(s, "_available", None)))
 
     s.async_write_ha_state = collector
@@ -908,6 +974,11 @@ def test_dhcp_leases_items_except_writes_unavailable(make_config_entry):
 
     class BrokenLeaseInterfaces(dict):
         def items(self):
+            """Raise ``KeyError`` when interface items are requested.
+
+            Raises:
+                KeyError: Always raised to exercise item-iteration fallback handling.
+            """
             raise KeyError("simulated")
 
     entry = make_config_entry()
@@ -930,6 +1001,7 @@ def test_dhcp_leases_items_except_writes_unavailable(make_config_entry):
     writes: list[bool] = []
 
     def collector():
+        """Collector."""
         writes.append(bool(getattr(s, "_available", None)))
 
     s.async_write_ha_state = collector
@@ -941,17 +1013,31 @@ def test_dhcp_leases_items_except_writes_unavailable(make_config_entry):
 
 @pytest.mark.parametrize("exc_type", [TypeError, KeyError, ZeroDivisionError])
 def test_dhcp_leases_per_interface_handles_exceptions(exc_type, make_config_entry):
-    """Ensure per-interface DHCP leases exception paths mark sensor unavailable and write state.
+    """Per-interface DHCP lease errors mark the sensor unavailable and write state.
 
-    This exercises the `else` branch where a specific interface's leases are summed and an
-    exception raised by a lease element's `.get` should be caught by the surrounding except.
+    This exercises the branch that sums leases for one interface while a broken
+    lease object raises inside the surrounding exception handler.
     """
 
     class BrokenLease:
         def __init__(self, exc):
+            """Initialize BrokenLease.
+
+            Args:
+                exc: Exc provided by pytest or the test case.
+            """
             self._exc = exc
 
         def get(self, *args, **kwargs):
+            """Raise the configured exception when per-interface lease data is read.
+
+            Args:
+                *args: Additional positional arguments forwarded by the function.
+                **kwargs: Additional keyword arguments forwarded by the function.
+
+            Raises:
+                Exception: Raised using ``self._exc`` to test per-interface error handling.
+            """
             raise self._exc("simulated")
 
     entry = make_config_entry()
@@ -969,6 +1055,7 @@ def test_dhcp_leases_per_interface_handles_exceptions(exc_type, make_config_entr
     writes: list[bool] = []
 
     def collector():
+        """Collector."""
         writes.append(bool(getattr(s, "_available", None)))
 
     s.async_write_ha_state = collector
@@ -979,15 +1066,24 @@ def test_dhcp_leases_per_interface_handles_exceptions(exc_type, make_config_entr
 
 
 def test_dhcp_leases_coverage_tracer(make_config_entry):
-    """Trigger the BrokenLease path and assert the except-branch observable behavior.
+    """Exercise the BrokenLease path and verify the observable failure behavior.
 
-    Instead of introspecting source lines, exercise the same failure mode used by
-    other DHCP-lease tests: make the lease object raise when accessed and assert
-    that the sensor marks itself unavailable and calls async_write_ha_state.
+    Instead of inspecting source lines directly, the test triggers the same
+    lease-access failure and asserts that the sensor becomes unavailable and
+    writes state.
     """
 
     class BrokenLease:
         def get(self, *args, **kwargs):
+            """Raise ``TypeError`` when the sensor reads the tracer lease mapping.
+
+            Args:
+                *args: Additional positional arguments forwarded by the function.
+                **kwargs: Additional keyword arguments forwarded by the function.
+
+            Raises:
+                TypeError: If a supplied argument has an unsupported type.
+            """
             raise TypeError("simulated")
 
     entry = make_config_entry()
@@ -1005,6 +1101,7 @@ def test_dhcp_leases_coverage_tracer(make_config_entry):
     writes: list[bool] = []
 
     def collector():
+        """Collector."""
         writes.append(bool(getattr(s, "_available", None)))
 
     s.async_write_ha_state = collector
@@ -1015,6 +1112,12 @@ def test_dhcp_leases_coverage_tracer(make_config_entry):
 
 
 def _setup_entry_with_all_syncs(state: dict, make_config_entry):
+    """Setup entry with all syncs.
+
+    Args:
+        state: Dictionary containing the initial coordinator state for the entry.
+        make_config_entry: Fixture that builds config entries tailored for the test scenario.
+    """
     entry = make_config_entry()
     # enable all sync options; entry.data may be a mappingproxy so construct a new dict
     base = dict(entry.data)
@@ -1129,7 +1232,14 @@ async def test_compile_and_handle_many_entities(make_config_entry):
     created: list = []
 
     async def run_setup():
+        """Run setup."""
+
         def add_entities(entities):
+            """Add entities.
+
+            Args:
+                entities: Entities provided by pytest or the test case.
+            """
             created.extend(entities)
 
         await sensor_module.async_setup_entry(MagicMock(), entry, add_entities)
@@ -1174,6 +1284,11 @@ async def test_async_setup_entry_creates_entities(make_config_entry):
     created: list = []
 
     def add_entities(ents):
+        """Add entities.
+
+        Args:
+            ents: Ents provided by pytest or the test case.
+        """
         created.extend(ents)
 
     await async_setup_entry(MagicMock(), entry, add_entities)
@@ -1229,6 +1344,11 @@ async def test_async_setup_entry_creates_vnstat_sensors(make_config_entry):
     created: list = []
 
     def add_entities(ents):
+        """Add entities.
+
+        Args:
+            ents: Ents provided by pytest or the test case.
+        """
         created.extend(ents)
 
     await async_setup_entry(MagicMock(), entry, add_entities)
@@ -1294,6 +1414,11 @@ async def test_async_setup_entry_skips_vnstat_sensors_when_no_interfaces(make_co
     created: list = []
 
     def add_entities(ents):
+        """Add entities.
+
+        Args:
+            ents: Ents provided by pytest or the test case.
+        """
         created.extend(ents)
 
     await async_setup_entry(MagicMock(), entry, add_entities)
@@ -1379,6 +1504,11 @@ async def test_async_setup_entry_creates_speedtest_sensors(make_config_entry):
     created: list = []
 
     def add_entities(entities):
+        """Add entities.
+
+        Args:
+            entities: Entities provided by pytest or the test case.
+        """
         created.extend(entities)
 
     await async_setup_entry(MagicMock(), entry, add_entities)
@@ -1525,6 +1655,11 @@ async def test_async_setup_entry_skips_speedtest_sensors_when_unavailable(make_c
     created: list = []
 
     def add_entities(entities):
+        """Add entities.
+
+        Args:
+            entities: Entities provided by pytest or the test case.
+        """
         created.extend(entities)
 
     await async_setup_entry(MagicMock(), entry, add_entities)

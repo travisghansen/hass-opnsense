@@ -42,23 +42,14 @@ class ClientBaseMixin:
     ) -> None:
         """Initialize the OPNsense client.
 
-        Parameters
-        ----------
-        url : str
-            Base URL of the OPNsense instance.
-        username : str
-            API username used for authentication.
-        password : str
-            API password used for authentication.
-        session : aiohttp.ClientSession
-            Shared aiohttp client session used for HTTP requests.
-        opts : MutableMapping[str, Any] | None
-            Optional connection options (for example verify_ssl). Defaults to None.
-        initial : bool
-            Whether the call runs during initial setup/validation. Defaults to False.
-        name : str
-            Human-friendly name used in logs and identifiers. Defaults to 'OPNsense'.
-
+        Args:
+            url: Base URL of the OPNsense instance.
+            username: API username used for authentication.
+            password: API password used for authentication.
+            session: Shared aiohttp client session used for HTTP requests.
+            opts: Optional connection options (for example verify_ssl). Defaults to None.
+            initial: Whether the call runs during initial setup/validation. Defaults to False.
+            name: Human-friendly name used in logs and identifiers. Defaults to 'OPNsense'.
         """
 
         self._username: str = username
@@ -99,8 +90,8 @@ class ClientBaseMixin:
         """Ensure queue workers are running on the active event loop.
 
         This binds loop-dependent resources lazily to the currently running
-        loop, avoiding private loop creation during object construction.
-
+        loop and avoids creating a private event loop during object
+        construction.
         """
         self._loop = asyncio.get_running_loop()
 
@@ -123,11 +114,7 @@ class ClientBaseMixin:
         """Return the name of the client.
 
         Returns:
-        -------
-        str
-        Configured client display name.
-
-
+            str: Configured client display name.
         """
         return self._name
 
@@ -140,11 +127,7 @@ class ClientBaseMixin:
         """Return current REST and XMLRPC query counts.
 
         Returns:
-        -------
-        tuple
-        Two-item tuple containing REST query count and XMLRPC query count.
-
-
+            tuple: Two-item tuple containing REST query count and XMLRPC query count.
         """
         return self._rest_api_query_count, self._xmlrpc_query_count
 
@@ -152,11 +135,7 @@ class ClientBaseMixin:
         """Create an XMLRPC server proxy for the configured OPNsense host.
 
         Returns:
-        -------
-        xmlrpc.client.ServerProxy
-        XMLRPC ServerProxy configured for this client instance.
-
-
+            xmlrpc.client.ServerProxy: XMLRPC ServerProxy configured for this client instance.
         """
         # https://docs.python.org/3/library/xmlrpc.client.html#module-xmlrpc.client
         # https://stackoverflow.com/questions/30461969/disable-default-certificate-verification-in-python-2-7-9
@@ -178,13 +157,9 @@ class ClientBaseMixin:
     ) -> None:
         """Restore a specific configuration section via XMLRPC.
 
-        Parameters
-        ----------
-        section_name : str
-            Configuration section name to restore.
-        data : MutableMapping[str, Any]
-            Input mapping used to build the request payload.
-
+        Args:
+            section_name: Configuration section name to restore.
+            data: Input mapping used to build the request payload.
         """
         loop = await self._get_active_loop()
         params = {section_name: data}
@@ -195,17 +170,11 @@ class ClientBaseMixin:
     async def _exec_php(self, script: str) -> dict[str, Any]:
         """Execute a PHP snippet through XMLRPC and decode the JSON payload.
 
-        Parameters
-        ----------
-        script : str
-            PHP script source executed through XMLRPC.
+        Args:
+            script: PHP script source executed through XMLRPC.
 
         Returns:
-        -------
-        dict[str, Any]
-        JSON-decoded response payload, or an empty dictionary on failure.
-
-
+            dict[str, Any]: JSON-decoded response payload, or an empty dictionary on failure.
         """
         loop = await self._get_active_loop()
         self._xmlrpc_query_count += 1
@@ -269,11 +238,8 @@ $toreturn["real"] = json_encode($toreturn_real);
     async def set_use_snake_case(self, initial: bool = False) -> None:
         """Set whether to use snake_case or camelCase for API calls.
 
-        Parameters
-        ----------
-        initial : bool
-            Whether the call runs during initial setup/validation. Defaults to False.
-
+        Args:
+            initial: Whether the call runs during initial setup/validation. Defaults to False.
         """
         firmware = await cast("_FirmwareVersionProvider", self).get_host_firmware_version()
 
@@ -299,17 +265,11 @@ $toreturn["real"] = json_encode($toreturn_real);
     async def _get_from_stream(self, path: str) -> dict[str, Any]:
         """Queue a streaming GET request and return the parsed payload.
 
-        Parameters
-        ----------
-        path : str
-            API endpoint path to call on the OPNsense host.
+        Args:
+            path: API endpoint path to call on the OPNsense host.
 
         Returns:
-        -------
-        dict[str, Any]
-        Queued streaming-response payload parsed into a dictionary.
-
-
+            dict[str, Any]: Queued streaming-response payload parsed into a dictionary.
         """
         loop = await self._get_active_loop()
         try:
@@ -323,17 +283,11 @@ $toreturn["real"] = json_encode($toreturn_real);
     async def _get(self, path: str) -> MutableMapping[str, Any] | list | None:
         """Queue a GET request and return the result.
 
-        Parameters
-        ----------
-        path : str
-            API endpoint path to call on the OPNsense host.
+        Args:
+            path: API endpoint path to call on the OPNsense host.
 
         Returns:
-        -------
-        MutableMapping[str, Any] | list | None
-        Decoded JSON payload from a queued GET request, or None when request/parse fails.
-
-
+            MutableMapping[str, Any] | list | None: Decoded JSON payload from a queued GET request, or None when request/parse fails.
         """
         loop = await self._get_active_loop()
         try:
@@ -349,19 +303,12 @@ $toreturn["real"] = json_encode($toreturn_real);
     ) -> MutableMapping[str, Any] | list | None:
         """Queue a POST request and return the result.
 
-        Parameters
-        ----------
-        path : str
-            API endpoint path to call on the OPNsense host.
-        payload : MutableMapping[str, Any] | None
-            JSON payload body sent with the API request. Defaults to None.
+        Args:
+            path: API endpoint path to call on the OPNsense host.
+            payload: JSON payload body sent with the API request. Defaults to None.
 
         Returns:
-        -------
-        MutableMapping[str, Any] | list | None
-        Decoded JSON payload from a queued POST request, or None when request/parse fails.
-
-
+            MutableMapping[str, Any] | list | None: Decoded JSON payload from a queued POST request, or None when request/parse fails.
         """
         loop = await self._get_active_loop()
         try:
@@ -430,19 +377,12 @@ $toreturn["real"] = json_encode($toreturn_real);
     async def _do_get_from_stream(self, path: str, caller: str = "Unknown") -> dict[str, Any]:
         """Execute a streaming GET request immediately.
 
-        Parameters
-        ----------
-        path : str
-            API endpoint path to call on the OPNsense host.
-        caller : str
-            Name of the calling method used for log context. Defaults to 'Unknown'.
+        Args:
+            path: API endpoint path to call on the OPNsense host.
+            caller: Name of the calling method used for log context. Defaults to 'Unknown'.
 
         Returns:
-        -------
-        dict[str, Any]
-        Parsed JSON object extracted from the stream payload.
-
-
+            dict[str, Any]: Parsed JSON object extracted from the stream payload.
         """
         self._rest_api_query_count += 1
         url: str = f"{self._url}{path}"
@@ -532,22 +472,13 @@ $toreturn["real"] = json_encode($toreturn_real);
     ) -> MutableMapping[str, Any] | list | None:
         """Execute a GET request immediately without queueing.
 
-        Parameters
-        ----------
-        path : str
-            API endpoint path to call on the OPNsense host.
-        caller : str
-            Name of the calling method used for log context. Defaults to 'Unknown'.
-        timeout_seconds : int | float | None
-            Optional timeout value in seconds for this request. Defaults to None,
-            which uses the shared default timeout.
+        Args:
+            path: API endpoint path to call on the OPNsense host.
+            caller: Name of the calling method used for log context. Defaults to 'Unknown'.
+            timeout_seconds: Optional timeout value in seconds for this request. Defaults to None, which uses the shared default timeout.
 
         Returns:
-        -------
-        MutableMapping[str, Any] | list | None
-        Decoded JSON payload from an immediate GET request, or None when request/parse fails.
-
-
+            MutableMapping[str, Any] | list | None: Decoded JSON payload from an immediate GET request, or None when request/parse fails.
         """
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
         self._rest_api_query_count += 1
@@ -596,17 +527,11 @@ $toreturn["real"] = json_encode($toreturn_real);
     def _normalize_timeout_seconds(self, timeout_seconds: float | None) -> float:
         """Normalize per-call timeout values to a positive float in seconds.
 
-        Parameters
-        ----------
-        timeout_seconds : int | float | None
-            Requested timeout value in seconds.
+        Args:
+            timeout_seconds: Requested timeout value in seconds.
 
         Returns:
-        -------
-        float
-            Positive timeout in seconds. Falls back to
-            DEFAULT_REQUEST_TIMEOUT_SECONDS when invalid.
-
+            float: Positive timeout in seconds. Falls back to DEFAULT_REQUEST_TIMEOUT_SECONDS when invalid.
         """
         if timeout_seconds is None:
             return float(DEFAULT_REQUEST_TIMEOUT_SECONDS)
@@ -621,17 +546,11 @@ $toreturn["real"] = json_encode($toreturn_real);
     async def _safe_dict_get(self, path: str) -> dict[str, Any]:
         """Fetch data from the given path, ensuring the result is a dict.
 
-        Parameters
-        ----------
-        path : str
-            API endpoint path to call on the OPNsense host.
+        Args:
+            path: API endpoint path to call on the OPNsense host.
 
         Returns:
-        -------
-        dict[str, Any]
-        Dictionary payload from the GET request, or an empty dictionary if the response is not a mapping.
-
-
+            dict[str, Any]: Dictionary payload from the GET request, or an empty dictionary if the response is not a mapping.
         """
         result = await self._get(path=path)
         return dict(result) if isinstance(result, MutableMapping) else {}
@@ -641,19 +560,12 @@ $toreturn["real"] = json_encode($toreturn_real);
     ) -> dict[str, Any]:
         """Fetch a GET payload with a custom timeout and coerce to a dictionary.
 
-        Parameters
-        ----------
-        path : str
-            API endpoint path to call on the OPNsense host.
-        timeout_seconds : int | float
-            Total timeout window in seconds for this request.
+        Args:
+            path: API endpoint path to call on the OPNsense host.
+            timeout_seconds: Total timeout window in seconds for this request.
 
         Returns:
-        -------
-        dict[str, Any]
-            Dictionary payload from the GET request, or an empty dictionary if
-            the response is not a mapping.
-
+            dict[str, Any]: Dictionary payload from the GET request, or an empty dictionary if the response is not a mapping.
         """
         result = await self._do_get(
             path=path,
@@ -665,17 +577,11 @@ $toreturn["real"] = json_encode($toreturn_real);
     async def _safe_list_get(self, path: str) -> list:
         """Fetch data from the given path, ensuring the result is a list.
 
-        Parameters
-        ----------
-        path : str
-            API endpoint path to call on the OPNsense host.
+        Args:
+            path: API endpoint path to call on the OPNsense host.
 
         Returns:
-        -------
-        list
-        List payload from the GET request, or an empty list if the response is not a list.
-
-
+            list: List payload from the GET request, or an empty list if the response is not a list.
         """
         result = await self._get(path=path)
         return result if isinstance(result, list) else []
@@ -685,21 +591,13 @@ $toreturn["real"] = json_encode($toreturn_real);
     ) -> MutableMapping[str, Any] | list | None:
         """Execute a POST request immediately without queueing.
 
-        Parameters
-        ----------
-        path : str
-            API endpoint path to call on the OPNsense host.
-        payload : MutableMapping[str, Any] | None
-            JSON payload body sent with the API request. Defaults to None.
-        caller : str
-            Name of the calling method used for log context. Defaults to 'Unknown'.
+        Args:
+            path: API endpoint path to call on the OPNsense host.
+            payload: JSON payload body sent with the API request. Defaults to None.
+            caller: Name of the calling method used for log context. Defaults to 'Unknown'.
 
         Returns:
-        -------
-        MutableMapping[str, Any] | list | None
-        Decoded JSON payload from an immediate POST request, or None when request/parse fails.
-
-
+            MutableMapping[str, Any] | list | None: Decoded JSON payload from an immediate POST request, or None when request/parse fails.
         """
         self._rest_api_query_count += 1
         url: str = f"{self._url}{path}"
@@ -751,19 +649,12 @@ $toreturn["real"] = json_encode($toreturn_real);
     ) -> dict[str, Any]:
         """Fetch data from the given path, ensuring the result is a dict.
 
-        Parameters
-        ----------
-        path : str
-            API endpoint path to call on the OPNsense host.
-        payload : MutableMapping[str, Any] | None
-            JSON payload body sent with the API request. Defaults to None.
+        Args:
+            path: API endpoint path to call on the OPNsense host.
+            payload: JSON payload body sent with the API request. Defaults to None.
 
         Returns:
-        -------
-        dict[str, Any]
-        Dictionary payload from the POST request, or an empty dictionary if the response is not a mapping.
-
-
+            dict[str, Any]: Dictionary payload from the POST request, or an empty dictionary if the response is not a mapping.
         """
         result = await self._post(path=path, payload=payload)
         return dict(result) if isinstance(result, MutableMapping) else {}
@@ -773,19 +664,12 @@ $toreturn["real"] = json_encode($toreturn_real);
     ) -> list:
         """Fetch data from the given path, ensuring the result is a list.
 
-        Parameters
-        ----------
-        path : str
-            API endpoint path to call on the OPNsense host.
-        payload : MutableMapping[str, Any] | None
-            JSON payload body sent with the API request. Defaults to None.
+        Args:
+            path: API endpoint path to call on the OPNsense host.
+            payload: JSON payload body sent with the API request. Defaults to None.
 
         Returns:
-        -------
-        list
-        List payload from the POST request, or an empty list if the response is not a list.
-
-
+            list: List payload from the POST request, or an empty list if the response is not a list.
         """
         result = await self._post(path=path, payload=payload)
         return result if isinstance(result, list) else []
@@ -793,30 +677,23 @@ $toreturn["real"] = json_encode($toreturn_real);
     async def is_endpoint_available(self, path: str, force_refresh: bool = False) -> bool:
         """Return whether a specific API endpoint appears to be available.
 
-        Parameters
-        ----------
-        path : str
-            API endpoint path to check on the OPNsense host.
-        force_refresh : bool
-            Whether to bypass cached availability state and perform a new probe.
+        Args:
+            path: API endpoint path to check on the OPNsense host.
+            force_refresh: Whether to bypass cached availability state and perform a new probe.
 
         Returns:
-        -------
-        bool
-            ``True`` when endpoint probe succeeded, otherwise ``False``.
+            bool: ``True`` when endpoint probe succeeded, otherwise ``False``.
 
         Notes:
-        -----
-        Availability is cached per endpoint path in ``self._endpoint_availability`` and
-        timestamped in ``self._endpoint_checked_at``.
-        Cached entries are considered fresh for ``self._endpoint_cache_ttl_seconds``
-        seconds.
-        Successful checks (HTTP 2xx) and definitive "not found" checks (HTTP 404)
-        are cached and returned until TTL expiry.
-        Other HTTP failures (for example 4xx except 404, and 5xx) plus transport
-        exceptions are treated as transient failures and are not cached.
-        ``force_refresh=True`` bypasses cache freshness and probes immediately.
-
+            Availability is cached per endpoint path in ``self._endpoint_availability`` and
+            timestamped in ``self._endpoint_checked_at``.
+            Cached entries are considered fresh for ``self._endpoint_cache_ttl_seconds``
+            seconds.
+            Successful checks (HTTP 2xx) and definitive "not found" checks (HTTP 404)
+            are cached and returned until TTL expiry.
+            Other HTTP failures (for example 4xx except 404, and 5xx) plus transport
+            exceptions are treated as transient failures and are not cached.
+            ``force_refresh=True`` bypasses cache freshness and probes immediately.
         """
         if not isinstance(path, str) or not path:
             return False

@@ -37,6 +37,11 @@ async def test_async_setup_entry_creates_entities_when_enabled(make_config_entry
     created: list = []
 
     def add_entities(ents):
+        """Add entities.
+
+        Args:
+            ents: Ents provided by pytest or the test case.
+        """
         created.extend(ents)
 
     await async_setup_entry(MagicMock(), entry, add_entities)
@@ -60,6 +65,11 @@ async def test_async_setup_entry_skips_when_disabled(make_config_entry):
     created: list = []
 
     def add_entities(ents):
+        """Add entities.
+
+        Args:
+            ents: Ents provided by pytest or the test case.
+        """
         created.extend(ents)
 
     await async_setup_entry(MagicMock(), entry, add_entities)
@@ -80,6 +90,11 @@ async def test_async_setup_entry_creates_only_carp_when_carp_enabled(make_config
     created: list = []
 
     def add_entities(ents):
+        """Add entities.
+
+        Args:
+            ents: Ents provided by pytest or the test case.
+        """
         created.extend(ents)
 
     await async_setup_entry(MagicMock(), entry, add_entities)
@@ -102,6 +117,11 @@ async def test_async_setup_entry_creates_only_notices_when_notices_enabled(make_
     created: list = []
 
     def add_entities(ents):
+        """Add entities.
+
+        Args:
+            ents: Ents provided by pytest or the test case.
+        """
         created.extend(ents)
 
     await async_setup_entry(MagicMock(), entry, add_entities)
@@ -124,10 +144,7 @@ async def test_async_setup_entry_creates_only_notices_when_notices_enabled(make_
 def test_carp_sensor_update_paths_param(
     coord_data, expect_write_called, expect_available, expect_is_on, expect_extra, make_config_entry
 ):
-    """Parameterized tests for CARP status sensor update paths.
-
-    Covers: non-mapping (None), present True, and missing-key cases.
-    """
+    """Parameterized tests for CARP status sensor update paths. Covers: non-mapping (None), present True, and missing-key cases."""
     entry = make_config_entry()
     desc = BinarySensorEntityDescription(key="carp_status", name="CARP Status")
 
@@ -140,6 +157,7 @@ def test_carp_sensor_update_paths_param(
     write_called = {"val": False}
 
     def write():
+        """Write."""
         write_called["val"] = True
 
     s.hass = MagicMock()
@@ -187,10 +205,7 @@ def test_pending_notices_sensor_update_paths_param(
     expect_pending,
     make_config_entry,
 ):
-    """Parameterized tests for pending notices sensor update paths.
-
-    Covers: non-mapping (None), present with list, and present but missing list.
-    """
+    """Parameterized tests for pending notices sensor update paths. Covers: non-mapping (None), present with list, and present but missing list."""
     entry = make_config_entry()
     desc = BinarySensorEntityDescription(
         key="notices.pending_notices_present", name="Pending Notices"
@@ -207,6 +222,7 @@ def test_pending_notices_sensor_update_paths_param(
     write_called = {"val": False}
 
     def write():
+        """Write."""
         write_called["val"] = True
 
     s.async_write_ha_state = write if expect_write_called else lambda: None
