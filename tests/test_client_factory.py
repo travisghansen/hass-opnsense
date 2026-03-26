@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -308,6 +309,45 @@ async def test_create_client_uses_external_for_new_firmware(
     assert "name" not in client.kwargs
     assert "initial" not in client.kwargs
     assert await client.get_query_counts() == (5, 0)
+
+
+@pytest.mark.asyncio
+async def test_create_client_logs_external_version_for_new_firmware(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Factory should log external aiopnsense version when routing to external backend."""
+
+    class _LegacyClient:
+        async def get_host_firmware_version(self) -> str:
+            """Return new firmware so factory selects external backend."""
+            return "26.3"
+
+        async def async_close(self) -> None:
+            """Provide cleanup hook expected by factory code paths."""
+            return
+
+    class _ExternalClient:
+        pass
+
+    monkeypatch.setattr(factory_mod, "LegacyOPNsenseClient", lambda **kwargs: _LegacyClient())
+    monkeypatch.setattr(
+        factory_mod, "_create_external_client", AsyncMock(return_value=_ExternalClient())
+    )
+    monkeypatch.setattr(
+        factory_mod, "_get_external_aiopnsense_version", AsyncMock(return_value="1.0.2")
+    )
+
+    caplog.set_level("INFO")
+    client = await factory_mod.create_opnsense_client(
+        url="https://router",
+        username="u",
+        password="p",
+        session=SimpleNamespace(),
+        opts={"verify_ssl": True},
+    )
+
+    assert isinstance(client, _ExternalClient)
+    assert "Using aiopnsense 1.0.2 for firmware >= 26.1.1" in caplog.text
 
 
 @pytest.mark.asyncio
