@@ -23,6 +23,9 @@ Folder structure (repo-specific)
 Project structure expectations
 - Keep code modular: separate files for entity types, services, and utilities.
 - Store constants in `const.py` and use a `config_flow.py` for configuration flows.
+- The pyopnsense in the integration is only used by OPNsense Firmware < 26.1.1 and is mostly frozen to any new changes except bugs impacting Firmware < 26.1.1. Once the minimum firmware for hass-opnsense is >= 26.1.1, pyopnsense will be fully removed and hass-opnsense will exclusively use aiopnsense.
+- For OPNsense Firmware >= 26.1.1, hass-opnsense uses the external library aiopnsense (https://github.com/Snuffy2/aiopnsense & https://pypi.org/project/aiopnsense). This is maintained by the same maintainer as hass-opnsense.
+- Any changes that require changes to both hass-opnsense and aiopnsense will require a branch and PR in both repos.
 
 Coding standards
 - Add typing annotations to all functions and classes (including return types).
