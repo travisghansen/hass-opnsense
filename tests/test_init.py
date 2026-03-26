@@ -514,7 +514,7 @@ async def test_async_setup_entry_firmware_between_min_and_ltd(
     monkeypatch, ph_hass, coordinator_capture, fake_client, fake_coordinator, make_config_entry
 ):
     """async_setup_entry logs a warning issue for firmware between min and LTD but continues."""
-    patch_client_factory(monkeypatch, init_mod, fake_client(firmware_version="25.0"))
+    patch_client_factory(monkeypatch, init_mod, fake_client(firmware_version="25.1"))
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
     )
@@ -1501,7 +1501,7 @@ async def test_async_setup_entry_delete_not_called_for_between_min_and_ltd(
     monkeypatch, ph_hass, coordinator_capture, fake_client, fake_coordinator, make_config_entry
 ):
     """async_setup_entry should not call delete_issue for firmware between min and LTD."""
-    patch_client_factory(monkeypatch, init_mod, fake_client(firmware_version="25.0"))
+    patch_client_factory(monkeypatch, init_mod, fake_client(firmware_version="25.1"))
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
     )
