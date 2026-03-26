@@ -1,0 +1,233 @@
+name: Update aiopnsense manifest requirement
+
+on:
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+    inputs:
+      aiopnsense_release_owner:
+        description: Owner for aiopnsense releases lookup
+        required: false
+        default: Snuffy2
+      aiopnsense_release_repo:
+        description: Repository for aiopnsense releases lookup
+        required: false
+        default: aiopnsense
+
+concurrency:
+  group: update-aiopnsense-manifest
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-aiopnsense:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Determine current and latest aiopnsense versions
+        id: versions
+        run: |
+          set -euo pipefail
+
+          manifest_path="custom_components/opnsense/manifest.json"
+          current_requirement_count="$(
+            jq -r '[.requirements[] | select(startswith("aiopnsense"))] | length' "$manifest_path"
+          )"
+          current_requirement="$(
+            jq -r '[.requirements[] | select(startswith("aiopnsense"))] | .[0] // empty' "$manifest_path"
+          )"
+          if [ "$current_requirement_count" -ne 1 ]; then
+            echo "Expected exactly one aiopnsense requirement in $manifest_path; found $current_requirement_count (current_requirement='$current_requirement')" >&2
+            exit 1
+          fi
+          current_version="$(printf '%s' "$current_requirement" | sed -E 's/^[^0-9]*//')"
+          latest_version="$(curl -fsSL https://pypi.org/pypi/aiopnsense/json | jq -r '.info.version // empty')"
+          if [ -z "$latest_version" ] || [ "$latest_version" = "null" ]; then
+            echo "Unable to determine latest aiopnsense version from PyPI response" >&2
+            exit 1
+          fi
+
+          update_needed="false"
+          if [ "$(printf '%s\n%s\n' "$current_version" "$latest_version" | sort -V | tail -n1)" = "$latest_version" ] && [ "$current_version" != "$latest_version" ]; then
+            update_needed="true"
+          fi
+
+          {
+            echo "current=$current_version"
+            echo "latest=$latest_version"
+            echo "update_needed=$update_needed"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Update manifest requirement
+        if: steps.versions.outputs.update_needed == 'true'
+        run: |
+          set -euo pipefail
+
+          manifest_path="custom_components/opnsense/manifest.json"
+          latest_version="${{ steps.versions.outputs.latest }}"
+          tmp_file="$(mktemp)"
+
+          jq --arg latest "$latest_version" '
+            .requirements |= map(
+              if startswith("aiopnsense")
+              then "aiopnsense>=" + $latest
+              else .
+              end
+            )
+          ' "$manifest_path" > "$tmp_file"
+
+          mv "$tmp_file" "$manifest_path"
+
+      - name: Build aiopnsense release notes
+        if: steps.versions.outputs.update_needed == 'true'
+        id: release_notes
+        uses: actions/github-script@v7
+        env:
+          CURRENT_VERSION: ${{ steps.versions.outputs.current }}
+          LATEST_VERSION: ${{ steps.versions.outputs.latest }}
+          REPO_OWNER: ${{ github.event.inputs.aiopnsense_release_owner || vars.AIOPNSENSE_RELEASE_OWNER || 'Snuffy2' }}
+          REPO_NAME: ${{ github.event.inputs.aiopnsense_release_repo || vars.AIOPNSENSE_RELEASE_REPO || 'aiopnsense' }}
+        with:
+          script: |
+            const current = process.env.CURRENT_VERSION.replace(/^v/i, "");
+            const latest = process.env.LATEST_VERSION.replace(/^v/i, "");
+            const releaseOwner = process.env.REPO_OWNER;
+            const releaseRepo = process.env.REPO_NAME;
+
+            function parseVersion(version) {
+              return version
+                .replace(/^v/i, "")
+                .split(/[^0-9]+/)
+                .filter(Boolean)
+                .map((part) => Number(part));
+            }
+
+            function compareVersions(a, b) {
+              const pa = parseVersion(a);
+              const pb = parseVersion(b);
+              const max = Math.max(pa.length, pb.length);
+              for (let i = 0; i < max; i += 1) {
+                const va = pa[i] ?? 0;
+                const vb = pb[i] ?? 0;
+                if (va > vb) return 1;
+                if (va < vb) return -1;
+              }
+              return 0;
+            }
+
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner: releaseOwner,
+              repo: releaseRepo,
+              per_page: 100,
+            });
+            if (releases.length === 0) {
+              core.setFailed(
+                `No releases found for ${releaseOwner}/${releaseRepo}. ` +
+                  "Check workflow inputs or repository variables " +
+                  "(AIOPNSENSE_RELEASE_OWNER/AIOPNSENSE_RELEASE_REPO).",
+              );
+              return;
+            }
+
+            const selected = releases
+              .filter((release) => {
+                const tagVersion = release.tag_name.replace(/^v/i, "");
+                return (
+                  compareVersions(tagVersion, current) > 0 &&
+                  compareVersions(tagVersion, latest) <= 0
+                );
+              })
+              .sort((a, b) =>
+                compareVersions(
+                  a.tag_name.replace(/^v/i, ""),
+                  b.tag_name.replace(/^v/i, ""),
+                ),
+              );
+
+            let notes = "";
+            if (selected.length === 0) {
+              notes =
+                "No matching GitHub release notes were found for this version range.";
+            } else {
+              notes = selected
+                .map((release) => {
+                  const body = (release.body || "No release body provided.").trim();
+                  return [
+                    `### ${release.name || release.tag_name} (${release.tag_name})`,
+                    release.html_url,
+                    "",
+                    body,
+                  ].join("\n");
+                })
+                .join("\n\n---\n\n");
+            }
+
+            core.setOutput("notes", notes);
+
+      - name: Create or update aiopnsense update PR
+        if: steps.versions.outputs.update_needed == 'true'
+        id: cpr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: chore/update-aiopnsense-manifest
+          delete-branch: true
+          commit-message: 'chore(deps): bump aiopnsense to >=${{ steps.versions.outputs.latest }}'
+          title: 'chore(deps): bump aiopnsense to >=${{ steps.versions.outputs.latest }}'
+          labels: dependencies,aiopnsense-auto-update
+          body: |
+            Automated update of `custom_components/opnsense/manifest.json`.
+
+            - Previous minimum version: `aiopnsense>=${{ steps.versions.outputs.current }}`
+            - Updated minimum version: `aiopnsense>=${{ steps.versions.outputs.latest }}`
+
+            ## aiopnsense release notes in range
+            ${{ steps.release_notes.outputs.notes }}
+          add-paths: |
+            custom_components/opnsense/manifest.json
+
+      - name: Close extra auto-generated PRs
+        if: steps.versions.outputs.update_needed == 'true' && steps.cpr.outputs.pull-request-number != ''
+        uses: actions/github-script@v7
+        env:
+          KEEP_PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
+        with:
+          script: |
+            const keep = Number(process.env.KEEP_PR_NUMBER);
+            const branch = "chore/update-aiopnsense-manifest";
+            const pulls = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100,
+            });
+
+            for (const pr of pulls) {
+              if (pr.number === keep) {
+                continue;
+              }
+              const hasAutoLabel = pr.labels.some(
+                (label) => label.name === "aiopnsense-auto-update",
+              );
+              if (!hasAutoLabel) {
+                continue;
+              }
+              if (pr.head.ref !== branch) {
+                continue;
+              }
+              await github.rest.pulls.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+                state: "closed",
+              });
+            }
+
+      - name: Log when no update is required
+        if: steps.versions.outputs.update_needed != 'true'
+        run: echo "aiopnsense is already at the latest version; no update PR created."
