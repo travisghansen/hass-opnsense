@@ -9,27 +9,18 @@ from unittest.mock import MagicMock
 import pytest
 
 from custom_components.opnsense.binary_sensor import (
-    OPNsenseCarpStatusBinarySensor,
     OPNsensePendingNoticesPresentBinarySensor,
     async_setup_entry,
 )
-from custom_components.opnsense.const import (
-    CONF_DEVICE_UNIQUE_ID,
-    CONF_SYNC_CARP,
-    CONF_SYNC_NOTICES,
-    COORDINATOR,
-)
+from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID, CONF_SYNC_NOTICES, COORDINATOR
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 from homeassistant.components.binary_sensor import BinarySensorEntityDescription
 
 
 @pytest.mark.asyncio
 async def test_async_setup_entry_creates_entities_when_enabled(make_config_entry):
-    """Create entities when sync options are enabled."""
-    # enable both sync options
-    entry = make_config_entry(
-        {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_CARP: True, CONF_SYNC_NOTICES: True}
-    )
+    """Create notices binary sensor when notices sync is enabled."""
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_NOTICES: True})
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord.data = {}
     setattr(entry.runtime_data, COORDINATOR, coord)
@@ -45,19 +36,14 @@ async def test_async_setup_entry_creates_entities_when_enabled(make_config_entry
         created.extend(ents)
 
     await async_setup_entry(MagicMock(), entry, add_entities)
-    # expect two entities created
-    assert len(created) == 2
-    assert any(isinstance(e, OPNsenseCarpStatusBinarySensor) for e in created)
-    assert any(isinstance(e, OPNsensePendingNoticesPresentBinarySensor) for e in created)
+    assert len(created) == 1
+    assert isinstance(created[0], OPNsensePendingNoticesPresentBinarySensor)
 
 
 @pytest.mark.asyncio
 async def test_async_setup_entry_skips_when_disabled(make_config_entry):
     """Skip creating entities when sync options are disabled."""
-    # explicitly disable both
-    entry = make_config_entry(
-        {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_CARP: False, CONF_SYNC_NOTICES: False}
-    )
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_NOTICES: False})
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord.data = {}
     setattr(entry.runtime_data, COORDINATOR, coord)
@@ -77,39 +63,9 @@ async def test_async_setup_entry_skips_when_disabled(make_config_entry):
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_creates_only_carp_when_carp_enabled(make_config_entry):
-    """Create only CARP entity when CARP sync is enabled."""
-    # enable only CARP
-    entry = make_config_entry(
-        {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_CARP: True, CONF_SYNC_NOTICES: False}
-    )
-    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = {}
-    setattr(entry.runtime_data, COORDINATOR, coord)
-
-    created: list = []
-
-    def add_entities(ents):
-        """Add entities.
-
-        Args:
-            ents: Ents provided by pytest or the test case.
-        """
-        created.extend(ents)
-
-    await async_setup_entry(MagicMock(), entry, add_entities)
-    # expect one CARP entity created
-    assert len(created) == 1
-    assert isinstance(created[0], OPNsenseCarpStatusBinarySensor)
-
-
-@pytest.mark.asyncio
 async def test_async_setup_entry_creates_only_notices_when_notices_enabled(make_config_entry):
     """Create only Notices entity when notices sync is enabled."""
-    # enable only Notices
-    entry = make_config_entry(
-        {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_CARP: False, CONF_SYNC_NOTICES: True}
-    )
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_NOTICES: True})
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord.data = {}
     setattr(entry.runtime_data, COORDINATOR, coord)
@@ -128,52 +84,6 @@ async def test_async_setup_entry_creates_only_notices_when_notices_enabled(make_
     # expect one Notices entity created
     assert len(created) == 1
     assert isinstance(created[0], OPNsensePendingNoticesPresentBinarySensor)
-
-
-@pytest.mark.parametrize(
-    "coord_data,expect_write_called,expect_available,expect_is_on,expect_extra",
-    [
-        (None, True, False, None, None),
-        ({"carp_status": True}, True, True, True, dict),
-        ({"carp_status": False}, True, True, False, dict),
-        ({"other": 1}, True, False, None, None),
-        # non-boolean carp value should trigger a write and mark sensor available; extras are dict
-        ({"carp_status": "up"}, True, True, None, dict),
-    ],
-)
-def test_carp_sensor_update_paths_param(
-    coord_data, expect_write_called, expect_available, expect_is_on, expect_extra, make_config_entry
-):
-    """Parameterized tests for CARP status sensor update paths. Covers: non-mapping (None), present True, and missing-key cases."""
-    entry = make_config_entry()
-    desc = BinarySensorEntityDescription(key="carp_status", name="CARP Status")
-
-    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = coord_data
-    s = OPNsenseCarpStatusBinarySensor(
-        config_entry=entry, coordinator=coord, entity_description=desc
-    )
-
-    write_called = {"val": False}
-
-    def write():
-        """Write."""
-        write_called["val"] = True
-
-    s.hass = MagicMock()
-    s.entity_id = "binary_sensor.carp"
-    # only replace writer when we expect to observe a call, else set a no-op
-    s.async_write_ha_state = write if expect_write_called else lambda: None
-
-    s._handle_coordinator_update()
-    assert write_called["val"] is expect_write_called
-    assert s.available is expect_available
-    if expect_is_on is not None:
-        assert s.is_on is expect_is_on
-    if expect_extra is not None:
-        assert isinstance(s.extra_state_attributes, expect_extra)
-        if coord_data and "carp_status" in (coord_data or {}):
-            assert s.extra_state_attributes == {}
 
 
 @pytest.mark.parametrize(

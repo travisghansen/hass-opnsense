@@ -81,6 +81,29 @@ def test_try_to_int_and_float() -> None:
     assert pyopnsense_helpers.try_to_float(None, 3.3) == 3.3
 
 
+def test_coerce_bool() -> None:
+    """Verify ``coerce_bool`` handles common bool-like edge cases."""
+    assert pyopnsense_helpers.coerce_bool(True) is True
+    assert pyopnsense_helpers.coerce_bool(False) is False
+    assert pyopnsense_helpers.coerce_bool(1) is True
+    assert pyopnsense_helpers.coerce_bool(0) is False
+    assert pyopnsense_helpers.coerce_bool(0.0) is False
+    assert pyopnsense_helpers.coerce_bool("1") is True
+    assert pyopnsense_helpers.coerce_bool("true") is True
+    assert pyopnsense_helpers.coerce_bool("yes") is True
+    assert pyopnsense_helpers.coerce_bool("on") is True
+    assert pyopnsense_helpers.coerce_bool("") is False
+    assert pyopnsense_helpers.coerce_bool(None) is False
+
+
+def test_normalize_lookup_token() -> None:
+    """Verify ``normalize_lookup_token`` lower-cases and trims lookup values."""
+    assert pyopnsense_helpers.normalize_lookup_token("Hello") == "hello"
+    assert pyopnsense_helpers.normalize_lookup_token("  WORLD  ") == "world"
+    assert pyopnsense_helpers.normalize_lookup_token(42) == "42"
+    assert pyopnsense_helpers.normalize_lookup_token(None) == ""
+
+
 def test_get_ip_key_sorting() -> None:
     """Sort IP-like items using get_ip_key ordering."""
     items = [
