@@ -1,7 +1,36 @@
+<a id="v0.6.4"></a>
+# [v0.6.4](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.4) - 2026-03-27
+
+### Note
+
+The minimum version of hass-opnsense will be pushed relatively quickly over the next few months. The plan is that whenever OPNsense Firmware 26.7 is released, that becomes the recommended version and 26.1 becomes the minimum version.
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🚀 Enhancements
+* Use aiopnsense for 26.1.1+ by [@Snuffy2](https://github.com/Snuffy2) in [#539](https://github.com/travisghansen/hass-opnsense/pull/539)
+* Bump minimum Firmware to 25.1 by [@Snuffy2](https://github.com/Snuffy2) in [#540](https://github.com/travisghansen/hass-opnsense/pull/540)
+* Show aiopnsense version at startup by [@Snuffy2](https://github.com/Snuffy2) in [#542](https://github.com/travisghansen/hass-opnsense/pull/542)
+### 📚 Documentation
+* Update README.md by [@Snuffy2](https://github.com/Snuffy2) in [#545](https://github.com/travisghansen/hass-opnsense/pull/545)
+### 🎓 Code Quality
+* Change pre-commit to prek by [@Snuffy2](https://github.com/Snuffy2) in [#537](https://github.com/travisghansen/hass-opnsense/pull/537)
+* Update docstrings to Google Style by [@Snuffy2](https://github.com/Snuffy2) in [#538](https://github.com/travisghansen/hass-opnsense/pull/538)
+### 🧰 Maintenance
+* Create aiopnsense update PR workflow by [@Snuffy2](https://github.com/Snuffy2) in [#543](https://github.com/travisghansen/hass-opnsense/pull/543)
+### Other Changes
+* Update AGENTS.md by [@Snuffy2](https://github.com/Snuffy2) in [#541](https://github.com/travisghansen/hass-opnsense/pull/541)
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.6.3...v0.6.4
+
+[Changes][v0.6.4]
+
+
 <a id="v0.6.3"></a>
 # [v0.6.3](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.3) - 2026-03-22
 
-<!-- Release notes generated using configuration in .github/release.yml at main -->
+<h3>OPNsense Minimum Firmware Required: 24.7</h3><h4>OPNsense Recommended Firmware: 26.1+</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
 ## What's Changed
 ### 🚀 Enhancements
@@ -12,7 +41,7 @@
 * Bump recommended OPNsense firmware to 26.1+ by [@Snuffy2](https://github.com/Snuffy2) in [#526](https://github.com/travisghansen/hass-opnsense/pull/526)
 
 
-**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.6.2...v0.6.3
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.6.2...v0.6.3<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
 
 [Changes][v0.6.3]
 
@@ -924,6 +953,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.6.4]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.3...v0.6.4
 [v0.6.3]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.2...v0.6.3
 [v0.6.2]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.1...v0.6.2
 [v0.6.1]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.0...v0.6.1
