@@ -16,6 +16,13 @@ Join `OPNsense` with `Home Assistant`!
 
 **With OPNsense Firmware 26.1.1+, a plugin is no longer needed on the OPNsense Router.**
 
+For OPNsense Firmware 26.1.1+, `hass-opnsense` uses [`aiopnsense`](https://pypi.org/project/aiopnsense/) as its backend client library.
+Source and releases for `aiopnsense`:
+
+* PyPI: <https://pypi.org/project/aiopnsense/>
+* GitHub: <https://github.com/Snuffy2/aiopnsense>
+
+For OPNsense Firmware < 26.1.1, the legacy, built-in `pyopnsense` path remains in place for compatibility.
 
 A Discord server to discuss the integration is available, please click the Discord badge at the beginning of the page for the invite link.
 
