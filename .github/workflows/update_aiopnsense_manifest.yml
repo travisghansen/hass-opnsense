@@ -173,7 +173,7 @@ jobs:
       - name: Create or update aiopnsense update PR
         if: steps.versions.outputs.update_needed == 'true'
         id: cpr
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           branch: chore/update-aiopnsense-manifest
           delete-branch: true
