@@ -87,7 +87,7 @@ jobs:
       - name: Build aiopnsense release notes
         if: steps.versions.outputs.update_needed == 'true'
         id: release_notes
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           CURRENT_VERSION: ${{ steps.versions.outputs.current }}
           LATEST_VERSION: ${{ steps.versions.outputs.latest }}
@@ -193,7 +193,7 @@ jobs:
 
       - name: Close extra auto-generated PRs
         if: steps.versions.outputs.update_needed == 'true' && steps.cpr.outputs.pull-request-number != ''
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           KEEP_PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
         with:
