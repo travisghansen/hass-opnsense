@@ -172,12 +172,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             )
 
         if config.get(CONF_SYNC_CARP, DEFAULT_SYNC_OPTION_VALUE):
-            categories.extend(
-                [
-                    {"function": "get_carp_interfaces", "state_key": "carp_interfaces"},
-                    {"function": "get_carp_status", "state_key": "carp_status"},
-                ]
-            )
+            categories.append({"function": "get_carp", "state_key": "carp"})
         if config.get(CONF_SYNC_DHCP_LEASES, DEFAULT_SYNC_OPTION_VALUE):
             categories.append({"function": "get_dhcp_leases", "state_key": "dhcp_leases"})
         if config.get(CONF_SYNC_GATEWAYS, DEFAULT_SYNC_OPTION_VALUE):

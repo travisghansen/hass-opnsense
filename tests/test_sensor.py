@@ -22,6 +22,7 @@ from custom_components.opnsense.const import (
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 from custom_components.opnsense.sensor import (
     OPNsenseCarpInterfaceSensor,
+    OPNsenseCarpStatusSensor,
     OPNsenseDHCPLeasesSensor,
     OPNsenseGatewaySensor,
     OPNsenseInterfaceSensor,
@@ -97,8 +98,8 @@ async def test_static_key_sensor_cpu_and_boot_and_certificates(make_config_entry
     "coord_data,desc_subnet",
     [
         (None, "some"),
-        ({"carp_interfaces": [{"subnet": "10.0.0.5", "status": "MASTER"}]}, "192.168.1.10"),
-        ({"carp_interfaces": [{"subnet": "1.2.3.4", "interface": "lan0"}]}, "1.2.3.4"),
+        ({"carp": {"interfaces": [{"subnet": "10.0.0.5", "status": "MASTER"}]}}, "192.168.1.10"),
+        ({"carp": {"interfaces": [{"subnet": "1.2.3.4", "interface": "lan0"}]}}, "1.2.3.4"),
     ],
 )
 def test_carp_sensor_unavailable_variants(coord_data, desc_subnet, make_config_entry):
@@ -142,6 +143,7 @@ def test_carp_sensor_state_wrong_type(make_config_entry):
     "desc_key,cls",
     [
         ("carp.interface.some", OPNsenseCarpInterfaceSensor),
+        ("carp.status_summary", OPNsenseCarpStatusSensor),
         ("gateway.gw1.status", OPNsenseGatewaySensor),
         ("interface.lan.status", OPNsenseInterfaceSensor),
         ("telemetry.temps.sensor1", OPNsenseTempSensor),
@@ -246,7 +248,7 @@ def test_gateway_sensor_missing_and_missing_prop(make_config_entry):
 
 
 @pytest.mark.parametrize(
-    "carp_entry,expected_value,expect_down_icon,expect_keys",
+    ("carp_entry", "expected_value", "expected_icon", "expect_keys"),
     [
         (
             {
@@ -258,27 +260,34 @@ def test_gateway_sensor_missing_and_missing_prop(make_config_entry):
                 "advbase": 0,
                 "subnet_bits": 24,
                 "descr": "test carp",
+                "mode": "carp",
             },
             "BACKUP",
-            True,
-            ("interface", "vhid", "advskew", "advbase", "subnet_bits", "subnet", "descr"),
+            "mdi:backup-restore",
+            ("interface", "vhid", "advskew", "advbase", "subnet_bits", "subnet", "descr", "mode"),
         ),
         (
             {"subnet": "10.0.0.1", "status": "MASTER"},
             "MASTER",
-            False,
+            "mdi:check-network",
+            (),
+        ),
+        (
+            {"subnet": "10.0.0.3", "status": "INIT"},
+            "INIT",
+            "mdi:close-network-outline",
             (),
         ),
     ],
 )
 def test_carp_sensor_attributes_and_icon(
-    carp_entry, expected_value, expect_down_icon, expect_keys, make_config_entry
+    carp_entry, expected_value, expected_icon, expect_keys, make_config_entry
 ):
     """Parameterized attribute and icon checks for CARP sensor."""
     entry = make_config_entry()
 
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = {"carp_interfaces": [carp_entry]}
+    coord.data = {"carp": {"interfaces": [carp_entry]}}
 
     desc = MagicMock()
     desc.key = f"carp.interface.{sensor_module.slugify(carp_entry['subnet'])}"
@@ -292,22 +301,193 @@ def test_carp_sensor_attributes_and_icon(
 
     assert s.available is True
     assert s.native_value == expected_value
-    if expect_down_icon:
-        assert s.icon == "mdi:close-network-outline"
-    else:
-        assert s.icon != "mdi:close-network-outline"
+    assert s.icon == expected_icon
     for key in expect_keys:
         assert key in s.extra_state_attributes
 
 
 @pytest.mark.parametrize(
-    "desc_key,cls,main_check,extra_check",
+    ("summary", "expected_value", "expected_icon"),
+    [
+        (
+            {
+                "state": "healthy",
+                "enabled": True,
+                "maintenance_mode": False,
+                "demotion": 0,
+                "status_message": "",
+                "vip_count": 2,
+                "master_count": 1,
+                "backup_count": 1,
+                "other_count": 0,
+                "interfaces": ["lan", "wan"],
+                "vips": [{"interface": "wan", "subnet": "1.2.3.4", "status": "MASTER"}],
+            },
+            "healthy",
+            "mdi:check-network",
+        ),
+        (
+            {
+                "state": "maintenance",
+                "enabled": True,
+                "maintenance_mode": True,
+                "demotion": 0,
+                "status_message": "",
+                "vip_count": 1,
+                "master_count": 1,
+                "backup_count": 0,
+                "other_count": 0,
+                "interfaces": ["wan"],
+                "vips": [],
+            },
+            "maintenance",
+            "mdi:backup-restore",
+        ),
+        (
+            {
+                "state": "degraded",
+                "enabled": True,
+                "maintenance_mode": False,
+                "demotion": 3,
+                "status_message": "demoted",
+                "vip_count": 1,
+                "master_count": 0,
+                "backup_count": 0,
+                "other_count": 1,
+                "interfaces": ["wan"],
+                "vips": [],
+            },
+            "degraded",
+            "mdi:close-network-outline",
+        ),
+        (
+            {
+                "state": "disabled",
+                "enabled": False,
+                "maintenance_mode": False,
+                "demotion": 0,
+                "status_message": "",
+                "vip_count": 1,
+                "master_count": 0,
+                "backup_count": 0,
+                "other_count": 1,
+                "interfaces": ["wan"],
+                "vips": [{"interface": "wan", "subnet": "1.2.3.5", "status": "INIT"}],
+            },
+            "disabled",
+            "mdi:close-network-outline",
+        ),
+        (
+            {
+                "state": "not_configured",
+                "enabled": True,
+                "maintenance_mode": False,
+                "demotion": 0,
+                "status_message": "",
+                "vip_count": 0,
+                "master_count": 0,
+                "backup_count": 0,
+                "other_count": 0,
+                "interfaces": [],
+                "vips": [],
+            },
+            "not_configured",
+            "mdi:backup-restore",
+        ),
+        (
+            {
+                "state": "unknown",
+                "enabled": False,
+                "maintenance_mode": False,
+                "demotion": 0,
+                "status_message": "",
+                "vip_count": 0,
+                "master_count": 0,
+                "backup_count": 0,
+                "other_count": 0,
+                "interfaces": [],
+                "vips": [],
+            },
+            "unknown",
+            "mdi:gauge",
+        ),
+    ],
+)
+def test_carp_status_sensor_states_and_attributes(
+    summary: dict[str, Any],
+    expected_value: str,
+    expected_icon: str,
+    make_config_entry,
+) -> None:
+    """Validate aggregate CARP status sensor state, icon, and attributes."""
+    entry = make_config_entry()
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {"carp": {"status_summary": summary}}
+
+    desc = MagicMock()
+    desc.key = "carp.status_summary"
+    desc.name = "CARP Status"
+    desc.icon = "mdi:gauge"
+
+    sensor = OPNsenseCarpStatusSensor(
+        config_entry=entry,
+        coordinator=coordinator,
+        entity_description=desc,
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.carp_status"
+    sensor.async_write_ha_state = lambda: None
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is True
+    assert sensor.native_value == expected_value
+    assert sensor.icon == expected_icon
+    assert sensor.extra_state_attributes.get("vip_count") == summary.get("vip_count")
+    assert sensor.extra_state_attributes.get("interfaces") == summary.get("interfaces")
+
+
+@pytest.mark.asyncio
+async def test_compile_carp_interface_sensor_name_includes_interface(make_config_entry) -> None:
+    """Compiled CARP interface sensor names should include interface and VIP address."""
+    entry = make_config_entry()
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    state = {
+        "interfaces": {"wan": {"name": "WAN", "interface": "wan", "device": "igc0"}},
+        "carp": {
+            "interfaces": [
+                {
+                    "subnet": "203.0.113.10",
+                    "interface": "wan",
+                    "status": "MASTER",
+                    "descr": "Primary WAN VIP",
+                }
+            ]
+        },
+    }
+    coordinator.data = state
+
+    entities = await sensor_module._compile_carp_interface_sensors(entry, coordinator, state)
+    assert len(entities) == 1
+    assert (
+        entities[0].entity_description.name
+        == "CARP Interface Status WAN 203.0.113.10 (Primary WAN VIP)"
+    )
+
+
+@pytest.mark.parametrize(
+    ("desc_key", "cls", "main_check", "extra_check"),
     [
         (
             f"carp.interface.{sensor_module.slugify('10.0.0.1')}",
             OPNsenseCarpInterfaceSensor,
             lambda s: s.native_value == "MASTER",
-            lambda s: s.icon != "mdi:close-network-outline",
+            lambda s: s.icon == "mdi:check-network",
+        ),
+        (
+            "carp.status_summary",
+            OPNsenseCarpStatusSensor,
+            lambda s: s.native_value == "healthy",
+            lambda s: s.icon == "mdi:check-network",
         ),
         (
             "gateway.gw1.delay",
@@ -333,9 +513,24 @@ def test_carp_sensor_attributes_and_icon(
 def test_compiled_sensor_variants(desc_key, cls, main_check, extra_check, make_config_entry):
     """Table-driven checks for several sensor types using a common sample state."""
     state = {
-        "carp_interfaces": [
-            {"subnet": "10.0.0.1", "status": "MASTER", "interface": "lan0", "vhid": 1}
-        ],
+        "carp": {
+            "interfaces": [
+                {"subnet": "10.0.0.1", "status": "MASTER", "interface": "lan0", "vhid": 1}
+            ],
+            "status_summary": {
+                "state": "healthy",
+                "enabled": True,
+                "maintenance_mode": False,
+                "demotion": 0,
+                "status_message": "",
+                "vip_count": 1,
+                "master_count": 1,
+                "backup_count": 0,
+                "other_count": 0,
+                "interfaces": ["lan0"],
+                "vips": [{"interface": "lan0", "subnet": "10.0.0.1", "status": "MASTER"}],
+            },
+        },
         "gateways": {"gw1": {"name": "gw1", "delay": "12ms", "loss": "0", "status": "online"}},
         "openvpn": {
             "servers": {
@@ -374,7 +569,14 @@ def test_compiled_sensor_variants(desc_key, cls, main_check, extra_check, make_c
 
 
 @pytest.mark.parametrize(
-    "state,desc_key,expected_available,expected_value,expect_clients,expect_extra_keys",
+    (
+        "state",
+        "desc_key",
+        "expected_available",
+        "expected_value",
+        "expect_clients",
+        "expect_extra_keys",
+    ),
     [
         # missing instance -> unavailable
         (
@@ -1199,15 +1401,17 @@ async def test_compile_and_handle_many_entities(make_config_entry):
                 "status": "online",
             }
         },
-        "carp_interfaces": [
-            {
-                "subnet": "192.0.2.1",
-                "status": "BACKUP",
-                "interface": "lan0",
-                "vhid": 2,
-                "advskew": 100,
-            }
-        ],
+        "carp": {
+            "interfaces": [
+                {
+                    "subnet": "192.0.2.1",
+                    "status": "BACKUP",
+                    "interface": "lan0",
+                    "vhid": 2,
+                    "advskew": 100,
+                }
+            ]
+        },
         "openvpn": {
             "servers": {
                 "s1": {"name": "ovpn1", "status": "up", "clients": [{"name": "c1", "status": "up"}]}

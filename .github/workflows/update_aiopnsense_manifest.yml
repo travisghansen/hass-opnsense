@@ -76,7 +76,7 @@ jobs:
           jq --arg latest "$latest_version" '
             .requirements |= map(
               if startswith("aiopnsense")
-              then "aiopnsense>=" + $latest
+              then "aiopnsense==" + $latest
               else .
               end
             )
@@ -177,14 +177,14 @@ jobs:
         with:
           branch: chore/update-aiopnsense-manifest
           delete-branch: true
-          commit-message: 'chore(deps): bump aiopnsense to >=${{ steps.versions.outputs.latest }}'
-          title: 'chore(deps): bump aiopnsense to >=${{ steps.versions.outputs.latest }}'
+          commit-message: 'chore(deps): bump aiopnsense to ==${{ steps.versions.outputs.latest }}'
+          title: 'chore(deps): bump aiopnsense to ==${{ steps.versions.outputs.latest }}'
           labels: dependencies,aiopnsense-auto-update
           body: |
             Automated update of `custom_components/opnsense/manifest.json`.
 
-            - Previous minimum version: `aiopnsense>=${{ steps.versions.outputs.current }}`
-            - Updated minimum version: `aiopnsense>=${{ steps.versions.outputs.latest }}`
+            - Previous pinned version: `aiopnsense==${{ steps.versions.outputs.current }}`
+            - Updated pinned version: `aiopnsense==${{ steps.versions.outputs.latest }}`
 
             ## aiopnsense release notes in range
             ${{ steps.release_notes.outputs.notes }}

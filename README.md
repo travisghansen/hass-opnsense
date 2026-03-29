@@ -165,7 +165,6 @@ Many entities are created by `hass-opnsense` for statistics etc. Due to the volu
 
 ### Binary Sensor
 
-* CARP Status (enabled/disabled)
 * System Notices present *(the circle icon in the upper right of the UI)*
 * Firmware updates available
 
@@ -179,6 +178,7 @@ Many entities are created by `hass-opnsense` for statistics etc. Due to the volu
 * Filesystem usage
 * Interface details (status, stats, pps, kbs, etc.) *[speeds are based on the `Scan Interval (seconds)` config option]*
 * Gateways details (status, delay, stddev, loss)
+* CARP Status (aggregate)
 * CARP Interface status
 * DHCP Leases
 * OpenVPN and Wireguard server and client stats

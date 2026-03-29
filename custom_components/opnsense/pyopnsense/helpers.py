@@ -221,3 +221,35 @@ def try_to_float(input: Any | None, retval: float | None = None) -> float | None
         return float(input)
     except ValueError, TypeError:
         return retval
+
+
+def coerce_bool(value: Any) -> bool:
+    """Normalize values that may represent booleans.
+
+    Args:
+        value: Arbitrary state value returned by backend APIs.
+
+    Returns:
+        bool: Parsed boolean interpretation for common numeric/string variants.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int | float):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return False
+
+
+def normalize_lookup_token(value: Any) -> str:
+    """Normalize values for case-insensitive token matching.
+
+    Args:
+        value: Arbitrary value to normalize.
+
+    Returns:
+        str: Lower-cased, stripped string token used for comparisons.
+    """
+    if value is None:
+        return ""
+    return str(value).strip().lower()

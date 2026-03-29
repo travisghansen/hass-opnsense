@@ -15,6 +15,7 @@ lint = [
 ]
 pytest = [
     "aiohttp",
+    "aiopnsense",
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
