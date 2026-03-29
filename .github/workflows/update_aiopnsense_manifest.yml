@@ -187,6 +187,7 @@ jobs:
           delete-branch: true
           commit-message: 'chore(deps): bump aiopnsense to ${{ steps.versions.outputs.latest }}'
           title: 'chore(deps): bump aiopnsense to ${{ steps.versions.outputs.latest }}'
+          author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
           labels: dependencies,aiopnsense-auto-update
           body: |
             Automated update of `custom_components/opnsense/manifest.json`.
