@@ -1,4 +1,4 @@
-name: Update aiopnsense manifest requirement
+name: Update aiopnsense in manifest
 
 on:
   schedule:
@@ -121,6 +121,12 @@ jobs:
               return 0;
             }
 
+            function sanitizeReleaseBody(body) {
+              return body
+                .replace(/\[@([A-Za-z0-9-]+)\]\(https?:\/\/github\.com\/[A-Za-z0-9-]+\)/g, "$1")
+                .replace(/(^|\s)@([A-Za-z0-9-]+)/g, "$1$2");
+            }
+
             const releases = await github.paginate(github.rest.repos.listReleases, {
               owner: releaseOwner,
               repo: releaseRepo,
@@ -157,7 +163,9 @@ jobs:
             } else {
               notes = selected
                 .map((release) => {
-                  const body = (release.body || "No release body provided.").trim();
+                  const body = sanitizeReleaseBody(
+                    (release.body || "No release body provided.").trim(),
+                  );
                   return [
                     `### ${release.name || release.tag_name} (${release.tag_name})`,
                     release.html_url,
@@ -177,8 +185,8 @@ jobs:
         with:
           branch: chore/update-aiopnsense-manifest
           delete-branch: true
-          commit-message: 'chore(deps): bump aiopnsense to ==${{ steps.versions.outputs.latest }}'
-          title: 'chore(deps): bump aiopnsense to ==${{ steps.versions.outputs.latest }}'
+          commit-message: 'chore(deps): bump aiopnsense to ${{ steps.versions.outputs.latest }}'
+          title: 'chore(deps): bump aiopnsense to ${{ steps.versions.outputs.latest }}'
           labels: dependencies,aiopnsense-auto-update
           body: |
             Automated update of `custom_components/opnsense/manifest.json`.
