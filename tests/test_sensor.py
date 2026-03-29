@@ -109,7 +109,7 @@ def test_carp_sensor_unavailable_variants(coord_data, desc_subnet, make_config_e
     entry = make_config_entry()
 
     desc = MagicMock()
-    desc.key = f"carp.interface.{sensor_module.slugify(desc_subnet)}"
+    desc.key = f"carp.interface.lan0.{sensor_module.slugify(desc_subnet)}"
     desc.name = "CARP"
 
     s = OPNsenseCarpInterfaceSensor(config_entry=entry, coordinator=coord, entity_description=desc)
@@ -128,7 +128,7 @@ def test_carp_sensor_state_wrong_type(make_config_entry):
     entry = make_config_entry()
 
     desc = MagicMock()
-    desc.key = f"carp.interface.{sensor_module.slugify('10.10.10.10')}"
+    desc.key = f"carp.interface.wan.{sensor_module.slugify('10.10.10.10')}"
     desc.name = "CARP WrongType"
 
     s = OPNsenseCarpInterfaceSensor(config_entry=entry, coordinator=coord, entity_description=desc)
@@ -142,7 +142,7 @@ def test_carp_sensor_state_wrong_type(make_config_entry):
 @pytest.mark.parametrize(
     "desc_key,cls",
     [
-        ("carp.interface.some", OPNsenseCarpInterfaceSensor),
+        ("carp.interface.some.some", OPNsenseCarpInterfaceSensor),
         ("carp.status_summary", OPNsenseCarpStatusSensor),
         ("gateway.gw1.status", OPNsenseGatewaySensor),
         ("interface.lan.status", OPNsenseInterfaceSensor),
@@ -290,7 +290,11 @@ def test_carp_sensor_attributes_and_icon(
     coord.data = {"carp": {"interfaces": [carp_entry]}}
 
     desc = MagicMock()
-    desc.key = f"carp.interface.{sensor_module.slugify(carp_entry['subnet'])}"
+    desc.key = (
+        f"carp.interface."
+        f"{sensor_module.slugify(carp_entry.get('interface', 'unknown'))}."
+        f"{sensor_module.slugify(carp_entry['subnet'])}"
+    )
     desc.name = "CARP Test"
 
     s = OPNsenseCarpInterfaceSensor(config_entry=entry, coordinator=coord, entity_description=desc)
@@ -323,7 +327,7 @@ def test_carp_sensor_attributes_and_icon(
                 "interfaces": ["lan", "wan"],
                 "vips": [{"interface": "wan", "subnet": "1.2.3.4", "status": "MASTER"}],
             },
-            "healthy",
+            "Healthy",
             "mdi:check-network",
         ),
         (
@@ -340,7 +344,7 @@ def test_carp_sensor_attributes_and_icon(
                 "interfaces": ["wan"],
                 "vips": [],
             },
-            "maintenance",
+            "Maintenance",
             "mdi:backup-restore",
         ),
         (
@@ -357,7 +361,7 @@ def test_carp_sensor_attributes_and_icon(
                 "interfaces": ["wan"],
                 "vips": [],
             },
-            "degraded",
+            "Degraded",
             "mdi:close-network-outline",
         ),
         (
@@ -374,7 +378,7 @@ def test_carp_sensor_attributes_and_icon(
                 "interfaces": ["wan"],
                 "vips": [{"interface": "wan", "subnet": "1.2.3.5", "status": "INIT"}],
             },
-            "disabled",
+            "Disabled",
             "mdi:close-network-outline",
         ),
         (
@@ -391,8 +395,25 @@ def test_carp_sensor_attributes_and_icon(
                 "interfaces": [],
                 "vips": [],
             },
-            "not_configured",
+            "Not Configured",
             "mdi:backup-restore",
+        ),
+        (
+            {
+                "state": "unavailable",
+                "enabled": False,
+                "maintenance_mode": False,
+                "demotion": 0,
+                "status_message": "",
+                "vip_count": 0,
+                "master_count": 0,
+                "backup_count": 0,
+                "other_count": 0,
+                "interfaces": [],
+                "vips": [],
+            },
+            "unavailable",
+            "mdi:gauge",
         ),
         (
             {
@@ -446,6 +467,84 @@ def test_carp_status_sensor_states_and_attributes(
     assert sensor.extra_state_attributes.get("interfaces") == summary.get("interfaces")
 
 
+def test_carp_status_sensor_normalizes_state_spacing_and_icon(make_config_entry) -> None:
+    """CARP status sensor should normalize spacing/underscores for non-special values."""
+    entry = make_config_entry()
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {
+        "carp": {
+            "status_summary": {
+                "state": " not_configured ",
+                "enabled": True,
+                "maintenance_mode": False,
+                "demotion": 0,
+                "status_message": "",
+                "vip_count": 0,
+                "master_count": 0,
+                "backup_count": 0,
+                "other_count": 0,
+                "interfaces": [],
+                "vips": [],
+            }
+        }
+    }
+
+    desc = MagicMock()
+    desc.key = "carp.status_summary"
+    desc.name = "CARP Status"
+    desc.icon = "mdi:gauge"
+
+    sensor = OPNsenseCarpStatusSensor(
+        config_entry=entry,
+        coordinator=coordinator,
+        entity_description=desc,
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.carp_status_normalized"
+    sensor.async_write_ha_state = lambda: None
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is True
+    assert sensor.native_value == "Not Configured"
+    assert sensor.icon == "mdi:backup-restore"
+
+
+@pytest.mark.parametrize(
+    ("interface_name", "subnet", "expected_key"),
+    [
+        ("wan", "203.0.113.10", "carp.interface.wan.203_0_113_10"),
+        (None, "10.0.0.5", "carp.interface.unknown.10_0_0_5"),
+        ("!!!", "10.0.0.6", "carp.interface.unknown.10_0_0_6"),
+        ("  lan0  ", " 10.0.0.7 ", "carp.interface.lan0.10_0_0_7"),
+    ],
+)
+def test_build_carp_interface_sensor_key(
+    interface_name: str | None,
+    subnet: str,
+    expected_key: str,
+) -> None:
+    """Build helper should produce stable CARP interface keys for edge cases."""
+    assert sensor_module._build_carp_interface_sensor_key(interface_name, subnet) == expected_key
+
+
+@pytest.mark.parametrize(
+    ("key", "expected"),
+    [
+        ("carp.interface.wan.203_0_113_10", ("wan", "203_0_113_10")),
+        ("carp.interface..10_0_0_1", ("unknown", "10_0_0_1")),
+        ("carp.interface.wan", None),
+        ("carp.status_summary", None),
+        ("carp.interface.wan.", None),
+    ],
+)
+def test_parse_carp_interface_sensor_key(
+    key: str,
+    expected: tuple[str, str] | None,
+) -> None:
+    """Parse helper should extract valid slugs and reject malformed keys."""
+    assert sensor_module._parse_carp_interface_sensor_key(key) == expected
+
+
 @pytest.mark.asyncio
 async def test_compile_carp_interface_sensor_name_includes_interface(make_config_entry) -> None:
     """Compiled CARP interface sensor names should include interface and VIP address."""
@@ -468,17 +567,98 @@ async def test_compile_carp_interface_sensor_name_includes_interface(make_config
 
     entities = await sensor_module._compile_carp_interface_sensors(entry, coordinator, state)
     assert len(entities) == 1
-    assert (
-        entities[0].entity_description.name
-        == "CARP Interface Status WAN 203.0.113.10 (Primary WAN VIP)"
+    assert entities[0].entity_description.name == "CARP Interface: WAN: 203.0.113.10"
+    assert entities[0].entity_description.key == "carp.interface.wan.203_0_113_10"
+
+
+@pytest.mark.asyncio
+async def test_compile_carp_interface_sensor_fallbacks_to_unknown_interface(
+    make_config_entry,
+) -> None:
+    """Compiled CARP interface sensor key should use unknown for unslugifiable interface names."""
+    entry = make_config_entry()
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    state = {
+        "interfaces": {},
+        "carp": {
+            "interfaces": [
+                {
+                    "subnet": "198.51.100.10",
+                    "interface": "!!!",
+                    "status": "MASTER",
+                }
+            ]
+        },
+    }
+    coordinator.data = state
+
+    entities = await sensor_module._compile_carp_interface_sensors(entry, coordinator, state)
+    assert len(entities) == 1
+    assert entities[0].entity_description.name == "CARP Interface: !!!: 198.51.100.10"
+    assert entities[0].entity_description.key == "carp.interface.unknown.198_51_100_10"
+
+
+def test_carp_interface_sensor_unavailable_for_malformed_key(make_config_entry) -> None:
+    """CARP interface sensor should be unavailable when description key is malformed."""
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {
+        "carp": {"interfaces": [{"subnet": "10.0.0.1", "interface": "lan0", "status": "MASTER"}]}
+    }
+    entry = make_config_entry()
+
+    desc = MagicMock()
+    desc.key = "carp.interface.invalid"
+    desc.name = "Malformed CARP Key"
+
+    sensor = OPNsenseCarpInterfaceSensor(
+        config_entry=entry,
+        coordinator=coordinator,
+        entity_description=desc,
     )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.carp_malformed_key"
+    sensor.async_write_ha_state = lambda: None
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
+
+
+def test_carp_interface_sensor_disambiguates_same_subnet_by_interface(make_config_entry) -> None:
+    """CARP interface sensor should match both subnet and interface slug."""
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {
+        "carp": {
+            "interfaces": [
+                {"subnet": "10.0.0.1", "interface": "wan", "status": "BACKUP"},
+                {"subnet": "10.0.0.1", "interface": "lan0", "status": "MASTER"},
+            ]
+        }
+    }
+    entry = make_config_entry()
+
+    desc = MagicMock()
+    desc.key = "carp.interface.lan0.10_0_0_1"
+    desc.name = "CARP Disambiguated"
+
+    sensor = OPNsenseCarpInterfaceSensor(
+        config_entry=entry,
+        coordinator=coordinator,
+        entity_description=desc,
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.carp_disambiguated"
+    sensor.async_write_ha_state = lambda: None
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is True
+    assert sensor.native_value == "MASTER"
 
 
 @pytest.mark.parametrize(
     ("desc_key", "cls", "main_check", "extra_check"),
     [
         (
-            f"carp.interface.{sensor_module.slugify('10.0.0.1')}",
+            f"carp.interface.{sensor_module.slugify('lan0')}.{sensor_module.slugify('10.0.0.1')}",
             OPNsenseCarpInterfaceSensor,
             lambda s: s.native_value == "MASTER",
             lambda s: s.icon == "mdi:check-network",
@@ -486,7 +666,7 @@ async def test_compile_carp_interface_sensor_name_includes_interface(make_config
         (
             "carp.status_summary",
             OPNsenseCarpStatusSensor,
-            lambda s: s.native_value == "healthy",
+            lambda s: s.native_value == "Healthy",
             lambda s: s.icon == "mdi:check-network",
         ),
         (
