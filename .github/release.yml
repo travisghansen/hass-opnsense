@@ -4,32 +4,33 @@ changelog:
       - ignore-for-release
       - dependencies
   categories:
-    - title: "💥 Breaking Changes"
+    - title: '💥 Breaking Changes'
       labels:
         - Semver-Major
         - breaking-change
-    - title: "✨ New Features"
+    - title: '✨ New Features'
       labels:
         - feature
-    - title: "🚀 Enhancements"
+    - title: '🚀 Enhancements'
       labels:
         - Semver-Minor
         - enhancement
-    - title: "🐛 Bug Fixes"
+    - title: '🐛 Bug Fixes'
       labels:
         - fix
         - bugfix
         - bug
-    - title: "📚 Documentation"
+    - title: '📚 Documentation'
       labels:
         - documentation
-    - title: "🎓 Code Quality"
+    - title: '🎓 Code Quality'
       labels:
         - code-quality
-    - title: "🧰 Maintenance"
+    - title: '🧰 Maintenance'
       labels:
         - chore
         - github_actions
-    - title: "Other Changes"
+        - aiopnsense-auto-update
+    - title: 'Other Changes'
       labels:
-        - "*"
+        - '*'
