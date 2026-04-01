@@ -1,7 +1,29 @@
+<a id="v0.6.5"></a>
+# [v0.6.5](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.5) - 2026-04-01
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🚀 Enhancements
+* Fix CARP Sensors by [@Snuffy2](https://github.com/Snuffy2) in [#551](https://github.com/travisghansen/hass-opnsense/pull/551)
+* Refine CARP Sensors by [@Snuffy2](https://github.com/Snuffy2) in [#558](https://github.com/travisghansen/hass-opnsense/pull/558)
+### 🧰 Maintenance
+* Update release GitHub Action by [@Snuffy2](https://github.com/Snuffy2) in [#550](https://github.com/travisghansen/hass-opnsense/pull/550)
+* Update aiopnsense Github Action by [@Snuffy2](https://github.com/Snuffy2) in [#554](https://github.com/travisghansen/hass-opnsense/pull/554)
+* Update aiopnsense Github Action by [@Snuffy2](https://github.com/Snuffy2) in [#556](https://github.com/travisghansen/hass-opnsense/pull/556)
+* chore(deps): bump aiopnsense to 1.0.4 by [@github-actions](https://github.com/github-actions)[bot] in [#557](https://github.com/travisghansen/hass-opnsense/pull/557)
+* Update aiopnsense GitHub action by [@Snuffy2](https://github.com/Snuffy2) in [#561](https://github.com/travisghansen/hass-opnsense/pull/561)
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.6.4...v0.6.5
+
+[Changes][v0.6.5]
+
+
 <a id="v0.6.4"></a>
 # [v0.6.4](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.4) - 2026-03-27
 
-### Note
+<h3>OPNsense Minimum Firmware Required: 25.1</h3><h4>OPNsense Recommended Firmware: 26.1+</h4><p>### Note
 
 The minimum version of hass-opnsense will be pushed relatively quickly over the next few months. The plan is that whenever OPNsense Firmware 26.7 is released, that becomes the recommended version and 26.1 becomes the minimum version.
 
@@ -22,7 +44,7 @@ The minimum version of hass-opnsense will be pushed relatively quickly over the 
 ### Other Changes
 * Update AGENTS.md by [@Snuffy2](https://github.com/Snuffy2) in [#541](https://github.com/travisghansen/hass-opnsense/pull/541)
 
-**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.6.3...v0.6.4
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.6.3...v0.6.4<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
 
 [Changes][v0.6.4]
 
@@ -953,6 +975,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.6.5]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.4...v0.6.5
 [v0.6.4]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.3...v0.6.4
 [v0.6.3]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.2...v0.6.3
 [v0.6.2]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.1...v0.6.2
