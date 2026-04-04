@@ -16,7 +16,7 @@ import aiohttp
 import awesomeversion
 
 from .const import DEFAULT_CACHE_TTL_SECONDS, DEFAULT_REQUEST_TIMEOUT_SECONDS
-from .exceptions import UnknownFirmware
+from .exceptions import OPNsenseUnknownFirmware
 from .helpers import _LOGGER, _xmlrpc_timeout
 
 
@@ -260,7 +260,7 @@ $toreturn["real"] = json_encode($toreturn_real);
                 firmware,
             )
             if initial:
-                raise UnknownFirmware from e
+                raise OPNsenseUnknownFirmware from e
 
     async def _get_from_stream(self, path: str) -> dict[str, Any]:
         """Queue a streaming GET request and return the parsed payload.

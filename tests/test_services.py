@@ -11,7 +11,7 @@ import voluptuous as vol
 
 from custom_components.opnsense import services as services_mod
 from custom_components.opnsense.const import DOMAIN, SERVICE_GET_VNSTAT_METRICS
-from custom_components.opnsense.pyopnsense import VoucherServerError
+from custom_components.opnsense.pyopnsense import OPNsenseVoucherServerError
 from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
 
@@ -329,7 +329,7 @@ async def test_generate_vouchers_success_and_server_error(monkeypatch, ph_hass):
     assert all(v.get("client") == "svc1" for v in resp["vouchers"])
 
     # server error should raise ServiceValidationError
-    c1.generate_vouchers = AsyncMock(side_effect=VoucherServerError("boom"))
+    c1.generate_vouchers = AsyncMock(side_effect=OPNsenseVoucherServerError("boom"))
     with pytest.raises(ServiceValidationError):
         await services_mod._service_generate_vouchers(hass, call)
 

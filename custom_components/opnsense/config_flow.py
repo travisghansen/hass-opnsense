@@ -55,7 +55,7 @@ from .const import (
     TRACKED_MACS,
 )
 from .helpers import is_private_ip
-from .pyopnsense import UnknownFirmware
+from .pyopnsense import OPNsenseUnknownFirmware
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -320,7 +320,7 @@ async def validate_input(
             key="below_min_firmware",
             message=f"OPNsense Firmware of {user_input.get(CONF_FIRMWARE_VERSION)} is below the minimum supported version of {OPNSENSE_MIN_FIRMWARE}",
         )
-    except UnknownFirmware:
+    except OPNsenseUnknownFirmware:
         _log_and_set_error(
             errors=errors,
             key="unknown_firmware",
@@ -521,7 +521,7 @@ async def _handle_user_input(
         expected_id: Expected device unique ID for reconfigure/options validation.
 
     Raises:
-        UnknownFirmware: Firmware could not be parsed or compared safely.
+        OPNsenseUnknownFirmware: Firmware could not be parsed or compared safely.
         BelowMinFirmware: Firmware is below the minimum supported version.
         PluginMissing: Plugin is required for enabled sync options but not installed.
         MissingDeviceUniqueID: Backend did not return a device unique ID.
@@ -540,7 +540,7 @@ async def _handle_user_input(
             TypeError,
             ValueError,
         ) as e:
-            raise UnknownFirmware from e
+            raise OPNsenseUnknownFirmware from e
 
         await client.set_use_snake_case(initial=True)
 
@@ -562,7 +562,7 @@ async def _handle_user_input(
             TypeError,
             ValueError,
         ) as e:
-            raise UnknownFirmware from e
+            raise OPNsenseUnknownFirmware from e
 
         _LOGGER.debug(
             "[handle_user_input] config_step: %s, require_plugin_check: %s",

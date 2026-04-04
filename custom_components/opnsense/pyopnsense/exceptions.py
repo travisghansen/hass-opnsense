@@ -1,9 +1,9 @@
 """Custom exceptions for pyopnsense."""
 
 
-class VoucherServerError(Exception):
+class OPNsenseVoucherServerError(Exception):
     """Error from Voucher Server."""
 
 
-class UnknownFirmware(Exception):
+class OPNsenseUnknownFirmware(Exception):
     """Unknown current firmware version."""
