@@ -239,4 +239,60 @@ jobs:
 
       - name: Log when no update is required
         if: steps.versions.outputs.update_needed != 'true'
-        run: echo "aiopnsense is already at the latest version; no update PR created."
+        run: echo "aiopnsense is already at the latest version; checking for stale update PRs."
+
+      - name: Close stale aiopnsense update PRs
+        if: steps.versions.outputs.update_needed != 'true'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const branch = "chore/update-aiopnsense-manifest";
+            const labelName = "aiopnsense-auto-update";
+
+            const pulls = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100,
+            });
+
+            const stalePulls = pulls.filter(
+              (pr) =>
+                pr.head.ref === branch &&
+                pr.labels.some((label) => label.name === labelName),
+            );
+
+            if (stalePulls.length === 0) {
+              core.info(
+                `No open ${labelName} PRs found for branch ${branch}.`,
+              );
+            } else {
+              for (const pr of stalePulls) {
+                await github.rest.pulls.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: pr.number,
+                  state: "closed",
+                });
+
+                core.info(`Closed stale aiopnsense update PR #${pr.number}.`);
+              }
+            }
+
+            try {
+              await github.rest.git.deleteRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `heads/${branch}`,
+              });
+              core.info(`Deleted stale branch ${branch}.`);
+            } catch (error) {
+              const status = error.status ?? error.response?.status;
+
+              if (status === 404) {
+                core.info(`Branch ${branch} was already deleted.`);
+                return;
+              }
+
+              throw error;
+            }
