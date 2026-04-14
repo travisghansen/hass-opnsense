@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_8d042fd4c41619e0_vpn_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.13.5">coverage.py v7.13.5</a>,
-            created at 2026-04-14 00:18 +0000
+            created at 2026-04-14 00:28 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -89,7 +89,7 @@
     <p class="run"><span class="n"><a id="t5" href="#t5">5</a></span><span class="t"><span class="key">from</span> <span class="nam">urllib</span><span class="op">.</span><span class="nam">parse</span> <span class="key">import</span> <span class="nam">quote</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t6" href="#t6">6</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t7" href="#t7">7</a></span><span class="t"><span class="key">from</span> <span class="op">.</span><span class="nam">_typing</span> <span class="key">import</span> <span class="nam">PyOPNsenseClientProtocol</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t8" href="#t8">8</a></span><span class="t"><span class="key">from</span> <span class="op">.</span><span class="nam">exceptions</span> <span class="key">import</span> <span class="nam">VoucherServerError</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t8" href="#t8">8</a></span><span class="t"><span class="key">from</span> <span class="op">.</span><span class="nam">exceptions</span> <span class="key">import</span> <span class="nam">OPNsenseVoucherServerError</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t9" href="#t9">9</a></span><span class="t"><span class="key">from</span> <span class="op">.</span><span class="nam">helpers</span> <span class="key">import</span> <span class="nam">_LOGGER</span><span class="op">,</span> <span class="nam">human_friendly_duration</span><span class="op">,</span> <span class="nam">timestamp_to_datetime</span><span class="op">,</span> <span class="nam">try_to_int</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t10" href="#t10">10</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t11" href="#t11">11</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
@@ -113,9 +113,9 @@
     <p class="pln"><span class="n"><a id="t29" href="#t29">29</a></span><span class="t">            <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t30" href="#t30">30</a></span><span class="t">                <span class="nam">servers</span> <span class="op">=</span> <span class="key">await</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_safe_list_get</span><span class="op">(</span><span class="str">"/api/captiveportal/voucher/listProviders"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t31" href="#t31">31</a></span><span class="t">            <span class="key">if</span> <span class="nam">len</span><span class="op">(</span><span class="nam">servers</span><span class="op">)</span> <span class="op">==</span> <span class="num">0</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t32" href="#t32">32</a></span><span class="t">                <span class="key">raise</span> <span class="nam">VoucherServerError</span><span class="op">(</span><span class="str">"No voucher servers exist"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t32" href="#t32">32</a></span><span class="t">                <span class="key">raise</span> <span class="nam">OPNsenseVoucherServerError</span><span class="op">(</span><span class="str">"No voucher servers exist"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="par run show_par"><span class="n"><a id="t33" href="#t33">33</a></span><span class="t">            <span class="key">if</span> <span class="nam">len</span><span class="op">(</span><span class="nam">servers</span><span class="op">)</span> <span class="op">!=</span> <span class="num">1</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">33&#x202F;&#x219B;&#x202F;37</span><span class="annotate long">line 33 didn't jump to line 37 because the condition on line 33 was always true</span></span></p>
-    <p class="run"><span class="n"><a id="t34" href="#t34">34</a></span><span class="t">                <span class="key">raise</span> <span class="nam">VoucherServerError</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t34" href="#t34">34</a></span><span class="t">                <span class="key">raise</span> <span class="nam">OPNsenseVoucherServerError</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t35" href="#t35">35</a></span><span class="t">                    <span class="str">"More than one voucher server. Must specify voucher server name"</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t36" href="#t36">36</a></span><span class="t">                <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t37" href="#t37">37</a></span><span class="t">            <span class="nam">server</span> <span class="op">=</span> <span class="nam">servers</span><span class="op">[</span><span class="num">0</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
@@ -168,7 +168,7 @@
             <a class="nav" href="z_8d042fd4c41619e0_vpn_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.13.5">coverage.py v7.13.5</a>,
-            created at 2026-04-14 00:18 +0000
+            created at 2026-04-14 00:28 +0000
         </p>
     </div>
 </footer>

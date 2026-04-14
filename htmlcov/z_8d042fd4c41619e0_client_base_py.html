@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_8d042fd4c41619e0_const_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.13.5">coverage.py v7.13.5</a>,
-            created at 2026-04-14 00:18 +0000
+            created at 2026-04-14 00:28 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -100,7 +100,7 @@
     <p class="run"><span class="n"><a id="t16" href="#t16">16</a></span><span class="t"><span class="key">import</span> <span class="nam">awesomeversion</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t17" href="#t17">17</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t18" href="#t18">18</a></span><span class="t"><span class="key">from</span> <span class="op">.</span><span class="nam">const</span> <span class="key">import</span> <span class="nam">DEFAULT_CACHE_TTL_SECONDS</span><span class="op">,</span> <span class="nam">DEFAULT_REQUEST_TIMEOUT_SECONDS</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t19" href="#t19">19</a></span><span class="t"><span class="key">from</span> <span class="op">.</span><span class="nam">exceptions</span> <span class="key">import</span> <span class="nam">UnknownFirmware</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t19" href="#t19">19</a></span><span class="t"><span class="key">from</span> <span class="op">.</span><span class="nam">exceptions</span> <span class="key">import</span> <span class="nam">OPNsenseUnknownFirmware</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t20" href="#t20">20</a></span><span class="t"><span class="key">from</span> <span class="op">.</span><span class="nam">helpers</span> <span class="key">import</span> <span class="nam">_LOGGER</span><span class="op">,</span> <span class="nam">_xmlrpc_timeout</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t21" href="#t21">21</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t22" href="#t22">22</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
@@ -344,7 +344,7 @@
     <p class="run run2"><span class="n"><a id="t260" href="#t260">260</a></span><span class="t">                <span class="nam">firmware</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t261" href="#t261">261</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t262" href="#t262">262</a></span><span class="t">            <span class="key">if</span> <span class="nam">initial</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t263" href="#t263">263</a></span><span class="t">                <span class="key">raise</span> <span class="nam">UnknownFirmware</span> <span class="key">from</span> <span class="nam">e</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t263" href="#t263">263</a></span><span class="t">                <span class="key">raise</span> <span class="nam">OPNsenseUnknownFirmware</span> <span class="key">from</span> <span class="nam">e</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t264" href="#t264">264</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t265" href="#t265">265</a></span><span class="t">    <span class="key">async</span> <span class="key">def</span> <span class="nam">_get_from_stream</span><span class="op">(</span><span class="nam">self</span><span class="op">,</span> <span class="nam">path</span><span class="op">:</span> <span class="nam">str</span><span class="op">)</span> <span class="op">-></span> <span class="nam">dict</span><span class="op">[</span><span class="nam">str</span><span class="op">,</span> <span class="nam">Any</span><span class="op">]</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t266" href="#t266">266</a></span><span class="t">        <span class="str">"""Queue a streaming GET request and return the parsed payload.</span>&nbsp;</span><span class="r"></span></p>
@@ -883,7 +883,7 @@
             <a class="nav" href="z_8d042fd4c41619e0_const_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.13.5">coverage.py v7.13.5</a>,
-            created at 2026-04-14 00:18 +0000
+            created at 2026-04-14 00:28 +0000
         </p>
     </div>
 </footer>

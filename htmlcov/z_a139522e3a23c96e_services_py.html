@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_a139522e3a23c96e_switch_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.13.5">coverage.py v7.13.5</a>,
-            created at 2026-04-14 00:18 +0000
+            created at 2026-04-14 00:28 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -115,7 +115,7 @@
     <p class="run run2"><span class="n"><a id="t31" href="#t31">31</a></span><span class="t">    <span class="nam">SERVICE_SYSTEM_REBOOT</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t32" href="#t32">32</a></span><span class="t">    <span class="nam">SERVICE_TOGGLE_ALIAS</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t33" href="#t33">33</a></span><span class="t"><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t34" href="#t34">34</a></span><span class="t"><span class="key">from</span> <span class="op">.</span><span class="nam">pyopnsense</span> <span class="key">import</span> <span class="nam">VoucherServerError</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t34" href="#t34">34</a></span><span class="t"><span class="key">from</span> <span class="op">.</span><span class="nam">pyopnsense</span> <span class="key">import</span> <span class="nam">OPNsenseVoucherServerError</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t35" href="#t35">35</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t36" href="#t36">36</a></span><span class="t"><span class="nam">_LOGGER</span><span class="op">:</span> <span class="nam">logging</span><span class="op">.</span><span class="nam">Logger</span> <span class="op">=</span> <span class="nam">logging</span><span class="op">.</span><span class="nam">getLogger</span><span class="op">(</span><span class="nam">__name__</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t37" href="#t37">37</a></span><span class="t"><span class="nam">_VNSTAT_PERIODS</span><span class="op">:</span> <span class="nam">tuple</span><span class="op">[</span><span class="nam">str</span><span class="op">,</span> <span class="op">...</span><span class="op">]</span> <span class="op">=</span> <span class="op">(</span><span class="str">"hourly"</span><span class="op">,</span> <span class="str">"daily"</span><span class="op">,</span> <span class="str">"monthly"</span><span class="op">,</span> <span class="str">"yearly"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
@@ -633,7 +633,7 @@
     <p class="run"><span class="n"><a id="t549" href="#t549">549</a></span><span class="t">    <span class="key">for</span> <span class="nam">client</span> <span class="key">in</span> <span class="nam">clients</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t550" href="#t550">550</a></span><span class="t">        <span class="key">try</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t551" href="#t551">551</a></span><span class="t">            <span class="nam">vouchers</span><span class="op">:</span> <span class="nam">list</span> <span class="op">=</span> <span class="key">await</span> <span class="nam">client</span><span class="op">.</span><span class="nam">generate_vouchers</span><span class="op">(</span><span class="nam">call</span><span class="op">.</span><span class="nam">data</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t552" href="#t552">552</a></span><span class="t">        <span class="key">except</span> <span class="nam">VoucherServerError</span> <span class="key">as</span> <span class="nam">e</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t552" href="#t552">552</a></span><span class="t">        <span class="key">except</span> <span class="nam">OPNsenseVoucherServerError</span> <span class="key">as</span> <span class="nam">e</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t553" href="#t553">553</a></span><span class="t">            <span class="nam">_LOGGER</span><span class="op">.</span><span class="nam">error</span><span class="op">(</span><span class="str">"Error getting vouchers from %s. %s"</span><span class="op">,</span> <span class="nam">client</span><span class="op">.</span><span class="nam">name</span><span class="op">,</span> <span class="nam">e</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t554" href="#t554">554</a></span><span class="t">            <span class="key">raise</span> <span class="nam">ServiceValidationError</span><span class="op">(</span><span class="fst">f"</span><span class="fst">Error getting vouchers from </span><span class="op">{</span><span class="nam">client</span><span class="op">.</span><span class="nam">name</span><span class="op">}</span><span class="fst">. </span><span class="op">{</span><span class="nam">e</span><span class="op">}</span><span class="fst">"</span><span class="op">)</span> <span class="key">from</span> <span class="nam">e</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t555" href="#t555">555</a></span><span class="t">        <span class="nam">_LOGGER</span><span class="op">.</span><span class="nam">debug</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
@@ -811,7 +811,7 @@
             <a class="nav" href="z_a139522e3a23c96e_switch_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.13.5">coverage.py v7.13.5</a>,
-            created at 2026-04-14 00:18 +0000
+            created at 2026-04-14 00:28 +0000
         </p>
     </div>
 </footer>
