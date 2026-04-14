@@ -15,10 +15,14 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v6
 
-      - name: Run prek
-        uses: j178/prek-action@v2
+      - name: Install prek
+        uses: taiki-e/install-action@v2
         with:
-          extra-args: autoupdate --cooldown-days 7
+          tool: prek
+
+      - name: Run prek auto-update
+        run: |
+          prek autoupdate --cooldown-days 7
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v8
