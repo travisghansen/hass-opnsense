@@ -12,8 +12,8 @@ from custom_components.opnsense import pyopnsense
 @pytest.mark.parametrize(
     "safe_get_ret,safe_post_ret,data,expect_exc,expect_username,expect_extras",
     [
-        ([], None, {}, pyopnsense.VoucherServerError, None, None),
-        (["s1", "s2"], None, {}, pyopnsense.VoucherServerError, None, None),
+        ([], None, {}, pyopnsense.OPNsenseVoucherServerError, None, None),
+        (["s1", "s2"], None, {}, pyopnsense.OPNsenseVoucherServerError, None, None),
         (
             None,
             [

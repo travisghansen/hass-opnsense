@@ -147,7 +147,7 @@ async def test_validate_input_exception_mapping(monkeypatch, exc_key, expected):
     if exc_key == "below_min":
         exc = cf_mod.BelowMinFirmware()
     elif exc_key == "unknown_fw":
-        exc = cf_mod.UnknownFirmware()
+        exc = cf_mod.OPNsenseUnknownFirmware()
     elif exc_key == "missing_external_dep":
         exc = cf_mod.MissingExternalAiopnsenseDependency()
     elif exc_key == "missing_id":

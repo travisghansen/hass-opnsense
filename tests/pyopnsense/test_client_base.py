@@ -1262,7 +1262,7 @@ async def test_reset_and_get_query_counts():
 
 @pytest.mark.asyncio
 async def test_set_use_snake_case_unknown_firmware_raise(monkeypatch, make_client) -> None:
-    """set_use_snake_case should raise UnknownFirmware when initial True and compare fails."""
+    """set_use_snake_case should raise OPNsenseUnknownFirmware when initial True and compare fails."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session)
     client._firmware_version = "25.x"
@@ -1281,6 +1281,6 @@ async def test_set_use_snake_case_unknown_firmware_raise(monkeypatch, make_clien
             raise awesomeversion.exceptions.AwesomeVersionCompareException("bad")
 
     monkeypatch.setattr(pyopnsense_client_base.awesomeversion, "AwesomeVersion", BadAV)
-    with pytest.raises(pyopnsense.UnknownFirmware):
+    with pytest.raises(pyopnsense.OPNsenseUnknownFirmware):
         await client.set_use_snake_case(initial=True)
     await client.async_close()

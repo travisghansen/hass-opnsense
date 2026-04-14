@@ -5,7 +5,7 @@ from typing import Any
 from urllib.parse import quote
 
 from ._typing import PyOPNsenseClientProtocol
-from .exceptions import VoucherServerError
+from .exceptions import OPNsenseVoucherServerError
 from .helpers import _LOGGER, human_friendly_duration, timestamp_to_datetime, try_to_int
 
 
@@ -29,9 +29,9 @@ class VouchersMixin(PyOPNsenseClientProtocol):
             else:
                 servers = await self._safe_list_get("/api/captiveportal/voucher/listProviders")
             if len(servers) == 0:
-                raise VoucherServerError("No voucher servers exist")
+                raise OPNsenseVoucherServerError("No voucher servers exist")
             if len(servers) != 1:
-                raise VoucherServerError(
+                raise OPNsenseVoucherServerError(
                     "More than one voucher server. Must specify voucher server name"
                 )
             server = servers[0]
