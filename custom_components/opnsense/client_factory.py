@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Mapping, MutableMapping
+from datetime import datetime
 from importlib import import_module
 from importlib.metadata import PackageNotFoundError, version as package_version
 import logging
@@ -169,6 +170,16 @@ def _add_plugin_compat(client: OPNsenseClientProtocol) -> OPNsenseClientProtocol
         )
         get_firmware_info: Callable[[], Any] | None = getattr(client, "get_firmware_info", None)
         safe_dict_get: Callable[[str], Any] | None = getattr(client, "_safe_dict_get", None)
+        installed_plugins_cache: set[str] | None = None
+        installed_plugins_updated_at: datetime | None = None
+        installed_plugins_refresh_succeeded = False
+        plugin_cache_ttl_seconds = int(
+            getattr(
+                client,
+                "_plugin_cache_ttl_seconds",
+                getattr(client, "_endpoint_cache_ttl_seconds", 6 * 60 * 60),
+            )
+        )
 
         async def _is_plugin_installed() -> bool:
             """Detect whether the Home Assistant OPNsense plugin is installed.
@@ -177,56 +188,91 @@ def _add_plugin_compat(client: OPNsenseClientProtocol) -> OPNsenseClientProtocol
                 bool: `True` when `os-homeassistant-maxit` is present, otherwise `False`.
             """
 
-            def _plugin_present_from_payload(payload: Any) -> bool:
-                """Determine plugin presence from a backend payload.
+            nonlocal installed_plugins_cache
+            nonlocal installed_plugins_updated_at
+            nonlocal installed_plugins_refresh_succeeded
+
+            def _installed_plugins_from_payload(payload: Any) -> set[str] | None:
+                """Extract installed plugin names from a backend payload.
 
                 Args:
                     payload: Firmware or plugin payload returned by backend helper methods.
 
                 Returns:
-                    bool: `True` if the payload indicates the plugin is installed.
+                    set[str] | None: Installed plugin names, or `None` when payload is invalid.
                 """
                 if isinstance(payload, Mapping):
-                    if "os-homeassistant-maxit" in payload:
-                        return True
                     package_list = payload.get("package")
                     if isinstance(package_list, list):
+                        installed_plugins: set[str] = set()
                         for pkg in package_list:
+                            name = pkg.get("name") if isinstance(pkg, Mapping) else None
                             if (
                                 isinstance(pkg, Mapping)
-                                and pkg.get("name") == "os-homeassistant-maxit"
+                                and isinstance(name, str)
                                 and str(pkg.get("installed")) == "1"
                             ):
-                                return True
-                    return False
+                                installed_plugins.add(name)
+                        return installed_plugins
+                    if "os-homeassistant-maxit" in payload:
+                        return {str(key) for key in payload}
+                    return None
                 if isinstance(payload, list | set | tuple):
+                    installed_plugins = set()
                     for item in payload:
-                        if item == "os-homeassistant-maxit":
-                            return True
+                        if isinstance(item, str):
+                            installed_plugins.add(item)
                         if (
                             isinstance(item, Mapping)
-                            and item.get("name") == "os-homeassistant-maxit"
+                            and isinstance(item.get("name"), str)
                             and str(item.get("installed")) == "1"
                         ):
-                            return True
-                return False
+                            installed_plugins.add(item["name"])
+                    return installed_plugins
+                return None
 
-            if is_named_plugin_installed is not None:
-                result = await is_named_plugin_installed("os-homeassistant-maxit")
-                return bool(result)
-            if get_installed_plugins is not None:
-                plugins = await get_installed_plugins()
-                if _plugin_present_from_payload(plugins):
-                    return True
-            if get_firmware_info is not None:
-                firmware_info = await get_firmware_info()
-                if _plugin_present_from_payload(firmware_info):
-                    return True
-            if safe_dict_get is not None:
-                firmware_info = await safe_dict_get("/api/core/firmware/info")
-                if _plugin_present_from_payload(firmware_info):
-                    return True
-            return False
+            async def _refresh_installed_plugins() -> None:
+                """Refresh plugin names using the best available compatibility source."""
+                nonlocal installed_plugins_cache
+                nonlocal installed_plugins_updated_at
+                nonlocal installed_plugins_refresh_succeeded
+
+                now = datetime.now().astimezone()
+                cache_is_fresh = (
+                    installed_plugins_refresh_succeeded
+                    and installed_plugins_cache is not None
+                    and installed_plugins_updated_at is not None
+                    and (now - installed_plugins_updated_at).total_seconds()
+                    < plugin_cache_ttl_seconds
+                )
+                if cache_is_fresh:
+                    return
+
+                payload: Any | None = None
+                if is_named_plugin_installed is not None:
+                    installed = await is_named_plugin_installed("os-homeassistant-maxit")
+                    installed_plugins_cache = {"os-homeassistant-maxit"} if installed else set()
+                    installed_plugins_updated_at = now
+                    installed_plugins_refresh_succeeded = True
+                    return
+                if get_installed_plugins is not None:
+                    payload = await get_installed_plugins()
+                elif get_firmware_info is not None:
+                    payload = await get_firmware_info()
+                elif safe_dict_get is not None:
+                    payload = await safe_dict_get("/api/core/firmware/info")
+
+                installed_plugins = _installed_plugins_from_payload(payload)
+                if installed_plugins is None:
+                    installed_plugins_refresh_succeeded = False
+                    return
+
+                installed_plugins_cache = installed_plugins
+                installed_plugins_updated_at = now
+                installed_plugins_refresh_succeeded = True
+
+            await _refresh_installed_plugins()
+            return "os-homeassistant-maxit" in (installed_plugins_cache or set())
 
         setattr(client, "is_plugin_installed", _is_plugin_installed)
         _LOGGER.debug("Applied aiopnsense plugin compatibility shim for is_plugin_installed()")

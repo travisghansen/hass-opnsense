@@ -145,6 +145,89 @@ async def test_add_plugin_compat_uses_firmware_info_when_plugin_helpers_missing(
 
 
 @pytest.mark.asyncio
+async def test_add_plugin_compat_caches_safe_dict_firmware_info() -> None:
+    """Plugin compatibility shim should cache firmware-info package lookups."""
+
+    class _Client:
+        def __init__(self) -> None:
+            """Initialize fake client with firmware-info fallback response."""
+            self._safe_dict_get = AsyncMock(
+                return_value={
+                    "package": [
+                        {"name": "os-vnstat", "installed": "1"},
+                        {"name": "os-homeassistant-maxit", "installed": "1"},
+                    ]
+                }
+            )
+
+    client = _Client()
+    patched: Any = factory_mod._add_plugin_compat(client)
+    assert await patched.is_plugin_installed() is True
+    assert await patched.is_plugin_installed() is True
+    client._safe_dict_get.assert_awaited_once_with("/api/core/firmware/info")
+
+
+@pytest.mark.asyncio
+async def test_add_plugin_compat_caches_absent_plugin_from_firmware_info() -> None:
+    """Plugin compatibility shim should cache successful negative firmware-info lookups."""
+
+    class _Client:
+        def __init__(self) -> None:
+            """Initialize fake client with firmware-info payload that lacks plugin."""
+            self._safe_dict_get = AsyncMock(
+                return_value={"package": [{"name": "os-vnstat", "installed": "1"}]}
+            )
+
+    client = _Client()
+    patched: Any = factory_mod._add_plugin_compat(client)
+    assert await patched.is_plugin_installed() is False
+    assert await patched.is_plugin_installed() is False
+    client._safe_dict_get.assert_awaited_once_with("/api/core/firmware/info")
+
+
+@pytest.mark.asyncio
+async def test_add_plugin_compat_retries_inconclusive_direct_key_payload() -> None:
+    """Plugin compatibility shim should retry direct-key payloads without target plugin."""
+
+    class _Client:
+        def __init__(self) -> None:
+            """Initialize fake client with inconclusive then valid direct-key payloads."""
+            self._safe_dict_get = AsyncMock(
+                side_effect=[
+                    {"os-vnstat": "1"},
+                    {"os-homeassistant-maxit": "1"},
+                ]
+            )
+
+    client = _Client()
+    patched: Any = factory_mod._add_plugin_compat(client)
+    assert await patched.is_plugin_installed() is False
+    assert await patched.is_plugin_installed() is True
+    assert client._safe_dict_get.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_add_plugin_compat_retries_invalid_firmware_info_payload() -> None:
+    """Plugin compatibility shim should not cache invalid firmware-info payloads."""
+
+    class _Client:
+        def __init__(self) -> None:
+            """Initialize fake client with invalid then valid firmware-info payloads."""
+            self._safe_dict_get = AsyncMock(
+                side_effect=[
+                    None,
+                    {"package": [{"name": "os-homeassistant-maxit", "installed": "1"}]},
+                ]
+            )
+
+    client = _Client()
+    patched: Any = factory_mod._add_plugin_compat(client)
+    assert await patched.is_plugin_installed() is False
+    assert await patched.is_plugin_installed() is True
+    assert client._safe_dict_get.await_count == 2
+
+
+@pytest.mark.asyncio
 async def test_add_plugin_compat_defaults_to_false_without_helpers() -> None:
     """Plugin compatibility shim should return False when no plugin helpers exist."""
 
