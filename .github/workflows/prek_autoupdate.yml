@@ -1,0 +1,35 @@
+name: prek Autoupdate
+on:
+  schedule:
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-hooks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Run prek
+        uses: j178/prek-action@v2
+        with:
+          extra-args: autoupdate --cooldown-days 7
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v8
+        id: cpr
+        with:
+          commit-message: 'chore: update prek hooks'
+          title: 'Bump prek Hooks'
+          branch: chore/prek-updates
+          author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          labels: dependencies
+          delete-branch: true
+          add-paths: |
+            prek.toml
+            .pre-commit-config.yaml
