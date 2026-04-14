@@ -18,9 +18,6 @@ jobs:
       - uses: dessant/lock-threads@v6
         with:
           issue-inactive-days: '7'
-          issue-comment: >
-            This issue has been automatically locked since there
-            has not been any recent activity after it was closed.
           issue-lock-reason: 'resolved'
           process-only: 'issues'
           log-output: true
