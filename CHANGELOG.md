@@ -1,7 +1,26 @@
+<a id="v0.6.7"></a>
+# [v0.6.7](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.7) - 2026-04-15
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🐛 Bug Fixes
+* Fix aiopnsense snake_case issue by [@Snuffy2](https://github.com/Snuffy2) in [#582](https://github.com/travisghansen/hass-opnsense/pull/582)
+### 🚀 Enhancements
+* Include DNS errors with Invalid URL on Config by [@Snuffy2](https://github.com/Snuffy2) in [#583](https://github.com/travisghansen/hass-opnsense/pull/583)
+### 🧰 Maintenance
+* GitHub Action Cleanup by [@Snuffy2](https://github.com/Snuffy2) in [#580](https://github.com/travisghansen/hass-opnsense/pull/580)
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.6.6...v0.6.7
+
+[Changes][v0.6.7]
+
+
 <a id="v0.6.6"></a>
 # [v0.6.6](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.6) - 2026-04-15
 
-<!-- Release notes generated using configuration in .github/release.yml at main -->
+<h3>OPNsense Minimum Firmware Required: 25.1</h3><h4>OPNsense Recommended Firmware: 26.1+</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
 ## What's Changed
 ### 🐛 Bug Fixes
@@ -21,7 +40,7 @@
 * Update Exception Names by [@Snuffy2](https://github.com/Snuffy2) in [#568](https://github.com/travisghansen/hass-opnsense/pull/568)
 
 
-**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.6.5...v0.6.6
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.6.5...v0.6.6<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
 
 [Changes][v0.6.6]
 
@@ -1003,6 +1022,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.6.7]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.6...v0.6.7
 [v0.6.6]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.5...v0.6.6
 [v0.6.5]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.4...v0.6.5
 [v0.6.4]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.3...v0.6.4
