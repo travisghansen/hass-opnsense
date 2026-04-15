@@ -31,7 +31,7 @@ jobs:
             echo '```text'
             prek auto-update --cooldown-days 7 2>&1
             echo '```'
-          } > "$body_file"
+          } | tee "$body_file"
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v8
