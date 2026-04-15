@@ -27,4 +27,4 @@ labels:
     title: '(?i).*(docs|document|readme).*'
   - label: 'code-quality'
     type: 'pull_request'
-    title: '(?i).*(lint|ruff|mypy|pytest|coverage|type-?check|pre[ -_]?commit).*'
+    title: '(?i).*(lint|ruff|mypy|pytest|coverage|prek|type-?check|pre[ -_]?commit).*'
