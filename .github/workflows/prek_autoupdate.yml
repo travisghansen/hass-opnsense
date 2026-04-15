@@ -23,11 +23,15 @@ jobs:
       - name: Run prek auto-update
         id: prek
         run: |
-          echo "updates=$(prek autoupdate --cooldown-days 7)" >> $GITHUB_OUTPUT
-
-      - name: prek auto-update Output
-        run: |
-          echo "${{ steps.prek.outputs.updates }}"
+          set -euo pipefail
+          body_file="$GITHUB_WORKSPACE/prek-autoupdate-body.md"
+          {
+            echo "Automated update of \`prek\` hooks."
+            echo
+            echo '```text'
+            prek auto-update --cooldown-days 7 2>&1
+            echo '```'
+          } > "$body_file"
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v8
@@ -39,7 +43,4 @@ jobs:
           author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
           labels: dependencies
           delete-branch: true
-          body: |
-            Automated update of prek Hooks
-
-            ${{ steps.prek.outputs.updates }}
+          body-path: prek-autoupdate-body.md
