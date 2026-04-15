@@ -25,7 +25,7 @@ id = "check-added-large-files"
 
 [[repos]]
 repo = "https://github.com/rhysd/actionlint"
-rev = "v1.7.11"
+rev = "v1.7.12"
 
 [[repos.hooks]]
 id = "actionlint"
@@ -43,7 +43,7 @@ args = ["--ignore-words-list=hass"]
 
 [[repos]]
 repo = "https://github.com/pre-commit/mirrors-mypy"
-rev = "v1.19.1"
+rev = "v1.20.0"
 
 [[repos.hooks]]
 id = "mypy"
@@ -70,7 +70,7 @@ additional_dependencies = [
 
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"
-rev = "v0.15.7"
+rev = "v0.15.9"
 
 [[repos.hooks]]
 id = "ruff-check"
