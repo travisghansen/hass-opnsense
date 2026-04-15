@@ -24,6 +24,7 @@ permissions:
 
 jobs:
   update-aiopnsense:
+    name: Update aiopnsense
     runs-on: ubuntu-latest
 
     steps:

@@ -6,12 +6,17 @@ on:
 
 jobs:
   update_version_and_create_zip:
+    name: Update Version and Create Zip on Release
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v6
+        with:
+          # Use the release branch when available so git-auto-commit can push
+          # back cleanly; otherwise keep the workflow's triggering ref.
+          ref: ${{ github.event_name == 'release' && github.event.release.target_commitish || github.ref }}
 
       - name: Debug GitHub Variables
         run: |

@@ -13,6 +13,7 @@ concurrency:
 
 jobs:
   action:
+    name: Lock Closed Issues
     runs-on: ubuntu-latest
     steps:
       - name: Lock closed issues
