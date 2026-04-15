@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   update-hooks:
+    name: Update prek Hooks
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
