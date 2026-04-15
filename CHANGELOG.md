@@ -1,7 +1,35 @@
+<a id="v0.6.6"></a>
+# [v0.6.6](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.6) - 2026-04-15
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🐛 Bug Fixes
+* Fix Granular Sync Typo by [@Snuffy2](https://github.com/Snuffy2) in [#569](https://github.com/travisghansen/hass-opnsense/pull/569)
+* Refactor plugin check by [@Snuffy2](https://github.com/Snuffy2) in [#574](https://github.com/travisghansen/hass-opnsense/pull/574)
+### 🎓 Code Quality
+* Change to prek.toml by [@Snuffy2](https://github.com/Snuffy2) in [#579](https://github.com/travisghansen/hass-opnsense/pull/579)
+### 🧰 Maintenance
+* Bump aiopnsense to 1.0.8 by [@github-actions](https://github.com/github-actions)[bot] in [#562](https://github.com/travisghansen/hass-opnsense/pull/562)
+* Create lock_closed_issues.yml by [@Snuffy2](https://github.com/Snuffy2) in [#571](https://github.com/travisghansen/hass-opnsense/pull/571)
+* Update lock_closed_issues.yml by [@Snuffy2](https://github.com/Snuffy2) in [#572](https://github.com/travisghansen/hass-opnsense/pull/572)
+* Update lock_closed_issues.yml by [@Snuffy2](https://github.com/Snuffy2) in [#573](https://github.com/travisghansen/hass-opnsense/pull/573)
+* Update update_aiopnsense_manifest.yml by [@Snuffy2](https://github.com/Snuffy2) in [#570](https://github.com/travisghansen/hass-opnsense/pull/570)
+* Add prek autoupdate GitHub Action by [@Snuffy2](https://github.com/Snuffy2) in [#575](https://github.com/travisghansen/hass-opnsense/pull/575)
+* Fix prek autoupdate by [@Snuffy2](https://github.com/Snuffy2) in [#576](https://github.com/travisghansen/hass-opnsense/pull/576)
+### Other Changes
+* Update Exception Names by [@Snuffy2](https://github.com/Snuffy2) in [#568](https://github.com/travisghansen/hass-opnsense/pull/568)
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.6.5...v0.6.6
+
+[Changes][v0.6.6]
+
+
 <a id="v0.6.5"></a>
 # [v0.6.5](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.5) - 2026-04-01
 
-<!-- Release notes generated using configuration in .github/release.yml at main -->
+<h3>OPNsense Minimum Firmware Required: 25.1</h3><h4>OPNsense Recommended Firmware: 26.1+</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
 ## What's Changed
 ### 🚀 Enhancements
@@ -15,7 +43,7 @@
 * Update aiopnsense GitHub action by [@Snuffy2](https://github.com/Snuffy2) in [#561](https://github.com/travisghansen/hass-opnsense/pull/561)
 
 
-**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.6.4...v0.6.5
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.6.4...v0.6.5<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
 
 [Changes][v0.6.5]
 
@@ -975,6 +1003,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.6.6]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.5...v0.6.6
 [v0.6.5]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.4...v0.6.5
 [v0.6.4]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.3...v0.6.4
 [v0.6.3]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.2...v0.6.3
