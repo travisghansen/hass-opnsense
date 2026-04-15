@@ -7,6 +7,7 @@ from collections.abc import Callable, Mapping, MutableMapping
 from datetime import datetime
 from importlib import import_module
 from importlib.metadata import PackageNotFoundError, version as package_version
+import inspect
 import logging
 from typing import Any
 
@@ -107,6 +108,30 @@ def _coerce_query_counts(count_value: Any) -> tuple[int, int]:
         except TypeError, ValueError:
             return (0, 0)
     return (0, 0)
+
+
+def _callable_accepts_parameter(method: Callable[..., Any], parameter_name: str) -> bool:
+    """Report whether a callable accepts the named keyword argument.
+
+    Args:
+        method: Callable to inspect for keyword compatibility.
+        parameter_name: Keyword parameter name to check.
+
+    Returns:
+        bool: `True` when `method` accepts the parameter or arbitrary keyword arguments.
+    """
+    try:
+        signature = inspect.signature(method)
+    except TypeError, ValueError:
+        return True
+
+    if parameter_name in signature.parameters:
+        return True
+
+    return any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    )
 
 
 def _add_query_count_compat(client: OPNsenseClientProtocol) -> OPNsenseClientProtocol:
@@ -302,7 +327,8 @@ def _add_core_compat(client: OPNsenseClientProtocol) -> OPNsenseClientProtocol:
     Returns:
         OPNsenseClientProtocol: The same client instance with required core compatibility shims.
     """
-    if not hasattr(client, "set_use_snake_case"):
+    set_use_snake_case: Callable[..., Any] | None = getattr(client, "set_use_snake_case", None)
+    if set_use_snake_case is None:
 
         async def _set_use_snake_case(initial: bool = False) -> None:
             """Provide a no-op naming-mode setter for backends without support.
@@ -314,6 +340,21 @@ def _add_core_compat(client: OPNsenseClientProtocol) -> OPNsenseClientProtocol:
 
         setattr(client, "set_use_snake_case", _set_use_snake_case)
         _LOGGER.debug("Applied aiopnsense core compatibility shim for set_use_snake_case()")
+    elif not _callable_accepts_parameter(set_use_snake_case, "initial"):
+
+        async def _set_use_snake_case_with_initial(initial: bool = False) -> None:
+            """Call a backend naming-mode setter that does not accept `initial`.
+
+            Args:
+                initial: Whether the call occurs during initial setup.
+            """
+            _ = initial
+            await set_use_snake_case()
+
+        setattr(client, "set_use_snake_case", _set_use_snake_case_with_initial)
+        _LOGGER.debug(
+            "Applied aiopnsense core compatibility wrapper for set_use_snake_case(initial=...)"
+        )
 
     if not hasattr(client, "reset_query_counts"):
 

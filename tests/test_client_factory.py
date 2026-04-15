@@ -269,6 +269,26 @@ async def test_add_core_compat_noop_when_core_methods_exist() -> None:
 
 
 @pytest.mark.asyncio
+async def test_add_core_compat_wraps_set_use_snake_case_without_initial() -> None:
+    """Core compatibility shim should normalize legacy naming-mode signatures."""
+
+    class _Client:
+        def __init__(self) -> None:
+            """Initialize call tracking for the fake client."""
+            self.set_use_snake_case_calls = 0
+
+        async def set_use_snake_case(self) -> None:
+            """Accept naming-mode calls without the `initial` keyword."""
+            self.set_use_snake_case_calls += 1
+
+    client = _Client()
+    patched: Any = factory_mod._add_core_compat(client)
+    await patched.set_use_snake_case(initial=True)
+    await patched.set_use_snake_case()
+    assert client.set_use_snake_case_calls == 2
+
+
+@pytest.mark.asyncio
 async def test_add_core_compat_defaults_when_core_methods_missing() -> None:
     """Core compatibility shim should attach defaults when methods are missing."""
 
