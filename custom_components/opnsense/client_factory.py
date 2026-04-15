@@ -113,6 +113,12 @@ def _coerce_query_counts(count_value: Any) -> tuple[int, int]:
 def _callable_accepts_parameter(method: Callable[..., Any], parameter_name: str) -> bool:
     """Report whether a callable accepts the named keyword argument.
 
+    Uses `inspect.signature` first, then falls back to direct `__code__` attribute
+    inspection when signature introspection is unavailable (e.g. for certain
+    Python 3.14+ coroutine patterns).  Returns `False` when neither approach can
+    determine the callable's parameter list, so callers apply a compatibility
+    wrapper rather than risk an unexpected-keyword-argument error at runtime.
+
     Args:
         method: Callable to inspect for keyword compatibility.
         parameter_name: Keyword parameter name to check.
@@ -122,15 +128,59 @@ def _callable_accepts_parameter(method: Callable[..., Any], parameter_name: str)
     """
     try:
         signature = inspect.signature(method)
+
+        if parameter_name in signature.parameters:
+            return (
+                signature.parameters[parameter_name].kind is not inspect.Parameter.POSITIONAL_ONLY
+            )
+        return any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in signature.parameters.values()
+        )
     except TypeError, ValueError:
-        return True
+        pass
 
-    if parameter_name in signature.parameters:
-        return True
+    # Fallback: inspect the underlying code object directly.  This avoids
+    # annotation-evaluation issues that can cause inspect.signature() to raise
+    # in Python 3.14+ with certain coroutine or mixin patterns.
+    try:
+        func: Any = getattr(method, "__func__", method)
+        while hasattr(func, "__wrapped__"):
+            func = func.__wrapped__
+        code = func.__code__
+        nparams: int = code.co_argcount + code.co_kwonlyargcount
+        if parameter_name in code.co_varnames[code.co_posonlyargcount : nparams]:
+            return True
+        return bool(code.co_flags & inspect.CO_VARKEYWORDS)
+    except AttributeError:
+        pass
 
-    return any(
-        parameter.kind is inspect.Parameter.VAR_KEYWORD
-        for parameter in signature.parameters.values()
+    # Cannot determine the signature; conservatively assume the parameter is
+    # absent so the caller wraps the method instead of risking a TypeError.
+    return False
+
+
+def _type_error_is_unexpected_parameter(err: TypeError, parameter_name: str) -> bool:
+    """Report whether a TypeError was raised by keyword argument binding.
+
+    Args:
+        err: TypeError raised while attempting a compatibility call.
+        parameter_name: Keyword parameter name that was passed.
+
+    Returns:
+        bool: `True` when the error indicates the callable rejected the keyword.
+    """
+    if err.__traceback__ is None or err.__traceback__.tb_next is not None:
+        return False
+
+    message = str(err)
+    return (
+        ("unexpected keyword argument" in message and parameter_name in message)
+        or (
+            "positional-only arguments passed as keyword arguments" in message
+            and parameter_name in message
+        )
+        or "takes no keyword arguments" in message
     )
 
 
@@ -343,13 +393,17 @@ def _add_core_compat(client: OPNsenseClientProtocol) -> OPNsenseClientProtocol:
     elif not _callable_accepts_parameter(set_use_snake_case, "initial"):
 
         async def _set_use_snake_case_with_initial(initial: bool = False) -> None:
-            """Call a backend naming-mode setter that does not accept `initial`.
+            """Call a backend naming-mode setter with compatibility fallback.
 
             Args:
                 initial: Whether the call occurs during initial setup.
             """
-            _ = initial
-            await set_use_snake_case()
+            try:
+                await set_use_snake_case(initial=initial)
+            except TypeError as err:
+                if not _type_error_is_unexpected_parameter(err, "initial"):
+                    raise
+                await set_use_snake_case()
 
         setattr(client, "set_use_snake_case", _set_use_snake_case_with_initial)
         _LOGGER.debug(

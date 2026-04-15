@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect as _inspect
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
@@ -289,6 +290,76 @@ async def test_add_core_compat_wraps_set_use_snake_case_without_initial() -> Non
 
 
 @pytest.mark.asyncio
+async def test_add_core_compat_wrapper_passes_initial_when_introspection_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Core compatibility wrapper should probe with initial before falling back."""
+
+    class _SetUseSnakeCase:
+        def __init__(self) -> None:
+            """Initialize received argument tracking."""
+            self.received_initial: bool | None = None
+
+        async def __call__(self, initial: bool = False) -> None:
+            """Accept initial even though direct introspection is unavailable.
+
+            Args:
+                initial: Initial-setup flag passed by the compatibility wrapper.
+            """
+            self.received_initial = initial
+
+    class _Client:
+        def __init__(self) -> None:
+            """Initialize fake client with callable instance method."""
+            self.set_use_snake_case = _SetUseSnakeCase()
+
+    def _broken_signature(callable_obj: Any, **kwargs: Any) -> Any:
+        raise ValueError("simulated failure")
+
+    monkeypatch.setattr(_inspect, "signature", _broken_signature)
+
+    client = _Client()
+    original_setter = client.set_use_snake_case
+    patched: Any = factory_mod._add_core_compat(client)
+    await patched.set_use_snake_case(initial=True)
+    assert original_setter.received_initial is True
+
+
+@pytest.mark.asyncio
+async def test_add_core_compat_wrapper_reraises_internal_type_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Core compatibility wrapper should not hide TypeError raised inside backend methods."""
+
+    class _SetUseSnakeCase:
+        async def __call__(self, initial: bool = False) -> None:
+            """Raise an internal TypeError after accepting initial.
+
+            Args:
+                initial: Initial-setup flag passed by the compatibility wrapper.
+
+            Raises:
+                TypeError: Always raised to simulate a backend implementation error.
+            """
+            _ = initial
+            raise TypeError("got an unexpected keyword argument 'initial'")
+
+    class _Client:
+        def __init__(self) -> None:
+            """Initialize fake client with callable instance method."""
+            self.set_use_snake_case = _SetUseSnakeCase()
+
+    def _broken_signature(callable_obj: Any, **kwargs: Any) -> Any:
+        raise ValueError("simulated failure")
+
+    monkeypatch.setattr(_inspect, "signature", _broken_signature)
+
+    patched: Any = factory_mod._add_core_compat(_Client())
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        await patched.set_use_snake_case(initial=True)
+
+
+@pytest.mark.asyncio
 async def test_add_core_compat_defaults_when_core_methods_missing() -> None:
     """Core compatibility shim should attach defaults when methods are missing."""
 
@@ -300,6 +371,54 @@ async def test_add_core_compat_defaults_when_core_methods_missing() -> None:
     await patched.set_use_snake_case(initial=True)
     await patched.reset_query_counts()
     assert await patched.get_query_counts() == (0, 0)
+
+
+def test_callable_accepts_parameter_via_code_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_callable_accepts_parameter should fall back to __code__ when inspect.signature raises."""
+
+    async def _no_initial(self: Any) -> None:
+        """Fake method without initial."""
+
+    async def _with_initial(self: Any, initial: bool = False) -> None:
+        """Fake method with initial."""
+
+    def _broken_signature(callable_obj: Any, **kwargs: Any) -> Any:
+        raise ValueError("simulated signature failure")
+
+    monkeypatch.setattr(_inspect, "signature", _broken_signature)
+    assert not factory_mod._callable_accepts_parameter(_no_initial, "initial")
+    assert factory_mod._callable_accepts_parameter(_with_initial, "initial")
+
+
+def test_callable_accepts_parameter_rejects_positional_only() -> None:
+    """_callable_accepts_parameter should reject positional-only parameters as keywords."""
+
+    async def _positional_only_initial(initial: bool = False, /) -> None:
+        """Fake method with positional-only initial.
+
+        Args:
+            initial: Positional-only setup flag.
+        """
+
+    assert not factory_mod._callable_accepts_parameter(_positional_only_initial, "initial")
+
+
+def test_callable_accepts_parameter_returns_false_when_all_inspection_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_callable_accepts_parameter should return False when all inspection paths fail."""
+
+    # An object that has no __code__ attribute and raises from inspect.signature
+    class _NoCode:
+        def __call__(self) -> None:
+            """Callable without __code__."""
+
+    def _broken_signature(callable_obj: Any, **kwargs: Any) -> Any:
+        raise ValueError("simulated failure")
+
+    monkeypatch.setattr(_inspect, "signature", _broken_signature)
+    result = factory_mod._callable_accepts_parameter(_NoCode(), "initial")
+    assert result is False
 
 
 def test_add_query_count_compat_noop_without_query_methods() -> None:
