@@ -44,3 +44,5 @@ jobs:
           labels: dependencies
           delete-branch: true
           body-path: prek-autoupdate-body.md
+          add-paths: |
+            prek.toml
