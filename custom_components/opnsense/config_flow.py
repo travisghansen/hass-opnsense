@@ -340,12 +340,18 @@ async def validate_input(
         )
     except PluginMissing:
         _log_and_set_error(errors=errors, key="plugin_missing", message="OPNsense Plugin Missing")
-    except (aiohttp.InvalidURL, InvalidURL) as e:
+
+    except (
+        aiohttp.InvalidURL,
+        InvalidURL,
+        aiohttp.ClientConnectorDNSError,
+    ) as e:
         _log_and_set_error(
             errors=errors,
             key="invalid_url_format",
             message=f"InvalidURL Error. {type(e).__name__}: {e}",
         )
+
     except xmlrpc.client.Fault as e:
         error_message = str(e)
         if "Invalid username or password" in error_message:
@@ -389,6 +395,7 @@ async def validate_input(
                 [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
             ),
         )
+
     except aiohttp.ClientResponseError as e:
         if e.status == 401:
             errors["base"] = "invalid_auth"
