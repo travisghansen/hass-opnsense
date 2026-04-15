@@ -1,7 +1,7 @@
 name: prek Autoupdate
 on:
   schedule:
-    - cron: '0 0 * * 1'
+    - cron: '0 2 * * 1'
   workflow_dispatch:
 
 permissions:
@@ -21,8 +21,13 @@ jobs:
           tool: prek
 
       - name: Run prek auto-update
+        id: prek
         run: |
-          prek autoupdate --cooldown-days 7
+          echo "updates=$(prek autoupdate --cooldown-days 7)" >> $GITHUB_OUTPUT
+
+      - name: prek auto-update Output
+        run: |
+          echo "${{ steps.prek.outputs.updates }}"
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v8
@@ -34,6 +39,7 @@ jobs:
           author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
           labels: dependencies
           delete-branch: true
-          # add-paths: |
-          #   prek.toml
-          #   .pre-commit-config.yaml
+          body: |
+            Automated update of prek Hooks
+
+            ${{ steps.prek.outputs.updates }}
