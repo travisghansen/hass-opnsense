@@ -46,6 +46,7 @@ from custom_components.opnsense.switch import (
 )
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
 from homeassistant.core import HomeAssistant
+from tests.utilities import stub_async_write_ha_state
 
 
 def make_coord(data):
@@ -232,7 +233,7 @@ async def test_switch_toggle_variants(
     # prefer unique id if present, otherwise fall back to entity_description.key
     unique = getattr(ent, "_attr_unique_id", None)
     ent.entity_id = f"switch.{unique or ent.entity_description.key}"
-    ent.async_write_ha_state = lambda: None
+    stub_async_write_ha_state(ent)
 
     # attach client with AsyncMock methods named per the compile target
     on_mock = AsyncMock(return_value=True)
@@ -586,7 +587,7 @@ async def test_unbound_and_vpn_variations(coordinator, ph_hass, make_config_entr
     unbound.hass = hass
     unbound.coordinator = make_coord(state)
     unbound.entity_id = f"switch.{unbound._attr_unique_id}"
-    unbound.async_write_ha_state = lambda: None
+    stub_async_write_ha_state(unbound)
     unbound._client = MagicMock()
     unbound._client.enable_unbound_blocklist = AsyncMock(return_value=True)
     unbound._client.disable_unbound_blocklist = AsyncMock(return_value=True)
@@ -603,7 +604,7 @@ async def test_unbound_and_vpn_variations(coordinator, ph_hass, make_config_entr
         vpn.hass = hass
         vpn.coordinator = make_coord(state)
         vpn.entity_id = f"switch.{vpn.entity_description.key}"
-        vpn.async_write_ha_state = lambda: None
+        stub_async_write_ha_state(vpn)
         vpn._client = MagicMock()
         vpn._client.toggle_vpn_instance = AsyncMock(return_value=True)
         vpn._handle_coordinator_update()
@@ -703,7 +704,7 @@ async def test_vpn_turn_on_off_calls_client_and_sets_delay(
     ent.hass = ph_hass
     ent.coordinator = make_coord(coord.data)
     ent.entity_id = f"switch.{ent.entity_description.key}"
-    ent.async_write_ha_state = lambda: None
+    stub_async_write_ha_state(ent)
 
     # client toggles VPN instance
     ent._client = MagicMock()
@@ -747,7 +748,7 @@ async def test_compile_unbound_extended_and_toggle(coordinator, ph_hass, make_co
     ent.hass = hass
     ent.coordinator = make_coord(state)
     ent.entity_id = f"switch.{ent._attr_unique_id or ent.entity_description.key}"
-    ent.async_write_ha_state = lambda: None
+    stub_async_write_ha_state(ent)
 
     # attach client with AsyncMock methods
     ent._client = MagicMock()
@@ -794,7 +795,7 @@ async def test_vpn_turn_on_off_noops_when_preconditions_fail(
     ent.hass = ph_hass
     ent.coordinator = make_coord(coord.data)
     ent.entity_id = f"switch.{ent.entity_description.key}"
-    ent.async_write_ha_state = lambda: None
+    stub_async_write_ha_state(ent)
 
     # client that would raise if called -- we assert it's not awaited
     ent._client = MagicMock()
@@ -847,7 +848,7 @@ async def test_vpn_async_turn_off_variations(
     ent.hass = ph_hass
     ent.coordinator = make_coord(coord.data)
     ent.entity_id = f"switch.{ent.entity_description.key}"
-    ent.async_write_ha_state = lambda: None
+    stub_async_write_ha_state(ent)
 
     # set initial state as on so turn_off proceeds
     ent._attr_is_on = True
@@ -915,7 +916,7 @@ async def test_filter_disabled_and_missing(coordinator, ph_hass, make_config_ent
     ent.hass = hass
     ent.coordinator = make_coord(state)
     ent.entity_id = f"switch.{ent._attr_unique_id}"
-    ent.async_write_ha_state = lambda: None
+    stub_async_write_ha_state(ent)
     ent._handle_coordinator_update()
     assert ent.is_on is False
 
@@ -933,7 +934,7 @@ async def test_unbound_missing_sets_unavailable(coordinator, ph_hass, make_confi
     ent.hass = hass
     ent.coordinator = make_coord(state)
     ent.entity_id = f"switch.{ent._attr_unique_id}"
-    ent.async_write_ha_state = lambda: None
+    stub_async_write_ha_state(ent)
     ent._handle_coordinator_update()
     assert ent.available is False
 
@@ -953,7 +954,7 @@ async def test_unbound_skips_update_when_delay_set(coordinator, ph_hass, make_co
     ent.hass = hass
     ent.coordinator = make_coord(state)
     ent.entity_id = f"switch.{ent._attr_unique_id}"
-    ent.async_write_ha_state = lambda: None
+    stub_async_write_ha_state(ent)
 
     # set initial known state that should NOT be changed while delay flag is set
     ent._attr_is_on = False
@@ -1059,7 +1060,7 @@ async def test_delay_skips_update_parametrized(
     # entity id setup varies; prefer unique_id when present
     unique = getattr(ent, "_attr_unique_id", None)
     ent.entity_id = f"switch.{unique or getattr(ent, 'entity_description').key}"
-    ent.async_write_ha_state = lambda: None
+    stub_async_write_ha_state(ent)
 
     # set initial known state that should NOT be changed while delay flag is set
     ent._attr_is_on = False
@@ -1134,7 +1135,7 @@ async def test_switch_handle_error_sets_unavailable(
             ent.hass = hass_local
             ent.coordinator = make_coord(state)
             ent.entity_id = f"switch.{ent._attr_unique_id}"
-            ent.async_write_ha_state = lambda: None
+            stub_async_write_ha_state(ent)
 
             def _fake_get_rule_filter() -> int:
                 """Return a non-mapping value to exercise filter error handling."""
@@ -1153,7 +1154,7 @@ async def test_switch_handle_error_sets_unavailable(
             ent.hass = hass_local
             ent.coordinator = make_coord({})
             ent.entity_id = "switch.nat"
-            ent.async_write_ha_state = lambda: None
+            stub_async_write_ha_state(ent)
 
             def _fake_get_rule_nat() -> MutableMapping[str, Any] | None:
                 """Return a non-mapping value to exercise NAT error handling."""
@@ -1172,7 +1173,7 @@ async def test_switch_handle_error_sets_unavailable(
             ent.hass = hass_local
             ent.coordinator = make_coord({})
             ent.entity_id = "switch.svc"
-            ent.async_write_ha_state = lambda: None
+            stub_async_write_ha_state(ent)
 
             def _fake_get_service() -> MutableMapping[str, Any] | None:
                 """Return a non-mapping value to exercise service error handling."""
@@ -1323,7 +1324,7 @@ async def test_vpn_toggle_parametrized(
     ent.hass = hass
     ent.coordinator = make_coord(state)
     ent.entity_id = f"switch.{ent.entity_description.key}"
-    ent.async_write_ha_state = lambda: None
+    stub_async_write_ha_state(ent)
     # attach a client and set its toggle_vpn_instance to a simple AsyncMock
     # that returns the desired toggle_return value for the test case.
     ent._client = MagicMock()
@@ -1539,7 +1540,7 @@ async def test_vpn_servers_properties_and_toggle(coordinator, ph_hass, make_conf
     server_ent.hass = hass
     server_ent.coordinator = make_coord(state)
     server_ent.entity_id = f"switch.{server_ent.entity_description.key}"
-    server_ent.async_write_ha_state = lambda: None
+    stub_async_write_ha_state(server_ent)
     server_ent._client = MagicMock()
     server_ent._client.toggle_vpn_instance = AsyncMock(return_value=True)
 
@@ -1578,7 +1579,7 @@ async def test_nat_handle_missing_rule_returns_none(coordinator, ph_hass, make_c
     ent.hass = hass
     ent.coordinator = make_coord({})
     ent.entity_id = "switch.missing"
-    ent.async_write_ha_state = lambda: None
+    stub_async_write_ha_state(ent)
     # calling _handle_coordinator_update should not raise
     ent._handle_coordinator_update()
     assert isinstance(ent.available, bool)
@@ -1597,7 +1598,7 @@ async def test_unbound_turn_on_off_failure_logs(coordinator, ph_hass, make_confi
     ent.hass = hass
     ent.coordinator = make_coord(state)
     ent.entity_id = f"switch.{ent._attr_unique_id}"
-    ent.async_write_ha_state = lambda: None
+    stub_async_write_ha_state(ent)
     # simulate client failure
     ent._client = MagicMock()
     ent._client.enable_unbound_blocklist = AsyncMock(return_value=False)
@@ -1647,7 +1648,7 @@ async def test_client_failure_does_not_set_on(
     ent.hass = hass
     ent.coordinator = make_coord(state)
     ent.entity_id = f"switch.{ent._attr_unique_id}"
-    ent.async_write_ha_state = lambda: None
+    stub_async_write_ha_state(ent)
     # Ensure service data is populated from coordinator so the turn method
     # exercises the client call path (otherwise _client won't be invoked).
     ent._handle_coordinator_update()
@@ -1693,7 +1694,7 @@ def test_vpn_handle_coordinator_update_state_not_mapping(coordinator, make_confi
     )
     # coordinator.data is None -> unavailable
     coordinator.data = None
-    ent.async_write_ha_state = lambda: None
+    stub_async_write_ha_state(ent)
     ent._handle_coordinator_update()
     assert ent.available is False
 
@@ -1719,7 +1720,7 @@ async def test_compile_vpn_wireguard_variations(coordinator, ph_hass, make_confi
         vpn.hass = hass
         vpn.coordinator = make_coord(state)
         vpn.entity_id = f"switch.{vpn.entity_description.key}"
-        vpn.async_write_ha_state = lambda: None
+        stub_async_write_ha_state(vpn)
         vpn._client = MagicMock()
         vpn._client.toggle_vpn_instance = AsyncMock(return_value=True)
         vpn._handle_coordinator_update()
@@ -1742,7 +1743,7 @@ def test_vpn_instance_non_mapping_sets_unavailable(coordinator, make_config_entr
         "openvpn": {"clients": {"c1": "not-a-dict"}},
         "wireguard": {"clients": {}, "servers": {}},
     }
-    ent.async_write_ha_state = lambda: None
+    stub_async_write_ha_state(ent)
     ent._handle_coordinator_update()
     assert ent.available is False
 
@@ -1760,7 +1761,7 @@ async def test_service_async_turn_on_off_failure(coordinator, ph_hass, make_conf
     ent.hass = hass
     ent.coordinator = make_coord(state)
     ent.entity_id = f"switch.{ent._attr_unique_id}"
-    ent.async_write_ha_state = lambda: None
+    stub_async_write_ha_state(ent)
     # simulate failure to start/stop
     ent._client = MagicMock()
     ent._client.start_service = AsyncMock(return_value=False)
@@ -1785,7 +1786,7 @@ async def test_vpn_toggle_failure_does_not_set_on(coordinator, ph_hass, make_con
     ent.hass = hass
     ent.coordinator = make_coord(state)
     ent.entity_id = f"switch.{ent.entity_description.key}"
-    ent.async_write_ha_state = lambda: None
+    stub_async_write_ha_state(ent)
     ent._client = MagicMock()
     ent._client.toggle_vpn_instance = AsyncMock(return_value=False)
     # attempt to turn on should not set is_on when client returns False
@@ -1906,7 +1907,7 @@ def test_filter_handle_exceptions_sets_unavailable(
     ent.hass = MagicMock(spec=HomeAssistant)
     ent.coordinator = make_coord({})
     ent.entity_id = f"switch.{ent._attr_unique_id}"
-    ent.async_write_ha_state = lambda: None
+    stub_async_write_ha_state(ent)
 
     # prepare a mapping-like object whose get() raises the desired exception
     class BadGet(dict):
@@ -1948,7 +1949,7 @@ def test_nat_handle_exceptions_sets_unavailable(exc_type, coordinator, make_conf
     ent.hass = MagicMock(spec=HomeAssistant)
     ent.coordinator = make_coord({})
     ent.entity_id = f"switch.{ent.entity_description.key}"
-    ent.async_write_ha_state = lambda: None
+    stub_async_write_ha_state(ent)
 
     # create a mapping whose __contains__ raises the exception when checking 'disabled'
     class BadContains(dict):
@@ -1982,7 +1983,7 @@ def test_vpn_handle_exceptions_sets_unavailable(exc_type, coordinator, make_conf
     )
     ent.hass = MagicMock(spec=HomeAssistant)
     ent.entity_id = f"switch.{ent.entity_description.key}"
-    ent.async_write_ha_state = lambda: None
+    stub_async_write_ha_state(ent)
 
     # instance must be a MutableMapping so the code reaches the try/except block;
     # create a dict subclass that raises when __getitem__ is used for ['enabled']
@@ -2022,7 +2023,7 @@ def test_service_handle_exceptions_sets_unavailable(
     )
     ent.hass = MagicMock(spec=HomeAssistant)
     ent.entity_id = f"switch.{ent.entity_description.key}"
-    ent.async_write_ha_state = lambda: None
+    stub_async_write_ha_state(ent)
 
     # create an object that raises when __getitem__ is used (service[prop])
     class BadIndex(dict):
@@ -2055,7 +2056,7 @@ async def test_unbound_legacy_switch_toggle_failures(coordinator, ph_hass, make_
     ent.hass = hass
     ent.coordinator = make_coord(state)
     ent.entity_id = f"switch.{ent._attr_unique_id}"
-    ent.async_write_ha_state = lambda: None
+    stub_async_write_ha_state(ent)
 
     # Mock client to return False (failure)
     ent._client = MagicMock()
@@ -2100,7 +2101,7 @@ async def test_unbound_extended_switch_toggle_failures(coordinator, ph_hass, mak
     ent.hass = hass
     ent.coordinator = make_coord(state)
     ent.entity_id = f"switch.{ent._attr_unique_id}"
-    ent.async_write_ha_state = lambda: None
+    stub_async_write_ha_state(ent)
 
     # Mock client to return False (failure)
     ent._client = MagicMock()
