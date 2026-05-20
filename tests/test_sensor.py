@@ -457,7 +457,7 @@ def test_carp_status_sensor_states_and_attributes(
     )
     sensor.hass = MagicMock()
     sensor.entity_id = "sensor.carp_status"
-    sensor.async_write_ha_state = lambda: None
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
     sensor._handle_coordinator_update()
 
     assert sensor.available is True
@@ -501,7 +501,7 @@ def test_carp_status_sensor_normalizes_state_spacing_and_icon(make_config_entry)
     )
     sensor.hass = MagicMock()
     sensor.entity_id = "sensor.carp_status_normalized"
-    sensor.async_write_ha_state = lambda: None
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
     sensor._handle_coordinator_update()
 
     assert sensor.available is True
@@ -617,7 +617,7 @@ def test_carp_interface_sensor_unavailable_for_malformed_key(make_config_entry) 
     )
     sensor.hass = MagicMock()
     sensor.entity_id = "sensor.carp_malformed_key"
-    sensor.async_write_ha_state = lambda: None
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
     sensor._handle_coordinator_update()
 
     assert sensor.available is False
@@ -647,7 +647,7 @@ def test_carp_interface_sensor_disambiguates_same_subnet_by_interface(make_confi
     )
     sensor.hass = MagicMock()
     sensor.entity_id = "sensor.carp_disambiguated"
-    sensor.async_write_ha_state = lambda: None
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
     sensor._handle_coordinator_update()
 
     assert sensor.available is True
@@ -1101,7 +1101,7 @@ def test_static_cpu_zero_variants(
     sensor = OPNsenseStaticKeySensor(config_entry=entry, coordinator=coord, entity_description=desc)
     sensor.hass = MagicMock()
     sensor.entity_id = "sensor.cpu_total"
-    sensor.async_write_ha_state = lambda: None
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
     if previous is not None:
         sensor._previous_value = previous
 
@@ -1148,6 +1148,92 @@ def test_interface_status_icon_up(make_config_entry):
     s._handle_coordinator_update()
     # when native_value is 'up', icon should not be the down icon
     assert s.icon != "mdi:close-network-outline"
+
+
+def test_interface_status_preserves_false_enabled_attribute(make_config_entry):
+    """Interface status sensor should expose false enabled attributes."""
+    state = {
+        "interfaces": {"wan": {"name": "WAN", "status": "up", "enabled": False, "interface": "wan"}}
+    }
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = state
+    entry = make_config_entry()
+
+    desc = MagicMock()
+    desc.key = "interface.wan.status"
+    desc.name = "WAN Status"
+
+    sensor = OPNsenseInterfaceSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.wan_status"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
+    assert sensor.extra_state_attributes["enabled"] is False
+
+
+def test_interface_sensor_unavailable_when_interface_disabled(make_config_entry):
+    """Interface sensors should be unavailable when the interface is disabled."""
+    state = {
+        "interfaces": {
+            "wan": {
+                "name": "WAN",
+                "status": "up",
+                "enabled": False,
+                "interface": "wan",
+                "inbytes": 2048,
+            }
+        }
+    }
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = state
+    entry = make_config_entry()
+
+    desc = MagicMock()
+    desc.key = "interface.wan.inbytes"
+    desc.name = "WAN In Bytes"
+
+    sensor = OPNsenseInterfaceSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.wan_inbytes"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
+
+
+def test_interface_sensor_available_when_enabled_unknown(make_config_entry):
+    """Interface sensors should stay available when enabled state is unknown."""
+    state = {
+        "interfaces": {
+            "wan": {
+                "name": "WAN",
+                "status": "up",
+                "enabled": None,
+                "interface": "wan",
+            }
+        }
+    }
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = state
+    entry = make_config_entry()
+
+    desc = MagicMock()
+    desc.key = "interface.wan.status"
+    desc.name = "WAN Status"
+
+    sensor = OPNsenseInterfaceSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.wan_status"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is True
+    assert sensor.native_value == "up"
 
 
 @pytest.mark.parametrize(

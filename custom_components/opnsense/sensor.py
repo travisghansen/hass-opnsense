@@ -1151,8 +1151,13 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
         else:
             properties = ["interface", "device", "ipv4", "ipv6"]
         for attr in properties:
-            if interface.get(attr, None):
+            if attr in interface and (interface[attr] or isinstance(interface[attr], bool)):
                 self._attr_extra_state_attributes[attr] = interface[attr]
+        if interface.get("enabled") is not None and not coerce_bool(interface.get("enabled")):
+            self._attr_native_value = None
+            self._available = False
+            self.async_write_ha_state()
+            return
         self.async_write_ha_state()
 
     @property
