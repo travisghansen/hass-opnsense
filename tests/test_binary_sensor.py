@@ -154,6 +154,25 @@ def test_interface_enabled_binary_sensor_state(make_config_entry):
     assert sensor.is_on is False
 
 
+def test_interface_enabled_binary_sensor_unavailable_when_enabled_unknown(make_config_entry):
+    """Interface enabled binary sensor should be unavailable when enabled state is unknown."""
+    entry = make_config_entry()
+    desc = BinarySensorEntityDescription(key="interface.wan.enabled", name="Interface WAN Enabled")
+
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {"interfaces": {"wan": {"name": "WAN", "enabled": None}}}
+    sensor = OPNsenseInterfaceEnabledBinarySensor(
+        config_entry=entry, coordinator=coord, entity_description=desc
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "binary_sensor.wan_enabled"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
+
+
 @pytest.mark.parametrize(
     "coord_data,expect_write_called,expect_available,expect_is_on,expect_pending",
     [

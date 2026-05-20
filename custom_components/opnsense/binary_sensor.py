@@ -139,7 +139,7 @@ class OPNsenseInterfaceEnabledBinarySensor(OPNsenseBinarySensor):
 
         interface_name = key_parts[1]
         interface = dict_get(state, f"interfaces.{interface_name}", {})
-        if not isinstance(interface, Mapping) or "enabled" not in interface:
+        if not isinstance(interface, Mapping) or interface.get("enabled") is None:
             self._available = False
             self.async_write_ha_state()
             return
