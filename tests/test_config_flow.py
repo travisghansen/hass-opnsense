@@ -838,6 +838,14 @@ async def test_validate_input_user_respects_granular_flag_for_plugin_check(
         # Prevent HA internals from being accessed if the flow reaches update/abort paths
         flow.hass.config_entries = MagicMock()
         flow.hass.config_entries.async_update_entry = MagicMock()
+        object.__setattr__(
+            flow,
+            "async_update_reload_and_abort",
+            lambda *args, **kwargs: {
+                "type": "abort",
+                "reason": "reconfigure_successful",
+            },
+        )
         await flow.async_step_reconfigure(user_input={})
     else:
         raise ValueError(f"unknown config_step: {config_step}")

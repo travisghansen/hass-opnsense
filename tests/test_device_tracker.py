@@ -306,7 +306,9 @@ async def test_async_added_to_hass_calls_restore(monkeypatch, coordinator, make_
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_state_not_mapping(ph_hass, coordinator, make_config_entry):
+async def test_async_setup_entry_state_not_mapping(
+    monkeypatch, ph_hass, coordinator, make_config_entry, fake_reg_factory
+):
     """Setup exits early when coordinator state is not a mapping."""
     # coordinator.data is not a mapping -> async_setup_entry should return early and not add entities
     coordinator.data = "not-a-mapping"
@@ -317,6 +319,8 @@ async def test_async_setup_entry_state_not_mapping(ph_hass, coordinator, make_co
     hass = ph_hass
     hass.data = {}
     hass.config_entries.async_update_entry = MagicMock()
+    fake = fake_reg_factory(device_exists=False)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: fake, raising=False)
 
     await dt_mod.async_setup_entry(hass, entry, added.extend)
     assert len(added) == 0
@@ -431,7 +435,7 @@ def test_handle_coordinator_update_expired_preserve_last_known_ip(coordinator, m
 
 @pytest.mark.asyncio
 async def test_async_setup_entry_from_arp_entries(
-    monkeypatch, ph_hass, coordinator, make_config_entry
+    monkeypatch, ph_hass, coordinator, make_config_entry, fake_reg_factory
 ):
     """Setup from ARP entries creates device trackers for present ARP rows."""
     # when CONF_DEVICES not set but device tracker enabled, create entity per arp entry
@@ -445,6 +449,8 @@ async def test_async_setup_entry_from_arp_entries(
     hass = ph_hass
     hass.data = {}
     hass.config_entries.async_update_entry = MagicMock()
+    fake = fake_reg_factory(device_exists=False)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: fake, raising=False)
 
     added = []
 
