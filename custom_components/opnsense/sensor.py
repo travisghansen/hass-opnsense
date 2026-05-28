@@ -1546,9 +1546,14 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
             return
         if_name: str = self.entity_description.key.split(".")[1].strip()
         # _LOGGER.debug(f"[OPNsenseDHCPLeasesSensor handle_coordinator_update] if_name: {if_name}")
+        dhcp_leases = state.get("dhcp_leases")
+        if not isinstance(dhcp_leases, MutableMapping):
+            self._available = False
+            self.async_write_ha_state()
+            return
         if if_name.lower() == "all":
-            leases = state.get("dhcp_leases", {}).get("leases", {})
-            lease_interfaces = state.get("dhcp_leases", {}).get("lease_interfaces", {})
+            leases = dhcp_leases.get("leases", {})
+            lease_interfaces = dhcp_leases.get("lease_interfaces", {})
             # _LOGGER.debug(f"[OPNsenseDHCPLeasesSensor handle_coordinator_update] lease_interfaces: {lease_interfaces}")
             # _LOGGER.debug(f"[OPNsenseDHCPLeasesSensor handle_coordinator_update] leases: {leases}")
             if not isinstance(leases, MutableMapping) or not isinstance(
@@ -1583,7 +1588,12 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
             self._attr_native_value = total_lease_count
 
         else:
-            interface = state.get("dhcp_leases", {}).get("leases", {}).get(if_name, [])
+            leases = dhcp_leases.get("leases", {})
+            if not isinstance(leases, MutableMapping):
+                self._available = False
+                self.async_write_ha_state()
+                return
+            interface = leases.get(if_name, [])
             if not isinstance(interface, list):
                 self._available = False
                 self.async_write_ha_state()

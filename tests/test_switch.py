@@ -1135,7 +1135,7 @@ async def test_switch_handle_error_sets_unavailable(
             ent.hass = hass_local
             ent.coordinator = make_coord(state)
             ent.entity_id = f"switch.{ent._attr_unique_id}"
-            stub_async_write_ha_state(ent)
+            object.__setattr__(ent, "async_write_ha_state", lambda: None)
 
             def _fake_get_rule_filter() -> int:
                 """Return a non-mapping value to exercise filter error handling."""
@@ -1154,7 +1154,7 @@ async def test_switch_handle_error_sets_unavailable(
             ent.hass = hass_local
             ent.coordinator = make_coord({})
             ent.entity_id = "switch.nat"
-            stub_async_write_ha_state(ent)
+            object.__setattr__(ent, "async_write_ha_state", lambda: None)
 
             def _fake_get_rule_nat() -> MutableMapping[str, Any] | None:
                 """Return a non-mapping value to exercise NAT error handling."""
@@ -1173,7 +1173,7 @@ async def test_switch_handle_error_sets_unavailable(
             ent.hass = hass_local
             ent.coordinator = make_coord({})
             ent.entity_id = "switch.svc"
-            stub_async_write_ha_state(ent)
+            object.__setattr__(ent, "async_write_ha_state", lambda: None)
 
             def _fake_get_service() -> MutableMapping[str, Any] | None:
                 """Return a non-mapping value to exercise service error handling."""
@@ -1324,7 +1324,7 @@ async def test_vpn_toggle_parametrized(
     ent.hass = hass
     ent.coordinator = make_coord(state)
     ent.entity_id = f"switch.{ent.entity_description.key}"
-    stub_async_write_ha_state(ent)
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
     # attach a client and set its toggle_vpn_instance to a simple AsyncMock
     # that returns the desired toggle_return value for the test case.
     ent._client = MagicMock()
@@ -1579,7 +1579,7 @@ async def test_nat_handle_missing_rule_returns_none(coordinator, ph_hass, make_c
     ent.hass = hass
     ent.coordinator = make_coord({})
     ent.entity_id = "switch.missing"
-    stub_async_write_ha_state(ent)
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
     # calling _handle_coordinator_update should not raise
     ent._handle_coordinator_update()
     assert isinstance(ent.available, bool)
@@ -1598,7 +1598,7 @@ async def test_unbound_turn_on_off_failure_logs(coordinator, ph_hass, make_confi
     ent.hass = hass
     ent.coordinator = make_coord(state)
     ent.entity_id = f"switch.{ent._attr_unique_id}"
-    stub_async_write_ha_state(ent)
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
     # simulate client failure
     ent._client = MagicMock()
     ent._client.enable_unbound_blocklist = AsyncMock(return_value=False)
@@ -1648,7 +1648,7 @@ async def test_client_failure_does_not_set_on(
     ent.hass = hass
     ent.coordinator = make_coord(state)
     ent.entity_id = f"switch.{ent._attr_unique_id}"
-    stub_async_write_ha_state(ent)
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
     # Ensure service data is populated from coordinator so the turn method
     # exercises the client call path (otherwise _client won't be invoked).
     ent._handle_coordinator_update()
@@ -1694,7 +1694,7 @@ def test_vpn_handle_coordinator_update_state_not_mapping(coordinator, make_confi
     )
     # coordinator.data is None -> unavailable
     coordinator.data = None
-    stub_async_write_ha_state(ent)
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
     ent._handle_coordinator_update()
     assert ent.available is False
 
@@ -1743,7 +1743,7 @@ def test_vpn_instance_non_mapping_sets_unavailable(coordinator, make_config_entr
         "openvpn": {"clients": {"c1": "not-a-dict"}},
         "wireguard": {"clients": {}, "servers": {}},
     }
-    stub_async_write_ha_state(ent)
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
     ent._handle_coordinator_update()
     assert ent.available is False
 
@@ -1761,7 +1761,7 @@ async def test_service_async_turn_on_off_failure(coordinator, ph_hass, make_conf
     ent.hass = hass
     ent.coordinator = make_coord(state)
     ent.entity_id = f"switch.{ent._attr_unique_id}"
-    stub_async_write_ha_state(ent)
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
     # simulate failure to start/stop
     ent._client = MagicMock()
     ent._client.start_service = AsyncMock(return_value=False)
@@ -1786,7 +1786,7 @@ async def test_vpn_toggle_failure_does_not_set_on(coordinator, ph_hass, make_con
     ent.hass = hass
     ent.coordinator = make_coord(state)
     ent.entity_id = f"switch.{ent.entity_description.key}"
-    stub_async_write_ha_state(ent)
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
     ent._client = MagicMock()
     ent._client.toggle_vpn_instance = AsyncMock(return_value=False)
     # attempt to turn on should not set is_on when client returns False
@@ -1907,7 +1907,7 @@ def test_filter_handle_exceptions_sets_unavailable(
     ent.hass = MagicMock(spec=HomeAssistant)
     ent.coordinator = make_coord({})
     ent.entity_id = f"switch.{ent._attr_unique_id}"
-    stub_async_write_ha_state(ent)
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
 
     # prepare a mapping-like object whose get() raises the desired exception
     class BadGet(dict):
@@ -1949,7 +1949,7 @@ def test_nat_handle_exceptions_sets_unavailable(exc_type, coordinator, make_conf
     ent.hass = MagicMock(spec=HomeAssistant)
     ent.coordinator = make_coord({})
     ent.entity_id = f"switch.{ent.entity_description.key}"
-    stub_async_write_ha_state(ent)
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
 
     # create a mapping whose __contains__ raises the exception when checking 'disabled'
     class BadContains(dict):
@@ -1983,7 +1983,7 @@ def test_vpn_handle_exceptions_sets_unavailable(exc_type, coordinator, make_conf
     )
     ent.hass = MagicMock(spec=HomeAssistant)
     ent.entity_id = f"switch.{ent.entity_description.key}"
-    stub_async_write_ha_state(ent)
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
 
     # instance must be a MutableMapping so the code reaches the try/except block;
     # create a dict subclass that raises when __getitem__ is used for ['enabled']
@@ -2023,7 +2023,7 @@ def test_service_handle_exceptions_sets_unavailable(
     )
     ent.hass = MagicMock(spec=HomeAssistant)
     ent.entity_id = f"switch.{ent.entity_description.key}"
-    stub_async_write_ha_state(ent)
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
 
     # create an object that raises when __getitem__ is used (service[prop])
     class BadIndex(dict):

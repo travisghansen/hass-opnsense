@@ -14,7 +14,6 @@ from custom_components.opnsense import (
     switch as switch_mod,
 )
 from custom_components.opnsense.const import CONF_SYNC_FIREWALL_AND_NAT
-from tests.utilities import stub_async_write_ha_state
 
 
 @pytest.mark.asyncio
@@ -261,7 +260,7 @@ async def test_scanner_entity_handle_coordinator_update_missing_state_sets_unava
     )
     # ensure async_write_ha_state won't raise due to missing hass during unit test
     ent.hass = MagicMock()
-    stub_async_write_ha_state(ent)
+    object.__setattr__(ent, "async_write_ha_state", MagicMock())
     ent._handle_coordinator_update()
     assert ent._available is False
 
