@@ -1292,6 +1292,35 @@ def test_dhcp_leases_sensor_handles_none_payload(key, make_config_entry) -> None
     assert writes == [False]
 
 
+@pytest.mark.parametrize("leases", [None, []])
+def test_dhcp_leases_interface_sensor_handles_non_mapping_leases(leases, make_config_entry) -> None:
+    """DHCP interface leases sensor should be unavailable when leases are not a mapping."""
+    entry = make_config_entry()
+
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {"dhcp_leases": {"leases": leases}}
+
+    desc = MagicMock()
+    desc.key = "dhcp_leases.lan"
+    desc.name = "DHCP LAN"
+
+    s = OPNsenseDHCPLeasesSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    s.hass = MagicMock()
+    s.entity_id = "sensor.dhcp_lan"
+
+    writes: list[bool] = []
+
+    def collector() -> None:
+        """Collect availability when the entity state is written."""
+        writes.append(bool(getattr(s, "_available", None)))
+
+    object.__setattr__(s, "async_write_ha_state", collector)
+    s._handle_coordinator_update()
+
+    assert s.available is False
+    assert writes == [False]
+
+
 @pytest.mark.parametrize("exc_type", [TypeError, KeyError, ZeroDivisionError])
 def test_dhcp_leases_handles_exceptions(exc_type, make_config_entry):
     """DHCP lease aggregation marks the sensor unavailable on lease errors.
