@@ -6,16 +6,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
 import pytest
+
 from custom_components.opnsense import (
     device_tracker as device_tracker_mod,
-)
-from custom_components.opnsense import (
     pyopnsense,
-)
-from custom_components.opnsense import (
     sensor as sensor_mod,
-)
-from custom_components.opnsense import (
     switch as switch_mod,
 )
 from custom_components.opnsense.const import CONF_SYNC_FIREWALL_AND_NAT

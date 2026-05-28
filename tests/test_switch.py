@@ -5,12 +5,13 @@ async setup flows for the integration's switch platform.
 """
 
 import asyncio
-import contextlib
 from collections.abc import Callable, MutableMapping, Sequence
+import contextlib
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
 from custom_components.opnsense import switch as switch_mod
 from custom_components.opnsense.const import (
     ATTR_NAT_OUTBOUND,
@@ -45,7 +46,6 @@ from custom_components.opnsense.switch import (
 )
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
 from homeassistant.core import HomeAssistant
-
 from tests.utilities import stub_async_write_ha_state
 
 
