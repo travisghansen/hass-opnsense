@@ -13,12 +13,53 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CONF_SYNC_NOTICES, COORDINATOR, DEFAULT_SYNC_OPTION_VALUE
+from .const import CONF_SYNC_INTERFACES, CONF_SYNC_NOTICES, COORDINATOR, DEFAULT_SYNC_OPTION_VALUE
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity
-from .helpers import dict_get
+from .helpers import coerce_bool, dict_get
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+
+
+async def _compile_interface_enabled_binary_sensors(
+    config_entry: ConfigEntry,
+    coordinator: OPNsenseDataUpdateCoordinator,
+) -> list:
+    """Compile per-interface enabled-state binary sensors.
+
+    Args:
+        config_entry: Config entry being set up.
+        coordinator: Data update coordinator that caches OPNsense state.
+
+    Returns:
+        list: Interface enabled binary sensor entities.
+    """
+    state: dict[str, Any] = coordinator.data
+    if not isinstance(state, MutableMapping):
+        return []
+
+    interfaces = state.get("interfaces")
+    if not isinstance(interfaces, Mapping):
+        return []
+
+    entities: list = []
+    for interface_name, interface in interfaces.items():
+        if not isinstance(interface_name, str) or not isinstance(interface, Mapping):
+            continue
+
+        entities.append(
+            OPNsenseInterfaceEnabledBinarySensor(
+                config_entry=config_entry,
+                coordinator=coordinator,
+                entity_description=BinarySensorEntityDescription(
+                    key=f"interface.{interface_name}.enabled",
+                    name=f"Interface {interface.get('name', interface_name)} Enabled",
+                    icon="mdi:network",
+                    entity_registry_enabled_default=False,
+                ),
+            )
+        )
+    return entities
 
 
 async def async_setup_entry(
@@ -32,6 +73,8 @@ async def async_setup_entry(
     config: Mapping[str, Any] = config_entry.data
 
     entities: list = []
+    if config.get(CONF_SYNC_INTERFACES, DEFAULT_SYNC_OPTION_VALUE):
+        entities.extend(await _compile_interface_enabled_binary_sensors(config_entry, coordinator))
     if config.get(CONF_SYNC_NOTICES, DEFAULT_SYNC_OPTION_VALUE):
         entities.append(
             OPNsensePendingNoticesPresentBinarySensor(
@@ -74,6 +117,40 @@ class OPNsenseBinarySensor(OPNsenseEntity, BinarySensorEntity):
         )
         self.entity_description: BinarySensorEntityDescription = entity_description
         self._attr_is_on: bool = False
+
+
+class OPNsenseInterfaceEnabledBinarySensor(OPNsenseBinarySensor):
+    """OPNsense binary sensor for interface enabled state."""
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle coordinator update."""
+        state: dict[str, Any] = self.coordinator.data
+        if not isinstance(state, MutableMapping):
+            self._available = False
+            self.async_write_ha_state()
+            return
+
+        key_parts = self.entity_description.key.split(".")
+        if len(key_parts) != 3 or key_parts[0] != "interface" or key_parts[2] != "enabled":
+            self._available = False
+            self.async_write_ha_state()
+            return
+
+        interface_name = key_parts[1]
+        interface = dict_get(state, f"interfaces.{interface_name}", {})
+        if not isinstance(interface, Mapping) or interface.get("enabled") is None:
+            self._available = False
+            self.async_write_ha_state()
+            return
+
+        self._available = True
+        self._attr_is_on = coerce_bool(interface.get("enabled"))
+        self._attr_extra_state_attributes = {}
+        for attr in ("interface", "device", "ipv4", "ipv6", "mac"):
+            if attr in interface and (interface[attr] or isinstance(interface[attr], bool)):
+                self._attr_extra_state_attributes[attr] = interface[attr]
+        self.async_write_ha_state()
 
 
 class OPNsensePendingNoticesPresentBinarySensor(OPNsenseBinarySensor):
