@@ -61,121 +61,23 @@ jobs:
 
       - name: Build aiopnsense release notes
         if: steps.versions.outputs.update_needed == 'true'
-        id: release_notes
-        uses: actions/github-script@v9
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           CURRENT_VERSION: ${{ steps.versions.outputs.current }}
+          PYPROJECT_CURRENT_VERSION: ${{ steps.versions.outputs.pyproject_current }}
           LATEST_VERSION: ${{ steps.versions.outputs.latest }}
           REPO_OWNER: ${{ github.event.inputs.aiopnsense_release_owner || vars.AIOPNSENSE_RELEASE_OWNER || 'Snuffy2' }}
           REPO_NAME: ${{ github.event.inputs.aiopnsense_release_repo || vars.AIOPNSENSE_RELEASE_REPO || 'aiopnsense' }}
-        with:
-          script: |
-            const current = process.env.CURRENT_VERSION.replace(/^v/i, "");
-            const latest = process.env.LATEST_VERSION.replace(/^v/i, "");
-            const releaseOwner = process.env.REPO_OWNER;
-            const releaseRepo = process.env.REPO_NAME;
+        run: |
+          set -euo pipefail
 
-            function parseVersion(version) {
-              return version
-                .replace(/^v/i, "")
-                .split(/[^0-9]+/)
-                .filter(Boolean)
-                .map((part) => Number(part));
-            }
-
-            function compareVersions(a, b) {
-              const pa = parseVersion(a);
-              const pb = parseVersion(b);
-              const max = Math.max(pa.length, pb.length);
-              for (let i = 0; i < max; i += 1) {
-                const va = pa[i] ?? 0;
-                const vb = pb[i] ?? 0;
-                if (va > vb) return 1;
-                if (va < vb) return -1;
-              }
-              return 0;
-            }
-
-            function isPrerelease(version) {
-              return /(?:[.\-_]?(?:a|alpha|b|beta|c|pre|preview|rc|dev)\d*)/i.test(
-                version,
-              );
-            }
-
-            function stableVersion(version) {
-              return version.replace(
-                /[.\-_]?(?:a|alpha|b|beta|c|pre|preview|rc|dev)\d*.*$/i,
-                "",
-              );
-            }
-
-            function sanitizeReleaseBody(body) {
-              return body
-                .replace(/\[@([A-Za-z0-9-]+)\]\(https?:\/\/github\.com\/[A-Za-z0-9-]+\)/g, "$1")
-                .replace(/@(?=[A-Za-z0-9-]+(?:\/[A-Za-z0-9-]+)?)/g, "@<!-- -->")
-                .replace(
-                  /\b(close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+((?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)?#\d+)/gi,
-                  (_match, keyword, reference) =>
-                    `${keyword} ${reference.replace("#", "\\#")}`,
-                );
-            }
-
-            const releases = await github.paginate(github.rest.repos.listReleases, {
-              owner: releaseOwner,
-              repo: releaseRepo,
-              per_page: 100,
-            });
-            if (releases.length === 0) {
-              core.setFailed(
-                `No releases found for ${releaseOwner}/${releaseRepo}. ` +
-                  "Check workflow inputs or repository variables " +
-                  "(AIOPNSENSE_RELEASE_OWNER/AIOPNSENSE_RELEASE_REPO).",
-              );
-              return;
-            }
-
-            const selected = releases
-              .filter((release) => {
-                const tagVersion = release.tag_name.replace(/^v/i, "");
-                const currentIsPrerelease = isPrerelease(current);
-                const currentStable = stableVersion(current);
-                const lowerBound = compareVersions(tagVersion, currentStable);
-                return (
-                  !isPrerelease(tagVersion) &&
-                  (lowerBound > 0 || (currentIsPrerelease && lowerBound === 0)) &&
-                  compareVersions(tagVersion, latest) <= 0
-                );
-              })
-              .sort((a, b) =>
-                compareVersions(
-                  a.tag_name.replace(/^v/i, ""),
-                  b.tag_name.replace(/^v/i, ""),
-                ),
-              );
-
-            let notes = "";
-            if (selected.length === 0) {
-              notes =
-                "No matching GitHub release notes were found for this version range.";
-            } else {
-              notes = selected
-                .map((release) => {
-                  const title = sanitizeReleaseBody(release.name || release.tag_name);
-                  const tag = sanitizeReleaseBody(release.tag_name);
-                  const body = sanitizeReleaseBody(
-                    (release.body || "No release body provided.").trim(),
-                  );
-                  return [
-                    `### ${title} (${tag})`,
-                    release.html_url,
-                    "",
-                    body,
-                  ].join("\n");
-                })
-                .join("\n\n---\n\n");
-            }
-
-            core.setOutput("notes", notes);
+          python .github/scripts/build_aiopnsense_release_notes.py \
+            --current-version "$CURRENT_VERSION" \
+            --pyproject-current-version "$PYPROJECT_CURRENT_VERSION" \
+            --latest-version "$LATEST_VERSION" \
+            --release-owner "$REPO_OWNER" \
+            --release-repo "$REPO_NAME" \
+            --body-path aiopnsense-update-pr-body.md
 
       - name: Create or update aiopnsense update PR
         if: steps.versions.outputs.update_needed == 'true'
@@ -188,55 +90,27 @@ jobs:
           title: 'Bump aiopnsense to ${{ steps.versions.outputs.latest }}'
           author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
           labels: aiopnsense-auto-update
-          body: |
-            Automated update of aiopnsense dependency pins.
-
-            - Previous manifest pinned version: `aiopnsense==${{ steps.versions.outputs.current }}`
-            - Previous pyproject pinned version: `aiopnsense==${{ steps.versions.outputs.pyproject_current }}`
-            - Updated pinned version: `aiopnsense==${{ steps.versions.outputs.latest }}`
-
-            ## aiopnsense release notes in range
-            ${{ steps.release_notes.outputs.notes }}
+          body-path: aiopnsense-update-pr-body.md
           add-paths: |
             custom_components/opnsense/manifest.json
             pyproject.toml
 
       - name: Close extra auto-generated PRs
         if: steps.versions.outputs.update_needed == 'true' && steps.cpr.outputs.pull-request-number != ''
-        uses: actions/github-script@v9
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           KEEP_PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
-        with:
-          script: |
-            const keep = Number(process.env.KEEP_PR_NUMBER);
-            const branch = "chore/update-aiopnsense-manifest";
-            const pulls = await github.paginate(github.rest.pulls.list, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: "open",
-              per_page: 100,
-            });
+        run: |
+          set -euo pipefail
 
-            for (const pr of pulls) {
-              if (pr.number === keep) {
-                continue;
-              }
-              const hasAutoLabel = pr.labels.some(
-                (label) => label.name === "aiopnsense-auto-update",
-              );
-              if (!hasAutoLabel) {
-                continue;
-              }
-              if (pr.head.ref !== branch) {
-                continue;
-              }
-              await github.rest.pulls.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: pr.number,
-                state: "closed",
-              });
-            }
+          python .github/scripts/cleanup_aiopnsense_update_branches.py \
+            --repository "${{ github.repository }}" \
+            --branch chore/update-aiopnsense-manifest \
+            --branch-prefix chore/update-aiopnsense \
+            --label-name aiopnsense-auto-update \
+            --keep-pr-number "$KEEP_PR_NUMBER" \
+            --close-stale-prs \
+            --delete-merged-branches
 
       - name: Log when no update is required
         if: steps.versions.outputs.update_needed != 'true'
@@ -244,61 +118,16 @@ jobs:
 
       - name: Close stale aiopnsense update PRs
         if: steps.versions.outputs.update_needed != 'true'
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const branch = "chore/update-aiopnsense-manifest";
-            const labelName = "aiopnsense-auto-update";
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
 
-            const pulls = await github.paginate(github.rest.pulls.list, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: "open",
-              per_page: 100,
-            });
-
-            const stalePulls = pulls.filter(
-              (pr) =>
-                pr.head.ref === branch &&
-                pr.labels.some((label) => label.name === labelName),
-            );
-
-            if (stalePulls.length === 0) {
-              core.info(
-                `No open ${labelName} PRs found for branch ${branch}.`,
-              );
-            } else {
-              for (const pr of stalePulls) {
-                await github.rest.pulls.update({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  pull_number: pr.number,
-                  state: "closed",
-                });
-
-                core.info(`Closed stale aiopnsense update PR #${pr.number}.`);
-              }
-            }
-
-            try {
-              await github.rest.git.deleteRef({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                ref: `heads/${branch}`,
-              });
-              core.info(`Deleted stale branch ${branch}.`);
-            } catch (error) {
-              const status = error.status ?? error.response?.status;
-
-              const message = error.response?.data?.message ?? error.message ?? "";
-
-              if (
-                status === 404 ||
-                (status === 422 && message.includes("Reference does not exist"))
-              ) {
-                core.info(`Branch ${branch} was already deleted.`);
-                return;
-              }
-
-              throw error;
-            }
+          python .github/scripts/cleanup_aiopnsense_update_branches.py \
+            --repository "${{ github.repository }}" \
+            --branch chore/update-aiopnsense-manifest \
+            --branch-prefix chore/update-aiopnsense \
+            --label-name aiopnsense-auto-update \
+            --close-stale-prs \
+            --delete-stale-branch \
+            --delete-merged-branches

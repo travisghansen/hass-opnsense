@@ -10,6 +10,8 @@ import pytest
 
 WORKFLOW_PATH = Path(".github/workflows/update_aiopnsense.yml")
 SCRIPT_PATH = Path(".github/scripts/update_aiopnsense_pins.py")
+RELEASE_NOTES_SCRIPT_PATH = Path(".github/scripts/build_aiopnsense_release_notes.py")
+CLEANUP_SCRIPT_PATH = Path(".github/scripts/cleanup_aiopnsense_update_branches.py")
 
 
 def _write_pin_files(
@@ -46,11 +48,28 @@ ha = [
 @pytest.fixture
 def updater_script() -> ModuleType:
     """Load the aiopnsense pin updater script as a test module."""
-    spec = util.spec_from_file_location("update_aiopnsense_pins", SCRIPT_PATH)
+    return _load_script("update_aiopnsense_pins", SCRIPT_PATH)
+
+
+@pytest.fixture
+def release_notes_script() -> ModuleType:
+    """Load the aiopnsense release-note builder script as a test module."""
+    return _load_script("build_aiopnsense_release_notes", RELEASE_NOTES_SCRIPT_PATH)
+
+
+@pytest.fixture
+def cleanup_script() -> ModuleType:
+    """Load the aiopnsense cleanup script as a test module."""
+    return _load_script("cleanup_aiopnsense_update_branches", CLEANUP_SCRIPT_PATH)
+
+
+def _load_script(module_name: str, script_path: Path) -> ModuleType:
+    """Load a checked-in workflow helper script as a test module."""
+    spec = util.spec_from_file_location(module_name, script_path)
     assert spec is not None
     assert spec.loader is not None
     module = util.module_from_spec(spec)
-    sys.modules["update_aiopnsense_pins"] = module
+    sys.modules[module_name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -65,38 +84,22 @@ def updater_script() -> ModuleType:
         ("pyproject.toml", "updates the local dependency pin"),
         ("pyproject_current", "reports pyproject drift in PR metadata"),
         (str(SCRIPT_PATH), "runs the checked-in updater helper"),
+        (str(RELEASE_NOTES_SCRIPT_PATH), "runs the checked-in release-note helper"),
+        (str(CLEANUP_SCRIPT_PATH), "runs the checked-in cleanup helper"),
+        ("--body-path aiopnsense-update-pr-body.md", "uses a PR body file"),
+        ("--delete-merged-branches", "cleans merged workflow-owned branches"),
         ("LATEST_VERSION: ${{ steps.versions.outputs.latest }}", "exports latest pin"),
         ('--latest-version "$LATEST_VERSION"', "avoids shell template injection"),
-        ("status === 422", "handles GitHub missing-reference responses"),
-        ('message.includes("Reference does not exist")', "detects stale deleted branches"),
-        ("Branch ${branch} was already deleted.", "logs stale branch cleanup"),
-        ("function isPrerelease(version)", "detects prerelease release tags"),
-        ("function stableVersion(version)", "normalizes prerelease current pins"),
-        ("const currentIsPrerelease = isPrerelease(current);", "tracks prerelease repairs"),
-        ("const currentStable = stableVersion(current);", "compares against stable base"),
-        ("const lowerBound = compareVersions(tagVersion, currentStable);", "bounds notes"),
-        ("!isPrerelease(tagVersion)", "filters prerelease release notes"),
-        (
-            "(lowerBound > 0 || (currentIsPrerelease && lowerBound === 0))",
-            "excludes current stable except prerelease repairs",
-        ),
-        (
-            "const title = sanitizeReleaseBody(release.name || release.tag_name);",
-            "sanitizes release-note headings",
-        ),
-        ("const tag = sanitizeReleaseBody(release.tag_name);", "sanitizes tag headings"),
-        ("`### ${title} (${tag})`", "uses sanitized heading values"),
-        (r"@(?=[A-Za-z0-9-]+(?:\/[A-Za-z0-9-]+)?)", "neutralizes mentions"),
-        ('"@<!-- -->"', "breaks GitHub mention syntax"),
-        ("reference.replace", "escapes issue references"),
-        (r'"\\#"', "breaks GitHub closing keywords"),
-        ("close[sd]?|fix(?:e[sd])?|resolve[sd]?", "matches closing keywords"),
     ],
 )
 def test_workflow_contains_expected_update_logic(needle: str, reason: str) -> None:
     """Workflow should include the expected aiopnsense updater logic."""
     del reason
-    workflow = WORKFLOW_PATH.read_text()
+    workflow = (
+        f"{WORKFLOW_PATH.read_text()}\n"
+        f"{RELEASE_NOTES_SCRIPT_PATH.read_text()}\n"
+        f"{CLEANUP_SCRIPT_PATH.read_text()}"
+    )
 
     assert needle in workflow
 
@@ -232,3 +235,192 @@ ha = [
             pyproject_path=pyproject_path,
             latest_version="1.0.10",
         )
+
+
+def test_release_note_script_builds_sanitized_pr_body(
+    tmp_path: Path,
+    release_notes_script: ModuleType,
+) -> None:
+    """Release-note script should build a mention-safe PR body file."""
+    releases = [
+        {
+            "tag_name": "1.0.8",
+            "name": "Ignored current",
+            "body": "old",
+            "html_url": "https://example.test/1.0.8",
+        },
+        {
+            "tag_name": "1.0.9",
+            "name": "Fixes @someone",
+            "body": "fixes #123 and thanks [@helper](https://github.com/helper)",
+            "html_url": "https://example.test/1.0.9",
+        },
+        {
+            "tag_name": "1.1.0rc1",
+            "name": "Ignored prerelease",
+            "body": "future",
+            "html_url": "https://example.test/1.1.0rc1",
+        },
+    ]
+    body_path = tmp_path / "body.md"
+
+    release_notes_script.write_pr_body(
+        body_path=body_path,
+        releases=releases,
+        current_version="1.0.8",
+        pyproject_current_version="1.0.8",
+        latest_version="1.0.9",
+    )
+
+    body = body_path.read_text()
+    assert "Automated update of aiopnsense dependency pins." in body
+    assert "Updated pinned version: `aiopnsense==1.0.9`" in body
+    assert "### Fixes @<!-- -->someone (1.0.9)" in body
+    assert "fixes \\#123 and thanks helper" in body
+    assert "Ignored current" not in body
+    assert "Ignored prerelease" not in body
+
+
+def test_cleanup_script_closes_stale_prs_and_deletes_workflow_branches(
+    cleanup_script: ModuleType,
+) -> None:
+    """Cleanup script should close stale PRs and remove workflow-created branches."""
+
+    class FakeGithubClient:
+        """Fake GitHub client that records branch cleanup operations."""
+
+        def __init__(self) -> None:
+            """Initialize fake pull request and ref state."""
+            self.closed_prs: list[int] = []
+            self.deleted_refs: list[str] = []
+            self.open_pulls: list[dict[str, object]] = [
+                {
+                    "number": 10,
+                    "head": {
+                        "ref": "chore/update-aiopnsense-manifest",
+                        "repo": {"full_name": "o/r"},
+                    },
+                    "labels": [{"name": "aiopnsense-auto-update"}],
+                },
+                {
+                    "number": 11,
+                    "head": {"ref": "feature/manual", "repo": {"full_name": "o/r"}},
+                    "labels": [{"name": "aiopnsense-auto-update"}],
+                },
+            ]
+            self.closed_pulls: list[dict[str, object]] = [
+                {
+                    "number": 8,
+                    "merged_at": "2026-05-28T00:00:00Z",
+                    "head": {
+                        "ref": "chore/update-aiopnsense-manifest",
+                        "repo": {"full_name": "o/r"},
+                    },
+                    "labels": [{"name": "aiopnsense-auto-update"}],
+                },
+                {
+                    "number": 7,
+                    "merged_at": None,
+                    "head": {"ref": "chore/update-aiopnsense-old", "repo": {"full_name": "o/r"}},
+                    "labels": [{"name": "aiopnsense-auto-update"}],
+                },
+            ]
+
+        def list_pulls(self, *, state: str) -> list[dict[str, object]]:
+            """Return fake pull requests by state."""
+            return self.open_pulls if state == "open" else self.closed_pulls
+
+        def close_pull(self, pull_number: int) -> None:
+            """Record a closed pull request."""
+            self.closed_prs.append(pull_number)
+
+        def delete_ref(self, ref: str) -> None:
+            """Record a deleted git ref."""
+            self.deleted_refs.append(ref)
+
+    client = FakeGithubClient()
+
+    result = cleanup_script.cleanup_update_branches(
+        client=client,
+        repository="o/r",
+        branch="chore/update-aiopnsense-manifest",
+        branch_prefix="chore/update-aiopnsense",
+        label_name="aiopnsense-auto-update",
+        keep_pr_number=None,
+        close_stale_prs=True,
+        delete_stale_branch=True,
+        delete_merged_branches=True,
+    )
+
+    assert client.closed_prs == [10]
+    assert client.deleted_refs == ["heads/chore/update-aiopnsense-manifest"]
+    assert result.closed_prs == [10]
+    assert result.deleted_branches == ["chore/update-aiopnsense-manifest"]
+
+
+def test_cleanup_script_keeps_active_update_branch(cleanup_script: ModuleType) -> None:
+    """Cleanup script should not delete the branch for the kept update PR."""
+
+    class FakeGithubClient:
+        """Fake GitHub client that includes a current PR and old merged PR."""
+
+        def __init__(self) -> None:
+            """Initialize fake pull request and ref state."""
+            self.deleted_refs: list[str] = []
+            self.open_pulls: list[dict[str, object]] = [
+                {
+                    "number": 12,
+                    "head": {
+                        "ref": "chore/update-aiopnsense-manifest",
+                        "repo": {"full_name": "o/r"},
+                    },
+                    "labels": [{"name": "aiopnsense-auto-update"}],
+                },
+            ]
+            self.closed_pulls: list[dict[str, object]] = [
+                {
+                    "number": 8,
+                    "merged_at": "2026-05-28T00:00:00Z",
+                    "head": {
+                        "ref": "chore/update-aiopnsense-manifest",
+                        "repo": {"full_name": "o/r"},
+                    },
+                    "labels": [{"name": "aiopnsense-auto-update"}],
+                },
+                {
+                    "number": 6,
+                    "merged_at": "2026-05-20T00:00:00Z",
+                    "head": {"ref": "chore/update-aiopnsense-old", "repo": {"full_name": "o/r"}},
+                    "labels": [{"name": "aiopnsense-auto-update"}],
+                },
+            ]
+
+        def list_pulls(self, *, state: str) -> list[dict[str, object]]:
+            """Return fake pull requests by state."""
+            return self.open_pulls if state == "open" else self.closed_pulls
+
+        def close_pull(self, pull_number: int) -> None:
+            """Fail if the kept pull request would be closed."""
+            raise AssertionError(f"Unexpected close for PR {pull_number}")
+
+        def delete_ref(self, ref: str) -> None:
+            """Record a deleted git ref."""
+            self.deleted_refs.append(ref)
+
+    client = FakeGithubClient()
+
+    result = cleanup_script.cleanup_update_branches(
+        client=client,
+        repository="o/r",
+        branch="chore/update-aiopnsense-manifest",
+        branch_prefix="chore/update-aiopnsense",
+        label_name="aiopnsense-auto-update",
+        keep_pr_number=12,
+        close_stale_prs=True,
+        delete_stale_branch=False,
+        delete_merged_branches=True,
+    )
+
+    assert client.deleted_refs == ["heads/chore/update-aiopnsense-old"]
+    assert result.closed_prs == []
+    assert result.deleted_branches == ["chore/update-aiopnsense-old"]
