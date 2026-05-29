@@ -11,7 +11,9 @@ from homeassistant.const import PERCENTAGE, Platform, UnitOfInformation, UnitOfT
 
 VERSION = "v0.6.7"
 DOMAIN = "opnsense"
-OPNSENSE_LTD_FIRMWARE = "26.1"  # If less than this, some functions may not work but the integration in general should work. Show repair warning.
+# If less than this, some functions may not work but the integration in general should work.
+# Show repair warning.
+OPNSENSE_LTD_FIRMWARE = "26.1"
 OPNSENSE_MIN_FIRMWARE = "25.1"  # If less than this, don't allow install. It will not work.
 
 UNDO_UPDATE_LISTENER = "undo_update_listener"

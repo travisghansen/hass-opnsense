@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import inspect as _inspect
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
+import aiohttp
 import pytest
 
 from custom_components.opnsense import client_factory as factory_mod
+
+TEST_PASSWORD = "p"
 
 
 def test_coerce_query_counts_variants() -> None:
@@ -33,7 +36,7 @@ async def test_add_query_count_compat_noop_when_get_query_counts_exists() -> Non
             """Return already-normalized query counters for compatibility testing."""
             return (1, 2)
 
-    client = _Client()
+    client: Any = _Client()
     patched: Any = factory_mod._add_query_count_compat(client)
     assert await patched.get_query_counts() == (1, 2)
 
@@ -47,7 +50,7 @@ async def test_add_query_count_compat_normalizes_existing_get_query_counts() -> 
             """Return scalar query counter to test normalization behavior."""
             return 7
 
-    client = _Client()
+    client: Any = _Client()
     patched: Any = factory_mod._add_query_count_compat(client)
     assert await patched.get_query_counts() == (7, 0)
 
@@ -65,7 +68,7 @@ async def test_add_plugin_compat_noop_when_plugin_methods_exist() -> None:
             """Return deprecated state so shim does not override existing method."""
             return True
 
-    client = _Client()
+    client: Any = _Client()
     patched: Any = factory_mod._add_plugin_compat(client)
     assert await patched.is_plugin_installed() is True
     assert await patched.is_plugin_deprecated() is True
@@ -87,7 +90,7 @@ async def test_add_plugin_compat_uses_is_named_plugin_installed() -> None:
             """
             return plugin_name == "os-homeassistant-maxit"
 
-    client = _Client()
+    client: Any = _Client()
     patched: Any = factory_mod._add_plugin_compat(client)
     assert await patched.is_plugin_installed() is True
     assert await patched.is_plugin_deprecated() is False
@@ -102,7 +105,7 @@ async def test_add_plugin_compat_uses_installed_plugins_collection() -> None:
             """Return installed plugin names for collection-based detection tests."""
             return {"os-vnstat", "os-homeassistant-maxit"}
 
-    client = _Client()
+    client: Any = _Client()
     patched: Any = factory_mod._add_plugin_compat(client)
     assert await patched.is_plugin_installed() is True
     assert await patched.is_plugin_deprecated() is False
@@ -120,7 +123,7 @@ async def test_add_plugin_compat_uses_installed_plugins_package_rows() -> None:
                 {"name": "os-homeassistant-maxit", "installed": "1"},
             ]
 
-    client = _Client()
+    client: Any = _Client()
     patched: Any = factory_mod._add_plugin_compat(client)
     assert await patched.is_plugin_installed() is True
     assert await patched.is_plugin_deprecated() is False
@@ -139,7 +142,7 @@ async def test_add_plugin_compat_uses_firmware_info_when_plugin_helpers_missing(
                 ]
             }
 
-    client = _Client()
+    client: Any = _Client()
     patched: Any = factory_mod._add_plugin_compat(client)
     assert await patched.is_plugin_installed() is True
     assert await patched.is_plugin_deprecated() is False
@@ -152,16 +155,20 @@ async def test_add_plugin_compat_caches_safe_dict_firmware_info() -> None:
     class _Client:
         def __init__(self) -> None:
             """Initialize fake client with firmware-info fallback response."""
-            self._safe_dict_get = AsyncMock(
-                return_value={
-                    "package": [
-                        {"name": "os-vnstat", "installed": "1"},
-                        {"name": "os-homeassistant-maxit", "installed": "1"},
-                    ]
-                }
+            object.__setattr__(
+                self,
+                "_safe_dict_get",
+                AsyncMock(
+                    return_value={
+                        "package": [
+                            {"name": "os-vnstat", "installed": "1"},
+                            {"name": "os-homeassistant-maxit", "installed": "1"},
+                        ]
+                    }
+                ),
             )
 
-    client = _Client()
+    client: Any = _Client()
     patched: Any = factory_mod._add_plugin_compat(client)
     assert await patched.is_plugin_installed() is True
     assert await patched.is_plugin_installed() is True
@@ -175,11 +182,13 @@ async def test_add_plugin_compat_caches_absent_plugin_from_firmware_info() -> No
     class _Client:
         def __init__(self) -> None:
             """Initialize fake client with firmware-info payload that lacks plugin."""
-            self._safe_dict_get = AsyncMock(
-                return_value={"package": [{"name": "os-vnstat", "installed": "1"}]}
+            object.__setattr__(
+                self,
+                "_safe_dict_get",
+                AsyncMock(return_value={"package": [{"name": "os-vnstat", "installed": "1"}]}),
             )
 
-    client = _Client()
+    client: Any = _Client()
     patched: Any = factory_mod._add_plugin_compat(client)
     assert await patched.is_plugin_installed() is False
     assert await patched.is_plugin_installed() is False
@@ -193,14 +202,18 @@ async def test_add_plugin_compat_retries_inconclusive_direct_key_payload() -> No
     class _Client:
         def __init__(self) -> None:
             """Initialize fake client with inconclusive then valid direct-key payloads."""
-            self._safe_dict_get = AsyncMock(
-                side_effect=[
-                    {"os-vnstat": "1"},
-                    {"os-homeassistant-maxit": "1"},
-                ]
+            object.__setattr__(
+                self,
+                "_safe_dict_get",
+                AsyncMock(
+                    side_effect=[
+                        {"os-vnstat": "1"},
+                        {"os-homeassistant-maxit": "1"},
+                    ]
+                ),
             )
 
-    client = _Client()
+    client: Any = _Client()
     patched: Any = factory_mod._add_plugin_compat(client)
     assert await patched.is_plugin_installed() is False
     assert await patched.is_plugin_installed() is True
@@ -214,14 +227,18 @@ async def test_add_plugin_compat_retries_invalid_firmware_info_payload() -> None
     class _Client:
         def __init__(self) -> None:
             """Initialize fake client with invalid then valid firmware-info payloads."""
-            self._safe_dict_get = AsyncMock(
-                side_effect=[
-                    None,
-                    {"package": [{"name": "os-homeassistant-maxit", "installed": "1"}]},
-                ]
+            object.__setattr__(
+                self,
+                "_safe_dict_get",
+                AsyncMock(
+                    side_effect=[
+                        None,
+                        {"package": [{"name": "os-homeassistant-maxit", "installed": "1"}]},
+                    ]
+                ),
             )
 
-    client = _Client()
+    client: Any = _Client()
     patched: Any = factory_mod._add_plugin_compat(client)
     assert await patched.is_plugin_installed() is False
     assert await patched.is_plugin_installed() is True
@@ -235,7 +252,7 @@ async def test_add_plugin_compat_defaults_to_false_without_helpers() -> None:
     class _Client:
         pass
 
-    client = _Client()
+    client: Any = _Client()
     patched: Any = factory_mod._add_plugin_compat(client)
     assert await patched.is_plugin_installed() is False
     assert await patched.is_plugin_deprecated() is False
@@ -262,7 +279,7 @@ async def test_add_core_compat_noop_when_core_methods_exist() -> None:
             """Return query counters so shim preserves existing implementation."""
             return (3, 4)
 
-    client = _Client()
+    client: Any = _Client()
     patched: Any = factory_mod._add_core_compat(client)
     await patched.set_use_snake_case(initial=True)
     await patched.reset_query_counts()
@@ -282,7 +299,7 @@ async def test_add_core_compat_wraps_set_use_snake_case_without_initial() -> Non
             """Accept naming-mode calls without the `initial` keyword."""
             self.set_use_snake_case_calls += 1
 
-    client = _Client()
+    client: Any = _Client()
     patched: Any = factory_mod._add_core_compat(client)
     await patched.set_use_snake_case(initial=True)
     await patched.set_use_snake_case()
@@ -311,14 +328,14 @@ async def test_add_core_compat_wrapper_passes_initial_when_introspection_fails(
     class _Client:
         def __init__(self) -> None:
             """Initialize fake client with callable instance method."""
-            self.set_use_snake_case = _SetUseSnakeCase()
+            object.__setattr__(self, "set_use_snake_case", _SetUseSnakeCase())
 
     def _broken_signature(callable_obj: Any, **kwargs: Any) -> Any:
         raise ValueError("simulated failure")
 
     monkeypatch.setattr(_inspect, "signature", _broken_signature)
 
-    client = _Client()
+    client: Any = _Client()
     original_setter = client.set_use_snake_case
     patched: Any = factory_mod._add_core_compat(client)
     await patched.set_use_snake_case(initial=True)
@@ -347,14 +364,14 @@ async def test_add_core_compat_wrapper_reraises_internal_type_error(
     class _Client:
         def __init__(self) -> None:
             """Initialize fake client with callable instance method."""
-            self.set_use_snake_case = _SetUseSnakeCase()
+            object.__setattr__(self, "set_use_snake_case", _SetUseSnakeCase())
 
     def _broken_signature(callable_obj: Any, **kwargs: Any) -> Any:
         raise ValueError("simulated failure")
 
     monkeypatch.setattr(_inspect, "signature", _broken_signature)
 
-    patched: Any = factory_mod._add_core_compat(_Client())
+    patched: Any = factory_mod._add_core_compat(cast("Any", _Client()))
     with pytest.raises(TypeError, match="unexpected keyword argument"):
         await patched.set_use_snake_case(initial=True)
 
@@ -366,7 +383,7 @@ async def test_add_core_compat_defaults_when_core_methods_missing() -> None:
     class _Client:
         pass
 
-    client = _Client()
+    client: Any = _Client()
     patched: Any = factory_mod._add_core_compat(client)
     await patched.set_use_snake_case(initial=True)
     await patched.reset_query_counts()
@@ -427,7 +444,7 @@ def test_add_query_count_compat_noop_without_query_methods() -> None:
     class _Client:
         pass
 
-    client = _Client()
+    client: Any = _Client()
     patched: Any = factory_mod._add_query_count_compat(client)
     assert not hasattr(patched, "get_query_counts")
 
@@ -458,8 +475,8 @@ async def test_create_client_uses_legacy_for_old_firmware(monkeypatch: pytest.Mo
     client = await factory_mod.create_opnsense_client(
         url="https://router",
         username="u",
-        password="p",
-        session=SimpleNamespace(),
+        password=TEST_PASSWORD,
+        session=cast("aiohttp.ClientSession", SimpleNamespace()),
         opts={"verify_ssl": True},
     )
     assert isinstance(client, _LegacyClient)
@@ -520,8 +537,8 @@ async def test_create_client_uses_external_for_new_firmware(
     client = await factory_mod.create_opnsense_client(
         url="https://router",
         username="u",
-        password="p",
-        session=SimpleNamespace(),
+        password=TEST_PASSWORD,
+        session=cast("aiohttp.ClientSession", SimpleNamespace()),
         opts={"verify_ssl": True},
         name="Test Router",
     )
@@ -563,8 +580,8 @@ async def test_create_client_logs_external_version_for_new_firmware(
     client = await factory_mod.create_opnsense_client(
         url="https://router",
         username="u",
-        password="p",
-        session=SimpleNamespace(),
+        password=TEST_PASSWORD,
+        session=cast("aiohttp.ClientSession", SimpleNamespace()),
         opts={"verify_ssl": True},
     )
 
@@ -602,8 +619,8 @@ async def test_create_external_client_retries_without_name_and_initial(
     client = await factory_mod._create_external_client(
         url="https://router",
         username="u",
-        password="p",
-        session=SimpleNamespace(),
+        password=TEST_PASSWORD,
+        session=cast("aiohttp.ClientSession", SimpleNamespace()),
         opts={"verify_ssl": True},
         name="Router",
         initial=True,
@@ -625,8 +642,8 @@ async def test_create_external_client_raises_when_missing_class(
         await factory_mod._create_external_client(
             url="https://router",
             username="u",
-            password="p",
-            session=SimpleNamespace(),
+            password=TEST_PASSWORD,
+            session=cast("aiohttp.ClientSession", SimpleNamespace()),
             opts={"verify_ssl": True},
         )
 
@@ -659,8 +676,8 @@ async def test_create_external_client_raises_when_retry_still_fails(
         await factory_mod._create_external_client(
             url="https://router",
             username="u",
-            password="p",
-            session=SimpleNamespace(),
+            password=TEST_PASSWORD,
+            session=cast("aiohttp.ClientSession", SimpleNamespace()),
             opts={"verify_ssl": True},
             name="Router",
             initial=True,
@@ -709,8 +726,8 @@ async def test_create_client_raises_when_external_dependency_missing(
         await factory_mod.create_opnsense_client(
             url="https://router",
             username="u",
-            password="p",
-            session=SimpleNamespace(),
+            password=TEST_PASSWORD,
+            session=cast("aiohttp.ClientSession", SimpleNamespace()),
             opts={"verify_ssl": True},
         )
 
@@ -764,8 +781,8 @@ async def test_create_client_falls_back_to_legacy_on_uncomparable_firmware(
     client = await factory_mod.create_opnsense_client(
         url="https://router",
         username="u",
-        password="p",
-        session=SimpleNamespace(),
+        password=TEST_PASSWORD,
+        session=cast("aiohttp.ClientSession", SimpleNamespace()),
         opts={"verify_ssl": True},
     )
     assert isinstance(client, _LegacyClient)
@@ -806,8 +823,8 @@ async def test_create_client_closes_probe_when_firmware_probe_raises(
         await factory_mod.create_opnsense_client(
             url="https://router",
             username="u",
-            password="p",
-            session=SimpleNamespace(),
+            password=TEST_PASSWORD,
+            session=cast("aiohttp.ClientSession", SimpleNamespace()),
             opts={"verify_ssl": True},
         )
     assert closed["value"] is True

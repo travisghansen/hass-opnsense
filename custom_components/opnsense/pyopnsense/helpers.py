@@ -146,9 +146,9 @@ def dict_get(data: MutableMapping[str, Any], path: str, default: Any | None = No
         Any | None: Nested value resolved from the provided dotted path, or the
         default when the path is missing.
     """
-    pathList: list = re.split(r"\.", path, flags=re.IGNORECASE)
+    path_list: list = re.split(r"\.", path, flags=re.IGNORECASE)
     result: Any | None = data
-    for key in pathList:
+    for key in path_list:
         if key.isnumeric():
             key = int(key)
         if (isinstance(result, MutableMapping) and key in result) or (
@@ -187,38 +187,38 @@ def timestamp_to_datetime(timestamp: int | None) -> datetime | None:
     return utc_datetime.astimezone()
 
 
-def try_to_int(input: Any | None, retval: int | None = None) -> int | None:
+def try_to_int(value: Any | None, retval: int | None = None) -> int | None:
     """Convert a value to ``int`` and return a fallback on conversion failure.
 
     Args:
-        input: Value to coerce.
+        value: Value to coerce.
         retval: Value returned when conversion fails.
 
     Returns:
         int | None: Converted integer value, or ``retval`` when conversion is not possible.
     """
-    if input is None:
+    if value is None:
         return retval
     try:
-        return int(input)
+        return int(value)
     except ValueError, TypeError:
         return retval
 
 
-def try_to_float(input: Any | None, retval: float | None = None) -> float | None:
+def try_to_float(value: Any | None, retval: float | None = None) -> float | None:
     """Convert a value to ``float`` and return a fallback on conversion failure.
 
     Args:
-        input: Value to coerce.
+        value: Value to coerce.
         retval: Value returned when conversion fails.
 
     Returns:
         float | None: Converted float value, or ``retval`` when conversion is not possible.
     """
-    if input is None:
+    if value is None:
         return retval
     try:
-        return float(input)
+        return float(value)
     except ValueError, TypeError:
         return retval
 

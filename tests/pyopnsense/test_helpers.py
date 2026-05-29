@@ -1,7 +1,8 @@
 """Tests for `pyopnsense.helpers` utility and decorator helpers."""
 
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime
+from typing import Any, Never
 from unittest.mock import MagicMock
 
 import aiohttp
@@ -9,6 +10,8 @@ import pytest
 
 from custom_components.opnsense import pyopnsense
 from custom_components.opnsense.pyopnsense import helpers as pyopnsense_helpers
+
+TEST_PASSWORD = "p"
 
 
 def test_human_friendly_duration() -> None:
@@ -66,7 +69,7 @@ def test_dict_get() -> None:
 
 def test_timestamp_to_datetime() -> None:
     """Convert timestamp integers to datetime objects, handling None."""
-    ts = int(datetime.now().timestamp())
+    ts = int(datetime.now(UTC).timestamp())
     dt = pyopnsense_helpers.timestamp_to_datetime(ts)
     assert isinstance(dt, datetime)
     assert dt.tzinfo is not None
@@ -124,7 +127,7 @@ async def test_log_errors_decorator_re_raise_and_suppress() -> None:
     """The _log_errors decorator should re-raise when self._initial is True, otherwise suppress."""
 
     class Dummy:
-        def __init__(self, initial: bool):
+        def __init__(self, initial: bool) -> None:
             """Initialize Dummy."""
             self._initial = initial
 
@@ -152,10 +155,12 @@ async def test_log_errors_decorator_re_raise_and_suppress() -> None:
 async def test_log_errors_timeout_re_raise_and_suppress() -> None:
     """_log_errors should re-raise TimeoutError when client._initial is True and suppress when False."""
     session = MagicMock(spec=aiohttp.ClientSession)
-    client = pyopnsense.OPNsenseClient(url="http://x", username="u", password="p", session=session)
+    client = pyopnsense.OPNsenseClient(
+        url="http://x", username="u", password=TEST_PASSWORD, session=session
+    )
     try:
 
-        async def raising_timeout(*args, **kwargs):
+        async def raising_timeout(*args, **kwargs) -> Never:
             """Raise ``TimeoutError`` so the timeout branch of `_log_errors` runs.
 
             Args:
@@ -187,10 +192,12 @@ async def test_log_errors_timeout_re_raise_and_suppress() -> None:
 async def test_log_errors_server_timeout_re_raise_and_suppress() -> None:
     """_log_errors should re-raise aiohttp.ServerTimeoutError when client._initial is True and suppress when False."""
     session = MagicMock(spec=aiohttp.ClientSession)
-    client = pyopnsense.OPNsenseClient(url="http://x", username="u", password="p", session=session)
+    client = pyopnsense.OPNsenseClient(
+        url="http://x", username="u", password=TEST_PASSWORD, session=session
+    )
     try:
 
-        async def raising_server_timeout(*args, **kwargs):
+        async def raising_server_timeout(*args, **kwargs) -> Never:
             """Raise ``ServerTimeoutError`` for the server-timeout error branch.
 
             Args:
@@ -215,12 +222,14 @@ async def test_log_errors_server_timeout_re_raise_and_suppress() -> None:
 
 
 @pytest.mark.asyncio
-async def test_xmlrpc_timeout_uses_per_call_asyncio_timeout(monkeypatch) -> None:
+async def test_xmlrpc_timeout_uses_per_call_asyncio_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """_xmlrpc_timeout should use asyncio.wait_for with DEFAULT_REQUEST_TIMEOUT_SECONDS."""
     monkeypatch.setattr(pyopnsense_helpers, "DEFAULT_REQUEST_TIMEOUT_SECONDS", 0.01)
 
     @pyopnsense_helpers._xmlrpc_timeout
-    async def fast_func(self):
+    async def fast_func(self: Any) -> str:
         """Fast func."""
         return "ok"
 
@@ -228,7 +237,7 @@ async def test_xmlrpc_timeout_uses_per_call_asyncio_timeout(monkeypatch) -> None
     assert got == "ok"
 
     @pyopnsense_helpers._xmlrpc_timeout
-    async def slow_func(self):
+    async def slow_func(self: Any) -> str:
         """Slow func."""
         await asyncio.sleep(0.05)
         return "late"

@@ -68,7 +68,6 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the OPNsense binary sensors."""
-
     coordinator: OPNsenseDataUpdateCoordinator = getattr(config_entry.runtime_data, COORDINATOR)
     config: Mapping[str, Any] = config_entry.data
 

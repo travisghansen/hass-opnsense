@@ -14,8 +14,6 @@ import xmlrpc
 
 import aiohttp
 import awesomeversion
-import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import (
     CONF_NAME,
@@ -29,6 +27,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 import homeassistant.helpers.config_validation as cv
+import voluptuous as vol
 
 from .client_factory import MissingExternalAiopnsenseDependency, create_opnsense_client
 from .client_protocol import OPNsenseClientProtocol
@@ -241,7 +240,8 @@ def _device_entry_sort_key(
         ip_by_mac: Detected IP addresses keyed by MAC address.
 
     Returns:
-        tuple[int, tuple[int, int] | str]: Key used to sort fallback labels first and detected devices by IP.
+        tuple[int, tuple[int, int] | str]: Key used to sort fallback labels first and
+            detected devices by IP.
     """
     if label.startswith("Not currently detected"):
         return (0, label)
@@ -307,7 +307,8 @@ async def validate_input(
     Returns:
         dict[str, Any]: Updated error mapping suitable for form rendering.
     """
-    # filtered_user_input: MutableMapping[str, Any] = {key: value for key, value in user_input.items() if key != CONF_PASSWORD}
+    # filtered_user_input: MutableMapping[str, Any] = {key: value for key, value in
+    # user_input.items() if key != CONF_PASSWORD}
     # _LOGGER.debug("[validate_input] user_input: %s", filtered_user_input)
 
     try:
@@ -318,7 +319,8 @@ async def validate_input(
         _log_and_set_error(
             errors=errors,
             key="below_min_firmware",
-            message=f"OPNsense Firmware of {user_input.get(CONF_FIRMWARE_VERSION)} is below the minimum supported version of {OPNSENSE_MIN_FIRMWARE}",
+            message=f"OPNsense Firmware of {user_input.get(CONF_FIRMWARE_VERSION)} is below the "
+            f"minimum supported version of {OPNSENSE_MIN_FIRMWARE}",
         )
     except OPNsenseUnknownFirmware:
         _log_and_set_error(
@@ -817,7 +819,8 @@ async def _get_dt_entries(
     Args:
         hass: Home Assistant instance.
         config: Config entry data used to build the OPNsense client.
-        selected_devices: Persisted MAC addresses that should remain selectable even when not currently present in the ARP table.
+        selected_devices: Persisted MAC addresses that should remain selectable even when
+        not currently present in the ARP table.
 
     Returns:
         dict[str, Any]: Mapping of MAC addresses to user-facing labels.
@@ -1148,7 +1151,8 @@ class OPNsenseOptionsFlow(OptionsFlow):
         if user_input is not None:
             # _LOGGER.debug("[options_flow granular_sync] raw user_input: %s", user_input)
             self._config.update(user_input)
-            # _LOGGER.debug("[options_flow granular_sync] merged user_input. config: %s. options: %s", self._config, self._options)
+            # _LOGGER.debug("[options_flow granular_sync] merged user_input. config:
+            # %s. options: %s", self._config, self._options)
             errors = await validate_input(
                 hass=self.hass,
                 user_input=self._config,
@@ -1253,17 +1257,29 @@ class OPNsenseOptionsFlow(OptionsFlow):
         )
 
 
-class InvalidURL(Exception):
+class InvalidURLError(Exception):
     """InvalidURL."""
 
 
-class MissingDeviceUniqueID(Exception):
+InvalidURL = InvalidURLError
+
+
+class MissingDeviceUniqueIDError(Exception):
     """Missing the Device Unique ID."""
 
 
-class BelowMinFirmware(Exception):
+MissingDeviceUniqueID = MissingDeviceUniqueIDError
+
+
+class BelowMinFirmwareError(Exception):
     """Current firmware is below the Minimum supported version."""
 
 
-class PluginMissing(Exception):
+BelowMinFirmware = BelowMinFirmwareError
+
+
+class PluginMissingError(Exception):
     """OPNsense plugin missing."""
+
+
+PluginMissing = PluginMissingError

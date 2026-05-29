@@ -18,11 +18,13 @@ the project-wide conftest which currently overrides the hass fixture.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import MutableMapping
+from collections.abc import Callable, MutableMapping
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+from homeassistant.const import CONF_NAME, CONF_PASSWORD, CONF_URL, CONF_USERNAME, CONF_VERIFY_SSL
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 import custom_components.opnsense as init_mod
 from custom_components.opnsense import config_flow as cf_mod
@@ -32,7 +34,6 @@ from custom_components.opnsense.const import (
     CONF_GRANULAR_SYNC_OPTIONS,
     CONF_MANUAL_DEVICES,
 )
-from homeassistant.const import CONF_NAME, CONF_PASSWORD, CONF_URL, CONF_USERNAME, CONF_VERIFY_SSL
 from tests.utilities import patch_client_factory
 
 homeassistant = pytest.importorskip("homeassistant")
@@ -150,7 +151,7 @@ class _FakeRuntimeClient:
         """Return a fixed pair of query counters for coordinator assertions."""
         return (0, 0)
 
-    async def get_system_info(self):  # first refresh path
+    async def get_system_info(self) -> dict[str, str]:  # first refresh path
         """Return minimal system information for the initial refresh path."""
         return {"name": "sys"}
 
@@ -212,13 +213,13 @@ def _build_mock_hass() -> Any:
 
         def async_update_entry(
             self,
-            entry,
-            data=None,
-            options=None,
-            version=None,
-            unique_id=None,
+            entry: MockConfigEntry,
+            data: Any = None,
+            options: Any = None,
+            version: Any = None,
+            unique_id: Any = None,
             **kwargs,
-        ):
+        ) -> bool:
             # Bypass ConfigEntry attribute protections using object.__setattr__
             """Async update entry.
 
@@ -240,7 +241,9 @@ def _build_mock_hass() -> Any:
                 object.__setattr__(entry, "version", version)
             return True
 
-        async def async_forward_entry_setups(self, entry, platforms):  # pragma: no cover
+        async def async_forward_entry_setups(
+            self, entry: MockConfigEntry, platforms: Any
+        ) -> bool:  # pragma: no cover
             """Async forward entry setups.
 
             Args:
@@ -249,7 +252,9 @@ def _build_mock_hass() -> Any:
             """
             return True
 
-        async def async_unload_platforms(self, entry, platforms):  # pragma: no cover
+        async def async_unload_platforms(
+            self, entry: MockConfigEntry, platforms: Any
+        ) -> bool:  # pragma: no cover
             """Async unload platforms.
 
             Args:
@@ -258,7 +263,9 @@ def _build_mock_hass() -> Any:
             """
             return True
 
-        async def async_reload(self, entry_id):  # pragma: no cover - reload path not asserted
+        async def async_reload(
+            self, entry_id: Any
+        ) -> None:  # pragma: no cover - reload path not asserted
             """Async reload.
 
             Args:
@@ -272,9 +279,10 @@ def _build_mock_hass() -> Any:
 
 
 @pytest.mark.asyncio
-async def test_e2e_basic_config_flow_and_setup(monkeypatch, make_config_entry):
+async def test_e2e_basic_config_flow_and_setup(
+    monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
     """E2E: basic config flow (single step) followed by entry setup."""
-
     # Patch client for config flow
     patch_client_factory(monkeypatch, cf_mod, lambda **k: _FakeFlowClient(device_id="dev-basic"))
     monkeypatch.setattr(
@@ -286,7 +294,7 @@ async def test_e2e_basic_config_flow_and_setup(monkeypatch, make_config_entry):
     flow.hass = hass
 
     # Bypass HA flow unique-id internals (we don't implement hass.config_entries.flow)
-    async def _noop_unique_id(*a, **k):
+    async def _noop_unique_id(*a, **k) -> None:
         """Bypass Home Assistant unique-ID bookkeeping for this flow test.
 
         Args:
@@ -295,8 +303,8 @@ async def test_e2e_basic_config_flow_and_setup(monkeypatch, make_config_entry):
         """
         return
 
-    flow.async_set_unique_id = _noop_unique_id
-    flow._abort_if_unique_id_configured = lambda: None
+    object.__setattr__(flow, "async_set_unique_id", _noop_unique_id)
+    object.__setattr__(flow, "_abort_if_unique_id_configured", lambda: None)
 
     user_input = _make_basic_user_input()
     # Run user step -> should create entry directly (no granular sync)
@@ -337,8 +345,10 @@ async def test_e2e_basic_config_flow_and_setup(monkeypatch, make_config_entry):
 
 @pytest.mark.asyncio
 async def test_e2e_granular_sync_and_options_device_tracker(
-    monkeypatch, make_config_entry, coordinator_capture
-):
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    coordinator_capture: Any,
+) -> None:
     """Exercise granular sync config flow and device tracker options flow end to end.
 
     Validates:
@@ -348,7 +358,6 @@ async def test_e2e_granular_sync_and_options_device_tracker(
         - Subsequent ``async_setup_entry`` honors device tracker enabled and
           instantiates two coordinators.
     """
-
     # Patch flow client
     patch_client_factory(monkeypatch, cf_mod, lambda **k: _FakeFlowClient(device_id="dev-gran"))
     monkeypatch.setattr(
@@ -359,7 +368,7 @@ async def test_e2e_granular_sync_and_options_device_tracker(
     hass = _build_mock_hass()
     flow.hass = hass
 
-    async def _noop_unique_id(*a, **k):  # redefined for this test context
+    async def _noop_unique_id(*a, **k) -> None:  # redefined for this test context
         """Bypass Home Assistant unique-ID bookkeeping for this flow test.
 
         Args:
@@ -368,8 +377,8 @@ async def test_e2e_granular_sync_and_options_device_tracker(
         """
         return
 
-    flow.async_set_unique_id = _noop_unique_id
-    flow._abort_if_unique_id_configured = lambda: None
+    object.__setattr__(flow, "async_set_unique_id", _noop_unique_id)
+    object.__setattr__(flow, "_abort_if_unique_id_configured", lambda: None)
 
     # Step 1: user chooses granular sync
     user_input = _make_basic_user_input()
@@ -459,7 +468,9 @@ async def test_e2e_granular_sync_and_options_device_tracker(
 
 
 @pytest.mark.asyncio
-async def test_e2e_reload_and_unload(monkeypatch, make_config_entry):
+async def test_e2e_reload_and_unload(
+    monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
     """Validate update-listener reload handling and full unload cleanup end to end.
 
     Steps:
@@ -469,7 +480,6 @@ async def test_e2e_reload_and_unload(monkeypatch, make_config_entry):
         - Unload the entry and confirm the client is closed and stored data is
           removed.
     """
-
     # Patch config flow client
     patch_client_factory(monkeypatch, cf_mod, lambda **k: _FakeFlowClient(device_id="dev-rel"))
     monkeypatch.setattr(
@@ -480,7 +490,7 @@ async def test_e2e_reload_and_unload(monkeypatch, make_config_entry):
     hass = _build_mock_hass()
     flow.hass = hass
 
-    async def _noop_unique_id(*a, **k):
+    async def _noop_unique_id(*a, **k) -> None:
         """Bypass Home Assistant unique-ID bookkeeping for this flow test.
 
         Args:
@@ -489,8 +499,8 @@ async def test_e2e_reload_and_unload(monkeypatch, make_config_entry):
         """
         return
 
-    flow.async_set_unique_id = _noop_unique_id
-    flow._abort_if_unique_id_configured = lambda: None
+    object.__setattr__(flow, "async_set_unique_id", _noop_unique_id)
+    object.__setattr__(flow, "_abort_if_unique_id_configured", lambda: None)
 
     result = await flow.async_step_user(user_input=_make_basic_user_input())
     data = result["data"]
@@ -544,7 +554,9 @@ async def test_e2e_reload_and_unload(monkeypatch, make_config_entry):
 
 
 @pytest.mark.asyncio
-async def test_e2e_full_migration_chain(monkeypatch, make_config_entry):
+async def test_e2e_full_migration_chain(
+    monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
     """Exercise the full ``async_migrate_entry`` path from version 1 to 4.
 
     Verifies:
@@ -553,19 +565,18 @@ async def test_e2e_full_migration_chain(monkeypatch, make_config_entry):
         - v3 to v4 transforms telemetry-related sensor unique IDs and removes
           ``*_connected_client_count`` entities.
     """
-
     # Build hass mock with update_entry bypass logic
     hass = _build_mock_hass()
 
     # Fake device & entity registry implementations
     class FakeDevice:
-        def __init__(self, id_: str, identifiers: set[tuple[str, str]]):
+        def __init__(self, id_: str, identifiers: set[tuple[str, str]]) -> None:
             """Initialize FakeDevice."""
             self.id = id_
             self.identifiers = identifiers
 
     class FakeDeviceRegistry:
-        def __init__(self):
+        def __init__(self) -> None:
             """Initialize FakeDeviceRegistry."""
             self._devices: list[FakeDevice] = [
                 FakeDevice("dev-main", {("opnsense", "oldmacid"), ("other", "x")}),
@@ -573,11 +584,12 @@ async def test_e2e_full_migration_chain(monkeypatch, make_config_entry):
             ]
             self.updated: list[FakeDevice] = []
 
-        def async_update_device(self, device_id: str, new_identifiers: set[tuple[str, str]]):
+        def async_update_device(self, device_id: str, new_identifiers: set[tuple[str, str]]) -> Any:
             """Async update device.
 
             Args:
                 device_id: Device identifier used to target the correct OPNsense device or config entry.
+                new_identifiers: Replacement identifiers to store on the fake device.
 
             Raises:
                 ValueError: If an input value cannot be parsed or normalized.
@@ -590,7 +602,7 @@ async def test_e2e_full_migration_chain(monkeypatch, make_config_entry):
             raise ValueError("device not found")
 
     class FakeEntity:
-        def __init__(self, entity_id: str, unique_id: str, device_id: str):
+        def __init__(self, entity_id: str, unique_id: str, device_id: str) -> None:
             """Initialize FakeEntity.
 
             Args:
@@ -603,7 +615,7 @@ async def test_e2e_full_migration_chain(monkeypatch, make_config_entry):
             self.device_id = device_id
 
     class FakeEntityRegistry:
-        def __init__(self):
+        def __init__(self) -> None:
             """Initialize FakeEntityRegistry."""
             self._entities: dict[str, FakeEntity] = {}
             # initial telemetry / non-telemetry examples
@@ -628,7 +640,7 @@ async def test_e2e_full_migration_chain(monkeypatch, make_config_entry):
             self.updated: list[FakeEntity] = []
             self.removed: list[str] = []
 
-        def async_update_entity(self, entity_id: str, new_unique_id: str, **kwargs):
+        def async_update_entity(self, entity_id: str, new_unique_id: str, **kwargs) -> Any:
             # Accept HA's keyword-based calls (e.g. new_unique_id=...) while
             # preserving existing positional behavior. Prefer kwarg when present.
             """Async update entity.
@@ -644,7 +656,7 @@ async def test_e2e_full_migration_chain(monkeypatch, make_config_entry):
             self.updated.append(ent)
             return ent
 
-        def async_remove(self, entity_id: str):
+        def async_remove(self, entity_id: str) -> None:
             """Async remove.
 
             Args:
@@ -680,7 +692,7 @@ async def test_e2e_full_migration_chain(monkeypatch, make_config_entry):
             """Satisfy migration helper cleanup calls in the fake migration client."""
             return
 
-        async def get_host_firmware_version(self):  # not used in migration chain here
+        async def get_host_firmware_version(self) -> str:  # not used in migration chain here
             """Return a placeholder firmware version for migration compatibility."""
             return "25.1"
 

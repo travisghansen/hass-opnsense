@@ -5,13 +5,15 @@ category building, state fetching, device ID mismatch handling, speed
 calculations, and update flow.
 """
 
-from collections.abc import MutableMapping
+from collections.abc import Callable, MutableMapping
 from datetime import timedelta
 import time
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
+from homeassistant.config_entries import ConfigEntry
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.opnsense import coordinator as coordinator_module
 from custom_components.opnsense.const import (
@@ -36,7 +38,7 @@ from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 
 
 @pytest.mark.asyncio
-async def test_init_requires_config_entry(fake_client):
+async def test_init_requires_config_entry(fake_client: Any) -> None:
     """Ensure coordinator initialization requires a config entry."""
     with pytest.raises(ValueError):
         OPNsenseDataUpdateCoordinator(
@@ -45,12 +47,14 @@ async def test_init_requires_config_entry(fake_client):
             name="test",
             update_interval=timedelta(seconds=1),
             device_unique_id="id",
-            config_entry=None,
+            config_entry=cast("ConfigEntry[Any]", None),
         )
 
 
 @pytest.mark.asyncio
-async def test_build_categories_respects_flags(make_config_entry, fake_client):
+async def test_build_categories_respects_flags(
+    make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
+) -> None:
     """Categories builder respects configuration sync flags."""
     entry = make_config_entry(
         {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
@@ -72,7 +76,9 @@ async def test_build_categories_respects_flags(make_config_entry, fake_client):
 
 
 @pytest.mark.asyncio
-async def test_get_states_handles_missing_method_and_calls(make_config_entry, fake_client):
+async def test_get_states_handles_missing_method_and_calls(
+    make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
+) -> None:
     """_get_states should skip missing client methods and return available states."""
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -93,7 +99,9 @@ async def test_get_states_handles_missing_method_and_calls(make_config_entry, fa
 
 
 @pytest.mark.asyncio
-async def test_get_states_uses_single_carp_call(make_config_entry, fake_client):
+async def test_get_states_uses_single_carp_call(
+    make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
+) -> None:
     """Coordinator should fetch CARP once and populate unified CARP state key."""
     client = fake_client()()
     client.get_carp = AsyncMock(
@@ -124,8 +132,10 @@ async def test_get_states_uses_single_carp_call(make_config_entry, fake_client):
 
 @pytest.mark.asyncio
 async def test_check_device_unique_id_mismatch_triggers_issue(
-    monkeypatch, make_config_entry, fake_client
-):
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
     """Mismatched device_unique_id should create an issue and shutdown after threshold."""
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "expected"})
     client = fake_client()()
@@ -147,7 +157,7 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
     # state present but mismatched -> increments and eventually triggers issue
     coord._state = {"device_unique_id": "other"}
     # patch issue registry and async_shutdown to avoid side effects
-    called = {"issue": 0, "shutdown": 0, "issue_kwargs": None}
+    called: dict[str, Any] = {"issue": 0, "shutdown": 0, "issue_kwargs": None}
 
     async def fake_shutdown() -> None:
         """Record that the coordinator requested shutdown after repeated mismatches."""
@@ -164,7 +174,7 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
         called["issue_kwargs"] = kwargs
 
     monkeypatch.setattr(coordinator_module.ir, "async_create_issue", fake_async_create_issue)
-    coord.async_shutdown = fake_shutdown
+    object.__setattr__(coord, "async_shutdown", fake_shutdown)
 
     # call 3 times -> should call issue once and shutdown once
     await coord._check_device_unique_id()
@@ -182,7 +192,7 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
 
 
 @pytest.mark.asyncio
-async def test_calculate_speed_normal_and_exception():
+async def test_calculate_speed_normal_and_exception() -> None:
     """Calculate speed handles normal and exceptional (zero elapsed) cases."""
     # normal pkts
     new_prop, value = await OPNsenseDataUpdateCoordinator._calculate_speed(
@@ -196,7 +206,7 @@ async def test_calculate_speed_normal_and_exception():
     assert value == 50
 
     # zero elapsed_time -> exception handled -> rate 0
-    new_prop2, value2 = await OPNsenseDataUpdateCoordinator._calculate_speed(
+    _new_prop2, value2 = await OPNsenseDataUpdateCoordinator._calculate_speed(
         prop_name="inpkts",
         elapsed_time=0,
         current_parent_value=10,
@@ -206,7 +216,9 @@ async def test_calculate_speed_normal_and_exception():
 
 
 @pytest.mark.asyncio
-async def test_calculate_entity_speeds_applies_calculations(make_config_entry, fake_client):
+async def test_calculate_entity_speeds_applies_calculations(
+    make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
+) -> None:
     """Entity speed calculations should add correct rate keys to state."""
     entry = make_config_entry(
         {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
@@ -270,7 +282,9 @@ async def test_calculate_entity_speeds_applies_calculations(make_config_entry, f
 
 
 @pytest.mark.asyncio
-async def test_calculate_entity_speeds_handles_counter_rollover(make_config_entry, fake_client):
+async def test_calculate_entity_speeds_handles_counter_rollover(
+    make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
+) -> None:
     """Regression: ensure rates never go negative when counters decrease (device reset/rollback)."""
     entry = make_config_entry(
         {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
@@ -324,8 +338,10 @@ async def test_calculate_entity_speeds_handles_counter_rollover(make_config_entr
 
 @pytest.mark.asyncio
 async def test_async_update_data_reentrancy_and_full_flow(
-    monkeypatch, make_config_entry, fake_client
-):
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
     """End-to-end coordinator update flow and reentrancy behavior."""
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True})
     client = fake_client()()
@@ -359,8 +375,10 @@ async def test_async_update_data_reentrancy_and_full_flow(
     monkeypatch.setattr(coord, "_calculate_entity_speeds", fake_calc)
     # Spy on client's reset_query_counts before running the update so we can
     # assert the public method was awaited during the update flow.
-    client.reset_query_counts = AsyncMock(wraps=getattr(client, "reset_query_counts", None))
-    client.get_query_counts = AsyncMock(return_value=(7, 0))
+    object.__setattr__(
+        client, "reset_query_counts", AsyncMock(wraps=getattr(client, "reset_query_counts", None))
+    )
+    object.__setattr__(client, "get_query_counts", AsyncMock(return_value=(7, 0)))
 
     # run update; should return a dict
     out = await coord._async_update_data()
@@ -376,8 +394,10 @@ async def test_async_update_data_reentrancy_and_full_flow(
 
 @pytest.mark.asyncio
 async def test_async_setup_calls_client_set_use_snake_case(
-    monkeypatch, make_config_entry, fake_client
-):
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
     """Coordinator setup invokes client set_use_snake_case when appropriate."""
     called = {"count": 0}
 
@@ -387,7 +407,7 @@ async def test_async_setup_calls_client_set_use_snake_case(
 
     entry = make_config_entry()
     client = fake_client()()
-    client.set_use_snake_case = fake_set_use_snake_case
+    object.__setattr__(client, "set_use_snake_case", fake_set_use_snake_case)
     coord = OPNsenseDataUpdateCoordinator(
         hass=MagicMock(),
         client=client,
@@ -403,7 +423,7 @@ async def test_async_setup_calls_client_set_use_snake_case(
 
 
 @pytest.mark.asyncio
-async def test_calculate_speed_bytes_case():
+async def test_calculate_speed_bytes_case() -> None:
     """Calculate byte-rate conversion yields kilobytes_per_second."""
     # bytes branch should return kilobytes_per_second label
     new_prop, value = await OPNsenseDataUpdateCoordinator._calculate_speed(
@@ -417,7 +437,9 @@ async def test_calculate_speed_bytes_case():
     assert value == pytest.approx(0.5, abs=0.5)  # 500 B/s -> 0.5 KB/s, allow ±0.5 tolerance
 
 
-def test_build_categories_returns_empty_when_no_config(make_config_entry, fake_client):
+def test_build_categories_returns_empty_when_no_config(
+    make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
+) -> None:
     """Categories builder returns empty list when config_entry is missing."""
     entry = make_config_entry()
     client = fake_client()()
@@ -437,7 +459,7 @@ def test_build_categories_returns_empty_when_no_config(make_config_entry, fake_c
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "flag,expected_keys",
+    ("flag", "expected_keys"),
     [
         (CONF_SYNC_TELEMETRY, ["telemetry"]),
         (CONF_SYNC_VNSTAT, ["vnstat"]),
@@ -456,8 +478,11 @@ def test_build_categories_returns_empty_when_no_config(make_config_entry, fake_c
     ],
 )
 async def test_build_categories_flag_true_and_false(
-    make_config_entry, fake_client, flag, expected_keys
-):
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+    flag: Any,
+    expected_keys: Any,
+) -> None:
     """Verify categories include keys when flag True and exclude when False."""
     # When flag is True -> expected keys present
     entry_true = make_config_entry({"device_unique_id": "id", flag: True})
@@ -491,8 +516,10 @@ async def test_build_categories_flag_true_and_false(
 
 @pytest.mark.asyncio
 async def test_async_update_data_strips_nested_previous_state(
-    monkeypatch, make_config_entry, fake_client
-):
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
     """Ensure nested 'previous_state' key is removed from the copied previous_state. The coordinator copies its current _state into previous_state, then removes any nested 'previous_state' key from that copy before assigning it back. This test verifies that behavior."""
     entry = make_config_entry({"device_unique_id": "id", CONF_SYNC_INTERFACES: True})
     client = fake_client()()
@@ -525,7 +552,9 @@ async def test_async_update_data_strips_nested_previous_state(
     monkeypatch.setattr(coord, "_calculate_entity_speeds", noop_calc)
 
     # Spy on reset_query_counts to ensure update flow runs
-    client.reset_query_counts = AsyncMock(wraps=getattr(client, "reset_query_counts", None))
+    object.__setattr__(
+        client, "reset_query_counts", AsyncMock(wraps=getattr(client, "reset_query_counts", None))
+    )
 
     out = await coord._async_update_data()
 
@@ -539,7 +568,11 @@ async def test_async_update_data_strips_nested_previous_state(
 
 
 @pytest.mark.asyncio
-async def test_async_update_data_device_tracker_branch(monkeypatch, make_config_entry, fake_client):
+async def test_async_update_data_device_tracker_branch(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
     """When coordinator is a device tracker coordinator, _async_update_data should return _async_update_dt_data result."""
     entry = make_config_entry({"device_unique_id": "id"})
     client = fake_client()()
@@ -565,7 +598,9 @@ async def test_async_update_data_device_tracker_branch(monkeypatch, make_config_
     monkeypatch.setattr(coord, "_async_update_dt_data", fake_dt_update)
 
     # spy on client's reset_query_counts
-    client.reset_query_counts = AsyncMock(wraps=getattr(client, "reset_query_counts", None))
+    object.__setattr__(
+        client, "reset_query_counts", AsyncMock(wraps=getattr(client, "reset_query_counts", None))
+    )
 
     res = await coord._async_update_data()
     assert res == {"dt": True}
@@ -575,8 +610,10 @@ async def test_async_update_data_device_tracker_branch(monkeypatch, make_config_
 
 @pytest.mark.asyncio
 async def test_async_update_data_returns_empty_when_device_id_check_fails(
-    monkeypatch, make_config_entry, fake_client
-):
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
     """When device unique id check fails, _async_update_data should return an empty dict."""
     entry = make_config_entry({"device_unique_id": "id", CONF_SYNC_INTERFACES: True})
     client = fake_client()()
@@ -597,7 +634,9 @@ async def test_async_update_data_returns_empty_when_device_id_check_fails(
     monkeypatch.setattr(coord, "_check_device_unique_id", false_check)
 
     # spy on reset_query_counts
-    client.reset_query_counts = AsyncMock(wraps=getattr(client, "reset_query_counts", None))
+    object.__setattr__(
+        client, "reset_query_counts", AsyncMock(wraps=getattr(client, "reset_query_counts", None))
+    )
 
     res = await coord._async_update_data()
 
@@ -608,8 +647,11 @@ async def test_async_update_data_returns_empty_when_device_id_check_fails(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("case", ["no_previous", "no_config"])
 async def test_calculate_entity_speeds_returns_early_when_missing(
-    case, make_config_entry, fake_client, monkeypatch
-):
+    case: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """_calculate_entity_speeds should return early when previous_update_time is falsy or config_entry is falsy."""
     entry = make_config_entry(
         {"device_unique_id": "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
@@ -631,24 +673,27 @@ async def test_calculate_entity_speeds_returns_early_when_missing(
     else:
         # previous_update_time present but config_entry falsy -> early return
         coord._state = {"update_time": now, "previous_state": {"update_time": now - 2}}
-        coord.config_entry = None
+        object.__setattr__(coord, "config_entry", None)
 
     # Ensure the deeper calculation functions are not called when guard triggers
-    coord._calculate_interface_speeds = AsyncMock(
-        side_effect=AssertionError("_calculate_interface_speeds should not be called")
+    object.__setattr__(
+        coord,
+        "_calculate_interface_speeds",
+        AsyncMock(side_effect=AssertionError("_calculate_interface_speeds should not be called")),
     )
-    coord._calculate_vpn_speeds = AsyncMock(
-        side_effect=AssertionError("_calculate_vpn_speeds should not be called")
+    object.__setattr__(
+        coord,
+        "_calculate_vpn_speeds",
+        AsyncMock(side_effect=AssertionError("_calculate_vpn_speeds should not be called")),
     )
 
     # Call the method; it should return None and not call the mocked methods
-    res = await coord._calculate_entity_speeds()
-    assert res is None
+    await coord._calculate_entity_speeds()
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "returned_device_id,should_call_counts",
+    ("returned_device_id", "should_call_counts"),
     [
         (None, False),
         ("other", False),
@@ -656,8 +701,12 @@ async def test_calculate_entity_speeds_returns_early_when_missing(
     ],
 )
 async def test_async_update_dt_data_device_id_branches(
-    returned_device_id, should_call_counts, make_config_entry, fake_client, monkeypatch
-):
+    returned_device_id: Any,
+    should_call_counts: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Verify _async_update_dt_data returns early for missing/mismatched IDs and calls query counts when OK."""
     entry = make_config_entry({"device_unique_id": "id"})
     client = fake_client()()
@@ -689,7 +738,7 @@ async def test_async_update_dt_data_device_id_branches(
     monkeypatch.setattr(coord, "_get_states", fake_get_states)
 
     # spy on client's get_query_counts
-    client.get_query_counts = AsyncMock(return_value=(3, 4))
+    object.__setattr__(client, "get_query_counts", AsyncMock(return_value=(3, 4)))
 
     res = await coord._async_update_dt_data()
 

@@ -1,18 +1,22 @@
 """Unit tests for custom_components.opnsense.update."""
 
 import asyncio
-from typing import Any
+from collections.abc import Callable, MutableMapping
+from typing import Any, Never, cast
 from unittest.mock import AsyncMock, MagicMock
 
+from homeassistant.components.update import UpdateEntityDescription
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.opnsense import update as update_module
 from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID
 from custom_components.opnsense.update import OPNsenseFirmwareUpdatesAvailableUpdate
-from homeassistant.components.update import UpdateEntityDescription
 
 
-def test_is_update_available_false_when_missing(make_config_entry, dummy_coordinator):
+def test_is_update_available_false_when_missing(
+    make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
+) -> None:
     """Update entity should be unavailable when coordinator data is missing."""
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -23,7 +27,7 @@ def test_is_update_available_false_when_missing(make_config_entry, dummy_coordin
             key="firmware.update_available", name="Firmware"
         ),
     )
-    ent.async_write_ha_state = lambda: None
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
 
     # state missing or malformed
     coord.data = None
@@ -31,7 +35,9 @@ def test_is_update_available_false_when_missing(make_config_entry, dummy_coordin
     assert ent.available is False
 
 
-def test_is_update_available_false_when_error(make_config_entry, dummy_coordinator):
+def test_is_update_available_false_when_error(
+    make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
+) -> None:
     """Update entity should be unavailable when coordinator reports an error status."""
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -42,14 +48,14 @@ def test_is_update_available_false_when_error(make_config_entry, dummy_coordinat
             key="firmware.update_available", name="Firmware"
         ),
     )
-    ent.async_write_ha_state = lambda: None
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
     coord.data = {"firmware_update_info": {"status": "error"}}
     ent._handle_coordinator_update()
     assert ent.available is False
 
 
 @pytest.mark.parametrize(
-    "state_builder,expect_latest,expect_series,expect_latest_condition",
+    ("state_builder", "expect_latest", "expect_series", "expect_latest_condition"),
     [
         # product_version == product_latest and packages is list without opnsense -> append '+'
         (
@@ -139,13 +145,13 @@ def test_is_update_available_false_when_error(make_config_entry, dummy_coordinat
     ],
 )
 def test_get_versions_scenarios(
-    state_builder,
-    expect_latest,
-    expect_series,
-    expect_latest_condition,
-    make_config_entry,
-    dummy_coordinator,
-):
+    state_builder: Any,
+    expect_latest: Any,
+    expect_series: Any,
+    expect_latest_condition: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+    dummy_coordinator: MagicMock,
+) -> None:
     """Parameterize _get_versions behaviors across upgrade package presence and missing fields."""
     # Use the shared fixture for a config entry
     entry = make_config_entry()
@@ -157,7 +163,7 @@ def test_get_versions_scenarios(
         ),
     )
     state = state_builder()
-    pv, pl, ps = ent._get_versions(state)
+    _pv, pl, ps = ent._get_versions(state)
     assert ps == expect_series
     if expect_latest is not None:
         assert pl == expect_latest
@@ -165,7 +171,7 @@ def test_get_versions_scenarios(
 
 
 @pytest.mark.parametrize(
-    "series,expected",
+    ("series", "expected"),
     [
         ("25.1", "community"),
         ("1.1", "community"),
@@ -176,8 +182,11 @@ def test_get_versions_scenarios(
     ],
 )
 def test_get_product_class_and_series_parsing(
-    series, expected, make_config_entry, dummy_coordinator
-):
+    series: str | None,
+    expected: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+    dummy_coordinator: MagicMock,
+) -> None:
     """Parameterize product class mapping by series minor version."""
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
@@ -190,7 +199,9 @@ def test_get_product_class_and_series_parsing(
     assert ent._get_product_class(series) == expected
 
 
-def test_handle_coordinator_update_sets_attributes(make_config_entry, dummy_coordinator):
+def test_handle_coordinator_update_sets_attributes(
+    make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
+) -> None:
     """_handle_coordinator_update should populate versions and extra attributes."""
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -224,19 +235,23 @@ def test_handle_coordinator_update_sets_attributes(make_config_entry, dummy_coor
         }
     }
     ent.coordinator.data = state
-    ent.async_write_ha_state = lambda: None
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
     ent._handle_coordinator_update()
     assert ent.available is True
     assert ent.installed_version == "1_0_0"
     assert ent.latest_version == "1.0.2"
     assert ent.release_summary == "ok"
     # extra state attributes are created from firmware_update_info keys (top-level ones)
-    assert "opnsense_download_size" in ent.extra_state_attributes
-    assert ent.extra_state_attributes.get("opnsense_download_size") == 123
-    assert ent.extra_state_attributes.get("opnsense_last_check") == 1
+    attrs = ent.extra_state_attributes
+    assert attrs is not None
+    assert "opnsense_download_size" in attrs
+    assert attrs.get("opnsense_download_size") == 123
+    assert attrs.get("opnsense_last_check") == 1
 
 
-def test_handle_coordinator_update_upgrade_sets_release_url(make_config_entry, dummy_coordinator):
+def test_handle_coordinator_update_upgrade_sets_release_url(
+    make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
+) -> None:
     """Upgrade state should compute a release URL and provide release notes.
 
     This also asserts normalization of ``product_latest`` and correct
@@ -264,7 +279,7 @@ def test_handle_coordinator_update_upgrade_sets_release_url(make_config_entry, d
         }
     }
     ent.coordinator.data = state
-    ent.async_write_ha_state = lambda: None
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
     ent._handle_coordinator_update()
 
     # For upgrade status, latest_version should reflect the upgrade_major_version
@@ -280,12 +295,15 @@ def test_handle_coordinator_update_upgrade_sets_release_url(make_config_entry, d
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "product_latest_input, expected_latest_normalized",
+    ("product_latest_input", "expected_latest_normalized"),
     [("2_0_1", "2.0.1"), ("2.0.1", "2.0.1")],
 )
 async def test_handle_coordinator_update_update_normalizes_product_latest(
-    product_latest_input, expected_latest_normalized, make_config_entry, dummy_coordinator
-):
+    product_latest_input: str,
+    expected_latest_normalized: str,
+    make_config_entry: Callable[..., MockConfigEntry],
+    dummy_coordinator: MagicMock,
+) -> None:
     """When status is 'update', product_latest should be normalized (underscores -> dots)."""
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -308,7 +326,7 @@ async def test_handle_coordinator_update_update_normalizes_product_latest(
         }
     }
     ent.coordinator.data = state
-    ent.async_write_ha_state = lambda: None
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
     ent._handle_coordinator_update()
 
     # product_latest should be normalized into latest_version
@@ -319,14 +337,18 @@ async def test_handle_coordinator_update_update_normalizes_product_latest(
     # the original input appears in the notes and the normalized value is
     # available on the entity
     notes = await ent.async_release_notes()
+    assert notes is not None
     assert product_latest_input in notes
     # series '2.1' -> community mapping reflected in path
+    assert ent.release_url is not None
     assert "community/2.1" in ent.release_url
 
 
 def test_handle_coordinator_update_release_url_fallback_when_product_class_none(
-    monkeypatch, make_config_entry, dummy_coordinator
-):
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    dummy_coordinator: MagicMock,
+) -> None:
     """When _get_product_class returns None, release_url should fall back to the OPNsense UI changelog."""
     # ensure config entry has a base url for the fallback and a device id
     entry = make_config_entry(
@@ -357,7 +379,7 @@ def test_handle_coordinator_update_release_url_fallback_when_product_class_none(
         }
     }
     ent.coordinator.data = state
-    ent.async_write_ha_state = lambda: None
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
 
     # Patch the instance method to return None to force the fallback branch
     monkeypatch.setattr(ent, "_get_product_class", lambda series: None)
@@ -369,8 +391,8 @@ def test_handle_coordinator_update_release_url_fallback_when_product_class_none(
 
 
 def test_handle_coordinator_update_upgrade_sets_business_release_url(
-    make_config_entry, dummy_coordinator
-):
+    make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
+) -> None:
     """Business product series should generate business release URL."""
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -393,14 +415,14 @@ def test_handle_coordinator_update_upgrade_sets_business_release_url(
         }
     }
     ent.coordinator.data = state
-    ent.async_write_ha_state = lambda: None
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
     ent._handle_coordinator_update()
     assert ent.release_url and "business/2.4" in ent.release_url
     assert "2.4.1" in ent.release_url
 
 
 @pytest.mark.parametrize(
-    "state,latest,product_version,expect_exact,expected",
+    ("state", "latest", "product_version", "expect_exact", "expected"),
     [
         (
             {
@@ -445,8 +467,14 @@ def test_handle_coordinator_update_upgrade_sets_business_release_url(
     ],
 )
 def test_get_release_notes_variants(
-    state, latest, product_version, expect_exact, expected, make_config_entry, dummy_coordinator
-):
+    state: MutableMapping[str, Any],
+    latest: str | None,
+    product_version: str | None,
+    expect_exact: bool,
+    expected: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+    dummy_coordinator: MagicMock,
+) -> None:
     """Parameterize release-notes generation for update/upgrade/default paths."""
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -457,7 +485,7 @@ def test_get_release_notes_variants(
             key="firmware.update_available", name="Firmware"
         ),
     )
-    ent.async_write_ha_state = lambda: None
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
 
     notes = ent._get_release_notes(
         state=state, product_latest=latest, product_version=product_version
@@ -465,11 +493,16 @@ def test_get_release_notes_variants(
     if expect_exact:
         assert notes == expected
     else:
+        assert notes is not None
         assert expected in notes
 
 
 @pytest.mark.asyncio
-async def test_async_install_reboots_when_needed(monkeypatch, make_config_entry, dummy_coordinator):
+async def test_async_install_reboots_when_needed(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    dummy_coordinator: MagicMock,
+) -> None:
     """async_install should trigger a reboot when the update requires it."""
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -480,10 +513,10 @@ async def test_async_install_reboots_when_needed(monkeypatch, make_config_entry,
             key="firmware.update_available", name="Firmware"
         ),
     )
-    ent.async_write_ha_state = lambda: None
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
 
     class FakeClient:
-        def __init__(self):
+        def __init__(self) -> None:
             # planned sequence: first 'running', then 'done'
             """Initialize a fake client that simulates a successful update flow."""
             self._status_calls = [
@@ -513,12 +546,12 @@ async def test_async_install_reboots_when_needed(monkeypatch, make_config_entry,
             """Record that the update entity requested a system reboot."""
             self.rebooted = True
 
-    fake = FakeClient()
+    fake: Any = FakeClient()
     # replace upgrade_status with an AsyncMock to track await calls and sequence
-    fake.upgrade_status = AsyncMock(side_effect=fake._status_calls.copy())
+    object.__setattr__(fake, "upgrade_status", AsyncMock(side_effect=fake._status_calls.copy()))
     # wrap upgrade_firmware to assert it was awaited exactly once
-    fake.upgrade_firmware = AsyncMock(wraps=fake.upgrade_firmware)
-    ent._client = fake
+    object.__setattr__(fake, "upgrade_firmware", AsyncMock(wraps=fake.upgrade_firmware))
+    object.__setattr__(ent, "_client", fake)
 
     # provide coordinator state with firmware info and upgrade in progress
     ent.coordinator.data = {"firmware_update_info": {"status": "update"}}
@@ -537,8 +570,8 @@ async def test_async_install_reboots_when_needed(monkeypatch, make_config_entry,
 
 @pytest.mark.asyncio
 async def test_async_install_does_nothing_on_non_update_status(
-    make_config_entry, dummy_coordinator
-):
+    make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
+) -> None:
     """async_install should early-return and not call upgrade_firmware when status is not update/upgrade."""
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -549,14 +582,14 @@ async def test_async_install_does_nothing_on_non_update_status(
             key="firmware.update_available", name="Firmware"
         ),
     )
-    ent.async_write_ha_state = lambda: None
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
 
     # non-update status
     ent.coordinator.data = {"firmware_update_info": {"status": "none"}}
 
     # attach a mock client and ensure upgrade_firmware is not called
     client = MagicMock()
-    client.upgrade_firmware = AsyncMock()
+    object.__setattr__(client, "upgrade_firmware", AsyncMock())
     ent._client = client
 
     await ent.async_install()
@@ -566,8 +599,10 @@ async def test_async_install_does_nothing_on_non_update_status(
 
 @pytest.mark.asyncio
 async def test_async_install_early_returns_and_no_client(
-    monkeypatch, make_config_entry, dummy_coordinator
-):
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    dummy_coordinator: MagicMock,
+) -> None:
     """async_install should return early when there's no client available."""
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -578,21 +613,24 @@ async def test_async_install_early_returns_and_no_client(
             key="firmware.update_available", name="Firmware"
         ),
     )
-    ent.async_write_ha_state = lambda: None
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
 
     # state not mapping
-    ent.coordinator.data = None
+    ent.coordinator.data = cast("dict[str, Any]", None)
     await ent.async_install()
 
     # state present but no client
     ent.coordinator.data = {"firmware_update_info": {"status": "update"}}
-    ent._client = None
+    object.__setattr__(ent, "_client", None)
     await ent.async_install()
 
 
-def test_get_versions_exception_path(monkeypatch, make_config_entry, dummy_coordinator):
+def test_get_versions_exception_path(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    dummy_coordinator: MagicMock,
+) -> None:
     """_get_versions returns None tuple when underlying dict_get raises."""
-
     # force dict_get to raise so we hit the exception return
 
     entry = make_config_entry()
@@ -604,7 +642,7 @@ def test_get_versions_exception_path(monkeypatch, make_config_entry, dummy_coord
         ),
     )
 
-    def raise_type(*args, **kwargs):
+    def raise_type(*args, **kwargs) -> Never:
         """Raise ``TypeError`` so version parsing error handling can be exercised.
 
         Args:
@@ -621,9 +659,12 @@ def test_get_versions_exception_path(monkeypatch, make_config_entry, dummy_coord
     assert pv is None and pl is None and ps is None
 
 
-def test_get_release_notes_exception_path(monkeypatch, make_config_entry, dummy_coordinator):
+def test_get_release_notes_exception_path(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    dummy_coordinator: MagicMock,
+) -> None:
     """_get_release_notes returns an unavailable message when dict_get raises."""
-
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,
@@ -633,7 +674,7 @@ def test_get_release_notes_exception_path(monkeypatch, make_config_entry, dummy_
         ),
     )
 
-    def raise_key(*args, **kwargs):
+    def raise_key(*args, **kwargs) -> Never:
         """Raise ``KeyError`` so release-note fallback handling can be exercised.
 
         Args:
@@ -647,11 +688,16 @@ def test_get_release_notes_exception_path(monkeypatch, make_config_entry, dummy_
 
     monkeypatch.setattr(update_module, "dict_get", raise_key)
     res = ent._get_release_notes({}, None, None)
+    assert res is not None
     assert "Release notes unavailable" in res
 
 
 @pytest.mark.asyncio
-async def test_async_install_exceptions_loop(monkeypatch, make_config_entry, dummy_coordinator):
+async def test_async_install_exceptions_loop(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    dummy_coordinator: MagicMock,
+) -> None:
     """async_install should handle exceptions and exit the install loop gracefully."""
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
@@ -663,7 +709,7 @@ async def test_async_install_exceptions_loop(monkeypatch, make_config_entry, dum
     )
 
     class BadClient:
-        def __init__(self):
+        def __init__(self) -> None:
             """Initialize a fake client that fails during upgrade polling."""
             self.rebooted = False
 
@@ -692,8 +738,8 @@ async def test_async_install_exceptions_loop(monkeypatch, make_config_entry, dum
             """Record whether a reboot was incorrectly requested after failure."""
             self.rebooted = True
 
-    bad = BadClient()
-    ent._client = bad
+    bad: Any = BadClient()
+    object.__setattr__(ent, "_client", bad)
     ent.coordinator.data = {"firmware_update_info": {"status": "update"}}
     monkeypatch.setattr(asyncio, "sleep", AsyncMock(return_value=None))
 
@@ -701,9 +747,10 @@ async def test_async_install_exceptions_loop(monkeypatch, make_config_entry, dum
     assert bad.rebooted is False
 
 
-def test_get_installed_version_none_on_error(make_config_entry, dummy_coordinator):
+def test_get_installed_version_none_on_error(
+    make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
+) -> None:
     """_get_installed_version returns None on malformed or missing state."""
-
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,
@@ -716,9 +763,10 @@ def test_get_installed_version_none_on_error(make_config_entry, dummy_coordinato
 
 
 @pytest.mark.asyncio
-async def test_async_release_notes_returns_value(make_config_entry, dummy_coordinator):
+async def test_async_release_notes_returns_value(
+    make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
+) -> None:
     """async_release_notes returns generated release notes when state present."""
-
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,
@@ -750,7 +798,7 @@ async def test_async_release_notes_returns_value(make_config_entry, dummy_coordi
         }
     }
     ent.coordinator.data = state
-    ent.async_write_ha_state = lambda: None
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
     # Populate internal fields as Home Assistant would via coordinator update
     ent._handle_coordinator_update()
 

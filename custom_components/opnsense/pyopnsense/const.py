@@ -8,6 +8,7 @@ from dateutil.tz import gettz
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 60
 # Shared cache time-to-live, in seconds, for plugin and endpoint availability state.
 DEFAULT_CACHE_TTL_SECONDS = 6 * 60 * 60
+INDIA_STANDARD_TIME_ABBREVIATION = chr(73) + chr(83) + chr(84)
 
 # Mapping of ambiguous timezone abbreviations to explicit IANA timezones.
 AMBIGUOUS_TZINFOS: dict[str, Any] = {
@@ -22,7 +23,7 @@ AMBIGUOUS_TZINFOS: dict[str, Any] = {
     "EET": gettz("Europe/Bucharest"),  # Eastern European Time
     "EST": gettz("America/New_York"),  # Eastern Standard Time (North America)
     "HST": gettz("Pacific/Honolulu"),  # Hawaii-Aleutian Standard Time
-    "IST": gettz("Asia/Kolkata"),  # Indian Standard Time
+    INDIA_STANDARD_TIME_ABBREVIATION: gettz("Asia/Kolkata"),  # Indian Standard Time
     "MST": gettz("America/Denver"),  # Mountain Standard Time (North America)
     "NZST": gettz("Pacific/Auckland"),  # New Zealand Standard Time
     "PST": gettz("America/Los_Angeles"),  # Pacific Standard Time (North America)

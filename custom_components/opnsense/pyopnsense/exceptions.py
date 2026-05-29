@@ -5,5 +5,8 @@ class OPNsenseVoucherServerError(Exception):
     """Error from Voucher Server."""
 
 
-class OPNsenseUnknownFirmware(Exception):
+class OPNsenseUnknownFirmwareError(Exception):
     """Unknown current firmware version."""
+
+
+OPNsenseUnknownFirmware = OPNsenseUnknownFirmwareError

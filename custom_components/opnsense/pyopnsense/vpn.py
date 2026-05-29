@@ -280,7 +280,8 @@ class VPNMixin(PyOPNsenseClientProtocol):
             client_summ: WireGuard client summary mapping from API results.
 
         Returns:
-            MutableMapping[str, Any]: Processed WireGuard server mapping returned for the current server.
+            MutableMapping[str, Any]: Processed WireGuard server mapping returned for
+                the current server.
         """
         return {
             "uuid": uid,
@@ -321,7 +322,8 @@ class VPNMixin(PyOPNsenseClientProtocol):
             servers: WireGuard servers mapping keyed by UUID.
 
         Returns:
-            MutableMapping[str, Any]: Processed WireGuard client mapping returned for the current client.
+            MutableMapping[str, Any]: Processed WireGuard client mapping returned for
+                the current client.
         """
         return {
             "uuid": uid,

@@ -91,7 +91,8 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             "Setting up %sCoordinator",
             "DT " if self._device_tracker_coordinator else "",
         )
-        # await self._client.get_host_firmware_version() # Already triggered in __init__.py async_setup_entry
+        # await self._client.get_host_firmware_version() # Already triggered in
+        # __init__.py async_setup_entry
         await self._client.set_use_snake_case()
 
     async def _get_states(self, categories: list) -> dict[str, Any]:
@@ -235,7 +236,8 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 )
                 _LOGGER.error(
                     "OPNsense Device ID has changed which indicates new or changed hardware. "
-                    "In order to accommodate this, hass-opnsense needs to be removed and reinstalled for this router. "
+                    "In order to accommodate this, hass-opnsense needs to be removed and "
+                    "reinstalled for this router. "
                     "hass-opnsense is shutting down."
                 )
                 await self.async_shutdown()
@@ -247,7 +249,8 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         """Refresh the reduced state payload used by the device-tracker coordinator.
 
         Returns:
-            dict[str, Any]: Refreshed device-tracker state, or an empty mapping on validation failure.
+            dict[str, Any]: Refreshed device-tracker state, or an empty mapping on
+                validation failure.
         """
         categories: list = [
             {"function": "get_device_unique_id", "state_key": "device_unique_id"},
@@ -267,7 +270,8 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             return {}
         if self._state.get("device_unique_id") != self._device_unique_id:
             _LOGGER.error(
-                "Coordinator error. OPNsense Router Device ID (%s) differs from the one saved in hass-opnsense (%s)",
+                "Coordinator error. OPNsense Router Device ID (%s) differs from the one saved in "
+                "hass-opnsense (%s)",
                 self._state.get("device_unique_id"),
                 self._device_unique_id,
             )
@@ -406,8 +410,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             await self._client.reset_query_counts()
 
             previous_state: dict[str, Any] = copy.deepcopy(self._state)
-            if "previous_state" in previous_state:
-                del previous_state["previous_state"]
+            previous_state.pop("previous_state", None)
 
             # ensure clean state each interval
             self._state = {}
@@ -466,9 +469,9 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             label = "kilobytes_per_second"
             # 1 Byte = 8 bits
             # 1 byte is equal to 0.001 kilobytes
-            KBs: float = rate / 1000
-            # Kbs = KBs * 8
-            value = KBs
+            kbs: float = rate / 1000
+            # Kbs = kbs * 8
+            value = kbs
         new_property: str = f"{prop_name}_{label}"
         value = round(value)
         return new_property, value

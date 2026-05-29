@@ -247,7 +247,8 @@ class SystemMixin(PyOPNsenseClientProtocol):
             settings_indexes: Lookup dictionaries generated from CARP settings rows.
 
         Returns:
-            dict[str, Any] | None: Best matching settings row, or ``None`` when no unambiguous fallback exists.
+            dict[str, Any] | None: Best matching settings row, or ``None`` when no
+                unambiguous fallback exists.
         """
         (
             settings_by_full,
@@ -303,10 +304,12 @@ class SystemMixin(PyOPNsenseClientProtocol):
         """Resolve timezone information from OPNsense system time data.
 
         Args:
-            datetime_str: Optional datetime string from the system-time endpoint. When omitted, the method queries OPNsense for current system-time data.
+            datetime_str: Optional datetime string from the system-time endpoint. When
+            omitted, the method queries OPNsense for current system-time data.
 
         Returns:
-            tzinfo: Parsed timezone from OPNsense datetime output, or a local fixed-offset fallback when parsing fails.
+            tzinfo: Parsed timezone from OPNsense datetime output, or a local
+            fixed-offset fallback when parsing fails.
         """
         if datetime_str is None:
             path = (
@@ -360,10 +363,12 @@ clear_subsystem_dirty('filter');
         """Get the OPNsense Unique ID.
 
         Args:
-            expected_id: Previously stored unique ID used to prefer a stable match. Defaults to None.
+            expected_id: Previously stored unique ID used to prefer a stable match.
+            Defaults to None.
 
         Returns:
-            str | None: Stable unique identifier derived from physical interface MAC addresses, or None when unavailable.
+            str | None: Stable unique identifier derived from physical interface MAC
+            addresses, or None when unavailable.
         """
         instances = await self._safe_list_get("/api/interfaces/overview/export")
         mac_addresses: set[str] = set()
@@ -625,25 +630,24 @@ $toreturn = [
         }
 
     @_log_errors
-    async def close_notice(self, id: str) -> bool:
+    async def close_notice(self, notice_id: str) -> bool:
         """Close selected notices.
 
         Args:
-            id: Notice identifier to dismiss, or ``"all"`` to dismiss all active notices.
+            notice_id: Notice identifier to dismiss, or ``"all"`` to dismiss all active notices.
 
         Returns:
             bool: True when OPNsense reports the requested action succeeded; otherwise False.
         """
-
         dismiss_endpoint = (
             "/api/core/system/dismiss_status"
             if self._use_snake_case
             else "/api/core/system/dismissStatus"
         )
 
-        # id = "all" to close all notices
+        # notice_id = "all" to close all notices
         success = True
-        if id.lower() == "all":
+        if notice_id.lower() == "all":
             notices = await self._safe_dict_get("/api/core/system/status")
             # _LOGGER.debug(f"[close_notice] notices: {notices}")
             for key, notice in notices.items():
@@ -655,8 +659,8 @@ $toreturn = [
                     if dismiss.get("status", "failed") != "ok":
                         success = False
         else:
-            dismiss = await self._safe_dict_post(dismiss_endpoint, payload={"subject": id})
-            _LOGGER.debug("[close_notice] id: %s, dismiss: %s", id, dismiss)
+            dismiss = await self._safe_dict_post(dismiss_endpoint, payload={"subject": notice_id})
+            _LOGGER.debug("[close_notice] id: %s, dismiss: %s", notice_id, dismiss)
             if dismiss.get("status", "failed") != "ok":
                 success = False
         _LOGGER.debug("[close_notice] success: %s", success)

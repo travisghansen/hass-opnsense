@@ -4,12 +4,16 @@ Tests include URL parsing/validation, exception mapping for user input,
 and options flow behaviors such as device tracker handling.
 """
 
+from collections.abc import Callable
 import importlib
+from typing import Any, Never, cast
 from unittest.mock import AsyncMock, MagicMock
 import xmlrpc.client
 
 import aiohttp
+from homeassistant.core import HomeAssistant
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 from yarl import URL
 
 from tests.utilities import patch_client_factory
@@ -17,7 +21,7 @@ from tests.utilities import patch_client_factory
 cf_mod = importlib.import_module("custom_components.opnsense.config_flow")
 
 
-def test_mac_and_ip_and_cleanse():
+def test_mac_and_ip_and_cleanse() -> None:
     """Validate MAC/IP helpers and cleanse sensitive data."""
     assert cf_mod.is_valid_mac_address("aa:bb:cc:dd:ee:ff")
     assert cf_mod.is_valid_mac_address("AA-BB-CC-DD-EE-FF")
@@ -35,7 +39,7 @@ def test_mac_and_ip_and_cleanse():
     assert "secret" not in out
 
 
-def test_device_tracking_mode_helper():
+def test_device_tracking_mode_helper() -> None:
     """Map stored devices to the expected UI tracking mode."""
     assert (
         cf_mod._get_device_tracking_mode(False, ["aa:bb:cc:dd:ee:ff"])
@@ -48,7 +52,7 @@ def test_device_tracking_mode_helper():
     )
 
 
-def test_parse_and_merge_manual_devices():
+def test_parse_and_merge_manual_devices() -> None:
     """Parse mixed separators and deduplicate MAC addresses in order."""
     parsed = cf_mod._parse_manual_devices(
         "AA-BB-CC-DD-EE-FF,\n11:22:33:44:55:66\ninvalid\naa:bb:cc:dd:ee:ff"
@@ -67,7 +71,7 @@ def test_parse_and_merge_manual_devices():
     ]
 
 
-def test_device_entry_sort_key_numeric_ip_sorting():
+def test_device_entry_sort_key_numeric_ip_sorting() -> None:
     """Sort key should use numeric IP ordering when an IP is available."""
     ip_by_mac = {
         "aa:bb:cc:dd:ee:ff": "10.0.0.5",
@@ -101,7 +105,7 @@ def test_device_entry_sort_key_numeric_ip_sorting():
 
 
 @pytest.mark.asyncio
-async def test_clean_and_parse_url_success_and_failure():
+async def test_clean_and_parse_url_success_and_failure() -> None:
     """Clean and parse URL, fix missing scheme and handle invalid URL."""
     ui = {cf_mod.CONF_URL: "router.example"}
     await cf_mod._clean_and_parse_url(ui)
@@ -114,7 +118,7 @@ async def test_clean_and_parse_url_success_and_failure():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "exc_key, expected",
+    ("exc_key", "expected"),
     [
         ("below_min", "below_min_firmware"),
         ("unknown_fw", "unknown_firmware"),
@@ -140,9 +144,10 @@ async def test_clean_and_parse_url_success_and_failure():
         ("os_unknown", "unknown"),
     ],
 )
-async def test_validate_input_exception_mapping(monkeypatch, exc_key, expected):
+async def test_validate_input_exception_mapping(
+    monkeypatch: pytest.MonkeyPatch, exc_key: Any, expected: Any
+) -> None:
     """Ensure validate_input maps various exceptions to the expected error code."""
-
     # Build exception object lazily to avoid constructor issues at collection time
     if exc_key == "below_min":
         exc = cf_mod.BelowMinFirmware()
@@ -174,23 +179,32 @@ async def test_validate_input_exception_mapping(monkeypatch, exc_key, expected):
             port = 443
             ssl = None
 
-        exc = aiohttp.ClientSSLError(Conn(), OSError("ssl error"))
+        exc = aiohttp.ClientSSLError(
+            cast("aiohttp.client_reqrep.ConnectionKey", Conn()), OSError("ssl error")
+        )
     elif exc_key in ("resp_401", "resp_403", "resp_500"):
         status = 401 if exc_key == "resp_401" else 403 if exc_key == "resp_403" else 500
 
         # Provide minimal request_info with a real_url to satisfy logging/str()
-        class RI:
+        class ResponseRequestInfo:
             real_url = URL("http://localhost")
 
-        exc = aiohttp.ClientResponseError(request_info=RI(), history=(), status=status, message="m")
+        exc = aiohttp.ClientResponseError(
+            request_info=cast("aiohttp.RequestInfo", ResponseRequestInfo()),
+            history=(),
+            status=status,
+            message="m",
+        )
     elif exc_key == "protocol_307":
         exc = xmlrpc.client.ProtocolError("u", 307, "307 Temporary Redirect", {})
     elif exc_key == "too_many_redirects":
 
-        class RI:
+        class RedirectRequestInfo:
             real_url = URL("http://localhost")
 
-        exc = aiohttp.TooManyRedirects(request_info=RI(), history=())
+        exc = aiohttp.TooManyRedirects(
+            request_info=cast("aiohttp.RequestInfo", RedirectRequestInfo()), history=()
+        )
     elif exc_key == "timeout":
         exc = TimeoutError("t")
     elif exc_key == "server_timeout":
@@ -204,7 +218,7 @@ async def test_validate_input_exception_mapping(monkeypatch, exc_key, expected):
     else:
         exc = OSError("unknown")
 
-    async def _raiser(*args, **kwargs):
+    async def _raiser(*args, **kwargs) -> Never:
         """Raise the prepared exception so input error mapping can be validated.
 
         Args:
@@ -217,39 +231,41 @@ async def test_validate_input_exception_mapping(monkeypatch, exc_key, expected):
         raise exc
 
     monkeypatch.setattr(cf_mod, "_handle_user_input", _raiser)
-    errors = {}
+    errors: dict[str, str] = {}
     res = await cf_mod.validate_input(
         hass=MagicMock(), user_input={}, errors=errors, config_step="user"
     )
     assert res.get("base") == expected
 
 
-def test_validate_firmware_version_raises():
+def test_validate_firmware_version_raises() -> None:
     """_validate_firmware_version should raise BelowMinFirmware for old versions."""
     # pick an obviously old version
     with pytest.raises(cf_mod.BelowMinFirmware):
         cf_mod._validate_firmware_version("1.0")
 
 
-def test_log_and_set_error_sets_base(caplog):
+def test_log_and_set_error_sets_base(caplog: pytest.LogCaptureFixture) -> None:
     """_log_and_set_error should log the message and set errors['base']."""
-    errors = {}
+    errors: dict[str, str] = {}
     cf_mod._log_and_set_error(errors=errors, key="test_key", message="an msg")
     assert errors.get("base") == "test_key"
     assert "an msg" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_get_dt_entries_sorts_and_includes_selected(monkeypatch, fake_client):
+async def test_get_dt_entries_sorts_and_includes_selected(
+    monkeypatch: pytest.MonkeyPatch, fake_client: Any
+) -> None:
     """Ensure _get_dt_entries returns selected devices first and ARP entries sorted by IP."""
-
     # Create a client class via fixture and attach a get_arp_table implementation
     client_cls = fake_client()
 
-    async def _get_arp_table(self, resolve_hostnames=True):
+    async def _get_arp_table(self: Any, resolve_hostnames: bool = True) -> Any:
         """Return arp table.
 
         Args:
+            self: Fake client instance.
             resolve_hostnames: Resolve hostnames provided by pytest or the test case.
         """
         return [
@@ -259,11 +275,11 @@ async def test_get_dt_entries_sorts_and_includes_selected(monkeypatch, fake_clie
             {"mac": "bb:cc:dd:00:00:02", "hostname": "hosta", "ip": "192.168.1.10"},
         ]
 
-    setattr(client_cls, "get_arp_table", _get_arp_table)
+    client_cls.get_arp_table = _get_arp_table
     patch_client_factory(monkeypatch, cf_mod, client_cls)
 
     # Patch async_create_clientsession on the module under test to avoid real network I/O
-    def _fake_create_clientsession(*args, **kwargs):
+    def _fake_create_clientsession(*args, **kwargs) -> Any:
         """Return a mock client session so the test avoids real network I/O.
 
         Args:
@@ -297,20 +313,22 @@ async def test_get_dt_entries_sorts_and_includes_selected(monkeypatch, fake_clie
 
 
 @pytest.mark.asyncio
-async def test_get_dt_entries_preserves_missing_selected_devices(monkeypatch, fake_client):
+async def test_get_dt_entries_preserves_missing_selected_devices(
+    monkeypatch: pytest.MonkeyPatch, fake_client: Any
+) -> None:
     """Selected MACs missing from ARP stay available with a fallback label."""
-
     client_cls = fake_client()
 
-    async def _get_arp_table(self, resolve_hostnames=True):
+    async def _get_arp_table(self: Any, resolve_hostnames: bool = True) -> Any:
         """Return arp table.
 
         Args:
+            self: Fake client instance.
             resolve_hostnames: Resolve hostnames provided by pytest or the test case.
         """
         return [{"mac": "11:22:33:44:55:66", "hostname": "", "ip": "10.0.0.5"}]
 
-    setattr(client_cls, "get_arp_table", _get_arp_table)
+    client_cls.get_arp_table = _get_arp_table
     patch_client_factory(monkeypatch, cf_mod, client_cls)
     monkeypatch.setattr(cf_mod, "async_create_clientsession", lambda *a, **k: MagicMock())
 
@@ -323,13 +341,13 @@ async def test_get_dt_entries_preserves_missing_selected_devices(monkeypatch, fa
 
 
 @pytest.mark.asyncio
-async def test_get_dt_entries_closes_client(monkeypatch):
+async def test_get_dt_entries_closes_client(monkeypatch: pytest.MonkeyPatch) -> None:
     """_get_dt_entries should always close the temporary client."""
 
     class _Client:
         last_instance = None
 
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args, **kwargs) -> None:
             """Capture last created client instance for close assertions.
 
             Args:
@@ -339,7 +357,7 @@ async def test_get_dt_entries_closes_client(monkeypatch):
             type(self).last_instance = self
             self.async_close = AsyncMock()
 
-        async def get_arp_table(self, resolve_hostnames=True):
+        async def get_arp_table(self, resolve_hostnames: bool = True) -> Any:
             """Return an empty ARP table for close-path testing.
 
             Args:
@@ -363,13 +381,13 @@ async def test_get_dt_entries_closes_client(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_handle_user_input_closes_client(monkeypatch):
+async def test_handle_user_input_closes_client(monkeypatch: pytest.MonkeyPatch) -> None:
     """_handle_user_input should always close the temporary client."""
 
     class _Client:
         last_instance = None
 
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args, **kwargs) -> None:
             """Capture last created client instance for close assertions.
 
             Args:
@@ -379,7 +397,7 @@ async def test_handle_user_input_closes_client(monkeypatch):
             type(self).last_instance = self
             self.async_close = AsyncMock()
 
-        async def get_host_firmware_version(self):
+        async def get_host_firmware_version(self) -> str:
             """Return firmware that passes minimum-version validation.
 
             Returns:
@@ -387,7 +405,7 @@ async def test_handle_user_input_closes_client(monkeypatch):
             """
             return "26.1.1"
 
-        async def set_use_snake_case(self, initial: bool = False):
+        async def set_use_snake_case(self, initial: bool = False) -> None:
             """Accept naming-mode call from validation flow.
 
             Args:
@@ -395,7 +413,7 @@ async def test_handle_user_input_closes_client(monkeypatch):
             """
             return
 
-        async def is_plugin_installed(self):
+        async def is_plugin_installed(self) -> bool:
             """Report plugin as installed for this validation path.
 
             Returns:
@@ -403,7 +421,7 @@ async def test_handle_user_input_closes_client(monkeypatch):
             """
             return True
 
-        async def get_system_info(self):
+        async def get_system_info(self) -> Any:
             """Return minimal system metadata for name derivation.
 
             Returns:
@@ -411,7 +429,7 @@ async def test_handle_user_input_closes_client(monkeypatch):
             """
             return {"name": "OPNsense"}
 
-        async def get_device_unique_id(self, expected_id: str | None = None):
+        async def get_device_unique_id(self, expected_id: str | None = None) -> str:
             """Return deterministic device identifier for validation.
 
             Args:
@@ -440,7 +458,7 @@ async def test_handle_user_input_closes_client(monkeypatch):
     _Client.last_instance.async_close.assert_awaited_once()
 
 
-def test_build_user_input_and_granular_and_options_schemas_defaults():
+def test_build_user_input_and_granular_and_options_schemas_defaults() -> None:
     """Verify the schema builders accept empty input and return defaults where applicable."""
     uis = None
     # user input schema should provide keys and defaults
@@ -463,14 +481,14 @@ def test_build_user_input_and_granular_and_options_schemas_defaults():
 
 
 @pytest.mark.parametrize(
-    "input_value,expected",
+    ("input_value", "expected"),
     [
         (5, 10),  # below minimum -> clamped to 10
         (150, 150),  # within range -> unchanged
         (1000, 300),  # above maximum -> clamped to 300
     ],
 )
-def test_options_scan_interval_clamp(input_value, expected):
+def test_options_scan_interval_clamp(input_value: Any, expected: Any) -> None:
     """_build_options_init_schema should clamp CONF_SCAN_INTERVAL to min/max values."""
     oschema = cf_mod._build_options_init_schema(user_input=None)
     # pass a dict with the scan interval set to the test value
@@ -479,7 +497,7 @@ def test_options_scan_interval_clamp(input_value, expected):
 
 
 @pytest.mark.parametrize(
-    "input_value,expected",
+    ("input_value", "expected"),
     [
         (-10, 0),  # below minimum -> clamped to 0
         (300, 300),  # within range -> unchanged
@@ -488,7 +506,7 @@ def test_options_scan_interval_clamp(input_value, expected):
         (5000, 3600),  # above maximum -> clamped to 3600
     ],
 )
-def test_options_device_tracker_consider_home_clamp(input_value, expected):
+def test_options_device_tracker_consider_home_clamp(input_value: Any, expected: Any) -> None:
     """_build_options_init_schema should clamp CONF_DEVICE_TRACKER_CONSIDER_HOME to min/max values."""
     oschema = cf_mod._build_options_init_schema(user_input=None)
     # pass a dict with the consider_home value set to the test value
@@ -496,7 +514,7 @@ def test_options_device_tracker_consider_home_clamp(input_value, expected):
     assert validated.get(cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME) == expected
 
 
-def test_async_get_options_flow_returns_options_flow():
+def test_async_get_options_flow_returns_options_flow() -> None:
     """async_get_options_flow should return an OPNsenseOptionsFlow instance."""
     cfg = MagicMock()
     res = cf_mod.OPNsenseConfigFlow.async_get_options_flow(cfg)
@@ -504,7 +522,7 @@ def test_async_get_options_flow_returns_options_flow():
 
 
 @pytest.mark.asyncio
-async def test_options_flow_init_with_user_triggers_update():
+async def test_options_flow_init_with_user_triggers_update() -> None:
     """Submitting user input to async_step_init should update entry and create entry."""
     cfg = MagicMock()
     cfg.data = {cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"}
@@ -533,7 +551,9 @@ async def test_options_flow_init_with_user_triggers_update():
 
 
 @pytest.mark.asyncio
-async def test_options_flow_granular_sync_calls_validate_and_updates(monkeypatch):
+async def test_options_flow_granular_sync_calls_validate_and_updates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """async_step_granular_sync should call validate_input and update entry when no errors."""
     cfg = MagicMock()
     cfg.data = {cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"}
@@ -545,7 +565,7 @@ async def test_options_flow_granular_sync_calls_validate_and_updates(monkeypatch
     flow.hass.config_entries.async_update_entry = MagicMock()
 
     # monkeypatch validate_input to return no errors
-    async def fake_validate(hass, user_input, errors, **kwargs):
+    async def fake_validate(hass: HomeAssistant, user_input: Any, errors: Any, **kwargs) -> Any:
         """Return an empty error mapping so the options flow can proceed.
 
         Args:
@@ -574,7 +594,9 @@ async def test_options_flow_granular_sync_calls_validate_and_updates(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_device_tracker_shows_form_when_no_user_input(monkeypatch, make_config_entry):
+async def test_device_tracker_shows_form_when_no_user_input(
+    monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
     """async_step_device_tracker should show form containing data_schema when called without user_input."""
     cfg = make_config_entry(
         data={cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"},
@@ -585,7 +607,7 @@ async def test_device_tracker_shows_form_when_no_user_input(monkeypatch, make_co
     flow.hass = MagicMock()
 
     # monkeypatch _get_dt_entries to return an ordered dict-like mapping
-    async def fake_get_dt_entries(hass, config, selected_devices):
+    async def fake_get_dt_entries(hass: HomeAssistant, config: Any, selected_devices: Any) -> Any:
         """Return a deterministic mapping of selectable device-tracker entries.
 
         Args:
@@ -620,7 +642,11 @@ async def test_device_tracker_shows_form_when_no_user_input(monkeypatch, make_co
         cf_mod.MissingExternalAiopnsenseDependency("missing"),
     ],
 )
-async def test_device_tracker_handles_arp_lookup_failure(monkeypatch, make_config_entry, exc):
+async def test_device_tracker_handles_arp_lookup_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    exc: BaseException | None,
+) -> None:
     """ARP/dependency lookup failures should not abort device tracker form rendering."""
     cfg = make_config_entry(
         data={cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"},
@@ -633,7 +659,7 @@ async def test_device_tracker_handles_arp_lookup_failure(monkeypatch, make_confi
     flow.handler = "opnsense"
     flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=cfg)
 
-    async def _raise(*args, **kwargs):
+    async def _raise(*args, **kwargs) -> Never:
         """Raise ``ClientError`` so device-tracker lookup failures can be tested.
 
         Args:
@@ -655,7 +681,9 @@ async def test_device_tracker_handles_arp_lookup_failure(monkeypatch, make_confi
 
 
 @pytest.mark.asyncio
-async def test_options_flow_device_tracker_user_input(monkeypatch, make_config_entry):
+async def test_options_flow_device_tracker_user_input(
+    monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
     """When user submits manual devices, they should be parsed and saved to options."""
     # Build a fake config_entry using shared factory
     config_entry = make_config_entry(
@@ -698,7 +726,9 @@ async def test_options_flow_device_tracker_user_input(monkeypatch, make_config_e
 
 
 @pytest.mark.asyncio
-async def test_options_flow_device_tracker_track_all_clears_device_list(make_config_entry):
+async def test_options_flow_device_tracker_track_all_clears_device_list(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
     """Track-all mode from init should persist the legacy empty-device-list behavior."""
     config_entry = make_config_entry(
         data={
@@ -733,7 +763,9 @@ async def test_options_flow_device_tracker_track_all_clears_device_list(make_con
 
 
 @pytest.mark.asyncio
-async def test_options_flow_init_selected_mode_shows_picker_step(monkeypatch, make_config_entry):
+async def test_options_flow_init_selected_mode_shows_picker_step(
+    monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
     """Selected-only mode should continue to the device picker step."""
     config_entry = make_config_entry(
         data={
@@ -763,7 +795,7 @@ async def test_options_flow_init_selected_mode_shows_picker_step(monkeypatch, ma
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "granular_flag, config_step, expected_called",
+    ("granular_flag", "config_step", "expected_called"),
     [
         # user step: no plugin check no matter the granular sync flag
         (True, "user", False),
@@ -776,8 +808,12 @@ async def test_options_flow_init_selected_mode_shows_picker_step(monkeypatch, ma
     ],
 )
 async def test_validate_input_user_respects_granular_flag_for_plugin_check(
-    monkeypatch, granular_flag, config_step, expected_called, fake_flow_client
-):
+    monkeypatch: pytest.MonkeyPatch,
+    granular_flag: Any,
+    config_step: Any,
+    expected_called: Any,
+    fake_flow_client: Any,
+) -> None:
     """Plugin check not required for config step of user. Otherwise, plugin check is required if granular sync options is enabled."""
     # Use shared fake_flow_client fixture to supply a FakeClient class
     client_cls = fake_flow_client()
@@ -798,7 +834,7 @@ async def test_validate_input_user_respects_granular_flag_for_plugin_check(
     flow = cf_mod.OPNsenseConfigFlow()
     flow.hass = MagicMock()
 
-    async def _noop(*args, **kwargs):
+    async def _noop(*args, **kwargs) -> None:
         """Noop.
 
         Args:
@@ -808,8 +844,8 @@ async def test_validate_input_user_respects_granular_flag_for_plugin_check(
         return
 
     # Prevent base ConfigFlow methods from touching HA internals during unit test
-    flow.async_set_unique_id = _noop
-    flow._abort_if_unique_id_configured = lambda: None
+    object.__setattr__(flow, "async_set_unique_id", _noop)
+    object.__setattr__(flow, "_abort_if_unique_id_configured", lambda: None)
 
     # Call the requested config step which will call validate_input internally
     if config_step == "user":
@@ -862,7 +898,7 @@ async def test_validate_input_user_respects_granular_flag_for_plugin_check(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "flow_type, require_plugin, expected_called",
+    ("flow_type", "require_plugin", "expected_called"),
     [
         ("config", True, True),
         ("config", False, False),
@@ -871,8 +907,12 @@ async def test_validate_input_user_respects_granular_flag_for_plugin_check(
     ],
 )
 async def test_granular_sync_flow_plugin_check(
-    monkeypatch, flow_type, require_plugin, expected_called, fake_flow_client
-):
+    monkeypatch: pytest.MonkeyPatch,
+    flow_type: Any,
+    require_plugin: Any,
+    expected_called: Any,
+    fake_flow_client: Any,
+) -> None:
     """Test plugin check behavior when granular sync is enabled and granular items are set. For granular_sync step from both ConfigFlow and OptionsFlow: - If any SYNC_ITEMS_REQUIRING_PLUGIN is True -> is_plugin_installed should be called. - If none are True -> is_plugin_installed should NOT be called."""
     # Use shared fake_flow_client fixture
     client_cls = fake_flow_client()

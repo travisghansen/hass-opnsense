@@ -21,8 +21,11 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 AIOPNSENSE_MIN_FIRMWARE = "26.1.1"
 
 
-class MissingExternalAiopnsenseDependency(ImportError):
+class MissingExternalAiopnsenseDependencyError(ImportError):
     """Raised when external ``aiopnsense`` is required but unavailable."""
+
+
+MissingExternalAiopnsenseDependency = MissingExternalAiopnsenseDependencyError
 
 
 async def _get_external_aiopnsense_version() -> str | None:
@@ -205,7 +208,7 @@ def _add_query_count_compat(client: OPNsenseClientProtocol) -> OPNsenseClientPro
             count_value = await get_query_counts()
             return _coerce_query_counts(count_value)
 
-        setattr(client, "get_query_counts", _get_query_counts)
+        object.__setattr__(client, "get_query_counts", _get_query_counts)
         _LOGGER.debug("Applied aiopnsense query-count normalization shim using get_query_counts()")
         return client
 
@@ -221,7 +224,7 @@ def _add_query_count_compat(client: OPNsenseClientProtocol) -> OPNsenseClientPro
             count_value = await get_query_count()
             return _coerce_query_counts(count_value)
 
-        setattr(client, "get_query_counts", _get_query_counts)
+        object.__setattr__(client, "get_query_counts", _get_query_counts)
         _LOGGER.debug("Applied aiopnsense query-count compatibility shim using get_query_count()")
 
     return client
@@ -262,7 +265,6 @@ def _add_plugin_compat(client: OPNsenseClientProtocol) -> OPNsenseClientProtocol
             Returns:
                 bool: `True` when `os-homeassistant-maxit` is present, otherwise `False`.
             """
-
             nonlocal installed_plugins_cache
             nonlocal installed_plugins_updated_at
             nonlocal installed_plugins_refresh_succeeded
@@ -349,7 +351,7 @@ def _add_plugin_compat(client: OPNsenseClientProtocol) -> OPNsenseClientProtocol
             await _refresh_installed_plugins()
             return "os-homeassistant-maxit" in (installed_plugins_cache or set())
 
-        setattr(client, "is_plugin_installed", _is_plugin_installed)
+        object.__setattr__(client, "is_plugin_installed", _is_plugin_installed)
         _LOGGER.debug("Applied aiopnsense plugin compatibility shim for is_plugin_installed()")
 
     if not hasattr(client, "is_plugin_deprecated"):
@@ -362,7 +364,7 @@ def _add_plugin_compat(client: OPNsenseClientProtocol) -> OPNsenseClientProtocol
             """
             return False
 
-        setattr(client, "is_plugin_deprecated", _is_plugin_deprecated)
+        object.__setattr__(client, "is_plugin_deprecated", _is_plugin_deprecated)
         _LOGGER.debug("Applied aiopnsense plugin compatibility shim for is_plugin_deprecated()")
 
     return client
@@ -388,7 +390,7 @@ def _add_core_compat(client: OPNsenseClientProtocol) -> OPNsenseClientProtocol:
             """
             _ = initial
 
-        setattr(client, "set_use_snake_case", _set_use_snake_case)
+        object.__setattr__(client, "set_use_snake_case", _set_use_snake_case)
         _LOGGER.debug("Applied aiopnsense core compatibility shim for set_use_snake_case()")
     elif not _callable_accepts_parameter(set_use_snake_case, "initial"):
 
@@ -405,7 +407,7 @@ def _add_core_compat(client: OPNsenseClientProtocol) -> OPNsenseClientProtocol:
                     raise
                 await set_use_snake_case()
 
-        setattr(client, "set_use_snake_case", _set_use_snake_case_with_initial)
+        object.__setattr__(client, "set_use_snake_case", _set_use_snake_case_with_initial)
         _LOGGER.debug(
             "Applied aiopnsense core compatibility wrapper for set_use_snake_case(initial=...)"
         )
@@ -416,7 +418,7 @@ def _add_core_compat(client: OPNsenseClientProtocol) -> OPNsenseClientProtocol:
             """Provide a no-op query-counter reset for backends without support."""
             return
 
-        setattr(client, "reset_query_counts", _reset_query_counts)
+        object.__setattr__(client, "reset_query_counts", _reset_query_counts)
         _LOGGER.debug("Applied aiopnsense core compatibility shim for reset_query_counts()")
 
     if not hasattr(client, "get_query_counts"):
@@ -429,7 +431,7 @@ def _add_core_compat(client: OPNsenseClientProtocol) -> OPNsenseClientProtocol:
             """
             return (0, 0)
 
-        setattr(client, "get_query_counts", _get_query_counts)
+        object.__setattr__(client, "get_query_counts", _get_query_counts)
         _LOGGER.debug("Applied aiopnsense core compatibility shim for get_query_counts()")
 
     return client
@@ -449,7 +451,7 @@ async def _create_external_client(**kwargs: Any) -> OPNsenseClientProtocol:
     """
     try:
         external_module = await asyncio.to_thread(import_module, "aiopnsense")
-        external_client_class = getattr(external_module, "OPNsenseClient")
+        external_client_class = external_module.OPNsenseClient
     except (AttributeError, ImportError) as err:
         raise MissingExternalAiopnsenseDependency(
             "Firmware >= 26.1.1 requires the external aiopnsense package"
@@ -496,7 +498,8 @@ async def create_opnsense_client(
         OPNsenseClientProtocol: Client implementation appropriate for the detected firmware.
 
     Raises:
-        MissingExternalAiopnsenseDependency: Firmware requires external backend but dependency is unavailable.
+        MissingExternalAiopnsenseDependency: Firmware requires external backend but
+        dependency is unavailable.
     """
     kwargs = _build_client_kwargs(
         url=url,

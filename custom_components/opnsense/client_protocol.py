@@ -84,11 +84,11 @@ class OPNsenseClientProtocol(Protocol):
             bool: `True` when plugin should be treated as deprecated.
         """
 
-    async def close_notice(self, id: str) -> bool:
+    async def close_notice(self, notice_id: str) -> bool:
         """Close a single notice or all notices, depending on backend semantics.
 
         Args:
-            id: Notice identifier or backend-specific sentinel value.
+            notice_id: Notice identifier or backend-specific sentinel value.
 
         Returns:
             bool: `True` when the close request succeeded.
@@ -321,11 +321,13 @@ class OPNsenseClientProtocol(Protocol):
             bool: `True` when instance state change succeeded.
         """
 
-    async def upgrade_firmware(self, type: str = "update") -> MutableMapping[str, Any] | None:
+    async def upgrade_firmware(
+        self, upgrade_type: str = "update"
+    ) -> MutableMapping[str, Any] | None:
         """Trigger firmware update/upgrade workflow.
 
         Args:
-            type: Upgrade action type accepted by the backend (default: `update`).
+            upgrade_type: Upgrade action type accepted by the backend (default: `update`).
 
         Returns:
             MutableMapping[str, Any] | None: Upgrade request response payload when available.

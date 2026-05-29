@@ -65,7 +65,8 @@ class UnboundMixin(PyOPNsenseClientProtocol):
         dnsbl_resp = await self._get("/api/unbound/service/dnsbl")
         restart_resp = await self._post("/api/unbound/service/restart")
         _LOGGER.debug(
-            "[set_unbound_blocklist_legacy] set_state: %s, payload: %s, response: %s, dnsbl_resp: %s, restart_resp: %s",
+            "[set_unbound_blocklist_legacy] set_state: %s, payload: %s, response: %s, dnsbl_resp: "
+            "%s, restart_resp: %s",
             "On" if set_state else "Off",
             payload,
             response,
@@ -100,7 +101,8 @@ class UnboundMixin(PyOPNsenseClientProtocol):
             ValueError,
         ) as e:
             _LOGGER.error(
-                "Error comparing firmware version %s when determining which Unbound Blocklist method to use. %s: %s",
+                "Error comparing firmware version %s when determining which Unbound Blocklist "
+                "method to use. %s: %s",
                 firmware,
                 type(e).__name__,
                 e,
@@ -142,7 +144,8 @@ class UnboundMixin(PyOPNsenseClientProtocol):
             try:
                 dnsbl_resp = await self._get("/api/unbound/service/dnsbl")
                 _LOGGER.debug(
-                    "[_toggle_unbound_blocklist] uuid: %s, set_state: %s, response: %s, dnsbl_resp: %s",
+                    "[_toggle_unbound_blocklist] uuid: %s, set_state: %s, response: %s, dnsbl_resp:"
+                    " %s",
                     uuid,
                     "On" if set_state else "Off",
                     response,
@@ -185,7 +188,8 @@ class UnboundMixin(PyOPNsenseClientProtocol):
             ValueError,
         ) as e:
             _LOGGER.error(
-                "Error comparing firmware version %s when determining which Unbound Blocklist method to use. %s: %s",
+                "Error comparing firmware version %s when determining which Unbound Blocklist "
+                "method to use. %s: %s",
                 firmware,
                 type(e).__name__,
                 e,
@@ -218,7 +222,8 @@ class UnboundMixin(PyOPNsenseClientProtocol):
             ValueError,
         ) as e:
             _LOGGER.error(
-                "Error comparing firmware version %s when determining which Unbound Blocklist method to use. %s: %s",
+                "Error comparing firmware version %s when determining which Unbound Blocklist "
+                "method to use. %s: %s",
                 firmware,
                 type(e).__name__,
                 e,

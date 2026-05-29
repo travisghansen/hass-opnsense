@@ -2,6 +2,7 @@
 
 from collections.abc import MutableMapping
 from datetime import UTC
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
@@ -9,13 +10,15 @@ import pytest
 
 from custom_components.opnsense import pyopnsense
 
+TEST_PASSWORD = "p"
+
 
 @pytest.mark.asyncio
 async def test_telemetry_system_parsing_and_filesystems() -> None:
     """Test telemetry system parsing when boottime missing/invalid and filesystems path."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
+        url="http://localhost", username="u", password=TEST_PASSWORD, session=session
     )
     try:
         # time_info with bad datetime and uptime matching regex
@@ -26,7 +29,7 @@ async def test_telemetry_system_parsing_and_filesystems() -> None:
             "loadavg": "bad",
         }
 
-        async def fake_safe_post(path, *args, **kwargs):
+        async def fake_safe_post(path: Any, *args, **kwargs) -> Any:
             """Return the canned telemetry payload for every posted diagnostics path.
 
             Args:
@@ -40,14 +43,15 @@ async def test_telemetry_system_parsing_and_filesystems() -> None:
                 return {"devices": [{"dev": "/dev/da0"}]}
             return {}
 
-        client._safe_dict_post = AsyncMock(side_effect=fake_safe_post)
-        client._get_opnsense_timezone = AsyncMock(return_value=UTC)
+        object.__setattr__(client, "_safe_dict_post", AsyncMock(side_effect=fake_safe_post))
+        get_timezone = AsyncMock(return_value=UTC)
+        object.__setattr__(client, "_get_opnsense_timezone", get_timezone)
 
         sys = await client._get_telemetry_system()
         assert isinstance(sys, MutableMapping)
         # At least one of the expected fields is normalized/present
         assert any(k in sys for k in ("uptime", "boottime", "loadavg"))
-        client._get_opnsense_timezone.assert_awaited_once_with("not-a-date")
+        get_timezone.assert_awaited_once_with("not-a-date")
 
         files = await client._get_telemetry_filesystems()
         assert files is None or isinstance(files, list)
@@ -60,25 +64,29 @@ async def test_telemetry_cpu_variants() -> None:
     """Test _get_telemetry_cpu behavior for empty cputype list and valid stream."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
+        url="http://localhost", username="u", password=TEST_PASSWORD, session=session
     )
     try:
         # empty cpu type -> returns {}
-        client._safe_list_post = AsyncMock(return_value=[])
+        object.__setattr__(client, "_safe_list_post", AsyncMock(return_value=[]))
         cpu_empty = await client._get_telemetry_cpu()
         assert cpu_empty == {}
 
         # valid cpu type and stream
-        client._safe_list_post = AsyncMock(return_value=["Intel (2 cores)"])
-        client._get_from_stream = AsyncMock(
-            return_value={
-                "total": "29",
-                "user": "2",
-                "nice": "0",
-                "sys": "27",
-                "intr": "0",
-                "idle": "70",
-            }
+        object.__setattr__(client, "_safe_list_post", AsyncMock(return_value=["Intel (2 cores)"]))
+        object.__setattr__(
+            client,
+            "_get_from_stream",
+            AsyncMock(
+                return_value={
+                    "total": "29",
+                    "user": "2",
+                    "nice": "0",
+                    "sys": "27",
+                    "intr": "0",
+                    "idle": "70",
+                }
+            ),
         )
         cpu = await client._get_telemetry_cpu()
         assert isinstance(cpu.get("count"), int)
@@ -92,15 +100,19 @@ async def test_telemetry_mbuf_pfstate_and_temps() -> None:
     """Test telemetry mbuf, pfstate and temps parsing branches."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
+        url="http://localhost", username="u", password=TEST_PASSWORD, session=session
     )
     try:
         # mbuf and pfstate basic numeric parsing
-        client._safe_dict_post = AsyncMock(
-            side_effect=[
-                {"mbuf-statistics": {"mbuf-current": "10", "mbuf-total": "20"}},
-                {"current": "5", "limit": "10"},
-            ]
+        object.__setattr__(
+            client,
+            "_safe_dict_post",
+            AsyncMock(
+                side_effect=[
+                    {"mbuf-statistics": {"mbuf-current": "10", "mbuf-total": "20"}},
+                    {"current": "5", "limit": "10"},
+                ]
+            ),
         )
         mbuf = await client._get_telemetry_mbuf()
         pf = await client._get_telemetry_pfstate()
@@ -108,8 +120,12 @@ async def test_telemetry_mbuf_pfstate_and_temps() -> None:
         assert pf.get("used") == 5 and pf.get("total") == 10
 
         # temps: return list with one entry
-        client._safe_list_get = AsyncMock(
-            return_value=[{"temperature": "45.5", "type_translated": "CPU", "device_seq": 0}]
+        object.__setattr__(
+            client,
+            "_safe_list_get",
+            AsyncMock(
+                return_value=[{"temperature": "45.5", "type_translated": "CPU", "device_seq": 0}]
+            ),
         )
         temps = await client._get_telemetry_temps()
         assert isinstance(temps, MutableMapping) and len(temps) == 1
@@ -122,7 +138,7 @@ async def test_get_interfaces_status_variants() -> None:
     """Ensure interface parsing handles status, associated mapping and mac filtering."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
+        url="http://localhost", username="u", password=TEST_PASSWORD, session=session
     )
     try:
         # prepare list with various status and mac strings
@@ -147,7 +163,7 @@ async def test_get_interfaces_status_variants() -> None:
             },
         ]
 
-        client._safe_list_get = AsyncMock(return_value=iface_list)
+        object.__setattr__(client, "_safe_list_get", AsyncMock(return_value=iface_list))
         interfaces = await client.get_interfaces()
         assert "em0" in interfaces and interfaces["em0"]["status"] == "down"
         assert "em1" in interfaces and interfaces["em1"]["status"] == "up"
@@ -162,14 +178,14 @@ async def test_telemetry_memory_swap_branches() -> None:
     """Cover telemetry memory path including swap data branch."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
+        url="http://localhost", username="u", password=TEST_PASSWORD, session=session
     )
     try:
         # prepare memory info with swap list present
         mem = {"memory": {"total": "8000", "used": "2000"}}
         swap = {"swap": [{"total": "1000", "used": "200"}]}
 
-        async def fake_post(path, *args, **kwargs):
+        async def fake_post(path: Any, *args, **kwargs) -> Any:
             """Return memory or swap payloads based on the requested diagnostics path.
 
             Args:
@@ -183,7 +199,7 @@ async def test_telemetry_memory_swap_branches() -> None:
                 return swap
             return {}
 
-        client._safe_dict_post = AsyncMock(side_effect=fake_post)
+        object.__setattr__(client, "_safe_dict_post", AsyncMock(side_effect=fake_post))
         res = await client._get_telemetry_memory()
         assert isinstance(res.get("physmem"), int) or res.get("physmem") is None
     finally:

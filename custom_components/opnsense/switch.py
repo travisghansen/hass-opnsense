@@ -5,7 +5,6 @@ import logging
 from typing import Any
 
 import awesomeversion
-
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity, SwitchEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
@@ -207,7 +206,8 @@ async def _compile_service_switches(
                 coordinator=coordinator,
                 entity_description=SwitchEntityDescription(
                     key=f"service.{service.get('id', service.get('name', 'unknown'))}.{prop_name}",
-                    name=f"Service {service.get('description', service.get('name', 'Unknown'))} {prop_name}",
+                    name=f"Service {service.get('description', service.get('name', 'Unknown'))} "
+                    f"{prop_name}",
                     icon="mdi:application-cog-outline",
                     # entity_category=ENTITY_CATEGORY_CONFIG,
                     device_class=SwitchDeviceClass.SWITCH,
@@ -250,7 +250,8 @@ async def _compile_vpn_switches(
                     coordinator=coordinator,
                     entity_description=SwitchEntityDescription(
                         key=f"{vpn_type}.{clients_servers}.{uuid}",
-                        name=f"{'OpenVPN' if vpn_type == 'openvpn' else vpn_type.title()} {clients_servers.title().rstrip('s')} {instance['name']}",
+                        name=f"{'OpenVPN' if vpn_type == 'openvpn' else vpn_type.title()} "
+                        f"{clients_servers.title().rstrip('s')} {instance['name']}",
                         icon="mdi:folder-key-network-outline",
                         # entity_category=ENTITY_CATEGORY_CONFIG,
                         device_class=SwitchDeviceClass.SWITCH,
@@ -404,7 +405,10 @@ async def _compile_nat_source_rules_switches(
             coordinator=coordinator,
             entity_description=SwitchEntityDescription(
                 key=f"firewall.nat.source_nat.{rule.get('uuid', 'unknown')}",
-                name=f"NAT Source: {rule.get('%interface', '')}: {rule.get('description', 'unknown')}",
+                name=(
+                    f"NAT Source: {rule.get('%interface', '')}: "
+                    f"{rule.get('description', 'unknown')}"
+                ),
                 icon="mdi:network-outline",
                 device_class=SwitchDeviceClass.SWITCH,
                 entity_registry_enabled_default=False,
@@ -442,7 +446,10 @@ async def _compile_nat_destination_rules_switches(
             coordinator=coordinator,
             entity_description=SwitchEntityDescription(
                 key=f"firewall.nat.d_nat.{rule.get('uuid', 'unknown')}",
-                name=f"NAT Destination: {rule.get('%interface', '')}: {rule.get('description', 'unknown')}",
+                name=(
+                    f"NAT Destination: {rule.get('%interface', '')}: "
+                    f"{rule.get('description', 'unknown')}"
+                ),
                 icon="mdi:network-outline",
                 device_class=SwitchDeviceClass.SWITCH,
                 entity_registry_enabled_default=False,
@@ -480,7 +487,10 @@ async def _compile_nat_one_to_one_rules_switches(
             coordinator=coordinator,
             entity_description=SwitchEntityDescription(
                 key=f"firewall.nat.one_to_one.{rule.get('uuid', 'unknown')}",
-                name=f"NAT One to One: {rule.get('%interface', '')}: {rule.get('description', 'unknown')}",
+                name=(
+                    f"NAT One to One: {rule.get('%interface', '')}: "
+                    f"{rule.get('description', 'unknown')}"
+                ),
                 icon="mdi:network-outline",
                 device_class=SwitchDeviceClass.SWITCH,
                 entity_registry_enabled_default=False,
@@ -518,7 +528,9 @@ async def _compile_nat_npt_rules_switches(
             coordinator=coordinator,
             entity_description=SwitchEntityDescription(
                 key=f"firewall.nat.npt.{rule.get('uuid', 'unknown')}",
-                name=f"NAT NPTv6: {rule.get('%interface', '')}: {rule.get('description', 'unknown')}",
+                name=(
+                    f"NAT NPTv6: {rule.get('%interface', '')}: {rule.get('description', 'unknown')}"
+                ),
                 icon="mdi:network-outline",
                 device_class=SwitchDeviceClass.SWITCH,
                 entity_registry_enabled_default=False,
@@ -635,7 +647,8 @@ async def async_setup_entry(
                 ValueError,
             ) as e:
                 _LOGGER.error(
-                    "Error comparing firmware version %s when determining creating Unbound Blocklist switches. %s: %s",
+                    "Error comparing firmware version %s when determining creating Unbound "
+                    "Blocklist switches. %s: %s",
                     firmware,
                     type(e).__name__,
                     e,
@@ -804,7 +817,8 @@ class OPNsenseFirewallRuleSwitch(OPNsenseSwitch):
             self._attr_extra_state_attributes[name] = rule.get(attr, None)
         self.async_write_ha_state()
         _LOGGER.debug(
-            "[OPNsenseFirewallRuleSwitch handle_coordinator_update] Name: %s, available: %s, is_on: %s, extra_state_attributes: %s",
+            "[OPNsenseFirewallRuleSwitch handle_coordinator_update] Name: %s, available: %s, is_on:"
+            " %s, extra_state_attributes: %s",
             self.name,
             self.available,
             self.is_on,
@@ -982,7 +996,8 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
 
         self.async_write_ha_state()
         _LOGGER.debug(
-            "[OPNsenseNATRuleSwitch handle_coordinator_update] Name: %s, available: %s, is_on: %s, extra_state_attributes: %s",
+            "[OPNsenseNATRuleSwitch handle_coordinator_update] Name: %s, available: %s, is_on: %s, "
+            "extra_state_attributes: %s",
             self.name,
             self.available,
             self.is_on,
@@ -1046,7 +1061,8 @@ class OPNsenseFilterSwitchLegacy(OPNsenseSwitch):
         )
         self._tracker: str = self._opnsense_get_tracker()
         self._rule: MutableMapping[str, Any] | None = None
-        # _LOGGER.debug(f"[OPNsenseFilterSwitchLegacy init] Name: {self.name}, tracker: {self._tracker}")
+        # _LOGGER.debug(f"[OPNsenseFilterSwitchLegacy init] Name: {self.name}, tracker:
+        # {self._tracker}")
 
     def _opnsense_get_tracker(self) -> str:
         """Get the tracker from the entity description.
@@ -1094,7 +1110,9 @@ class OPNsenseFilterSwitchLegacy(OPNsenseSwitch):
             return
         self._available = True
         self.async_write_ha_state()
-        # _LOGGER.debug(f"[OPNsenseFilterSwitchLegacy handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
+        # _LOGGER.debug(f"[OPNsenseFilterSwitchLegacy handle_coordinator_update] Name:
+        # {self.name}, available: {self.available}, is_on: {self.is_on},
+        # extra_state_attributes: {self.extra_state_attributes}")
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""
@@ -1148,7 +1166,8 @@ class OPNsenseNatSwitchLegacy(OPNsenseSwitch):
         self._rule_type: str = self._opnsense_get_rule_type()
         self._tracker: str = self._opnsense_get_tracker()
         self._rule: MutableMapping[str, Any] | None = None
-        # _LOGGER.debug(f"[OPNsenseNatSwitchLegacy init] Name: {self.name}, tracker: {self._tracker}, rule_type: {self._rule_type}")
+        # _LOGGER.debug(f"[OPNsenseNatSwitchLegacy init] Name: {self.name}, tracker:
+        # {self._tracker}, rule_type: {self._rule_type}")
 
     def _opnsense_get_rule_type(self) -> str:
         """Get the rule type from the entity description.
@@ -1213,7 +1232,9 @@ class OPNsenseNatSwitchLegacy(OPNsenseSwitch):
             return
         self._available = True
         self.async_write_ha_state()
-        # _LOGGER.debug(f"[OPNsenseNatSwitchLegacy handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
+        # _LOGGER.debug(f"[OPNsenseNatSwitchLegacy handle_coordinator_update] Name:
+        # {self.name}, available: {self.available}, is_on: {self.is_on},
+        # extra_state_attributes: {self.extra_state_attributes}")
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""
@@ -1278,7 +1299,8 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         )
         self._service: MutableMapping[str, Any] | None = None
         self._prop_name: str = self._opnsense_get_property_name()
-        # _LOGGER.debug(f"[OPNsenseServiceSwitch init] Name: {self.name}, prop_name: {self._prop_name}")
+        # _LOGGER.debug(f"[OPNsenseServiceSwitch init] Name: {self.name}, prop_name:
+        # {self._prop_name}")
 
     def _opnsense_get_property_name(self) -> str:
         """Get the property name from the entity description.
@@ -1333,7 +1355,9 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         for attr in ("id", "name"):
             self._attr_extra_state_attributes[f"service_{attr}"] = self._service.get(attr, None)
         self.async_write_ha_state()
-        # _LOGGER.debug(f"[OPNsenseServiceSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
+        # _LOGGER.debug(f"[OPNsenseServiceSwitch handle_coordinator_update] Name:
+        # {self.name}, available: {self.available}, is_on: {self.is_on},
+        # extra_state_attributes: {self.extra_state_attributes}")
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""
@@ -1405,7 +1429,9 @@ class OPNsenseUnboundBlocklistSwitchLegacy(OPNsenseSwitch):
             "Return NXDOMAIN": bool(dnsbl.get("nxdomain", "0") == "1"),
         }
         self.async_write_ha_state()
-        # _LOGGER.debug(f"[OPNsenseUnboundBlocklistSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
+        # _LOGGER.debug(f"[OPNsenseUnboundBlocklistSwitch handle_coordinator_update] Name:
+        # {self.name}, available: {self.available}, is_on: {self.is_on},
+        # extra_state_attributes: {self.extra_state_attributes}")
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""
@@ -1491,7 +1517,9 @@ class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
             "Return NXDOMAIN": bool(dnsbl.get("nxdomain", "0") == "1"),
         }
         self.async_write_ha_state()
-        # _LOGGER.debug(f"[OPNsenseUnboundBlocklistSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
+        # _LOGGER.debug(f"[OPNsenseUnboundBlocklistSwitch handle_coordinator_update] Name:
+        # {self.name}, available: {self.available}, is_on: {self.is_on},
+        # extra_state_attributes: {self.extra_state_attributes}")
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""
@@ -1593,7 +1621,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
                 "name",
                 "connected_servers",
                 "endpoint",
-                "iterface",
+                "interface",
                 "pubkey",
                 "tunnel_addresses",
                 "latest_handshake",
@@ -1606,7 +1634,9 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
             if instance.get(attr):
                 self._attr_extra_state_attributes[attr] = instance.get(attr)
         self.async_write_ha_state()
-        # _LOGGER.debug(f"[OPNsenseVPNSwitch handle_coordinator_update] Name: {self.name}, available: {self.available}, is_on: {self.is_on}, extra_state_attributes: {self.extra_state_attributes}")
+        # _LOGGER.debug(f"[OPNsenseVPNSwitch handle_coordinator_update] Name: {self.name},
+        # available: {self.available}, is_on: {self.is_on}, extra_state_attributes:
+        # {self.extra_state_attributes}")
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on the VPN switch.

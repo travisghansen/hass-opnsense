@@ -60,7 +60,8 @@ def _build_interface_device_description_map(
         interfaces: Interface payload in ``get_interfaces`` shape.
 
     Returns:
-        dict[str, str]: Mapping of possible interface identifiers (device, logical name, key) to user-facing description names.
+        dict[str, str]: Mapping of possible interface identifiers (device, logical
+            name, key) to user-facing description names.
     """
     if not isinstance(interfaces, Mapping):
         return {}
@@ -229,7 +230,8 @@ async def _compile_vnstat_sensors(
                 coordinator=coordinator,
                 entity_description=SensorEntityDescription(
                     key=f"vnstat.{interface_name}.{metric_name}",
-                    name=f"vnStat: {interface_display_name}: {_vnstat_metric_display_name(metric_name)}",
+                    name=f"vnStat: {interface_display_name}: "
+                    f"{_vnstat_metric_display_name(metric_name)}",
                     native_unit_of_measurement=UnitOfInformation.BYTES,
                     device_class=SensorDeviceClass.DATA_SIZE,
                     icon=metric_def["icon"],
@@ -344,7 +346,8 @@ async def _compile_filesystem_sensors(
             coordinator=coordinator,
             entity_description=SensorEntityDescription(
                 key=f"telemetry.filesystems.{filesystem_slug}",
-                name=f"Filesystem Used Percentage {normalize_filesystem_mountpoint(filesystem.get('mountpoint', None))}",
+                name=f"Filesystem Used Percentage "
+                f"{normalize_filesystem_mountpoint(filesystem.get('mountpoint', None))}",
                 native_unit_of_measurement=PERCENTAGE,
                 device_class=None,
                 icon="mdi:harddisk",
@@ -810,7 +813,9 @@ async def _compile_vpn_sensors(
                         coordinator=coordinator,
                         entity_description=SensorEntityDescription(
                             key=f"{vpn_type}.{clients_servers}.{uuid}.{prop_name}",
-                            name=f"{'OpenVPN' if vpn_type == 'openvpn' else vpn_type.title()} {clients_servers.title().rstrip('s')} {instance['name']} {prop_name}",
+                            name=f"{'OpenVPN' if vpn_type == 'openvpn' else vpn_type.title()} "
+                            f"{clients_servers.title().rstrip('s')} {instance['name']} "
+                            f"{prop_name}",
                             native_unit_of_measurement=native_unit_of_measurement,
                             device_class=device_class,
                             icon=icon,
@@ -831,7 +836,6 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the OPNsense sensors."""
-
     coordinator: OPNsenseDataUpdateCoordinator = getattr(config_entry.runtime_data, COORDINATOR)
     state: dict[str, Any] = coordinator.data
     if not isinstance(state, MutableMapping):
@@ -1073,8 +1077,8 @@ class OPNsenseFilesystemSensor(OPNsenseSensor):
             return
         for fsystem in state.get("telemetry", {}).get("filesystems", []):
             if (
-                self.entity_description.key
-                == f"telemetry.filesystems.{slugify_filesystem_mountpoint(fsystem.get('mountpoint', None))}"
+                self.entity_description.key == "telemetry.filesystems."
+                f"{slugify_filesystem_mountpoint(fsystem.get('mountpoint', None))}"
             ):
                 filesystem = fsystem
         if not filesystem:
@@ -1452,7 +1456,7 @@ class OPNsenseVPNSensor(OPNsenseSensor):
                 "enabled",
                 "connected_servers",
                 "endpoint",
-                "iterface",
+                "interface",
                 "pubkey",
                 "tunnel_addresses",
                 "latest_handshake",
@@ -1554,8 +1558,10 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
         if if_name.lower() == "all":
             leases = dhcp_leases.get("leases", {})
             lease_interfaces = dhcp_leases.get("lease_interfaces", {})
-            # _LOGGER.debug(f"[OPNsenseDHCPLeasesSensor handle_coordinator_update] lease_interfaces: {lease_interfaces}")
-            # _LOGGER.debug(f"[OPNsenseDHCPLeasesSensor handle_coordinator_update] leases: {leases}")
+            # _LOGGER.debug(f"[OPNsenseDHCPLeasesSensor handle_coordinator_update]
+            # lease_interfaces: {lease_interfaces}")
+            # _LOGGER.debug(f"[OPNsenseDHCPLeasesSensor handle_coordinator_update]
+            # leases: {leases}")
             if not isinstance(leases, MutableMapping) or not isinstance(
                 lease_interfaces, MutableMapping
             ):

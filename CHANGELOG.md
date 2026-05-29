@@ -534,7 +534,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 * Alias Toggle Action/Service by [@Snuffy2](https://github.com/Snuffy2) in [#326](https://github.com/travisghansen/hass-opnsense/pull/326)
 * Show repair and shutdown integration if new device id detected by [@Snuffy2](https://github.com/Snuffy2) in [#327](https://github.com/travisghansen/hass-opnsense/pull/327)
 ### 🕷️ Bug Fixes 🕷️
-* Change firmware endpoint and handle non-SemVer firware by [@Snuffy2](https://github.com/Snuffy2) in [#324](https://github.com/travisghansen/hass-opnsense/pull/324)
+* Change firmware endpoint and handle non-SemVer firmware by [@Snuffy2](https://github.com/Snuffy2) in [#324](https://github.com/travisghansen/hass-opnsense/pull/324)
 ### Other Changes
 * Handle edge TypeError: argument of type 'NoneType' is not iterable errors by [@Snuffy2](https://github.com/Snuffy2) in [#314](https://github.com/travisghansen/hass-opnsense/pull/314)
 

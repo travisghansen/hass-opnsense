@@ -4,12 +4,14 @@ These tests cover setup, coordinator update handling, restore state behavior,
 and device info formatting for the integration's device tracker entities.
 """
 
-from collections.abc import MutableMapping
-from datetime import datetime
+from collections.abc import Callable, Iterable, MutableMapping
+from datetime import UTC, datetime
 import importlib
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 # import the module under test and package constants
 dt_mod = importlib.import_module("custom_components.opnsense.device_tracker")
@@ -18,8 +20,12 @@ pkg = importlib.import_module("custom_components.opnsense")
 
 @pytest.mark.asyncio
 async def test_async_setup_entry_configured_devices(
-    monkeypatch, ph_hass, coordinator, make_config_entry, fake_reg_factory
-):
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_reg_factory: Any,
+) -> None:
     """Setup creates device tracker entities for configured MACs."""
     coordinator.data = {
         "arp_table": [{"mac": "aa:bb:cc", "ip": "1.2.3.4", "hostname": "dev", "manufacturer": "m"}]
@@ -44,9 +50,9 @@ async def test_async_setup_entry_configured_devices(
     fake = fake_reg_factory(device_exists=False)
     monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: fake, raising=False)
 
-    added = []
+    added: list[Any] = []
 
-    def async_add_entities(ents):
+    def async_add_entities(ents: Iterable[Any], _update_before_add: bool = False) -> None:
         """Async add entities.
 
         Args:
@@ -86,8 +92,12 @@ async def test_async_setup_entry_configured_devices(
 
 @pytest.mark.asyncio
 async def test_async_setup_entry_removes_nonmatching_tracked_macs(
-    monkeypatch, ph_hass, coordinator, make_config_entry, fake_reg_factory
-):
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_reg_factory: Any,
+) -> None:
     """Ensure previously-tracked MACs not present in current devices are removed."""
     # coordinator reports only one arp entry
     coordinator.data = {
@@ -113,9 +123,9 @@ async def test_async_setup_entry_removes_nonmatching_tracked_macs(
     fake = fake_reg_factory(device_exists=True, device_id="removed-device-id")
     monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: fake, raising=False)
 
-    added = []
+    added: list[Any] = []
 
-    def async_add_entities(ents):
+    def async_add_entities(ents: Iterable[Any], _update_before_add: bool = False) -> None:
         """Async add entities.
 
         Args:
@@ -139,7 +149,9 @@ async def test_async_setup_entry_removes_nonmatching_tracked_macs(
     assert "aa:bb:cc" in updated_data.get(dt_mod.TRACKED_MACS, [])
 
 
-def test_handle_coordinator_update_unavailable(coordinator, make_config_entry):
+def test_handle_coordinator_update_unavailable(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
     """Coordinator with invalid data should mark entity unavailable."""
     coordinator.data = None
     entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -153,14 +165,16 @@ def test_handle_coordinator_update_unavailable(coordinator, make_config_entry):
         mac_vendor=None,
         hostname=None,
     )
-    ent.async_write_ha_state = MagicMock()
+    object.__setattr__(ent, "async_write_ha_state", MagicMock())
 
     ent._handle_coordinator_update()
     assert ent.available is False
     assert ent.async_write_ha_state.called
 
 
-def test_handle_coordinator_update_entry_present(coordinator, make_config_entry):
+def test_handle_coordinator_update_entry_present(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
     """Coordinator arp entry populates entity attributes correctly."""
     coordinator.data = {
         "arp_table": [
@@ -174,7 +188,7 @@ def test_handle_coordinator_update_entry_present(coordinator, make_config_entry)
                 "type": "arp",
             }
         ],
-        "update_time": float(int(datetime.now().timestamp())),
+        "update_time": float(int(datetime.now(UTC).timestamp())),
     }
 
     entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -188,7 +202,7 @@ def test_handle_coordinator_update_entry_present(coordinator, make_config_entry)
         mac_vendor="m",
         hostname="host?",
     )
-    ent.async_write_ha_state = MagicMock()
+    object.__setattr__(ent, "async_write_ha_state", MagicMock())
 
     ent._handle_coordinator_update()
 
@@ -202,7 +216,9 @@ def test_handle_coordinator_update_entry_present(coordinator, make_config_entry)
     assert ent.icon == "mdi:lan-connect"
 
 
-def test_handle_coordinator_update_missing_entry_consider_home(coordinator, make_config_entry):
+def test_handle_coordinator_update_missing_entry_consider_home(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
     """If missing entry and within consider_home, entity remains connected."""
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(
@@ -220,8 +236,8 @@ def test_handle_coordinator_update_missing_entry_consider_home(coordinator, make
         hostname=None,
     )
     # set a recent last known connected time
-    ent._last_known_connected_time = datetime.now().astimezone()
-    ent.async_write_ha_state = MagicMock()
+    ent._last_known_connected_time = datetime.now(UTC).astimezone()
+    object.__setattr__(ent, "async_write_ha_state", MagicMock())
 
     ent._handle_coordinator_update()
     # elapsed < consider_home so device considered connected
@@ -229,7 +245,11 @@ def test_handle_coordinator_update_missing_entry_consider_home(coordinator, make
 
 
 @pytest.mark.asyncio
-async def test_restore_last_state_and_device_info(monkeypatch, coordinator, make_config_entry):
+async def test_restore_last_state_and_device_info(
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
     """Restoring last state merges saved attributes into the entity."""
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -253,7 +273,7 @@ async def test_restore_last_state_and_device_info(monkeypatch, coordinator, make
         "interface": "lan0",
         "expires": 10,
         "type": "arp",
-        "last_known_connected_time": datetime.now().isoformat(),
+        "last_known_connected_time": datetime.now(UTC).isoformat(),
     }
     ent.async_get_last_state = AsyncMock(return_value=last_state)
 
@@ -275,12 +295,17 @@ async def test_restore_last_state_and_device_info(monkeypatch, coordinator, make
         via = getattr(devinfo, "via_device", None)
 
     assert any(t[1] == "aa:bb:cc" for t in connections)
+    assert via is not None
     assert via[0] == dt_mod.DOMAIN
     assert via[1] == entry.data[pkg.CONF_DEVICE_UNIQUE_ID]
 
 
 @pytest.mark.asyncio
-async def test_async_added_to_hass_calls_restore(monkeypatch, coordinator, make_config_entry):
+async def test_async_added_to_hass_calls_restore(
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
     """Entity.async_added_to_hass should call state restoration."""
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -307,14 +332,18 @@ async def test_async_added_to_hass_calls_restore(monkeypatch, coordinator, make_
 
 @pytest.mark.asyncio
 async def test_async_setup_entry_state_not_mapping(
-    monkeypatch, ph_hass, coordinator, make_config_entry, fake_reg_factory
-):
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_reg_factory: Any,
+) -> None:
     """Setup exits early when coordinator state is not a mapping."""
     # coordinator.data is not a mapping -> async_setup_entry should return early and not add entities
     coordinator.data = "not-a-mapping"
     entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
-    added = []
+    added: list[Any] = []
 
     hass = ph_hass
     hass.data = {}
@@ -329,8 +358,12 @@ async def test_async_setup_entry_state_not_mapping(
 
 @pytest.mark.asyncio
 async def test_async_setup_entry_removes_previous_mac(
-    monkeypatch, ph_hass, coordinator, make_config_entry, fake_reg_factory
-):
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_reg_factory: Any,
+) -> None:
     """Setup removes previously tracked MAC addresses when reconfiguring."""
     # previous tracked macs include an old mac that should be removed via device registry
     coordinator.data = {"arp_table": []}
@@ -353,7 +386,9 @@ async def test_async_setup_entry_removes_previous_mac(
     assert hass.config_entries.async_update_entry.called
 
 
-def test_handle_coordinator_update_expires_positive(coordinator, make_config_entry):
+def test_handle_coordinator_update_expires_positive(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
     """Expired ARP entries set entity to disconnected and update attributes."""
     coordinator.data = {
         "arp_table": [
@@ -365,7 +400,7 @@ def test_handle_coordinator_update_expires_positive(coordinator, make_config_ent
                 "expires": 30,
             }
         ],
-        "update_time": float(int(datetime.now().timestamp())),
+        "update_time": float(int(datetime.now(UTC).timestamp())),
     }
 
     entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -379,13 +414,15 @@ def test_handle_coordinator_update_expires_positive(coordinator, make_config_ent
         mac_vendor=None,
         hostname=None,
     )
-    ent.async_write_ha_state = MagicMock()
+    object.__setattr__(ent, "async_write_ha_state", MagicMock())
 
     ent._handle_coordinator_update()
     assert isinstance(ent.extra_state_attributes.get("expires"), datetime)
 
 
-def test_handle_coordinator_update_ip_typeerror(coordinator, make_config_entry):
+def test_handle_coordinator_update_ip_typeerror(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
     """Handle TypeError when entry IP is None and avoid crashing."""
     coordinator.data = {"arp_table": [{"mac": "aa:bb:cc", "ip": None}]}
 
@@ -400,14 +437,16 @@ def test_handle_coordinator_update_ip_typeerror(coordinator, make_config_entry):
         mac_vendor=None,
         hostname=None,
     )
-    ent.async_write_ha_state = MagicMock()
+    object.__setattr__(ent, "async_write_ha_state", MagicMock())
 
     ent._handle_coordinator_update()
     # no exception and ip_address is None
     assert ent.ip_address is None
 
 
-def test_handle_coordinator_update_expired_preserve_last_known_ip(coordinator, make_config_entry):
+def test_handle_coordinator_update_expired_preserve_last_known_ip(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
     """Expired entries preserve last_known_ip when no IP present."""
     # expired entry should set is_connected False and preserve last_known_ip
     # no ip in entry triggers branch where last_known_ip is preserved
@@ -425,7 +464,7 @@ def test_handle_coordinator_update_expired_preserve_last_known_ip(coordinator, m
         hostname=None,
     )
     ent._last_known_ip = "1.2.3.4"
-    ent.async_write_ha_state = MagicMock()
+    object.__setattr__(ent, "async_write_ha_state", MagicMock())
 
     ent._handle_coordinator_update()
     assert ent.is_connected is False
@@ -435,8 +474,12 @@ def test_handle_coordinator_update_expired_preserve_last_known_ip(coordinator, m
 
 @pytest.mark.asyncio
 async def test_async_setup_entry_from_arp_entries(
-    monkeypatch, ph_hass, coordinator, make_config_entry, fake_reg_factory
-):
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_reg_factory: Any,
+) -> None:
     """Setup from ARP entries creates device trackers for present ARP rows."""
     # when CONF_DEVICES not set but device tracker enabled, create entity per arp entry
     coordinator.data = {"arp_table": [{"mac": "m1"}, {"mac": "m2", "hostname": "h2"}]}
@@ -452,7 +495,7 @@ async def test_async_setup_entry_from_arp_entries(
     fake = fake_reg_factory(device_exists=False)
     monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: fake, raising=False)
 
-    added = []
+    added: list[Any] = []
 
     await dt_mod.async_setup_entry(hass, entry, added.extend)
     assert len(added) == 2
