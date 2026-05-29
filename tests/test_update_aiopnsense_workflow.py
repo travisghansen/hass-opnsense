@@ -12,6 +12,37 @@ WORKFLOW_PATH = Path(".github/workflows/update_aiopnsense.yml")
 SCRIPT_PATH = Path(".github/scripts/update_aiopnsense_pins.py")
 
 
+def _write_pin_files(
+    tmp_path: Path,
+    *,
+    manifest_version: str,
+    pyproject_version: str | None = None,
+    pyproject_text: str | None = None,
+) -> tuple[Path, Path]:
+    """Write temporary manifest and pyproject files with aiopnsense pins."""
+    manifest_path = tmp_path / "manifest.json"
+    pyproject_path = tmp_path / "pyproject.toml"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "requirements": [
+                    "xmltodict==0.14.2",
+                    f"aiopnsense=={manifest_version}",
+                ],
+            },
+        ),
+    )
+
+    if pyproject_text is None:
+        pyproject_text = f"""[dependency-groups]
+ha = [
+    "aiopnsense=={pyproject_version or manifest_version}",
+]
+"""
+    pyproject_path.write_text(pyproject_text)
+    return manifest_path, pyproject_path
+
+
 @pytest.fixture
 def updater_script() -> ModuleType:
     """Load the aiopnsense pin updater script as a test module."""
@@ -24,103 +55,103 @@ def updater_script() -> ModuleType:
     return module
 
 
-def test_workflow_updates_manifest_and_pyproject_pins() -> None:
-    """Workflow should include both aiopnsense dependency pin files in update PRs."""
-    workflow = WORKFLOW_PATH.read_text()
-
-    assert "actions/setup-python@v6" in workflow
-    assert "python-version: '3.14'" in workflow
-    assert "Automated update of aiopnsense dependency pins." in workflow
-    assert "custom_components/opnsense/manifest.json" in workflow
-    assert "pyproject.toml" in workflow
-    assert "pyproject_current" in workflow
-    assert str(SCRIPT_PATH) in workflow
-
-
-def test_workflow_treats_missing_stale_branch_as_success() -> None:
-    """Workflow should not fail when GitHub reports an absent branch as a 422."""
-    workflow = WORKFLOW_PATH.read_text()
-
-    assert "status === 422" in workflow
-    assert 'message.includes("Reference does not exist")' in workflow
-    assert "Branch ${branch} was already deleted." in workflow
-
-
-def test_workflow_filters_prerelease_release_notes() -> None:
-    """Workflow should not include prerelease release notes for stable updates."""
-    workflow = WORKFLOW_PATH.read_text()
-
-    assert "function isPrerelease(version)" in workflow
-    assert "function stableVersion(version)" in workflow
-    assert "const currentIsPrerelease = isPrerelease(current);" in workflow
-    assert "const currentStable = stableVersion(current);" in workflow
-    assert "const lowerBound = compareVersions(tagVersion, currentStable);" in workflow
-    assert "!isPrerelease(tagVersion)" in workflow
-    assert "(lowerBound > 0 || (currentIsPrerelease && lowerBound === 0))" in workflow
-
-
-def test_workflow_neutralizes_release_note_closing_keywords() -> None:
-    """Workflow should prevent copied release notes from closing local issues."""
-    workflow = WORKFLOW_PATH.read_text()
-
-    assert "const title = sanitizeReleaseBody(release.name || release.tag_name);" in workflow
-    assert "const tag = sanitizeReleaseBody(release.tag_name);" in workflow
-    assert "`### ${title} (${tag})`" in workflow
-    assert r"@(?=[A-Za-z0-9-]+(?:\/[A-Za-z0-9-]+)?)" in workflow
-    assert '"@<!-- -->"' in workflow
-    assert "reference.replace" in workflow
-    assert r'"\\#"' in workflow
-    assert "close[sd]?|fix(?:e[sd])?|resolve[sd]?" in workflow
-
-
-def test_updater_script_updates_manifest_and_pyproject(
-    tmp_path: Path, updater_script: ModuleType
-) -> None:
-    """Updater script should rewrite exactly one pin in each dependency file."""
-    manifest_path = tmp_path / "manifest.json"
-    pyproject_path = tmp_path / "pyproject.toml"
-    manifest_path.write_text(
-        json.dumps(
-            {
-                "requirements": [
-                    "xmltodict==0.14.2",
-                    "aiopnsense==1.0.8",
-                ],
-            },
+@pytest.mark.parametrize(
+    ("needle", "reason"),
+    [
+        ("actions/setup-python@v6", "pins a Python runtime"),
+        ("python-version: '3.14'", "uses a tomllib-capable Python"),
+        ("Automated update of aiopnsense dependency pins.", "describes generated PRs"),
+        ("custom_components/opnsense/manifest.json", "updates the integration manifest"),
+        ("pyproject.toml", "updates the local dependency pin"),
+        ("pyproject_current", "reports pyproject drift in PR metadata"),
+        (str(SCRIPT_PATH), "runs the checked-in updater helper"),
+        ("status === 422", "handles GitHub missing-reference responses"),
+        ('message.includes("Reference does not exist")', "detects stale deleted branches"),
+        ("Branch ${branch} was already deleted.", "logs stale branch cleanup"),
+        ("function isPrerelease(version)", "detects prerelease release tags"),
+        ("function stableVersion(version)", "normalizes prerelease current pins"),
+        ("const currentIsPrerelease = isPrerelease(current);", "tracks prerelease repairs"),
+        ("const currentStable = stableVersion(current);", "compares against stable base"),
+        ("const lowerBound = compareVersions(tagVersion, currentStable);", "bounds notes"),
+        ("!isPrerelease(tagVersion)", "filters prerelease release notes"),
+        (
+            "(lowerBound > 0 || (currentIsPrerelease && lowerBound === 0))",
+            "excludes current stable except prerelease repairs",
         ),
-    )
-    pyproject_path.write_text(
-        """[dependency-groups]
-ha = [
-    "aiopnsense==1.0.8",
-    "homeassistant",
-]
-""",
+        (
+            "const title = sanitizeReleaseBody(release.name || release.tag_name);",
+            "sanitizes release-note headings",
+        ),
+        ("const tag = sanitizeReleaseBody(release.tag_name);", "sanitizes tag headings"),
+        ("`### ${title} (${tag})`", "uses sanitized heading values"),
+        (r"@(?=[A-Za-z0-9-]+(?:\/[A-Za-z0-9-]+)?)", "neutralizes mentions"),
+        ('"@<!-- -->"', "breaks GitHub mention syntax"),
+        ("reference.replace", "escapes issue references"),
+        (r'"\\#"', "breaks GitHub closing keywords"),
+        ("close[sd]?|fix(?:e[sd])?|resolve[sd]?", "matches closing keywords"),
+    ],
+)
+def test_workflow_contains_expected_update_logic(needle: str, reason: str) -> None:
+    """Workflow should include the expected aiopnsense updater logic."""
+    del reason
+    workflow = WORKFLOW_PATH.read_text()
+
+    assert needle in workflow
+
+
+@pytest.mark.parametrize(
+    (
+        "manifest_version",
+        "pyproject_version",
+        "latest_version",
+        "expected_update_needed",
+        "expected_target",
+    ),
+    [
+        ("1.0.8", "1.0.8", "1.0.9", True, "1.0.9"),
+        ("1.0.0", "1.0.0", "1.0.1rc1", False, "1.0.0"),
+        ("1.0.1rc1", "1.0.1rc1", "1.0.1", True, "1.0.1"),
+        ("1.0.10", "1.0.9", "1.0.9", True, "1.0.10"),
+    ],
+)
+def test_updater_script_pin_update_scenarios(
+    tmp_path: Path,
+    updater_script: ModuleType,
+    manifest_version: str,
+    pyproject_version: str,
+    latest_version: str,
+    expected_update_needed: bool,
+    expected_target: str,
+) -> None:
+    """Updater script should handle stable, prerelease, and drift pin scenarios."""
+    manifest_path, pyproject_path = _write_pin_files(
+        tmp_path,
+        manifest_version=manifest_version,
+        pyproject_version=pyproject_version,
     )
 
     result = updater_script.update_pins(
         manifest_path=manifest_path,
         pyproject_path=pyproject_path,
-        latest_version="1.0.9",
+        latest_version=latest_version,
     )
 
-    assert result.current == "1.0.8"
-    assert result.pyproject_current == "1.0.8"
-    assert result.latest == "1.0.9"
-    assert result.update_needed is True
-    assert "aiopnsense==1.0.9" in manifest_path.read_text()
-    assert '    "aiopnsense==1.0.9",' in pyproject_path.read_text()
+    assert result.current == manifest_version
+    assert result.pyproject_current == pyproject_version
+    assert result.latest == expected_target
+    assert result.update_needed is expected_update_needed
+    assert f"aiopnsense=={expected_target}" in manifest_path.read_text()
+    assert f'    "aiopnsense=={expected_target}",' in pyproject_path.read_text()
 
 
 def test_updater_script_updates_pyproject_pin_without_trailing_comma(
     tmp_path: Path, updater_script: ModuleType
 ) -> None:
     """Updater script should preserve valid TOML dependency-list formatting."""
-    manifest_path = tmp_path / "manifest.json"
-    pyproject_path = tmp_path / "pyproject.toml"
-    manifest_path.write_text(json.dumps({"requirements": ["aiopnsense==1.0.8"]}))
-    pyproject_path.write_text(
-        """[dependency-groups]
+    manifest_path, pyproject_path = _write_pin_files(
+        tmp_path,
+        manifest_version="1.0.8",
+        pyproject_text="""[dependency-groups]
 ha = [
     "homeassistant",
     "aiopnsense==1.0.8"
@@ -138,121 +169,43 @@ ha = [
     assert '    "aiopnsense==1.0.9"\n' in pyproject_path.read_text()
 
 
-def test_updater_script_ignores_prerelease_updates(
-    tmp_path: Path, updater_script: ModuleType
-) -> None:
-    """Updater script should not treat prereleases as newer stable pins."""
-    manifest_path = tmp_path / "manifest.json"
-    pyproject_path = tmp_path / "pyproject.toml"
-    manifest_path.write_text(json.dumps({"requirements": ["aiopnsense==1.0.0"]}))
-    pyproject_path.write_text(
-        """[dependency-groups]
-ha = [
-    "aiopnsense==1.0.0",
-]
-""",
-    )
-
-    result = updater_script.update_pins(
-        manifest_path=manifest_path,
-        pyproject_path=pyproject_path,
-        latest_version="1.0.1rc1",
-    )
-
-    assert result.update_needed is False
-    assert result.latest == "1.0.0"
-    assert "aiopnsense==1.0.0" in manifest_path.read_text()
-    assert '    "aiopnsense==1.0.0",' in pyproject_path.read_text()
-
-
-def test_updater_script_updates_prerelease_pin_to_matching_stable(
-    tmp_path: Path, updater_script: ModuleType
-) -> None:
-    """Updater script should replace current prerelease pins with stable releases."""
-    manifest_path = tmp_path / "manifest.json"
-    pyproject_path = tmp_path / "pyproject.toml"
-    manifest_path.write_text(json.dumps({"requirements": ["aiopnsense==1.0.1rc1"]}))
-    pyproject_path.write_text(
-        """[dependency-groups]
-ha = [
-    "aiopnsense==1.0.1rc1",
-]
-""",
-    )
-
-    result = updater_script.update_pins(
-        manifest_path=manifest_path,
-        pyproject_path=pyproject_path,
-        latest_version="1.0.1",
-    )
-
-    assert result.update_needed is True
-    assert result.latest == "1.0.1"
-    assert "aiopnsense==1.0.1" in manifest_path.read_text()
-    assert '    "aiopnsense==1.0.1",' in pyproject_path.read_text()
-
-
+@pytest.mark.parametrize(
+    ("payload", "expected_latest"),
+    [
+        (
+            {
+                "info": {"version": "1.1.0rc1"},
+                "releases": {
+                    "1.0.8": [{"filename": "aiopnsense-1.0.8.tar.gz"}],
+                    "1.0.9": [{"filename": "aiopnsense-1.0.9.tar.gz"}],
+                    "1.1.0rc1": [{"filename": "aiopnsense-1.1.0rc1.tar.gz"}],
+                },
+            },
+            "1.0.9",
+        ),
+        (
+            {
+                "releases": {
+                    "1.0.8": [{"filename": "aiopnsense-1.0.8.tar.gz"}],
+                    "1.0.9": [],
+                    "1.0.10": [{"filename": "aiopnsense-1.0.10.tar.gz", "yanked": True}],
+                },
+            },
+            "1.0.8",
+        ),
+    ],
+)
 def test_updater_script_selects_latest_stable_from_pypi_payload(
     updater_script: ModuleType,
+    payload: dict[str, object],
+    expected_latest: str,
 ) -> None:
-    """Updater script should ignore prereleases when reading PyPI releases."""
+    """Updater script should select the latest installable stable PyPI release."""
     latest = updater_script._select_latest_stable_version(
-        {
-            "info": {"version": "1.1.0rc1"},
-            "releases": {
-                "1.0.8": [{"filename": "aiopnsense-1.0.8.tar.gz"}],
-                "1.0.9": [{"filename": "aiopnsense-1.0.9.tar.gz"}],
-                "1.1.0rc1": [{"filename": "aiopnsense-1.1.0rc1.tar.gz"}],
-            },
-        },
+        payload,
     )
 
-    assert latest == "1.0.9"
-
-
-def test_updater_script_ignores_stable_releases_without_usable_files(
-    updater_script: ModuleType,
-) -> None:
-    """Updater script should ignore PyPI releases with no installable files."""
-    latest = updater_script._select_latest_stable_version(
-        {
-            "releases": {
-                "1.0.8": [{"filename": "aiopnsense-1.0.8.tar.gz"}],
-                "1.0.9": [],
-                "1.0.10": [{"filename": "aiopnsense-1.0.10.tar.gz", "yanked": True}],
-            },
-        },
-    )
-
-    assert latest == "1.0.8"
-
-
-def test_updater_script_repairs_pyproject_drift_when_manifest_is_newer(
-    tmp_path: Path,
-    updater_script: ModuleType,
-) -> None:
-    """Updater script should align pyproject to a newer manifest pin."""
-    manifest_path = tmp_path / "manifest.json"
-    pyproject_path = tmp_path / "pyproject.toml"
-    manifest_path.write_text(json.dumps({"requirements": ["aiopnsense==1.0.10"]}))
-    pyproject_path.write_text(
-        """[dependency-groups]
-ha = [
-    "aiopnsense==1.0.9",
-]
-""",
-    )
-
-    result = updater_script.update_pins(
-        manifest_path=manifest_path,
-        pyproject_path=pyproject_path,
-        latest_version="1.0.9",
-    )
-
-    assert result.update_needed is True
-    assert result.latest == "1.0.10"
-    assert "aiopnsense==1.0.10" in manifest_path.read_text()
-    assert '    "aiopnsense==1.0.10",' in pyproject_path.read_text()
+    assert latest == expected_latest
 
 
 def test_updater_script_rejects_duplicate_pyproject_pins(
@@ -260,11 +213,10 @@ def test_updater_script_rejects_duplicate_pyproject_pins(
     updater_script: ModuleType,
 ) -> None:
     """Updater script should fail clearly when pyproject has ambiguous pins."""
-    manifest_path = tmp_path / "manifest.json"
-    pyproject_path = tmp_path / "pyproject.toml"
-    manifest_path.write_text(json.dumps({"requirements": ["aiopnsense==1.0.8"]}))
-    pyproject_path.write_text(
-        """[dependency-groups]
+    manifest_path, pyproject_path = _write_pin_files(
+        tmp_path,
+        manifest_version="1.0.8",
+        pyproject_text="""[dependency-groups]
 ha = [
     "aiopnsense==1.0.8",
     "aiopnsense==1.0.9",
