@@ -15,6 +15,7 @@ from urllib.request import urlopen
 PYPI_URL = "https://pypi.org/pypi/aiopnsense/json"
 PIN_PREFIX = "aiopnsense=="
 PYPROJECT_PIN_RE = re.compile(r'(?m)^(\s*)"aiopnsense==[^"]+",\s*$')
+PRERELEASE_RE = re.compile(r"(?i)(?:[.\-_]?(?:a|alpha|b|beta|c|pre|preview|rc|dev)\d*)")
 
 
 @dataclass(frozen=True)
@@ -57,7 +58,19 @@ def _latest_is_newer(current: str, latest: str) -> bool:
     Returns:
         True when latest sorts after current.
     """
-    return _version_key(latest) > _version_key(current)
+    return not _is_prerelease(latest) and _version_key(latest) > _version_key(current)
+
+
+def _is_prerelease(version: str) -> bool:
+    """Return whether a version string appears to be a prerelease.
+
+    Args:
+        version: Version string to evaluate.
+
+    Returns:
+        True when the version has a common prerelease marker.
+    """
+    return PRERELEASE_RE.search(version) is not None
 
 
 def fetch_latest_version() -> str:
@@ -219,13 +232,13 @@ def update_pins(
     """
     current = _read_manifest_version(manifest_path)
     pyproject_current = _read_pyproject_version(pyproject_path)
-    update_needed = _latest_is_newer(current, latest_version) or (
-        current == latest_version and pyproject_current != latest_version
-    )
+    latest_is_newer = _latest_is_newer(current, latest_version)
+    target_version = latest_version if latest_is_newer else current
+    update_needed = latest_is_newer or pyproject_current != target_version
 
     if write and update_needed:
-        _write_manifest_version(manifest_path, latest_version)
-        _write_pyproject_version(pyproject_path, latest_version)
+        _write_manifest_version(manifest_path, target_version)
+        _write_pyproject_version(pyproject_path, target_version)
 
     return UpdateResult(
         current=current,

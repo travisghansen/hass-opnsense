@@ -83,6 +83,59 @@ ha = [
     assert '    "aiopnsense==1.0.9",' in pyproject_path.read_text()
 
 
+def test_updater_script_ignores_prerelease_updates(
+    tmp_path: Path, updater_script: ModuleType
+) -> None:
+    """Updater script should not treat prereleases as newer stable pins."""
+    manifest_path = tmp_path / "manifest.json"
+    pyproject_path = tmp_path / "pyproject.toml"
+    manifest_path.write_text(json.dumps({"requirements": ["aiopnsense==1.0.0"]}))
+    pyproject_path.write_text(
+        """[dependency-groups]
+ha = [
+    "aiopnsense==1.0.0",
+]
+""",
+    )
+
+    result = updater_script.update_pins(
+        manifest_path=manifest_path,
+        pyproject_path=pyproject_path,
+        latest_version="1.0.1rc1",
+    )
+
+    assert result.update_needed is False
+    assert "aiopnsense==1.0.0" in manifest_path.read_text()
+    assert '    "aiopnsense==1.0.0",' in pyproject_path.read_text()
+
+
+def test_updater_script_repairs_pyproject_drift_when_manifest_is_newer(
+    tmp_path: Path,
+    updater_script: ModuleType,
+) -> None:
+    """Updater script should align pyproject to a newer manifest pin."""
+    manifest_path = tmp_path / "manifest.json"
+    pyproject_path = tmp_path / "pyproject.toml"
+    manifest_path.write_text(json.dumps({"requirements": ["aiopnsense==1.0.10"]}))
+    pyproject_path.write_text(
+        """[dependency-groups]
+ha = [
+    "aiopnsense==1.0.9",
+]
+""",
+    )
+
+    result = updater_script.update_pins(
+        manifest_path=manifest_path,
+        pyproject_path=pyproject_path,
+        latest_version="1.0.9",
+    )
+
+    assert result.update_needed is True
+    assert "aiopnsense==1.0.10" in manifest_path.read_text()
+    assert '    "aiopnsense==1.0.10",' in pyproject_path.read_text()
+
+
 def test_updater_script_rejects_duplicate_pyproject_pins(
     tmp_path: Path,
     updater_script: ModuleType,
