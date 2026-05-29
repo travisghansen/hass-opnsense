@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -74,10 +74,10 @@ def _is_prerelease(version: str) -> bool:
 
 
 def fetch_latest_version() -> str:
-    """Fetch the latest aiopnsense version from PyPI.
+    """Fetch the latest stable aiopnsense version from PyPI.
 
     Returns:
-        Latest version string.
+        Latest stable version string.
 
     Raises:
         ValueError: If PyPI does not return a usable version.
@@ -85,10 +85,31 @@ def fetch_latest_version() -> str:
     with urlopen(PYPI_URL, timeout=30) as response:  # noqa: S310
         payload = json.load(response)
 
-    latest = payload.get("info", {}).get("version")
-    if not isinstance(latest, str) or not latest:
-        raise ValueError("Unable to determine latest aiopnsense version from PyPI response")
-    return latest
+    return _select_latest_stable_version(payload)
+
+
+def _select_latest_stable_version(payload: Mapping[str, object]) -> str:
+    """Select the newest stable version from a PyPI JSON payload.
+
+    Args:
+        payload: PyPI JSON response payload.
+
+    Returns:
+        Newest non-prerelease version from the release list.
+
+    Raises:
+        ValueError: If PyPI does not return any stable versions.
+    """
+    releases = payload.get("releases", {})
+    if not isinstance(releases, dict):
+        raise TypeError("Expected releases mapping in PyPI response")
+
+    stable_versions = [
+        version for version in releases if isinstance(version, str) and not _is_prerelease(version)
+    ]
+    if not stable_versions:
+        raise ValueError("Unable to determine latest stable aiopnsense version from PyPI response")
+    return max(stable_versions, key=_version_key)
 
 
 def _read_manifest_version(manifest_path: Path) -> str:

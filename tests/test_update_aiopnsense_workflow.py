@@ -110,6 +110,24 @@ ha = [
     assert '    "aiopnsense==1.0.0",' in pyproject_path.read_text()
 
 
+def test_updater_script_selects_latest_stable_from_pypi_payload(
+    updater_script: ModuleType,
+) -> None:
+    """Updater script should ignore prereleases when reading PyPI releases."""
+    latest = updater_script._select_latest_stable_version(
+        {
+            "info": {"version": "1.1.0rc1"},
+            "releases": {
+                "1.0.8": [],
+                "1.0.9": [],
+                "1.1.0rc1": [],
+            },
+        },
+    )
+
+    assert latest == "1.0.9"
+
+
 def test_updater_script_repairs_pyproject_drift_when_manifest_is_newer(
     tmp_path: Path,
     updater_script: ModuleType,
