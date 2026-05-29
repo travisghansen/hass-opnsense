@@ -135,10 +135,12 @@ jobs:
             const selected = releases
               .filter((release) => {
                 const tagVersion = release.tag_name.replace(/^v/i, "");
+                const currentIsPrerelease = isPrerelease(current);
                 const currentStable = stableVersion(current);
+                const lowerBound = compareVersions(tagVersion, currentStable);
                 return (
                   !isPrerelease(tagVersion) &&
-                  compareVersions(tagVersion, currentStable) >= 0 &&
+                  (lowerBound > 0 || (currentIsPrerelease && lowerBound === 0)) &&
                   compareVersions(tagVersion, latest) <= 0
                 );
               })

@@ -52,9 +52,11 @@ def test_workflow_filters_prerelease_release_notes() -> None:
 
     assert "function isPrerelease(version)" in workflow
     assert "function stableVersion(version)" in workflow
+    assert "const currentIsPrerelease = isPrerelease(current);" in workflow
     assert "const currentStable = stableVersion(current);" in workflow
+    assert "const lowerBound = compareVersions(tagVersion, currentStable);" in workflow
     assert "!isPrerelease(tagVersion)" in workflow
-    assert "compareVersions(tagVersion, currentStable) >= 0" in workflow
+    assert "(lowerBound > 0 || (currentIsPrerelease && lowerBound === 0))" in workflow
 
 
 def test_workflow_neutralizes_release_note_closing_keywords() -> None:
