@@ -28,6 +28,8 @@ def test_workflow_updates_manifest_and_pyproject_pins() -> None:
     """Workflow should include both aiopnsense dependency pin files in update PRs."""
     workflow = WORKFLOW_PATH.read_text()
 
+    assert "actions/setup-python@v6" in workflow
+    assert "python-version: '3.14'" in workflow
     assert "Automated update of aiopnsense dependency pins." in workflow
     assert "custom_components/opnsense/manifest.json" in workflow
     assert "pyproject.toml" in workflow
@@ -49,7 +51,10 @@ def test_workflow_filters_prerelease_release_notes() -> None:
     workflow = WORKFLOW_PATH.read_text()
 
     assert "function isPrerelease(version)" in workflow
+    assert "function stableVersion(version)" in workflow
+    assert "const currentStable = stableVersion(current);" in workflow
     assert "!isPrerelease(tagVersion)" in workflow
+    assert "compareVersions(tagVersion, currentStable) >= 0" in workflow
 
 
 def test_workflow_neutralizes_release_note_closing_keywords() -> None:
