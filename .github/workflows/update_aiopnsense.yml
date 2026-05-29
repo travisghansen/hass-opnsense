@@ -1,0 +1,135 @@
+name: Update aiopnsense dependency pins
+
+on:
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+    inputs:
+      aiopnsense_release_owner:
+        description: Owner for aiopnsense releases lookup
+        required: false
+        default: Snuffy2
+      aiopnsense_release_repo:
+        description: Repository for aiopnsense releases lookup
+        required: false
+        default: aiopnsense
+
+concurrency:
+  group: update-aiopnsense-manifest
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-aiopnsense:
+    name: Update aiopnsense
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+
+      - name: Determine current and latest aiopnsense versions
+        id: versions
+        run: |
+          set -euo pipefail
+
+          python .github/scripts/update_aiopnsense_pins.py \
+            --manifest-path custom_components/opnsense/manifest.json \
+            --pyproject-path pyproject.toml \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Update aiopnsense dependency pins
+        if: steps.versions.outputs.update_needed == 'true'
+        env:
+          LATEST_VERSION: ${{ steps.versions.outputs.latest }}
+        run: |
+          set -euo pipefail
+
+          python .github/scripts/update_aiopnsense_pins.py \
+            --manifest-path custom_components/opnsense/manifest.json \
+            --pyproject-path pyproject.toml \
+            --latest-version "$LATEST_VERSION" \
+            --write
+
+      - name: Build aiopnsense release notes
+        if: steps.versions.outputs.update_needed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CURRENT_VERSION: ${{ steps.versions.outputs.current }}
+          PYPROJECT_CURRENT_VERSION: ${{ steps.versions.outputs.pyproject_current }}
+          LATEST_VERSION: ${{ steps.versions.outputs.latest }}
+          REPO_OWNER: ${{ github.event.inputs.aiopnsense_release_owner || vars.AIOPNSENSE_RELEASE_OWNER || 'Snuffy2' }}
+          REPO_NAME: ${{ github.event.inputs.aiopnsense_release_repo || vars.AIOPNSENSE_RELEASE_REPO || 'aiopnsense' }}
+        run: |
+          set -euo pipefail
+
+          python .github/scripts/build_aiopnsense_release_notes.py \
+            --current-version "$CURRENT_VERSION" \
+            --pyproject-current-version "$PYPROJECT_CURRENT_VERSION" \
+            --latest-version "$LATEST_VERSION" \
+            --release-owner "$REPO_OWNER" \
+            --release-repo "$REPO_NAME" \
+            --body-path aiopnsense-update-pr-body.md
+
+      - name: Create or update aiopnsense update PR
+        if: steps.versions.outputs.update_needed == 'true'
+        id: cpr
+        uses: peter-evans/create-pull-request@v8
+        with:
+          branch: chore/update-aiopnsense-manifest
+          delete-branch: true
+          commit-message: 'Bump aiopnsense to ${{ steps.versions.outputs.latest }}'
+          title: 'Bump aiopnsense to ${{ steps.versions.outputs.latest }}'
+          author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          labels: aiopnsense-auto-update
+          body-path: aiopnsense-update-pr-body.md
+          add-paths: |
+            custom_components/opnsense/manifest.json
+            pyproject.toml
+
+      - name: Close extra auto-generated PRs
+        if: steps.versions.outputs.update_needed == 'true' && steps.cpr.outputs.pull-request-number != ''
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          KEEP_PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          python .github/scripts/cleanup_aiopnsense_update_branches.py \
+            --repository "$REPOSITORY" \
+            --branch chore/update-aiopnsense-manifest \
+            --branch-prefix chore/update-aiopnsense \
+            --label-name aiopnsense-auto-update \
+            --keep-pr-number "$KEEP_PR_NUMBER" \
+            --close-stale-prs \
+            --delete-merged-branches
+
+      - name: Log when no update is required
+        if: steps.versions.outputs.update_needed != 'true'
+        run: echo "aiopnsense is already at the latest version; checking for stale update PRs."
+
+      - name: Close stale aiopnsense update PRs
+        if: steps.versions.outputs.update_needed != 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          python .github/scripts/cleanup_aiopnsense_update_branches.py \
+            --repository "$REPOSITORY" \
+            --branch chore/update-aiopnsense-manifest \
+            --branch-prefix chore/update-aiopnsense \
+            --label-name aiopnsense-auto-update \
+            --close-stale-prs \
+            --delete-stale-branch \
+            --delete-merged-branches
