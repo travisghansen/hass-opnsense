@@ -107,6 +107,32 @@ ha = [
     assert '    "aiopnsense==1.0.9",' in pyproject_path.read_text()
 
 
+def test_updater_script_updates_pyproject_pin_without_trailing_comma(
+    tmp_path: Path, updater_script: ModuleType
+) -> None:
+    """Updater script should preserve valid TOML dependency-list formatting."""
+    manifest_path = tmp_path / "manifest.json"
+    pyproject_path = tmp_path / "pyproject.toml"
+    manifest_path.write_text(json.dumps({"requirements": ["aiopnsense==1.0.8"]}))
+    pyproject_path.write_text(
+        """[dependency-groups]
+ha = [
+    "homeassistant",
+    "aiopnsense==1.0.8"
+]
+""",
+    )
+
+    result = updater_script.update_pins(
+        manifest_path=manifest_path,
+        pyproject_path=pyproject_path,
+        latest_version="1.0.9",
+    )
+
+    assert result.update_needed is True
+    assert '    "aiopnsense==1.0.9"\n' in pyproject_path.read_text()
+
+
 def test_updater_script_ignores_prerelease_updates(
     tmp_path: Path, updater_script: ModuleType
 ) -> None:

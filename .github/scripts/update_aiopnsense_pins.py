@@ -14,7 +14,7 @@ from urllib.request import urlopen
 
 PYPI_URL = "https://pypi.org/pypi/aiopnsense/json"
 PIN_PREFIX = "aiopnsense=="
-PYPROJECT_PIN_RE = re.compile(r'(?m)^(\s*)"aiopnsense==[^"]+",\s*$')
+PYPROJECT_PIN_RE = re.compile(r'(?m)^(\s*)"aiopnsense==[^"]+"(,?)\s*$')
 PRERELEASE_RE = re.compile(r"(?i)(?:[.\-_]?(?:a|alpha|b|beta|c|pre|preview|rc|dev)\d*)")
 
 
@@ -263,7 +263,7 @@ def _write_pyproject_version(pyproject_path: Path, latest_version: str) -> None:
         ValueError: If there is not exactly one pinned aiopnsense dependency line.
     """
     text = pyproject_path.read_text()
-    updated, count = PYPROJECT_PIN_RE.subn(rf'\1"{PIN_PREFIX}{latest_version}",', text)
+    updated, count = PYPROJECT_PIN_RE.subn(rf'\1"{PIN_PREFIX}{latest_version}"\2', text)
     if count != 1:
         raise ValueError(
             f"Expected to update exactly one aiopnsense pin in {pyproject_path}; updated {count}"
