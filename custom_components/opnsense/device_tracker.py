@@ -312,7 +312,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         # f"last_known_hostname: {self._last_known_hostname}, last_known_ip:
         # {self._last_known_ip}, "
         #     f"last_known_connected_time: {self._last_known_connected_time}, icon: {self.icon}, "
-        #     f"extra_state_atrributes: {self.extra_state_attributes}"
+        #     f"extra_state_attributes: {self.extra_state_attributes}"
         # )
 
     @property  # type: ignore[misc] # overriding final from ScannerEntity

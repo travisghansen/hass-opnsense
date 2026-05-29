@@ -184,8 +184,8 @@ ini_set('display_errors', 0);
 
 {script}
 
-// wrapping this in json_encode and then unwrapping in python prevents funny XMLRPC NULL encoding
-errors
+// wrapping this in json_encode and then unwrapping in python prevents funny XMLRPC NULL
+// encoding errors
 // https://github.com/travisghansen/hass-pfsense/issues/35
 $toreturn_real = $toreturn;
 $toreturn = [];

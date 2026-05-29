@@ -830,7 +830,7 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
         # This means the user has downgraded from a future version
         _LOGGER.error(
             "hass-opnsense downgraded and current config not compatible with earlier versions. "
-            "Integration mut be removed and reinstalled."
+            "Integration must be removed and reinstalled."
         )
         return False
 
