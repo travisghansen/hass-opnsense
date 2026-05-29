@@ -1,4 +1,4 @@
-name: Update aiopnsense in manifest
+name: Update aiopnsense dependency pins
 
 on:
   schedule:
@@ -36,54 +36,21 @@ jobs:
         run: |
           set -euo pipefail
 
-          manifest_path="custom_components/opnsense/manifest.json"
-          current_requirement_count="$(
-            jq -r '[.requirements[] | select(startswith("aiopnsense"))] | length' "$manifest_path"
-          )"
-          current_requirement="$(
-            jq -r '[.requirements[] | select(startswith("aiopnsense"))] | .[0] // empty' "$manifest_path"
-          )"
-          if [ "$current_requirement_count" -ne 1 ]; then
-            echo "Expected exactly one aiopnsense requirement in $manifest_path; found $current_requirement_count (current_requirement='$current_requirement')" >&2
-            exit 1
-          fi
-          current_version="$(printf '%s' "$current_requirement" | sed -E 's/^[^0-9]*//')"
-          latest_version="$(curl -fsSL https://pypi.org/pypi/aiopnsense/json | jq -r '.info.version // empty')"
-          if [ -z "$latest_version" ] || [ "$latest_version" = "null" ]; then
-            echo "Unable to determine latest aiopnsense version from PyPI response" >&2
-            exit 1
-          fi
+          python .github/scripts/update_aiopnsense_pins.py \
+            --manifest-path custom_components/opnsense/manifest.json \
+            --pyproject-path pyproject.toml \
+            --github-output "$GITHUB_OUTPUT"
 
-          update_needed="false"
-          if [ "$(printf '%s\n%s\n' "$current_version" "$latest_version" | sort -V | tail -n1)" = "$latest_version" ] && [ "$current_version" != "$latest_version" ]; then
-            update_needed="true"
-          fi
-
-          {
-            echo "current=$current_version"
-            echo "latest=$latest_version"
-            echo "update_needed=$update_needed"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Update manifest requirement
+      - name: Update aiopnsense dependency pins
         if: steps.versions.outputs.update_needed == 'true'
         run: |
           set -euo pipefail
 
-          manifest_path="custom_components/opnsense/manifest.json"
-          latest_version="${{ steps.versions.outputs.latest }}"
-          tmp_file="$(mktemp)"
-
-          jq --arg latest "$latest_version" '
-            .requirements |= map(
-              if startswith("aiopnsense")
-              then "aiopnsense==" + $latest
-              else .
-              end
-            )
-          ' "$manifest_path" > "$tmp_file"
-
-          mv "$tmp_file" "$manifest_path"
+          python .github/scripts/update_aiopnsense_pins.py \
+            --manifest-path custom_components/opnsense/manifest.json \
+            --pyproject-path pyproject.toml \
+            --latest-version "${{ steps.versions.outputs.latest }}" \
+            --write
 
       - name: Build aiopnsense release notes
         if: steps.versions.outputs.update_needed == 'true'
@@ -191,15 +158,17 @@ jobs:
           author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
           labels: aiopnsense-auto-update
           body: |
-            Automated update of `custom_components/opnsense/manifest.json`.
+            Automated update of aiopnsense dependency pins.
 
-            - Previous pinned version: `aiopnsense==${{ steps.versions.outputs.current }}`
+            - Previous manifest pinned version: `aiopnsense==${{ steps.versions.outputs.current }}`
+            - Previous pyproject pinned version: `aiopnsense==${{ steps.versions.outputs.pyproject_current }}`
             - Updated pinned version: `aiopnsense==${{ steps.versions.outputs.latest }}`
 
             ## aiopnsense release notes in range
             ${{ steps.release_notes.outputs.notes }}
           add-paths: |
             custom_components/opnsense/manifest.json
+            pyproject.toml
 
       - name: Close extra auto-generated PRs
         if: steps.versions.outputs.update_needed == 'true' && steps.cpr.outputs.pull-request-number != ''
@@ -290,7 +259,12 @@ jobs:
             } catch (error) {
               const status = error.status ?? error.response?.status;
 
-              if (status === 404) {
+              const message = error.response?.data?.message ?? error.message ?? "";
+
+              if (
+                status === 404 ||
+                (status === 422 && message.includes("Reference does not exist"))
+              ) {
                 core.info(`Branch ${branch} was already deleted.`);
                 return;
               }
