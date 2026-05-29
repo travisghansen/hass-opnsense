@@ -356,6 +356,7 @@ def test_cleanup_script_closes_stale_prs_and_deletes_workflow_branches(
     client = FakeCleanupClient(
         open_pulls=[
             _workflow_pull(number=10),
+            _workflow_pull(number=9, ref="chore/update-aiopnsense-old"),
             _workflow_pull(number=11, ref="feature/manual"),
         ],
         closed_pulls=[
@@ -376,10 +377,16 @@ def test_cleanup_script_closes_stale_prs_and_deletes_workflow_branches(
         delete_merged_branches=True,
     )
 
-    assert client.closed_prs == [10]
-    assert client.deleted_refs == ["heads/chore/update-aiopnsense-manifest"]
-    assert result.closed_prs == [10]
-    assert result.deleted_branches == ["chore/update-aiopnsense-manifest"]
+    assert client.closed_prs == [10, 9]
+    assert client.deleted_refs == [
+        "heads/chore/update-aiopnsense-manifest",
+        "heads/chore/update-aiopnsense-old",
+    ]
+    assert result.closed_prs == [10, 9]
+    assert result.deleted_branches == [
+        "chore/update-aiopnsense-manifest",
+        "chore/update-aiopnsense-old",
+    ]
 
 
 def test_cleanup_script_keeps_active_update_branch(cleanup_script: ModuleType) -> None:

@@ -156,6 +156,7 @@ def cleanup_update_branches(
     """
     result = CleanupResult()
     protected_branches: set[str] = set()
+    branches_to_delete: set[str] = set()
 
     open_pulls = client.list_pulls(state="open")
     for pull in open_pulls:
@@ -177,8 +178,8 @@ def cleanup_update_branches(
         if close_stale_prs:
             client.close_pull(pull_number)
             result.closed_prs.append(pull_number)
+            branches_to_delete.add(head_ref)
 
-    branches_to_delete: set[str] = set()
     if delete_stale_branch and branch not in protected_branches:
         branches_to_delete.add(branch)
 
