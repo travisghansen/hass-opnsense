@@ -14,6 +14,70 @@ RELEASE_NOTES_SCRIPT_PATH = Path(".github/scripts/build_aiopnsense_release_notes
 CLEANUP_SCRIPT_PATH = Path(".github/scripts/cleanup_aiopnsense_update_branches.py")
 
 
+class FakeCleanupClient:
+    """Fake GitHub cleanup client that records mutating calls."""
+
+    def __init__(
+        self,
+        *,
+        open_pulls: list[dict[str, object]],
+        closed_pulls: list[dict[str, object]],
+        fail_on_close: bool = False,
+    ) -> None:
+        """Initialize fake pull request state.
+
+        Args:
+            open_pulls: Pull requests to return for open PR lookups.
+            closed_pulls: Pull requests to return for closed PR lookups.
+            fail_on_close: Whether closing a PR should fail the test.
+        """
+        self.open_pulls = open_pulls
+        self.closed_pulls = closed_pulls
+        self.fail_on_close = fail_on_close
+        self.closed_prs: list[int] = []
+        self.deleted_refs: list[str] = []
+
+    def list_pulls(self, *, state: str) -> list[dict[str, object]]:
+        """Return fake pull requests by state."""
+        return self.open_pulls if state == "open" else self.closed_pulls
+
+    def close_pull(self, pull_number: int) -> None:
+        """Record or reject a closed pull request."""
+        if self.fail_on_close:
+            raise AssertionError(f"Unexpected close for PR {pull_number}")
+        self.closed_prs.append(pull_number)
+
+    def delete_ref(self, ref: str) -> None:
+        """Record a deleted git ref."""
+        self.deleted_refs.append(ref)
+
+
+def _workflow_pull(
+    *,
+    number: int,
+    ref: str = "chore/update-aiopnsense-manifest",
+    label: str = "aiopnsense-auto-update",
+    merged_at: str | None = None,
+) -> dict[str, object]:
+    """Return a fake workflow pull request object.
+
+    Args:
+        number: Pull request number.
+        ref: Pull request head ref.
+        label: Pull request label name.
+        merged_at: Optional merge timestamp for closed PRs.
+
+    Returns:
+        Fake pull request object shaped like the GitHub REST API response.
+    """
+    return {
+        "number": number,
+        "merged_at": merged_at,
+        "head": {"ref": ref, "repo": {"full_name": "o/r"}},
+        "labels": [{"name": label}],
+    }
+
+
 def _write_pin_files(
     tmp_path: Path,
     *,
@@ -95,13 +159,17 @@ def _load_script(module_name: str, script_path: Path) -> ModuleType:
 def test_workflow_contains_expected_update_logic(needle: str, reason: str) -> None:
     """Workflow should include the expected aiopnsense updater logic."""
     del reason
-    workflow = (
+
+    assert needle in _read_update_workflow_surface()
+
+
+def _read_update_workflow_surface() -> str:
+    """Read workflow and helper surfaces checked by workflow assertions."""
+    return (
         f"{WORKFLOW_PATH.read_text()}\n"
         f"{RELEASE_NOTES_SCRIPT_PATH.read_text()}\n"
         f"{CLEANUP_SCRIPT_PATH.read_text()}"
     )
-
-    assert needle in workflow
 
 
 @pytest.mark.parametrize(
@@ -285,60 +353,16 @@ def test_cleanup_script_closes_stale_prs_and_deletes_workflow_branches(
     cleanup_script: ModuleType,
 ) -> None:
     """Cleanup script should close stale PRs and remove workflow-created branches."""
-
-    class FakeGithubClient:
-        """Fake GitHub client that records branch cleanup operations."""
-
-        def __init__(self) -> None:
-            """Initialize fake pull request and ref state."""
-            self.closed_prs: list[int] = []
-            self.deleted_refs: list[str] = []
-            self.open_pulls: list[dict[str, object]] = [
-                {
-                    "number": 10,
-                    "head": {
-                        "ref": "chore/update-aiopnsense-manifest",
-                        "repo": {"full_name": "o/r"},
-                    },
-                    "labels": [{"name": "aiopnsense-auto-update"}],
-                },
-                {
-                    "number": 11,
-                    "head": {"ref": "feature/manual", "repo": {"full_name": "o/r"}},
-                    "labels": [{"name": "aiopnsense-auto-update"}],
-                },
-            ]
-            self.closed_pulls: list[dict[str, object]] = [
-                {
-                    "number": 8,
-                    "merged_at": "2026-05-28T00:00:00Z",
-                    "head": {
-                        "ref": "chore/update-aiopnsense-manifest",
-                        "repo": {"full_name": "o/r"},
-                    },
-                    "labels": [{"name": "aiopnsense-auto-update"}],
-                },
-                {
-                    "number": 7,
-                    "merged_at": None,
-                    "head": {"ref": "chore/update-aiopnsense-old", "repo": {"full_name": "o/r"}},
-                    "labels": [{"name": "aiopnsense-auto-update"}],
-                },
-            ]
-
-        def list_pulls(self, *, state: str) -> list[dict[str, object]]:
-            """Return fake pull requests by state."""
-            return self.open_pulls if state == "open" else self.closed_pulls
-
-        def close_pull(self, pull_number: int) -> None:
-            """Record a closed pull request."""
-            self.closed_prs.append(pull_number)
-
-        def delete_ref(self, ref: str) -> None:
-            """Record a deleted git ref."""
-            self.deleted_refs.append(ref)
-
-    client = FakeGithubClient()
+    client = FakeCleanupClient(
+        open_pulls=[
+            _workflow_pull(number=10),
+            _workflow_pull(number=11, ref="feature/manual"),
+        ],
+        closed_pulls=[
+            _workflow_pull(number=8, merged_at="2026-05-28T00:00:00Z"),
+            _workflow_pull(number=7, ref="chore/update-aiopnsense-old"),
+        ],
+    )
 
     result = cleanup_script.cleanup_update_branches(
         client=client,
@@ -360,54 +384,18 @@ def test_cleanup_script_closes_stale_prs_and_deletes_workflow_branches(
 
 def test_cleanup_script_keeps_active_update_branch(cleanup_script: ModuleType) -> None:
     """Cleanup script should not delete the branch for the kept update PR."""
-
-    class FakeGithubClient:
-        """Fake GitHub client that includes a current PR and old merged PR."""
-
-        def __init__(self) -> None:
-            """Initialize fake pull request and ref state."""
-            self.deleted_refs: list[str] = []
-            self.open_pulls: list[dict[str, object]] = [
-                {
-                    "number": 12,
-                    "head": {
-                        "ref": "chore/update-aiopnsense-manifest",
-                        "repo": {"full_name": "o/r"},
-                    },
-                    "labels": [{"name": "aiopnsense-auto-update"}],
-                },
-            ]
-            self.closed_pulls: list[dict[str, object]] = [
-                {
-                    "number": 8,
-                    "merged_at": "2026-05-28T00:00:00Z",
-                    "head": {
-                        "ref": "chore/update-aiopnsense-manifest",
-                        "repo": {"full_name": "o/r"},
-                    },
-                    "labels": [{"name": "aiopnsense-auto-update"}],
-                },
-                {
-                    "number": 6,
-                    "merged_at": "2026-05-20T00:00:00Z",
-                    "head": {"ref": "chore/update-aiopnsense-old", "repo": {"full_name": "o/r"}},
-                    "labels": [{"name": "aiopnsense-auto-update"}],
-                },
-            ]
-
-        def list_pulls(self, *, state: str) -> list[dict[str, object]]:
-            """Return fake pull requests by state."""
-            return self.open_pulls if state == "open" else self.closed_pulls
-
-        def close_pull(self, pull_number: int) -> None:
-            """Fail if the kept pull request would be closed."""
-            raise AssertionError(f"Unexpected close for PR {pull_number}")
-
-        def delete_ref(self, ref: str) -> None:
-            """Record a deleted git ref."""
-            self.deleted_refs.append(ref)
-
-    client = FakeGithubClient()
+    client = FakeCleanupClient(
+        open_pulls=[_workflow_pull(number=12)],
+        closed_pulls=[
+            _workflow_pull(number=8, merged_at="2026-05-28T00:00:00Z"),
+            _workflow_pull(
+                number=6,
+                ref="chore/update-aiopnsense-old",
+                merged_at="2026-05-20T00:00:00Z",
+            ),
+        ],
+        fail_on_close=True,
+    )
 
     result = cleanup_script.cleanup_update_branches(
         client=client,
