@@ -25,7 +25,7 @@ class UpdateResult:
     Attributes:
         current: Current manifest aiopnsense pin version.
         pyproject_current: Current pyproject aiopnsense pin version.
-        latest: Latest aiopnsense version being evaluated.
+        latest: aiopnsense version selected as the update target.
         update_needed: Whether at least one pin should be updated.
     """
 
@@ -224,7 +224,7 @@ def update_pins(
     Args:
         manifest_path: Path to manifest.json.
         pyproject_path: Path to pyproject.toml.
-        latest_version: Latest aiopnsense version to use.
+        latest_version: Latest aiopnsense version available for evaluation.
         write: Whether to rewrite dependency files when an update is needed.
 
     Returns:
@@ -243,7 +243,7 @@ def update_pins(
     return UpdateResult(
         current=current,
         pyproject_current=pyproject_current,
-        latest=latest_version,
+        latest=target_version,
         update_needed=update_needed,
     )
 

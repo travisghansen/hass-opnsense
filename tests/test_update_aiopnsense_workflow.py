@@ -105,6 +105,7 @@ ha = [
     )
 
     assert result.update_needed is False
+    assert result.latest == "1.0.0"
     assert "aiopnsense==1.0.0" in manifest_path.read_text()
     assert '    "aiopnsense==1.0.0",' in pyproject_path.read_text()
 
@@ -132,6 +133,7 @@ ha = [
     )
 
     assert result.update_needed is True
+    assert result.latest == "1.0.10"
     assert "aiopnsense==1.0.10" in manifest_path.read_text()
     assert '    "aiopnsense==1.0.10",' in pyproject_path.read_text()
 
