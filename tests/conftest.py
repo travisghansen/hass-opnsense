@@ -277,8 +277,29 @@ def _patch_homeassistant_stop(monkeypatch: pytest.MonkeyPatch) -> Any:
 
 
 @pytest.fixture(autouse=True)
-def _patch_asyncio_create_task(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Patch asyncio.create_task to avoid creating background workers for pyopnsense during tests. For coroutines created by pyopnsense, close the coroutine object and return a dummy task-like object to prevent "coroutine was never awaited" warnings while avoiding scheduling real background work during tests."""
+def _patch_asyncio_create_task(
+    monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+) -> None:
+    """Patch pyopnsense task scheduling outside direct pyopnsense tests."""
+    try:
+        test_path = getattr(request, "fspath", None)
+        if test_path:
+            normalized_path = Path(str(test_path).replace("\\", "/"))
+            path_parts = tuple(part.lower() for part in normalized_path.parts)
+            has_pyopnsense_test_segments = any(
+                path_parts[index : index + 2] == ("tests", "pyopnsense")
+                for index in range(len(path_parts) - 1)
+            )
+            if normalized_path.name == "test_pyopnsense.py" or has_pyopnsense_test_segments:
+                return
+    except AttributeError, TypeError:
+        # If we cannot determine the requesting test, continue with patching.
+        pass
+
+    # Patch asyncio.create_task to avoid creating background workers for pyopnsense during tests.
+    # For coroutines created by pyopnsense, close the coroutine object and return a dummy
+    # task-like object to prevent "coroutine was never awaited" warnings while avoiding
+    # scheduling real background work during tests.
     # keep a reference to the original so we can delegate for non-target coroutines
     # Prefer the one from the pyopnsense module if present, otherwise fall back
     # to the global asyncio.create_task.
@@ -429,7 +450,9 @@ def _patch_asyncio_create_task(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _neutralize_pyopnsense_background_tasks(monkeypatch: pytest.MonkeyPatch, request: Any) -> None:
+def _neutralize_pyopnsense_background_tasks(
+    monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+) -> None:
     """Autouse fixture to replace pyopnsense background queue workers with no-ops. This prevents the integration from scheduling background coroutines during tests which could interact with the event loop, create network IO, or produce 'coroutine was never awaited' warnings."""
 
     async def _noop_async(self: Any, *args, **kwargs) -> None:

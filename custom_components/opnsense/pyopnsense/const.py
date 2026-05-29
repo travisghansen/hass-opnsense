@@ -8,7 +8,7 @@ from dateutil.tz import gettz
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 60
 # Shared cache time-to-live, in seconds, for plugin and endpoint availability state.
 DEFAULT_CACHE_TTL_SECONDS = 6 * 60 * 60
-INDIA_STANDARD_TIME_ABBREVIATION = chr(73) + chr(83) + chr(84)
+INDIA_STANDARD_TIME_ABBREVIATION = "IST"  # Indian Standard Time
 
 # Mapping of ambiguous timezone abbreviations to explicit IANA timezones.
 AMBIGUOUS_TZINFOS: dict[str, Any] = {

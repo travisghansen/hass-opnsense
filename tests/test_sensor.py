@@ -851,7 +851,7 @@ def test_compiled_sensor_variants(
     ],
 )
 def test_vpn_sensor_variants(
-    state: str,
+    state: dict[str, Any],
     desc_key: Any,
     expected_available: bool,
     expected_value: Any,
@@ -1063,7 +1063,7 @@ def test_temp_sensor_handles_index_exceptions(
 )
 def test_vpn_sensor_icon_variants(
     desc_key: Any,
-    state: str,
+    state: dict[str, Any],
     expect_close_icon: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
@@ -2183,7 +2183,7 @@ async def test_async_setup_entry_creates_speedtest_sensors(
     ],
 )
 def test_speedtest_sensor_unavailable_variants(
-    state: str, key: str, make_config_entry: Callable[..., MockConfigEntry]
+    state: dict[str, Any] | list[Any], key: str, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
     """Speedtest sensors should be unavailable for malformed key/state/value variants."""
     entry = make_config_entry()

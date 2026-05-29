@@ -169,7 +169,7 @@ convention = "google"
 ]
 
 [tool.codespell]
-ignore-words-list = "hass"
+ignore-words-list = "hass,ist"
 
 [tool.pytest.ini_options]
 addopts = """

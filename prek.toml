@@ -39,7 +39,6 @@ rev = "v2.4.2"
 
 [[repos.hooks]]
 id = "codespell"
-args = ["--ignore-words-list=hass"]
 
 [[repos]]
 repo = "https://github.com/pre-commit/mirrors-mypy"

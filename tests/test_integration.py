@@ -18,7 +18,7 @@ the project-wide conftest which currently overrides the hass fixture.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, MutableMapping
+from collections.abc import Callable, Iterable, Mapping, MutableMapping
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -214,11 +214,11 @@ def _build_mock_hass() -> Any:
         def async_update_entry(
             self,
             entry: MockConfigEntry,
-            data: Any = None,
-            options: Any = None,
-            version: Any = None,
-            unique_id: Any = None,
-            **kwargs,
+            data: Mapping[str, Any] | None = None,
+            options: Mapping[str, Any] | None = None,
+            version: int | None = None,
+            unique_id: str | None = None,
+            **kwargs: Any,
         ) -> bool:
             # Bypass ConfigEntry attribute protections using object.__setattr__
             """Async update entry.
@@ -242,7 +242,7 @@ def _build_mock_hass() -> Any:
             return True
 
         async def async_forward_entry_setups(
-            self, entry: MockConfigEntry, platforms: Any
+            self, entry: MockConfigEntry, platforms: Iterable[str]
         ) -> bool:  # pragma: no cover
             """Async forward entry setups.
 
@@ -253,7 +253,7 @@ def _build_mock_hass() -> Any:
             return True
 
         async def async_unload_platforms(
-            self, entry: MockConfigEntry, platforms: Any
+            self, entry: MockConfigEntry, platforms: Iterable[str]
         ) -> bool:  # pragma: no cover
             """Async unload platforms.
 
@@ -264,7 +264,7 @@ def _build_mock_hass() -> Any:
             return True
 
         async def async_reload(
-            self, entry_id: Any
+            self, entry_id: str
         ) -> None:  # pragma: no cover - reload path not asserted
             """Async reload.
 

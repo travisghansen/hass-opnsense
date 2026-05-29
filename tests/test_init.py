@@ -6,7 +6,7 @@ and removal/unload behaviors for the hass-opnsense integration.
 
 from collections.abc import Callable
 import importlib
-from typing import Any, Never
+from typing import Any, Never, Self
 from unittest.mock import ANY, AsyncMock, MagicMock, call
 
 from homeassistant.core import HomeAssistant
@@ -21,33 +21,32 @@ init_mod = importlib.import_module("custom_components.opnsense")
 
 
 @pytest.fixture(autouse=True)
-def _patch_hass_async_create_clientsession(monkeypatch: pytest.MonkeyPatch) -> Any:
+def _patch_hass_async_create_clientsession(monkeypatch: pytest.MonkeyPatch) -> None:
     """Autouse fixture to stub Home Assistant's async_create_clientsession. Some tests use a minimal `hass` object (SimpleNamespace) which does not provide the full helper; patch the helper to return a lightweight session-like object to avoid opening real network resources."""
 
-    def _fake_create_clientsession(*args, **kwargs) -> Any:
+    class _FakeSession:
+        async def __aenter__(self) -> Self:
+            """Yield the fake client session to the async context manager."""
+            return self
+
+        async def __aexit__(
+            self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: object
+        ) -> bool:
+            """Close the fake session and return False so exceptions propagate."""
+            await self.close()
+            return False
+
+        async def close(self) -> None:
+            """Simulate closing the fake session."""
+            return
+
+    def _fake_create_clientsession(*args: object, **kwargs: object) -> _FakeSession:
         """Return a lightweight fake client session for Home Assistant tests.
 
         Args:
             *args: Positional arguments forwarded from the patched helper and ignored.
             **kwargs: Keyword arguments forwarded from the patched helper and ignored.
         """
-
-        class _FakeSession:
-            async def __aenter__(self) -> Any:
-                """Yield the fake client session to the async context manager."""
-                return self
-
-            async def __aexit__(
-                self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: object
-            ) -> bool:
-                """Close the fake session and return False so exceptions propagate."""
-                await self.close()
-                return False
-
-            async def close(self) -> bool:
-                """Simulate closing the fake session successfully."""
-                return True
-
         return _FakeSession()
 
     # Patch both the imported module object and the import-path string so

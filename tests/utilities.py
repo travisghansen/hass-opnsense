@@ -18,7 +18,7 @@ def stub_async_write_ha_state(entity: Any) -> None:
     object.__setattr__(entity, "async_write_ha_state", lambda: None)
 
 
-def patch_client_factory(monkeypatch: pytest.MonkeyPatch, module: Any, client_ctor: Any) -> Any:
+def patch_client_factory(monkeypatch: pytest.MonkeyPatch, module: Any, client_ctor: Any) -> None:
     """Patch `create_opnsense_client` with a deterministic async constructor.
 
     Args:
