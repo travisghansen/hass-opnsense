@@ -48,13 +48,15 @@ jobs:
 
       - name: Update aiopnsense dependency pins
         if: steps.versions.outputs.update_needed == 'true'
+        env:
+          LATEST_VERSION: ${{ steps.versions.outputs.latest }}
         run: |
           set -euo pipefail
 
           python .github/scripts/update_aiopnsense_pins.py \
             --manifest-path custom_components/opnsense/manifest.json \
             --pyproject-path pyproject.toml \
-            --latest-version "${{ steps.versions.outputs.latest }}" \
+            --latest-version "$LATEST_VERSION" \
             --write
 
       - name: Build aiopnsense release notes

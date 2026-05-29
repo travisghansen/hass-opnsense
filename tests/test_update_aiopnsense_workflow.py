@@ -65,6 +65,8 @@ def updater_script() -> ModuleType:
         ("pyproject.toml", "updates the local dependency pin"),
         ("pyproject_current", "reports pyproject drift in PR metadata"),
         (str(SCRIPT_PATH), "runs the checked-in updater helper"),
+        ("LATEST_VERSION: ${{ steps.versions.outputs.latest }}", "exports latest pin"),
+        ('--latest-version "$LATEST_VERSION"', "avoids shell template injection"),
         ("status === 422", "handles GitHub missing-reference responses"),
         ('message.includes("Reference does not exist")', "detects stale deleted branches"),
         ("Branch ${branch} was already deleted.", "logs stale branch cleanup"),
