@@ -154,6 +154,8 @@ def _load_script(module_name: str, script_path: Path) -> ModuleType:
         ("--delete-merged-branches", "cleans merged workflow-owned branches"),
         ("LATEST_VERSION: ${{ steps.versions.outputs.latest }}", "exports latest pin"),
         ('--latest-version "$LATEST_VERSION"', "avoids shell template injection"),
+        ("REPOSITORY: ${{ github.repository }}", "exports repository before shell use"),
+        ('--repository "$REPOSITORY"', "avoids inline repository template expansion"),
     ],
 )
 def test_workflow_contains_expected_update_logic(needle: str, reason: str) -> None:
@@ -161,6 +163,11 @@ def test_workflow_contains_expected_update_logic(needle: str, reason: str) -> No
     del reason
 
     assert needle in _read_update_workflow_surface()
+
+
+def test_workflow_avoids_inline_repository_template_expansion() -> None:
+    """Workflow should not expand the repository context inside shell scripts."""
+    assert '--repository "${{ github.repository }}"' not in WORKFLOW_PATH.read_text()
 
 
 def _read_update_workflow_surface() -> str:
@@ -347,6 +354,39 @@ def test_release_note_script_builds_sanitized_pr_body(
     assert "fixes \\#123 and thanks helper" in body
     assert "Ignored current" not in body
     assert "Ignored prerelease" not in body
+
+
+def test_release_note_script_handles_url_errors(
+    tmp_path: Path,
+    release_notes_script: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Release-note script should report network failures without a traceback."""
+
+    def raise_url_error(**_: object) -> list[dict[str, object]]:
+        """Raise a urlopen-style network failure."""
+        raise release_notes_script.URLError("DNS failure")
+
+    monkeypatch.setattr(release_notes_script, "fetch_releases", raise_url_error)
+
+    result = release_notes_script.main(
+        [
+            "--current-version",
+            "1.0.8",
+            "--pyproject-current-version",
+            "1.0.8",
+            "--latest-version",
+            "1.0.9",
+            "--release-owner",
+            "Snuffy2",
+            "--release-repo",
+            "aiopnsense",
+            "--body-path",
+            str(tmp_path / "body.md"),
+        ],
+    )
+
+    assert result == 1
 
 
 def test_cleanup_script_closes_stale_prs_and_deletes_workflow_branches(

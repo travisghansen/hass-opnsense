@@ -100,11 +100,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           KEEP_PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
 
           python .github/scripts/cleanup_aiopnsense_update_branches.py \
-            --repository "${{ github.repository }}" \
+            --repository "$REPOSITORY" \
             --branch chore/update-aiopnsense-manifest \
             --branch-prefix chore/update-aiopnsense \
             --label-name aiopnsense-auto-update \
@@ -120,11 +121,12 @@ jobs:
         if: steps.versions.outputs.update_needed != 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
 
           python .github/scripts/cleanup_aiopnsense_update_branches.py \
-            --repository "${{ github.repository }}" \
+            --repository "$REPOSITORY" \
             --branch chore/update-aiopnsense-manifest \
             --branch-prefix chore/update-aiopnsense \
             --label-name aiopnsense-auto-update \

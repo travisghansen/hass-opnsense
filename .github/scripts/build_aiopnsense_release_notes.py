@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 import re
 import sys
-from urllib.error import HTTPError
+from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 GITHUB_API_URL = "https://api.github.com"
@@ -269,7 +269,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     token = os.environ.get("GITHUB_TOKEN")
     try:
         releases = fetch_releases(owner=args.release_owner, repo=args.release_repo, token=token)
-    except HTTPError as err:
+    except URLError as err:
         LOGGER.error(
             "Failed to fetch releases for %s/%s: %s",
             args.release_owner,
