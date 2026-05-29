@@ -1,7 +1,30 @@
+<a id="v0.7.0"></a>
+# [v0.7.0](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.7.0) - 2026-05-29
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+### When OPNsense Firmware 26.7 is released, hass-opnsense will fully drop support for the opnsense plugin. hass-opnsense will remain compatible with Firmware >= 25.1, but with Firmware < 26.1.1, there will no longer be Firewall Rule switches.
+
+## What's Changed
+### 🐛 Bug Fixes
+* Add interface enabled state sensors by [@Snuffy2](https://github.com/Snuffy2) in [#594](https://github.com/travisghansen/hass-opnsense/pull/594)
+* Harden Kea DHCP lease sensor null payload handling by [@Snuffy2](https://github.com/Snuffy2) in [#595](https://github.com/travisghansen/hass-opnsense/pull/595)
+* Fix aiopnsense pin update workflow by [@Snuffy2](https://github.com/Snuffy2) in [#597](https://github.com/travisghansen/hass-opnsense/pull/597)
+### 🎓 Code Quality
+* Fix lint and typing for updated pyproject by [@Snuffy2](https://github.com/Snuffy2) in [#596](https://github.com/travisghansen/hass-opnsense/pull/596)
+### 🧰 Maintenance
+* Bump aiopnsense to 1.0.9 by [@github-actions](https://github.com/github-actions)[bot] in [#598](https://github.com/travisghansen/hass-opnsense/pull/598)
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.6.7...v0.7.0
+
+[Changes][v0.7.0]
+
+
 <a id="v0.6.7"></a>
 # [v0.6.7](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.7) - 2026-04-15
 
-<!-- Release notes generated using configuration in .github/release.yml at main -->
+<h3>OPNsense Minimum Firmware Required: 25.1</h3><h4>OPNsense Recommended Firmware: 26.1+</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
 ## What's Changed
 ### 🐛 Bug Fixes
@@ -12,7 +35,7 @@
 * GitHub Action Cleanup by [@Snuffy2](https://github.com/Snuffy2) in [#580](https://github.com/travisghansen/hass-opnsense/pull/580)
 
 
-**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.6.6...v0.6.7
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.6.6...v0.6.7<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
 
 [Changes][v0.6.7]
 
@@ -534,7 +557,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 * Alias Toggle Action/Service by [@Snuffy2](https://github.com/Snuffy2) in [#326](https://github.com/travisghansen/hass-opnsense/pull/326)
 * Show repair and shutdown integration if new device id detected by [@Snuffy2](https://github.com/Snuffy2) in [#327](https://github.com/travisghansen/hass-opnsense/pull/327)
 ### 🕷️ Bug Fixes 🕷️
-* Change firmware endpoint and handle non-SemVer firmware by [@Snuffy2](https://github.com/Snuffy2) in [#324](https://github.com/travisghansen/hass-opnsense/pull/324)
+* Change firmware endpoint and handle non-SemVer firware by [@Snuffy2](https://github.com/Snuffy2) in [#324](https://github.com/travisghansen/hass-opnsense/pull/324)
 ### Other Changes
 * Handle edge TypeError: argument of type 'NoneType' is not iterable errors by [@Snuffy2](https://github.com/Snuffy2) in [#314](https://github.com/travisghansen/hass-opnsense/pull/314)
 
@@ -1022,6 +1045,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.7.0]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.7...v0.7.0
 [v0.6.7]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.6...v0.6.7
 [v0.6.6]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.5...v0.6.6
 [v0.6.5]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.4...v0.6.5
