@@ -89,6 +89,12 @@ jobs:
               return 0;
             }
 
+            function isPrerelease(version) {
+              return /(?:[.\-_]?(?:a|alpha|b|beta|c|pre|preview|rc|dev)\d*)/i.test(
+                version,
+              );
+            }
+
             function sanitizeReleaseBody(body) {
               return body
                 .replace(/\[@([A-Za-z0-9-]+)\]\(https?:\/\/github\.com\/[A-Za-z0-9-]+\)/g, "$1")
@@ -113,6 +119,7 @@ jobs:
               .filter((release) => {
                 const tagVersion = release.tag_name.replace(/^v/i, "");
                 return (
+                  !isPrerelease(tagVersion) &&
                   compareVersions(tagVersion, current) > 0 &&
                   compareVersions(tagVersion, latest) <= 0
                 );

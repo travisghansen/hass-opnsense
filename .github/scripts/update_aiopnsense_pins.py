@@ -58,7 +58,25 @@ def _latest_is_newer(current: str, latest: str) -> bool:
     Returns:
         True when latest sorts after current.
     """
-    return not _is_prerelease(latest) and _version_key(latest) > _version_key(current)
+    if _is_prerelease(latest):
+        return False
+    if _is_prerelease(current):
+        return _version_key(latest) >= _stable_version_key(current)
+    return _version_key(latest) > _version_key(current)
+
+
+def _stable_version_key(version: str) -> tuple[tuple[int, int | str], ...]:
+    """Return a comparison key for the stable part of a version string.
+
+    Args:
+        version: Version string to normalize.
+
+    Returns:
+        Tuple suitable for comparing the stable release version.
+    """
+    match = PRERELEASE_RE.search(version)
+    stable_version = version[: match.start()].rstrip(".-_") if match else version
+    return _version_key(stable_version)
 
 
 def _is_prerelease(version: str) -> bool:

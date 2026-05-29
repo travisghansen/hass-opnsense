@@ -44,6 +44,14 @@ def test_workflow_treats_missing_stale_branch_as_success() -> None:
     assert "Branch ${branch} was already deleted." in workflow
 
 
+def test_workflow_filters_prerelease_release_notes() -> None:
+    """Workflow should not include prerelease release notes for stable updates."""
+    workflow = WORKFLOW_PATH.read_text()
+
+    assert "function isPrerelease(version)" in workflow
+    assert "!isPrerelease(tagVersion)" in workflow
+
+
 def test_updater_script_updates_manifest_and_pyproject(
     tmp_path: Path, updater_script: ModuleType
 ) -> None:
@@ -108,6 +116,33 @@ ha = [
     assert result.latest == "1.0.0"
     assert "aiopnsense==1.0.0" in manifest_path.read_text()
     assert '    "aiopnsense==1.0.0",' in pyproject_path.read_text()
+
+
+def test_updater_script_updates_prerelease_pin_to_matching_stable(
+    tmp_path: Path, updater_script: ModuleType
+) -> None:
+    """Updater script should replace current prerelease pins with stable releases."""
+    manifest_path = tmp_path / "manifest.json"
+    pyproject_path = tmp_path / "pyproject.toml"
+    manifest_path.write_text(json.dumps({"requirements": ["aiopnsense==1.0.1rc1"]}))
+    pyproject_path.write_text(
+        """[dependency-groups]
+ha = [
+    "aiopnsense==1.0.1rc1",
+]
+""",
+    )
+
+    result = updater_script.update_pins(
+        manifest_path=manifest_path,
+        pyproject_path=pyproject_path,
+        latest_version="1.0.1",
+    )
+
+    assert result.update_needed is True
+    assert result.latest == "1.0.1"
+    assert "aiopnsense==1.0.1" in manifest_path.read_text()
+    assert '    "aiopnsense==1.0.1",' in pyproject_path.read_text()
 
 
 def test_updater_script_selects_latest_stable_from_pypi_payload(
