@@ -202,7 +202,8 @@ class TelemetryMixin(PyOPNsenseClientProtocol):
                 systemtime = systemtime.replace(tzinfo=opnsense_tz)
         except (KeyError, ValueError, TypeError, ParserError, UnknownTimezoneWarning) as e:
             _LOGGER.warning(
-                "Failed to parse opnsense system time (aka. datetime), using HA system time instead: %s. %s: %s",
+                "Failed to parse opnsense system time (aka. datetime), using HA system time "
+                "instead: %s. %s: %s",
                 time_info.get("datetime"),
                 type(e).__name__,
                 e,

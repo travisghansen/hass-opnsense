@@ -51,7 +51,6 @@ class ClientBaseMixin:
             initial: Whether the call runs during initial setup/validation. Defaults to False.
             name: Human-friendly name used in logs and identifiers. Defaults to 'OPNsense'.
         """
-
         self._username: str = username
         self._password: str = password
         self._name: str = name
@@ -142,7 +141,9 @@ class ClientBaseMixin:
         context = None
 
         if self._scheme == "https" and not self._verify_ssl:
-            context = ssl._create_unverified_context()  # noqa: SLF001
+            context = ssl.create_default_context()
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
 
         # set to True if necessary during development
         verbose = False
@@ -183,7 +184,8 @@ ini_set('display_errors', 0);
 
 {script}
 
-// wrapping this in json_encode and then unwrapping in python prevents funny XMLRPC NULL encoding errors
+// wrapping this in json_encode and then unwrapping in python prevents funny XMLRPC NULL
+// encoding errors
 // https://github.com/travisghansen/hass-pfsense/issues/35
 $toreturn_real = $toreturn;
 $toreturn = [];
@@ -210,7 +212,8 @@ $toreturn["real"] = json_encode($toreturn_real);
             stack = inspect.stack()
             calling_function = stack[1].function.strip("_") if len(stack) > 1 else "Unknown"
             _LOGGER.error(
-                "Error running exec_php script for %s. %s: %s. Ensure the 'os-homeassistant-maxit' plugin has been installed on OPNsense",
+                "Error running exec_php script for %s. %s: %s. Ensure the 'os-homeassistant-maxit' "
+                "plugin has been installed on OPNsense",
                 calling_function,
                 type(e).__name__,
                 e,
@@ -287,7 +290,8 @@ $toreturn["real"] = json_encode($toreturn_real);
             path: API endpoint path to call on the OPNsense host.
 
         Returns:
-            MutableMapping[str, Any] | list | None: Decoded JSON payload from a queued GET request, or None when request/parse fails.
+            MutableMapping[str, Any] | list | None: Decoded JSON payload from a queued
+                GET request, or None when request/parse fails.
         """
         loop = await self._get_active_loop()
         try:
@@ -308,7 +312,8 @@ $toreturn["real"] = json_encode($toreturn_real);
             payload: JSON payload body sent with the API request. Defaults to None.
 
         Returns:
-            MutableMapping[str, Any] | list | None: Decoded JSON payload from a queued POST request, or None when request/parse fails.
+            MutableMapping[str, Any] | list | None: Decoded JSON payload from a queued
+                POST request, or None when request/parse fails.
         """
         loop = await self._get_active_loop()
         try:
@@ -437,7 +442,9 @@ $toreturn["real"] = json_encode($toreturn_real);
                 else:
                     if response.status == 403:
                         _LOGGER.error(
-                            "Permission Error in do_get_from_stream (called by %s). Path: %s. Ensure the OPNsense user connected to HA has appropriate access. Recommend full admin access",
+                            "Permission Error in do_get_from_stream (called by %s). Path: %s. "
+                            "Ensure the OPNsense user connected to HA has appropriate access. "
+                            "Recommend full admin access",
                             caller,
                             url,
                         )
@@ -475,10 +482,12 @@ $toreturn["real"] = json_encode($toreturn_real);
         Args:
             path: API endpoint path to call on the OPNsense host.
             caller: Name of the calling method used for log context. Defaults to 'Unknown'.
-            timeout_seconds: Optional timeout value in seconds for this request. Defaults to None, which uses the shared default timeout.
+            timeout_seconds: Optional timeout value in seconds for this request.
+            Defaults to None, which uses the shared default timeout.
 
         Returns:
-            MutableMapping[str, Any] | list | None: Decoded JSON payload from an immediate GET request, or None when request/parse fails.
+            MutableMapping[str, Any] | list | None: Decoded JSON payload from an
+                immediate GET request, or None when request/parse fails.
         """
         # /api/<module>/<controller>/<command>/[<param1>/[<param2>/...]]
         self._rest_api_query_count += 1
@@ -497,7 +506,8 @@ $toreturn["real"] = json_encode($toreturn_real);
                     return await response.json(content_type=None)
                 if response.status == 403:
                     _LOGGER.error(
-                        "Permission Error in do_get (called by %s). Path: %s. Ensure the OPNsense user connected to HA has appropriate access. Recommend full admin access",
+                        "Permission Error in do_get (called by %s). Path: %s. Ensure the OPNsense "
+                        "user connected to HA has appropriate access. Recommend full admin access",
                         caller,
                         url,
                     )
@@ -531,7 +541,8 @@ $toreturn["real"] = json_encode($toreturn_real);
             timeout_seconds: Requested timeout value in seconds.
 
         Returns:
-            float: Positive timeout in seconds. Falls back to DEFAULT_REQUEST_TIMEOUT_SECONDS when invalid.
+            float: Positive timeout in seconds. Falls back to
+            DEFAULT_REQUEST_TIMEOUT_SECONDS when invalid.
         """
         if timeout_seconds is None:
             return float(DEFAULT_REQUEST_TIMEOUT_SECONDS)
@@ -550,7 +561,8 @@ $toreturn["real"] = json_encode($toreturn_real);
             path: API endpoint path to call on the OPNsense host.
 
         Returns:
-            dict[str, Any]: Dictionary payload from the GET request, or an empty dictionary if the response is not a mapping.
+            dict[str, Any]: Dictionary payload from the GET request, or an empty
+                dictionary if the response is not a mapping.
         """
         result = await self._get(path=path)
         return dict(result) if isinstance(result, MutableMapping) else {}
@@ -565,7 +577,8 @@ $toreturn["real"] = json_encode($toreturn_real);
             timeout_seconds: Total timeout window in seconds for this request.
 
         Returns:
-            dict[str, Any]: Dictionary payload from the GET request, or an empty dictionary if the response is not a mapping.
+            dict[str, Any]: Dictionary payload from the GET request, or an empty
+                dictionary if the response is not a mapping.
         """
         result = await self._do_get(
             path=path,
@@ -597,7 +610,8 @@ $toreturn["real"] = json_encode($toreturn_real);
             caller: Name of the calling method used for log context. Defaults to 'Unknown'.
 
         Returns:
-            MutableMapping[str, Any] | list | None: Decoded JSON payload from an immediate POST request, or None when request/parse fails.
+            MutableMapping[str, Any] | list | None: Decoded JSON payload from an
+                immediate POST request, or None when request/parse fails.
         """
         self._rest_api_query_count += 1
         url: str = f"{self._url}{path}"
@@ -617,7 +631,8 @@ $toreturn["real"] = json_encode($toreturn_real);
                     return response_json
                 if response.status == 403:
                     _LOGGER.error(
-                        "Permission Error in do_post (called by %s). Path: %s. Ensure the OPNsense user connected to HA has appropriate access. Recommend full admin access",
+                        "Permission Error in do_post (called by %s). Path: %s. Ensure the OPNsense "
+                        "user connected to HA has appropriate access. Recommend full admin access",
                         caller,
                         url,
                     )
@@ -654,7 +669,8 @@ $toreturn["real"] = json_encode($toreturn_real);
             payload: JSON payload body sent with the API request. Defaults to None.
 
         Returns:
-            dict[str, Any]: Dictionary payload from the POST request, or an empty dictionary if the response is not a mapping.
+            dict[str, Any]: Dictionary payload from the POST request, or an empty
+                dictionary if the response is not a mapping.
         """
         result = await self._post(path=path, payload=payload)
         return dict(result) if isinstance(result, MutableMapping) else {}
@@ -669,7 +685,8 @@ $toreturn["real"] = json_encode($toreturn_real);
             payload: JSON payload body sent with the API request. Defaults to None.
 
         Returns:
-            list: List payload from the POST request, or an empty list if the response is not a list.
+            list: List payload from the POST request, or an empty list if the response
+            is not a list.
         """
         result = await self._post(path=path, payload=payload)
         return result if isinstance(result, list) else []
@@ -732,12 +749,14 @@ $toreturn["real"] = json_encode($toreturn_real);
                 self._endpoint_checked_at.pop(path, None)
                 if response.status == 403:
                     _LOGGER.error(
-                        "Permission Error in is_endpoint_available. Path: %s. Ensure the OPNsense user connected to HA has appropriate access. Recommend full admin access",
+                        "Permission Error in is_endpoint_available. Path: %s. Ensure the OPNsense "
+                        "user connected to HA has appropriate access. Recommend full admin access",
                         url,
                     )
                 else:
                     _LOGGER.warning(
-                        "Transient endpoint check failure for %s. Response %s: %s. Not caching result.",
+                        "Transient endpoint check failure for %s. Response %s: %s. Not caching "
+                        "result.",
                         path,
                         response.status,
                         response.reason,

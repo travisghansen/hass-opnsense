@@ -1,6 +1,7 @@
 """Tests for `pyopnsense.vpn`."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
@@ -9,9 +10,13 @@ import pytest
 from custom_components.opnsense import pyopnsense
 from custom_components.opnsense.pyopnsense import vpn as pyopnsense_vpn
 
+TEST_PASSWORD = "p"
+
 
 @pytest.mark.asyncio
-async def test_get_openvpn_and_fetch_details(monkeypatch, make_client) -> None:
+async def test_get_openvpn_and_fetch_details(
+    monkeypatch: pytest.MonkeyPatch, make_client: Any
+) -> None:
     """Validate openvpn server/client discovery and fetch details flow."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session)
@@ -46,7 +51,7 @@ async def test_get_openvpn_and_fetch_details(monkeypatch, make_client) -> None:
             ]
         }
 
-        async def fake_safe_dict_get(path):
+        async def fake_safe_dict_get(path: Any) -> Any:
             """Return canned OpenVPN mapping payloads based on the requested path.
 
             Args:
@@ -69,7 +74,7 @@ async def test_get_openvpn_and_fetch_details(monkeypatch, make_client) -> None:
                 }
             return {}
 
-        async def fake_safe_list_get(path):
+        async def fake_safe_list_get(path: Any) -> Any:
             """Return an empty list for list-based VPN API lookups in this test.
 
             Args:
@@ -95,7 +100,7 @@ async def test_get_openvpn_and_fetch_details(monkeypatch, make_client) -> None:
 
 
 @pytest.mark.asyncio
-async def test_wireguard_processing_and_updates(make_client) -> None:
+async def test_wireguard_processing_and_updates(make_client: Any) -> None:
     """Exercise static wireguard status update helpers and peer linking."""
     # Test static methods for wireguard processing and updates
     server = {
@@ -116,8 +121,8 @@ async def test_wireguard_processing_and_updates(make_client) -> None:
         "total_bytes_recv": 0,
         "total_bytes_sent": 0,
     }
-    servers = {"s1": server}
-    clients = {"c1": client}
+    servers: dict[str, Any] = {"s1": server}
+    clients: dict[str, Any] = {"c1": client}
 
     # peer entry representing interface update
     entry_interface = {"type": "interface", "public-key": "pk", "status": "up"}
@@ -147,7 +152,7 @@ async def test_wireguard_processing_and_updates(make_client) -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "vpn_type,path,use_snake_case,post_resp,expected",
+    ("vpn_type", "path", "use_snake_case", "post_resp", "expected"),
     [
         ("openvpn", "servers", False, {"changed": False}, False),
         ("openvpn", "servers", False, [{"changed": True}, {"result": "ok"}], True),
@@ -156,7 +161,12 @@ async def test_wireguard_processing_and_updates(make_client) -> None:
     ],
 )
 async def test_toggle_vpn_instance_variants(
-    make_client, vpn_type, path, use_snake_case, post_resp, expected
+    make_client: Any,
+    vpn_type: Any,
+    path: Any,
+    use_snake_case: Any,
+    post_resp: Any,
+    expected: Any,
 ) -> None:
     """Parametrized toggle_vpn_instance covering OpenVPN and WireGuard variants."""
     session = MagicMock(spec=aiohttp.ClientSession)
@@ -166,9 +176,9 @@ async def test_toggle_vpn_instance_variants(
         client._use_snake_case = True
 
     if isinstance(post_resp, list):
-        client._safe_dict_post = AsyncMock(side_effect=post_resp)
+        object.__setattr__(client, "_safe_dict_post", AsyncMock(side_effect=post_resp))
     else:
-        client._safe_dict_post = AsyncMock(return_value=post_resp)
+        object.__setattr__(client, "_safe_dict_post", AsyncMock(return_value=post_resp))
 
     res = await client.toggle_vpn_instance(vpn_type, path, "uuid")
     assert res is expected
@@ -176,7 +186,9 @@ async def test_toggle_vpn_instance_variants(
 
 
 @pytest.mark.asyncio
-async def test_openvpn_more_detail_parsing(monkeypatch, make_client) -> None:
+async def test_openvpn_more_detail_parsing(
+    monkeypatch: pytest.MonkeyPatch, make_client: Any
+) -> None:
     """Exercise additional OpenVPN parsing branches (no sessions, missing fields)."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session)
@@ -187,7 +199,7 @@ async def test_openvpn_more_detail_parsing(monkeypatch, make_client) -> None:
     providers_info: dict[str, dict] = {}
     instances_info = {"rows": [{"role": "client", "uuid": "c1", "enabled": "0"}]}
 
-    async def fake_safe_dict_get(path):
+    async def fake_safe_dict_get(path: Any) -> Any:
         """Return canned OpenVPN mappings for the reduced-details test case.
 
         Args:
@@ -218,11 +230,11 @@ async def test_openvpn_processing_and_fetch_details() -> None:
     """Test processing of OpenVPN instances/providers/sessions/routes and fetching details."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
+        url="http://localhost", username="u", password=TEST_PASSWORD, session=session
     )
     try:
         # prepare fake responses for _safe_dict_get based on path
-        def fake_safe_dict_get(path):
+        def fake_safe_dict_get(path: Any) -> Any:
             """Return canned OpenVPN payloads for the detail-fetching test.
 
             Args:
@@ -276,7 +288,7 @@ async def test_openvpn_processing_and_fetch_details() -> None:
                 }
             return {}
 
-        client._safe_dict_get = AsyncMock(side_effect=fake_safe_dict_get)
+        object.__setattr__(client, "_safe_dict_get", AsyncMock(side_effect=fake_safe_dict_get))
 
         openvpn = await client.get_openvpn()
         assert "servers" in openvpn and "clients" in openvpn
@@ -295,7 +307,7 @@ async def test_openvpn_client_session_updates_server_stats() -> None:
     # no client/session needed for this static helper test
 
     # Build servers and clients structures
-    servers: dict = {
+    servers: dict[str, Any] = {
         "s1": {"uuid": "s1", "clients": [], "total_bytes_recv": 0, "total_bytes_sent": 0}
     }
     clients: dict = {"c1": {"uuid": "c1", "pubkey": "pk1", "servers": [{"interface": "wg1"}]}}
@@ -307,7 +319,7 @@ async def test_openvpn_client_session_updates_server_stats() -> None:
         "if": "wg1",
         "transfer-rx": "100",
         "transfer-tx": "200",
-        "latest-handshake": int(datetime.now().timestamp()),
+        "latest-handshake": int(datetime.now(UTC).timestamp()),
     }
 
     await pyopnsense.OPNsenseClient._update_wireguard_peer_status(entry, servers, clients)
@@ -329,12 +341,12 @@ async def test_fetch_openvpn_server_details_missing_server_field() -> None:
     """When instance details lack 'server' key, no tunnel_addresses should be set."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
+        url="http://localhost", username="u", password=TEST_PASSWORD, session=session
     )
     try:
         openvpn = {"servers": {"srv1": {"uuid": "srv1"}}}
 
-        async def fake_safe_dict_get(path):
+        async def fake_safe_dict_get(path: Any) -> Any:
             # return instance details with no 'server' key
             """Return instance details without a server field for this edge case.
 
@@ -345,7 +357,7 @@ async def test_fetch_openvpn_server_details_missing_server_field() -> None:
                 return {"instance": {}}
             return {}
 
-        client._safe_dict_get = AsyncMock(side_effect=fake_safe_dict_get)
+        object.__setattr__(client, "_safe_dict_get", AsyncMock(side_effect=fake_safe_dict_get))
         await client._fetch_openvpn_server_details(openvpn)
         ta = openvpn["servers"]["srv1"].get("tunnel_addresses")
         assert "tunnel_addresses" not in openvpn["servers"]["srv1"] or (
@@ -358,11 +370,11 @@ async def test_fetch_openvpn_server_details_missing_server_field() -> None:
 @pytest.mark.asyncio
 async def test_get_wireguard_full_processing_and_peer_details() -> None:
     """Ensure the wireguard peer status helper updates server/client transfer counters."""
-    summary = {
+    summary: dict[str, Any] = {
         "peers": [
             {
                 "public-key": "pk1",
-                "latest-handshake": int(datetime.now().timestamp()),
+                "latest-handshake": int(datetime.now(UTC).timestamp()),
                 "transfer-rx": "100",
                 "transfer-tx": "200",
                 "if": "wg1",
@@ -371,10 +383,12 @@ async def test_get_wireguard_full_processing_and_peer_details() -> None:
         "servers": {"s1": {"uuid": "s1"}},
         "clients": {"c1": {"uuid": "c1", "pubkey": "pk1", "servers": [{"interface": "wg1"}]}},
     }
-    servers: dict = {
+    servers: dict[str, Any] = {
         "s1": {"uuid": "s1", "clients": [], "total_bytes_recv": 0, "total_bytes_sent": 0}
     }
-    clients_map: dict = {"c1": {"uuid": "c1", "pubkey": "pk1", "servers": [{"interface": "wg1"}]}}
+    clients_map: dict[str, Any] = {
+        "c1": {"uuid": "c1", "pubkey": "pk1", "servers": [{"interface": "wg1"}]}
+    }
 
     entry = summary["peers"][0]
     await pyopnsense.OPNsenseClient._update_wireguard_peer_status(entry, servers, clients_map)
@@ -386,19 +400,21 @@ async def test_get_wireguard_full_processing_and_peer_details() -> None:
 
 
 @pytest.mark.parametrize(
-    "delta_minutes,expected",
+    ("delta_minutes", "expected"),
     [
         (2, True),  # within 3 minutes => connected
         (3, True),  # exactly at threshold => connected
         (5, False),  # beyond threshold => not connected
     ],
 )
-def test_wireguard_is_connected_variants(monkeypatch, delta_minutes: int, expected: bool) -> None:
+def test_wireguard_is_connected_variants(
+    monkeypatch: pytest.MonkeyPatch, delta_minutes: int, expected: bool
+) -> None:
     """WireGuard connection considered active when last handshake within threshold. Monkeypatch `datetime.now` in the module under test to a fixed value with no microseconds so comparisons at the 3-minute boundary are deterministic."""
-    fixed_now = datetime.now().astimezone().replace(microsecond=0)
+    fixed_now = datetime.now(UTC).astimezone().replace(microsecond=0)
     # create a minimal fake datetime provider with a static now() returning fixed_now
-    FakeDT = type("FakeDT", (), {"now": staticmethod(lambda: fixed_now)})
-    monkeypatch.setattr(pyopnsense_vpn, "datetime", FakeDT)
+    fake_dt = type("fake_dt", (), {"now": staticmethod(lambda: fixed_now)})
+    monkeypatch.setattr(pyopnsense_vpn, "datetime", fake_dt)
     assert (
         pyopnsense.OPNsenseClient.wireguard_is_connected(
             fixed_now - timedelta(minutes=delta_minutes)
@@ -411,12 +427,12 @@ def test_wireguard_is_connected_variants(monkeypatch, delta_minutes: int, expect
 
 
 @pytest.mark.asyncio
-async def test_get_wireguard_success_and_invalid(make_client) -> None:
+async def test_get_wireguard_success_and_invalid(make_client: Any) -> None:
     """Exercise get_wireguard success path and invalid structure early return."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session)
 
-    now = datetime.now().astimezone()
+    now = datetime.now(UTC).astimezone()
     old_handshake = int((now - timedelta(minutes=10)).timestamp())  # disconnected
 
     # Build server/client structures expected by API shape
@@ -466,14 +482,16 @@ async def test_get_wireguard_success_and_invalid(make_client) -> None:
     }
 
     # side_effect order matches comprehension iteration order in get_wireguard
-    client._safe_dict_get = AsyncMock(side_effect=[summary_resp, clients_resp, servers_resp])
+    object.__setattr__(
+        client, "_safe_dict_get", AsyncMock(side_effect=[summary_resp, clients_resp, servers_resp])
+    )
     wg = await client.get_wireguard()
     assert "servers" in wg and "clients" in wg and wg["servers"]["s1"]["uuid"] == "s1"
     # client peer should reflect disconnected (old handshake)
     assert wg["clients"]["c1"].get("connected_servers") == 0
 
     # invalid structure (summary not list) -> empty wireguard structure
-    client._safe_dict_get = AsyncMock(return_value={"rows": {}})
+    object.__setattr__(client, "_safe_dict_get", AsyncMock(return_value={"rows": {}}))
     assert await client.get_wireguard() == {"servers": {}, "clients": {}}
     await client.async_close()
 
@@ -506,9 +524,9 @@ async def test_update_wireguard_peer_details_latest_handshake() -> None:
     """_update_wireguard_peer_details should update latest_handshake when newer."""
     server: dict = {"total_bytes_recv": 0, "total_bytes_sent": 0, "connected_clients": 0}
     peer: dict = {}
-    old_time = datetime.now().astimezone() - timedelta(minutes=10)
+    old_time = datetime.now(UTC).astimezone() - timedelta(minutes=10)
     server["latest_handshake"] = old_time
-    new_time = datetime.now().astimezone()
+    new_time = datetime.now(UTC).astimezone()
     await pyopnsense.OPNsenseClient._update_wireguard_peer_details(  # type: ignore[arg-type]
         peer=peer,
         server_or_client=server,

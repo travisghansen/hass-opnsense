@@ -49,7 +49,7 @@ async def async_setup_entry(
 
 
 class OPNsenseUpdate(OPNsenseEntity, UpdateEntity):
-    """Class for OPNsense Update entitiy."""
+    """Class for OPNsense Update entity."""
 
     def __init__(
         self,
@@ -58,7 +58,6 @@ class OPNsenseUpdate(OPNsenseEntity, UpdateEntity):
         entity_description: UpdateEntityDescription,
     ) -> None:
         """Initialize update entity."""
-
         name_suffix: str | None = (
             entity_description.name if isinstance(entity_description.name, str) else None
         )
@@ -106,7 +105,8 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
 
         product_class = self._get_product_class(product_series)
         _LOGGER.debug(
-            "[Update handle_coordinator_update] product_version: %s, product_latest: %s, product_series: %s, product_class: %s",
+            "[Update handle_coordinator_update] product_version: %s, product_latest: %s, "
+            "product_series: %s, product_class: %s",
             product_version,
             product_latest,
             product_series,
@@ -295,7 +295,8 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
             )
             return (
                 "Release notes unavailable due to an error. "
-                "Check the Read release announcement link above or see the OPNsense web interface for details. "
+                "Check the Read release announcement link above or see the OPNsense web interface "
+                "for details. "
                 f"{type(e).__name__}: {e}"
             )
 

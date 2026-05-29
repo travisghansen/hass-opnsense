@@ -4,9 +4,14 @@ These tests validate async_setup_entry and the update handlers for the
 binary sensor entities.
 """
 
+from collections.abc import Callable, Iterable
+from typing import Any, cast
 from unittest.mock import MagicMock
 
+from homeassistant.components.binary_sensor import BinarySensorEntityDescription
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.opnsense.binary_sensor import (
     OPNsenseInterfaceEnabledBinarySensor,
@@ -21,12 +26,13 @@ from custom_components.opnsense.const import (
     COORDINATOR,
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
-from homeassistant.components.binary_sensor import BinarySensorEntityDescription
 from tests.utilities import stub_async_write_ha_state
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_creates_entities_when_enabled(make_config_entry):
+async def test_async_setup_entry_creates_entities_when_enabled(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
     """Create notices binary sensor when notices sync is enabled."""
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_NOTICES: True})
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -35,7 +41,7 @@ async def test_async_setup_entry_creates_entities_when_enabled(make_config_entry
 
     created: list = []
 
-    def add_entities(ents):
+    def add_entities(ents: Iterable[Any], _update_before_add: bool = False) -> None:
         """Add entities.
 
         Args:
@@ -43,13 +49,15 @@ async def test_async_setup_entry_creates_entities_when_enabled(make_config_entry
         """
         created.extend(ents)
 
-    await async_setup_entry(MagicMock(), entry, add_entities)
+    await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
     assert len(created) == 1
     assert isinstance(created[0], OPNsensePendingNoticesPresentBinarySensor)
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_skips_when_disabled(make_config_entry):
+async def test_async_setup_entry_skips_when_disabled(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
     """Skip creating entities when sync options are disabled."""
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_NOTICES: False})
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -58,7 +66,7 @@ async def test_async_setup_entry_skips_when_disabled(make_config_entry):
 
     created: list = []
 
-    def add_entities(ents):
+    def add_entities(ents: Iterable[Any], _update_before_add: bool = False) -> None:
         """Add entities.
 
         Args:
@@ -66,12 +74,14 @@ async def test_async_setup_entry_skips_when_disabled(make_config_entry):
         """
         created.extend(ents)
 
-    await async_setup_entry(MagicMock(), entry, add_entities)
+    await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
     assert created == []
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_creates_only_notices_when_notices_enabled(make_config_entry):
+async def test_async_setup_entry_creates_only_notices_when_notices_enabled(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
     """Create only Notices entity when notices sync is enabled."""
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_NOTICES: True})
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -80,7 +90,7 @@ async def test_async_setup_entry_creates_only_notices_when_notices_enabled(make_
 
     created: list = []
 
-    def add_entities(ents):
+    def add_entities(ents: Iterable[Any], _update_before_add: bool = False) -> None:
         """Add entities.
 
         Args:
@@ -88,14 +98,16 @@ async def test_async_setup_entry_creates_only_notices_when_notices_enabled(make_
         """
         created.extend(ents)
 
-    await async_setup_entry(MagicMock(), entry, add_entities)
+    await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
     # expect one Notices entity created
     assert len(created) == 1
     assert isinstance(created[0], OPNsensePendingNoticesPresentBinarySensor)
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_creates_disabled_interface_enabled_sensors(make_config_entry):
+async def test_async_setup_entry_creates_disabled_interface_enabled_sensors(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
     """Create disabled-by-default enabled-state binary sensors for interfaces."""
     entry = make_config_entry(
         {
@@ -115,7 +127,7 @@ async def test_async_setup_entry_creates_disabled_interface_enabled_sensors(make
 
     created: list = []
 
-    def add_entities(ents):
+    def add_entities(ents: Iterable[Any], _update_before_add: bool = False) -> None:
         """Add entities.
 
         Args:
@@ -123,7 +135,7 @@ async def test_async_setup_entry_creates_disabled_interface_enabled_sensors(make
         """
         created.extend(ents)
 
-    await async_setup_entry(MagicMock(), entry, add_entities)
+    await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
 
     assert len(created) == 2
     assert all(isinstance(entity, OPNsenseInterfaceEnabledBinarySensor) for entity in created)
@@ -137,7 +149,9 @@ async def test_async_setup_entry_creates_disabled_interface_enabled_sensors(make
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_skips_interfaces_when_interface_sync_disabled(make_config_entry):
+async def test_async_setup_entry_skips_interfaces_when_interface_sync_disabled(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
     """Skip interface enabled binary sensors when interface sync is disabled."""
     entry = make_config_entry(
         {
@@ -152,7 +166,7 @@ async def test_async_setup_entry_skips_interfaces_when_interface_sync_disabled(m
 
     created: list = []
 
-    def add_entities(ents):
+    def add_entities(ents: Iterable[Any], _update_before_add: bool = False) -> None:
         """Add entities.
 
         Args:
@@ -160,7 +174,7 @@ async def test_async_setup_entry_skips_interfaces_when_interface_sync_disabled(m
         """
         created.extend(ents)
 
-    await async_setup_entry(MagicMock(), entry, add_entities)
+    await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
 
     assert len(created) == 1
     assert isinstance(created[0], OPNsensePendingNoticesPresentBinarySensor)
@@ -169,8 +183,8 @@ async def test_async_setup_entry_skips_interfaces_when_interface_sync_disabled(m
 @pytest.mark.asyncio
 @pytest.mark.parametrize("coord_data", [None, {"interfaces": []}])
 async def test_compile_interface_enabled_binary_sensors_skips_invalid_state(
-    coord_data, make_config_entry
-):
+    coord_data: Any, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
     """Skip compiling interface enabled sensors from invalid coordinator state."""
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -181,8 +195,8 @@ async def test_compile_interface_enabled_binary_sensors_skips_invalid_state(
 
 @pytest.mark.asyncio
 async def test_compile_interface_enabled_binary_sensors_skips_malformed_interfaces(
-    make_config_entry,
-):
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
     """Skip malformed interfaces while compiling valid interface enabled sensors."""
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -200,7 +214,9 @@ async def test_compile_interface_enabled_binary_sensors_skips_malformed_interfac
     assert entities[0].entity_description.key == "interface.wan.enabled"
 
 
-def test_interface_enabled_binary_sensor_state(make_config_entry):
+def test_interface_enabled_binary_sensor_state(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
     """Interface enabled binary sensor should expose the interface enabled state."""
     entry = make_config_entry()
     desc = BinarySensorEntityDescription(key="interface.wan.enabled", name="Interface WAN Enabled")
@@ -220,7 +236,9 @@ def test_interface_enabled_binary_sensor_state(make_config_entry):
     assert sensor.is_on is False
 
 
-def test_interface_enabled_binary_sensor_unavailable_when_enabled_unknown(make_config_entry):
+def test_interface_enabled_binary_sensor_unavailable_when_enabled_unknown(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
     """Interface enabled binary sensor should be unavailable when enabled state is unknown."""
     entry = make_config_entry()
     desc = BinarySensorEntityDescription(key="interface.wan.enabled", name="Interface WAN Enabled")
@@ -249,8 +267,8 @@ def test_interface_enabled_binary_sensor_unavailable_when_enabled_unknown(make_c
     ],
 )
 def test_interface_enabled_binary_sensor_unavailable_for_invalid_payloads(
-    desc_key, coord_data, make_config_entry
-):
+    desc_key: Any, coord_data: Any, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
     """Mark interface enabled binary sensor unavailable for invalid payloads."""
     entry = make_config_entry()
     desc = BinarySensorEntityDescription(key=desc_key, name="Interface WAN Enabled")
@@ -269,7 +287,9 @@ def test_interface_enabled_binary_sensor_unavailable_for_invalid_payloads(
     assert sensor.available is False
 
 
-def test_interface_enabled_binary_sensor_extra_attributes(make_config_entry):
+def test_interface_enabled_binary_sensor_extra_attributes(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
     """Interface enabled binary sensor should expose useful interface attributes."""
     entry = make_config_entry()
     desc = BinarySensorEntityDescription(key="interface.wan.enabled", name="Interface WAN Enabled")
@@ -307,7 +327,7 @@ def test_interface_enabled_binary_sensor_extra_attributes(make_config_entry):
 
 
 @pytest.mark.parametrize(
-    "coord_data,expect_write_called,expect_available,expect_is_on,expect_pending",
+    ("coord_data", "expect_write_called", "expect_available", "expect_is_on", "expect_pending"),
     [
         (None, True, False, None, None),
         ({"notices": {}}, True, False, None, None),
@@ -330,13 +350,13 @@ def test_interface_enabled_binary_sensor_extra_attributes(make_config_entry):
     ],
 )
 def test_pending_notices_sensor_update_paths_param(
-    coord_data,
-    expect_write_called,
-    expect_available,
-    expect_is_on,
-    expect_pending,
-    make_config_entry,
-):
+    coord_data: Any,
+    expect_write_called: Any,
+    expect_available: Any,
+    expect_is_on: Any,
+    expect_pending: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
     """Parameterized tests for pending notices sensor update paths. Covers: non-mapping (None), present with list, and present but missing list."""
     entry = make_config_entry()
     desc = BinarySensorEntityDescription(
@@ -350,12 +370,15 @@ def test_pending_notices_sensor_update_paths_param(
     )
     s.hass = MagicMock()
     s.entity_id = "binary_sensor.notices"
-    s.async_write_ha_state = MagicMock()
+    write_state = MagicMock()
+    object.__setattr__(s, "async_write_ha_state", write_state)
 
     s._handle_coordinator_update()
-    assert s.async_write_ha_state.called is expect_write_called
+    assert write_state.called is expect_write_called
     assert s.available is expect_available
     if expect_is_on is not None:
         assert s.is_on is expect_is_on
     if expect_pending is not None:
-        assert s.extra_state_attributes.get("pending_notices") == expect_pending
+        attrs = s.extra_state_attributes
+        assert attrs is not None
+        assert attrs.get("pending_notices") == expect_pending

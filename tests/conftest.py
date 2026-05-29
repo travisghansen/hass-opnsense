@@ -6,7 +6,7 @@ background tasks, and simplify Home Assistant testing.
 """
 
 import asyncio
-from collections.abc import MutableMapping
+from collections.abc import AsyncIterator, Generator, MutableMapping
 import contextlib
 import inspect
 import logging
@@ -15,6 +15,8 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
+import homeassistant.core as ha_core
+from homeassistant.core import HomeAssistant
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.plugins import get_scheduled_timer_handles
@@ -22,7 +24,8 @@ from pytest_homeassistant_custom_component.plugins import get_scheduled_timer_ha
 import custom_components.opnsense as _init_mod
 from custom_components.opnsense import pyopnsense as _pyopnsense_mod
 from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID
-import homeassistant.core as ha_core
+
+TEST_PASSWORD = "p"
 
 # expose the pyopnsense module under the plain name for tests that
 # import the fixture and expect `pyopnsense` to be available.
@@ -33,24 +36,26 @@ pyopnsense = _pyopnsense_mod
 class FakeClientSession:
     """Minimal fake client session used by tests in lieu of aiohttp.ClientSession."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         """Initialize the fake client session (no-op)."""
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> Any:
         """Enter async context and return the session-like object."""
         return self
 
-    async def __aexit__(self, exc_type, exc, tb):
+    async def __aexit__(
+        self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: object
+    ) -> bool:
         """Exit async context, close the session and propagate exceptions."""
         await self.close()
         return False
 
-    async def close(self):
+    async def close(self) -> bool:
         """Close the fake session (no-op)."""
         return True
 
 
-def _ensure_async_create_task_mock(real, side_effect):
+def _ensure_async_create_task_mock(real: Any, side_effect: Any) -> None:
     """Ensure ``real.async_create_task`` is mocked with the requested side effect.
 
     The helper attempts three strategies in the same order as the production
@@ -84,7 +89,7 @@ def _ensure_async_create_task_mock(real, side_effect):
 
 
 @pytest.fixture(autouse=True)
-def _patch_async_create_clientsession(monkeypatch):
+def _patch_async_create_clientsession(monkeypatch: pytest.MonkeyPatch) -> None:
     """Ensure the integration's async_create_clientsession does not create real sessions. This prevents tests from opening real network resources and leaking connectors."""
     monkeypatch.setattr(
         _init_mod,
@@ -95,7 +100,7 @@ def _patch_async_create_clientsession(monkeypatch):
 
 
 @pytest.fixture
-def coordinator_capture():
+def coordinator_capture() -> Any:
     """Provide a reusable capture for created coordinator instances.
 
     Returns a small namespace-like object with two attributes:
@@ -105,13 +110,11 @@ def coordinator_capture():
     """
 
     class _C:
-        instances: list = []
-
-        def __init__(self):
+        def __init__(self) -> None:
             """Initialize _C."""
-            self.instances = []
+            self.instances: list[Any] = []
 
-        def factory(self, coord_cls=None):
+        def factory(self, coord_cls: Any = None) -> Any:
             # Return a factory function bound to coord_cls that captures instances.
             """Factory.
 
@@ -119,7 +122,7 @@ def coordinator_capture():
                 coord_cls: Coord cls provided by pytest or the test case.
             """
 
-            def _f(**kwargs):
+            def _f(**kwargs) -> Any:
                 """F.
 
                 Args:
@@ -135,7 +138,7 @@ def coordinator_capture():
 
 
 @pytest.fixture
-def fake_stream_response_factory():
+def fake_stream_response_factory() -> Any:
     """Provide a factory that builds fake streaming HTTP responses.
 
     The returned factory creates response objects with ``status``, ``reason``,
@@ -144,21 +147,23 @@ def fake_stream_response_factory():
     chunks.
     """
 
-    def _make(chunks: list[bytes], status: int = 200, reason: str = "OK", ok: bool = True):
+    def _make(chunks: list[bytes], status: int = 200, reason: str = "OK", ok: bool = True) -> Any:
         """Create a fake streamed HTTP response with the supplied byte chunks."""
 
         class _Resp:
-            def __init__(self):
+            def __init__(self) -> None:
                 """Store the response metadata used by stream-reading tests."""
                 self.status = status
                 self.reason = reason
                 self.ok = ok
 
-            async def __aenter__(self):
+            async def __aenter__(self) -> Any:
                 """Enter the fake response context and return the response object."""
                 return self
 
-            async def __aexit__(self, exc_type, exc, tb):
+            async def __aexit__(
+                self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: object
+            ) -> bool:
                 """Exit the fake response context without suppressing exceptions.
 
                 Args:
@@ -169,11 +174,11 @@ def fake_stream_response_factory():
                 return False
 
             @property
-            def content(self):
+            def content(self) -> Any:
                 """Expose a minimal async stream reader for the supplied chunks."""
 
                 class C:
-                    def __init__(self, chunks):
+                    def __init__(self, chunks: list[bytes]) -> None:
                         """Store the chunks that the fake stream reader will yield.
 
                         Args:
@@ -181,7 +186,7 @@ def fake_stream_response_factory():
                         """
                         self._chunks = chunks
 
-                    async def iter_chunked(self, _n):
+                    async def iter_chunked(self, _n: Any) -> AsyncIterator[Any]:
                         """Yield each preloaded chunk regardless of requested chunk size.
 
                         Args:
@@ -198,15 +203,14 @@ def fake_stream_response_factory():
 
 
 @pytest.fixture
-async def make_client():
+async def make_client() -> Any:
     """Return a factory that constructs an OPNsenseClient for tests. This mirrors the local helper used in some test modules but exposes it as a fixture so tests can request it via parameters for consistency."""
-
     clients: list[pyopnsense.OPNsenseClient] = []
 
     def _make(
         session: aiohttp.ClientSession | None = None,
         username: str = "u",
-        password: str = "p",
+        password: str = TEST_PASSWORD,
         url: str = "http://localhost",
     ) -> pyopnsense.OPNsenseClient:
         # Tests should not pass a real aiohttp.ClientSession. If session is
@@ -242,18 +246,18 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.fixture(autouse=True)
-def _patch_homeassistant_stop(monkeypatch):
+def _patch_homeassistant_stop(monkeypatch: pytest.MonkeyPatch) -> Any:
     """Wrap HomeAssistant.stop to ignore 'Event loop is closed' runtime errors. Some tests or integrations can close the event loop unexpectedly. During test teardown the pytest-homeassistant-custom-component plugin attempts to stop HomeAssistant instances which may call into a closed loop; this wrapper silently swallows that specific RuntimeError to allow teardown to continue in a best-effort manner."""
-
     original_stop = getattr(ha_core.HomeAssistant, "stop", None)
 
     if original_stop is None:
         return
 
-    def _safe_stop(self, *args, **kwargs):
+    def _safe_stop(self: Any, *args, **kwargs) -> Any:
         """Safe stop.
 
         Args:
+            self: Home Assistant instance being stopped.
             *args: Additional positional arguments forwarded by the function.
             **kwargs: Additional keyword arguments forwarded by the function.
         """
@@ -273,9 +277,29 @@ def _patch_homeassistant_stop(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _patch_asyncio_create_task(monkeypatch):
-    """Patch asyncio.create_task to avoid creating background workers for pyopnsense during tests. For coroutines created by pyopnsense, close the coroutine object and return a dummy task-like object to prevent "coroutine was never awaited" warnings while avoiding scheduling real background work during tests."""
+def _patch_asyncio_create_task(
+    monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+) -> None:
+    """Patch pyopnsense task scheduling outside direct pyopnsense tests."""
+    try:
+        test_path = getattr(request, "fspath", None)
+        if test_path:
+            normalized_path = Path(str(test_path).replace("\\", "/"))
+            path_parts = tuple(part.lower() for part in normalized_path.parts)
+            has_pyopnsense_test_segments = any(
+                path_parts[index : index + 2] == ("tests", "pyopnsense")
+                for index in range(len(path_parts) - 1)
+            )
+            if normalized_path.name == "test_pyopnsense.py" or has_pyopnsense_test_segments:
+                return
+    except AttributeError, TypeError:
+        # If we cannot determine the requesting test, continue with patching.
+        pass
 
+    # Patch asyncio.create_task to avoid creating background workers for pyopnsense during tests.
+    # For coroutines created by pyopnsense, close the coroutine object and return a dummy
+    # task-like object to prevent "coroutine was never awaited" warnings while avoiding
+    # scheduling real background work during tests.
     # keep a reference to the original so we can delegate for non-target coroutines
     # Prefer the one from the pyopnsense module if present, otherwise fall back
     # to the global asyncio.create_task.
@@ -288,7 +312,8 @@ def _patch_asyncio_create_task(monkeypatch):
         # Prefer the module-scoped asyncio.create_task when available so we can
         # delegate for non-target coroutines. Fall back to the global
         # asyncio.create_task if the module doesn't expose one.
-        _original_create_task = getattr(_pyopnsense_mod.asyncio, "create_task", asyncio.create_task)
+        module_asyncio = cast("Any", _pyopnsense_mod).asyncio
+        _original_create_task = getattr(module_asyncio, "create_task", asyncio.create_task)
     else:
         # pyopnsense.asyncio is not present; delegate to the global
         # asyncio.create_task. We intentionally avoid patching the global
@@ -298,7 +323,7 @@ def _patch_asyncio_create_task(monkeypatch):
             "pyopnsense.asyncio not present; attaching minimal namespace with fake create_task; delegating others to global asyncio"
         )
 
-    def _fake_create_task(coro, *args, **kwargs):
+    def _fake_create_task(coro: Any, *args, **kwargs) -> Any:
         # If the coroutine originates from pyopnsense background workers, close
         # it to avoid 'coroutine was never awaited' warnings and return a dummy
         # task-like object. Otherwise delegate to the original create_task.
@@ -330,27 +355,27 @@ def _patch_asyncio_create_task(monkeypatch):
             except RuntimeError:
                 # No running loop; provide a minimally awaitable stub.
                 class _DoneTask:
-                    def done(self):
+                    def done(self) -> bool:
                         """Done."""
                         return True
 
-                    def cancel(self):
+                    def cancel(self) -> None:
                         """Cancel."""
                         return
 
-                    def cancelled(self):
+                    def cancelled(self) -> bool:
                         """Cancelled."""
                         return False
 
-                    def result(self):
+                    def result(self) -> None:
                         """Result."""
                         return
 
-                    def exception(self):
+                    def exception(self) -> None:
                         """Exception."""
                         return
 
-                    def add_done_callback(self, cb):
+                    def add_done_callback(self, cb: Any) -> None:
                         """Add done callback.
 
                         Args:
@@ -359,7 +384,7 @@ def _patch_asyncio_create_task(monkeypatch):
                         with contextlib.suppress(Exception):
                             cb(self)
 
-                    def __await__(self):
+                    def __await__(self) -> Generator[Any]:
                         """Await."""
                         if False:
                             yield None  # pragma: no cover
@@ -391,7 +416,7 @@ def _patch_asyncio_create_task(monkeypatch):
             on the underlying real asyncio module via __getattr__.
             """
 
-            def __init__(self, real, create_task_impl):
+            def __init__(self, real: Any, create_task_impl: Any) -> None:
                 """Initialize _AsyncioProxy.
 
                 Args:
@@ -403,7 +428,7 @@ def _patch_asyncio_create_task(monkeypatch):
                 # replace it later if needed
                 self.create_task = create_task_impl
 
-            def __getattr__(self, name):
+            def __getattr__(self, name: str) -> Any:
                 """Getattr.
 
                 Args:
@@ -425,13 +450,16 @@ def _patch_asyncio_create_task(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _neutralize_pyopnsense_background_tasks(monkeypatch, request):
+def _neutralize_pyopnsense_background_tasks(
+    monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+) -> None:
     """Autouse fixture to replace pyopnsense background queue workers with no-ops. This prevents the integration from scheduling background coroutines during tests which could interact with the event loop, create network IO, or produce 'coroutine was never awaited' warnings."""
 
-    async def _noop_async(self, *args, **kwargs):
+    async def _noop_async(self: Any, *args, **kwargs) -> None:
         """Replace pyopnsense background workers with an async no-op.
 
         Args:
+            self: Client instance whose background worker was patched.
             *args: Additional positional arguments forwarded by the function.
             **kwargs: Additional keyword arguments forwarded by the function.
         """
@@ -496,7 +524,7 @@ def _neutralize_pyopnsense_background_tasks(monkeypatch, request):
         if target_asyncio is not None and hasattr(target_asyncio, "create_task"):
             orig = target_asyncio.create_task
 
-            def _wrap_create_task(coro, *args, **kwargs):
+            def _wrap_create_task(coro: Any, *args, **kwargs) -> Any:
                 """Wrap create task.
 
                 Args:
@@ -542,27 +570,27 @@ def _neutralize_pyopnsense_background_tasks(monkeypatch, request):
                     except RuntimeError:
 
                         class _DoneTask:
-                            def done(self):
+                            def done(self) -> bool:
                                 """Done."""
                                 return True
 
-                            def cancel(self):
+                            def cancel(self) -> None:
                                 """Cancel."""
                                 return
 
-                            def cancelled(self):
+                            def cancelled(self) -> bool:
                                 """Cancelled."""
                                 return False
 
-                            def result(self):
+                            def result(self) -> None:
                                 """Result."""
                                 return
 
-                            def exception(self):
+                            def exception(self) -> None:
                                 """Exception."""
                                 return
 
-                            def add_done_callback(self, cb):
+                            def add_done_callback(self, cb: Any) -> None:
                                 """Add done callback.
 
                                 Args:
@@ -571,7 +599,7 @@ def _neutralize_pyopnsense_background_tasks(monkeypatch, request):
                                 with contextlib.suppress(AttributeError, TypeError):
                                     cb(self)
 
-                            def __await__(self):
+                            def __await__(self) -> Generator[Any]:
                                 """Await."""
                                 if False:
                                     yield None  # pragma: no cover
@@ -589,7 +617,7 @@ def _neutralize_pyopnsense_background_tasks(monkeypatch, request):
 
 
 @pytest.fixture
-def coordinator():
+def coordinator() -> Any:
     """Provide a lightweight coordinator mock for tests. Use MagicMock so that registering listeners (which happens synchronously) does not produce AsyncMock "never awaited" warnings. Tests that need async behavior can set specific async methods on the mock to AsyncMock."""
     return MagicMock()
 
@@ -604,13 +632,13 @@ class DummyCoordinator(MagicMock):
 
 
 @pytest.fixture
-def dummy_coordinator():
+def dummy_coordinator() -> Any:
     """Provide a fresh DummyCoordinator instance for a test. Tests can request this fixture when they need a lightweight coordinator mock that behaves like the previous `DummyCoordinator()` constructor."""
     return DummyCoordinator()
 
 
 @pytest.fixture
-def fake_client():
+def fake_client() -> Any:
     """Provide a factory that creates lightweight fake OPNsense clients.
 
     The returned factory can be used to override the device identifier,
@@ -618,11 +646,11 @@ def fake_client():
     """
 
     def _make(
-        device_id: object = "dev1",
+        device_id: Any = "dev1",
         firmware_version: str = "99.0",
         telemetry: dict | None = None,
         close_result: bool = True,
-    ):
+    ) -> Any:
         """Build a fake client class configured with deterministic test responses.
 
         Args:
@@ -633,7 +661,7 @@ def fake_client():
         """
 
         class FakeClient:
-            def __init__(self, **kwargs):
+            def __init__(self, **kwargs) -> None:
                 # allow explicit overrides via kwargs when tests call the production
                 # client factory with parameters; prefer explicit args passed to
                 # the fixture factory above.
@@ -652,7 +680,7 @@ def fake_client():
                 self._query_counts_reset = False
                 self._query_counts = (1, 1)
 
-            async def get_device_unique_id(self, expected_id: str | None = None):
+            async def get_device_unique_id(self, expected_id: str | None = None) -> Any:
                 """Return the fake device identifier configured for this client.
 
                 Args:
@@ -661,44 +689,44 @@ def fake_client():
                 """
                 return self._device_id
 
-            async def get_host_firmware_version(self):
+            async def get_host_firmware_version(self) -> Any:
                 """Return the configured firmware version for test assertions."""
                 return self._firmware
 
-            async def async_close(self):
+            async def async_close(self) -> Any:
                 """Return the configured close result for shutdown tests."""
                 return self._close_result
 
-            async def get_telemetry(self):
+            async def get_telemetry(self) -> Any:
                 """Return the preloaded telemetry payload for coordinator tests."""
                 return self._telemetry
 
-            async def set_use_snake_case(self):
+            async def set_use_snake_case(self) -> bool:
                 """Acknowledge snake-case setup without mutating any fake state."""
                 return True
 
-            async def reset_query_counts(self):
+            async def reset_query_counts(self) -> None:
                 # mark reset and return None (used by coordinator)
                 """Mark that the query counters were reset during a coordinator update."""
                 self._query_counts_reset = True
 
-            async def get_query_counts(self):
+            async def get_query_counts(self) -> Any:
                 """Return the stored pair of fake REST and XML-RPC query counters."""
                 return self._query_counts
 
-            async def get_interfaces(self):
+            async def get_interfaces(self) -> Any:
                 """Return a minimal interface payload with traffic counters."""
                 return {"eth0": {"inbytes": 200, "outbytes": 100}}
 
-            async def get_vnstat(self):
+            async def get_vnstat(self) -> Any:
                 """Return an empty vnStat payload for tests that expect no interfaces."""
                 return {"interface_count": 0, "interfaces": {}}
 
-            async def get_openvpn(self):
+            async def get_openvpn(self) -> Any:
                 """Return an empty OpenVPN payload for coordinator tests."""
                 return {"servers": {}}
 
-            async def get_wireguard(self):
+            async def get_wireguard(self) -> Any:
                 """Return an empty WireGuard payload for coordinator tests."""
                 return {"servers": {}}
 
@@ -727,7 +755,7 @@ def fake_client():
 
 
 @pytest.fixture
-def fake_reg_factory():
+def fake_reg_factory() -> Any:
     """Provide a factory that builds configurable fake device registries.
 
     The returned registry object exposes ``async_get_device()``,
@@ -736,8 +764,8 @@ def fake_reg_factory():
     """
 
     def _make(
-        device_exists: bool = False, device_id: str = "dev", remove_result: object | None = None
-    ):
+        device_exists: bool = False, device_id: str = "dev", remove_result: Any | None = None
+    ) -> Any:
         """Create a fake device registry with configurable lookup and removal behavior.
 
         Args:
@@ -747,14 +775,14 @@ def fake_reg_factory():
         """
 
         class _FakeReg:
-            def __init__(self):
+            def __init__(self) -> None:
                 """Initialize _FakeReg."""
                 self.removed = False
                 self._device_exists = device_exists
                 self._device_id = device_id
                 self._remove_result = remove_result
 
-            def async_get_device(self, *args, **kwargs):
+            def async_get_device(self, *args, **kwargs) -> Any:
                 """Return a fake device entry when the fixture is configured to find one.
 
                 Args:
@@ -769,7 +797,7 @@ def fake_reg_factory():
                     return _D()
                 return None
 
-            def async_remove_device(self, *args, **kwargs):
+            def async_remove_device(self, *args, **kwargs) -> Any:
                 # mirror previous tests which sometimes inspect a `removed` flag
                 """Record device removal and return the configured removal result.
 
@@ -786,14 +814,14 @@ def fake_reg_factory():
 
 
 @pytest.fixture
-def fake_flow_client():
+def fake_flow_client() -> Any:
     """Return a factory that constructs a lightweight FakeClient used in flow tests. The returned factory when called yields a FakeClient class suitable for config/option flow validation paths and records calls to is_plugin_installed."""
 
     def _make(
         device_id: str = "unique-id",
         firmware: str = "25.1",
         plugin_installed: bool = False,
-    ):
+    ) -> Any:
         """Build a lightweight flow-test client class with configurable identity.
 
         Args:
@@ -812,7 +840,7 @@ def fake_flow_client():
 
             last_instance: FakeFlowClient | None = None
 
-            def __init__(self, *args, **kwargs):
+            def __init__(self, *args, **kwargs) -> None:
                 """Initialize FakeFlowClient.
 
                 Args:
@@ -864,11 +892,11 @@ def fake_flow_client():
 
 
 @pytest.fixture
-def fake_coordinator():
+def fake_coordinator() -> Any:
     """Return a simple FakeCoordinator class tests can pass to coordinator_capture.factory. The class records when its refresh/shutdown methods are called and accepts kwargs such as `device_tracker_coordinator` to mirror prior test-local coordinator implementations."""
 
     class FakeCoordinator:
-        def __init__(self, **kwargs):
+        def __init__(self, **kwargs) -> None:
             # mirror existing tests which inspect this flag
             """Initialize FakeCoordinator.
 
@@ -877,13 +905,13 @@ def fake_coordinator():
             """
             self._is_device_tracker = kwargs.get("device_tracker_coordinator", False)
 
-        async def async_config_entry_first_refresh(self):
+        async def async_config_entry_first_refresh(self) -> bool:
             # mark that initial refresh happened for assertions
             """Async config entry first refresh."""
             self.refreshed = True
             return True
 
-        async def async_shutdown(self):
+        async def async_shutdown(self) -> bool:
             # record that shutdown was invoked
             """Async shutdown."""
             self.shut = True
@@ -893,7 +921,7 @@ def fake_coordinator():
 
 
 @pytest.fixture
-def make_config_entry():
+def make_config_entry() -> Any:
     """Provide a factory that creates ``MockConfigEntry`` instances for tests.
 
     The returned factory accepts overrides for the entry data, metadata, and
@@ -914,9 +942,13 @@ def make_config_entry():
         """Create a ``MockConfigEntry`` with sensible defaults for integration tests.
 
         Args:
+            data: Config entry data mapping, or a default device ID when omitted.
+            title: Optional config entry title.
             unique_id: Identifier for unique.
             entry_id: Config entry identifier for the integration instance being referenced.
+            version: Optional config entry version override.
             options: Options mapping that stores the integration settings being updated.
+            runtime_data: Optional runtime data object attached to the entry.
         """
         data = data or {CONF_DEVICE_UNIQUE_ID: "test-device-123"}
         entry = MockConfigEntry(
@@ -940,11 +972,11 @@ def make_config_entry():
 
 
 @pytest.fixture
-def ph_hass(request, hass=None):
+def ph_hass(request: Any, hass: HomeAssistant | None = None) -> Any:
     """Safe hass-like fixture: prefer real PHCC `hass` when available. Prefer the pytest-injected `hass` fixture when the pytest-homeassistant- custom-component plugin is present. To support environments where the plugin is absent (or where fixture injection order yields an async generator), fall back to using `request.getfixturevalue("hass")` only as a last resort; if that still isn't available, return a MagicMock that provides the minimal attributes tests expect."""
 
     # Helper used to schedule coroutines on the running loop when possible.
-    def _schedule_or_return(coro):
+    def _schedule_or_return(coro: Any) -> Any:
         """Schedule or return.
 
         Args:
@@ -1009,7 +1041,7 @@ def ph_hass(request, hass=None):
         real_loop = asyncio.new_event_loop()
 
     class FakeLoop:
-        def __init__(self, loop):
+        def __init__(self, loop: Any) -> None:
             """Initialize FakeLoop.
 
             Args:
@@ -1017,7 +1049,7 @@ def ph_hass(request, hass=None):
             """
             self._loop = loop
 
-        def call_later(self, delay, callback, *args):
+        def call_later(self, delay: Any, callback: Any, *args) -> Any:
             """Call later.
 
             Args:
@@ -1030,7 +1062,7 @@ def ph_hass(request, hass=None):
                 handle.cancel()
             return handle
 
-        def __getattr__(self, name):
+        def __getattr__(self, name: str) -> Any:
             """Getattr.
 
             Args:

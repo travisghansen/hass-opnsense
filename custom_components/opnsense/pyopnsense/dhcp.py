@@ -18,12 +18,14 @@ class DHCPMixin(PyOPNsenseClientProtocol):
         """Return the active ARP table.
 
         Args:
-            resolve_hostnames: Whether reverse-DNS names should be resolved for ARP entries. Defaults to False.
+            resolve_hostnames: Whether reverse-DNS names should be resolved for ARP
+            entries. Defaults to False.
 
         Returns:
             list: Parsed arp table payload returned by OPNsense APIs.
         """
-        # [{'hostname': '?', 'ip-address': '<ip>', 'mac-address': '<mac>', 'interface': 'em0', 'expires': 1199, 'type': 'ethernet'}, ...]
+        # [{'hostname': '?', 'ip-address': '<ip>', 'mac-address': '<mac>', 'interface':
+        # 'em0', 'expires': 1199, 'type': 'ethernet'}, ...]
         request_body: dict[str, Any] = {"resolve": "yes" if resolve_hostnames else "no"}
         arp_table_info = await self._safe_dict_post(
             "/api/diagnostics/interface/search_arp", payload=request_body
@@ -49,7 +51,7 @@ class DHCPMixin(PyOPNsenseClientProtocol):
         leases_raw += await self._get_isc_dhcpv4_leases(opnsense_tz=opnsense_tz)
         leases_raw += await self._get_isc_dhcpv6_leases(opnsense_tz=opnsense_tz)
         leases_raw += await self._get_dnsmasq_leases(opnsense_tz=opnsense_tz)
-        # TODO: Add Kea dhcpv6 leases if API ever gets added
+        # Kea DHCPv6 leases are not included because OPNsense does not expose that API.
 
         # _LOGGER.debug(f"[get_dhcp_leases] leases_raw: {leases_raw}")
         leases: dict[str, Any] = {}
@@ -107,7 +109,8 @@ class DHCPMixin(PyOPNsenseClientProtocol):
         """Return IPv4 DHCP Leases by Kea.
 
         Args:
-            opnsense_tz: Optional pre-fetched timezone for this refresh cycle. Kea lease timestamps are parsed from epoch values and do not currently use this value.
+            opnsense_tz: Optional pre-fetched timezone for this refresh cycle. Kea lease
+            timestamps are parsed from epoch values and do not currently use this value.
 
         Returns:
             list: Parsed kea dhcpv4 leases payload returned by OPNsense APIs.
@@ -208,7 +211,9 @@ class DHCPMixin(PyOPNsenseClientProtocol):
         """Return Dnsmasq IPv4 and IPv6 DHCP Leases.
 
         Args:
-            opnsense_tz: Optional pre-fetched timezone for this refresh cycle. Dnsmasq lease timestamps are parsed from epoch values and do not currently use this value.
+            opnsense_tz: Optional pre-fetched timezone for this refresh cycle. Dnsmasq
+            lease timestamps are parsed from epoch values and do not currently use this
+            value.
 
         Returns:
             list: Parsed dnsmasq leases payload returned by OPNsense APIs.
@@ -320,10 +325,10 @@ class DHCPMixin(PyOPNsenseClientProtocol):
                 try:
                     dt: datetime = datetime.strptime(
                         lease_info.get("ends", None), "%Y/%m/%d %H:%M:%S"
-                    )
+                    ).replace(tzinfo=opnsense_tz)
                 except TypeError, ValueError:
                     continue
-                lease["expires"] = dt.replace(tzinfo=opnsense_tz)
+                lease["expires"] = dt
                 if lease["expires"] < datetime.now().astimezone():
                     continue
             else:
@@ -379,10 +384,10 @@ class DHCPMixin(PyOPNsenseClientProtocol):
                 try:
                     dt: datetime = datetime.strptime(
                         lease_info.get("ends", None), "%Y/%m/%d %H:%M:%S"
-                    )
+                    ).replace(tzinfo=opnsense_tz)
                 except TypeError, ValueError:
                     continue
-                lease["expires"] = dt.replace(tzinfo=opnsense_tz)
+                lease["expires"] = dt
                 if lease["expires"] < datetime.now().astimezone():
                     continue
             else:

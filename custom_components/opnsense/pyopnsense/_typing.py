@@ -28,7 +28,8 @@ class PyOPNsenseClientProtocol(Protocol):
             path: Relative API path.
 
         Returns:
-            MutableMapping[str, Any] | list | None: Decoded JSON payload, or ``None`` when unavailable.
+            MutableMapping[str, Any] | list | None: Decoded JSON payload, or ``None``
+                when unavailable.
         """
         ...
 
@@ -43,7 +44,8 @@ class PyOPNsenseClientProtocol(Protocol):
             payload: Optional request body.
 
         Returns:
-            MutableMapping[str, Any] | list | None: Decoded JSON payload, or ``None`` when unavailable.
+            MutableMapping[str, Any] | list | None: Decoded JSON payload, or ``None``
+                when unavailable.
         """
         ...
 

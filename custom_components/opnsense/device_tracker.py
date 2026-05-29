@@ -42,7 +42,6 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up device tracker for OPNsense component."""
-
     dev_reg = async_get_dev_reg(hass)
 
     previous_mac_addresses: list = config_entry.data.get(TRACKED_MACS, [])
@@ -253,7 +252,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
                     self._is_connected = True
 
         else:
-            # TODO: clear cache under certain scenarios?
+            # Cache clearing is intentionally deferred until a stale-state case is identified.
 
             update_time = state.get("update_time")
             if isinstance(update_time, float):
@@ -310,9 +309,10 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         #     f"unique_id: {self.unique_id}, attr_unique_id: {self._attr_unique_id}, "
         #     f"available: {self.available}, is_connected: {self.is_connected}, "
         #     f"hostname: {self.hostname}, ip_address: {self.ip_address}, "
-        #     f"last_known_hostname: {self._last_known_hostname}, last_known_ip: {self._last_known_ip}, "
+        # f"last_known_hostname: {self._last_known_hostname}, last_known_ip:
+        # {self._last_known_ip}, "
         #     f"last_known_connected_time: {self._last_known_connected_time}, icon: {self.icon}, "
-        #     f"extra_state_atrributes: {self.extra_state_attributes}"
+        #     f"extra_state_attributes: {self.extra_state_attributes}"
         # )
 
     @property  # type: ignore[misc] # overriding final from ScannerEntity

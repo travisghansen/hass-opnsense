@@ -303,7 +303,8 @@ class FirewallMixin(PyOPNsenseClientProtocol):
 
         Args:
             uuid: Target object UUID returned by OPNsense.
-            toggle_on_off: Explicit toggle directive ("on"/"off"); uses API toggle when omitted. Defaults to None.
+            toggle_on_off: Explicit toggle directive ("on"/"off"); uses API toggle
+                when omitted. Defaults to None.
 
         Returns:
             bool: True when OPNsense reports the requested action succeeded; otherwise False.
@@ -342,7 +343,8 @@ class FirewallMixin(PyOPNsenseClientProtocol):
         Args:
             nat_rule_type: NAT rule type endpoint segment to target.
             uuid: Target object UUID returned by OPNsense.
-            toggle_on_off: Explicit toggle directive ("on"/"off"); uses API toggle when omitted. Defaults to None.
+            toggle_on_off: Explicit toggle directive ("on"/"off"); uses API toggle
+                when omitted. Defaults to None.
 
         Returns:
             bool: True when OPNsense reports the requested action succeeded; otherwise False.
@@ -386,7 +388,8 @@ class FirewallMixin(PyOPNsenseClientProtocol):
             ip_addr: IP address whose states should be terminated.
 
         Returns:
-            MutableMapping[str, Any]: API response describing whether matching states were terminated.
+            MutableMapping[str, Any]: API response describing whether matching states
+                were terminated.
         """
         payload: dict[str, Any] = {"filter": ip_addr}
         response = await self._safe_dict_post(
@@ -404,7 +407,8 @@ class FirewallMixin(PyOPNsenseClientProtocol):
 
         Args:
             alias: Firewall alias name to toggle.
-            toggle_on_off: Explicit toggle directive ("on"/"off"); uses API toggle when omitted. Defaults to None.
+            toggle_on_off: Explicit toggle directive ("on"/"off"); uses API toggle
+                when omitted. Defaults to None.
 
         Returns:
             bool: True when OPNsense reports the requested action succeeded; otherwise False.

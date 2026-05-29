@@ -1,7 +1,33 @@
+[project]
+name = "hass-opnsense"
+requires-python = ">=3.14"
+dynamic = ["version"]
+
+[build-system]
+requires = ["setuptools>=62.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["custom_components*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+"custom_components.opnsense" = ["*.json", "translations/*.json"]
+
+[tool.setuptools.dynamic]
+version = { attr = "custom_components.opnsense.const.VERSION" }
+
 [dependency-groups]
+ha = [
+    "aiopnsense==1.0.8",
+    "homeassistant",
+]
 lint = [
+    { include-group = "ha" },
     "aiohttp",
-    "homeassistant-stubs",
     "mypy",
     "prek",
     "ruff",
@@ -14,6 +40,7 @@ lint = [
     "types-setuptools",
 ]
 pytest = [
+    { include-group = "ha" },
     "aiohttp",
     "aiopnsense",
     "pytest",
@@ -27,10 +54,122 @@ dev = [
     { include-group = "pytest" },
 ]
 
+[tool.mypy]
+python_version = "3.14"
+files = ["custom_components/opnsense", "tests"]
+check_untyped_defs = true
+explicit_package_bases = true
+namespace_packages = true
+pretty = true
+show_error_codes = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = ["aiopnsense.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["pytest_homeassistant_custom_component.*"]
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 100
+indent-width = 4
+fix = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "lf"
+docstring-code-format = true
+docstring-code-line-length = "dynamic"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "ANN002",   # missing-type-args
+    "ANN003",   # missing-type-kwargs
+    "ANN401",   # any-type
+    "ARG",      # flake8-unused-arguments
+    "EM",       # flake8-errmsg
+    "ERA",      # eradicate
+    "FBT",      # flake8-boolean-trap
+    "PLC1901",  # {existing} can be simplified to {replacement} as an empty string is falsey; too many false positives
+    "PLR0904",  # Too many public methods
+    "PLR0911",  # Too many return statements ({returns} > {max_returns})
+    "PLR0912",  # Too many branches ({branches} > {max_branches})
+    "PLR0913",  # Too many arguments to function call ({c_args} > {max_args})
+    "PLR0914",  # Too many local variables
+    "PLR0915",  # Too many statements ({statements} > {max_statements})
+    "PLR0916",  # Too many Boolean expressions
+    "PLR0917",  # Too many positional arguments
+    "PLR1702",  # Too many nested blocks
+    "PLR2004",  # Magic value used in comparison, consider replacing {value} with a constant variable
+    "PLW2901",  # Outer {outer_kind} variable {name} overwritten by inner {inner_kind} target
+    "PT011",    # pytest.raises({exception}) is too broad, set the `match` parameter or use a more specific exception
+    "PT018",    # Assertion should be broken down into multiple parts
+    "RUF001",   # String contains ambiguous unicode character.
+    "RUF002",   # Docstring contains ambiguous unicode character.
+    "RUF003",   # Comment contains ambiguous unicode character.
+    "RUF015",   # Prefer next(...) over single element slice
+    "S311",     # suspicious-non-cryptographic-random-usage
+    "SIM103",   # Return the condition {condition} directly
+    "SIM108",   # Use ternary operator {contents} instead of if-else-block
+    "SIM115",   # Use context handler for opening files
+    "TC001",    # Move application import {} into a type-checking block
+    "TC002",    # Move third-party import {} into a type-checking block
+    "TC003",    # Move standard library import {} into a type-checking block
+    "TD003",    # missing-todo-link
+    "TRY003",   # Avoid specifying long messages outside the exception class
+    "TRY301",   # raise-within-try
+    "TRY400",   # Use `logging.exception` instead of `logging.error`
+
+    # May conflict with the formatter, https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules
+    "COM812",   # missing-trailing-comma
+    "COM819",   # prohibited-trailing-comma
+    "D206",     # docstring-tab-indentation
+    "D300",     # triple-single-quotes
+    "E111",     # indentation-with-invalid-multiple
+    "E114",     # indentation-with-invalid-multiple-comment
+    "E117",     # over-indented
+    "Q000",     # bad-quotes-inline-string
+    "Q001",     # bad-quotes-multiline-string
+    "Q002",     # bad-quotes-docstring
+    "Q003",     # avoidable-escaped-quote
+    "Q004",     # unnecessary-escaped-quote
+    "W191",     # tab-indentation
+]
+fixable = ["ALL"]
+
+[tool.ruff.lint.flake8-pytest-style]
+fixture-parentheses = false
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+known-third-party = ["aiopnsense", "homeassistant"]
+combine-as-imports = true
+split-on-trailing-comma = false
+
+[tool.ruff.lint.mccabe]
+max-complexity = 25
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "B017",    # Don't assert blind Exception
+    "C90",     # mccabe, complexity
+    "E501",    # line too long
+    "S101",    # Use of assert detected
+    "S105",    # Possible hardcoded password
+    "S108",    # hardcoded-temp-file
+    "SLF001",  # Private member accessed
+]
+
 [tool.codespell]
-skip = "*.py,*.toml,CHANGELOG.*"
-quiet-level = 3
-ignore-words-list = "hass"
+ignore-words-list = "hass,ist"
 
 [tool.pytest.ini_options]
 addopts = """
@@ -53,302 +192,3 @@ parallel = false
 
 [tool.coverage.report]
 show_missing = true
-
-[tool.mypy]
-python_version = "3.14"
-platform = "linux"
-local_partial_types = true
-strict_equality = true
-no_implicit_optional = true
-warn_incomplete_stub = true
-warn_redundant_casts = true
-warn_unused_configs = true
-warn_unused_ignores = true
-enable_error_code = [
-    "deprecated",
-    "ignore-without-code",
-    "redundant-self",
-    "truthy-iterable",
-]
-disable_error_code = ["annotation-unchecked"]
-extra_checks = false
-mypy_path = ["."]
-explicit_package_bases = true
-check_untyped_defs = true
-disallow_incomplete_defs = true
-disallow_subclassing_any = false
-disallow_untyped_calls = true
-disallow_untyped_decorators = false
-disallow_untyped_defs = true
-warn_return_any = false
-warn_unreachable = false
-
-[[tool.mypy.overrides]]
-module = "tests.*"
-ignore_missing_imports = true
-disallow_untyped_defs = false
-disallow_untyped_calls = false
-disallow_incomplete_defs = false
-disable_error_code = [
-    "import-untyped",
-    "arg-type",
-    "method-assign",
-    "no-untyped-def",
-    "index",
-    "union-attr",
-    "operator",
-]
-check_untyped_defs = false
-warn_unused_ignores = false
-
-[tool.ruff]
-line-length = 100
-indent-width = 4
-fix = true
-force-exclude = true
-target-version = "py314"
-required-version = ">=0.15.0"
-
-[tool.ruff.format]
-quote-style = "double"
-indent-style = "space"
-skip-magic-trailing-comma = false
-line-ending = "lf"
-docstring-code-format = true
-docstring-code-line-length = "dynamic"
-
-[tool.ruff.lint]
-select = [
-    "A001",     # Variable {name} is shadowing a Python builtin
-    "ASYNC210", # Async functions should not call blocking HTTP methods
-    "ASYNC220", # Async functions should not create subprocesses with blocking methods
-    "ASYNC221", # Async functions should not run processes with blocking methods
-    "ASYNC222", # Async functions should not wait on processes with blocking methods
-    "ASYNC230", # Async functions should not open files with blocking methods like open
-    "ASYNC251", # Async functions should not call time.sleep
-    "B002",     # Python does not support the unary prefix increment
-    "B005",     # Using .strip() with multi-character strings is misleading
-    "B007",     # Loop control variable {name} not used within loop body
-    "B014",     # Exception handler with duplicate exception
-    "B015",     # Pointless comparison. Did you mean to assign a value? Otherwise, prepend assert or remove it.
-    "B017",     # pytest.raises(BaseException) should be considered evil
-    "B018",     # Found useless attribute access. Either assign it to a variable or remove it.
-    "B023",     # Function definition does not bind loop variable {name}
-    "B026",     # Star-arg unpacking after a keyword argument is strongly discouraged
-    "B032",     # Possible unintentional type annotation (using :). Did you mean to assign (using =)?
-    "B904",     # Use raise from to specify exception cause
-    "B905",     # zip() without an explicit strict= parameter
-    "BLE",
-    "C",        # complexity
-    "COM818",   # Trailing comma on bare tuple prohibited
-    "D",        # docstrings
-    "DTZ003",   # Use datetime.now(tz=) instead of datetime.utcnow()
-    "DTZ004",   # Use datetime.fromtimestamp(ts, tz=) instead of datetime.utcfromtimestamp(ts)
-    "E",        # pycodestyle
-    "F",        # pyflakes/autoflake
-    "F541",     # f-string without any placeholders
-    "FLY",      # flynt
-    "FURB",     # refurb
-    "G",        # flake8-logging-format
-    "I",        # isort
-    "INP",      # flake8-no-pep420
-    "ISC",      # flake8-implicit-str-concat
-    "ICN001",   # import concentions; {name} should be imported as {asname}
-    "LOG",      # flake8-logging
-    "N804",     # First argument of a class method should be named cls
-    "N805",     # First argument of a method should be named self
-    "N815",     # Variable {name} in class scope should not be mixedCase
-    "PERF",     # Perflint
-    "PGH",      # pygrep-hooks
-    "PIE",      # flake8-pie
-    "PL",       # pylint
-    "PT",       # flake8-pytest-style
-    "PTH",      # flake8-pathlib
-    "PYI",      # flake8-pyi
-    "RET",      # flake8-return
-    "RSE",      # flake8-raise
-    "RUF005",   # Consider iterable unpacking instead of concatenation
-    "RUF006",   # Store a reference to the return value of asyncio.create_task
-    "RUF010",   # Use explicit conversion flag
-    "RUF013",   # PEP 484 prohibits implicit Optional
-    "RUF017",   # Avoid quadratic list summation
-    "RUF018",   # Avoid assignment expressions in assert statements
-    "RUF019",   # Unnecessary key check before dictionary access
-    # "RUF100", # Unused `noqa` directive; temporarily every now and then to clean them up
-    "S102",  # Use of exec detected
-    "S103",  # bad-file-permissions
-    "S108",  # hardcoded-temp-file
-    "S306",  # suspicious-mktemp-usage
-    "S307",  # suspicious-eval-usage
-    "S313",  # suspicious-xmlc-element-tree-usage
-    "S314",  # suspicious-xml-element-tree-usage
-    "S315",  # suspicious-xml-expat-reader-usage
-    "S316",  # suspicious-xml-expat-builder-usage
-    "S317",  # suspicious-xml-sax-usage
-    "S318",  # suspicious-xml-mini-dom-usage
-    "S319",  # suspicious-xml-pull-dom-usage
-    "S601",  # paramiko-call
-    "S602",  # subprocess-popen-with-shell-equals-true
-    "S604",  # call-with-shell-equals-true
-    "S608",  # hardcoded-sql-expression
-    "S609",  # unix-command-wildcard-injection
-    "SIM",   # flake8-simplify
-    "SLF",   # flake8-self
-    "SLOT",  # flake8-slots
-    "T100",  # Trace found: {name} used
-    "T20",   # flake8-print
-    "TC",    # flake8-type-checking
-    "TID",   # Tidy imports
-    "TRY",   # tryceratops
-    "UP",    # pyupgrade
-    "UP031", # Use format specifiers instead of percent format
-    "UP032", # Use f-string instead of `format` call
-    "W",     # pycodestyle
-]
-
-ignore = [
-    "D202", # No blank lines allowed after function docstring
-    "D203", # 1 blank line required before class docstring
-    "D213", # Multi-line docstring summary should start at the second line
-    "D406", # Section name should end with a newline
-    "D407", # Section name underlining
-    "E501", # line too long
-
-    "PLC1901", # {existing} can be simplified to {replacement} as an empty string is falsey; too many false positives
-    "PLR0904", # Too many public methods
-    "PLR0911", # Too many return statements ({returns} > {max_returns})
-    "PLR0912", # Too many branches ({branches} > {max_branches})
-    "PLR0913", # Too many arguments to function call ({c_args} > {max_args})
-    "PLR0914", # Too many local variables
-    "PLR0915", # Too many statements ({statements} > {max_statements})
-    "PLR0916", # Too many Boolean expressions
-    "PLR0917", # Too many positional arguments
-    "PLR1702", # Too many nested blocks
-    "PLR2004", # Magic value used in comparison, consider replacing {value} with a constant variable
-    "PLW2901", # Outer {outer_kind} variable {name} overwritten by inner {inner_kind} target
-    "PT011",   # pytest.raises({exception}) is too broad, set the `match` parameter or use a more specific exception
-    "PT018",   # Assertion should be broken down into multiple parts
-    "RUF001",  # String contains ambiguous unicode character.
-    "RUF002",  # Docstring contains ambiguous unicode character.
-    "RUF003",  # Comment contains ambiguous unicode character.
-    "RUF015",  # Prefer next(...) over single element slice
-    "SIM102",  # Use a single if statement instead of nested if statements
-    "SIM103",  # Return the condition {condition} directly
-    "SIM108",  # Use ternary operator {contents} instead of if-else-block
-    "SIM115",  # Use context handler for opening files
-
-    # Moving imports into type-checking blocks can mess with pytest.patch()
-    "TC001", # Move application import {} into a type-checking block
-    "TC002", # Move third-party import {} into a type-checking block
-    "TC003", # Move standard library import {} into a type-checking block
-
-    "TRY003", # Avoid specifying long messages outside the exception class
-    "TRY400", # Use `logging.exception` instead of `logging.error`
-
-    # May conflict with the formatter, https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules
-    "W191",
-    "E111",
-    "E114",
-    "E117",
-    "D206",
-    "D300",
-    "Q",
-    "COM812",
-    "COM819",
-    "ISC001",
-
-    # Disabled because ruff does not understand type of __all__ generated by a function
-    "PLE0605",
-]
-fixable = ["ALL"]
-
-[tool.ruff.lint.per-file-ignores]
-"tests/*" = [
-    "SLF001", # Private member accessed
-    #"D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107",  # Docstring rules
-    "PLR2004", # Magic value used in comparison
-    "S101",    # Use of assert detected
-    "PLR0913", # Too many arguments to function call
-    "C901",    # Function is too complex
-    "E501",    # line too long
-    "B017",    # Don't assert blind Exception
-    "PT006",   # Wrong type passed to first argument
-    "S108",
-    "D401",
-    "D417",
-]
-
-[tool.ruff.lint.flake8-import-conventions.extend-aliases]
-voluptuous = "vol"
-"homeassistant.components.air_quality.PLATFORM_SCHEMA" = "AIR_QUALITY_PLATFORM_SCHEMA"
-"homeassistant.components.alarm_control_panel.PLATFORM_SCHEMA" = "ALARM_CONTROL_PANEL_PLATFORM_SCHEMA"
-"homeassistant.components.binary_sensor.PLATFORM_SCHEMA" = "BINARY_SENSOR_PLATFORM_SCHEMA"
-"homeassistant.components.button.PLATFORM_SCHEMA" = "BUTTON_PLATFORM_SCHEMA"
-"homeassistant.components.calendar.PLATFORM_SCHEMA" = "CALENDAR_PLATFORM_SCHEMA"
-"homeassistant.components.camera.PLATFORM_SCHEMA" = "CAMERA_PLATFORM_SCHEMA"
-"homeassistant.components.climate.PLATFORM_SCHEMA" = "CLIMATE_PLATFORM_SCHEMA"
-"homeassistant.components.conversation.PLATFORM_SCHEMA" = "CONVERSATION_PLATFORM_SCHEMA"
-"homeassistant.components.cover.PLATFORM_SCHEMA" = "COVER_PLATFORM_SCHEMA"
-"homeassistant.components.date.PLATFORM_SCHEMA" = "DATE_PLATFORM_SCHEMA"
-"homeassistant.components.datetime.PLATFORM_SCHEMA" = "DATETIME_PLATFORM_SCHEMA"
-"homeassistant.components.device_tracker.PLATFORM_SCHEMA" = "DEVICE_TRACKER_PLATFORM_SCHEMA"
-"homeassistant.components.event.PLATFORM_SCHEMA" = "EVENT_PLATFORM_SCHEMA"
-"homeassistant.components.fan.PLATFORM_SCHEMA" = "FAN_PLATFORM_SCHEMA"
-"homeassistant.components.geo_location.PLATFORM_SCHEMA" = "GEO_LOCATION_PLATFORM_SCHEMA"
-"homeassistant.components.humidifier.PLATFORM_SCHEMA" = "HUMIDIFIER_PLATFORM_SCHEMA"
-"homeassistant.components.image.PLATFORM_SCHEMA" = "IMAGE_PLATFORM_SCHEMA"
-"homeassistant.components.image_processing.PLATFORM_SCHEMA" = "IMAGE_PROCESSING_PLATFORM_SCHEMA"
-"homeassistant.components.lawn_mower.PLATFORM_SCHEMA" = "LAWN_MOWER_PLATFORM_SCHEMA"
-"homeassistant.components.light.PLATFORM_SCHEMA" = "LIGHT_PLATFORM_SCHEMA"
-"homeassistant.components.lock.PLATFORM_SCHEMA" = "LOCK_PLATFORM_SCHEMA"
-"homeassistant.components.media_player.PLATFORM_SCHEMA" = "MEDIA_PLAYER_PLATFORM_SCHEMA"
-"homeassistant.components.notify.PLATFORM_SCHEMA" = "NOTIFY_PLATFORM_SCHEMA"
-"homeassistant.components.number.PLATFORM_SCHEMA" = "NUMBER_PLATFORM_SCHEMA"
-"homeassistant.components.remote.PLATFORM_SCHEMA" = "REMOTE_PLATFORM_SCHEMA"
-"homeassistant.components.scene.PLATFORM_SCHEMA" = "SCENE_PLATFORM_SCHEMA"
-"homeassistant.components.select.PLATFORM_SCHEMA" = "SELECT_PLATFORM_SCHEMA"
-"homeassistant.components.sensor.PLATFORM_SCHEMA" = "SENSOR_PLATFORM_SCHEMA"
-"homeassistant.components.siren.PLATFORM_SCHEMA" = "SIREN_PLATFORM_SCHEMA"
-"homeassistant.components.stt.PLATFORM_SCHEMA" = "STT_PLATFORM_SCHEMA"
-"homeassistant.components.switch.PLATFORM_SCHEMA" = "SWITCH_PLATFORM_SCHEMA"
-"homeassistant.components.text.PLATFORM_SCHEMA" = "TEXT_PLATFORM_SCHEMA"
-"homeassistant.components.time.PLATFORM_SCHEMA" = "TIME_PLATFORM_SCHEMA"
-"homeassistant.components.todo.PLATFORM_SCHEMA" = "TODO_PLATFORM_SCHEMA"
-"homeassistant.components.tts.PLATFORM_SCHEMA" = "TTS_PLATFORM_SCHEMA"
-"homeassistant.components.vacuum.PLATFORM_SCHEMA" = "VACUUM_PLATFORM_SCHEMA"
-"homeassistant.components.valve.PLATFORM_SCHEMA" = "VALVE_PLATFORM_SCHEMA"
-"homeassistant.components.update.PLATFORM_SCHEMA" = "UPDATE_PLATFORM_SCHEMA"
-"homeassistant.components.wake_word.PLATFORM_SCHEMA" = "WAKE_WORD_PLATFORM_SCHEMA"
-"homeassistant.components.water_heater.PLATFORM_SCHEMA" = "WATER_HEATER_PLATFORM_SCHEMA"
-"homeassistant.components.weather.PLATFORM_SCHEMA" = "WEATHER_PLATFORM_SCHEMA"
-"homeassistant.core.DOMAIN" = "HOMEASSISTANT_DOMAIN"
-"homeassistant.helpers.area_registry" = "ar"
-"homeassistant.helpers.category_registry" = "cr"
-"homeassistant.helpers.config_validation" = "cv"
-"homeassistant.helpers.device_registry" = "dr"
-"homeassistant.helpers.entity_registry" = "er"
-"homeassistant.helpers.floor_registry" = "fr"
-"homeassistant.helpers.issue_registry" = "ir"
-"homeassistant.helpers.label_registry" = "lr"
-"homeassistant.util.dt" = "dt_util"
-
-[tool.ruff.lint.flake8-pytest-style]
-fixture-parentheses = false
-mark-parentheses = false
-
-[tool.ruff.lint.flake8-tidy-imports.banned-api]
-"async_timeout".msg = "use asyncio.timeout instead"
-"pytz".msg = "use zoneinfo instead"
-
-[tool.ruff.lint.isort]
-force-sort-within-sections = true
-known-first-party = ["homeassistant"]
-combine-as-imports = true
-split-on-trailing-comma = false
-
-[tool.ruff.lint.mccabe]
-max-complexity = 25
-
-[tool.ruff.lint.pydocstyle]
-convention = "google"
-property-decorators = ["propcache.api.cached_property"]

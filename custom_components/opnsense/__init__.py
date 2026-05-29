@@ -12,7 +12,6 @@ from typing import Any
 
 import aiohttp
 import awesomeversion
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     CONF_PASSWORD,
@@ -228,7 +227,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
             _LOGGER.error(
                 "OPNsense Device ID has changed which indicates new or changed hardware. "
-                "In order to accomodate this, hass-opnsense needs to be removed and reinstalled for this router. "
+                "In order to accommodate this, hass-opnsense needs to be removed "
+                "and reinstalled for this router. "
                 "hass-opnsense is shutting down."
             )
             return False
@@ -409,7 +409,9 @@ async def _deprecated_plugin_cleanup_26_1_1(
     if cleanup_started:
         if plugin_installed and not plugin_deprecated:
             _LOGGER.info(
-                "OPNsense 26.1.1+ and Plugin cleanup partially completed. OPNsense Plugin is still installed. NAT Outbound and NAT Port Forward rules removed. Firewall Filter rules will be removed once the plugin is removed."
+                "OPNsense 26.1.1+ and Plugin cleanup partially completed. OPNsense Plugin is still "
+                "installed. NAT Outbound and NAT Port Forward rules removed. Firewall Filter rules "
+                "will be removed once the plugin is removed."
             )
             ir.async_create_issue(
                 hass,
@@ -424,11 +426,13 @@ async def _deprecated_plugin_cleanup_26_1_1(
         else:
             if plugin_deprecated:
                 _LOGGER.info(
-                    "OPNsense 26.1.1+ and Plugin cleanup completed. OPNsense Plugin is deprecated. NAT Outbound, NAT Port Forward, and Firewall Filter rules removed."
+                    "OPNsense 26.1.1+ and Plugin cleanup completed. OPNsense Plugin is deprecated. "
+                    "NAT Outbound, NAT Port Forward, and Firewall Filter rules removed."
                 )
             else:
                 _LOGGER.info(
-                    "OPNsense 26.1.1+ and Plugin cleanup completed. OPNsense Plugin is not installed. NAT Outbound, NAT Port Forward, and Firewall Filter rules removed."
+                    "OPNsense 26.1.1+ and Plugin cleanup completed. OPNsense Plugin is not "
+                    "installed. NAT Outbound, NAT Port Forward, and Firewall Filter rules removed."
                 )
             ir.async_create_issue(
                 hass,
@@ -445,7 +449,9 @@ async def _deprecated_plugin_cleanup_26_1_1(
 
     if plugin_deprecated and plugin_installed:
         _LOGGER.info(
-            "OPNsense Firmware is 26.1.3+ and the deprecated Plugin is still installed. Both because it will no longer work and for security reasons, please remove this plugin from OPNsense."
+            "OPNsense Firmware is 26.1.3+ and the deprecated Plugin is still installed. Both "
+            "because it will no longer work and for security reasons, please remove this plugin "
+            "from OPNsense."
         )
         ir.async_create_issue(
             hass,
@@ -520,8 +526,7 @@ async def _migrate_1_to_2(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
     data: dict[str, Any] = dict(config_entry.data)
 
     # remove tls_insecure
-    if CONF_TLS_INSECURE in data:
-        del data[CONF_TLS_INSECURE]
+    data.pop(CONF_TLS_INSECURE, None)
 
     # add verify_ssl
     if CONF_VERIFY_SSL not in data:
@@ -663,9 +668,9 @@ async def _migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
             config_entry, data=new_data, unique_id=new_device_unique_id, version=3
         )
         if new_entry_bool:
-            _LOGGER.debug("[migrate_2_to_3] config_entry update sucessful")
+            _LOGGER.debug("[migrate_2_to_3] config_entry update successful")
         else:
-            _LOGGER.error("Migration of config_entry to version 3 unsucessful")
+            _LOGGER.error("Migration of config_entry to version 3 unsuccessful")
             return False
         return True
     finally:
@@ -799,9 +804,9 @@ async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
                     )
         new_entry_bool = hass.config_entries.async_update_entry(config_entry, version=4)
         if new_entry_bool:
-            _LOGGER.debug("[migrate_3_to_4] config_entry update sucessful")
+            _LOGGER.debug("[migrate_3_to_4] config_entry update successful")
         else:
-            _LOGGER.error("Migration of config_entry to version 4 unsucessful")
+            _LOGGER.error("Migration of config_entry to version 4 unsuccessful")
             return False
         return True
     finally:
@@ -824,7 +829,8 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
     if version > 4:
         # This means the user has downgraded from a future version
         _LOGGER.error(
-            "hass-opnsense downgraded and current config not compatible with earlier versions. Integration mut be removed and reinstalled."
+            "hass-opnsense downgraded and current config not compatible with earlier versions. "
+            "Integration must be removed and reinstalled."
         )
         return False
 

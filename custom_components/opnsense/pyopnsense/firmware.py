@@ -169,8 +169,10 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
         status = await self._safe_dict_get("/api/core/firmware/status")
 
         # if error or too old trigger check (only if check is not already in progress)
-        # {'status_msg': 'Firmware status check was aborted internally. Please try again.', 'status': 'error'}
-        # error could be because data has not been refreshed at all OR an upgrade is currently in progress
+        # {'status_msg': 'Firmware status check was aborted internally. Please try
+        # again.', 'status': 'error'}
+        # error could be because data has not been refreshed at all OR an upgrade is
+        # currently in progress
         # _LOGGER.debug("[get_firmware_update_info] status: %s", status)
 
         if error_status := bool(status.get("status") == "error"):
@@ -237,11 +239,14 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
         return status
 
     @_log_errors
-    async def upgrade_firmware(self, type: str = "update") -> MutableMapping[str, Any] | None:
+    async def upgrade_firmware(
+        self, upgrade_type: str = "update"
+    ) -> MutableMapping[str, Any] | None:
         """Trigger a firmware upgrade.
 
         Args:
-            type: Firmware upgrade type (for example update or upgrade). Defaults to 'update'.
+            upgrade_type: Firmware upgrade type (for example update or upgrade).
+                Defaults to 'update'.
 
         Returns:
             MutableMapping[str, Any] | None: The response payload returned by
@@ -250,12 +255,12 @@ class FirmwareMixin(PyOPNsenseClientProtocol):
         """
         # update = minor updates of the same opnsense version
         # upgrade = major updates to a new opnsense version
-        if type in ("update", "upgrade"):
+        if upgrade_type in ("update", "upgrade"):
             self._installed_plugins = None
             self._installed_plugins_updated_at = None
             self._plugin_deprecated = None
             self._firmware_version = None
-            return await self._safe_dict_post(f"/api/core/firmware/{type}")
+            return await self._safe_dict_post(f"/api/core/firmware/{upgrade_type}")
         return None
 
     @_log_errors

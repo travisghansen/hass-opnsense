@@ -1,7 +1,8 @@
 """Tests for `pyopnsense.dhcp`."""
 
 from collections.abc import MutableMapping
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
@@ -9,39 +10,45 @@ import pytest
 
 from custom_components.opnsense import pyopnsense
 
+TEST_PASSWORD = "p"
+
 
 @pytest.mark.asyncio
-async def test_dhcp_leases_and_keep_latest_and_dnsmasq(make_client) -> None:
+async def test_dhcp_leases_and_keep_latest_and_dnsmasq(make_client: Any) -> None:
     """Cover Kea and dnsmasq lease parsing and _keep_latest_leases helper."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session)
     try:
         # _get_kea_interfaces returns mapping and kea leases: one valid
-        client._safe_dict_get = AsyncMock(
-            side_effect=[
-                {
-                    "dhcpv4": {
-                        "general": {
-                            "enabled": "1",
-                            "interfaces": {"em0": {"selected": 1, "value": "desc"}},
+        object.__setattr__(
+            client,
+            "_safe_dict_get",
+            AsyncMock(
+                side_effect=[
+                    {
+                        "dhcpv4": {
+                            "general": {
+                                "enabled": "1",
+                                "interfaces": {"em0": {"selected": 1, "value": "desc"}},
+                            }
                         }
-                    }
-                },
-                {
-                    "rows": [
-                        {
-                            "if_name": "em0",
-                            "if_descr": "d",
-                            "state": "0",
-                            "hwaddr": "mac1",
-                            "address": "1.2.3.4",
-                            "hostname": "host.",
-                        }
-                    ]
-                },
-                {"rows": []},
-                {},
-            ]
+                    },
+                    {
+                        "rows": [
+                            {
+                                "if_name": "em0",
+                                "if_descr": "d",
+                                "state": "0",
+                                "hwaddr": "mac1",
+                                "address": "1.2.3.4",
+                                "hostname": "host.",
+                            }
+                        ]
+                    },
+                    {"rows": []},
+                    {},
+                ]
+            ),
         )
         # monkeypatch internal helpers by calling _get_kea_dhcpv4_leases directly
         leases = await client._get_kea_dhcpv4_leases()
@@ -58,20 +65,24 @@ async def test_dhcp_leases_and_keep_latest_and_dnsmasq(make_client) -> None:
 
         # dnsmasq leases behavior
         client._firmware_version = "25.2"
-        client._safe_dict_get = AsyncMock(
-            return_value={
-                "rows": [
-                    {
-                        "address": "1.2.3.4",
-                        "hostname": "*",
-                        "if_descr": "d",
-                        "if": "em0",
-                        "is_reserved": "1",
-                        "hwaddr": "mac1",
-                        "expire": 9999999999,
-                    }
-                ]
-            }
+        object.__setattr__(
+            client,
+            "_safe_dict_get",
+            AsyncMock(
+                return_value={
+                    "rows": [
+                        {
+                            "address": "1.2.3.4",
+                            "hostname": "*",
+                            "if_descr": "d",
+                            "if": "em0",
+                            "is_reserved": "1",
+                            "hwaddr": "mac1",
+                            "expire": 9999999999,
+                        }
+                    ]
+                }
+            ),
         )
         dns = await client._get_dnsmasq_leases()
         assert isinstance(dns, list)
@@ -84,13 +95,13 @@ async def test_dhcp_leases_and_keep_latest_and_dnsmasq(make_client) -> None:
 
 
 @pytest.mark.asyncio
-async def test_isc_dhcp_endpoint_unavailable(make_client) -> None:
+async def test_isc_dhcp_endpoint_unavailable(make_client: Any) -> None:
     """ISC DHCP lease methods should return empty list when endpoints are unavailable."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = make_client(session=session)
     try:
-        client.is_endpoint_available = AsyncMock(return_value=False)
-        client._safe_dict_get = AsyncMock()
+        object.__setattr__(client, "is_endpoint_available", AsyncMock(return_value=False))
+        object.__setattr__(client, "_safe_dict_get", AsyncMock())
 
         # Test DHCPv4
         leases_v4 = await client._get_isc_dhcpv4_leases()
@@ -107,19 +118,23 @@ async def test_isc_dhcp_endpoint_unavailable(make_client) -> None:
 
 
 @pytest.mark.asyncio
-async def test_dhcp_edge_cases_and_keep_latest(make_client) -> None:
+async def test_dhcp_edge_cases_and_keep_latest(make_client: Any) -> None:
     """Ensure DHCP parsing and _keep_latest_leases handle odd entries."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
+        url="http://localhost", username="u", password=TEST_PASSWORD, session=session
     )
     try:
         # kea leases: missing address/expire
-        client._safe_dict_get = AsyncMock(
-            side_effect=[
-                {"dhcpv4": {"general": {"enabled": "1", "interfaces": {}}}},
-                {"rows": [{"if_name": "em0", "hwaddr": "mac1", "hostname": "h"}]},
-            ]
+        object.__setattr__(
+            client,
+            "_safe_dict_get",
+            AsyncMock(
+                side_effect=[
+                    {"dhcpv4": {"general": {"enabled": "1", "interfaces": {}}}},
+                    {"rows": [{"if_name": "em0", "hwaddr": "mac1", "hostname": "h"}]},
+                ]
+            ),
         )
         leases = await client._get_kea_dhcpv4_leases()
         assert isinstance(leases, list)
@@ -141,33 +156,38 @@ async def test_get_isc_dhcpv4_and_v6_parsing() -> None:
     """Test ISC DHCPv4/v6 parsing of 'ends' -> datetime and filtering logic."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
+        url="http://localhost", username="u", password=TEST_PASSWORD, session=session
     )
     try:
-        local_tz = datetime.now().astimezone().tzinfo
+        local_tz = datetime.now(UTC).astimezone().tzinfo
         assert local_tz is not None
-        client._get_opnsense_timezone = AsyncMock(return_value=local_tz)
+        get_timezone = AsyncMock(return_value=local_tz)
+        object.__setattr__(client, "_get_opnsense_timezone", get_timezone)
 
         # v4: ends present and in future
-        future_dt = (datetime.now() + timedelta(hours=1)).strftime("%Y/%m/%d %H:%M:%S")
+        future_dt = (datetime.now(UTC) + timedelta(hours=1)).strftime("%Y/%m/%d %H:%M:%S")
         client._use_snake_case = False
-        client.is_endpoint_available = AsyncMock(return_value=True)
-        client._safe_dict_get = AsyncMock(
-            side_effect=[
-                {
-                    "rows": [
-                        {
-                            "state": "active",
-                            "mac": "m1",
-                            "address": "10.0.0.1",
-                            "hostname": "h1",
-                            "if": "em0",
-                            "ends": future_dt,
-                        }
-                    ]
-                },
-                {"rows": []},
-            ]
+        object.__setattr__(client, "is_endpoint_available", AsyncMock(return_value=True))
+        object.__setattr__(
+            client,
+            "_safe_dict_get",
+            AsyncMock(
+                side_effect=[
+                    {
+                        "rows": [
+                            {
+                                "state": "active",
+                                "mac": "m1",
+                                "address": "10.0.0.1",
+                                "hostname": "h1",
+                                "if": "em0",
+                                "ends": future_dt,
+                            }
+                        ]
+                    },
+                    {"rows": []},
+                ]
+            ),
         )
         v4 = await client._get_isc_dhcpv4_leases()
         assert isinstance(v4, list) and len(v4) == 1
@@ -178,19 +198,23 @@ async def test_get_isc_dhcpv4_and_v6_parsing() -> None:
 
         # v6: ends missing -> field passed through
         client._use_snake_case = True
-        client.is_endpoint_available = AsyncMock(return_value=True)
-        client._safe_dict_get = AsyncMock(
-            return_value={
-                "rows": [
-                    {
-                        "state": "active",
-                        "mac": "m2",
-                        "address": "fe80::1",
-                        "hostname": "h2",
-                        "if": "em1",
-                    }
-                ]
-            }
+        object.__setattr__(client, "is_endpoint_available", AsyncMock(return_value=True))
+        object.__setattr__(
+            client,
+            "_safe_dict_get",
+            AsyncMock(
+                return_value={
+                    "rows": [
+                        {
+                            "state": "active",
+                            "mac": "m2",
+                            "address": "fe80::1",
+                            "hostname": "h2",
+                            "if": "em1",
+                        }
+                    ]
+                }
+            ),
         )
         v6 = await client._get_isc_dhcpv6_leases()
         assert isinstance(v6, list) and len(v6) == 1
@@ -210,23 +234,28 @@ async def test_get_dhcp_leases_combined_structure() -> None:
     """Ensure get_dhcp_leases combines multiple sources and returns expected mapping."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
+        url="http://localhost", username="u", password=TEST_PASSWORD, session=session
     )
     try:
-        local_tz = datetime.now().astimezone().tzinfo
+        local_tz = datetime.now(UTC).astimezone().tzinfo
         assert local_tz is not None
-        client._get_opnsense_timezone = AsyncMock(return_value=local_tz)
+        get_timezone = AsyncMock(return_value=local_tz)
+        object.__setattr__(client, "_get_opnsense_timezone", get_timezone)
 
         # return one lease from each source and one interface mapping
-        client._get_kea_dhcpv4_leases = AsyncMock(
+        get_kea_dhcpv4_leases = AsyncMock(
             return_value=[{"if_name": "em0", "address": "1.1.1.1", "mac": "m1"}]
         )
-        client._get_isc_dhcpv4_leases = AsyncMock(
+        get_isc_dhcpv4_leases = AsyncMock(
             return_value=[{"if_name": "em0", "address": "1.1.1.2", "mac": "m2"}]
         )
-        client._get_isc_dhcpv6_leases = AsyncMock(return_value=[])
-        client._get_dnsmasq_leases = AsyncMock(return_value=[])
-        client._get_kea_interfaces = AsyncMock(return_value={"em0": "eth0"})
+        get_isc_dhcpv6_leases = AsyncMock(return_value=[])
+        get_dnsmasq_leases = AsyncMock(return_value=[])
+        object.__setattr__(client, "_get_kea_dhcpv4_leases", get_kea_dhcpv4_leases)
+        object.__setattr__(client, "_get_isc_dhcpv4_leases", get_isc_dhcpv4_leases)
+        object.__setattr__(client, "_get_isc_dhcpv6_leases", get_isc_dhcpv6_leases)
+        object.__setattr__(client, "_get_dnsmasq_leases", get_dnsmasq_leases)
+        object.__setattr__(client, "_get_kea_interfaces", AsyncMock(return_value={"em0": "eth0"}))
 
         combined = await client.get_dhcp_leases()
         assert isinstance(combined, MutableMapping)
@@ -243,11 +272,11 @@ async def test_get_dhcp_leases_combined_structure() -> None:
             lease.get("address") == "1.1.1.2" and lease.get("mac") == "m2"
             for lease in combined["leases"]["em0"]
         )
-        client._get_opnsense_timezone.assert_awaited_once_with()
-        client._get_kea_dhcpv4_leases.assert_awaited_once_with(opnsense_tz=local_tz)
-        client._get_isc_dhcpv4_leases.assert_awaited_once_with(opnsense_tz=local_tz)
-        client._get_isc_dhcpv6_leases.assert_awaited_once_with(opnsense_tz=local_tz)
-        client._get_dnsmasq_leases.assert_awaited_once_with(opnsense_tz=local_tz)
+        get_timezone.assert_awaited_once_with()
+        get_kea_dhcpv4_leases.assert_awaited_once_with(opnsense_tz=local_tz)
+        get_isc_dhcpv4_leases.assert_awaited_once_with(opnsense_tz=local_tz)
+        get_isc_dhcpv6_leases.assert_awaited_once_with(opnsense_tz=local_tz)
+        get_dnsmasq_leases.assert_awaited_once_with(opnsense_tz=local_tz)
     finally:
         await client.async_close()
 
@@ -257,25 +286,29 @@ async def test_get_dhcp_leases_calls_isc_methods_independently() -> None:
     """get_dhcp_leases should call both ISC helpers regardless of top-level endpoint status."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
+        url="http://localhost", username="u", password=TEST_PASSWORD, session=session
     )
     try:
-        local_tz = datetime.now().astimezone().tzinfo
+        local_tz = datetime.now(UTC).astimezone().tzinfo
         assert local_tz is not None
-        client._get_opnsense_timezone = AsyncMock(return_value=local_tz)
-        client._get_kea_dhcpv4_leases = AsyncMock(
-            return_value=[{"if_name": "em0", "address": "1.1.1.1", "mac": "m1"}]
+        object.__setattr__(client, "_get_opnsense_timezone", AsyncMock(return_value=local_tz))
+        object.__setattr__(
+            client,
+            "_get_kea_dhcpv4_leases",
+            AsyncMock(return_value=[{"if_name": "em0", "address": "1.1.1.1", "mac": "m1"}]),
         )
-        client._get_dnsmasq_leases = AsyncMock(return_value=[])
-        client._get_isc_dhcpv4_leases = AsyncMock(return_value=[])
-        client._get_isc_dhcpv6_leases = AsyncMock(return_value=[])
-        client._get_kea_interfaces = AsyncMock(return_value={"em0": "eth0"})
+        object.__setattr__(client, "_get_dnsmasq_leases", AsyncMock(return_value=[]))
+        get_isc_dhcpv4_leases = AsyncMock(return_value=[])
+        get_isc_dhcpv6_leases = AsyncMock(return_value=[])
+        object.__setattr__(client, "_get_isc_dhcpv4_leases", get_isc_dhcpv4_leases)
+        object.__setattr__(client, "_get_isc_dhcpv6_leases", get_isc_dhcpv6_leases)
+        object.__setattr__(client, "_get_kea_interfaces", AsyncMock(return_value={"em0": "eth0"}))
 
         combined = await client.get_dhcp_leases()
 
         assert "em0" in combined["leases"]
-        client._get_isc_dhcpv4_leases.assert_awaited_once_with(opnsense_tz=local_tz)
-        client._get_isc_dhcpv6_leases.assert_awaited_once_with(opnsense_tz=local_tz)
+        get_isc_dhcpv4_leases.assert_awaited_once_with(opnsense_tz=local_tz)
+        get_isc_dhcpv6_leases.assert_awaited_once_with(opnsense_tz=local_tz)
     finally:
         await client.async_close()
 
@@ -285,7 +318,7 @@ async def test_get_kea_leases_with_reservations_and_expiry_handling() -> None:
     """Exercise _get_kea_dhcpv4_leases reservation matching and expiry logic."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
-        url="http://localhost", username="u", password="p", session=session
+        url="http://localhost", username="u", password=TEST_PASSWORD, session=session
     )
     try:
         client._use_snake_case = True
@@ -294,7 +327,7 @@ async def test_get_kea_leases_with_reservations_and_expiry_handling() -> None:
         res_rows = [{"hw_address": "aa:bb", "ip_address": "192.0.2.1"}]
 
         # lease row matches reservation and has future expire
-        future_ts = int((datetime.now().timestamp()) + 3600)
+        future_ts = int((datetime.now(UTC).timestamp()) + 3600)
         lease_rows = [
             {
                 "address": "192.0.2.1",
@@ -306,7 +339,7 @@ async def test_get_kea_leases_with_reservations_and_expiry_handling() -> None:
             }
         ]
 
-        async def fake_safe(path):
+        async def fake_safe(path: Any) -> Any:
             """Return the canned reservation search payload for matching DHCP paths.
 
             Args:
@@ -318,7 +351,7 @@ async def test_get_kea_leases_with_reservations_and_expiry_handling() -> None:
                 return {"rows": lease_rows}
             return {}
 
-        client._safe_dict_get = AsyncMock(side_effect=fake_safe)
+        object.__setattr__(client, "_safe_dict_get", AsyncMock(side_effect=fake_safe))
         leases = await client._get_kea_dhcpv4_leases()
         assert isinstance(leases, list) and len(leases) == 1
         assert leases[0].get("type") == "static"

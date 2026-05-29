@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, MutableMapping, Sequence
-from datetime import date, datetime, timedelta, tzinfo
+from datetime import UTC, date, datetime, timedelta, tzinfo
 import re
 from typing import Any
 
@@ -56,10 +56,13 @@ class VnstatMixin(PyOPNsenseClientProtocol):
         """Return parsed vnStat rows for the requested period endpoint.
 
         Args:
-            period: Requested vnStat period. Supported values are ``hourly``, ``daily``, ``monthly``, and ``yearly``.
+            period: Requested vnStat period. Supported values are ``hourly``, ``daily``,
+            ``monthly``, and ``yearly``.
 
         Returns:
-            dict[str, Any]: Parsed vnStat payload with ``period`` and per-interface rows. Empty dictionary when the endpoint is unavailable or period is unsupported.
+            dict[str, Any]: Parsed vnStat payload with ``period`` and per-interface
+                rows. Empty dictionary when the endpoint is unavailable or period is
+                unsupported.
         """
         requested_period = normalize_lookup_token(period)
         if requested_period not in _VSTAT_PERIODS:
@@ -80,7 +83,8 @@ class VnstatMixin(PyOPNsenseClientProtocol):
         """Collect vnStat hourly, daily, and monthly usage data.
 
         Returns:
-            MutableMapping[str, Any]: Parsed vnStat payload with per-interface rows and per-interface summary metrics for Home Assistant sensors.
+            MutableMapping[str, Any]: Parsed vnStat payload with per-interface rows and
+                per-interface summary metrics for Home Assistant sensors.
         """
         if not await self.is_endpoint_available("/api/vnstat/service/hourly"):
             _LOGGER.debug("vnStat not installed")
@@ -214,7 +218,8 @@ class VnstatMixin(PyOPNsenseClientProtocol):
             line: Raw line from vnStat table output.
 
         Returns:
-            dict[str, Any] | None: Normalized row dictionary when parsing succeeds; otherwise ``None``.
+            dict[str, Any] | None: Normalized row dictionary when parsing succeeds;
+                otherwise ``None``.
         """
         lowered = line.lower()
         if lowered.startswith(("-", "estimated")):
@@ -254,7 +259,7 @@ class VnstatMixin(PyOPNsenseClientProtocol):
         factor = _BYTE_FACTORS.get(unit.upper())
         if parsed_value is None or factor is None:
             return None
-        return int(round(parsed_value * factor))
+        return round(parsed_value * factor)
 
     def _to_bits_per_second(self, value: str, unit: str) -> int | None:
         """Convert vnStat rate strings into integer bits-per-second.
@@ -264,13 +269,14 @@ class VnstatMixin(PyOPNsenseClientProtocol):
             unit: Rate unit string such as ``Mbit/s``.
 
         Returns:
-            int | None: Rate in bits-per-second as integer when conversion succeeds; otherwise ``None``.
+            int | None: Rate in bits-per-second as integer when conversion succeeds;
+            otherwise ``None``.
         """
         parsed_value = try_to_float(value)
         factor = _RATE_FACTORS.get(unit.upper())
         if parsed_value is None or factor is None:
             return None
-        return int(round(parsed_value * factor))
+        return round(parsed_value * factor)
 
     def _pick_daily_row(
         self, rows: Sequence[dict[str, Any]], days_ago: int, current_tz: tzinfo
@@ -336,7 +342,8 @@ class VnstatMixin(PyOPNsenseClientProtocol):
             current_tz: Timezone used for determining the current and previous hour.
 
         Returns:
-            dict[str, Any] | None: Row for the previous hour, or a fallback row when labels cannot be matched.
+            dict[str, Any] | None: Row for the previous hour, or a fallback row when
+                labels cannot be matched.
         """
         now = datetime.now(tz=current_tz)
         current_hour = now.replace(minute=0, second=0, microsecond=0)
@@ -420,7 +427,7 @@ class VnstatMixin(PyOPNsenseClientProtocol):
             return None
         for fmt in ("%m/%d/%y", "%Y-%m-%d"):
             try:
-                return datetime.strptime(label, fmt).date()
+                return datetime.strptime(label, fmt).replace(tzinfo=UTC).date()
             except ValueError:
                 continue
         return None
@@ -438,7 +445,7 @@ class VnstatMixin(PyOPNsenseClientProtocol):
             return None
         for fmt in ("%Y-%m", "%b '%y", "%B '%y"):
             try:
-                parsed = datetime.strptime(label, fmt)
+                parsed = datetime.strptime(label, fmt).replace(tzinfo=UTC)
             except ValueError:
                 continue
             else:
