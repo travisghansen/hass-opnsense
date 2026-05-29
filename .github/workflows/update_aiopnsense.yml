@@ -110,7 +110,7 @@ jobs:
             function sanitizeReleaseBody(body) {
               return body
                 .replace(/\[@([A-Za-z0-9-]+)\]\(https?:\/\/github\.com\/[A-Za-z0-9-]+\)/g, "$1")
-                .replace(/(^|\s)@([A-Za-z0-9-]+)/g, "$1$2")
+                .replace(/@(?=[A-Za-z0-9-]+(?:\/[A-Za-z0-9-]+)?)/g, "@<!-- -->")
                 .replace(
                   /\b(close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+((?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)?#\d+)/gi,
                   (_match, keyword, reference) =>
@@ -158,11 +158,13 @@ jobs:
             } else {
               notes = selected
                 .map((release) => {
+                  const title = sanitizeReleaseBody(release.name || release.tag_name);
+                  const tag = sanitizeReleaseBody(release.tag_name);
                   const body = sanitizeReleaseBody(
                     (release.body || "No release body provided.").trim(),
                   );
                   return [
-                    `### ${release.name || release.tag_name} (${release.tag_name})`,
+                    `### ${title} (${tag})`,
                     release.html_url,
                     "",
                     body,

@@ -63,6 +63,11 @@ def test_workflow_neutralizes_release_note_closing_keywords() -> None:
     """Workflow should prevent copied release notes from closing local issues."""
     workflow = WORKFLOW_PATH.read_text()
 
+    assert "const title = sanitizeReleaseBody(release.name || release.tag_name);" in workflow
+    assert "const tag = sanitizeReleaseBody(release.tag_name);" in workflow
+    assert "`### ${title} (${tag})`" in workflow
+    assert r"@(?=[A-Za-z0-9-]+(?:\/[A-Za-z0-9-]+)?)" in workflow
+    assert '"@<!-- -->"' in workflow
     assert "reference.replace" in workflow
     assert r'"\\#"' in workflow
     assert "close[sd]?|fix(?:e[sd])?|resolve[sd]?" in workflow
