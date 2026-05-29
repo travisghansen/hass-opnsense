@@ -52,6 +52,15 @@ def test_workflow_filters_prerelease_release_notes() -> None:
     assert "!isPrerelease(tagVersion)" in workflow
 
 
+def test_workflow_neutralizes_release_note_closing_keywords() -> None:
+    """Workflow should prevent copied release notes from closing local issues."""
+    workflow = WORKFLOW_PATH.read_text()
+
+    assert "reference.replace" in workflow
+    assert r'"\\#"' in workflow
+    assert "close[sd]?|fix(?:e[sd])?|resolve[sd]?" in workflow
+
+
 def test_updater_script_updates_manifest_and_pyproject(
     tmp_path: Path, updater_script: ModuleType
 ) -> None:
@@ -153,14 +162,31 @@ def test_updater_script_selects_latest_stable_from_pypi_payload(
         {
             "info": {"version": "1.1.0rc1"},
             "releases": {
-                "1.0.8": [],
-                "1.0.9": [],
-                "1.1.0rc1": [],
+                "1.0.8": [{"filename": "aiopnsense-1.0.8.tar.gz"}],
+                "1.0.9": [{"filename": "aiopnsense-1.0.9.tar.gz"}],
+                "1.1.0rc1": [{"filename": "aiopnsense-1.1.0rc1.tar.gz"}],
             },
         },
     )
 
     assert latest == "1.0.9"
+
+
+def test_updater_script_ignores_stable_releases_without_usable_files(
+    updater_script: ModuleType,
+) -> None:
+    """Updater script should ignore PyPI releases with no installable files."""
+    latest = updater_script._select_latest_stable_version(
+        {
+            "releases": {
+                "1.0.8": [{"filename": "aiopnsense-1.0.8.tar.gz"}],
+                "1.0.9": [],
+                "1.0.10": [{"filename": "aiopnsense-1.0.10.tar.gz", "yanked": True}],
+            },
+        },
+    )
+
+    assert latest == "1.0.8"
 
 
 def test_updater_script_repairs_pyproject_drift_when_manifest_is_newer(

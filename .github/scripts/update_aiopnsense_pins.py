@@ -123,11 +123,31 @@ def _select_latest_stable_version(payload: Mapping[str, object]) -> str:
         raise TypeError("Expected releases mapping in PyPI response")
 
     stable_versions = [
-        version for version in releases if isinstance(version, str) and not _is_prerelease(version)
+        version
+        for version, files in releases.items()
+        if (
+            isinstance(version, str)
+            and not _is_prerelease(version)
+            and _release_has_usable_file(files)
+        )
     ]
     if not stable_versions:
         raise ValueError("Unable to determine latest stable aiopnsense version from PyPI response")
     return max(stable_versions, key=_version_key)
+
+
+def _release_has_usable_file(files: object) -> bool:
+    """Return whether a PyPI release has at least one non-yanked file.
+
+    Args:
+        files: Release file list from a PyPI JSON response.
+
+    Returns:
+        True when at least one file can be installed.
+    """
+    if not isinstance(files, list):
+        return False
+    return any(isinstance(file, dict) and file.get("yanked") is not True for file in files)
 
 
 def _read_manifest_version(manifest_path: Path) -> str:
