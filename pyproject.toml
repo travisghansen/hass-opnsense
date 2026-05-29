@@ -22,7 +22,7 @@ version = { attr = "custom_components.opnsense.const.VERSION" }
 
 [dependency-groups]
 ha = [
-    "aiopnsense==1.0.8",
+    "aiopnsense==1.0.9",
     "homeassistant",
 ]
 lint = [
