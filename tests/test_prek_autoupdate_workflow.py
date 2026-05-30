@@ -1,0 +1,193 @@
+"""Tests for the prek autoupdate workflow."""
+
+from importlib import util
+from pathlib import Path
+import sys
+from types import ModuleType
+
+import pytest
+
+WORKFLOW_PATH = Path(".github/workflows/prek_autoupdate.yml")
+CLEANUP_SCRIPT_PATH = Path(".github/scripts/cleanup_prek_update_branches.py")
+WORKFLOW_BRANCH = "chore/prek-updates"
+WORKFLOW_LABEL = "dependencies"
+REPOSITORY = "o/r"
+
+
+class FakeCleanupClient:
+    """Fake GitHub cleanup client that records mutating calls."""
+
+    def __init__(
+        self,
+        *,
+        open_pulls: list[dict[str, object]],
+        closed_pulls: list[dict[str, object]],
+        fail_on_close: bool = False,
+    ) -> None:
+        """Initialize fake pull request state.
+
+        Args:
+            open_pulls: Pull requests to return for open PR lookups.
+            closed_pulls: Pull requests to return for closed PR lookups.
+            fail_on_close: Whether closing a PR should fail the test.
+        """
+        self.open_pulls = open_pulls
+        self.closed_pulls = closed_pulls
+        self.fail_on_close = fail_on_close
+        self.closed_prs: list[int] = []
+        self.deleted_refs: list[str] = []
+
+    def list_pulls(self, *, state: str) -> list[dict[str, object]]:
+        """Return fake pull requests by state."""
+        return self.open_pulls if state == "open" else self.closed_pulls
+
+    def close_pull(self, pull_number: int) -> None:
+        """Record or reject a closed pull request."""
+        if self.fail_on_close:
+            raise AssertionError(f"Unexpected close for PR {pull_number}")
+        self.closed_prs.append(pull_number)
+
+    def delete_ref(self, ref: str) -> None:
+        """Record a deleted git ref."""
+        self.deleted_refs.append(ref)
+
+
+def _workflow_pull(
+    *,
+    number: int,
+    ref: str = WORKFLOW_BRANCH,
+    label: str = WORKFLOW_LABEL,
+    merged_at: str | None = None,
+) -> dict[str, object]:
+    """Return a fake workflow pull request object.
+
+    Args:
+        number: Pull request number.
+        ref: Pull request head ref.
+        label: Pull request label name.
+        merged_at: Optional merge timestamp for closed PRs.
+
+    Returns:
+        Fake pull request object shaped like the GitHub REST API response.
+    """
+    return {
+        "number": number,
+        "merged_at": merged_at,
+        "head": {"ref": ref, "repo": {"full_name": REPOSITORY}},
+        "labels": [{"name": label}],
+    }
+
+
+@pytest.fixture
+def cleanup_script() -> ModuleType:
+    """Load the prek cleanup script as a test module."""
+    spec = util.spec_from_file_location("cleanup_prek_update_branches", CLEANUP_SCRIPT_PATH)
+    assert spec is not None
+    assert spec.loader is not None
+    module = util.module_from_spec(spec)
+    sys.modules["cleanup_prek_update_branches"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize(
+    ("needle", "reason"),
+    [
+        ("actions/setup-python@v6", "pins a Python runtime for cleanup"),
+        ("python-version: '3.14'", "uses the same runtime as local tooling"),
+        (str(CLEANUP_SCRIPT_PATH), "runs the checked-in cleanup helper"),
+        ("Close extra auto-generated PRs", "closes duplicate generated PRs"),
+        ("Close stale prek update PRs", "closes stale PRs when no diff remains"),
+        (f"--branch {WORKFLOW_BRANCH}", "uses the workflow update branch"),
+        (
+            f"--branch-prefix {WORKFLOW_BRANCH}",
+            "limits cleanup to prek workflow branches",
+        ),
+        (f"--label-name {WORKFLOW_LABEL}", "limits cleanup to workflow-labeled PRs"),
+        ("--delete-merged-branches", "cleans merged workflow-owned branches"),
+        ("REPOSITORY: ${{ github.repository }}", "exports repository before shell use"),
+        ('--repository "$REPOSITORY"', "avoids inline repository template expansion"),
+    ],
+)
+def test_workflow_contains_expected_cleanup_logic(needle: str, reason: str) -> None:
+    """Workflow should include standalone cleanup logic for generated prek PRs."""
+    del reason
+
+    assert needle in WORKFLOW_PATH.read_text()
+
+
+def test_workflow_avoids_inline_repository_template_expansion() -> None:
+    """Workflow should not expand the repository context inside shell scripts."""
+    assert '--repository "${{ github.repository }}"' not in WORKFLOW_PATH.read_text()
+
+
+def test_cleanup_script_closes_stale_prs_and_deletes_workflow_branches(
+    cleanup_script: ModuleType,
+) -> None:
+    """Cleanup script should close stale PRs and remove workflow-created branches."""
+    client = FakeCleanupClient(
+        open_pulls=[
+            _workflow_pull(number=10),
+            _workflow_pull(number=9, ref=f"{WORKFLOW_BRANCH}-old"),
+            _workflow_pull(number=11, ref="feature/manual"),
+        ],
+        closed_pulls=[
+            _workflow_pull(number=8, merged_at="2026-05-28T00:00:00Z"),
+            _workflow_pull(number=7, ref=f"{WORKFLOW_BRANCH}-old"),
+        ],
+    )
+
+    result = cleanup_script.cleanup_update_branches(
+        client=client,
+        repository=REPOSITORY,
+        branch=WORKFLOW_BRANCH,
+        branch_prefix=WORKFLOW_BRANCH,
+        label_name=WORKFLOW_LABEL,
+        keep_pr_number=None,
+        close_stale_prs=True,
+        delete_stale_branch=True,
+        delete_merged_branches=True,
+    )
+
+    assert client.closed_prs == [10, 9]
+    assert client.deleted_refs == [
+        f"heads/{WORKFLOW_BRANCH}",
+        f"heads/{WORKFLOW_BRANCH}-old",
+    ]
+    assert result.closed_prs == [10, 9]
+    assert result.deleted_branches == [
+        WORKFLOW_BRANCH,
+        f"{WORKFLOW_BRANCH}-old",
+    ]
+
+
+def test_cleanup_script_keeps_active_update_branch(cleanup_script: ModuleType) -> None:
+    """Cleanup script should not delete the branch for the kept update PR."""
+    client = FakeCleanupClient(
+        open_pulls=[_workflow_pull(number=12)],
+        closed_pulls=[
+            _workflow_pull(number=8, merged_at="2026-05-28T00:00:00Z"),
+            _workflow_pull(
+                number=6,
+                ref=f"{WORKFLOW_BRANCH}-old",
+                merged_at="2026-05-20T00:00:00Z",
+            ),
+        ],
+        fail_on_close=True,
+    )
+
+    result = cleanup_script.cleanup_update_branches(
+        client=client,
+        repository=REPOSITORY,
+        branch=WORKFLOW_BRANCH,
+        branch_prefix=WORKFLOW_BRANCH,
+        label_name=WORKFLOW_LABEL,
+        keep_pr_number=12,
+        close_stale_prs=True,
+        delete_stale_branch=False,
+        delete_merged_branches=True,
+    )
+
+    assert client.deleted_refs == [f"heads/{WORKFLOW_BRANCH}-old"]
+    assert result.closed_prs == []
+    assert result.deleted_branches == [f"{WORKFLOW_BRANCH}-old"]
