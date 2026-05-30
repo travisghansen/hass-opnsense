@@ -134,6 +134,7 @@ def cleanup_update_branches(
     branch_prefix: str,
     label_name: str,
     author_login: str | None,
+    body_marker: str | None,
     keep_pr_number: int | None,
     close_stale_prs: bool,
     delete_stale_branch: bool,
@@ -148,6 +149,7 @@ def cleanup_update_branches(
         branch_prefix: Prefix for workflow-owned update branches.
         label_name: Label identifying workflow-created PRs.
         author_login: Optional author login identifying workflow-created PRs.
+        body_marker: Optional body text identifying workflow-created PRs.
         keep_pr_number: Optional PR number to preserve.
         close_stale_prs: Whether to close open stale update PRs.
         delete_stale_branch: Whether to delete the current stale branch.
@@ -169,6 +171,7 @@ def cleanup_update_branches(
             branch_prefix=branch_prefix,
             label_name=label_name,
             author_login=author_login,
+            body_marker=body_marker,
         ):
             continue
 
@@ -196,6 +199,7 @@ def cleanup_update_branches(
                 branch_prefix=branch_prefix,
                 label_name=label_name,
                 author_login=author_login,
+                body_marker=body_marker,
             ):
                 branches_to_delete.add(_head_ref(pull))
 
@@ -215,6 +219,7 @@ def _is_workflow_pull(
     branch_prefix: str,
     label_name: str,
     author_login: str | None,
+    body_marker: str | None,
 ) -> bool:
     """Return whether a pull request belongs to this workflow.
 
@@ -225,6 +230,7 @@ def _is_workflow_pull(
         branch_prefix: Prefix for workflow-owned update branches.
         label_name: Label identifying workflow-created PRs.
         author_login: Optional author login identifying workflow-created PRs.
+        body_marker: Optional body text identifying workflow-created PRs.
 
     Returns:
         True when the PR head branch is owned by this workflow.
@@ -238,6 +244,11 @@ def _is_workflow_pull(
     if author_login is not None:
         user = pull.get("user", {})
         if not isinstance(user, dict) or user.get("login") != author_login:
+            return False
+
+    if body_marker is not None:
+        body = pull.get("body")
+        if not isinstance(body, str) or body_marker not in body:
             return False
 
     head = pull.get("head", {})
@@ -299,6 +310,7 @@ def _github_headers(token: str) -> dict[str, str]:
     return {
         "Accept": "application/vnd.github+json",
         "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
         "X-GitHub-Api-Version": "2022-11-28",
         "User-Agent": "prek-autoupdate-cleanup",
     }
@@ -359,6 +371,7 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--branch-prefix", required=True)
     parser.add_argument("--label-name", required=True)
     parser.add_argument("--author-login")
+    parser.add_argument("--body-marker")
     parser.add_argument("--keep-pr-number", type=int)
     parser.add_argument("--close-stale-prs", action="store_true")
     parser.add_argument("--delete-stale-branch", action="store_true")
@@ -390,6 +403,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         branch_prefix=args.branch_prefix,
         label_name=args.label_name,
         author_login=args.author_login,
+        body_marker=args.body_marker,
         keep_pr_number=args.keep_pr_number,
         close_stale_prs=args.close_stale_prs,
         delete_stale_branch=args.delete_stale_branch,

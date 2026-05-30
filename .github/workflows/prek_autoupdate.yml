@@ -57,6 +57,7 @@ jobs:
       - name: Close extra auto-generated PRs
         if: steps.cpr.outputs.pull-request-number != ''
         env:
+          BODY_MARKER: Automated update of `prek` hooks.
           GITHUB_TOKEN: ${{ github.token }}
           KEEP_PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
           REPOSITORY: ${{ github.repository }}
@@ -69,6 +70,7 @@ jobs:
             --branch-prefix chore/prek-updates \
             --label-name dependencies \
             --author-login 'github-actions[bot]' \
+            --body-marker "$BODY_MARKER" \
             --keep-pr-number "$KEEP_PR_NUMBER" \
             --close-stale-prs \
             --delete-merged-branches
@@ -76,6 +78,7 @@ jobs:
       - name: Close stale prek update PRs
         if: steps.cpr.outputs.pull-request-number == ''
         env:
+          BODY_MARKER: Automated update of `prek` hooks.
           GITHUB_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
         run: |
@@ -87,6 +90,7 @@ jobs:
             --branch-prefix chore/prek-updates \
             --label-name dependencies \
             --author-login 'github-actions[bot]' \
+            --body-marker "$BODY_MARKER" \
             --close-stale-prs \
             --delete-stale-branch \
             --delete-merged-branches
