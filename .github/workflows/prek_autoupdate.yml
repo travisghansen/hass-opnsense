@@ -16,6 +16,12 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v6
 
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+          cache: 'pip'
+
       - name: Install prek
         uses: taiki-e/install-action@v2
         with:
@@ -47,3 +53,44 @@ jobs:
           body-path: prek-autoupdate-body.md
           add-paths: |
             prek.toml
+
+      - name: Close extra auto-generated PRs
+        if: steps.cpr.outputs.pull-request-number != ''
+        env:
+          BODY_MARKER: Automated update of `prek` hooks.
+          GITHUB_TOKEN: ${{ github.token }}
+          KEEP_PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          python .github/scripts/cleanup_prek_update_branches.py \
+            --repository "$REPOSITORY" \
+            --branch chore/prek-updates \
+            --branch-prefix chore/prek-updates \
+            --label-name dependencies \
+            --author-login 'github-actions[bot]' \
+            --body-marker "$BODY_MARKER" \
+            --keep-pr-number "$KEEP_PR_NUMBER" \
+            --close-stale-prs \
+            --delete-merged-branches
+
+      - name: Close stale prek update PRs
+        if: steps.cpr.outputs.pull-request-number == ''
+        env:
+          BODY_MARKER: Automated update of `prek` hooks.
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          python .github/scripts/cleanup_prek_update_branches.py \
+            --repository "$REPOSITORY" \
+            --branch chore/prek-updates \
+            --branch-prefix chore/prek-updates \
+            --label-name dependencies \
+            --author-login 'github-actions[bot]' \
+            --body-marker "$BODY_MARKER" \
+            --close-stale-prs \
+            --delete-stale-branch \
+            --delete-merged-branches
