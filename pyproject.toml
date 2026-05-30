@@ -169,6 +169,7 @@ convention = "google"
 ]
 
 [tool.codespell]
+skip = "CHANGELOG.md"
 ignore-words-list = "hass,ist"
 
 [tool.pytest.ini_options]
