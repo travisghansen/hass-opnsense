@@ -68,6 +68,7 @@ jobs:
             --branch chore/prek-updates \
             --branch-prefix chore/prek-updates \
             --label-name dependencies \
+            --author-login 'github-actions[bot]' \
             --keep-pr-number "$KEEP_PR_NUMBER" \
             --close-stale-prs \
             --delete-merged-branches
@@ -85,6 +86,7 @@ jobs:
             --branch chore/prek-updates \
             --branch-prefix chore/prek-updates \
             --label-name dependencies \
+            --author-login 'github-actions[bot]' \
             --close-stale-prs \
             --delete-stale-branch \
             --delete-merged-branches

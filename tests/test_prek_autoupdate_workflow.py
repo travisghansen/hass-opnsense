@@ -11,6 +11,7 @@ WORKFLOW_PATH = Path(".github/workflows/prek_autoupdate.yml")
 CLEANUP_SCRIPT_PATH = Path(".github/scripts/cleanup_prek_update_branches.py")
 WORKFLOW_BRANCH = "chore/prek-updates"
 WORKFLOW_LABEL = "dependencies"
+WORKFLOW_AUTHOR = "github-actions[bot]"
 REPOSITORY = "o/r"
 
 
@@ -57,6 +58,7 @@ def _workflow_pull(
     number: int,
     ref: str = WORKFLOW_BRANCH,
     label: str = WORKFLOW_LABEL,
+    author: str = WORKFLOW_AUTHOR,
     merged_at: str | None = None,
 ) -> dict[str, object]:
     """Return a fake workflow pull request object.
@@ -65,6 +67,7 @@ def _workflow_pull(
         number: Pull request number.
         ref: Pull request head ref.
         label: Pull request label name.
+        author: Pull request author login.
         merged_at: Optional merge timestamp for closed PRs.
 
     Returns:
@@ -73,6 +76,7 @@ def _workflow_pull(
     return {
         "number": number,
         "merged_at": merged_at,
+        "user": {"login": author},
         "head": {"ref": ref, "repo": {"full_name": REPOSITORY}},
         "labels": [{"name": label}],
     }
@@ -104,6 +108,10 @@ def cleanup_script() -> ModuleType:
             "limits cleanup to prek workflow branches",
         ),
         (f"--label-name {WORKFLOW_LABEL}", "limits cleanup to workflow-labeled PRs"),
+        (
+            f"--author-login '{WORKFLOW_AUTHOR}'",
+            "limits cleanup to workflow-authored PRs",
+        ),
         ("--delete-merged-branches", "cleans merged workflow-owned branches"),
         ("REPOSITORY: ${{ github.repository }}", "exports repository before shell use"),
         ('--repository "$REPOSITORY"', "avoids inline repository template expansion"),
@@ -143,6 +151,7 @@ def test_cleanup_script_closes_stale_prs_and_deletes_workflow_branches(
         branch=WORKFLOW_BRANCH,
         branch_prefix=WORKFLOW_BRANCH,
         label_name=WORKFLOW_LABEL,
+        author_login=WORKFLOW_AUTHOR,
         keep_pr_number=None,
         close_stale_prs=True,
         delete_stale_branch=True,
@@ -182,6 +191,7 @@ def test_cleanup_script_keeps_active_update_branch(cleanup_script: ModuleType) -
         branch=WORKFLOW_BRANCH,
         branch_prefix=WORKFLOW_BRANCH,
         label_name=WORKFLOW_LABEL,
+        author_login=WORKFLOW_AUTHOR,
         keep_pr_number=12,
         close_stale_prs=True,
         delete_stale_branch=False,
@@ -191,3 +201,44 @@ def test_cleanup_script_keeps_active_update_branch(cleanup_script: ModuleType) -
     assert client.deleted_refs == [f"heads/{WORKFLOW_BRANCH}-old"]
     assert result.closed_prs == []
     assert result.deleted_branches == [f"{WORKFLOW_BRANCH}-old"]
+
+
+def test_cleanup_script_preserves_human_prs_with_matching_label_and_prefix(
+    cleanup_script: ModuleType,
+) -> None:
+    """Cleanup script should not mutate human PRs that share labels and prefixes."""
+    client = FakeCleanupClient(
+        open_pulls=[
+            _workflow_pull(
+                number=13,
+                ref=f"{WORKFLOW_BRANCH}-manual-fix",
+                author="maintainer",
+            ),
+        ],
+        closed_pulls=[
+            _workflow_pull(
+                number=14,
+                ref=f"{WORKFLOW_BRANCH}-manual-merged",
+                author="maintainer",
+                merged_at="2026-05-29T00:00:00Z",
+            ),
+        ],
+    )
+
+    result = cleanup_script.cleanup_update_branches(
+        client=client,
+        repository=REPOSITORY,
+        branch=WORKFLOW_BRANCH,
+        branch_prefix=WORKFLOW_BRANCH,
+        label_name=WORKFLOW_LABEL,
+        author_login=WORKFLOW_AUTHOR,
+        keep_pr_number=None,
+        close_stale_prs=True,
+        delete_stale_branch=False,
+        delete_merged_branches=True,
+    )
+
+    assert client.closed_prs == []
+    assert client.deleted_refs == []
+    assert result.closed_prs == []
+    assert result.deleted_branches == []

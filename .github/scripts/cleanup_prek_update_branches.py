@@ -133,6 +133,7 @@ def cleanup_update_branches(
     branch: str,
     branch_prefix: str,
     label_name: str,
+    author_login: str | None,
     keep_pr_number: int | None,
     close_stale_prs: bool,
     delete_stale_branch: bool,
@@ -146,6 +147,7 @@ def cleanup_update_branches(
         branch: Current workflow update branch.
         branch_prefix: Prefix for workflow-owned update branches.
         label_name: Label identifying workflow-created PRs.
+        author_login: Optional author login identifying workflow-created PRs.
         keep_pr_number: Optional PR number to preserve.
         close_stale_prs: Whether to close open stale update PRs.
         delete_stale_branch: Whether to delete the current stale branch.
@@ -166,6 +168,7 @@ def cleanup_update_branches(
             branch=branch,
             branch_prefix=branch_prefix,
             label_name=label_name,
+            author_login=author_login,
         ):
             continue
 
@@ -192,6 +195,7 @@ def cleanup_update_branches(
                 branch=branch,
                 branch_prefix=branch_prefix,
                 label_name=label_name,
+                author_login=author_login,
             ):
                 branches_to_delete.add(_head_ref(pull))
 
@@ -210,6 +214,7 @@ def _is_workflow_pull(
     branch: str,
     branch_prefix: str,
     label_name: str,
+    author_login: str | None,
 ) -> bool:
     """Return whether a pull request belongs to this workflow.
 
@@ -219,6 +224,7 @@ def _is_workflow_pull(
         branch: Current workflow update branch.
         branch_prefix: Prefix for workflow-owned update branches.
         label_name: Label identifying workflow-created PRs.
+        author_login: Optional author login identifying workflow-created PRs.
 
     Returns:
         True when the PR head branch is owned by this workflow.
@@ -228,6 +234,11 @@ def _is_workflow_pull(
         isinstance(label, dict) and label.get("name") == label_name for label in labels
     ):
         return False
+
+    if author_login is not None:
+        user = pull.get("user", {})
+        if not isinstance(user, dict) or user.get("login") != author_login:
+            return False
 
     head = pull.get("head", {})
     if not isinstance(head, dict):
@@ -347,6 +358,7 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--branch", required=True)
     parser.add_argument("--branch-prefix", required=True)
     parser.add_argument("--label-name", required=True)
+    parser.add_argument("--author-login")
     parser.add_argument("--keep-pr-number", type=int)
     parser.add_argument("--close-stale-prs", action="store_true")
     parser.add_argument("--delete-stale-branch", action="store_true")
@@ -377,6 +389,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         branch=args.branch,
         branch_prefix=args.branch_prefix,
         label_name=args.label_name,
+        author_login=args.author_login,
         keep_pr_number=args.keep_pr_number,
         close_stale_prs=args.close_stale_prs,
         delete_stale_branch=args.delete_stale_branch,
