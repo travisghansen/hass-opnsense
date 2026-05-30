@@ -1,5 +1,6 @@
 """Tests for the prek autoupdate workflow."""
 
+from collections.abc import Generator
 from importlib import util
 from pathlib import Path
 import sys
@@ -7,8 +8,10 @@ from types import ModuleType
 
 import pytest
 
-WORKFLOW_PATH = Path(".github/workflows/prek_autoupdate.yml")
-CLEANUP_SCRIPT_PATH = Path(".github/scripts/cleanup_prek_update_branches.py")
+REPO_ROOT = Path(__file__).resolve().parents[1]
+WORKFLOW_SCRIPT_PATH = ".github/scripts/cleanup_prek_update_branches.py"
+WORKFLOW_PATH = REPO_ROOT / ".github/workflows/prek_autoupdate.yml"
+CLEANUP_SCRIPT_PATH = REPO_ROOT / WORKFLOW_SCRIPT_PATH
 WORKFLOW_BRANCH = "chore/prek-updates"
 WORKFLOW_LABEL = "dependencies"
 WORKFLOW_AUTHOR = "github-actions[bot]"
@@ -38,9 +41,11 @@ class FakeCleanupClient:
         self.fail_on_close = fail_on_close
         self.closed_prs: list[int] = []
         self.deleted_refs: list[str] = []
+        self.max_pages_by_state: dict[str, int | None] = {}
 
-    def list_pulls(self, *, state: str) -> list[dict[str, object]]:
+    def list_pulls(self, *, state: str, max_pages: int | None = None) -> list[dict[str, object]]:
         """Return fake pull requests by state."""
+        self.max_pages_by_state[state] = max_pages
         return self.open_pulls if state == "open" else self.closed_pulls
 
     def close_pull(self, pull_number: int) -> None:
@@ -87,15 +92,22 @@ def _workflow_pull(
 
 
 @pytest.fixture
-def cleanup_script() -> ModuleType:
+def cleanup_script() -> Generator[ModuleType]:
     """Load the prek cleanup script as a test module."""
     spec = util.spec_from_file_location("cleanup_prek_update_branches", CLEANUP_SCRIPT_PATH)
     assert spec is not None
     assert spec.loader is not None
     module = util.module_from_spec(spec)
+    previous_module = sys.modules.get("cleanup_prek_update_branches")
     sys.modules["cleanup_prek_update_branches"] = module
     spec.loader.exec_module(module)
-    return module
+    try:
+        yield module
+    finally:
+        if previous_module is None:
+            sys.modules.pop("cleanup_prek_update_branches", None)
+        else:
+            sys.modules["cleanup_prek_update_branches"] = previous_module
 
 
 @pytest.mark.parametrize(
@@ -103,7 +115,7 @@ def cleanup_script() -> ModuleType:
     [
         ("actions/setup-python@v6", "pins a Python runtime for cleanup"),
         ("python-version: '3.14'", "uses the same runtime as local tooling"),
-        (str(CLEANUP_SCRIPT_PATH), "runs the checked-in cleanup helper"),
+        (WORKFLOW_SCRIPT_PATH, "runs the checked-in cleanup helper"),
         ("Close extra auto-generated PRs", "closes duplicate generated PRs"),
         ("Close stale prek update PRs", "closes stale PRs when no diff remains"),
         (f"--branch {WORKFLOW_BRANCH}", "uses the workflow update branch"),
@@ -176,6 +188,10 @@ def test_cleanup_script_closes_stale_prs_and_deletes_workflow_branches(
         f"heads/{WORKFLOW_BRANCH}",
         f"heads/{WORKFLOW_BRANCH}-old",
     ]
+    assert client.max_pages_by_state == {
+        "open": None,
+        "closed": cleanup_script.CLOSED_PULL_PAGE_LIMIT,
+    }
     assert result.closed_prs == [10, 9]
     assert result.deleted_branches == [
         WORKFLOW_BRANCH,

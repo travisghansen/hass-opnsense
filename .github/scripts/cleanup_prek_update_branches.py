@@ -14,6 +14,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 GITHUB_API_URL = "https://api.github.com"
+CLOSED_PULL_PAGE_LIMIT = 5
 LOGGER = logging.getLogger(__name__)
 
 
@@ -33,7 +34,7 @@ class CleanupResult:
 class GithubCleanupClient(Protocol):
     """Protocol for GitHub operations needed by the cleanup routine."""
 
-    def list_pulls(self, *, state: str) -> list[dict[str, object]]:
+    def list_pulls(self, *, state: str, max_pages: int | None = None) -> list[dict[str, object]]:
         """List pull requests by state."""
 
     def close_pull(self, pull_number: int) -> None:
@@ -56,16 +57,18 @@ class GithubClient:
         self.repository = repository
         self.token = token
 
-    def list_pulls(self, *, state: str) -> list[dict[str, object]]:
+    def list_pulls(self, *, state: str, max_pages: int | None = None) -> list[dict[str, object]]:
         """List pull requests by state.
 
         Args:
             state: Pull request state to request.
+            max_pages: Optional pagination cap.
 
         Returns:
             Pull request objects from GitHub.
         """
         pulls: list[dict[str, object]] = []
+        pages_read = 0
         url: str | None = (
             f"{GITHUB_API_URL}/repos/{self.repository}/pulls?state={state}&per_page=100"
         )
@@ -74,7 +77,17 @@ class GithubClient:
             if not isinstance(payload, list):
                 raise TypeError(f"Expected pull request list from {url}")
             pulls.extend(pull for pull in payload if isinstance(pull, dict))
-            url = _next_link(link_header)
+            pages_read += 1
+            next_url = _next_link(link_header)
+            if max_pages is not None and pages_read >= max_pages:
+                if next_url is not None:
+                    LOGGER.info(
+                        "Stopped listing %s pull requests after %s pages.",
+                        state,
+                        max_pages,
+                    )
+                break
+            url = next_url
         return pulls
 
     def close_pull(self, pull_number: int) -> None:
@@ -190,7 +203,7 @@ def cleanup_update_branches(
         branches_to_delete.add(branch)
 
     if delete_merged_branches:
-        closed_pulls = client.list_pulls(state="closed")
+        closed_pulls = client.list_pulls(state="closed", max_pages=CLOSED_PULL_PAGE_LIMIT)
         for pull in closed_pulls:
             if pull.get("merged_at") is not None and _is_workflow_pull(
                 pull,
