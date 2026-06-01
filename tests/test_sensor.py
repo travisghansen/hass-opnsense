@@ -1213,46 +1213,61 @@ def test_interface_status_icon_up(make_config_entry: Callable[..., MockConfigEnt
     assert s.icon != "mdi:close-network-outline"
 
 
-def test_interface_status_preserves_false_enabled_attribute(
+@pytest.mark.parametrize(
+    (
+        "description_key",
+        "description_name",
+        "interface_values",
+        "expected_available",
+        "expected_native_value",
+        "expected_enabled_attribute",
+    ),
+    [
+        pytest.param(
+            "interface.wan.status",
+            "WAN Status",
+            {"status": "up", "enabled": False},
+            False,
+            None,
+            False,
+            id="status-disabled-preserves-enabled-attribute",
+        ),
+        pytest.param(
+            "interface.wan.inbytes",
+            "WAN In Bytes",
+            {"status": "up", "enabled": False, "inbytes": 2048},
+            False,
+            None,
+            None,
+            id="metric-disabled",
+        ),
+        pytest.param(
+            "interface.wan.status",
+            "WAN Status",
+            {"status": "up", "enabled": None},
+            True,
+            "up",
+            None,
+            id="status-enabled-unknown",
+        ),
+    ],
+)
+def test_interface_sensor_enabled_state_handling(
+    description_key: str,
+    description_name: str,
+    interface_values: dict[str, Any],
+    expected_available: bool,
+    expected_native_value: Any,
+    expected_enabled_attribute: bool | None,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Interface status sensor should expose false enabled attributes."""
-    state = {
-        "interfaces": {"wan": {"name": "WAN", "status": "up", "enabled": False, "interface": "wan"}}
-    }
-    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = state
-    entry = make_config_entry()
-
-    desc = MagicMock()
-    desc.key = "interface.wan.status"
-    desc.name = "WAN Status"
-
-    sensor = OPNsenseInterfaceSensor(config_entry=entry, coordinator=coord, entity_description=desc)
-    sensor.hass = MagicMock()
-    sensor.entity_id = "sensor.wan_status"
-    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
-
-    sensor._handle_coordinator_update()
-
-    assert sensor.available is False
-    attrs = sensor.extra_state_attributes
-    assert attrs is not None
-    assert attrs["enabled"] is False
-
-
-def test_interface_sensor_unavailable_when_interface_disabled(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Interface sensors should be unavailable when the interface is disabled."""
+    """Interface sensors should handle false and unknown enabled states."""
     state = {
         "interfaces": {
             "wan": {
                 "name": "WAN",
-                "status": "up",
-                "enabled": False,
                 "interface": "wan",
-                "inbytes": 2048,
+                **interface_values,
             }
         }
     }
@@ -1261,50 +1276,23 @@ def test_interface_sensor_unavailable_when_interface_disabled(
     entry = make_config_entry()
 
     desc = MagicMock()
-    desc.key = "interface.wan.inbytes"
-    desc.name = "WAN In Bytes"
+    desc.key = description_key
+    desc.name = description_name
 
     sensor = OPNsenseInterfaceSensor(config_entry=entry, coordinator=coord, entity_description=desc)
     sensor.hass = MagicMock()
-    sensor.entity_id = "sensor.wan_inbytes"
+    sensor.entity_id = f"sensor.{description_key.replace('.', '_')}"
     object.__setattr__(sensor, "async_write_ha_state", lambda: None)
 
     sensor._handle_coordinator_update()
 
-    assert sensor.available is False
-
-
-def test_interface_sensor_available_when_enabled_unknown(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Interface sensors should stay available when enabled state is unknown."""
-    state = {
-        "interfaces": {
-            "wan": {
-                "name": "WAN",
-                "status": "up",
-                "enabled": None,
-                "interface": "wan",
-            }
-        }
-    }
-    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = state
-    entry = make_config_entry()
-
-    desc = MagicMock()
-    desc.key = "interface.wan.status"
-    desc.name = "WAN Status"
-
-    sensor = OPNsenseInterfaceSensor(config_entry=entry, coordinator=coord, entity_description=desc)
-    sensor.hass = MagicMock()
-    sensor.entity_id = "sensor.wan_status"
-    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
-
-    sensor._handle_coordinator_update()
-
-    assert sensor.available is True
-    assert sensor.native_value == "up"
+    assert sensor.available is expected_available
+    if expected_native_value is not None:
+        assert sensor.native_value == expected_native_value
+    if expected_enabled_attribute is not None:
+        attrs = sensor.extra_state_attributes
+        assert attrs is not None
+        assert attrs["enabled"] is expected_enabled_attribute
 
 
 @pytest.mark.parametrize(
