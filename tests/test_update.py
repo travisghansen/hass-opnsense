@@ -14,10 +14,19 @@ from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID
 from custom_components.opnsense.update import OPNsenseFirmwareUpdatesAvailableUpdate
 
 
-def test_is_update_available_false_when_missing(
-    make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
+@pytest.mark.parametrize(
+    "coordinator_data",
+    [
+        pytest.param(None, id="missing"),
+        pytest.param({"firmware_update_info": {"status": "error"}}, id="error-status"),
+    ],
+)
+def test_is_update_available_false_for_missing_or_error_state(
+    coordinator_data: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+    dummy_coordinator: MagicMock,
 ) -> None:
-    """Update entity should be unavailable when coordinator data is missing."""
+    """Update entity should be unavailable when firmware update state is unusable."""
     entry = make_config_entry()
     coord = dummy_coordinator
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
@@ -29,27 +38,7 @@ def test_is_update_available_false_when_missing(
     )
     object.__setattr__(ent, "async_write_ha_state", lambda: None)
 
-    # state missing or malformed
-    coord.data = None
-    ent._handle_coordinator_update()
-    assert ent.available is False
-
-
-def test_is_update_available_false_when_error(
-    make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
-) -> None:
-    """Update entity should be unavailable when coordinator reports an error status."""
-    entry = make_config_entry()
-    coord = dummy_coordinator
-    ent = OPNsenseFirmwareUpdatesAvailableUpdate(
-        config_entry=entry,
-        coordinator=coord,
-        entity_description=UpdateEntityDescription(
-            key="firmware.update_available", name="Firmware"
-        ),
-    )
-    object.__setattr__(ent, "async_write_ha_state", lambda: None)
-    coord.data = {"firmware_update_info": {"status": "error"}}
+    coord.data = coordinator_data
     ent._handle_coordinator_update()
     assert ent.available is False
 
