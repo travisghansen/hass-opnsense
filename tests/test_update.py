@@ -22,7 +22,7 @@ from custom_components.opnsense.update import OPNsenseFirmwareUpdatesAvailableUp
     ],
 )
 def test_is_update_available_false_for_missing_or_error_state(
-    coordinator_data: Any,
+    coordinator_data: dict[str, Any] | None,
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
 ) -> None:

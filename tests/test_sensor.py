@@ -1287,10 +1287,15 @@ def test_interface_sensor_enabled_state_handling(
     sensor._handle_coordinator_update()
 
     assert sensor.available is expected_available
-    if expected_native_value is not None:
+    if expected_native_value is None:
+        assert sensor.native_value is None
+    else:
         assert sensor.native_value == expected_native_value
-    if expected_enabled_attribute is not None:
-        attrs = sensor.extra_state_attributes
+
+    attrs = sensor.extra_state_attributes
+    if expected_enabled_attribute is None:
+        assert attrs is None or "enabled" not in attrs
+    else:
         assert attrs is not None
         assert attrs["enabled"] is expected_enabled_attribute
 

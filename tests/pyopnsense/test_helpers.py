@@ -82,7 +82,7 @@ def test_timestamp_to_datetime() -> None:
         pytest.param(None, 7, 7, id="none-default"),
     ],
 )
-def test_try_to_int(value: Any, default: int, expected: int) -> None:
+def test_try_to_int(value: object, default: int, expected: int) -> None:
     """Coerce numeric-like values to integers with defaults."""
     assert pyopnsense_helpers.try_to_int(value, default) == expected
 
@@ -94,7 +94,7 @@ def test_try_to_int(value: Any, default: int, expected: int) -> None:
         pytest.param(None, 3.3, 3.3, id="none-default"),
     ],
 )
-def test_try_to_float(value: Any, default: float, expected: float) -> None:
+def test_try_to_float(value: object, default: float, expected: float) -> None:
     """Coerce numeric-like values to floats with defaults."""
     assert pyopnsense_helpers.try_to_float(value, default) == expected
 
@@ -115,7 +115,7 @@ def test_try_to_float(value: Any, default: float, expected: float) -> None:
         pytest.param(None, False, id="none"),
     ],
 )
-def test_coerce_bool(value: Any, expected: bool) -> None:
+def test_coerce_bool(value: object, expected: bool) -> None:
     """Verify ``coerce_bool`` handles common bool-like edge cases."""
     assert pyopnsense_helpers.coerce_bool(value) is expected
 
@@ -129,7 +129,7 @@ def test_coerce_bool(value: Any, expected: bool) -> None:
         pytest.param(None, "", id="none"),
     ],
 )
-def test_normalize_lookup_token(value: Any, expected: str) -> None:
+def test_normalize_lookup_token(value: object, expected: str) -> None:
     """Verify ``normalize_lookup_token`` lower-cases and trims lookup values."""
     assert pyopnsense_helpers.normalize_lookup_token(value) == expected
 
