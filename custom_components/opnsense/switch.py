@@ -834,13 +834,18 @@ class OPNsenseCarpMaintenanceSwitch(OPNsenseSwitch):
         }
         self.async_write_ha_state()
 
+    async def _async_refresh_carp_state(self) -> None:
+        """Refresh CARP state before deciding whether the toggle endpoint is needed."""
+        self.delay_update = False
+        await self.coordinator.async_request_refresh()
+        self._handle_coordinator_update()
+
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn CARP persistent maintenance mode on."""
-        if (
-            self.is_on
-            or self._client is None
-            or not hasattr(self._client, "toggle_carp_maintenance_mode")
-        ):
+        if self._client is None or not hasattr(self._client, "toggle_carp_maintenance_mode"):
+            return
+        await self._async_refresh_carp_state()
+        if self.is_on:
             return
         result = await self._client.toggle_carp_maintenance_mode()
         if result:
@@ -853,11 +858,10 @@ class OPNsenseCarpMaintenanceSwitch(OPNsenseSwitch):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn CARP persistent maintenance mode off."""
-        if (
-            not self.is_on
-            or self._client is None
-            or not hasattr(self._client, "toggle_carp_maintenance_mode")
-        ):
+        if self._client is None or not hasattr(self._client, "toggle_carp_maintenance_mode"):
+            return
+        await self._async_refresh_carp_state()
+        if not self.is_on:
             return
         result = await self._client.toggle_carp_maintenance_mode()
         if result:

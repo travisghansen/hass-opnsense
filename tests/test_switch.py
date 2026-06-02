@@ -58,6 +58,7 @@ def make_coord(data: Any) -> Any:
     """Create a MagicMock that behaves like an OPNsenseDataUpdateCoordinator for tests."""
     m = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     m.data = data
+    m.async_request_refresh = AsyncMock()
     return m
 
 
@@ -197,6 +198,90 @@ async def test_carp_maintenance_switch_state_and_toggle(
     entity._client.toggle_carp_maintenance_mode.assert_awaited_once()
     assert entity.is_on is False
     assert entity.delay_update is True
+
+
+@pytest.mark.asyncio
+async def test_carp_maintenance_switch_turn_on_refreshes_before_toggle(
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP maintenance turn on should not toggle if refreshed state is already on."""
+    state = {"carp": {"status_summary": {"maintenance_mode": False, "enabled": True}}}
+    coordinator = make_coord(state)
+
+    async def refresh_state() -> None:
+        """Set refreshed CARP maintenance state."""
+        state["carp"]["status_summary"]["maintenance_mode"] = True
+
+    coordinator.async_request_refresh = AsyncMock(side_effect=refresh_state)
+    config_entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1"},
+        title="OPNsenseTest",
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    entity = OPNsenseCarpMaintenanceSwitch(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=SwitchEntityDescription(
+            key="carp.maintenance_mode",
+            name="CARP Persistent Maintenance Mode",
+        ),
+    )
+    entity.hass = ph_hass
+    entity.entity_id = "switch.carp_maintenance_mode"
+    stub_async_write_ha_state(entity)
+    entity._client = MagicMock()
+    entity._client.toggle_carp_maintenance_mode = AsyncMock(return_value=True)
+    entity._handle_coordinator_update()
+
+    await entity.async_turn_on()
+
+    coordinator.async_request_refresh.assert_awaited_once()
+    entity._client.toggle_carp_maintenance_mode.assert_not_awaited()
+    assert entity.is_on is True
+    assert entity.delay_update is False
+
+
+@pytest.mark.asyncio
+async def test_carp_maintenance_switch_turn_off_refreshes_before_toggle(
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP maintenance turn off should not toggle if refreshed state is already off."""
+    state = {"carp": {"status_summary": {"maintenance_mode": True, "enabled": True}}}
+    coordinator = make_coord(state)
+
+    async def refresh_state() -> None:
+        """Set refreshed CARP maintenance state."""
+        state["carp"]["status_summary"]["maintenance_mode"] = False
+
+    coordinator.async_request_refresh = AsyncMock(side_effect=refresh_state)
+    config_entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1"},
+        title="OPNsenseTest",
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    entity = OPNsenseCarpMaintenanceSwitch(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=SwitchEntityDescription(
+            key="carp.maintenance_mode",
+            name="CARP Persistent Maintenance Mode",
+        ),
+    )
+    entity.hass = ph_hass
+    entity.entity_id = "switch.carp_maintenance_mode"
+    stub_async_write_ha_state(entity)
+    entity._client = MagicMock()
+    entity._client.toggle_carp_maintenance_mode = AsyncMock(return_value=True)
+    entity._handle_coordinator_update()
+
+    await entity.async_turn_off()
+
+    coordinator.async_request_refresh.assert_awaited_once()
+    entity._client.toggle_carp_maintenance_mode.assert_not_awaited()
+    assert entity.is_on is False
+    assert entity.delay_update is False
 
 
 @pytest.mark.asyncio
