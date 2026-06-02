@@ -14,47 +14,46 @@ from custom_components.opnsense.pyopnsense import helpers as pyopnsense_helpers
 TEST_PASSWORD = "p"
 
 
-def test_human_friendly_duration() -> None:
-    """Convert seconds into a human-friendly duration string."""
-    assert pyopnsense_helpers.human_friendly_duration(65) == "1 minute, 5 seconds"
-    assert pyopnsense_helpers.human_friendly_duration(0) == "0 seconds"
-    assert "month" in pyopnsense_helpers.human_friendly_duration(2419200)
+@pytest.mark.parametrize(
+    ("seconds", "expected"),
+    [
+        pytest.param(0, "0 seconds", id="zero"),
+        pytest.param(1, "1 second", id="singular-second"),
+        pytest.param(2, "2 seconds", id="plural-seconds"),
+        pytest.param(60, "1 minute", id="singular-minute"),
+        pytest.param(61, "1 minute, 1 second", id="minute-and-second"),
+        pytest.param(65, "1 minute, 5 seconds", id="minute-and-seconds"),
+        pytest.param(3600, "1 hour", id="singular-hour"),
+        pytest.param(7200, "2 hours", id="plural-hours"),
+        pytest.param(86400, "1 day", id="singular-day"),
+        pytest.param(604800, "1 week", id="singular-week"),
+        pytest.param(1209600, "2 weeks", id="plural-weeks"),
+        pytest.param(2419200, "1 month", id="singular-month"),
+        pytest.param(4838400, "2 months", id="plural-months"),
+    ],
+)
+def test_human_friendly_duration(seconds: int, expected: str) -> None:
+    """Convert seconds into human-friendly duration strings."""
+    assert pyopnsense_helpers.human_friendly_duration(seconds) == expected
 
 
-def test_human_friendly_duration_singular_and_plural() -> None:
-    """Verify singular and plural forms for all supported units. This covers seconds, minutes, hours, days, weeks and months and ensures the function emits the singular form when the value is 1 and plural otherwise."""
-    # seconds
-    assert pyopnsense_helpers.human_friendly_duration(1) == "1 second"
-    assert pyopnsense_helpers.human_friendly_duration(2) == "2 seconds"
-
-    # minutes + seconds
-    assert pyopnsense_helpers.human_friendly_duration(60) == "1 minute"
-    assert pyopnsense_helpers.human_friendly_duration(61) == "1 minute, 1 second"
-
-    # hours
-    assert pyopnsense_helpers.human_friendly_duration(3600) == "1 hour"
-    assert pyopnsense_helpers.human_friendly_duration(7200) == "2 hours"
-
-    # days
-    assert pyopnsense_helpers.human_friendly_duration(86400) == "1 day"
-
-    # weeks
-    assert pyopnsense_helpers.human_friendly_duration(604800) == "1 week"
-    assert pyopnsense_helpers.human_friendly_duration(1209600) == "2 weeks"
-
-    # months (28-day month used in implementation)
-    assert pyopnsense_helpers.human_friendly_duration(2419200) == "1 month"
-    assert pyopnsense_helpers.human_friendly_duration(4838400) == "2 months"
-
-
-def test_get_ip_key() -> None:
+@pytest.mark.parametrize(
+    ("item", "expected_type", "expected"),
+    [
+        pytest.param({"address": "192.168.1.1"}, 0, None, id="ipv4"),
+        pytest.param({"address": "::1"}, 1, None, id="ipv6"),
+        pytest.param({"address": "notanip"}, 2, (2, ""), id="invalid"),
+        pytest.param({}, 3, (3, ""), id="missing"),
+    ],
+)
+def test_get_ip_key(
+    item: dict[str, str], expected_type: int, expected: tuple[int, str] | None
+) -> None:
     """Compute sorting key for IP addresses across IPv4, IPv6, and invalid forms."""
-    assert pyopnsense_helpers.get_ip_key({"address": "192.168.1.1"})[0] == 0
-    assert pyopnsense_helpers.get_ip_key({"address": "::1"})[0] == 1
-    assert pyopnsense_helpers.get_ip_key({"address": "notanip"})[0] == 2
-    assert pyopnsense_helpers.get_ip_key({"address": "notanip"}) == (2, "")
-    assert pyopnsense_helpers.get_ip_key({})[0] == 3
-    assert pyopnsense_helpers.get_ip_key({}) == (3, "")
+    key = pyopnsense_helpers.get_ip_key(item)
+    assert key[0] == expected_type
+    if expected is not None:
+        assert key == expected
 
 
 def test_dict_get() -> None:
@@ -76,35 +75,63 @@ def test_timestamp_to_datetime() -> None:
     assert pyopnsense_helpers.timestamp_to_datetime(None) is None
 
 
-def test_try_to_int_and_float() -> None:
-    """Coerce numeric-like strings to int/float with defaults."""
-    assert pyopnsense_helpers.try_to_int("5") == 5
-    assert pyopnsense_helpers.try_to_int(None, 7) == 7
-    assert pyopnsense_helpers.try_to_float("5.5") == 5.5
-    assert pyopnsense_helpers.try_to_float(None, 3.3) == 3.3
+@pytest.mark.parametrize(
+    ("value", "default", "expected"),
+    [
+        pytest.param("5", 0, 5, id="numeric-string"),
+        pytest.param(None, 7, 7, id="none-default"),
+    ],
+)
+def test_try_to_int(value: object, default: int, expected: int) -> None:
+    """Coerce numeric-like values to integers with defaults."""
+    assert pyopnsense_helpers.try_to_int(value, default) == expected
 
 
-def test_coerce_bool() -> None:
+@pytest.mark.parametrize(
+    ("value", "default", "expected"),
+    [
+        pytest.param("5.5", 0.0, 5.5, id="numeric-string"),
+        pytest.param(None, 3.3, 3.3, id="none-default"),
+    ],
+)
+def test_try_to_float(value: object, default: float, expected: float) -> None:
+    """Coerce numeric-like values to floats with defaults."""
+    assert pyopnsense_helpers.try_to_float(value, default) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        pytest.param(True, True, id="true"),
+        pytest.param(False, False, id="false"),
+        pytest.param(1, True, id="int-one"),
+        pytest.param(0, False, id="int-zero"),
+        pytest.param(0.0, False, id="float-zero"),
+        pytest.param("1", True, id="string-one"),
+        pytest.param("true", True, id="string-true"),
+        pytest.param("yes", True, id="string-yes"),
+        pytest.param("on", True, id="string-on"),
+        pytest.param("", False, id="empty-string"),
+        pytest.param(None, False, id="none"),
+    ],
+)
+def test_coerce_bool(value: object, expected: bool) -> None:
     """Verify ``coerce_bool`` handles common bool-like edge cases."""
-    assert pyopnsense_helpers.coerce_bool(True) is True
-    assert pyopnsense_helpers.coerce_bool(False) is False
-    assert pyopnsense_helpers.coerce_bool(1) is True
-    assert pyopnsense_helpers.coerce_bool(0) is False
-    assert pyopnsense_helpers.coerce_bool(0.0) is False
-    assert pyopnsense_helpers.coerce_bool("1") is True
-    assert pyopnsense_helpers.coerce_bool("true") is True
-    assert pyopnsense_helpers.coerce_bool("yes") is True
-    assert pyopnsense_helpers.coerce_bool("on") is True
-    assert pyopnsense_helpers.coerce_bool("") is False
-    assert pyopnsense_helpers.coerce_bool(None) is False
+    assert pyopnsense_helpers.coerce_bool(value) is expected
 
 
-def test_normalize_lookup_token() -> None:
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        pytest.param("Hello", "hello", id="lowercase"),
+        pytest.param("  WORLD  ", "world", id="strip"),
+        pytest.param(42, "42", id="coerce-int"),
+        pytest.param(None, "", id="none"),
+    ],
+)
+def test_normalize_lookup_token(value: object, expected: str) -> None:
     """Verify ``normalize_lookup_token`` lower-cases and trims lookup values."""
-    assert pyopnsense_helpers.normalize_lookup_token("Hello") == "hello"
-    assert pyopnsense_helpers.normalize_lookup_token("  WORLD  ") == "world"
-    assert pyopnsense_helpers.normalize_lookup_token(42) == "42"
-    assert pyopnsense_helpers.normalize_lookup_token(None) == ""
+    assert pyopnsense_helpers.normalize_lookup_token(value) == expected
 
 
 def test_get_ip_key_sorting() -> None:
@@ -152,8 +179,15 @@ async def test_log_errors_decorator_re_raise_and_suppress() -> None:
 
 
 @pytest.mark.asyncio
-async def test_log_errors_timeout_re_raise_and_suppress() -> None:
-    """_log_errors should re-raise TimeoutError when client._initial is True and suppress when False."""
+@pytest.mark.parametrize(
+    "exception",
+    [
+        pytest.param(TimeoutError("boom"), id="timeout"),
+        pytest.param(aiohttp.ServerTimeoutError("srv"), id="server-timeout"),
+    ],
+)
+async def test_log_errors_timeout_re_raise_and_suppress(exception: Exception) -> None:
+    """_log_errors should re-raise timeouts when initial and suppress them otherwise."""
     session = MagicMock(spec=aiohttp.ClientSession)
     client = pyopnsense.OPNsenseClient(
         url="http://x", username="u", password=TEST_PASSWORD, session=session
@@ -168,55 +202,22 @@ async def test_log_errors_timeout_re_raise_and_suppress() -> None:
                 **kwargs: Additional keyword arguments forwarded by the function.
 
             Raises:
-                TimeoutError: Always raised to test timeout suppression and re-raise behavior.
+                Exception: Always raised to test timeout suppression and re-raise behavior.
             """
-            raise TimeoutError("boom")
+            raise exception
 
         # wrap the coroutine with the decorator
         decorated = pyopnsense_helpers._log_errors(raising_timeout)
 
         # When initial is True we expect the TimeoutError to propagate
         client._initial = True
-        with pytest.raises(TimeoutError):
+        with pytest.raises(type(exception)):
             await decorated(client)
 
         # When initial is False the decorator should suppress TimeoutError and return None
         client._initial = False
         res = await decorated(client)
         assert res is None
-    finally:
-        await client.async_close()
-
-
-@pytest.mark.asyncio
-async def test_log_errors_server_timeout_re_raise_and_suppress() -> None:
-    """_log_errors should re-raise aiohttp.ServerTimeoutError when client._initial is True and suppress when False."""
-    session = MagicMock(spec=aiohttp.ClientSession)
-    client = pyopnsense.OPNsenseClient(
-        url="http://x", username="u", password=TEST_PASSWORD, session=session
-    )
-    try:
-
-        async def raising_server_timeout(*args, **kwargs) -> Never:
-            """Raise ``ServerTimeoutError`` for the server-timeout error branch.
-
-            Args:
-                *args: Additional positional arguments forwarded by the function.
-                **kwargs: Additional keyword arguments forwarded by the function.
-
-            Raises:
-                aiohttp.ServerTimeoutError: Always raised to test server-timeout handling.
-            """
-            raise aiohttp.ServerTimeoutError("srv")
-
-        decorated = pyopnsense_helpers._log_errors(raising_server_timeout)
-
-        client._initial = True
-        with pytest.raises(aiohttp.ServerTimeoutError):
-            await decorated(client)
-
-        client._initial = False
-        assert await decorated(client) is None
     finally:
         await client.async_close()
 

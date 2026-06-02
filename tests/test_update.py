@@ -14,10 +14,19 @@ from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID
 from custom_components.opnsense.update import OPNsenseFirmwareUpdatesAvailableUpdate
 
 
-def test_is_update_available_false_when_missing(
-    make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
+@pytest.mark.parametrize(
+    "coordinator_data",
+    [
+        pytest.param(None, id="missing"),
+        pytest.param({"firmware_update_info": {"status": "error"}}, id="error-status"),
+    ],
+)
+def test_is_update_available_false_for_missing_or_error_state(
+    coordinator_data: dict[str, Any] | None,
+    make_config_entry: Callable[..., MockConfigEntry],
+    dummy_coordinator: MagicMock,
 ) -> None:
-    """Update entity should be unavailable when coordinator data is missing."""
+    """Update entity should be unavailable when firmware update state is unusable."""
     entry = make_config_entry()
     coord = dummy_coordinator
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
@@ -29,27 +38,7 @@ def test_is_update_available_false_when_missing(
     )
     object.__setattr__(ent, "async_write_ha_state", lambda: None)
 
-    # state missing or malformed
-    coord.data = None
-    ent._handle_coordinator_update()
-    assert ent.available is False
-
-
-def test_is_update_available_false_when_error(
-    make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
-) -> None:
-    """Update entity should be unavailable when coordinator reports an error status."""
-    entry = make_config_entry()
-    coord = dummy_coordinator
-    ent = OPNsenseFirmwareUpdatesAvailableUpdate(
-        config_entry=entry,
-        coordinator=coord,
-        entity_description=UpdateEntityDescription(
-            key="firmware.update_available", name="Firmware"
-        ),
-    )
-    object.__setattr__(ent, "async_write_ha_state", lambda: None)
-    coord.data = {"firmware_update_info": {"status": "error"}}
+    coord.data = coordinator_data
     ent._handle_coordinator_update()
     assert ent.available is False
 
@@ -249,14 +238,32 @@ def test_handle_coordinator_update_sets_attributes(
     assert attrs.get("opnsense_last_check") == 1
 
 
+@pytest.mark.parametrize(
+    (
+        "product_version",
+        "product_latest",
+        "product_series",
+        "upgrade_major_version",
+        "expected_url_path",
+    ),
+    [
+        pytest.param("2.0.0", "2_0_1", "2.1", "2.1.3", "community/2.1", id="community"),
+        pytest.param("3.0.0", "3_0_1", "2.4", "2.4.1", "business/2.4", id="business"),
+    ],
+)
 def test_handle_coordinator_update_upgrade_sets_release_url(
-    make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
+    product_version: str,
+    product_latest: str,
+    product_series: str,
+    upgrade_major_version: str,
+    expected_url_path: str,
+    make_config_entry: Callable[..., MockConfigEntry],
+    dummy_coordinator: MagicMock,
 ) -> None:
     """Upgrade state should compute a release URL and provide release notes.
 
-    This also asserts normalization of ``product_latest`` and correct
-    derivation of ``series_minor`` from ``product_series``, which affects the
-    generated release URL.
+    This also asserts correct product class derivation from ``product_series``,
+    which affects the generated release URL.
     """
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -271,26 +278,22 @@ def test_handle_coordinator_update_upgrade_sets_release_url(
         "firmware_update_info": {
             "status": "upgrade",
             "product": {
-                "product_version": "2.0.0",
-                "product_latest": "2_0_1",
-                "product_series": "2.1",
+                "product_version": product_version,
+                "product_latest": product_latest,
+                "product_series": product_series,
             },
-            "upgrade_major_version": "2.1.3",
+            "upgrade_major_version": upgrade_major_version,
         }
     }
     ent.coordinator.data = state
     object.__setattr__(ent, "async_write_ha_state", lambda: None)
     ent._handle_coordinator_update()
 
-    # For upgrade status, latest_version should reflect the upgrade_major_version
-    assert ent.latest_version == "2.1.3"
+    assert ent.latest_version == upgrade_major_version
 
-    # product_series '2.1' => series_minor '1' => product_class community -> use github URL
     assert ent.release_url is not None
-    assert "community/2.1" in ent.release_url
-
-    # Ensure the upgrade_major_version appears in release_url
-    assert "2.1.3" in ent.release_url
+    assert expected_url_path in ent.release_url
+    assert upgrade_major_version in ent.release_url
 
 
 @pytest.mark.asyncio
@@ -388,37 +391,6 @@ def test_handle_coordinator_update_release_url_fallback_when_product_class_none(
 
     expected = entry.data.get("url") + "/ui/core/firmware#changelog"
     assert ent.release_url == expected
-
-
-def test_handle_coordinator_update_upgrade_sets_business_release_url(
-    make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
-) -> None:
-    """Business product series should generate business release URL."""
-    entry = make_config_entry()
-    coord = dummy_coordinator
-    ent = OPNsenseFirmwareUpdatesAvailableUpdate(
-        config_entry=entry,
-        coordinator=coord,
-        entity_description=UpdateEntityDescription(
-            key="firmware.update_available", name="Firmware"
-        ),
-    )
-    state = {
-        "firmware_update_info": {
-            "status": "upgrade",
-            "product": {
-                "product_version": "3.0.0",
-                "product_latest": "3_0_1",
-                "product_series": "2.4",
-            },
-            "upgrade_major_version": "2.4.1",
-        }
-    }
-    ent.coordinator.data = state
-    object.__setattr__(ent, "async_write_ha_state", lambda: None)
-    ent._handle_coordinator_update()
-    assert ent.release_url and "business/2.4" in ent.release_url
-    assert "2.4.1" in ent.release_url
 
 
 @pytest.mark.parametrize(

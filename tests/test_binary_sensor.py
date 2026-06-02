@@ -214,62 +214,55 @@ async def test_compile_interface_enabled_binary_sensors_skips_malformed_interfac
     assert entities[0].entity_description.key == "interface.wan.enabled"
 
 
-def test_interface_enabled_binary_sensor_state(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Interface enabled binary sensor should expose the interface enabled state."""
-    entry = make_config_entry()
-    desc = BinarySensorEntityDescription(key="interface.wan.enabled", name="Interface WAN Enabled")
-
-    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = {"interfaces": {"wan": {"name": "WAN", "enabled": False}}}
-    sensor = OPNsenseInterfaceEnabledBinarySensor(
-        config_entry=entry, coordinator=coord, entity_description=desc
-    )
-    sensor.hass = MagicMock()
-    sensor.entity_id = "binary_sensor.wan_enabled"
-    stub_async_write_ha_state(sensor)
-
-    sensor._handle_coordinator_update()
-
-    assert sensor.available is True
-    assert sensor.is_on is False
-
-
-def test_interface_enabled_binary_sensor_unavailable_when_enabled_unknown(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Interface enabled binary sensor should be unavailable when enabled state is unknown."""
-    entry = make_config_entry()
-    desc = BinarySensorEntityDescription(key="interface.wan.enabled", name="Interface WAN Enabled")
-
-    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = {"interfaces": {"wan": {"name": "WAN", "enabled": None}}}
-    sensor = OPNsenseInterfaceEnabledBinarySensor(
-        config_entry=entry, coordinator=coord, entity_description=desc
-    )
-    sensor.hass = MagicMock()
-    sensor.entity_id = "binary_sensor.wan_enabled"
-    stub_async_write_ha_state(sensor)
-
-    sensor._handle_coordinator_update()
-
-    assert sensor.available is False
-
-
 @pytest.mark.parametrize(
-    ("desc_key", "coord_data"),
+    ("desc_key", "coord_data", "expected_available", "expected_is_on"),
     [
-        ("bad.key", {"interfaces": {"wan": {"enabled": True}}}),
-        ("interface.wan.enabled", None),
-        ("interface.wan.enabled", {"interfaces": {"wan": {}}}),
-        ("interface.wan.enabled", {"interfaces": {"wan": []}}),
+        pytest.param(
+            "interface.wan.enabled",
+            {"interfaces": {"wan": {"name": "WAN", "enabled": False}}},
+            True,
+            False,
+            id="disabled",
+        ),
+        pytest.param(
+            "interface.wan.enabled",
+            {"interfaces": {"wan": {"name": "WAN", "enabled": None}}},
+            False,
+            None,
+            id="unknown",
+        ),
+        pytest.param(
+            "bad.key",
+            {"interfaces": {"wan": {"enabled": True}}},
+            False,
+            None,
+            id="bad-key",
+        ),
+        pytest.param("interface.wan.enabled", None, False, None, id="missing-state"),
+        pytest.param(
+            "interface.wan.enabled",
+            {"interfaces": {"wan": {}}},
+            False,
+            None,
+            id="missing-enabled",
+        ),
+        pytest.param(
+            "interface.wan.enabled",
+            {"interfaces": {"wan": []}},
+            False,
+            None,
+            id="malformed-interface",
+        ),
     ],
 )
-def test_interface_enabled_binary_sensor_unavailable_for_invalid_payloads(
-    desc_key: Any, coord_data: Any, make_config_entry: Callable[..., MockConfigEntry]
+def test_interface_enabled_binary_sensor_state_handling(
+    desc_key: Any,
+    coord_data: Any,
+    expected_available: bool,
+    expected_is_on: bool | None,
+    make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Mark interface enabled binary sensor unavailable for invalid payloads."""
+    """Interface enabled binary sensor should expose or reject enabled state payloads."""
     entry = make_config_entry()
     desc = BinarySensorEntityDescription(key=desc_key, name="Interface WAN Enabled")
 
@@ -284,7 +277,9 @@ def test_interface_enabled_binary_sensor_unavailable_for_invalid_payloads(
 
     sensor._handle_coordinator_update()
 
-    assert sensor.available is False
+    assert sensor.available is expected_available
+    if expected_is_on is not None:
+        assert sensor.is_on is expected_is_on
 
 
 def test_interface_enabled_binary_sensor_extra_attributes(
