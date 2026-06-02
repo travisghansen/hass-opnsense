@@ -605,7 +605,7 @@ async def _compile_gateway_sensors(
     entities: list = []
 
     for gateway in (dict_get(state, "gateways", {}) or {}).values():
-        for prop_name in ("status", "delay", "stddev", "loss"):
+        for prop_name in ("status", "delay", "stddev", "loss", "address"):
             native_unit_of_measurement = None
             device_class: SensorDeviceClass | None = None
             state_class: SensorStateClass | None = SensorStateClass.MEASUREMENT
@@ -623,6 +623,10 @@ async def _compile_gateway_sensors(
                 icon = "mdi:check-network"
                 state_class = None
                 enabled_default = True
+
+            if prop_name == "address":
+                icon = "mdi:ip-network"
+                state_class = None
 
             entity = OPNsenseGatewaySensor(
                 config_entry=config_entry,

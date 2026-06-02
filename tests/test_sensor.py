@@ -104,6 +104,38 @@ async def test_static_key_sensor_cpu_and_boot_and_certificates(
     assert attrs.get("2") == "20%"
 
 
+@pytest.mark.asyncio
+async def test_compile_gateway_sensors_creates_disabled_address_sensor(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Gateway address sensors should be created and disabled by default."""
+    entry = make_config_entry()
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {
+        "gateways": {
+            "wan": {
+                "name": "wan",
+                "address": "203.0.113.1",
+                "delay": "15ms",
+                "stddev": "1ms",
+                "loss": "0%",
+                "status": "online",
+            }
+        }
+    }
+
+    entities = await sensor_module._compile_gateway_sensors(entry, coordinator, coordinator.data)
+    address_sensor = next(
+        entity for entity in entities if entity.entity_description.key == "gateway.wan.address"
+    )
+
+    assert isinstance(address_sensor, OPNsenseGatewaySensor)
+    assert address_sensor.entity_description.name == "Gateway wan address"
+    assert address_sensor.entity_description.icon == "mdi:ip-network"
+    assert address_sensor.entity_description.state_class is None
+    assert address_sensor.entity_description.entity_registry_enabled_default is False
+
+
 @pytest.mark.parametrize(
     ("coord_data", "desc_subnet"),
     [
@@ -193,6 +225,7 @@ def test_sensors_unavailable_on_non_mapping_state(
         ("stddev", "1ms", True, 1.0, False),
         ("loss", "0%", True, 0.0, False),
         ("delay", 12, True, 12, False),
+        ("address", "203.0.113.1", True, "203.0.113.1", False),
     ],
 )
 def test_gateway_sensor_value_parsing(
