@@ -12,7 +12,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           # Use the release branch when available so git-auto-commit can push
           # back cleanly; otherwise keep the workflow's triggering ref.
