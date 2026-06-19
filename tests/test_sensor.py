@@ -2217,9 +2217,9 @@ async def test_async_setup_entry_creates_disabled_smart_disk_sensors(
                 "temperature": 37,
             },
             {
-                "dev": "ada0",
-                "smart_status": "FAILED",
-                "temp": "41",
+                "device": "ada0",
+                "status": "FAILED",
+                "temperature": "41",
             },
             "ignored",
             {"device": ""},
