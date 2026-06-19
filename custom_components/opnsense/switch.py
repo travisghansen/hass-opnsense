@@ -675,8 +675,8 @@ async def async_setup_entry(
                 ValueError,
             ) as e:
                 _LOGGER.error(
-                    "Error comparing firmware version %s when determining creating CARP "
-                    "maintenance switch. %s: %s",
+                    "Error comparing firmware version %s when determining whether to create "
+                    "CARP maintenance switch. %s: %s",
                     firmware,
                     type(e).__name__,
                     e,
