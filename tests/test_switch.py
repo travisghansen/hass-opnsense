@@ -62,6 +62,31 @@ def make_coord(data: Any) -> Any:
     return m
 
 
+def make_carp_maintenance_switch(
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    coordinator: Any,
+) -> OPNsenseCarpMaintenanceSwitch:
+    """Create a CARP maintenance switch entity for tests."""
+    config_entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1"},
+        title="OPNsenseTest",
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    entity = OPNsenseCarpMaintenanceSwitch(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=SwitchEntityDescription(
+            key="carp.maintenance_mode",
+            name="CARP Persistent Maintenance Mode",
+        ),
+    )
+    entity.hass = ph_hass
+    entity.entity_id = "switch.carp_maintenance_mode"
+    stub_async_write_ha_state(entity)
+    return entity
+
+
 @pytest.mark.asyncio
 async def test_compile_carp_maintenance_switch(
     coordinator: MagicMock,
@@ -81,6 +106,23 @@ async def test_compile_carp_maintenance_switch(
     assert isinstance(entities[0], OPNsenseCarpMaintenanceSwitch)
     assert entities[0].entity_description.key == "carp.maintenance_mode"
     assert entities[0].entity_description.entity_registry_enabled_default is False
+
+
+@pytest.mark.asyncio
+async def test_compile_carp_maintenance_switch_skips_missing_summary(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP maintenance switch should not compile without CARP summary data."""
+    config_entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1"},
+        title="OPNsenseTest",
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    entities = await _compile_carp_maintenance_switch(config_entry, coordinator, {"carp": {}})
+
+    assert entities == []
 
 
 @pytest.mark.asyncio
@@ -153,6 +195,61 @@ async def test_async_setup_entry_carp_maintenance_switch_sync_gate(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("firmware", "expected_count"),
+    [
+        pytest.param("26.1", 0, id="firmware-too-old"),
+        pytest.param(object(), 0, id="invalid-firmware"),
+    ],
+)
+async def test_async_setup_entry_carp_maintenance_switch_firmware_gate(
+    coordinator: MagicMock,
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    firmware: Any,
+    expected_count: int,
+) -> None:
+    """CARP maintenance switch should only compile for supported firmware."""
+    calls: dict[str, list[Any]] = {}
+
+    def fake_add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Capture switch entities emitted by setup.
+
+        Args:
+            entities: Switch entities emitted by setup.
+            _update_before_add: Whether HA should refresh entities before adding them.
+        """
+        calls["entities"] = list(entities)
+
+    coordinator.data = {
+        "carp": {"status_summary": {"maintenance_mode": False, "enabled": True}},
+        "host_firmware_version": firmware,
+    }
+    config_entry = make_config_entry(
+        data={
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_SYNC_FIREWALL_AND_NAT: False,
+            CONF_SYNC_SERVICES: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_UNBOUND: False,
+        },
+        title="OPNsenseTest",
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    await switch_mod.async_setup_entry(
+        ph_hass, config_entry, cast("AddEntitiesCallback", fake_add_entities)
+    )
+
+    carp_switches = [
+        entity
+        for entity in calls.get("entities", [])
+        if isinstance(entity, OPNsenseCarpMaintenanceSwitch)
+    ]
+    assert len(carp_switches) == expected_count
+
+
+@pytest.mark.asyncio
 async def test_carp_maintenance_switch_state_and_toggle(
     ph_hass: HomeAssistant,
     make_config_entry: Callable[..., MockConfigEntry],
@@ -198,6 +295,25 @@ async def test_carp_maintenance_switch_state_and_toggle(
     entity._client.toggle_carp_maintenance_mode.assert_awaited_once()
     assert entity.is_on is False
     assert entity.delay_update is True
+
+
+@pytest.mark.asyncio
+async def test_carp_maintenance_switch_ignores_updates_during_delay(
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP maintenance switch should keep optimistic state during update delay."""
+    state = {"carp": {"status_summary": {"maintenance_mode": True, "enabled": True}}}
+    coordinator = make_coord(state)
+    entity = make_carp_maintenance_switch(ph_hass, make_config_entry, coordinator)
+    entity._handle_coordinator_update()
+    assert entity.is_on is True
+
+    entity.delay_update = True
+    state["carp"]["status_summary"]["maintenance_mode"] = False
+    entity._handle_coordinator_update()
+
+    assert entity.is_on is True
 
 
 @pytest.mark.asyncio
@@ -285,6 +401,87 @@ async def test_carp_maintenance_switch_turn_off_refreshes_before_toggle(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method_name", "maintenance_mode"),
+    [
+        pytest.param("async_turn_on", False, id="turn-on-no-client"),
+        pytest.param("async_turn_off", True, id="turn-off-no-client"),
+    ],
+)
+async def test_carp_maintenance_switch_turn_returns_without_client(
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    method_name: str,
+    maintenance_mode: bool,
+) -> None:
+    """CARP maintenance switch should not refresh or toggle without a client."""
+    state = {"carp": {"status_summary": {"maintenance_mode": maintenance_mode, "enabled": True}}}
+    coordinator = make_coord(state)
+    entity = make_carp_maintenance_switch(ph_hass, make_config_entry, coordinator)
+    entity._handle_coordinator_update()
+
+    await getattr(entity, method_name)()
+
+    coordinator.async_request_refresh.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method_name", "maintenance_mode"),
+    [
+        pytest.param("async_turn_on", False, id="turn-on-missing-method"),
+        pytest.param("async_turn_off", True, id="turn-off-missing-method"),
+    ],
+)
+async def test_carp_maintenance_switch_turn_returns_without_toggle_method(
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    method_name: str,
+    maintenance_mode: bool,
+) -> None:
+    """CARP maintenance switch should not refresh or toggle without toggle support."""
+    state = {"carp": {"status_summary": {"maintenance_mode": maintenance_mode, "enabled": True}}}
+    coordinator = make_coord(state)
+    entity = make_carp_maintenance_switch(ph_hass, make_config_entry, coordinator)
+    entity._client = cast("Any", object())
+    entity._handle_coordinator_update()
+
+    await getattr(entity, method_name)()
+
+    coordinator.async_request_refresh.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method_name", "maintenance_mode", "expected_state"),
+    [
+        pytest.param("async_turn_on", False, False, id="turn-on-fails"),
+        pytest.param("async_turn_off", True, True, id="turn-off-fails"),
+    ],
+)
+async def test_carp_maintenance_switch_failed_toggle_keeps_state(
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    method_name: str,
+    maintenance_mode: bool,
+    expected_state: bool,
+) -> None:
+    """CARP maintenance switch should keep current state when toggle fails."""
+    state = {"carp": {"status_summary": {"maintenance_mode": maintenance_mode, "enabled": True}}}
+    coordinator = make_coord(state)
+    entity = make_carp_maintenance_switch(ph_hass, make_config_entry, coordinator)
+    entity._client = MagicMock()
+    entity._client.toggle_carp_maintenance_mode = AsyncMock(return_value=False)
+    entity._handle_coordinator_update()
+
+    await getattr(entity, method_name)()
+
+    entity._client.toggle_carp_maintenance_mode.assert_awaited_once()
+    assert entity.is_on is expected_state
+    assert entity.delay_update is False
+
+
+@pytest.mark.asyncio
 async def test_carp_maintenance_switch_unavailable_without_summary(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
@@ -309,6 +506,38 @@ async def test_carp_maintenance_switch_unavailable_without_summary(
     entity._handle_coordinator_update()
 
     assert entity.available is False
+
+
+@pytest.mark.asyncio
+async def test_carp_maintenance_switch_unavailable_without_mapping_state(
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP maintenance switch should become unavailable without mapping state."""
+    coordinator = make_coord([])
+    entity = make_carp_maintenance_switch(ph_hass, make_config_entry, coordinator)
+
+    entity._handle_coordinator_update()
+
+    assert entity.available is False
+
+
+@pytest.mark.asyncio
+async def test_carp_maintenance_switch_icon(
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP maintenance switch should use an alert icon while maintenance is on."""
+    state = {"carp": {"status_summary": {"maintenance_mode": True, "enabled": True}}}
+    coordinator = make_coord(state)
+    entity = make_carp_maintenance_switch(ph_hass, make_config_entry, coordinator)
+
+    entity._handle_coordinator_update()
+    assert entity.icon == "mdi:server-network-off"
+
+    state["carp"]["status_summary"]["maintenance_mode"] = False
+    entity._handle_coordinator_update()
+    assert entity.icon is None
 
 
 @pytest.mark.asyncio
