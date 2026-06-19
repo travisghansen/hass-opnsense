@@ -394,8 +394,6 @@ def _smart_property_value(device: Mapping[str, Any], prop_name: str) -> Any:
         return value.strip()
     if prop_name == "temperature":
         return _parse_smart_temperature(value)
-    if value is not None and value != "":
-        return value
     return None
 
 
@@ -1302,8 +1300,7 @@ class OPNsenseSmartSensor(OPNsenseSensor):
                 self._attr_extra_state_attributes[attr] = attr_value
         if "device" not in self._attr_extra_state_attributes:
             device_name = _smart_device_name(smart_device)
-            if device_name is not None:
-                self._attr_extra_state_attributes["device"] = device_name
+            self._attr_extra_state_attributes["device"] = device_name or expected_device_slug
         self.async_write_ha_state()
 
     @property
