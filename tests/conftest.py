@@ -722,6 +722,10 @@ def fake_client() -> Any:
                 """Return an empty vnStat payload for tests that expect no interfaces."""
                 return {"interface_count": 0, "interfaces": {}}
 
+            async def get_smart(self) -> Any:
+                """Return an empty SMART payload for coordinator tests."""
+                return []
+
             async def get_openvpn(self) -> Any:
                 """Return an empty OpenVPN payload for coordinator tests."""
                 return {"servers": {}}

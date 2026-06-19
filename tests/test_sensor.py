@@ -18,6 +18,7 @@ from custom_components.opnsense.const import (
     CONF_SYNC_DHCP_LEASES,
     CONF_SYNC_GATEWAYS,
     CONF_SYNC_INTERFACES,
+    CONF_SYNC_SMART,
     CONF_SYNC_SPEEDTEST,
     CONF_SYNC_TELEMETRY,
     CONF_SYNC_VNSTAT,
@@ -31,6 +32,7 @@ from custom_components.opnsense.sensor import (
     OPNsenseDHCPLeasesSensor,
     OPNsenseGatewaySensor,
     OPNsenseInterfaceSensor,
+    OPNsenseSmartSensor,
     OPNsenseSpeedtestSensor,
     OPNsenseStaticKeySensor,
     OPNsenseTempSensor,
@@ -1771,6 +1773,7 @@ def _setup_entry_with_all_syncs(
             CONF_SYNC_TELEMETRY: True,
             CONF_SYNC_VNSTAT: True,
             CONF_SYNC_SPEEDTEST: True,
+            CONF_SYNC_SMART: True,
             CONF_SYNC_CERTIFICATES: True,
             CONF_SYNC_VPN: True,
             CONF_SYNC_GATEWAYS: True,
@@ -2197,6 +2200,127 @@ async def test_async_setup_entry_creates_speedtest_sensors(
     latency_attrs = entities_by_key["speedtest.average.latency"].extra_state_attributes
     assert latency_attrs is not None
     assert latency_attrs["samples"] == 10717
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_creates_disabled_smart_disk_sensors(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART disk sensors should be created per device and disabled by default."""
+    state = {
+        "smart": [
+            {
+                "device": "nvme0",
+                "model": "Samsung SSD",
+                "serial_number": "S123",
+                "status": "PASSED",
+                "temperature": 37,
+            },
+            {
+                "dev": "ada0",
+                "smart_status": "FAILED",
+                "temp": "41",
+            },
+            "ignored",
+            {"device": ""},
+        ]
+    }
+    entry = make_config_entry(
+        {
+            "device_unique_id": "id",
+            CONF_SYNC_TELEMETRY: False,
+            CONF_SYNC_VNSTAT: False,
+            CONF_SYNC_CERTIFICATES: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_GATEWAYS: False,
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_DHCP_LEASES: False,
+            CONF_SYNC_SPEEDTEST: False,
+            CONF_SYNC_SMART: True,
+        }
+    )
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+    setattr(entry.runtime_data, COORDINATOR, coordinator)
+
+    created: list = []
+
+    def add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Add entities.
+
+        Args:
+            entities: Entities provided by pytest or the test case.
+        """
+        created.extend(entities)
+
+    await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
+    smart_entities = [entity for entity in created if isinstance(entity, OPNsenseSmartSensor)]
+
+    assert {entity.entity_description.key for entity in smart_entities} == {
+        "smart.nvme0.status",
+        "smart.nvme0.temperature",
+        "smart.ada0.status",
+        "smart.ada0.temperature",
+    }
+    assert all(
+        entity.entity_description.entity_registry_enabled_default is False
+        for entity in smart_entities
+    )
+
+    key_to_entity = {entity.entity_description.key: entity for entity in smart_entities}
+    status_entity = key_to_entity["smart.nvme0.status"]
+    temperature_entity = key_to_entity["smart.ada0.temperature"]
+    for entity in (status_entity, temperature_entity):
+        entity.hass = MagicMock()
+        entity.entity_id = f"sensor.{entity.entity_description.key.replace('.', '_')}"
+        object.__setattr__(entity, "async_write_ha_state", lambda: None)
+        entity._handle_coordinator_update()
+
+    assert status_entity.available is True
+    assert status_entity.native_value == "PASSED"
+    assert status_entity.extra_state_attributes == {
+        "device": "nvme0",
+        "model": "Samsung SSD",
+        "serial_number": "S123",
+    }
+    assert temperature_entity.available is True
+    assert temperature_entity.native_value == 41
+
+
+def test_smart_sensor_unavailable_when_device_or_property_missing(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART disk sensors should be unavailable when their row or field is absent."""
+    entry = make_config_entry()
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {"smart": [{"device": "nvme0", "status": "PASSED"}]}
+
+    desc = MagicMock()
+    desc.key = "smart.ada0.status"
+    desc.name = "SMART ada0 Status"
+    sensor = OPNsenseSmartSensor(
+        config_entry=entry,
+        coordinator=coordinator,
+        entity_description=desc,
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.smart_ada0_status"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+    sensor._handle_coordinator_update()
+    assert sensor.available is False
+
+    desc.key = "smart.nvme0.temperature"
+    sensor = OPNsenseSmartSensor(
+        config_entry=entry,
+        coordinator=coordinator,
+        entity_description=desc,
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.smart_nvme0_temperature"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+    sensor._handle_coordinator_update()
+    assert sensor.available is False
 
 
 @pytest.mark.parametrize(

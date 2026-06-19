@@ -47,7 +47,8 @@
           "sync_unbound": "Unbound blocklist switches",
           "sync_certificates": "Security certificate information",
           "sync_vnstat": "vnStat bandwidth usage",
-          "sync_speedtest": "Speedtest results"
+          "sync_speedtest": "Speedtest results",
+          "sync_smart": "SMART disk information"
         },
         "title": "Choose what items to sync"
       },
@@ -86,6 +87,7 @@
           "sync_telemetry": "Basic telemetry data",
           "sync_vnstat": "vnStat bandwidth usage",
           "sync_speedtest": "Speedtest results",
+          "sync_smart": "SMART disk information",
           "sync_vpn": "VPN information and switches",
           "sync_firmware_updates": "Firmware updates",
           "sync_carp": "CARP information",

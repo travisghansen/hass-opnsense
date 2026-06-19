@@ -24,6 +24,7 @@ from .const import (
     CONF_SYNC_INTERFACES,
     CONF_SYNC_NOTICES,
     CONF_SYNC_SERVICES,
+    CONF_SYNC_SMART,
     CONF_SYNC_SPEEDTEST,
     CONF_SYNC_TELEMETRY,
     CONF_SYNC_UNBOUND,
@@ -156,6 +157,10 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             categories.append({"function": "get_vnstat", "state_key": "vnstat"})
         if config.get(CONF_SYNC_SPEEDTEST, DEFAULT_SYNC_OPTION_VALUE):
             categories.append({"function": "get_speedtest", "state_key": "speedtest"})
+        if config.get(CONF_SYNC_SMART, DEFAULT_SYNC_OPTION_VALUE) and hasattr(
+            self._client, "get_smart"
+        ):
+            categories.append({"function": "get_smart", "state_key": "smart"})
         if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):
             categories.extend(
                 [
