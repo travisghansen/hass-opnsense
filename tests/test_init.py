@@ -449,6 +449,55 @@ async def test_async_update_listener_reload_and_remove(
 
 
 @pytest.mark.asyncio
+async def test_async_update_listener_uses_smart_false_default_for_entity_pruning(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Missing SMART sync config should prune previously registered SMART entities."""
+    entry = make_config_entry(
+        data={init_mod.CONF_DEVICE_UNIQUE_ID: "dev1"},
+        unique_id="u123",
+    )
+    setattr(entry.runtime_data, init_mod.SHOULD_RELOAD, True)
+    hass = ph_hass
+    hass.config_entries.async_reload = AsyncMock()
+    hass.data = {}
+
+    smart_entity = MagicMock()
+    smart_entity.entity_id = "sensor.opnsense_smart_nvme0_status"
+    smart_entity.unique_id = f"{entry.unique_id}_smart_nvme0_status"
+    telemetry_entity = MagicMock()
+    telemetry_entity.entity_id = "sensor.opnsense_cpu"
+    telemetry_entity.unique_id = f"{entry.unique_id}_telemetry_cpu"
+
+    entity_registry = MagicMock()
+    entity_registry.async_remove = MagicMock()
+    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(
+        init_mod.er,
+        "async_entries_for_config_entry",
+        lambda registry, config_entry_id: [smart_entity, telemetry_entity],
+    )
+
+    device_registry = MagicMock()
+    device_registry.async_remove_device = MagicMock()
+    monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: device_registry)
+    monkeypatch.setattr(
+        init_mod.dr,
+        "async_entries_for_config_entry",
+        lambda registry, config_entry_id: [],
+    )
+
+    if not hasattr(hass, "async_create_task"):
+        hass.async_create_task = MagicMock()
+
+    await init_mod._async_update_listener(hass, entry)
+
+    entity_registry.async_remove.assert_called_once_with(smart_entity.entity_id)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("dt_enabled", "via_device_id", "expect_removed"),
     [

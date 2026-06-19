@@ -45,6 +45,7 @@ from .const import (
     DEFAULT_TLS_INSECURE,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
+    GRANULAR_SYNC_DEFAULTS,
     GRANULAR_SYNC_PREFIX,
     LOADED_PLATFORMS,
     OPNSENSE_CLIENT,
@@ -78,7 +79,8 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
         # _LOGGER.debug("[async_update_listener] uid_prefix: %s", uid_prefix)
         removal_prefixes: list[str] = []
         for item, prefix in GRANULAR_SYNC_PREFIX.items():
-            if not entry.data.get(item, DEFAULT_SYNC_OPTION_VALUE):
+            default = GRANULAR_SYNC_DEFAULTS.get(item, DEFAULT_SYNC_OPTION_VALUE)
+            if not entry.data.get(item, default):
                 removal_prefixes.extend(prefix)
         _LOGGER.debug("[async_update_listener] removal_prefixes: %s", removal_prefixes)
 
