@@ -62,17 +62,27 @@ def make_coord(data: Any) -> Any:
     return m
 
 
+def make_carp_config_entry(
+    make_config_entry: Callable[..., MockConfigEntry],
+    coordinator: Any,
+    data: dict[str, Any] | None = None,
+) -> MockConfigEntry:
+    """Create a config entry with CARP test coordinator runtime data."""
+    config_entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1", **(data or {})},
+        title="OPNsenseTest",
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    return config_entry
+
+
 def make_carp_maintenance_switch(
     ph_hass: HomeAssistant,
     make_config_entry: Callable[..., MockConfigEntry],
     coordinator: Any,
 ) -> OPNsenseCarpMaintenanceSwitch:
     """Create a CARP maintenance switch entity for tests."""
-    config_entry = make_config_entry(
-        data={CONF_DEVICE_UNIQUE_ID: "dev1"},
-        title="OPNsenseTest",
-    )
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    config_entry = make_carp_config_entry(make_config_entry, coordinator)
     entity = OPNsenseCarpMaintenanceSwitch(
         config_entry=config_entry,
         coordinator=coordinator,
@@ -87,6 +97,52 @@ def make_carp_maintenance_switch(
     return entity
 
 
+async def collect_setup_carp_switches(
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    coordinator: Any,
+    *,
+    config_data: dict[str, Any] | None = None,
+    firmware: Any = "26.1.1",
+) -> list[OPNsenseCarpMaintenanceSwitch]:
+    """Run switch setup and return CARP maintenance switches."""
+    calls: dict[str, list[Any]] = {}
+
+    def fake_add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Capture switch entities emitted by setup.
+
+        Args:
+            entities: Switch entities emitted by setup.
+            _update_before_add: Whether HA should refresh entities before adding them.
+        """
+        calls["entities"] = list(entities)
+
+    coordinator.data = {
+        "carp": {"status_summary": {"maintenance_mode": False, "enabled": True}},
+        "host_firmware_version": firmware,
+    }
+    config_entry = make_carp_config_entry(
+        make_config_entry,
+        coordinator,
+        {
+            CONF_SYNC_FIREWALL_AND_NAT: False,
+            CONF_SYNC_SERVICES: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_UNBOUND: False,
+            **(config_data or {}),
+        },
+    )
+
+    await switch_mod.async_setup_entry(
+        ph_hass, config_entry, cast("AddEntitiesCallback", fake_add_entities)
+    )
+    return [
+        entity
+        for entity in calls.get("entities", [])
+        if isinstance(entity, OPNsenseCarpMaintenanceSwitch)
+    ]
+
+
 @pytest.mark.asyncio
 async def test_compile_carp_maintenance_switch(
     coordinator: MagicMock,
@@ -94,11 +150,7 @@ async def test_compile_carp_maintenance_switch(
 ) -> None:
     """CARP maintenance switch should compile when CARP summary data exists."""
     state = {"carp": {"status_summary": {"maintenance_mode": False, "enabled": True}}}
-    config_entry = make_config_entry(
-        data={CONF_DEVICE_UNIQUE_ID: "dev1"},
-        title="OPNsenseTest",
-    )
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    config_entry = make_carp_config_entry(make_config_entry, coordinator)
 
     entities = await _compile_carp_maintenance_switch(config_entry, coordinator, state)
 
@@ -114,11 +166,7 @@ async def test_compile_carp_maintenance_switch_skips_missing_summary(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """CARP maintenance switch should not compile without CARP summary data."""
-    config_entry = make_config_entry(
-        data={CONF_DEVICE_UNIQUE_ID: "dev1"},
-        title="OPNsenseTest",
-    )
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    config_entry = make_carp_config_entry(make_config_entry, coordinator)
 
     entities = await _compile_carp_maintenance_switch(config_entry, coordinator, {"carp": {}})
 
@@ -154,43 +202,12 @@ async def test_async_setup_entry_carp_maintenance_switch_sync_gate(
     expected_count: int,
 ) -> None:
     """CARP maintenance switch should follow the CARP sync flag."""
-    calls: dict[str, list[Any]] = {}
-
-    def fake_add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
-        """Capture switch entities emitted by setup.
-
-        Args:
-            entities: Switch entities emitted by setup.
-            _update_before_add: Whether HA should refresh entities before adding them.
-        """
-        calls["entities"] = list(entities)
-
-    coordinator.data = {
-        "carp": {"status_summary": {"maintenance_mode": False, "enabled": True}},
-        "host_firmware_version": "26.1.1",
-    }
-    config_entry = make_config_entry(
-        data={
-            CONF_DEVICE_UNIQUE_ID: "dev1",
-            CONF_SYNC_FIREWALL_AND_NAT: False,
-            CONF_SYNC_SERVICES: False,
-            CONF_SYNC_VPN: False,
-            CONF_SYNC_UNBOUND: False,
-            **config_data,
-        },
-        title="OPNsenseTest",
+    carp_switches = await collect_setup_carp_switches(
+        ph_hass,
+        make_config_entry,
+        coordinator,
+        config_data=config_data,
     )
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-
-    await switch_mod.async_setup_entry(
-        ph_hass, config_entry, cast("AddEntitiesCallback", fake_add_entities)
-    )
-
-    carp_switches = [
-        entity
-        for entity in calls.get("entities", [])
-        if isinstance(entity, OPNsenseCarpMaintenanceSwitch)
-    ]
     assert len(carp_switches) == expected_count
 
 
@@ -210,42 +227,12 @@ async def test_async_setup_entry_carp_maintenance_switch_firmware_gate(
     expected_count: int,
 ) -> None:
     """CARP maintenance switch should only compile for supported firmware."""
-    calls: dict[str, list[Any]] = {}
-
-    def fake_add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
-        """Capture switch entities emitted by setup.
-
-        Args:
-            entities: Switch entities emitted by setup.
-            _update_before_add: Whether HA should refresh entities before adding them.
-        """
-        calls["entities"] = list(entities)
-
-    coordinator.data = {
-        "carp": {"status_summary": {"maintenance_mode": False, "enabled": True}},
-        "host_firmware_version": firmware,
-    }
-    config_entry = make_config_entry(
-        data={
-            CONF_DEVICE_UNIQUE_ID: "dev1",
-            CONF_SYNC_FIREWALL_AND_NAT: False,
-            CONF_SYNC_SERVICES: False,
-            CONF_SYNC_VPN: False,
-            CONF_SYNC_UNBOUND: False,
-        },
-        title="OPNsenseTest",
+    carp_switches = await collect_setup_carp_switches(
+        ph_hass,
+        make_config_entry,
+        coordinator,
+        firmware=firmware,
     )
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-
-    await switch_mod.async_setup_entry(
-        ph_hass, config_entry, cast("AddEntitiesCallback", fake_add_entities)
-    )
-
-    carp_switches = [
-        entity
-        for entity in calls.get("entities", [])
-        if isinstance(entity, OPNsenseCarpMaintenanceSwitch)
-    ]
     assert len(carp_switches) == expected_count
 
 
@@ -257,22 +244,7 @@ async def test_carp_maintenance_switch_state_and_toggle(
     """CARP maintenance switch should mirror summary state and toggle maintenance mode."""
     state = {"carp": {"status_summary": {"maintenance_mode": False, "enabled": True}}}
     coordinator = make_coord(state)
-    config_entry = make_config_entry(
-        data={CONF_DEVICE_UNIQUE_ID: "dev1"},
-        title="OPNsenseTest",
-    )
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    entity = OPNsenseCarpMaintenanceSwitch(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=SwitchEntityDescription(
-            key="carp.maintenance_mode",
-            name="CARP Persistent Maintenance Mode",
-        ),
-    )
-    entity.hass = ph_hass
-    entity.entity_id = "switch.carp_maintenance_mode"
-    stub_async_write_ha_state(entity)
+    entity = make_carp_maintenance_switch(ph_hass, make_config_entry, coordinator)
     entity._client = MagicMock()
     entity._client.toggle_carp_maintenance_mode = AsyncMock(return_value=True)
 
@@ -317,86 +289,39 @@ async def test_carp_maintenance_switch_ignores_updates_during_delay(
 
 
 @pytest.mark.asyncio
-async def test_carp_maintenance_switch_turn_on_refreshes_before_toggle(
+@pytest.mark.parametrize(
+    ("method_name", "initial_state", "refreshed_state"),
+    [
+        pytest.param("async_turn_on", False, True, id="turn-on-already-on-after-refresh"),
+        pytest.param("async_turn_off", True, False, id="turn-off-already-off-after-refresh"),
+    ],
+)
+async def test_carp_maintenance_switch_refreshes_before_toggle(
     ph_hass: HomeAssistant,
     make_config_entry: Callable[..., MockConfigEntry],
+    method_name: str,
+    initial_state: bool,
+    refreshed_state: bool,
 ) -> None:
-    """CARP maintenance turn on should not toggle if refreshed state is already on."""
-    state = {"carp": {"status_summary": {"maintenance_mode": False, "enabled": True}}}
+    """CARP maintenance should not toggle when refreshed state already matches."""
+    state = {"carp": {"status_summary": {"maintenance_mode": initial_state, "enabled": True}}}
     coordinator = make_coord(state)
 
     async def refresh_state() -> None:
         """Set refreshed CARP maintenance state."""
-        state["carp"]["status_summary"]["maintenance_mode"] = True
+        state["carp"]["status_summary"]["maintenance_mode"] = refreshed_state
 
     coordinator.async_request_refresh = AsyncMock(side_effect=refresh_state)
-    config_entry = make_config_entry(
-        data={CONF_DEVICE_UNIQUE_ID: "dev1"},
-        title="OPNsenseTest",
-    )
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    entity = OPNsenseCarpMaintenanceSwitch(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=SwitchEntityDescription(
-            key="carp.maintenance_mode",
-            name="CARP Persistent Maintenance Mode",
-        ),
-    )
-    entity.hass = ph_hass
-    entity.entity_id = "switch.carp_maintenance_mode"
-    stub_async_write_ha_state(entity)
+    entity = make_carp_maintenance_switch(ph_hass, make_config_entry, coordinator)
     entity._client = MagicMock()
     entity._client.toggle_carp_maintenance_mode = AsyncMock(return_value=True)
     entity._handle_coordinator_update()
 
-    await entity.async_turn_on()
+    await getattr(entity, method_name)()
 
     coordinator.async_request_refresh.assert_awaited_once()
     entity._client.toggle_carp_maintenance_mode.assert_not_awaited()
-    assert entity.is_on is True
-    assert entity.delay_update is False
-
-
-@pytest.mark.asyncio
-async def test_carp_maintenance_switch_turn_off_refreshes_before_toggle(
-    ph_hass: HomeAssistant,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """CARP maintenance turn off should not toggle if refreshed state is already off."""
-    state = {"carp": {"status_summary": {"maintenance_mode": True, "enabled": True}}}
-    coordinator = make_coord(state)
-
-    async def refresh_state() -> None:
-        """Set refreshed CARP maintenance state."""
-        state["carp"]["status_summary"]["maintenance_mode"] = False
-
-    coordinator.async_request_refresh = AsyncMock(side_effect=refresh_state)
-    config_entry = make_config_entry(
-        data={CONF_DEVICE_UNIQUE_ID: "dev1"},
-        title="OPNsenseTest",
-    )
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    entity = OPNsenseCarpMaintenanceSwitch(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=SwitchEntityDescription(
-            key="carp.maintenance_mode",
-            name="CARP Persistent Maintenance Mode",
-        ),
-    )
-    entity.hass = ph_hass
-    entity.entity_id = "switch.carp_maintenance_mode"
-    stub_async_write_ha_state(entity)
-    entity._client = MagicMock()
-    entity._client.toggle_carp_maintenance_mode = AsyncMock(return_value=True)
-    entity._handle_coordinator_update()
-
-    await entity.async_turn_off()
-
-    coordinator.async_request_refresh.assert_awaited_once()
-    entity._client.toggle_carp_maintenance_mode.assert_not_awaited()
-    assert entity.is_on is False
+    assert entity.is_on is refreshed_state
     assert entity.delay_update is False
 
 
@@ -483,25 +408,12 @@ async def test_carp_maintenance_switch_failed_toggle_keeps_state(
 
 @pytest.mark.asyncio
 async def test_carp_maintenance_switch_unavailable_without_summary(
+    ph_hass: HomeAssistant,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """CARP maintenance switch should become unavailable without summary data."""
     coordinator = make_coord({"carp": {}})
-    config_entry = make_config_entry(
-        data={CONF_DEVICE_UNIQUE_ID: "dev1"},
-        title="OPNsenseTest",
-    )
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    entity = OPNsenseCarpMaintenanceSwitch(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=SwitchEntityDescription(
-            key="carp.maintenance_mode",
-            name="CARP Persistent Maintenance Mode",
-        ),
-    )
-    entity.entity_id = "switch.carp_maintenance_mode"
-    stub_async_write_ha_state(entity)
+    entity = make_carp_maintenance_switch(ph_hass, make_config_entry, coordinator)
 
     entity._handle_coordinator_update()
 
