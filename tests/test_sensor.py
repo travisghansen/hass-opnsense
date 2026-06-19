@@ -2288,6 +2288,76 @@ async def test_async_setup_entry_creates_disabled_smart_disk_sensors(
     assert temperature_entity.native_value == 41
 
 
+@pytest.mark.asyncio
+async def test_async_setup_entry_skips_smart_disk_sensors_by_default(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART disk sensors should require explicit sync opt-in."""
+    entry = make_config_entry(
+        {
+            "device_unique_id": "id",
+            CONF_SYNC_TELEMETRY: False,
+            CONF_SYNC_VNSTAT: False,
+            CONF_SYNC_CERTIFICATES: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_GATEWAYS: False,
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_DHCP_LEASES: False,
+            CONF_SYNC_SPEEDTEST: False,
+        }
+    )
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {"smart": [{"device": "nvme0", "status": "PASSED", "temperature": 37}]}
+    setattr(entry.runtime_data, COORDINATOR, coordinator)
+
+    created: list = []
+
+    def add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Add entities.
+
+        Args:
+            entities: Entities provided by pytest or the test case.
+        """
+        created.extend(entities)
+
+    await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
+
+    assert not any(isinstance(entity, OPNsenseSmartSensor) for entity in created)
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_skips_malformed_smart_values(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART disk sensors should only be created for usable value types."""
+    entry = make_config_entry({"device_unique_id": "id", CONF_SYNC_SMART: True})
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {
+        "smart": [
+            {"device": "nvme0", "status": ["PASSED"], "temperature": []},
+            {"device": "ada0", "status": "", "temperature": {}},
+            {"device": "da0", "status": "PASSED", "temperature": False},
+        ]
+    }
+    setattr(entry.runtime_data, COORDINATOR, coordinator)
+
+    created: list = []
+
+    def add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Add entities.
+
+        Args:
+            entities: Entities provided by pytest or the test case.
+        """
+        created.extend(entities)
+
+    await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
+
+    smart_entities = [entity for entity in created if isinstance(entity, OPNsenseSmartSensor)]
+    assert {entity.entity_description.key for entity in smart_entities} == {"smart.da0.status"}
+
+
 def test_smart_sensor_unavailable_when_device_or_property_missing(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
@@ -2320,6 +2390,43 @@ def test_smart_sensor_unavailable_when_device_or_property_missing(
     sensor.entity_id = "sensor.smart_nvme0_temperature"
     object.__setattr__(sensor, "async_write_ha_state", lambda: None)
     sensor._handle_coordinator_update()
+    assert sensor.available is False
+
+
+@pytest.mark.parametrize(
+    ("value", "key"),
+    [
+        (["PASSED"], "smart.nvme0.status"),
+        ([], "smart.nvme0.temperature"),
+        ({}, "smart.nvme0.temperature"),
+        (False, "smart.nvme0.temperature"),
+        ("unknown", "smart.nvme0.temperature"),
+    ],
+)
+def test_smart_sensor_unavailable_when_property_malformed(
+    value: Any,
+    key: str,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART disk sensors should be unavailable for malformed values."""
+    entry = make_config_entry()
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    prop_name = key.split(".")[2]
+    coordinator.data = {"smart": [{"device": "nvme0", prop_name: value}]}
+
+    desc = MagicMock()
+    desc.key = key
+    desc.name = "SMART nvme0"
+    sensor = OPNsenseSmartSensor(
+        config_entry=entry,
+        coordinator=coordinator,
+        entity_description=desc,
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.smart_nvme0"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+    sensor._handle_coordinator_update()
+
     assert sensor.available is False
 
 

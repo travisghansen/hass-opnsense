@@ -41,6 +41,7 @@ from .const import (
     DATA_PACKETS,
     DATA_RATE_PACKETS_PER_SECOND,
     DEFAULT_SYNC_OPTION_VALUE,
+    DEFAULT_SYNC_SMART,
     OPNSENSE_CLIENT,
     STATIC_CERTIFICATE_SENSORS,
     STATIC_TELEMETRY_SENSORS,
@@ -348,6 +349,31 @@ def _smart_device_slug(device_name: str) -> str:
     return device_slug or "unknown"
 
 
+def _parse_smart_temperature(value: Any) -> int | float | None:
+    """Return a numeric SMART temperature value.
+
+    Args:
+        value: Raw SMART temperature value from the backend client.
+
+    Returns:
+        int | float | None: Numeric temperature, or ``None`` when malformed.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return value
+    if not isinstance(value, str):
+        return None
+
+    value_match = re.search(r"-?\d+(?:\.\d+)?", value)
+    if value_match is None:
+        return None
+    parsed_value = float(value_match.group(0))
+    if parsed_value.is_integer():
+        return int(parsed_value)
+    return parsed_value
+
+
 def _smart_property_value(device: Mapping[str, Any], prop_name: str) -> Any:
     """Return a SMART sensor property value.
 
@@ -358,8 +384,17 @@ def _smart_property_value(device: Mapping[str, Any], prop_name: str) -> Any:
     Returns:
         Any: SMART value when present, otherwise ``None``.
     """
-    value = device.get(prop_name)
-    if prop_name in device and value is not None and value != "":
+    if prop_name not in device:
+        return None
+
+    value = device[prop_name]
+    if prop_name == "status":
+        if not isinstance(value, str) or not value.strip():
+            return None
+        return value.strip()
+    if prop_name == "temperature":
+        return _parse_smart_temperature(value)
+    if value is not None and value != "":
         return value
     return None
 
@@ -1005,7 +1040,7 @@ async def async_setup_entry(
         entities.extend(await _compile_vnstat_sensors(config_entry, coordinator, state))
     if config.get(CONF_SYNC_SPEEDTEST, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_speedtest_sensors(config_entry, coordinator, state))
-    if config.get(CONF_SYNC_SMART, DEFAULT_SYNC_OPTION_VALUE):
+    if config.get(CONF_SYNC_SMART, DEFAULT_SYNC_SMART):
         entities.extend(await _compile_smart_sensors(config_entry, coordinator, state))
     if config.get(CONF_SYNC_CERTIFICATES, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_static_certificate_sensors(config_entry, coordinator))
@@ -1257,16 +1292,6 @@ class OPNsenseSmartSensor(OPNsenseSensor):
             self._available = False
             self.async_write_ha_state()
             return
-
-        if prop_name == "temperature" and isinstance(value, str):
-            value_match = re.search(r"-?\d+(?:\.\d+)?", value)
-            if value_match is None:
-                self._available = False
-                self.async_write_ha_state()
-                return
-            value = float(value_match.group(0))
-            if value.is_integer():
-                value = int(value)
 
         self._available = True
         self._attr_native_value = value

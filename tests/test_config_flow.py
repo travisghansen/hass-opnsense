@@ -16,6 +16,7 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from yarl import URL
 
+from custom_components.opnsense.const import CONF_SYNC_SMART, CONF_SYNC_TELEMETRY
 from tests.utilities import patch_client_factory
 
 cf_mod = importlib.import_module("custom_components.opnsense.config_flow")
@@ -472,6 +473,8 @@ def test_build_user_input_and_granular_and_options_schemas_defaults() -> None:
     # every granular item should be present (defaults applied)
     for item in cf_mod.GRANULAR_SYNC_ITEMS:
         assert item in gvalidated
+    assert gvalidated[CONF_SYNC_SMART] is False
+    assert gvalidated[CONF_SYNC_TELEMETRY] is True
 
     # options init schema: test clamping/coercion for scan interval
     oschema = cf_mod._build_options_init_schema(user_input=None)
