@@ -55,8 +55,8 @@
             </div>
         </aside>
         <h2>
-            <span class="text">793 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">710<span class="text"> run</span></button>
+            <span class="text">792 statements &nbsp;</span>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">709<span class="text"> run</span></button>
             <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">83<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
             <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">56<span class="text"> partial</span></button>
@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_a139522e3a23c96e_update_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.14.1">coverage.py v7.14.1</a>,
-            created at 2026-06-20 17:34 +0000
+            created at 2026-06-20 22:09 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -1154,13 +1154,13 @@
     <p class="run run2"><span class="n"><a id="t1070" href="#t1070">1070</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t1071" href="#t1071">1071</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">_rule_id</span><span class="op">:</span> <span class="nam">str</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_opnsense_get_rule_id</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t1072" href="#t1072">1072</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">_nat_rule_type</span><span class="op">:</span> <span class="nam">str</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_get_nat_rule_type</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t1073" href="#t1073">1073</a></span><span class="t">        <span class="nam">_LOGGER</span><span class="op">.</span><span class="nam">debug</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t1074" href="#t1074">1074</a></span><span class="t">            <span class="str">"[OPNsenseNATRuleSwitch init] Name: %s, key: %s, rule_id: %s, rule_type: %s"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t1075" href="#t1075">1075</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">name</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t1076" href="#t1076">1076</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">entity_description</span><span class="op">.</span><span class="nam">key</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t1077" href="#t1077">1077</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">_rule_id</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t1078" href="#t1078">1078</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">_nat_rule_type</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t1079" href="#t1079">1079</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t1073" href="#t1073">1073</a></span><span class="t">        <span class="com"># _LOGGER.debug(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t1074" href="#t1074">1074</a></span><span class="t">        <span class="com">#     "[OPNsenseNATRuleSwitch init] Name: %s, key: %s, rule_id: %s, rule_type: %s",</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t1075" href="#t1075">1075</a></span><span class="t">        <span class="com">#     self.name,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t1076" href="#t1076">1076</a></span><span class="t">        <span class="com">#     self.entity_description.key,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t1077" href="#t1077">1077</a></span><span class="t">        <span class="com">#     self._rule_id,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t1078" href="#t1078">1078</a></span><span class="t">        <span class="com">#     self._nat_rule_type,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t1079" href="#t1079">1079</a></span><span class="t">        <span class="com"># )</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1080" href="#t1080">1080</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t1081" href="#t1081">1081</a></span><span class="t">    <span class="key">def</span> <span class="nam">_get_nat_rule_type</span><span class="op">(</span><span class="nam">self</span><span class="op">)</span> <span class="op">-></span> <span class="nam">str</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1082" href="#t1082">1082</a></span><span class="t">        <span class="str">"""Get the NAT rule type from the entity description.</span>&nbsp;</span><span class="r"></span></p>
@@ -1966,7 +1966,7 @@
             <a class="nav" href="z_a139522e3a23c96e_update_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.14.1">coverage.py v7.14.1</a>,
-            created at 2026-06-20 17:34 +0000
+            created at 2026-06-20 22:09 +0000
         </p>
     </div>
 </footer>
