@@ -15,6 +15,7 @@ from .const import (
     ATTR_NAT_OUTBOUND,
     ATTR_NAT_PORT_FORWARD,
     ATTR_UNBOUND_BLOCKLIST,
+    CONF_SYNC_CARP,
     CONF_SYNC_FIREWALL_AND_NAT,
     CONF_SYNC_SERVICES,
     CONF_SYNC_UNBOUND,
@@ -24,7 +25,7 @@ from .const import (
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity
-from .helpers import dict_get
+from .helpers import coerce_bool, dict_get
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -260,6 +261,41 @@ async def _compile_vpn_switches(
                 )
                 entities.append(entity)
     return entities
+
+
+async def _compile_carp_maintenance_switch(
+    config_entry: ConfigEntry,
+    coordinator: OPNsenseDataUpdateCoordinator,
+    state: MutableMapping[str, Any],
+) -> list:
+    """Compile the CARP persistent maintenance mode switch.
+
+    Args:
+        config_entry: The Home Assistant config entry.
+        coordinator: The data update coordinator.
+        state: The current state data from OPNsense.
+
+    Returns:
+        list: A list containing one OPNsenseCarpMaintenanceSwitch entity when
+            CARP summary data is available.
+    """
+    status_summary = dict_get(state, "carp.status_summary")
+    if not isinstance(status_summary, MutableMapping):
+        return []
+
+    return [
+        OPNsenseCarpMaintenanceSwitch(
+            config_entry=config_entry,
+            coordinator=coordinator,
+            entity_description=SwitchEntityDescription(
+                key="carp.maintenance_mode",
+                name="CARP Persistent Maintenance Mode",
+                icon="mdi:server-network",
+                device_class=SwitchDeviceClass.SWITCH,
+                entity_registry_enabled_default=False,
+            ),
+        )
+    ]
 
 
 async def _compile_static_unbound_switch_legacy(
@@ -623,6 +659,28 @@ async def async_setup_entry(
         entities.extend(await _compile_service_switches(config_entry, coordinator, state))
     if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_vpn_switches(config_entry, coordinator, state))
+    if config.get(CONF_SYNC_CARP, DEFAULT_SYNC_OPTION_VALUE):
+        firmware = state.get("host_firmware_version")
+        if firmware:
+            try:
+                if awesomeversion.AwesomeVersion(firmware) >= awesomeversion.AwesomeVersion(
+                    "26.1.1"
+                ):
+                    entities.extend(
+                        await _compile_carp_maintenance_switch(config_entry, coordinator, state)
+                    )
+            except (
+                awesomeversion.exceptions.AwesomeVersionCompareException,
+                TypeError,
+                ValueError,
+            ) as e:
+                _LOGGER.error(
+                    "Error comparing firmware version %s when determining whether to create "
+                    "CARP maintenance switch. %s: %s",
+                    firmware,
+                    type(e).__name__,
+                    e,
+                )
     if config.get(CONF_SYNC_UNBOUND, DEFAULT_SYNC_OPTION_VALUE):
         firmware = state.get("host_firmware_version")
         if firmware:
@@ -730,6 +788,136 @@ class OPNsenseSwitch(OPNsenseEntity, SwitchEntity):
         self._delay_update_remove = async_call_later(
             hass=self.hass, delay=self._delay_seconds, action=_clear
         )
+
+
+class OPNsenseCarpMaintenanceSwitch(OPNsenseSwitch):
+    """Class for the CARP persistent maintenance mode switch."""
+
+    def __init__(
+        self,
+        config_entry: ConfigEntry,
+        coordinator: OPNsenseDataUpdateCoordinator,
+        entity_description: SwitchEntityDescription,
+    ) -> None:
+        """Initialize CARP maintenance switch state."""
+        super().__init__(
+            config_entry=config_entry,
+            coordinator=coordinator,
+            entity_description=entity_description,
+        )
+        self._toggle_in_flight: bool = False
+
+    def _opnsense_get_status_summary(self) -> MutableMapping[str, Any] | None:
+        """Get the CARP status summary from the coordinator.
+
+        Returns:
+            MutableMapping[str, Any] | None: The CARP status summary if available.
+        """
+        state: dict[str, Any] = self.coordinator.data
+        if not isinstance(state, MutableMapping):
+            return None
+        status_summary = dict_get(state, "carp.status_summary")
+        if not isinstance(status_summary, MutableMapping):
+            return None
+        return status_summary
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle coordinator update for the CARP maintenance switch."""
+        if self.delay_update:
+            _LOGGER.debug("Skipping coordinator update for CARP switch %s due to delay", self.name)
+            return
+        status_summary = self._opnsense_get_status_summary()
+        if status_summary is None:
+            self._available = False
+            self.async_write_ha_state()
+            return
+
+        state = status_summary.get("state")
+        maintenance_mode = coerce_bool(status_summary.get("maintenance_mode"))
+        if (isinstance(state, str) and state.lower() in {"unknown", "unavailable"}) or (
+            maintenance_mode is None
+        ):
+            self._available = False
+            self._attr_is_on = False
+            self.async_write_ha_state()
+            return
+
+        self._attr_is_on = maintenance_mode
+        self._available = True
+        self._attr_extra_state_attributes = {
+            "state": status_summary.get("state"),
+            "enabled": status_summary.get("enabled"),
+            "demotion": status_summary.get("demotion"),
+            "status_message": status_summary.get("status_message"),
+            "vip_count": status_summary.get("vip_count"),
+            "master_count": status_summary.get("master_count"),
+            "backup_count": status_summary.get("backup_count"),
+            "other_count": status_summary.get("other_count"),
+            "interfaces": status_summary.get("interfaces"),
+        }
+        self.async_write_ha_state()
+
+    async def _async_refresh_carp_state(self) -> None:
+        """Refresh CARP state before deciding whether the toggle endpoint is needed."""
+        self.delay_update = False
+        await self.coordinator.async_request_refresh()
+        self._handle_coordinator_update()
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn CARP persistent maintenance mode on."""
+        if self._toggle_in_flight:
+            return
+        if self.delay_update:
+            return
+        if self._client is None or not hasattr(self._client, "toggle_carp_maintenance_mode"):
+            return
+        self._toggle_in_flight = True
+        try:
+            await self._async_refresh_carp_state()
+            if not self.available or self.is_on:
+                return
+            result = await self._client.toggle_carp_maintenance_mode()
+            if result:
+                _LOGGER.info("Turned on CARP persistent maintenance mode")
+                self._attr_is_on = True
+                self.async_write_ha_state()
+                self.delay_update = True
+            else:
+                _LOGGER.error("Failed to turn on CARP persistent maintenance mode")
+        finally:
+            self._toggle_in_flight = False
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn CARP persistent maintenance mode off."""
+        if self._toggle_in_flight:
+            return
+        if self.delay_update:
+            return
+        if self._client is None or not hasattr(self._client, "toggle_carp_maintenance_mode"):
+            return
+        self._toggle_in_flight = True
+        try:
+            await self._async_refresh_carp_state()
+            if not self.available or not self.is_on:
+                return
+            result = await self._client.toggle_carp_maintenance_mode()
+            if result:
+                _LOGGER.info("Turned off CARP persistent maintenance mode")
+                self._attr_is_on = False
+                self.async_write_ha_state()
+                self.delay_update = True
+            else:
+                _LOGGER.error("Failed to turn off CARP persistent maintenance mode")
+        finally:
+            self._toggle_in_flight = False
+
+    @property
+    def icon(self) -> str | None:
+        """Return the icon for the entity."""
+        if self.available and self.is_on:
+            return "mdi:server-network-off"
+        return super().icon
 
 
 class OPNsenseFirewallRuleSwitch(OPNsenseSwitch):
