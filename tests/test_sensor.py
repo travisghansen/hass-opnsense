@@ -2437,6 +2437,50 @@ async def test_async_setup_entry_creates_smart_temperature_sensors_from_smart_in
 
 
 @pytest.mark.asyncio
+async def test_async_setup_entry_keeps_smart_entities_when_smart_info_present_but_empty(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART entities should be created when `smart_info` exists and update to available."""
+    smart_entities = await _async_setup_smart_entities(
+        make_config_entry,
+        {CONF_SYNC_SMART: True},
+        {
+            "smart": [
+                {"device": "nvme0"},
+                {"device": "ada0"},
+            ],
+            "smart_info": {},
+        },
+    )
+
+    assert {entity.entity_description.key for entity in smart_entities} == {
+        "smart.nvme0.temperature",
+        "smart.ada0.temperature",
+    }
+
+    for entity in smart_entities:
+        _prepare_smart_sensor(entity)
+        entity._handle_coordinator_update()
+        assert entity.available is False
+
+    for entity in smart_entities:
+        entity.coordinator.data = {
+            "smart": [
+                {"device": "nvme0"},
+                {"device": "ada0"},
+            ],
+            "smart_info": {
+                "nvme0": {"temperature": {"current": 71}},
+                "ada0": {"temperature": {"current": 42}},
+            },
+        }
+        entity._handle_coordinator_update()
+
+    assert {entity.available for entity in smart_entities} == {True}
+    assert {entity.native_value for entity in smart_entities} == {71, 42}
+
+
+@pytest.mark.asyncio
 async def test_async_setup_entry_keeps_smart_entities_when_initial_smart_info_missing(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
@@ -2506,10 +2550,27 @@ async def test_compile_smart_sensors_skips_invalid_state_shapes(
 
 
 @pytest.mark.asyncio
-async def test_compile_smart_sensors_creates_entities_without_initial_smart_info(
+async def test_compile_smart_sensors_creates_entities_when_smart_info_present(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """SMART sensor compilation should create entities from discovered SMART rows."""
+    """SMART sensor compilation should create entities when `smart_info` exists."""
+    entry = make_config_entry({"device_unique_id": "id", CONF_SYNC_SMART: True})
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+
+    entities = await sensor_module._compile_smart_sensors(
+        entry,
+        coordinator,
+        {"smart": [{"device": "nvme0"}], "smart_info": {}},
+    )
+
+    assert [entity.entity_description.key for entity in entities] == ["smart.nvme0.temperature"]
+
+
+@pytest.mark.asyncio
+async def test_compile_smart_sensors_skips_when_smart_info_key_missing(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART sensor compilation should not run when `smart_info` state is absent."""
     entry = make_config_entry({"device_unique_id": "id", CONF_SYNC_SMART: True})
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
 
@@ -2519,7 +2580,7 @@ async def test_compile_smart_sensors_creates_entities_without_initial_smart_info
         {"smart": [{"device": "nvme0"}]},
     )
 
-    assert [entity.entity_description.key for entity in entities] == ["smart.nvme0.temperature"]
+    assert entities == []
 
 
 @pytest.mark.asyncio

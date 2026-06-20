@@ -350,6 +350,8 @@ async def _compile_smart_sensors(
     """
     if not isinstance(state, MutableMapping):
         return []
+    if "smart_info" not in state:
+        return []
     smart_devices = state.get("smart")
     if not isinstance(smart_devices, list):
         return []
