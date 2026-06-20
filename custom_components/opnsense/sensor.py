@@ -1189,19 +1189,34 @@ class OPNsenseSmartSensor(OPNsenseSensor):
             self.async_write_ha_state()
             return
 
-        value: Any = None
-        temperature = device_info.get("temperature")
-        if isinstance(temperature, Mapping) and not isinstance(temperature.get("current"), bool):
-            current_temperature = temperature.get("current")
-            if isinstance(current_temperature, int | float):
-                value = current_temperature
-        if value is None:
+        temperature_entry = device_info.get("temperature")
+        if not isinstance(temperature_entry, (Mapping, int, float)):
+            self._available = False
+            self.async_write_ha_state()
+            return
+
+        if isinstance(temperature_entry, bool):
+            self._available = False
+            self.async_write_ha_state()
+            return
+
+        temperature: int | float | None = None
+        if isinstance(temperature_entry, int | float):
+            temperature = temperature_entry
+        elif isinstance(temperature_entry, Mapping):
+            current_temp = temperature_entry.get("current")
+            if isinstance(current_temp, int | float):
+                temperature = current_temp
+                if isinstance(temperature, bool):
+                    temperature = None
+
+        if temperature is None:
             self._available = False
             self.async_write_ha_state()
             return
 
         self._available = True
-        self._attr_native_value = value
+        self._attr_native_value = temperature
         self._attr_extra_state_attributes = {}
         for attr in ("device", "ident", "model", "serial_number", "serial", "type"):
             attr_value = smart_device.get(attr)

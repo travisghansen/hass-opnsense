@@ -172,7 +172,11 @@ async def test_async_setup_entry_creates_smart_status_problem_binary_sensors(
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord.data = {
         "smart": [
-            {"device": "nvme0", "ident": "SERIAL", "state": {"smart_status": {"passed": True}}},
+            {
+                "device": "nvme0",
+                "ident": "SERIAL",
+                "state": {"smart_status": {"passed": True}},
+            },
             {"device": "ada0", "state": {"smart_status": {"passed": False}}},
         ],
         "smart_info": {
@@ -184,10 +188,7 @@ async def test_async_setup_entry_creates_smart_status_problem_binary_sensors(
                 }
             },
             "ada0": {
-                "nvme_smart_health_information_log": {
-                    "critical_warning": 1,
-                    "media_errors": 2,
-                }
+                "nvme_smart_health_information_log": {"critical_warning": 1, "media_errors": 2}
             },
         },
     }
@@ -304,7 +305,10 @@ def _build_smart_status_binary_sensor(
         ({"smart": []}, "smart.nvme0.status.extra"),
         ({"smart": {}}, "smart.nvme0.status"),
         ({"smart": ["ignored", {"device": ""}]}, "smart.nvme0.status"),
-        ({"smart": [{"device": "nvme0", "state": {"smart_status": {}}}]}, "smart.nvme0.status"),
+        (
+            {"smart": [{"device": "nvme0", "state": {"smart_status": {}}}]},
+            "smart.nvme0.status",
+        ),
         (
             {"smart": [{"device": "nvme0", "state": {"smart_status": ""}}]},
             "smart.nvme0.status",
