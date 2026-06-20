@@ -6,6 +6,7 @@ and removal/unload behaviors for the hass-opnsense integration.
 
 from collections.abc import Callable
 import importlib
+import logging
 from typing import Any, Never, Self
 from unittest.mock import ANY, AsyncMock, MagicMock, call
 
@@ -74,6 +75,68 @@ def _patch_hass_async_create_clientsession(monkeypatch: pytest.MonkeyPatch) -> N
         lambda *a, **k: object(),
         raising=False,
     )
+
+
+def test_align_aiopnsense_log_level_mirrors_opnsense_when_unset() -> None:
+    """Aiopnsense should inherit the integration debug level when not configured."""
+    opnsense_logger = logging.getLogger("custom_components.opnsense")
+    aiopnsense_logger = logging.getLogger("aiopnsense")
+    aiopnsense_helper_logger = logging.getLogger("aiopnsense.helpers")
+    original_opnsense_level = opnsense_logger.level
+    original_aiopnsense_level = aiopnsense_logger.level
+    original_aiopnsense_helper_level = aiopnsense_helper_logger.level
+
+    try:
+        opnsense_logger.setLevel(logging.DEBUG)
+        aiopnsense_logger.setLevel(logging.NOTSET)
+        aiopnsense_helper_logger.setLevel(logging.NOTSET)
+
+        init_mod._align_aiopnsense_log_level()
+
+        assert aiopnsense_logger.level == logging.DEBUG
+        assert aiopnsense_helper_logger.getEffectiveLevel() == logging.DEBUG
+    finally:
+        opnsense_logger.setLevel(original_opnsense_level)
+        aiopnsense_logger.setLevel(original_aiopnsense_level)
+        aiopnsense_helper_logger.setLevel(original_aiopnsense_helper_level)
+
+
+def test_align_aiopnsense_log_level_keeps_explicit_aiopnsense_level() -> None:
+    """aiopnsense-specific logger configuration should remain authoritative."""
+    opnsense_logger = logging.getLogger("custom_components.opnsense")
+    aiopnsense_logger = logging.getLogger("aiopnsense")
+    original_opnsense_level = opnsense_logger.level
+    original_aiopnsense_level = aiopnsense_logger.level
+
+    try:
+        opnsense_logger.setLevel(logging.DEBUG)
+        aiopnsense_logger.setLevel(logging.WARNING)
+
+        init_mod._align_aiopnsense_log_level()
+
+        assert aiopnsense_logger.level == logging.WARNING
+    finally:
+        opnsense_logger.setLevel(original_opnsense_level)
+        aiopnsense_logger.setLevel(original_aiopnsense_level)
+
+
+def test_align_aiopnsense_log_level_leaves_both_loggers_unset() -> None:
+    """Unset loggers should continue to inherit the root logger level."""
+    opnsense_logger = logging.getLogger("custom_components.opnsense")
+    aiopnsense_logger = logging.getLogger("aiopnsense")
+    original_opnsense_level = opnsense_logger.level
+    original_aiopnsense_level = aiopnsense_logger.level
+
+    try:
+        opnsense_logger.setLevel(logging.NOTSET)
+        aiopnsense_logger.setLevel(logging.NOTSET)
+
+        init_mod._align_aiopnsense_log_level()
+
+        assert aiopnsense_logger.level == logging.NOTSET
+    finally:
+        opnsense_logger.setLevel(original_opnsense_level)
+        aiopnsense_logger.setLevel(original_aiopnsense_level)
 
 
 @pytest.mark.asyncio
@@ -364,22 +427,32 @@ async def test_async_migrate_entry_does_not_call_migrate_3_to_4_when_version_not
 async def test_async_setup_calls_services_and_handles_exceptions(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any, should_raise: Any
 ) -> None:
-    """async_setup should call async_setup_services; exceptions should propagate."""
+    """Verify ``async_setup`` invokes the service hook and propagates errors.
+
+    Args:
+        monkeypatch: Pytest monkeypatch fixture.
+        ph_hass: Home Assistant test instance.
+        should_raise: Whether the service hook should raise an error.
+    """
+    mock_align = MagicMock()
     if should_raise:
         mock_services = AsyncMock(side_effect=RuntimeError("fail"))
     else:
         mock_services = AsyncMock(return_value=None)
 
+    monkeypatch.setattr(init_mod, "_align_aiopnsense_log_level", mock_align)
     monkeypatch.setattr(init_mod, "async_setup_services", mock_services)
 
     if should_raise:
         with pytest.raises(RuntimeError):
             await init_mod.async_setup(ph_hass, {})
         mock_services.assert_awaited_once()
+        mock_align.assert_called_once_with()
     else:
         res = await init_mod.async_setup(ph_hass, {})
         assert res is True
         mock_services.assert_awaited_once()
+        mock_align.assert_called_once_with()
 
 
 @pytest.mark.asyncio

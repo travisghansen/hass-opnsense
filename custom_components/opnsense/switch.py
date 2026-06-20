@@ -942,9 +942,9 @@ class OPNsenseFirewallRuleSwitch(OPNsenseSwitch):
             entity_description=entity_description,
         )
         self._rule_id: str = self._opnsense_get_rule_id()
-        _LOGGER.debug(
-            "[OPNsenseFirewallRuleSwitch init] Name: %s, rule_id: %s", self.name, self._rule_id
-        )
+        # _LOGGER.debug(
+        #     "[OPNsenseFirewallRuleSwitch init] Name: %s, rule_id: %s", self.name, self._rule_id
+        # )
 
     def _opnsense_get_rule_id(self) -> str:
         """Get the rule ID from the entity description.
@@ -1004,14 +1004,14 @@ class OPNsenseFirewallRuleSwitch(OPNsenseSwitch):
         for name, attr in properties.items():
             self._attr_extra_state_attributes[name] = rule.get(attr, None)
         self.async_write_ha_state()
-        _LOGGER.debug(
-            "[OPNsenseFirewallRuleSwitch handle_coordinator_update] Name: %s, available: %s, is_on:"
-            " %s, extra_state_attributes: %s",
-            self.name,
-            self.available,
-            self.is_on,
-            self.extra_state_attributes,
-        )
+        # _LOGGER.debug(
+        #     "[OPNsenseFirewallRuleSwitch handle_coordinator_update] "
+        #     "Name: %s, available: %s, is_on: %s, extra_state_attributes: %s",
+        #     self.name,
+        #     self.available,
+        #     self.is_on,
+        #     self.extra_state_attributes,
+        # )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""
@@ -1117,7 +1117,7 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
             _LOGGER.debug("Skipping coordinator update for NAT switch %s due to delay", self.name)
             return
         rule = self._opnsense_get_rule()
-        _LOGGER.debug("[OPNsenseNATRuleSwitch handle_coordinator_update] fetched rule: %s", rule)
+        # _LOGGER.debug("[OPNsenseNATRuleSwitch handle_coordinator_update] fetched rule: %s", rule)
         if not rule:
             self._available = False
             self.async_write_ha_state()
@@ -1183,14 +1183,15 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
             self._attr_extra_state_attributes[name] = rule.get(attr, None)
 
         self.async_write_ha_state()
-        _LOGGER.debug(
-            "[OPNsenseNATRuleSwitch handle_coordinator_update] Name: %s, available: %s, is_on: %s, "
-            "extra_state_attributes: %s",
-            self.name,
-            self.available,
-            self.is_on,
-            self.extra_state_attributes,
-        )
+        # _LOGGER.debug(
+        #     "[OPNsenseNATRuleSwitch handle_coordinator_update] "
+        #     "Name: %s, available: %s, is_on: %s, "
+        #     "extra_state_attributes: %s",
+        #     self.name,
+        #     self.available,
+        #     self.is_on,
+        #     self.extra_state_attributes,
+        # )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""

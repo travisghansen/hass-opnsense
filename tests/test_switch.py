@@ -1648,6 +1648,94 @@ async def test_delay_skips_update_parametrized(
 
 
 @pytest.mark.asyncio
+async def test_nat_rule_switch_delay_skips_update(
+    coordinator: MagicMock,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Verify delayed NAT updates return early without mutating state.
+
+    Args:
+        coordinator: Mock OPNsense coordinator fixture.
+        ph_hass: Home Assistant test instance.
+        make_config_entry: Factory for Home Assistant config entries.
+    """
+    state = {
+        "firewall": {
+            "nat": {
+                "source_nat": {
+                    "nat1": {
+                        "uuid": "nat1",
+                        "description": "Source NAT Rule",
+                        "%interface": "wan",
+                        "enabled": "1",
+                    }
+                }
+            }
+        }
+    }
+    config_entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"},
+        options={CONF_SYNC_FIREWALL_AND_NAT: True},
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    coordinator.data = state
+
+    ents = await _compile_nat_source_rules_switches(config_entry, coordinator, state)
+    assert len(ents) == 1
+
+    ent = ents[0]
+    ent.hass = ph_hass
+    ent.coordinator = make_coord(state)
+    ent.entity_id = f"switch.{ent.entity_description.key}"
+    stub_async_write_ha_state(ent)
+    ent._attr_is_on = False
+    ent._available = True
+    ent._delay_update = True
+
+    ent._handle_coordinator_update()
+
+    assert ent.is_on is False
+    assert ent.available is True
+
+
+@pytest.mark.asyncio
+async def test_nat_rule_switch_missing_rule_marks_unavailable(
+    coordinator: MagicMock,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Verify a missing NAT rule marks the switch unavailable.
+
+    Args:
+        coordinator: Mock OPNsense coordinator fixture.
+        ph_hass: Home Assistant test instance.
+        make_config_entry: Factory for Home Assistant config entries.
+    """
+    state: dict[str, Any] = {"firewall": {"nat": {"source_nat": {}}}}
+    desc = SwitchEntityDescription(key="firewall.nat.source_nat.missing", name="Missing")
+    config_entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"},
+        options={CONF_SYNC_FIREWALL_AND_NAT: True},
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    ent = OPNsenseNATRuleSwitch(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=desc,
+    )
+    ent.hass = ph_hass
+    ent.coordinator = make_coord(state)
+    ent.entity_id = "switch.missing_nat_rule"
+    stub_async_write_ha_state(ent)
+    ent._available = True
+
+    ent._handle_coordinator_update()
+
+    assert ent.available is False
+
+
+@pytest.mark.asyncio
 async def test_compile_helpers_bad_input(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
