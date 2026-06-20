@@ -449,12 +449,12 @@ async def test_async_update_listener_reload_and_remove(
 
 
 @pytest.mark.asyncio
-async def test_async_update_listener_uses_smart_false_default_for_entity_pruning(
+async def test_async_update_listener_uses_shared_default_for_smart_entity_pruning(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Missing SMART sync config should prune previously registered SMART entities."""
+    """Missing SMART sync config should preserve registered SMART entities."""
     entry = make_config_entry(
         data={init_mod.CONF_DEVICE_UNIQUE_ID: "dev1"},
         unique_id="u123",
@@ -494,7 +494,7 @@ async def test_async_update_listener_uses_smart_false_default_for_entity_pruning
 
     await init_mod._async_update_listener(hass, entry)
 
-    entity_registry.async_remove.assert_called_once_with(smart_entity.entity_id)
+    entity_registry.async_remove.assert_not_called()
 
 
 @pytest.mark.asyncio

@@ -2358,10 +2358,10 @@ async def test_async_setup_entry_creates_disabled_smart_disk_sensors(
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_skips_smart_disk_sensors_by_default(
+async def test_async_setup_entry_creates_smart_disk_sensors_by_default(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """SMART disk sensors should require explicit sync opt-in."""
+    """SMART disk sensors should use the shared granular sync default."""
     smart_entities = await _async_setup_smart_entities(
         make_config_entry,
         {
@@ -2378,7 +2378,10 @@ async def test_async_setup_entry_skips_smart_disk_sensors_by_default(
         {"smart": [{"device": "nvme0", "status": "PASSED", "temperature": 37}]},
     )
 
-    assert smart_entities == []
+    assert {entity.entity_description.key for entity in smart_entities} == {
+        "smart.nvme0.status",
+        "smart.nvme0.temperature",
+    }
 
 
 @pytest.mark.asyncio

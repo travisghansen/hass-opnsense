@@ -473,10 +473,10 @@ def test_build_user_input_and_granular_and_options_schemas_defaults() -> None:
     # every granular item should be present (defaults applied)
     for item in cf_mod.GRANULAR_SYNC_ITEMS:
         assert item in gvalidated
-    assert gvalidated[CONF_SYNC_SMART] is False
-    assert gvalidated[CONF_SYNC_TELEMETRY] is True
-    gvalidated = gschema({CONF_SYNC_SMART: True})
     assert gvalidated[CONF_SYNC_SMART] is True
+    assert gvalidated[CONF_SYNC_TELEMETRY] is True
+    gvalidated = gschema({CONF_SYNC_SMART: False})
+    assert gvalidated[CONF_SYNC_SMART] is False
 
     # options init schema: test clamping/coercion for scan interval
     oschema = cf_mod._build_options_init_schema(user_input=None)

@@ -48,7 +48,6 @@ from .const import (
     DEFAULT_SYNC_OPTION_VALUE,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
-    GRANULAR_SYNC_DEFAULTS,
     GRANULAR_SYNC_ITEMS,
     OPNSENSE_MIN_FIRMWARE,
     SYNC_ITEMS_REQUIRING_PLUGIN,
@@ -691,13 +690,12 @@ def _build_granular_sync_schema(
     schema_dict: dict[Any, Any] = {}
 
     for conf in GRANULAR_SYNC_ITEMS:
-        default = GRANULAR_SYNC_DEFAULTS.get(conf, DEFAULT_SYNC_OPTION_VALUE)
         schema_dict[
             vol.Optional(
                 conf,
                 default=user_input.get(
                     conf,
-                    fallback.get(conf, default),
+                    fallback.get(conf, DEFAULT_SYNC_OPTION_VALUE),
                 ),
             )
         ] = selector.BooleanSelector(selector.BooleanSelectorConfig())

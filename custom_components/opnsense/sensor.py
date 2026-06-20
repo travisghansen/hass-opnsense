@@ -41,7 +41,6 @@ from .const import (
     DATA_PACKETS,
     DATA_RATE_PACKETS_PER_SECOND,
     DEFAULT_SYNC_OPTION_VALUE,
-    DEFAULT_SYNC_SMART,
     OPNSENSE_CLIENT,
     STATIC_CERTIFICATE_SENSORS,
     STATIC_TELEMETRY_SENSORS,
@@ -1038,7 +1037,7 @@ async def async_setup_entry(
         entities.extend(await _compile_vnstat_sensors(config_entry, coordinator, state))
     if config.get(CONF_SYNC_SPEEDTEST, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_speedtest_sensors(config_entry, coordinator, state))
-    if config.get(CONF_SYNC_SMART, DEFAULT_SYNC_SMART):
+    if config.get(CONF_SYNC_SMART, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_smart_sensors(config_entry, coordinator, state))
     if config.get(CONF_SYNC_CERTIFICATES, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_static_certificate_sensors(config_entry, coordinator))

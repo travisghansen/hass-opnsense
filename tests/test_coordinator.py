@@ -75,14 +75,14 @@ async def test_build_categories_respects_flags(
     assert "interfaces" in keys
     assert "openvpn" in keys
     assert "wireguard" in keys
-    assert "smart" not in keys
+    assert "smart" in keys
 
 
 @pytest.mark.asyncio
-async def test_build_categories_includes_smart_only_when_enabled(
+async def test_build_categories_includes_smart_by_default(
     make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
 ) -> None:
-    """SMART is a separate opt-in sync category."""
+    """SMART uses the shared granular sync default."""
     client = fake_client()()
 
     entry_default = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
@@ -94,18 +94,18 @@ async def test_build_categories_includes_smart_only_when_enabled(
         device_unique_id="id",
         config_entry=entry_default,
     )
-    assert "smart" not in [category["state_key"] for category in coord_default._categories]
+    assert "smart" in [category["state_key"] for category in coord_default._categories]
 
-    entry_enabled = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_SMART: True})
-    coord_enabled = OPNsenseDataUpdateCoordinator(
+    entry_disabled = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_SMART: False})
+    coord_disabled = OPNsenseDataUpdateCoordinator(
         hass=MagicMock(),
         client=client,
         name="n",
         update_interval=timedelta(seconds=1),
         device_unique_id="id",
-        config_entry=entry_enabled,
+        config_entry=entry_disabled,
     )
-    assert "smart" in [category["state_key"] for category in coord_enabled._categories]
+    assert "smart" not in [category["state_key"] for category in coord_disabled._categories]
 
 
 @pytest.mark.asyncio
