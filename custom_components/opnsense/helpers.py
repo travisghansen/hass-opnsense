@@ -39,19 +39,24 @@ def is_private_ip(url: str) -> bool:
         return ip_obj.is_private
 
 
-def coerce_bool(value: Any) -> bool:
+def coerce_bool(value: Any) -> bool | None:
     """Normalize values that may represent booleans.
 
     Args:
         value: Arbitrary state value returned by backend APIs.
 
     Returns:
-        bool: Parsed boolean interpretation for common numeric/string variants.
+        bool | None: Parsed boolean interpretation for common numeric/string variants.
+            Returns ``None`` when the value is missing or not bool-like.
     """
     if isinstance(value, bool):
         return value
     if isinstance(value, int | float):
         return value != 0
     if isinstance(value, str):
-        return value.strip().lower() in {"1", "true", "yes", "on"}
-    return False
+        normalized_value = value.strip().lower()
+        if normalized_value in {"1", "true", "yes", "on"}:
+            return True
+        if normalized_value in {"0", "false", "no", "off"}:
+            return False
+    return None

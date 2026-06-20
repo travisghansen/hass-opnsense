@@ -821,26 +821,6 @@ class OPNsenseCarpMaintenanceSwitch(OPNsenseSwitch):
             return None
         return status_summary
 
-    @staticmethod
-    def _is_trustworthy_maintenance_mode(maintenance_mode: Any) -> bool:
-        """Check if the maintenance mode value can be trusted as a boolean state."""
-        if maintenance_mode is None:
-            return False
-        if isinstance(maintenance_mode, bool | int | float):
-            return True
-        if not isinstance(maintenance_mode, str):
-            return False
-        return maintenance_mode.strip().lower() in {
-            "0",
-            "1",
-            "true",
-            "false",
-            "yes",
-            "no",
-            "on",
-            "off",
-        }
-
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update for the CARP maintenance switch."""
@@ -854,16 +834,16 @@ class OPNsenseCarpMaintenanceSwitch(OPNsenseSwitch):
             return
 
         state = status_summary.get("state")
-        maintenance_mode = status_summary.get("maintenance_mode")
-        if (
-            isinstance(state, str) and state.lower() in {"unknown", "unavailable"}
-        ) or not self._is_trustworthy_maintenance_mode(maintenance_mode):
+        maintenance_mode = coerce_bool(status_summary.get("maintenance_mode"))
+        if (isinstance(state, str) and state.lower() in {"unknown", "unavailable"}) or (
+            maintenance_mode is None
+        ):
             self._available = False
             self._attr_is_on = False
             self.async_write_ha_state()
             return
 
-        self._attr_is_on = coerce_bool(maintenance_mode)
+        self._attr_is_on = maintenance_mode
         self._available = True
         self._attr_extra_state_attributes = {
             "state": status_summary.get("state"),
