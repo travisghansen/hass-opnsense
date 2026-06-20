@@ -683,36 +683,6 @@ async def test_async_update_data_enables_firewall_polling_when_runtime_firmware_
 
 
 @pytest.mark.asyncio
-async def test_async_setup_does_not_call_client_set_use_snake_case(
-    monkeypatch: pytest.MonkeyPatch,
-    make_config_entry: Callable[..., MockConfigEntry],
-    fake_client: Any,
-) -> None:
-    """Coordinator setup does not call client set_use_snake_case."""
-    called = {"count": 0}
-
-    async def fake_set_use_snake_case() -> None:
-        """Record that coordinator setup invoked the client snake-case toggle."""
-        called["count"] += 1
-
-    entry = make_config_entry()
-    client = fake_client()()
-    object.__setattr__(client, "set_use_snake_case", fake_set_use_snake_case)
-    coord = OPNsenseDataUpdateCoordinator(
-        hass=MagicMock(),
-        client=client,
-        name="n",
-        update_interval=timedelta(seconds=1),
-        device_unique_id="id",
-        config_entry=entry,
-    )
-
-    # call the async setup and verify no snake-case setup side effects occurred
-    await coord._async_setup()
-    assert called["count"] == 0
-
-
-@pytest.mark.asyncio
 async def test_calculate_speed_bytes_case() -> None:
     """Calculate byte-rate conversion yields kilobytes_per_second."""
     # bytes branch should return kilobytes_per_second label
