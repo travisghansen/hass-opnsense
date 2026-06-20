@@ -353,10 +353,6 @@ async def _compile_smart_sensors(
     smart_devices = state.get("smart")
     if not isinstance(smart_devices, list):
         return []
-    smart_info = state.get("smart_info")
-    if not isinstance(smart_info, Mapping):
-        return []
-
     entities: list = []
     for smart_device in smart_devices:
         if not isinstance(smart_device, Mapping):
@@ -365,19 +361,6 @@ async def _compile_smart_sensors(
         if not isinstance(device_name, str) or not device_name.strip():
             continue
         device_name = device_name.strip()
-
-        device_info = smart_info.get(device_name)
-        if not isinstance(device_info, Mapping):
-            continue
-
-        temperature_value: int | float | None = None
-        temperature = device_info.get("temperature")
-        if isinstance(temperature, Mapping) and not isinstance(temperature.get("current"), bool):
-            current_temperature = temperature.get("current")
-            if isinstance(current_temperature, int | float):
-                temperature_value = current_temperature
-        if temperature_value is None:
-            continue
 
         device_slug = _smart_device_slug(device_name)
         entities.append(
