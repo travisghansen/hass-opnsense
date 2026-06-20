@@ -842,6 +842,8 @@ class OPNsenseCarpMaintenanceSwitch(OPNsenseSwitch):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn CARP persistent maintenance mode on."""
+        if self.delay_update:
+            return
         if self._client is None or not hasattr(self._client, "toggle_carp_maintenance_mode"):
             return
         await self._async_refresh_carp_state()
@@ -858,6 +860,8 @@ class OPNsenseCarpMaintenanceSwitch(OPNsenseSwitch):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn CARP persistent maintenance mode off."""
+        if self.delay_update:
+            return
         if self._client is None or not hasattr(self._client, "toggle_carp_maintenance_mode"):
             return
         await self._async_refresh_carp_state()

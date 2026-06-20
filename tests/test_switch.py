@@ -327,6 +327,45 @@ async def test_carp_maintenance_switch_refreshes_before_toggle(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    ("first_method_name", "second_method_name", "initial_state", "optimistic_state"),
+    [
+        pytest.param("async_turn_on", "async_turn_on", False, True, id="turn-on-then-turn-on"),
+        pytest.param("async_turn_on", "async_turn_off", False, True, id="turn-on-then-turn-off"),
+        pytest.param("async_turn_off", "async_turn_off", True, False, id="turn-off-then-turn-off"),
+        pytest.param("async_turn_off", "async_turn_on", True, False, id="turn-off-then-turn-on"),
+    ],
+)
+async def test_carp_maintenance_switch_ignores_service_calls_during_delay(
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    first_method_name: str,
+    second_method_name: str,
+    initial_state: bool,
+    optimistic_state: bool,
+) -> None:
+    """CARP maintenance should not toggle again while optimistic state is pending."""
+    state = {"carp": {"status_summary": {"maintenance_mode": initial_state, "enabled": True}}}
+    coordinator = make_coord(state)
+    entity = make_carp_maintenance_switch(ph_hass, make_config_entry, coordinator)
+    entity._client = MagicMock()
+    entity._client.toggle_carp_maintenance_mode = AsyncMock(return_value=True)
+    entity._handle_coordinator_update()
+
+    await getattr(entity, first_method_name)()
+    assert entity.is_on is optimistic_state
+    assert entity.delay_update is True
+
+    coordinator.async_request_refresh.reset_mock()
+    await getattr(entity, second_method_name)()
+
+    coordinator.async_request_refresh.assert_not_awaited()
+    entity._client.toggle_carp_maintenance_mode.assert_awaited_once()
+    assert entity.is_on is optimistic_state
+    assert entity.delay_update is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     ("method_name", "maintenance_mode"),
     [
         pytest.param("async_turn_on", False, id="turn-on-no-client"),
