@@ -2727,7 +2727,7 @@ def test_smart_sensor_finds_device_after_ignored_rows(
     ],
 )
 def test_smart_sensor_unavailable_when_property_malformed(
-    value: Any,
+    value: object,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """SMART disk sensors should be unavailable for malformed values."""
