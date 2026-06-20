@@ -300,7 +300,11 @@ class OPNsenseSmartStatusBinarySensor(OPNsenseBinarySensor):
 
         health_log = device_info.get("nvme_smart_health_information_log")
         if isinstance(health_log, Mapping):
-            self._attr_extra_state_attributes.update(health_log)
+            normalized_health_log = {
+                "temperature_celsius" if key == "temperature" else key: value
+                for key, value in health_log.items()
+            }
+            self._attr_extra_state_attributes.update(normalized_health_log)
         self.async_write_ha_state()
 
 

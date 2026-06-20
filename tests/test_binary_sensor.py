@@ -231,7 +231,7 @@ async def test_async_setup_entry_creates_smart_status_problem_binary_sensors(
         "ident": "SERIAL",
         "critical_warning": 0,
         "media_errors": 0,
-        "temperature": 71,
+        "temperature_celsius": 71,
     }
 
 
