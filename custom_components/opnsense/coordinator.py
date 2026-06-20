@@ -483,6 +483,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 "%sUpdating Data",
                 "DT " if self._device_tracker_coordinator else "",
             )
+            self._categories = self._build_categories()
             await self._client.reset_query_counts()
 
             previous_state: dict[str, Any] = copy.deepcopy(self._state)

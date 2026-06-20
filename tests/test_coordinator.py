@@ -599,6 +599,90 @@ async def test_async_update_data_reentrancy_and_full_flow(
 
 
 @pytest.mark.asyncio
+async def test_async_update_data_enables_firewall_polling_when_runtime_firmware_updates(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
+    """Firewall polling is re-evaluated across refreshes using runtime firmware."""
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_FIRMWARE_VERSION: "25.1",
+            CONF_SYNC_FIREWALL_AND_NAT: True,
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_TELEMETRY: False,
+            CONF_SYNC_VNSTAT: False,
+            CONF_SYNC_SPEEDTEST: False,
+            CONF_SYNC_SMART: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_FIRMWARE_UPDATES: False,
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_DHCP_LEASES: False,
+            CONF_SYNC_GATEWAYS: False,
+            CONF_SYNC_SERVICES: False,
+            CONF_SYNC_NOTICES: False,
+            CONF_SYNC_UNBOUND: False,
+            CONF_SYNC_CERTIFICATES: False,
+        }
+    )
+    client = fake_client()()
+    object.__setattr__(
+        client,
+        "get_host_firmware_version",
+        AsyncMock(side_effect=["26.1.1", "26.1.1"]),
+    )
+    object.__setattr__(
+        client,
+        "get_firewall",
+        AsyncMock(return_value={"config": {"filter": {"rule": []}}}),
+    )
+    object.__setattr__(
+        client,
+        "get_system_info",
+        AsyncMock(return_value={"name": "test-router"}),
+    )
+    object.__setattr__(
+        client,
+        "reset_query_counts",
+        AsyncMock(wraps=getattr(client, "reset_query_counts", None),
+    ))
+    object.__setattr__(client, "get_query_counts", AsyncMock(return_value=11))
+
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    async def true_check() -> bool:
+        """Force the device-id validation step to succeed."""
+        return True
+
+    monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
+
+    async def fake_calc() -> None:
+        """Skip speed calculations for this path under test."""
+        return
+
+    monkeypatch.setattr(coord, "_calculate_entity_speeds", fake_calc)
+
+    first_update = await coord._async_update_data()
+    assert first_update == coord._state
+    assert coord._state.get("host_firmware_version") == "26.1.1"
+    assert client.get_firewall.await_count == 0
+
+    second_update = await coord._async_update_data()
+    assert second_update == coord._state
+    assert coord._state.get("firewall") == {"config": {"filter": {"rule": []}}
+    }  # enabled when runtime firmware >= 26.1.1
+    assert client.get_firewall.await_count == 1
+
+
+@pytest.mark.asyncio
 async def test_async_setup_does_not_call_client_set_use_snake_case(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
