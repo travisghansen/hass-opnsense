@@ -64,7 +64,7 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 def _align_aiopnsense_log_level() -> None:
-    """Mirror the integration log level to aiopnsense when it is not explicit."""
+    """Mirror the integration log level onto aiopnsense when it is unset."""
     aiopnsense_logger = logging.getLogger("aiopnsense")
     if _LOGGER.level == logging.NOTSET or aiopnsense_logger.level != logging.NOTSET:
         return

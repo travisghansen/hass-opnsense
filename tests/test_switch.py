@@ -1653,7 +1653,13 @@ async def test_nat_rule_switch_delay_skips_update(
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """NAT rule switch should return early when delayed updates are active."""
+    """Verify delayed NAT updates return early without mutating state.
+
+    Args:
+        coordinator: Mock OPNsense coordinator fixture.
+        ph_hass: Home Assistant test instance.
+        make_config_entry: Factory for Home Assistant config entries.
+    """
     state = {
         "firewall": {
             "nat": {
@@ -1699,7 +1705,13 @@ async def test_nat_rule_switch_missing_rule_marks_unavailable(
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """NAT rule switch should become unavailable when its backing rule disappears."""
+    """Verify a missing NAT rule marks the switch unavailable.
+
+    Args:
+        coordinator: Mock OPNsense coordinator fixture.
+        ph_hass: Home Assistant test instance.
+        make_config_entry: Factory for Home Assistant config entries.
+    """
     state: dict[str, Any] = {"firewall": {"nat": {"source_nat": {}}}}
     desc = SwitchEntityDescription(key="firewall.nat.source_nat.missing", name="Missing")
     config_entry = make_config_entry(

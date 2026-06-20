@@ -427,7 +427,13 @@ async def test_async_migrate_entry_does_not_call_migrate_3_to_4_when_version_not
 async def test_async_setup_calls_services_and_handles_exceptions(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any, should_raise: Any
 ) -> None:
-    """async_setup should call async_setup_services; exceptions should propagate."""
+    """Verify ``async_setup`` invokes the service hook and propagates errors.
+
+    Args:
+        monkeypatch: Pytest monkeypatch fixture.
+        ph_hass: Home Assistant test instance.
+        should_raise: Whether the service hook should raise an error.
+    """
     mock_align = MagicMock()
     if should_raise:
         mock_services = AsyncMock(side_effect=RuntimeError("fail"))
