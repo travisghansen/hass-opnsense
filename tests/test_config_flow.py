@@ -404,22 +404,6 @@ async def test_handle_user_input_closes_client(monkeypatch: pytest.MonkeyPatch) 
             """
             return "26.1.1"
 
-        async def set_use_snake_case(self, initial: bool = False) -> None:
-            """Accept naming-mode call from validation flow.
-
-            Args:
-                initial: Initial-setup flag passed by validation logic.
-            """
-            return
-
-        async def is_plugin_installed(self) -> bool:
-            """Report plugin as installed for this validation path.
-
-            Returns:
-                bool: Always `True`.
-            """
-            return True
-
         async def get_system_info(self) -> Any:
             """Return minimal system metadata for name derivation.
 
