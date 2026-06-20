@@ -50,11 +50,9 @@ from .const import (
     DOMAIN,
     GRANULAR_SYNC_ITEMS,
     OPNSENSE_MIN_FIRMWARE,
-    SYNC_ITEMS_REQUIRING_PLUGIN,
     TRACKED_MACS,
 )
 from .helpers import is_private_ip
-from .pyopnsense import OPNsenseUnknownFirmware
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -526,13 +524,12 @@ async def _handle_user_input(
     Args:
         hass: Home Assistant instance.
         user_input: Mutable user input mapping to validate and enrich.
-        config_step: Flow step identifier controlling plugin-check behavior.
+        config_step: Flow step identifier.
         expected_id: Expected device unique ID for reconfigure/options validation.
 
     Raises:
         OPNsenseUnknownFirmware: Firmware could not be parsed or compared safely.
         BelowMinFirmware: Firmware is below the minimum supported version.
-        PluginMissing: Plugin is required for enabled sync options but not installed.
         MissingDeviceUniqueID: Backend did not return a device unique ID.
     """
     await _clean_and_parse_url(user_input)
@@ -550,36 +547,6 @@ async def _handle_user_input(
             ValueError,
         ) as e:
             raise OPNsenseUnknownFirmware from e
-
-        await client.set_use_snake_case(initial=True)
-
-        # Plugin check not required for config step of user. Otherwise, plugin check is required if
-        # granular sync options is enabled
-        try:
-            require_plugin_check = (
-                config_step != "user"
-                and user_input.get(CONF_GRANULAR_SYNC_OPTIONS, DEFAULT_GRANULAR_SYNC_OPTIONS)
-                and any(
-                    user_input.get(item, DEFAULT_SYNC_OPTION_VALUE)
-                    for item in SYNC_ITEMS_REQUIRING_PLUGIN
-                )
-                and awesomeversion.AwesomeVersion(user_input[CONF_FIRMWARE_VERSION])
-                < awesomeversion.AwesomeVersion("26.1.1")
-            )
-        except (
-            awesomeversion.exceptions.AwesomeVersionCompareException,
-            TypeError,
-            ValueError,
-        ) as e:
-            raise OPNsenseUnknownFirmware from e
-
-        _LOGGER.debug(
-            "[handle_user_input] config_step: %s, require_plugin_check: %s",
-            config_step,
-            require_plugin_check,
-        )
-        if require_plugin_check and not await client.is_plugin_installed():
-            raise PluginMissing
 
         system_info: dict[str, Any] = await client.get_system_info()
         _LOGGER.debug("[handle_user_input] system_info: %s", system_info)
@@ -873,7 +840,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for OPNsense."""
 
     # bumping this is what triggers async_migrate_entry for the component
-    VERSION = 4
+    VERSION = 5
 
     def __init__(self) -> None:
         """Initialize transient config-flow storage."""
@@ -1259,6 +1226,10 @@ class OPNsenseOptionsFlow(OptionsFlow):
 
 class InvalidURLError(Exception):
     """InvalidURL."""
+
+
+class OPNsenseUnknownFirmware(Exception):  # noqa: N818
+    """Firmware version could not be parsed or compared."""
 
 
 InvalidURL = InvalidURLError

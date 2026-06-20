@@ -12,22 +12,11 @@ class OPNsenseClientProtocol(Protocol):
     async def async_close(self) -> None:
         """Close network resources and background tasks held by the client."""
 
-    async def set_use_snake_case(self, initial: bool = False) -> None:
-        """Set API field naming mode based on firmware support.
-
-        Args:
-            initial: Whether this call runs during initial setup validation.
-        """
-
     async def reset_query_counts(self) -> None:
         """Reset REST and XML-RPC query counters tracked by the client."""
 
-    async def get_query_counts(self) -> tuple[int, int]:
-        """Return accumulated query counters.
-
-        Returns:
-            tuple[int, int]: Tuple of `(rest_api_count, xmlrpc_count)`.
-        """
+    async def get_query_counts(self) -> int:
+        """Return accumulated REST-API query count."""
 
     async def get_device_unique_id(self, expected_id: str | None = None) -> str | None:
         """Return router unique identifier used for registry/entity IDs.
@@ -68,20 +57,6 @@ class OPNsenseClientProtocol(Protocol):
 
         Returns:
             list: ARP entry collection containing MAC/IP/device metadata.
-        """
-
-    async def is_plugin_installed(self) -> bool:
-        """Report whether the Home Assistant OPNsense plugin is installed.
-
-        Returns:
-            bool: `True` when plugin package is installed.
-        """
-
-    async def is_plugin_deprecated(self) -> bool:
-        """Report whether installed plugin is considered deprecated.
-
-        Returns:
-            bool: `True` when plugin should be treated as deprecated.
         """
 
     async def close_notice(self, notice_id: str) -> bool:
@@ -240,48 +215,6 @@ class OPNsenseClientProtocol(Protocol):
 
         Returns:
             bool: `True` when NAT rule state change succeeded.
-        """
-
-    async def enable_filter_rule_by_created_time_legacy(self, created_time: str) -> None:
-        """Enable a legacy filter rule identified by created-time metadata.
-
-        Args:
-            created_time: Legacy created-time token identifying the target rule.
-        """
-
-    async def disable_filter_rule_by_created_time_legacy(self, created_time: str) -> None:
-        """Disable a legacy filter rule identified by created-time metadata.
-
-        Args:
-            created_time: Legacy created-time token identifying the target rule.
-        """
-
-    async def enable_nat_port_forward_rule_by_created_time_legacy(self, created_time: str) -> None:
-        """Enable a legacy NAT port-forward rule by created-time metadata.
-
-        Args:
-            created_time: Legacy created-time token identifying the target rule.
-        """
-
-    async def disable_nat_port_forward_rule_by_created_time_legacy(self, created_time: str) -> None:
-        """Disable a legacy NAT port-forward rule by created-time metadata.
-
-        Args:
-            created_time: Legacy created-time token identifying the target rule.
-        """
-
-    async def enable_nat_outbound_rule_by_created_time_legacy(self, created_time: str) -> None:
-        """Enable a legacy NAT outbound rule by created-time metadata.
-
-        Args:
-            created_time: Legacy created-time token identifying the target rule.
-        """
-
-    async def disable_nat_outbound_rule_by_created_time_legacy(self, created_time: str) -> None:
-        """Disable a legacy NAT outbound rule by created-time metadata.
-
-        Args:
-            created_time: Legacy created-time token identifying the target rule.
         """
 
     async def enable_unbound_blocklist(self, uuid: str | None = None) -> bool:
