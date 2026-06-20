@@ -710,7 +710,7 @@ def fake_client() -> Any:
                 """Mark that the query counters were reset during a coordinator update."""
                 self._query_counts_reset = True
 
-            async def get_query_counts(self) -> Any:
+            async def get_query_counts(self) -> int:
                 """Return the stored number of fake REST/API query calls."""
                 return self._query_counts
 
