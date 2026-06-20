@@ -63,6 +63,15 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
+def _align_aiopnsense_log_level() -> None:
+    """Mirror the integration log level to aiopnsense when it is not explicit."""
+    aiopnsense_logger = logging.getLogger("aiopnsense")
+    if _LOGGER.level == logging.NOTSET or aiopnsense_logger.level != logging.NOTSET:
+        return
+
+    aiopnsense_logger.setLevel(_LOGGER.level)
+
+
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Handle config-entry option updates and schedule integration reload.
 
@@ -123,6 +132,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     Returns:
         bool: Always `True` after service setup succeeds.
     """
+    _align_aiopnsense_log_level()
     await async_setup_services(hass)
     return True
 
