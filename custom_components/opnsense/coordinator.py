@@ -6,7 +6,9 @@ from datetime import timedelta
 import logging
 import time
 from typing import Any
+import xmlrpc.client
 
+import aiohttp
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
@@ -114,6 +116,36 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 start_time: float = time.perf_counter()
                 if method_name == "get_device_unique_id":
                     state[cat.get("state_key")] = await method(expected_id=self._device_unique_id)
+                elif method_name == "get_smart_info":
+                    smart_info: dict[str, Any] = {}
+                    smart_devices = state.get("smart")
+                    if isinstance(smart_devices, list):
+                        for smart_device in smart_devices:
+                            if not isinstance(smart_device, Mapping):
+                                continue
+                            device_name = smart_device.get("device")
+                            if not isinstance(device_name, str) or not device_name.strip():
+                                continue
+                            normalized_device_name = device_name.strip()
+                            try:
+                                smart_info[normalized_device_name] = await method(
+                                    device=normalized_device_name,
+                                    info_type=cat.get("info_type", "A"),
+                                )
+                            except (
+                                aiohttp.ClientError,
+                                OSError,
+                                TimeoutError,
+                                TypeError,
+                                ValueError,
+                                xmlrpc.client.Error,
+                            ):
+                                _LOGGER.exception(
+                                    "Failed to fetch SMART info for device %s",
+                                    normalized_device_name,
+                                )
+                                continue
+                    state[cat.get("state_key")] = smart_info
                 else:
                     state[cat.get("state_key")] = await method()
                 end_time: float = time.perf_counter()
@@ -160,6 +192,14 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         if config.get(CONF_SYNC_SMART, DEFAULT_SYNC_OPTION_VALUE):
             if hasattr(self._client, "get_smart"):
                 categories.append({"function": "get_smart", "state_key": "smart"})
+                if hasattr(self._client, "get_smart_info"):
+                    categories.append(
+                        {
+                            "function": "get_smart_info",
+                            "state_key": "smart_info",
+                            "info_type": "A",
+                        }
+                    )
             else:
                 _LOGGER.debug("SMART sync requested, but this OPNsense client does not support it")
         if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):

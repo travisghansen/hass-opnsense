@@ -1070,13 +1070,13 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
         )
         self._rule_id: str = self._opnsense_get_rule_id()
         self._nat_rule_type: str = self._get_nat_rule_type()
-        _LOGGER.debug(
-            "[OPNsenseNATRuleSwitch init] Name: %s, key: %s, rule_id: %s, rule_type: %s",
-            self.name,
-            self.entity_description.key,
-            self._rule_id,
-            self._nat_rule_type,
-        )
+        # _LOGGER.debug(
+        #     "[OPNsenseNATRuleSwitch init] Name: %s, key: %s, rule_id: %s, rule_type: %s",
+        #     self.name,
+        #     self.entity_description.key,
+        #     self._rule_id,
+        #     self._nat_rule_type,
+        # )
 
     def _get_nat_rule_type(self) -> str:
         """Get the NAT rule type from the entity description.

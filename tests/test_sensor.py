@@ -2281,28 +2281,26 @@ async def _async_setup_smart_entities(
 async def test_async_setup_entry_creates_disabled_smart_disk_sensors(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """SMART disk sensors should be created per device and disabled by default."""
+    """SMART temperature sensors should be created per device and disabled by default."""
     state = {
         "smart": [
             {
                 "device": "nvme0",
                 "model": "Samsung SSD",
                 "serial_number": "S123",
-                "status": "PASSED",
-                "temperature": 37,
             },
             {
                 "device": "ada0",
-                "status": "FAILED",
-                "temperature": "41",
             },
-            {
-                "dev": "da0",
-                "temperature": "42.5 C",
-            },
+            {"device": "da0"},
             "ignored",
             {"device": ""},
-        ]
+        ],
+        "smart_info": {
+            "nvme0": {"temperature": {"current": 37}},
+            "ada0": {"temperature": {"current": 41}},
+            "da0": {"temperature": {"current": 42.5}},
+        },
     }
     smart_entities = await _async_setup_smart_entities(
         make_config_entry,
@@ -2322,9 +2320,7 @@ async def test_async_setup_entry_creates_disabled_smart_disk_sensors(
     )
 
     assert {entity.entity_description.key for entity in smart_entities} == {
-        "smart.nvme0.status",
         "smart.nvme0.temperature",
-        "smart.ada0.status",
         "smart.ada0.temperature",
         "smart.da0.temperature",
     }
@@ -2334,16 +2330,16 @@ async def test_async_setup_entry_creates_disabled_smart_disk_sensors(
     )
 
     key_to_entity = {entity.entity_description.key: entity for entity in smart_entities}
-    status_entity = key_to_entity["smart.nvme0.status"]
+    nvme_temperature_entity = key_to_entity["smart.nvme0.temperature"]
     temperature_entity = key_to_entity["smart.ada0.temperature"]
     fallback_name_entity = key_to_entity["smart.da0.temperature"]
-    for entity in (status_entity, temperature_entity):
+    for entity in (nvme_temperature_entity, temperature_entity):
         _prepare_smart_sensor(entity)
         entity._handle_coordinator_update()
 
-    assert status_entity.available is True
-    assert status_entity.native_value == "PASSED"
-    assert status_entity.extra_state_attributes == {
+    assert nvme_temperature_entity.available is True
+    assert nvme_temperature_entity.native_value == 37
+    assert nvme_temperature_entity.extra_state_attributes == {
         "device": "nvme0",
         "model": "Samsung SSD",
         "serial_number": "S123",
@@ -2375,12 +2371,137 @@ async def test_async_setup_entry_creates_smart_disk_sensors_by_default(
             CONF_SYNC_DHCP_LEASES: False,
             CONF_SYNC_SPEEDTEST: False,
         },
-        {"smart": [{"device": "nvme0", "status": "PASSED", "temperature": 37}]},
+        {
+            "smart": [
+                {
+                    "device": "nvme0",
+                }
+            ],
+            "smart_info": {"nvme0": {"temperature": {"current": 37}}},
+        },
     )
 
     assert {entity.entity_description.key for entity in smart_entities} == {
-        "smart.nvme0.status",
         "smart.nvme0.temperature",
+    }
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_creates_smart_temperature_sensors_from_smart_info(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART temperature sensors should use get_smart_info attribute data."""
+    smart_entities = await _async_setup_smart_entities(
+        make_config_entry,
+        {
+            CONF_SYNC_TELEMETRY: False,
+            CONF_SYNC_VNSTAT: False,
+            CONF_SYNC_CERTIFICATES: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_GATEWAYS: False,
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_DHCP_LEASES: False,
+            CONF_SYNC_SPEEDTEST: False,
+            CONF_SYNC_SMART: True,
+        },
+        {
+            "smart": [
+                {"device": "nvme0", "ident": "22384S808411"},
+                {"device": "ada0", "ident": "SERIAL2"},
+            ],
+            "smart_info": {
+                "nvme0": {"temperature": {"current": 71}},
+                "ada0": {"temperature": {"current": 42}},
+            },
+        },
+    )
+
+    assert {entity.entity_description.key for entity in smart_entities} == {
+        "smart.nvme0.temperature",
+        "smart.ada0.temperature",
+    }
+
+    temperature_entity = {entity.entity_description.key: entity for entity in smart_entities}[
+        "smart.nvme0.temperature"
+    ]
+    _prepare_smart_sensor(temperature_entity, "sensor.smart_nvme0_temperature")
+    temperature_entity._handle_coordinator_update()
+
+    assert temperature_entity.available is True
+    assert temperature_entity.native_value == 71
+    assert temperature_entity.extra_state_attributes == {
+        "device": "nvme0",
+        "ident": "22384S808411",
+    }
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_keeps_smart_entities_when_smart_info_present_but_empty(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART entities should be created when `smart_info` exists and update to available."""
+    smart_entities = await _async_setup_smart_entities(
+        make_config_entry,
+        {CONF_SYNC_SMART: True},
+        {
+            "smart": [
+                {"device": "nvme0"},
+                {"device": "ada0"},
+            ],
+            "smart_info": {},
+        },
+    )
+
+    assert {entity.entity_description.key for entity in smart_entities} == {
+        "smart.nvme0.temperature",
+        "smart.ada0.temperature",
+    }
+
+    for entity in smart_entities:
+        _prepare_smart_sensor(entity)
+        entity._handle_coordinator_update()
+        assert entity.available is False
+
+    for entity in smart_entities:
+        entity.coordinator.data = {
+            "smart": [
+                {"device": "nvme0"},
+                {"device": "ada0"},
+            ],
+            "smart_info": {
+                "nvme0": {"temperature": {"current": 71}},
+                "ada0": {"temperature": {"current": 42}},
+            },
+        }
+        entity._handle_coordinator_update()
+
+    assert {entity.available for entity in smart_entities} == {True}
+    assert {entity.native_value for entity in smart_entities} == {71, 42}
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_keeps_smart_entities_when_initial_smart_info_missing(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART temperature entities should still be created before attribute data arrives."""
+    smart_entities = await _async_setup_smart_entities(
+        make_config_entry,
+        {CONF_SYNC_SMART: True},
+        {
+            "smart": [
+                {"device": "nvme0"},
+                {"device": "ada0"},
+            ],
+            "smart_info": {
+                "ada0": {"temperature": {"current": 42}},
+            },
+        },
+    )
+
+    assert {entity.entity_description.key for entity in smart_entities} == {
+        "smart.nvme0.temperature",
+        "smart.ada0.temperature",
     }
 
 
@@ -2388,20 +2509,29 @@ async def test_async_setup_entry_creates_smart_disk_sensors_by_default(
 async def test_async_setup_entry_skips_malformed_smart_values(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """SMART disk sensors should only be created for usable value types."""
+    """SMART temperature sensors should still be created for discovered devices."""
     smart_entities = await _async_setup_smart_entities(
         make_config_entry,
         {CONF_SYNC_SMART: True},
         {
             "smart": [
-                {"device": "nvme0", "status": ["PASSED"], "temperature": []},
-                {"device": "ada0", "status": "", "temperature": {}},
-                {"device": "da0", "status": "PASSED", "temperature": False},
-            ]
+                {"device": "nvme0"},
+                {"device": "ada0"},
+                {"device": "da0"},
+            ],
+            "smart_info": {
+                "nvme0": {"temperature": []},
+                "ada0": {"temperature": {}},
+                "da0": {"temperature": {"current": 42}},
+            },
         },
     )
 
-    assert {entity.entity_description.key for entity in smart_entities} == {"smart.da0.status"}
+    assert {entity.entity_description.key for entity in smart_entities} == {
+        "smart.nvme0.temperature",
+        "smart.ada0.temperature",
+        "smart.da0.temperature",
+    }
 
 
 @pytest.mark.asyncio
@@ -2419,23 +2549,98 @@ async def test_compile_smart_sensors_skips_invalid_state_shapes(
     assert entities == []
 
 
+@pytest.mark.asyncio
+async def test_compile_smart_sensors_creates_entities_when_smart_info_present(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART sensor compilation should create entities when `smart_info` exists."""
+    entry = make_config_entry({"device_unique_id": "id", CONF_SYNC_SMART: True})
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+
+    entities = await sensor_module._compile_smart_sensors(
+        entry,
+        coordinator,
+        {"smart": [{"device": "nvme0"}], "smart_info": {}},
+    )
+
+    assert [entity.entity_description.key for entity in entities] == ["smart.nvme0.temperature"]
+
+
+@pytest.mark.asyncio
+async def test_compile_smart_sensors_skips_when_smart_info_key_missing(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART sensor compilation should not run when `smart_info` state is absent."""
+    entry = make_config_entry({"device_unique_id": "id", CONF_SYNC_SMART: True})
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+
+    entities = await sensor_module._compile_smart_sensors(
+        entry,
+        coordinator,
+        {"smart": [{"device": "nvme0"}]},
+    )
+
+    assert entities == []
+
+
+@pytest.mark.asyncio
+async def test_compile_smart_sensors_keeps_entities_when_device_info_malformed(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART sensor compilation should keep entities even before attribute data is usable."""
+    entry = make_config_entry({"device_unique_id": "id", CONF_SYNC_SMART: True})
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+
+    entities = await sensor_module._compile_smart_sensors(
+        entry,
+        coordinator,
+        {
+            "smart": [{"device": "nvme0"}, {"device": "ada0"}],
+            "smart_info": {"nvme0": [], "ada0": {"temperature": {"current": 42}}},
+        },
+    )
+
+    assert [entity.entity_description.key for entity in entities] == [
+        "smart.nvme0.temperature",
+        "smart.ada0.temperature",
+    ]
+
+
 def test_smart_sensor_unavailable_when_device_or_property_missing(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """SMART disk sensors should be unavailable when their row or field is absent."""
     sensor = _build_smart_sensor(
         make_config_entry,
-        {"smart": [{"device": "nvme0", "status": "PASSED"}]},
-        "smart.ada0.status",
-        "SMART ada0 Status",
+        {
+            "smart": [{"device": "nvme0"}],
+            "smart_info": {"nvme0": {"temperature": {"current": 37}}},
+        },
+        "smart.ada0.temperature",
+        "SMART ada0 Temperature",
     )
-    _prepare_smart_sensor(sensor, "sensor.smart_ada0_status")
+    _prepare_smart_sensor(sensor, "sensor.smart_ada0_temperature")
     sensor._handle_coordinator_update()
     assert sensor.available is False
 
     sensor = _build_smart_sensor(
         make_config_entry,
-        {"smart": [{"device": "nvme0", "status": "PASSED"}]},
+        {
+            "smart": [{"device": "nvme0"}],
+            "smart_info": {"nvme0": []},
+        },
+        "smart.nvme0.temperature",
+    )
+    _prepare_smart_sensor(sensor, "sensor.smart_nvme0_temperature")
+    sensor._handle_coordinator_update()
+    assert sensor.available is False
+
+    sensor = _build_smart_sensor(
+        make_config_entry,
+        {
+            "smart": [{"device": "nvme0"}],
+            "smart_info": {"nvme0": {}},
+        },
         "smart.nvme0.temperature",
     )
     _prepare_smart_sensor(sensor, "sensor.smart_nvme0_temperature")
@@ -2443,14 +2648,36 @@ def test_smart_sensor_unavailable_when_device_or_property_missing(
     assert sensor.available is False
 
 
+def test_smart_sensor_strips_device_name_before_smart_info_lookup(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART disk sensors should normalize padded device names before lookup."""
+    sensor = _build_smart_sensor(
+        make_config_entry,
+        {
+            "smart": [{"device": " nvme0 "}],
+            "smart_info": {"nvme0": {"temperature": {"current": 37}}},
+        },
+        "smart.nvme0.temperature",
+    )
+    _prepare_smart_sensor(sensor, "sensor.smart_nvme0_temperature")
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is True
+    assert sensor.native_value == 37
+
+
 @pytest.mark.parametrize(
     ("state", "key"),
     [
-        ([], "smart.nvme0.status"),
-        ({"smart": {}}, "smart.nvme0.status"),
-        ({"smart": []}, "smart.nvme0.status"),
-        ({"smart": []}, "smart.nvme0.status.extra"),
-        ({"smart": [{"device": "nvme0", "unknown": "value"}]}, "smart.nvme0.unknown"),
+        ([], "smart.nvme0.temperature"),
+        ({"smart": {}}, "smart.nvme0.temperature"),
+        ({"smart": []}, "smart.nvme0.temperature"),
+        ({"smart": []}, "smart.nvme0.temperature.extra"),
+        (
+            {"smart": [{"device": "nvme0"}], "smart_info": {"nvme0": {"unknown": "value"}}},
+            "smart.nvme0.unknown",
+        ),
     ],
 )
 def test_smart_sensor_unavailable_when_state_or_key_invalid(
@@ -2476,80 +2703,46 @@ def test_smart_sensor_finds_device_after_ignored_rows(
             "smart": [
                 "ignored",
                 {"device": ""},
-                {"device": "nvme0", "status": "PASSED"},
-            ]
+                {"device": "nvme0"},
+            ],
+            "smart_info": {"nvme0": {"temperature": {"current": 37}}},
         },
-        "smart.nvme0.status",
+        "smart.nvme0.temperature",
     )
     _prepare_smart_sensor(sensor, "sensor.smart_nvme0")
     sensor._handle_coordinator_update()
 
     assert sensor.available is True
-    assert sensor.native_value == "PASSED"
+    assert sensor.native_value == 37
 
 
 @pytest.mark.parametrize(
-    ("value", "key"),
+    "value",
     [
-        (["PASSED"], "smart.nvme0.status"),
-        ([], "smart.nvme0.temperature"),
-        ({}, "smart.nvme0.temperature"),
-        (False, "smart.nvme0.temperature"),
-        ("unknown", "smart.nvme0.temperature"),
+        [],
+        {},
+        False,
+        {"current": False},
+        {"current": "unknown"},
     ],
 )
 def test_smart_sensor_unavailable_when_property_malformed(
-    value: Any,
-    key: str,
+    value: object,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """SMART disk sensors should be unavailable for malformed values."""
-    prop_name = key.split(".")[2]
     sensor = _build_smart_sensor(
         make_config_entry,
-        {"smart": [{"device": "nvme0", prop_name: value}]},
-        key,
+        {
+            "smart": [{"device": "nvme0"}],
+            "smart_info": {"nvme0": {"temperature": value}},
+        },
+        "smart.nvme0.temperature",
     )
     _prepare_smart_sensor(sensor, "sensor.smart_nvme0")
     sensor._handle_coordinator_update()
 
     assert sensor.available is False
-
-
-@pytest.mark.parametrize(
-    ("native_value", "expected_available", "expected_icon"),
-    [
-        ("PASSED", True, "mdi:harddisk"),
-        ("FAILED", True, "mdi:harddisk-remove"),
-        (None, False, "mdi:harddisk"),
-    ],
-)
-def test_smart_status_icon_reflects_failed_health(
-    native_value: str | None,
-    expected_available: bool,
-    expected_icon: str,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """SMART status icon should distinguish passed and failed health states."""
-    entry = make_config_entry()
-    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    desc = MagicMock()
-    desc.key = "smart.nvme0.status"
-    desc.icon = "mdi:harddisk"
-    sensor = OPNsenseSmartSensor(
-        config_entry=entry,
-        coordinator=coordinator,
-        entity_description=desc,
-    )
-    sensor._available = expected_available
-    sensor._attr_native_value = native_value
-
-    assert sensor.available is expected_available
-    if not expected_available:
-        assert sensor.icon == expected_icon
-        return
-
-    assert sensor.icon == expected_icon
 
 
 @pytest.mark.parametrize(

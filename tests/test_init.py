@@ -538,7 +538,7 @@ async def test_async_update_listener_uses_shared_default_for_smart_entity_prunin
     hass.data = {}
 
     smart_entity = MagicMock()
-    smart_entity.entity_id = "sensor.opnsense_smart_nvme0_status"
+    smart_entity.entity_id = "binary_sensor.opnsense_smart_nvme0_status"
     smart_entity.unique_id = f"{entry.unique_id}_smart_nvme0_status"
     telemetry_entity = MagicMock()
     telemetry_entity.entity_id = "sensor.opnsense_cpu"
