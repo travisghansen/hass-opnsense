@@ -366,6 +366,63 @@ async def test_carp_maintenance_switch_ignores_service_calls_during_delay(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    ("method_name", "initial_state"), [("async_turn_on", False), ("async_turn_off", True)]
+)
+async def test_carp_maintenance_switch_serializes_overlapping_requests(
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    method_name: str,
+    initial_state: bool,
+) -> None:
+    """CARP maintenance toggles should only execute one backend call at a time."""
+    state = {"carp": {"status_summary": {"maintenance_mode": initial_state, "enabled": True}}}
+    coordinator = make_coord(state)
+    refresh_gate = asyncio.Event()
+    refresh_started = asyncio.Event()
+    toggle_gate = asyncio.Event()
+    toggle_started = asyncio.Event()
+    refresh_calls = 0
+
+    async def refresh_side_effect() -> None:
+        """Pause refresh so both toggle paths overlap."""
+        nonlocal refresh_calls
+        refresh_calls += 1
+        refresh_started.set()
+        if refresh_calls <= 2:
+            await refresh_gate.wait()
+
+    toggle_calls = 0
+
+    async def toggle_side_effect() -> bool:
+        """Pause toggles so both requests can overlap before completion."""
+        nonlocal toggle_calls
+        toggle_calls += 1
+        toggle_started.set()
+        if toggle_calls <= 2:
+            await toggle_gate.wait()
+        return True
+
+    coordinator.async_request_refresh = AsyncMock(side_effect=refresh_side_effect)
+    entity = make_carp_maintenance_switch(ph_hass, make_config_entry, coordinator)
+    entity._client = MagicMock()
+    entity._client.toggle_carp_maintenance_mode = AsyncMock(side_effect=toggle_side_effect)
+
+    first_task = asyncio.create_task(getattr(entity, method_name)())
+    second_task = asyncio.create_task(getattr(entity, method_name)())
+
+    await refresh_started.wait()
+    refresh_gate.set()
+    await toggle_started.wait()
+    toggle_gate.set()
+    await first_task
+    await second_task
+
+    coordinator.async_request_refresh.assert_awaited_once()
+    entity._client.toggle_carp_maintenance_mode.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     ("method_name", "maintenance_mode"),
     [
         pytest.param("async_turn_on", False, id="turn-on-no-client"),
@@ -471,6 +528,43 @@ async def test_carp_maintenance_switch_unavailable_without_mapping_state(
     entity._handle_coordinator_update()
 
     assert entity.available is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("maintenance_state", "maintenance_mode"),
+    [
+        pytest.param("unknown", False, id="unknown-state"),
+        pytest.param("unavailable", False, id="unavailable-state"),
+        pytest.param("ok", None, id="missing-maintenance-mode"),
+        pytest.param("ok", "maybe", id="untrusted-maintenance-mode"),
+        pytest.param("ok", object(), id="unsupported-maintenance-mode"),
+    ],
+)
+async def test_carp_maintenance_switch_unavailable_for_untrusted_summary(
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    maintenance_state: str,
+    maintenance_mode: Any,
+) -> None:
+    """CARP maintenance switch should be unavailable when summary state is unreliable."""
+    coordinator = make_coord(
+        {
+            "carp": {
+                "status_summary": {
+                    "maintenance_mode": maintenance_mode,
+                    "state": maintenance_state,
+                    "enabled": True,
+                }
+            }
+        }
+    )
+    entity = make_carp_maintenance_switch(ph_hass, make_config_entry, coordinator)
+
+    entity._handle_coordinator_update()
+
+    assert entity.available is False
+    assert entity.is_on is False
 
 
 @pytest.mark.asyncio

@@ -793,6 +793,20 @@ class OPNsenseSwitch(OPNsenseEntity, SwitchEntity):
 class OPNsenseCarpMaintenanceSwitch(OPNsenseSwitch):
     """Class for the CARP persistent maintenance mode switch."""
 
+    def __init__(
+        self,
+        config_entry: ConfigEntry,
+        coordinator: OPNsenseDataUpdateCoordinator,
+        entity_description: SwitchEntityDescription,
+    ) -> None:
+        """Initialize CARP maintenance switch state."""
+        super().__init__(
+            config_entry=config_entry,
+            coordinator=coordinator,
+            entity_description=entity_description,
+        )
+        self._toggle_in_flight: bool = False
+
     def _opnsense_get_status_summary(self) -> MutableMapping[str, Any] | None:
         """Get the CARP status summary from the coordinator.
 
@@ -807,6 +821,26 @@ class OPNsenseCarpMaintenanceSwitch(OPNsenseSwitch):
             return None
         return status_summary
 
+    @staticmethod
+    def _is_trustworthy_maintenance_mode(maintenance_mode: Any) -> bool:
+        """Check if the maintenance mode value can be trusted as a boolean state."""
+        if maintenance_mode is None:
+            return False
+        if isinstance(maintenance_mode, bool | int | float):
+            return True
+        if not isinstance(maintenance_mode, str):
+            return False
+        return maintenance_mode.strip().lower() in {
+            "0",
+            "1",
+            "true",
+            "false",
+            "yes",
+            "no",
+            "on",
+            "off",
+        }
+
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update for the CARP maintenance switch."""
@@ -819,7 +853,17 @@ class OPNsenseCarpMaintenanceSwitch(OPNsenseSwitch):
             self.async_write_ha_state()
             return
 
-        self._attr_is_on = coerce_bool(status_summary.get("maintenance_mode"))
+        state = status_summary.get("state")
+        maintenance_mode = status_summary.get("maintenance_mode")
+        if (
+            isinstance(state, str) and state.lower() in {"unknown", "unavailable"}
+        ) or not self._is_trustworthy_maintenance_mode(maintenance_mode):
+            self._available = False
+            self._attr_is_on = False
+            self.async_write_ha_state()
+            return
+
+        self._attr_is_on = coerce_bool(maintenance_mode)
         self._available = True
         self._attr_extra_state_attributes = {
             "state": status_summary.get("state"),
@@ -842,39 +886,51 @@ class OPNsenseCarpMaintenanceSwitch(OPNsenseSwitch):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn CARP persistent maintenance mode on."""
+        if self._toggle_in_flight:
+            return
         if self.delay_update:
             return
         if self._client is None or not hasattr(self._client, "toggle_carp_maintenance_mode"):
             return
-        await self._async_refresh_carp_state()
-        if self.is_on:
-            return
-        result = await self._client.toggle_carp_maintenance_mode()
-        if result:
-            _LOGGER.info("Turned on CARP persistent maintenance mode")
-            self._attr_is_on = True
-            self.async_write_ha_state()
-            self.delay_update = True
-        else:
-            _LOGGER.error("Failed to turn on CARP persistent maintenance mode")
+        self._toggle_in_flight = True
+        try:
+            await self._async_refresh_carp_state()
+            if not self.available or self.is_on:
+                return
+            result = await self._client.toggle_carp_maintenance_mode()
+            if result:
+                _LOGGER.info("Turned on CARP persistent maintenance mode")
+                self._attr_is_on = True
+                self.async_write_ha_state()
+                self.delay_update = True
+            else:
+                _LOGGER.error("Failed to turn on CARP persistent maintenance mode")
+        finally:
+            self._toggle_in_flight = False
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn CARP persistent maintenance mode off."""
+        if self._toggle_in_flight:
+            return
         if self.delay_update:
             return
         if self._client is None or not hasattr(self._client, "toggle_carp_maintenance_mode"):
             return
-        await self._async_refresh_carp_state()
-        if not self.is_on:
-            return
-        result = await self._client.toggle_carp_maintenance_mode()
-        if result:
-            _LOGGER.info("Turned off CARP persistent maintenance mode")
-            self._attr_is_on = False
-            self.async_write_ha_state()
-            self.delay_update = True
-        else:
-            _LOGGER.error("Failed to turn off CARP persistent maintenance mode")
+        self._toggle_in_flight = True
+        try:
+            await self._async_refresh_carp_state()
+            if not self.available or not self.is_on:
+                return
+            result = await self._client.toggle_carp_maintenance_mode()
+            if result:
+                _LOGGER.info("Turned off CARP persistent maintenance mode")
+                self._attr_is_on = False
+                self.async_write_ha_state()
+                self.delay_update = True
+            else:
+                _LOGGER.error("Failed to turn off CARP persistent maintenance mode")
+        finally:
+            self._toggle_in_flight = False
 
     @property
     def icon(self) -> str | None:
