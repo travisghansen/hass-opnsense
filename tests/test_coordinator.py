@@ -21,6 +21,7 @@ from custom_components.opnsense.client_protocol import OPNsenseClientProtocol
 from custom_components.opnsense.const import (
     ATTR_UNBOUND_BLOCKLIST,
     CONF_DEVICE_UNIQUE_ID,
+    CONF_FIRMWARE_VERSION,
     CONF_SYNC_CARP,
     CONF_SYNC_CERTIFICATES,
     CONF_SYNC_DHCP_LEASES,
@@ -583,7 +584,7 @@ async def test_async_update_data_reentrancy_and_full_flow(
     object.__setattr__(
         client, "reset_query_counts", AsyncMock(wraps=getattr(client, "reset_query_counts", None))
     )
-    object.__setattr__(client, "get_query_counts", AsyncMock(return_value=(7, 0)))
+    object.__setattr__(client, "get_query_counts", AsyncMock(return_value=11))
 
     # run update; should return a dict
     out = await coord._async_update_data()
@@ -598,12 +599,12 @@ async def test_async_update_data_reentrancy_and_full_flow(
 
 
 @pytest.mark.asyncio
-async def test_async_setup_calls_client_set_use_snake_case(
+async def test_async_setup_does_not_call_client_set_use_snake_case(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """Coordinator setup invokes client set_use_snake_case when appropriate."""
+    """Coordinator setup does not call client set_use_snake_case."""
     called = {"count": 0}
 
     async def fake_set_use_snake_case() -> None:
@@ -622,9 +623,9 @@ async def test_async_setup_calls_client_set_use_snake_case(
         config_entry=entry,
     )
 
-    # call the async setup which should call the client's set_use_snake_case
+    # call the async setup and verify no snake-case setup side effects occurred
     await coord._async_setup()
-    assert called["count"] == 1
+    assert called["count"] == 0
 
 
 @pytest.mark.asyncio
@@ -691,7 +692,13 @@ async def test_build_categories_flag_true_and_false(
 ) -> None:
     """Verify categories include keys when flag True and exclude when False."""
     # When flag is True -> expected keys present
-    entry_true = make_config_entry({"device_unique_id": "id", flag: True})
+    entry_true = make_config_entry(
+        {
+            "device_unique_id": "id",
+            CONF_FIRMWARE_VERSION: "26.1.1",
+            flag: True,
+        }
+    )
     client = fake_client()()
     coord_true = OPNsenseDataUpdateCoordinator(
         hass=MagicMock(),
@@ -706,7 +713,13 @@ async def test_build_categories_flag_true_and_false(
         assert ek in keys_true
 
     # When flag is False -> expected keys absent
-    entry_false = make_config_entry({"device_unique_id": "id", flag: False})
+    entry_false = make_config_entry(
+        {
+            "device_unique_id": "id",
+            CONF_FIRMWARE_VERSION: "26.1.1",
+            flag: False,
+        }
+    )
     coord_false = OPNsenseDataUpdateCoordinator(
         hass=MagicMock(),
         client=client,
@@ -718,6 +731,40 @@ async def test_build_categories_flag_true_and_false(
     keys_false = [c["state_key"] for c in coord_false._categories]
     for ek in expected_keys:
         assert ek not in keys_false
+
+
+@pytest.mark.asyncio
+async def test_build_categories_skips_firewall_polling_for_legacy_firmware(
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
+    """Legacy firmware should skip native firewall, NAT, and plugin polling categories."""
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_FIREWALL_AND_NAT: True,
+            CONF_FIRMWARE_VERSION: "26.1.1",
+        }
+    )
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    # Force the runtime state to legacy firmware and rebuild categories.
+    coord._state["host_firmware_version"] = "25.1"
+    keys = [cat["state_key"] for cat in coord._build_categories()]
+    functions = [cat["function"] for cat in coord._build_categories()]
+
+    assert "firewall" not in keys
+    assert "get_firewall" not in functions
+    assert "is_plugin_installed" not in functions
+    assert "is_plugin_deprecated" not in functions
 
 
 @pytest.mark.asyncio
@@ -944,7 +991,7 @@ async def test_async_update_dt_data_device_id_branches(
     monkeypatch.setattr(coord, "_get_states", fake_get_states)
 
     # spy on client's get_query_counts
-    object.__setattr__(client, "get_query_counts", AsyncMock(return_value=(3, 4)))
+    object.__setattr__(client, "get_query_counts", AsyncMock(return_value=3))
 
     res = await coord._async_update_dt_data()
 

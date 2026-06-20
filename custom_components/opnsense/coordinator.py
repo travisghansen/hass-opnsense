@@ -9,6 +9,7 @@ from typing import Any
 import xmlrpc.client
 
 import aiohttp
+import awesomeversion
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
@@ -17,6 +18,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .client_protocol import OPNsenseClientProtocol
 from .const import (
     ATTR_UNBOUND_BLOCKLIST,
+    CONF_FIRMWARE_VERSION,
     CONF_SYNC_CARP,
     CONF_SYNC_CERTIFICATES,
     CONF_SYNC_DHCP_LEASES,
@@ -96,7 +98,6 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         )
         # await self._client.get_host_firmware_version() # Already triggered in
         # __init__.py async_setup_entry
-        await self._client.set_use_snake_case()
 
     async def _get_states(self, categories: list) -> dict[str, Any]:
         """Fetch state payloads for the requested category call definitions.
@@ -179,8 +180,6 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 "function": "get_host_firmware_version",
                 "state_key": "host_firmware_version",
             },
-            {"function": "is_plugin_installed", "state_key": "plugin_installed"},
-            {"function": "is_plugin_deprecated", "state_key": "plugin_deprecated"},
         ]
 
         if config.get(CONF_SYNC_TELEMETRY, DEFAULT_SYNC_OPTION_VALUE):
@@ -228,7 +227,10 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             categories.append({"function": "get_services", "state_key": "services"})
         if config.get(CONF_SYNC_NOTICES, DEFAULT_SYNC_OPTION_VALUE):
             categories.append({"function": "get_notices", "state_key": "notices"})
-        if config.get(CONF_SYNC_FIREWALL_AND_NAT, DEFAULT_SYNC_OPTION_VALUE):
+        if (
+            config.get(CONF_SYNC_FIREWALL_AND_NAT, DEFAULT_SYNC_OPTION_VALUE)
+            and self._firmware_supports_firewall_rules()
+        ):
             categories.append({"function": "get_firewall", "state_key": "firewall"})
         if config.get(CONF_SYNC_UNBOUND, DEFAULT_SYNC_OPTION_VALUE):
             categories.append(
@@ -245,6 +247,35 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             "Categories for fetching data: %s", [item["state_key"] for item in categories]
         )
         return categories
+
+    def _firmware_supports_firewall_rules(self) -> bool:
+        """Return whether firewall and NAT rule polling should run.
+
+        Returns:
+            bool: ``True`` when firmware is >= 26.1.1 and comparison succeeds.
+        """
+        firmware_version = self._state.get("host_firmware_version")
+        if not firmware_version and self.config_entry is not None:
+            firmware_version = self.config_entry.data.get(CONF_FIRMWARE_VERSION)
+
+        if not firmware_version:
+            _LOGGER.debug("Skipping firewall category because firmware version is unavailable")
+            return False
+        try:
+            return awesomeversion.AwesomeVersion(firmware_version) >= awesomeversion.AwesomeVersion(
+                "26.1.1"
+            )
+        except (
+            awesomeversion.exceptions.AwesomeVersionCompareException,
+            TypeError,
+            ValueError,
+        ) as e:
+            _LOGGER.debug(
+                "Failed to compare firmware version %s when evaluating firewall rules support: %s",
+                firmware_version,
+                e,
+            )
+            return False
 
     async def _check_device_unique_id(self) -> bool:
         """Validate that the runtime router ID matches the configured device ID.
@@ -323,11 +354,10 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             )
             # Create repair task here
             return {}
-        restapi_count, xmlrpc_count = await self._client.get_query_counts()
+        restapi_count = await self._client.get_query_counts()
         _LOGGER.debug(
-            "DT Update Complete. REST API Queries: %s, XMLRPC Queries: %s",
+            "DT Update Complete. REST API Queries: %s",
             restapi_count,
-            xmlrpc_count,
         )
         return self._state
 
@@ -473,11 +503,10 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
 
             await self._calculate_entity_speeds()
 
-            restapi_count, xmlrpc_count = await self._client.get_query_counts()
+            restapi_count = await self._client.get_query_counts()
             _LOGGER.debug(
-                "Update Complete. REST API Queries: %s, XMLRPC Queries: %s",
+                "Update Complete. REST API Queries: %s",
                 restapi_count,
-                xmlrpc_count,
             )
             return self._state
         finally:

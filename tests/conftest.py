@@ -678,7 +678,7 @@ def fake_client() -> Any:
 
                 # state for query counts used by coordinator tests
                 self._query_counts_reset = False
-                self._query_counts = (1, 1)
+                self._query_counts = 0
 
             async def get_device_unique_id(self, expected_id: str | None = None) -> Any:
                 """Return the fake device identifier configured for this client.
@@ -711,7 +711,7 @@ def fake_client() -> Any:
                 self._query_counts_reset = True
 
             async def get_query_counts(self) -> Any:
-                """Return the stored pair of fake REST and XML-RPC query counters."""
+                """Return the stored number of fake REST/API query calls."""
                 return self._query_counts
 
             async def get_interfaces(self) -> Any:
