@@ -2514,14 +2514,16 @@ def test_smart_sensor_unavailable_when_property_malformed(
 
 
 @pytest.mark.parametrize(
-    ("native_value", "expected_icon"),
+    ("native_value", "expected_available", "expected_icon"),
     [
-        ("PASSED", "mdi:harddisk"),
-        ("FAILED", "mdi:harddisk-remove"),
+        ("PASSED", True, "mdi:harddisk"),
+        ("FAILED", True, "mdi:harddisk-remove"),
+        (None, False, "mdi:harddisk"),
     ],
 )
 def test_smart_status_icon_reflects_failed_health(
-    native_value: str,
+    native_value: str | None,
+    expected_available: bool,
     expected_icon: str,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
@@ -2536,7 +2538,13 @@ def test_smart_status_icon_reflects_failed_health(
         coordinator=coordinator,
         entity_description=desc,
     )
+    sensor._available = expected_available
     sensor._attr_native_value = native_value
+
+    assert sensor.available is expected_available
+    if not expected_available:
+        assert sensor.icon == expected_icon
+        return
 
     assert sensor.icon == expected_icon
 

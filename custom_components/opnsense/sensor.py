@@ -1306,7 +1306,11 @@ class OPNsenseSmartSensor(OPNsenseSensor):
     @property
     def icon(self) -> str | None:
         """Return the icon for the sensor."""
-        if self._get_property_name() == "status" and str(self.native_value).upper() != "PASSED":
+        if (
+            self.available
+            and self._get_property_name() == "status"
+            and str(self.native_value).upper() != "PASSED"
+        ):
             return "mdi:harddisk-remove"
         return super().icon
 
