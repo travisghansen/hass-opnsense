@@ -84,10 +84,12 @@ def test_align_aiopnsense_log_level_mirrors_opnsense_when_unset() -> None:
     aiopnsense_helper_logger = logging.getLogger("aiopnsense.helpers")
     original_opnsense_level = opnsense_logger.level
     original_aiopnsense_level = aiopnsense_logger.level
+    original_aiopnsense_helper_level = aiopnsense_helper_logger.level
 
     try:
         opnsense_logger.setLevel(logging.DEBUG)
         aiopnsense_logger.setLevel(logging.NOTSET)
+        aiopnsense_helper_logger.setLevel(logging.NOTSET)
 
         init_mod._align_aiopnsense_log_level()
 
@@ -96,6 +98,7 @@ def test_align_aiopnsense_log_level_mirrors_opnsense_when_unset() -> None:
     finally:
         opnsense_logger.setLevel(original_opnsense_level)
         aiopnsense_logger.setLevel(original_aiopnsense_level)
+        aiopnsense_helper_logger.setLevel(original_aiopnsense_helper_level)
 
 
 def test_align_aiopnsense_log_level_keeps_explicit_aiopnsense_level() -> None:
