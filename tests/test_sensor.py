@@ -2476,6 +2476,43 @@ async def test_compile_smart_sensors_skips_invalid_state_shapes(
     assert entities == []
 
 
+@pytest.mark.asyncio
+async def test_compile_smart_sensors_skips_missing_smart_info(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART sensor compilation should require per-device attribute data."""
+    entry = make_config_entry({"device_unique_id": "id", CONF_SYNC_SMART: True})
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+
+    entities = await sensor_module._compile_smart_sensors(
+        entry,
+        coordinator,
+        {"smart": [{"device": "nvme0"}]},
+    )
+
+    assert entities == []
+
+
+@pytest.mark.asyncio
+async def test_compile_smart_sensors_skips_malformed_device_info(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART sensor compilation should skip devices without mapped attribute data."""
+    entry = make_config_entry({"device_unique_id": "id", CONF_SYNC_SMART: True})
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+
+    entities = await sensor_module._compile_smart_sensors(
+        entry,
+        coordinator,
+        {
+            "smart": [{"device": "nvme0"}, {"device": "ada0"}],
+            "smart_info": {"nvme0": [], "ada0": {"temperature": {"current": 42}}},
+        },
+    )
+
+    assert [entity.entity_description.key for entity in entities] == ["smart.ada0.temperature"]
+
+
 def test_smart_sensor_unavailable_when_device_or_property_missing(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
@@ -2490,6 +2527,18 @@ def test_smart_sensor_unavailable_when_device_or_property_missing(
         "SMART ada0 Temperature",
     )
     _prepare_smart_sensor(sensor, "sensor.smart_ada0_temperature")
+    sensor._handle_coordinator_update()
+    assert sensor.available is False
+
+    sensor = _build_smart_sensor(
+        make_config_entry,
+        {
+            "smart": [{"device": "nvme0"}],
+            "smart_info": {"nvme0": []},
+        },
+        "smart.nvme0.temperature",
+    )
+    _prepare_smart_sensor(sensor, "sensor.smart_nvme0_temperature")
     sensor._handle_coordinator_update()
     assert sensor.available is False
 

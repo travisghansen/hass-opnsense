@@ -21,6 +21,7 @@ from custom_components.opnsense.binary_sensor import (
     OPNsensePendingNoticesPresentBinarySensor,
     OPNsenseSmartStatusBinarySensor,
     _compile_interface_enabled_binary_sensors,
+    _compile_smart_status_binary_sensors,
     async_setup_entry,
 )
 from custom_components.opnsense.const import (
@@ -64,7 +65,9 @@ async def test_async_setup_entry_skips_when_disabled(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """Skip creating entities when sync options are disabled."""
-    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_NOTICES: False})
+    entry = make_config_entry(
+        {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_NOTICES: False, CONF_SYNC_SMART: False}
+    )
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord.data = {}
     setattr(entry.runtime_data, COORDINATOR, coord)
@@ -229,6 +232,132 @@ async def test_async_setup_entry_creates_smart_status_problem_binary_sensors(
         "media_errors": 0,
         "temperature": 71,
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("coord_data", [None, {"smart": {}}])
+async def test_compile_smart_status_binary_sensors_skips_invalid_state(
+    coord_data: Any, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Skip SMART status binary sensors from invalid coordinator state."""
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = coord_data
+
+    assert await _compile_smart_status_binary_sensors(entry, coord) == []
+
+
+@pytest.mark.asyncio
+async def test_compile_smart_status_binary_sensors_skips_malformed_devices(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Skip malformed SMART rows while compiling valid status binary sensors."""
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {
+        "smart": [
+            "ignored",
+            {"device": ""},
+            {"device": "nvme0", "state": {"smart_status": {"passed": True}}},
+        ]
+    }
+
+    entities = await _compile_smart_status_binary_sensors(entry, coord)
+
+    assert len(entities) == 1
+    assert entities[0].entity_description.key == "smart.nvme0.status"
+
+
+def _build_smart_status_binary_sensor(
+    make_config_entry: Callable[..., MockConfigEntry],
+    state: Any,
+    key: str = "smart.nvme0.status",
+) -> OPNsenseSmartStatusBinarySensor:
+    """Build a SMART status binary sensor for direct update tests.
+
+    Args:
+        make_config_entry: Config-entry factory fixture.
+        state: Coordinator data to bind to the sensor.
+        key: Entity description key to test.
+
+    Returns:
+        OPNsenseSmartStatusBinarySensor: Prepared sensor instance.
+    """
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = state
+    sensor = OPNsenseSmartStatusBinarySensor(
+        config_entry=entry,
+        coordinator=coord,
+        entity_description=BinarySensorEntityDescription(key=key, name="SMART nvme0 Status"),
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "binary_sensor.smart_nvme0_status"
+    stub_async_write_ha_state(sensor)
+    return sensor
+
+
+@pytest.mark.parametrize(
+    ("state", "key"),
+    [
+        (None, "smart.nvme0.status"),
+        ({"smart": []}, "smart.nvme0.status.extra"),
+        ({"smart": {}}, "smart.nvme0.status"),
+        ({"smart": ["ignored", {"device": ""}]}, "smart.nvme0.status"),
+        ({"smart": [{"device": "nvme0", "state": {"smart_status": {}}}]}, "smart.nvme0.status"),
+        (
+            {"smart": [{"device": "nvme0", "state": {"smart_status": ""}}]},
+            "smart.nvme0.status",
+        ),
+    ],
+)
+def test_smart_status_binary_sensor_unavailable_for_invalid_payloads(
+    state: Any,
+    key: str,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART status binary sensors should reject invalid state and status payloads."""
+    sensor = _build_smart_status_binary_sensor(make_config_entry, state, key)
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
+
+
+@pytest.mark.parametrize(
+    ("smart_state", "smart_info", "expected_is_on"),
+    [
+        ({"smart_status": {"status": "FAILED"}}, {}, True),
+        (None, {"nvme0": {"smart_status": True}}, False),
+        ({}, {"nvme0": {"smart_status": "PASSED"}}, False),
+    ],
+)
+def test_smart_status_binary_sensor_parses_supported_status_shapes(
+    smart_state: dict[str, Any] | None,
+    smart_info: dict[str, Any],
+    expected_is_on: bool,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART status binary sensors should parse supported status shapes."""
+    smart_device: dict[str, Any] = {"device": "nvme0"}
+    if smart_state is not None:
+        smart_device["state"] = smart_state
+    sensor = _build_smart_status_binary_sensor(
+        make_config_entry,
+        {
+            "smart": [
+                {"device": "ada0", "state": {"smart_status": {"passed": True}}},
+                smart_device,
+            ],
+            "smart_info": smart_info,
+        },
+    )
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is True
+    assert sensor.is_on is expected_is_on
+    assert sensor.extra_state_attributes == {"device": "nvme0"}
 
 
 @pytest.mark.asyncio

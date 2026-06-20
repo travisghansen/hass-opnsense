@@ -17,6 +17,7 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.opnsense import coordinator as coordinator_module
+from custom_components.opnsense.client_protocol import OPNsenseClientProtocol
 from custom_components.opnsense.const import (
     ATTR_UNBOUND_BLOCKLIST,
     CONF_DEVICE_UNIQUE_ID,
@@ -154,6 +155,63 @@ async def test_get_states_fetches_smart_info_for_each_smart_device(
         call(device="nvme0", info_type="A"),
         call(device="ada0", info_type="A"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_get_states_skips_smart_info_when_smart_devices_missing(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART attribute data should stay empty without discovered SMART devices."""
+    client = MagicMock()
+    client.get_smart = AsyncMock(return_value={})
+    client.get_smart_info = AsyncMock()
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_SMART: True})
+    coordinator = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    state = await coordinator._get_states(
+        [
+            {"function": "get_smart", "state_key": "smart"},
+            {"function": "get_smart_info", "state_key": "smart_info"},
+        ]
+    )
+
+    assert state["smart_info"] == {}
+    client.get_smart_info.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_build_categories_includes_smart_without_smart_info_when_client_lacks_method(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART sync should still collect status when attribute data is unsupported."""
+
+    class ClientWithoutSmartInfo:
+        """Client that supports SMART status but not SMART attributes."""
+
+        async def get_smart(self) -> list[Any]:
+            """Return empty SMART status rows."""
+            return []
+
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_SMART: True})
+    coordinator = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=cast("OPNsenseClientProtocol", ClientWithoutSmartInfo()),
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    state_keys = [category["state_key"] for category in coordinator._categories]
+    assert "smart" in state_keys
+    assert "smart_info" not in state_keys
 
 
 @pytest.mark.asyncio

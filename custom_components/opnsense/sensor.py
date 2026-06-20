@@ -1221,8 +1221,6 @@ class OPNsenseSmartSensor(OPNsenseSensor):
             attr_value = smart_device.get(attr)
             if attr_value is not None and attr_value != "":
                 self._attr_extra_state_attributes[attr] = attr_value
-        if "device" not in self._attr_extra_state_attributes:
-            self._attr_extra_state_attributes["device"] = expected_device_slug
         self.async_write_ha_state()
 
 
