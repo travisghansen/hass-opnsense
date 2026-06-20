@@ -338,9 +338,6 @@ async def validate_input(
             key="missing_device_unique_id",
             message=f"Missing Device Unique ID Error. {type(e).__name__}: {e}",
         )
-    except PluginMissing:
-        _log_and_set_error(errors=errors, key="plugin_missing", message="OPNsense Plugin Missing")
-
     except (
         aiohttp.InvalidURL,
         InvalidURL,
@@ -358,8 +355,6 @@ async def validate_input(
             errors["base"] = "invalid_auth"
         elif "Authentication failed: not enough privileges" in error_message:
             errors["base"] = "privilege_missing"
-        elif "opnsense.exec_php does not exist" in error_message:
-            errors["base"] = "plugin_missing"
         else:
             errors["base"] = "cannot_connect"
         _LOGGER.error(
@@ -1247,10 +1242,3 @@ class BelowMinFirmwareError(Exception):
 
 
 BelowMinFirmware = BelowMinFirmwareError
-
-
-class PluginMissingError(Exception):
-    """OPNsense plugin missing."""
-
-
-PluginMissing = PluginMissingError

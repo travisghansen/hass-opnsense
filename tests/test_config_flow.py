@@ -129,11 +129,9 @@ async def test_clean_and_parse_url_success_and_failure() -> None:
         ("unknown_fw", "unknown_firmware"),
         ("missing_external_dep", "missing_external_aiopnsense"),
         ("missing_id", "missing_device_unique_id"),
-        ("plugin_missing", "plugin_missing"),
         ("invalid_url", "invalid_url_format"),
         ("xmlrpc_invalid_auth", "invalid_auth"),
         ("xmlrpc_privilege", "privilege_missing"),
-        ("xmlrpc_plugin", "plugin_missing"),
         ("xmlrpc_other", "cannot_connect"),
         ("client_connector_ssl", "cannot_connect_ssl"),
         ("resp_401", "invalid_auth"),
@@ -162,16 +160,12 @@ async def test_validate_input_exception_mapping(
         exc = cf_mod.MissingExternalAiopnsenseDependency()
     elif exc_key == "missing_id":
         exc = cf_mod.MissingDeviceUniqueID("x")
-    elif exc_key == "plugin_missing":
-        exc = cf_mod.PluginMissing()
     elif exc_key == "invalid_url":
         exc = aiohttp.InvalidURL("u")
     elif exc_key == "xmlrpc_invalid_auth":
         exc = xmlrpc.client.Fault(1, "Invalid username or password")
     elif exc_key == "xmlrpc_privilege":
         exc = xmlrpc.client.Fault(1, "Authentication failed: not enough privileges")
-    elif exc_key == "xmlrpc_plugin":
-        exc = xmlrpc.client.Fault(1, "opnsense.exec_php does not exist")
     elif exc_key == "xmlrpc_other":
         exc = xmlrpc.client.Fault(1, "other fault")
     elif exc_key == "client_connector_ssl":
