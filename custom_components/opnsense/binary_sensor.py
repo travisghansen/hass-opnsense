@@ -257,7 +257,10 @@ class OPNsenseSmartStatusBinarySensor(OPNsenseBinarySensor):
 
         device_name = smart_device.get("device")
         smart_info = state.get("smart_info")
-        device_info = smart_info.get(device_name) if isinstance(smart_info, Mapping) else None
+        normalized_device_name = device_name.strip() if isinstance(device_name, str) else ""
+        device_info = (
+            smart_info.get(normalized_device_name) if isinstance(smart_info, Mapping) else None
+        )
         if not isinstance(device_info, Mapping):
             device_info = {}
 

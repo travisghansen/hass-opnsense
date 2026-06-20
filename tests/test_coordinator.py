@@ -158,6 +158,48 @@ async def test_get_states_fetches_smart_info_for_each_smart_device(
 
 
 @pytest.mark.asyncio
+async def test_get_states_continues_when_one_smart_device_lookup_fails(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART attribute data should keep processing after one per-device lookup fails."""
+    client = MagicMock()
+    client.get_smart = AsyncMock(
+        return_value=[
+            {"device": "nvme0", "state": {"smart_status": {"passed": True}}},
+            {"device": "ada0", "state": {"smart_status": {"passed": False}}},
+        ]
+    )
+    client.get_smart_info = AsyncMock(
+        side_effect=[
+            TimeoutError("nvme0 timed out"),
+            {"temperature": {"current": 42}},
+        ]
+    )
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_SMART: True})
+    coordinator = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    state = await coordinator._get_states(
+        [
+            {"function": "get_smart", "state_key": "smart"},
+            {"function": "get_smart_info", "state_key": "smart_info"},
+        ]
+    )
+
+    assert state["smart_info"] == {"ada0": {"temperature": {"current": 42}}}
+    assert client.get_smart_info.await_args_list == [
+        call(device="nvme0", info_type="A"),
+        call(device="ada0", info_type="A"),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_get_states_skips_smart_info_when_smart_devices_missing(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:

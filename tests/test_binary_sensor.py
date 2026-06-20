@@ -360,6 +360,24 @@ def test_smart_status_binary_sensor_parses_supported_status_shapes(
     assert sensor.extra_state_attributes == {"device": "nvme0"}
 
 
+def test_smart_status_binary_sensor_strips_device_name_before_smart_info_lookup(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART status binary sensors should normalize padded device names before lookup."""
+    sensor = _build_smart_status_binary_sensor(
+        make_config_entry,
+        {
+            "smart": [{"device": " nvme0 "}],
+            "smart_info": {"nvme0": {"smart_status": {"passed": False}}},
+        },
+    )
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is True
+    assert sensor.is_on is True
+
+
 @pytest.mark.asyncio
 async def test_async_setup_entry_skips_interfaces_when_interface_sync_disabled(
     make_config_entry: Callable[..., MockConfigEntry],

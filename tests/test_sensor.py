@@ -2555,6 +2555,25 @@ def test_smart_sensor_unavailable_when_device_or_property_missing(
     assert sensor.available is False
 
 
+def test_smart_sensor_strips_device_name_before_smart_info_lookup(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART disk sensors should normalize padded device names before lookup."""
+    sensor = _build_smart_sensor(
+        make_config_entry,
+        {
+            "smart": [{"device": " nvme0 "}],
+            "smart_info": {"nvme0": {"temperature": {"current": 37}}},
+        },
+        "smart.nvme0.temperature",
+    )
+    _prepare_smart_sensor(sensor, "sensor.smart_nvme0_temperature")
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is True
+    assert sensor.native_value == 37
+
+
 @pytest.mark.parametrize(
     ("state", "key"),
     [

@@ -6,7 +6,9 @@ from datetime import timedelta
 import logging
 import time
 from typing import Any
+import xmlrpc.client
 
+import aiohttp
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
@@ -124,10 +126,25 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                             device_name = smart_device.get("device")
                             if not isinstance(device_name, str) or not device_name.strip():
                                 continue
-                            smart_info[device_name.strip()] = await method(
-                                device=device_name.strip(),
-                                info_type=cat.get("info_type", "A"),
-                            )
+                            normalized_device_name = device_name.strip()
+                            try:
+                                smart_info[normalized_device_name] = await method(
+                                    device=normalized_device_name,
+                                    info_type=cat.get("info_type", "A"),
+                                )
+                            except (
+                                aiohttp.ClientError,
+                                OSError,
+                                TimeoutError,
+                                TypeError,
+                                ValueError,
+                                xmlrpc.client.Error,
+                            ):
+                                _LOGGER.exception(
+                                    "Failed to fetch SMART info for device %s",
+                                    normalized_device_name,
+                                )
+                                continue
                     state[cat.get("state_key")] = smart_info
                 else:
                     state[cat.get("state_key")] = await method()
