@@ -320,21 +320,6 @@ async def _compile_speedtest_sensors(
     return entities
 
 
-def _smart_device_name(device: Mapping[str, Any]) -> str | None:
-    """Return the normalized SMART device name from a SMART row.
-
-    Args:
-        device: SMART device row returned by the backend client.
-
-    Returns:
-        str | None: Device name when the row contains a usable value.
-    """
-    device_name = device.get("device") or device.get("dev")
-    if not isinstance(device_name, str) or not device_name.strip():
-        return None
-    return device_name.strip()
-
-
 def _smart_device_slug(device_name: str) -> str:
     """Return the entity key slug for a SMART device name.
 
@@ -346,94 +331,6 @@ def _smart_device_slug(device_name: str) -> str:
     """
     device_slug = slugify(device_name)
     return device_slug or "unknown"
-
-
-def _parse_smart_temperature(value: Any) -> int | float | None:
-    """Return a numeric SMART temperature value.
-
-    Args:
-        value: Raw SMART temperature value from the backend client.
-
-    Returns:
-        int | float | None: Numeric temperature, or ``None`` when malformed.
-    """
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int | float):
-        return value
-    if not isinstance(value, str):
-        return None
-
-    value_match = re.search(r"-?\d+(?:\.\d+)?", value)
-    if value_match is None:
-        return None
-    parsed_value = float(value_match.group(0))
-    if parsed_value.is_integer():
-        return int(parsed_value)
-    return parsed_value
-
-
-def _smart_property_value(device: Mapping[str, Any], prop_name: str) -> Any:
-    """Return a SMART sensor property value.
-
-    Args:
-        device: SMART device row returned by the backend client.
-        prop_name: Canonical property name requested by the entity.
-
-    Returns:
-        Any: SMART value when present, otherwise ``None``.
-    """
-    if prop_name not in device:
-        return None
-
-    value = device[prop_name]
-    if prop_name == "status":
-        if not isinstance(value, str) or not value.strip():
-            return None
-        return value.strip()
-    if prop_name == "temperature":
-        return _parse_smart_temperature(value)
-    return None
-
-
-def _smart_sensor_properties(device: Mapping[str, Any]) -> tuple[str, ...]:
-    """Return SMART properties with values that should get sensors.
-
-    Args:
-        device: SMART device row returned by the backend client.
-
-    Returns:
-        tuple[str, ...]: Canonical SMART property names that are present.
-    """
-    return tuple(
-        prop_name
-        for prop_name in ("status", "temperature")
-        if _smart_property_value(device, prop_name) is not None
-    )
-
-
-def _find_smart_device(
-    smart_devices: list[Any],
-    expected_device_slug: str,
-) -> Mapping[str, Any] | None:
-    """Find a SMART device row by normalized device slug.
-
-    Args:
-        smart_devices: SMART device rows from coordinator state.
-        expected_device_slug: Slug encoded into the entity description key.
-
-    Returns:
-        Mapping[str, Any] | None: Matching SMART device row when present.
-    """
-    for candidate in smart_devices:
-        if not isinstance(candidate, Mapping):
-            continue
-        device_name = _smart_device_name(candidate)
-        if device_name is None:
-            continue
-        if _smart_device_slug(device_name) == expected_device_slug:
-            return candidate
-    return None
 
 
 async def _compile_smart_sensors(
@@ -456,29 +353,38 @@ async def _compile_smart_sensors(
     smart_devices = state.get("smart")
     if not isinstance(smart_devices, list):
         return []
+    smart_info = state.get("smart_info")
+    if not isinstance(smart_info, Mapping):
+        return []
 
     entities: list = []
     for smart_device in smart_devices:
         if not isinstance(smart_device, Mapping):
             continue
-        device_name = _smart_device_name(smart_device)
-        if device_name is None:
+        device_name = smart_device.get("device")
+        if not isinstance(device_name, str) or not device_name.strip():
             continue
-        device_slug = _smart_device_slug(device_name)
+        device_name = device_name.strip()
 
-        for prop_name in _smart_sensor_properties(smart_device):
-            if prop_name == "status":
-                entity_description = SensorEntityDescription(
-                    key=f"smart.{device_slug}.status",
-                    name=f"SMART {device_name} Status",
-                    native_unit_of_measurement=None,
-                    device_class=None,
-                    icon="mdi:harddisk",
-                    state_class=None,
-                    entity_registry_enabled_default=False,
-                )
-            else:
-                entity_description = SensorEntityDescription(
+        device_info = smart_info.get(device_name)
+        if not isinstance(device_info, Mapping):
+            continue
+
+        temperature_value: int | float | None = None
+        temperature = device_info.get("temperature")
+        if isinstance(temperature, Mapping) and not isinstance(temperature.get("current"), bool):
+            current_temperature = temperature.get("current")
+            if isinstance(current_temperature, int | float):
+                temperature_value = current_temperature
+        if temperature_value is None:
+            continue
+
+        device_slug = _smart_device_slug(device_name)
+        entities.append(
+            OPNsenseSmartSensor(
+                config_entry=config_entry,
+                coordinator=coordinator,
+                entity_description=SensorEntityDescription(
                     key=f"smart.{device_slug}.temperature",
                     name=f"SMART {device_name} Temperature",
                     native_unit_of_measurement=UnitOfTemperature.CELSIUS,
@@ -488,14 +394,9 @@ async def _compile_smart_sensors(
                     suggested_display_precision=1,
                     suggested_unit_of_measurement=UnitOfTemperature.CELSIUS,
                     entity_registry_enabled_default=False,
-                )
-            entities.append(
-                OPNsenseSmartSensor(
-                    config_entry=config_entry,
-                    coordinator=coordinator,
-                    entity_description=entity_description,
-                )
+                ),
             )
+        )
     return entities
 
 
@@ -1252,10 +1153,6 @@ class OPNsenseSpeedtestSensor(OPNsenseSensor):
 class OPNsenseSmartSensor(OPNsenseSensor):
     """Class for OPNsense SMART disk sensors."""
 
-    def _get_property_name(self) -> str:
-        """Return the SMART property name for this sensor."""
-        return self.entity_description.key.split(".")[2]
-
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator updates for SMART disk sensors."""
@@ -1271,6 +1168,10 @@ class OPNsenseSmartSensor(OPNsenseSensor):
             self.async_write_ha_state()
             return
         _, expected_device_slug, prop_name = key_parts
+        if prop_name != "temperature":
+            self._available = False
+            self.async_write_ha_state()
+            return
 
         smart_devices = state.get("smart")
         if not isinstance(smart_devices, list):
@@ -1278,13 +1179,36 @@ class OPNsenseSmartSensor(OPNsenseSensor):
             self.async_write_ha_state()
             return
 
-        smart_device = _find_smart_device(smart_devices, expected_device_slug)
+        smart_device: Mapping[str, Any] | None = None
+        for candidate in smart_devices:
+            if not isinstance(candidate, Mapping):
+                continue
+            device_name = candidate.get("device")
+            if not isinstance(device_name, str) or not device_name.strip():
+                continue
+            if _smart_device_slug(device_name.strip()) == expected_device_slug:
+                smart_device = candidate
+                break
+
         if smart_device is None:
             self._available = False
             self.async_write_ha_state()
             return
 
-        value = _smart_property_value(smart_device, prop_name)
+        device_name = smart_device.get("device")
+        smart_info = state.get("smart_info")
+        device_info = smart_info.get(device_name) if isinstance(smart_info, Mapping) else None
+        if not isinstance(device_info, Mapping):
+            self._available = False
+            self.async_write_ha_state()
+            return
+
+        value: Any = None
+        temperature = device_info.get("temperature")
+        if isinstance(temperature, Mapping) and not isinstance(temperature.get("current"), bool):
+            current_temperature = temperature.get("current")
+            if isinstance(current_temperature, int | float):
+                value = current_temperature
         if value is None:
             self._available = False
             self.async_write_ha_state()
@@ -1293,25 +1217,13 @@ class OPNsenseSmartSensor(OPNsenseSensor):
         self._available = True
         self._attr_native_value = value
         self._attr_extra_state_attributes = {}
-        for attr in ("device", "model", "serial_number", "serial", "type"):
+        for attr in ("device", "ident", "model", "serial_number", "serial", "type"):
             attr_value = smart_device.get(attr)
             if attr_value is not None and attr_value != "":
                 self._attr_extra_state_attributes[attr] = attr_value
         if "device" not in self._attr_extra_state_attributes:
-            device_name = _smart_device_name(smart_device)
-            self._attr_extra_state_attributes["device"] = device_name or expected_device_slug
+            self._attr_extra_state_attributes["device"] = expected_device_slug
         self.async_write_ha_state()
-
-    @property
-    def icon(self) -> str | None:
-        """Return the icon for the sensor."""
-        if (
-            self.available
-            and self._get_property_name() == "status"
-            and str(self.native_value).upper() != "PASSED"
-        ):
-            return "mdi:harddisk-remove"
-        return super().icon
 
 
 class OPNsenseFilesystemSensor(OPNsenseSensor):

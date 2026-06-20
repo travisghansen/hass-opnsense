@@ -8,7 +8,10 @@ from collections.abc import Callable, Iterable
 from typing import Any, cast
 from unittest.mock import MagicMock
 
-from homeassistant.components.binary_sensor import BinarySensorEntityDescription
+from homeassistant.components.binary_sensor import (
+    BinarySensorDeviceClass,
+    BinarySensorEntityDescription,
+)
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -16,6 +19,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.opnsense.binary_sensor import (
     OPNsenseInterfaceEnabledBinarySensor,
     OPNsensePendingNoticesPresentBinarySensor,
+    OPNsenseSmartStatusBinarySensor,
     _compile_interface_enabled_binary_sensors,
     async_setup_entry,
 )
@@ -23,6 +27,7 @@ from custom_components.opnsense.const import (
     CONF_DEVICE_UNIQUE_ID,
     CONF_SYNC_INTERFACES,
     CONF_SYNC_NOTICES,
+    CONF_SYNC_SMART,
     COORDINATOR,
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
@@ -146,6 +151,84 @@ async def test_async_setup_entry_creates_disabled_interface_enabled_sensors(
     assert all(
         entity.entity_description.entity_registry_enabled_default is False for entity in created
     )
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_creates_smart_status_problem_binary_sensors(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Create SMART status binary sensors with health-log attributes."""
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_NOTICES: False,
+            CONF_SYNC_SMART: True,
+        }
+    )
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {
+        "smart": [
+            {"device": "nvme0", "ident": "SERIAL", "state": {"smart_status": {"passed": True}}},
+            {"device": "ada0", "state": {"smart_status": {"passed": False}}},
+        ],
+        "smart_info": {
+            "nvme0": {
+                "nvme_smart_health_information_log": {
+                    "critical_warning": 0,
+                    "media_errors": 0,
+                    "temperature": 71,
+                }
+            },
+            "ada0": {
+                "nvme_smart_health_information_log": {
+                    "critical_warning": 1,
+                    "media_errors": 2,
+                }
+            },
+        },
+    }
+    setattr(entry.runtime_data, COORDINATOR, coord)
+    created: list[Any] = []
+
+    def add_entities(ents: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Add entities.
+
+        Args:
+            ents: Ents provided by pytest or the test case.
+        """
+        created.extend(ents)
+
+    await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
+
+    smart_entities = [
+        entity for entity in created if isinstance(entity, OPNsenseSmartStatusBinarySensor)
+    ]
+    assert {entity.entity_description.key for entity in smart_entities} == {
+        "smart.nvme0.status",
+        "smart.ada0.status",
+    }
+    assert all(
+        entity.entity_description.device_class is BinarySensorDeviceClass.PROBLEM
+        for entity in smart_entities
+    )
+
+    entities_by_key = {entity.entity_description.key: entity for entity in smart_entities}
+    nvme_status = entities_by_key["smart.nvme0.status"]
+    nvme_status.hass = MagicMock()
+    nvme_status.entity_id = "binary_sensor.smart_nvme0_status"
+    stub_async_write_ha_state(nvme_status)
+    nvme_status._handle_coordinator_update()
+
+    assert nvme_status.available is True
+    assert nvme_status.is_on is False
+    assert nvme_status.extra_state_attributes == {
+        "device": "nvme0",
+        "ident": "SERIAL",
+        "critical_warning": 0,
+        "media_errors": 0,
+        "temperature": 71,
+    }
 
 
 @pytest.mark.asyncio

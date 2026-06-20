@@ -726,6 +726,15 @@ def fake_client() -> Any:
                 """Return an empty SMART payload for coordinator tests."""
                 return []
 
+            async def get_smart_info(self, device: str, info_type: str = "a") -> Any:
+                """Return an empty SMART info payload for coordinator tests.
+
+                Args:
+                    device: SMART device name requested by the coordinator.
+                    info_type: SMART info selector requested by the coordinator.
+                """
+                return {}
+
             async def get_openvpn(self) -> Any:
                 """Return an empty OpenVPN payload for coordinator tests."""
                 return {"servers": {}}

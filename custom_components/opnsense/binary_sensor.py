@@ -12,8 +12,15 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import slugify
 
-from .const import CONF_SYNC_INTERFACES, CONF_SYNC_NOTICES, COORDINATOR, DEFAULT_SYNC_OPTION_VALUE
+from .const import (
+    CONF_SYNC_INTERFACES,
+    CONF_SYNC_NOTICES,
+    CONF_SYNC_SMART,
+    COORDINATOR,
+    DEFAULT_SYNC_OPTION_VALUE,
+)
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity
 from .helpers import coerce_bool, dict_get
@@ -62,6 +69,53 @@ async def _compile_interface_enabled_binary_sensors(
     return entities
 
 
+async def _compile_smart_status_binary_sensors(
+    config_entry: ConfigEntry,
+    coordinator: OPNsenseDataUpdateCoordinator,
+) -> list:
+    """Compile SMART status binary sensors.
+
+    Args:
+        config_entry: Config entry being set up.
+        coordinator: Data update coordinator that caches OPNsense state.
+
+    Returns:
+        list: SMART status binary sensor entities.
+    """
+    state: dict[str, Any] = coordinator.data
+    if not isinstance(state, MutableMapping):
+        return []
+
+    smart_devices = state.get("smart")
+    if not isinstance(smart_devices, list):
+        return []
+
+    entities: list = []
+    for smart_device in smart_devices:
+        if not isinstance(smart_device, Mapping):
+            continue
+        device_name = smart_device.get("device")
+        if not isinstance(device_name, str) or not device_name.strip():
+            continue
+        device_name = device_name.strip()
+
+        device_slug = slugify(device_name) or "unknown"
+        entities.append(
+            OPNsenseSmartStatusBinarySensor(
+                config_entry=config_entry,
+                coordinator=coordinator,
+                entity_description=BinarySensorEntityDescription(
+                    key=f"smart.{device_slug}.status",
+                    name=f"SMART {device_name} Status",
+                    icon="mdi:harddisk",
+                    device_class=BinarySensorDeviceClass.PROBLEM,
+                    entity_registry_enabled_default=False,
+                ),
+            )
+        )
+    return entities
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -74,6 +128,8 @@ async def async_setup_entry(
     entities: list = []
     if config.get(CONF_SYNC_INTERFACES, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_interface_enabled_binary_sensors(config_entry, coordinator))
+    if config.get(CONF_SYNC_SMART, DEFAULT_SYNC_OPTION_VALUE):
+        entities.extend(await _compile_smart_status_binary_sensors(config_entry, coordinator))
     if config.get(CONF_SYNC_NOTICES, DEFAULT_SYNC_OPTION_VALUE):
         entities.append(
             OPNsensePendingNoticesPresentBinarySensor(
@@ -155,6 +211,93 @@ class OPNsenseInterfaceEnabledBinarySensor(OPNsenseBinarySensor):
         for attr in ("interface", "device", "ipv4", "ipv6", "mac"):
             if attr in interface and (interface[attr] or isinstance(interface[attr], bool)):
                 self._attr_extra_state_attributes[attr] = interface[attr]
+        self.async_write_ha_state()
+
+
+class OPNsenseSmartStatusBinarySensor(OPNsenseBinarySensor):
+    """OPNsense binary sensor for SMART device health status."""
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle coordinator update."""
+        state: dict[str, Any] = self.coordinator.data
+        if not isinstance(state, MutableMapping):
+            self._available = False
+            self.async_write_ha_state()
+            return
+
+        key_parts = self.entity_description.key.split(".")
+        if len(key_parts) != 3 or key_parts[0] != "smart" or key_parts[2] != "status":
+            self._available = False
+            self.async_write_ha_state()
+            return
+        expected_device_slug = key_parts[1]
+
+        smart_devices = state.get("smart")
+        if not isinstance(smart_devices, list):
+            self._available = False
+            self.async_write_ha_state()
+            return
+
+        smart_device: Mapping[str, Any] | None = None
+        for candidate in smart_devices:
+            if not isinstance(candidate, Mapping):
+                continue
+            device_name = candidate.get("device")
+            if not isinstance(device_name, str) or not device_name.strip():
+                continue
+            if (slugify(device_name.strip()) or "unknown") == expected_device_slug:
+                smart_device = candidate
+                break
+
+        if smart_device is None:
+            self._available = False
+            self.async_write_ha_state()
+            return
+
+        device_name = smart_device.get("device")
+        smart_info = state.get("smart_info")
+        device_info = smart_info.get(device_name) if isinstance(smart_info, Mapping) else None
+        if not isinstance(device_info, Mapping):
+            device_info = {}
+
+        smart_status = None
+        smart_state = smart_device.get("state")
+        if isinstance(smart_state, Mapping):
+            smart_status = smart_state.get("smart_status")
+        if smart_status is None:
+            smart_status = device_info.get("smart_status")
+
+        status_passed: bool | None = None
+        if isinstance(smart_status, Mapping):
+            passed = smart_status.get("passed")
+            if isinstance(passed, bool):
+                status_passed = passed
+            else:
+                status = smart_status.get("status")
+                if isinstance(status, str) and status.strip():
+                    status_passed = status.strip().upper() == "PASSED"
+        elif isinstance(smart_status, bool):
+            status_passed = smart_status
+        elif isinstance(smart_status, str) and smart_status.strip():
+            status_passed = smart_status.strip().upper() == "PASSED"
+
+        if status_passed is None:
+            self._available = False
+            self.async_write_ha_state()
+            return
+
+        self._available = True
+        self._attr_is_on = not status_passed
+        self._attr_extra_state_attributes = {}
+        for attr in ("device", "ident", "model", "serial_number", "serial", "type"):
+            attr_value = smart_device.get(attr)
+            if attr_value is not None and attr_value != "":
+                self._attr_extra_state_attributes[attr] = attr_value
+
+        health_log = device_info.get("nvme_smart_health_information_log")
+        if isinstance(health_log, Mapping):
+            self._attr_extra_state_attributes.update(health_log)
         self.async_write_ha_state()
 
 

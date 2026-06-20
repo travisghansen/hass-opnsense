@@ -10,7 +10,7 @@ from datetime import timedelta
 import logging
 import time
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call
 
 from homeassistant.config_entries import ConfigEntry
 import pytest
@@ -95,6 +95,7 @@ async def test_build_categories_includes_smart_by_default(
         config_entry=entry_default,
     )
     assert "smart" in [category["state_key"] for category in coord_default._categories]
+    assert "smart_info" in [category["state_key"] for category in coord_default._categories]
 
     entry_disabled = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_SMART: False})
     coord_disabled = OPNsenseDataUpdateCoordinator(
@@ -106,6 +107,53 @@ async def test_build_categories_includes_smart_by_default(
         config_entry=entry_disabled,
     )
     assert "smart" not in [category["state_key"] for category in coord_disabled._categories]
+
+
+@pytest.mark.asyncio
+async def test_get_states_fetches_smart_info_for_each_smart_device(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART attribute data should be fetched per discovered SMART device."""
+    client = MagicMock()
+    client.get_smart = AsyncMock(
+        return_value=[
+            {"device": "nvme0", "state": {"smart_status": {"passed": True}}},
+            {"device": "ada0", "state": {"smart_status": {"passed": False}}},
+            {"device": ""},
+            "ignored",
+        ]
+    )
+    client.get_smart_info = AsyncMock(
+        side_effect=[
+            {"temperature": {"current": 71}},
+            {"temperature": {"current": 42}},
+        ]
+    )
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_SMART: True})
+    coordinator = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    state = await coordinator._get_states(
+        [
+            {"function": "get_smart", "state_key": "smart"},
+            {"function": "get_smart_info", "state_key": "smart_info"},
+        ]
+    )
+
+    assert state["smart_info"] == {
+        "nvme0": {"temperature": {"current": 71}},
+        "ada0": {"temperature": {"current": 42}},
+    }
+    assert client.get_smart_info.await_args_list == [
+        call(device="nvme0", info_type="A"),
+        call(device="ada0", info_type="A"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -521,7 +569,7 @@ def test_build_categories_returns_empty_when_no_config(
         (CONF_SYNC_TELEMETRY, ["telemetry"]),
         (CONF_SYNC_VNSTAT, ["vnstat"]),
         (CONF_SYNC_SPEEDTEST, ["speedtest"]),
-        (CONF_SYNC_SMART, ["smart"]),
+        (CONF_SYNC_SMART, ["smart", "smart_info"]),
         (CONF_SYNC_VPN, ["openvpn", "wireguard"]),
         (CONF_SYNC_FIRMWARE_UPDATES, ["firmware_update_info"]),
         (CONF_SYNC_CARP, ["carp"]),
