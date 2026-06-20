@@ -1,7 +1,35 @@
+<a id="v0.7.1"></a>
+# [v0.7.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.7.1) - 2026-06-20
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+### When OPNsense Firmware 26.7 is released, hass-opnsense will fully drop support for the opnsense plugin. hass-opnsense will remain compatible with Firmware >= 25.1, but with Firmware < 26.1.1, there will no longer be Firewall Rule switches.
+
+## What's Changed
+### ✨ New Features
+* Add CARP maintenance mode switch by [@Snuffy2](https://github.com/Snuffy2) in [#607](https://github.com/travisghansen/hass-opnsense/pull/607)
+* Add SMART disk sensors by [@Snuffy2](https://github.com/Snuffy2) in [#605](https://github.com/travisghansen/hass-opnsense/pull/605)
+### 🐛 Bug Fixes
+* Fix SMART device lookups and error handling by [@Snuffy2](https://github.com/Snuffy2) in [#610](https://github.com/travisghansen/hass-opnsense/pull/610)
+### 🎓 Code Quality
+* Add cleanup for prek autoupdate PRs by [@Snuffy2](https://github.com/Snuffy2) in [#599](https://github.com/travisghansen/hass-opnsense/pull/599)
+* test: consolidate parameterized coverage by [@Snuffy2](https://github.com/Snuffy2) in [#601](https://github.com/travisghansen/hass-opnsense/pull/601)
+* Align aiopnsense log level and add switch coverage by [@Snuffy2](https://github.com/Snuffy2) in [#609](https://github.com/travisghansen/hass-opnsense/pull/609)
+### 🧰 Maintenance
+* Bump aiopnsense to 1.0.10 by [@github-actions](https://github.com/github-actions)[bot] in [#600](https://github.com/travisghansen/hass-opnsense/pull/600)
+* Bump aiopnsense to 1.0.11 by [@github-actions](https://github.com/github-actions)[bot] in [#606](https://github.com/travisghansen/hass-opnsense/pull/606)
+* Bump aiopnsense to 1.0.12 by [@github-actions](https://github.com/github-actions)[bot] in [#611](https://github.com/travisghansen/hass-opnsense/pull/611)
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.7.0...v0.7.1
+
+[Changes][v0.7.1]
+
+
 <a id="v0.7.0"></a>
 # [v0.7.0](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.7.0) - 2026-05-29
 
-<!-- Release notes generated using configuration in .github/release.yml at main -->
+<h3>OPNsense Minimum Firmware Required: 25.1</h3><h4>OPNsense Recommended Firmware: 26.1+</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
 ### When OPNsense Firmware 26.7 is released, hass-opnsense will fully drop support for the opnsense plugin. hass-opnsense will remain compatible with Firmware >= 25.1, but with Firmware < 26.1.1, there will no longer be Firewall Rule switches.
 
@@ -16,7 +44,7 @@
 * Bump aiopnsense to 1.0.9 by [@github-actions](https://github.com/github-actions)[bot] in [#598](https://github.com/travisghansen/hass-opnsense/pull/598)
 
 
-**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.6.7...v0.7.0
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.6.7...v0.7.0<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
 
 [Changes][v0.7.0]
 
@@ -1045,6 +1073,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.7.1]: https://github.com/travisghansen/hass-opnsense/compare/v0.7.0...v0.7.1
 [v0.7.0]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.7...v0.7.0
 [v0.6.7]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.6...v0.6.7
 [v0.6.6]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.5...v0.6.6
