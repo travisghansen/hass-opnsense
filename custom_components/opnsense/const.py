@@ -9,7 +9,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import PERCENTAGE, Platform, UnitOfInformation, UnitOfTime
 
-VERSION = "v0.7.2"
+VERSION = "v0.7.3"
 DOMAIN = "opnsense"
 # If less than this, some functions may not work but the integration in general should work.
 # Show repair warning.
