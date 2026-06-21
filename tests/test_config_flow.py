@@ -6,14 +6,12 @@ and options flow behaviors such as device tracker handling.
 
 from collections.abc import Callable
 import importlib
-from typing import Any, Never, cast
+from typing import Any, Never
 from unittest.mock import AsyncMock, MagicMock
 
-import aiohttp
 from homeassistant.core import HomeAssistant
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
-from yarl import URL
 
 from custom_components.opnsense.const import (
     CONF_SYNC_FIREWALL_AND_NAT,
@@ -115,8 +113,8 @@ async def test_clean_and_parse_url_success_and_failure() -> None:
     await cf_mod._clean_and_parse_url(ui)
     assert ui[cf_mod.CONF_URL] == "https://router.example"
 
-    # invalid netloc -> raise InvalidURL
-    with pytest.raises(cf_mod.InvalidURL):
+    # invalid netloc -> raise OPNsenseInvalidURL
+    with pytest.raises(cf_mod.OPNsenseInvalidURL):
         await cf_mod._clean_and_parse_url({cf_mod.CONF_URL: ""})
 
 
@@ -129,16 +127,11 @@ async def test_clean_and_parse_url_success_and_failure() -> None:
         ("missing_external_dep", "missing_external_aiopnsense"),
         ("missing_id", "missing_device_unique_id"),
         ("invalid_url", "invalid_url_format"),
-        ("client_connector_ssl", "cannot_connect_ssl"),
-        ("resp_401", "invalid_auth"),
-        ("resp_403", "privilege_missing"),
-        ("resp_500", "cannot_connect"),
-        ("too_many_redirects", "url_redirect"),
+        ("ssl", "cannot_connect_ssl"),
+        ("invalid_auth", "invalid_auth"),
+        ("privilege_missing", "privilege_missing"),
         ("timeout", "connect_timeout"),
-        ("server_timeout", "connect_timeout"),
-        ("os_timed_out", "connect_timeout"),
-        ("os_ssl_handshake", "cannot_connect_ssl"),
-        ("os_unknown", "unknown"),
+        ("connection", "cannot_connect"),
     ],
 )
 async def test_validate_input_exception_mapping(
@@ -147,7 +140,7 @@ async def test_validate_input_exception_mapping(
     """Ensure validate_input maps various exceptions to the expected error code."""
     # Build exception object lazily to avoid constructor issues at collection time
     if exc_key == "below_min":
-        exc = cf_mod.BelowMinFirmware()
+        exc = cf_mod.OPNsenseBelowMinFirmware()
     elif exc_key == "unknown_fw":
         exc = cf_mod.OPNsenseUnknownFirmware()
     elif exc_key == "missing_external_dep":
@@ -155,49 +148,17 @@ async def test_validate_input_exception_mapping(
     elif exc_key == "missing_id":
         exc = cf_mod.MissingDeviceUniqueID("x")
     elif exc_key == "invalid_url":
-        exc = aiohttp.InvalidURL("u")
-    elif exc_key == "client_connector_ssl":
-        # Simulate an SSL-related client error that maps to "cannot_connect_ssl".
-        # ClientSSLError (and its base ClientConnectorError) require a connection
-        # key and an underlying os_error; provide a minimal connector-like
-        # object and an OSError to construct the exception instance.
-        class Conn:
-            host = "host.example"
-            port = 443
-            ssl = None
-
-        exc = aiohttp.ClientSSLError(
-            cast("aiohttp.client_reqrep.ConnectionKey", Conn()), OSError("ssl error")
-        )
-    elif exc_key in ("resp_401", "resp_403", "resp_500"):
-        status = 401 if exc_key == "resp_401" else 403 if exc_key == "resp_403" else 500
-
-        # Provide minimal request_info with a real_url to satisfy logging/str()
-        class ResponseRequestInfo:
-            real_url = URL("http://localhost")
-
-        exc = aiohttp.ClientResponseError(
-            request_info=cast("aiohttp.RequestInfo", ResponseRequestInfo()),
-            history=(),
-            status=status,
-            message="m",
-        )
-    elif exc_key == "too_many_redirects":
-
-        class RedirectRequestInfo:
-            real_url = URL("http://localhost")
-
-        exc = aiohttp.TooManyRedirects(
-            request_info=cast("aiohttp.RequestInfo", RedirectRequestInfo()), history=()
-        )
+        exc = cf_mod.OPNsenseInvalidURL("u")
+    elif exc_key == "ssl":
+        exc = cf_mod.OPNsenseSSLError("ssl error")
+    elif exc_key == "invalid_auth":
+        exc = cf_mod.OPNsenseInvalidAuth("auth error")
+    elif exc_key == "privilege_missing":
+        exc = cf_mod.OPNsensePrivilegeMissing("privilege error")
     elif exc_key == "timeout":
-        exc = TimeoutError("t")
-    elif exc_key == "server_timeout":
-        exc = aiohttp.ServerTimeoutError("t")
-    elif exc_key == "os_timed_out":
-        exc = OSError("timed out")
-    elif exc_key == "os_ssl_handshake":
-        exc = OSError("SSL: handshake")
+        exc = cf_mod.OPNsenseTimeoutError("t")
+    elif exc_key == "connection":
+        exc = cf_mod.OPNsenseConnectionError("boom")
     else:
         exc = OSError("unknown")
 
@@ -222,9 +183,9 @@ async def test_validate_input_exception_mapping(
 
 
 def test_validate_firmware_version_raises() -> None:
-    """_validate_firmware_version should raise BelowMinFirmware for old versions."""
+    """_validate_firmware_version should raise OPNsenseBelowMinFirmware for old versions."""
     # pick an obviously old version
-    with pytest.raises(cf_mod.BelowMinFirmware):
+    with pytest.raises(cf_mod.OPNsenseBelowMinFirmware):
         cf_mod._validate_firmware_version("1.0")
 
 
@@ -609,14 +570,14 @@ async def test_device_tracker_shows_form_when_no_user_input(
 @pytest.mark.parametrize(
     "exc",
     [
-        aiohttp.ClientError("boom"),
+        cf_mod.OPNsenseConnectionError("boom"),
         cf_mod.MissingExternalAiopnsenseDependency("missing"),
     ],
 )
 async def test_device_tracker_handles_arp_lookup_failure(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
-    exc: BaseException | None,
+    exc: BaseException,
 ) -> None:
     """ARP/dependency lookup failures should not abort device tracker form rendering."""
     cfg = make_config_entry(
@@ -631,16 +592,16 @@ async def test_device_tracker_handles_arp_lookup_failure(
     flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=cfg)
 
     async def _raise(*args, **kwargs) -> Never:
-        """Raise ``ClientError`` so device-tracker lookup failures can be tested.
+        """Raise the parametrized exception so device-tracker lookup failures can be tested.
 
         Args:
             *args: Additional positional arguments forwarded by the function.
             **kwargs: Additional keyword arguments forwarded by the function.
 
         Raises:
-            aiohttp.ClientError: Always raised to exercise error handling in the options flow.
+            BaseException: Always raised to exercise error handling in the options flow.
         """
-        raise aiohttp.ClientError("boom")
+        raise exc
 
     monkeypatch.setattr(cf_mod, "_get_dt_entries", _raise)
 

@@ -7,11 +7,20 @@ from collections.abc import Iterable, Mapping, MutableMapping
 import ipaddress
 import logging
 import re
-import socket
 from typing import TYPE_CHECKING, Any
 from urllib.parse import ParseResult, quote_plus, urlparse
 
 import aiohttp
+from aiopnsense.exceptions import (
+    OPNsenseBelowMinFirmware,
+    OPNsenseConnectionError,
+    OPNsenseInvalidAuth,
+    OPNsenseInvalidURL,
+    OPNsensePrivilegeMissing,
+    OPNsenseSSLError,
+    OPNsenseTimeoutError,
+    OPNsenseUnknownFirmware,
+)
 import awesomeversion
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import (
@@ -314,7 +323,7 @@ async def validate_input(
         await _handle_user_input(
             hass=hass, user_input=user_input, config_step=config_step, expected_id=expected_id
         )
-    except BelowMinFirmware:
+    except OPNsenseBelowMinFirmware:
         _log_and_set_error(
             errors=errors,
             key="below_min_firmware",
@@ -339,80 +348,56 @@ async def validate_input(
             key="missing_device_unique_id",
             message=f"Missing Device Unique ID Error. {type(e).__name__}: {e}",
         )
-    except (
-        aiohttp.InvalidURL,
-        InvalidURL,
-        aiohttp.ClientConnectorDNSError,
-    ) as e:
+    except OPNsenseInvalidURL as e:
         _log_and_set_error(
             errors=errors,
             key="invalid_url_format",
-            message=f"InvalidURL Error. {type(e).__name__}: {e}",
+            message=f"Invalid URL Error. {type(e).__name__}: {e}",
         )
-
-    except aiohttp.ClientSSLError as e:
+    except OPNsenseSSLError as e:
         _log_and_set_error(
             errors=errors,
             key="cannot_connect_ssl",
             message=cleanse_sensitive_data(
-                f"Aiohttp Error. {type(e).__name__}: {e}",
+                f"aiopnsense Error. {type(e).__name__}: {e}",
                 [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
             ),
         )
-    except (aiohttp.TooManyRedirects, aiohttp.RedirectClientError) as e:
+    except OPNsenseInvalidAuth as e:
         _log_and_set_error(
             errors=errors,
-            key="url_redirect",
+            key="invalid_auth",
             message=cleanse_sensitive_data(
-                f"Redirect Error. {type(e).__name__}: {e}",
+                f"aiopnsense Error. {type(e).__name__}: {e}",
                 [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
             ),
         )
-    except (TimeoutError, aiohttp.ServerTimeoutError) as e:
+    except OPNsensePrivilegeMissing as e:
+        _log_and_set_error(
+            errors=errors,
+            key="privilege_missing",
+            message=cleanse_sensitive_data(
+                f"aiopnsense Error. {type(e).__name__}: {e}",
+                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
+            ),
+        )
+    except OPNsenseTimeoutError as e:
         _log_and_set_error(
             errors=errors,
             key="connect_timeout",
             message=cleanse_sensitive_data(
-                f"Timeout Error. {type(e).__name__}: {e}",
+                f"aiopnsense Error. {type(e).__name__}: {e}",
                 [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
             ),
         )
-
-    except aiohttp.ClientResponseError as e:
-        if e.status == 401:
-            errors["base"] = "invalid_auth"
-        elif e.status == 403:
-            errors["base"] = "privilege_missing"
-        else:
-            errors["base"] = "cannot_connect"
-        _LOGGER.error(
-            cleanse_sensitive_data(
-                f"Aiohttp Error. {type(e).__name__}: {e}",
-                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
-            )
-        )
-    except (aiohttp.ClientError, socket.gaierror) as e:
+    except OPNsenseConnectionError as e:
         _log_and_set_error(
             errors=errors,
             key="cannot_connect",
             message=cleanse_sensitive_data(
-                f"Aiohttp Error. {type(e).__name__}: {e}",
+                f"aiopnsense Error. {type(e).__name__}: {e}",
                 [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
             ),
-        )
-    except OSError as e:
-        error_message = str(e)
-        if "timed out" in error_message:
-            errors["base"] = "connect_timeout"
-        elif "SSL:" in error_message:
-            errors["base"] = "cannot_connect_ssl"
-        else:
-            errors["base"] = "unknown"
-        _LOGGER.error(
-            cleanse_sensitive_data(
-                f"Error. {type(e).__name__}: {e}",
-                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
-            )
         )
     return errors
 
@@ -424,7 +409,7 @@ async def _clean_and_parse_url(user_input: MutableMapping[str, Any]) -> None:
         user_input: Mutable form payload containing `CONF_URL`.
 
     Raises:
-        InvalidURL: URL is missing a host after normalization.
+        OPNsenseInvalidURL: URL is missing a host after normalization.
     """
     fix_url: str = user_input.get(CONF_URL, "").strip()
     url_parts: ParseResult = urlparse(fix_url)
@@ -434,7 +419,7 @@ async def _clean_and_parse_url(user_input: MutableMapping[str, Any]) -> None:
         url_parts = urlparse(fix_url)
 
     if not url_parts.netloc:
-        raise InvalidURL
+        raise OPNsenseInvalidURL
 
     user_input[CONF_URL] = f"{url_parts.scheme}://{url_parts.netloc}"
     _LOGGER.debug("[config_flow] Cleaned URL: %s", user_input[CONF_URL])
@@ -471,12 +456,12 @@ def _validate_firmware_version(firmware_version: str) -> None:
         firmware_version: Firewall firmware string returned by the backend.
 
     Raises:
-        BelowMinFirmware: Firmware is older than the supported minimum.
+        OPNsenseBelowMinFirmware: Firmware is older than the supported minimum.
     """
     if awesomeversion.AwesomeVersion(firmware_version) < awesomeversion.AwesomeVersion(
         OPNSENSE_MIN_FIRMWARE
     ):
-        raise BelowMinFirmware
+        raise OPNsenseBelowMinFirmware
 
 
 async def _handle_user_input(
@@ -495,7 +480,7 @@ async def _handle_user_input(
 
     Raises:
         OPNsenseUnknownFirmware: Firmware could not be parsed or compared safely.
-        BelowMinFirmware: Firmware is below the minimum supported version.
+        OPNsenseBelowMinFirmware: Firmware is below the minimum supported version.
         MissingDeviceUniqueID: Backend did not return a device unique ID.
     """
     await _clean_and_parse_url(user_input)
@@ -1167,10 +1152,8 @@ class OPNsenseOptionsFlow(OptionsFlow):
                 hass=self.hass, config=self.config_entry.data, selected_devices=selected_devices
             )
         except (
-            aiohttp.ClientError,
+            OPNsenseConnectionError,
             MissingExternalAiopnsenseDependency,
-            OSError,
-            TimeoutError,
         ) as err:
             _LOGGER.warning("Failed to load device tracker entries: %s", err)
             errors["base"] = "cannot_connect"
@@ -1189,26 +1172,8 @@ class OPNsenseOptionsFlow(OptionsFlow):
         )
 
 
-class InvalidURLError(Exception):
-    """InvalidURL."""
-
-
-class OPNsenseUnknownFirmware(Exception):  # noqa: N818
-    """Firmware version could not be parsed or compared."""
-
-
-InvalidURL = InvalidURLError
-
-
 class MissingDeviceUniqueIDError(Exception):
     """Missing the Device Unique ID."""
 
 
 MissingDeviceUniqueID = MissingDeviceUniqueIDError
-
-
-class BelowMinFirmwareError(Exception):
-    """Current firmware is below the Minimum supported version."""
-
-
-BelowMinFirmware = BelowMinFirmwareError
