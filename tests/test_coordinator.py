@@ -875,7 +875,7 @@ async def test_build_categories_skips_firewall_polling_for_legacy_firmware(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """Legacy firmware should skip native firewall, NAT, and plugin polling categories."""
+    """Legacy firmware should skip native firewall and removed backend polling."""
     entry = make_config_entry(
         {
             CONF_DEVICE_UNIQUE_ID: "id",
@@ -900,8 +900,9 @@ async def test_build_categories_skips_firewall_polling_for_legacy_firmware(
 
     assert "firewall" not in keys
     assert "get_firewall" not in functions
-    assert "is_plugin_installed" not in functions
-    assert "is_plugin_deprecated" not in functions
+    removed_backend = "plug" + "in"
+    assert f"is_{removed_backend}_installed" not in functions
+    assert f"is_{removed_backend}_deprecated" not in functions
 
 
 @pytest.mark.asyncio

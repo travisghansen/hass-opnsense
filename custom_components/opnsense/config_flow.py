@@ -10,7 +10,7 @@ import re
 import socket
 from typing import Any
 from urllib.parse import ParseResult, quote_plus, urlparse
-import xmlrpc
+import xmlrpc.client
 
 import aiohttp
 import awesomeversion

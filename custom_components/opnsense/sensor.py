@@ -343,7 +343,7 @@ async def _compile_smart_sensors(
     Args:
         config_entry: Config entry being exercised by the helper or test.
         coordinator: Data update coordinator that caches OPNsense state for entities.
-        state: Coordinator state snapshot that contains SMART plugin data.
+        state: Coordinator state snapshot that contains SMART device data.
 
     Returns:
         list: SMART disk sensor entities disabled by default.

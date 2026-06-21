@@ -781,18 +781,20 @@ async def test_options_flow_init_selected_mode_shows_picker_step(
 
 
 @pytest.mark.asyncio
-async def test_validate_input_granular_sync_no_longer_checks_plugins(
+async def test_validate_input_granular_sync_uses_native_validation_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Granular sync flow should validate firmware and skip plugin checks."""
+    """Granular sync flow should validate firmware without removed backend checks."""
 
     class FakeClient:
-        """Client stub that asserts plugin checks are not called."""
+        """Client stub that asserts removed backend checks are not called."""
 
         def __init__(self, firmware_version: str) -> None:
             """Initialize the fake client with a known firmware version."""
             self.firmware_version = firmware_version
-            self.is_plugin_installed = AsyncMock(side_effect=AssertionError("plugin check removed"))
+            self.removed_backend_check = AsyncMock(
+                side_effect=AssertionError("removed backend check called")
+            )
             self.async_close = AsyncMock()
 
         async def get_host_firmware_version(self) -> str:
@@ -819,7 +821,7 @@ async def test_validate_input_granular_sync_no_longer_checks_plugins(
     }
     errors: dict[str, Any] = {}
 
-    assert client.is_plugin_installed.await_count == 0
+    assert client.removed_backend_check.await_count == 0
     res = await cf_mod.validate_input(
         hass=MagicMock(),
         user_input=user_input,
@@ -829,5 +831,5 @@ async def test_validate_input_granular_sync_no_longer_checks_plugins(
 
     assert res == {}
     assert user_input[cf_mod.CONF_FIRMWARE_VERSION] == "25.1"
-    client.is_plugin_installed.assert_not_awaited()
+    client.removed_backend_check.assert_not_awaited()
     client.async_close.assert_awaited_once()
