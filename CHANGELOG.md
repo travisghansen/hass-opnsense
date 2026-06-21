@@ -1,7 +1,24 @@
+<a id="v0.7.2"></a>
+# [v0.7.2](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.7.2) - 2026-06-21
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+### When OPNsense Firmware 26.7 is released, hass-opnsense will fully drop support for the opnsense plugin. hass-opnsense will remain compatible with Firmware >= 25.1, but with Firmware < 26.1.1, there will no longer be Firewall Rule switches.
+
+## What's Changed
+### 🧰 Maintenance
+* Bump aiopnsense to 1.0.13 by [@github-actions](https://github.com/github-actions)[bot] in [#612](https://github.com/travisghansen/hass-opnsense/pull/612)
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.7.1...v0.7.2
+
+[Changes][v0.7.2]
+
+
 <a id="v0.7.1"></a>
 # [v0.7.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.7.1) - 2026-06-20
 
-<!-- Release notes generated using configuration in .github/release.yml at main -->
+<h3>OPNsense Minimum Firmware Required: 25.1</h3><h4>OPNsense Recommended Firmware: 26.1+</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
 ### When OPNsense Firmware 26.7 is released, hass-opnsense will fully drop support for the opnsense plugin. hass-opnsense will remain compatible with Firmware >= 25.1, but with Firmware < 26.1.1, there will no longer be Firewall Rule switches.
 
@@ -21,7 +38,7 @@
 * Bump aiopnsense to 1.0.12 by [@github-actions](https://github.com/github-actions)[bot] in [#611](https://github.com/travisghansen/hass-opnsense/pull/611)
 
 
-**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.7.0...v0.7.1
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.7.0...v0.7.1<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
 
 [Changes][v0.7.1]
 
@@ -1073,6 +1090,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v0.7.2]: https://github.com/travisghansen/hass-opnsense/compare/v0.7.1...v0.7.2
 [v0.7.1]: https://github.com/travisghansen/hass-opnsense/compare/v0.7.0...v0.7.1
 [v0.7.0]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.7...v0.7.0
 [v0.6.7]: https://github.com/travisghansen/hass-opnsense/compare/v0.6.6...v0.6.7
