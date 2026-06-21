@@ -2885,18 +2885,67 @@ async def test_firewall_rule_skips_non_string_interface(
 
 
 @pytest.mark.asyncio
-async def test_compile_nat_source_rules_switches(
-    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+@pytest.mark.parametrize(
+    (
+        "compile_func",
+        "nat_family",
+        "rule_id",
+        "description",
+        "expected_key",
+    ),
+    [
+        pytest.param(
+            _compile_nat_source_rules_switches,
+            "source_nat",
+            "nat1",
+            "Source NAT Rule",
+            "firewall.nat.source_nat.nat1",
+            id="source",
+        ),
+        pytest.param(
+            _compile_nat_destination_rules_switches,
+            "d_nat",
+            "dnat1",
+            "Destination NAT Rule",
+            "firewall.nat.d_nat.dnat1",
+            id="destination",
+        ),
+        pytest.param(
+            _compile_nat_one_to_one_rules_switches,
+            "one_to_one",
+            "oto1",
+            "One-to-One NAT Rule",
+            "firewall.nat.one_to_one.oto1",
+            id="one-to-one",
+        ),
+        pytest.param(
+            _compile_nat_npt_rules_switches,
+            "npt",
+            "npt1",
+            "NPT NAT Rule",
+            "firewall.nat.npt.npt1",
+            id="npt",
+        ),
+    ],
+)
+async def test_compile_nat_rule_switches(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    compile_func: Callable[..., Any],
+    nat_family: str,
+    rule_id: str,
+    description: str,
+    expected_key: str,
 ) -> None:
-    """Test compilation of NAT source rule switches."""
+    """Test compilation of NAT rule switches across all supported families."""
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     state = {
         "firewall": {
             "nat": {
-                "source_nat": {
-                    "nat1": {
-                        "uuid": "nat1",
-                        "description": "Source NAT Rule",
+                nat_family: {
+                    rule_id: {
+                        "uuid": rule_id,
+                        "description": description,
                         "%interface": "wan",
                         "enabled": "1",
                     }
@@ -2904,88 +2953,10 @@ async def test_compile_nat_source_rules_switches(
             }
         }
     }
-    ents = await _compile_nat_source_rules_switches(config_entry, coordinator, state)
+    ents = await compile_func(config_entry, coordinator, state)
     assert len(ents) == 1
     assert isinstance(ents[0], OPNsenseNATRuleSwitch)
-    assert ents[0].entity_description.key == "firewall.nat.source_nat.nat1"
-
-
-@pytest.mark.asyncio
-async def test_compile_nat_destination_rules_switches(
-    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
-) -> None:
-    """Test compilation of NAT destination rule switches."""
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    state = {
-        "firewall": {
-            "nat": {
-                "d_nat": {
-                    "dnat1": {
-                        "uuid": "dnat1",
-                        "description": "Destination NAT Rule",
-                        "%interface": "wan",
-                        "enabled": "1",
-                    }
-                }
-            }
-        }
-    }
-    ents = await _compile_nat_destination_rules_switches(config_entry, coordinator, state)
-    assert len(ents) == 1
-    assert isinstance(ents[0], OPNsenseNATRuleSwitch)
-    assert ents[0].entity_description.key == "firewall.nat.d_nat.dnat1"
-
-
-@pytest.mark.asyncio
-async def test_compile_nat_one_to_one_rules_switches(
-    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
-) -> None:
-    """Test compilation of NAT one-to-one rule switches."""
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    state = {
-        "firewall": {
-            "nat": {
-                "one_to_one": {
-                    "oto1": {
-                        "uuid": "oto1",
-                        "description": "One-to-One NAT Rule",
-                        "%interface": "wan",
-                        "enabled": "1",
-                    }
-                }
-            }
-        }
-    }
-    ents = await _compile_nat_one_to_one_rules_switches(config_entry, coordinator, state)
-    assert len(ents) == 1
-    assert isinstance(ents[0], OPNsenseNATRuleSwitch)
-    assert ents[0].entity_description.key == "firewall.nat.one_to_one.oto1"
-
-
-@pytest.mark.asyncio
-async def test_compile_nat_npt_rules_switches(
-    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
-) -> None:
-    """Test compilation of NAT NPT rule switches."""
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    state = {
-        "firewall": {
-            "nat": {
-                "npt": {
-                    "npt1": {
-                        "uuid": "npt1",
-                        "description": "NPT NAT Rule",
-                        "%interface": "wan",
-                        "enabled": "1",
-                    }
-                }
-            }
-        }
-    }
-    ents = await _compile_nat_npt_rules_switches(config_entry, coordinator, state)
-    assert len(ents) == 1
-    assert isinstance(ents[0], OPNsenseNATRuleSwitch)
-    assert ents[0].entity_description.key == "firewall.nat.npt.npt1"
+    assert ents[0].entity_description.key == expected_key
 
 
 @pytest.mark.asyncio
