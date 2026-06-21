@@ -10,7 +10,6 @@ import re
 import socket
 from typing import Any
 from urllib.parse import ParseResult, quote_plus, urlparse
-import xmlrpc.client
 
 import aiohttp
 import awesomeversion
@@ -349,20 +348,6 @@ async def validate_input(
             message=f"InvalidURL Error. {type(e).__name__}: {e}",
         )
 
-    except xmlrpc.client.Fault as e:
-        error_message = str(e)
-        if "Invalid username or password" in error_message:
-            errors["base"] = "invalid_auth"
-        elif "Authentication failed: not enough privileges" in error_message:
-            errors["base"] = "privilege_missing"
-        else:
-            errors["base"] = "cannot_connect"
-        _LOGGER.error(
-            cleanse_sensitive_data(
-                f"XMLRPC Error. {type(e).__name__}: {e}",
-                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
-            )
-        )
     except aiohttp.ClientSSLError as e:
         _log_and_set_error(
             errors=errors,
@@ -404,18 +389,6 @@ async def validate_input(
                 [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
             )
         )
-    except xmlrpc.client.ProtocolError as e:
-        error_message = str(e)
-        if "307 Temporary Redirect" in error_message or "301 Moved Permanently" in error_message:
-            errors["base"] = "url_redirect"
-        else:
-            errors["base"] = "cannot_connect"
-        _LOGGER.error(
-            cleanse_sensitive_data(
-                f"XMLRPC Error. {type(e).__name__}: {e}",
-                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
-            )
-        )
     except (aiohttp.ClientError, socket.gaierror) as e:
         _log_and_set_error(
             errors=errors,
@@ -427,9 +400,7 @@ async def validate_input(
         )
     except OSError as e:
         error_message = str(e)
-        if "unsupported XML-RPC protocol" in error_message:
-            errors["base"] = "privilege_missing"
-        elif "timed out" in error_message:
+        if "timed out" in error_message:
             errors["base"] = "connect_timeout"
         elif "SSL:" in error_message:
             errors["base"] = "cannot_connect_ssl"
@@ -1200,7 +1171,6 @@ class OPNsenseOptionsFlow(OptionsFlow):
             MissingExternalAiopnsenseDependency,
             OSError,
             TimeoutError,
-            xmlrpc.client.Error,
         ) as err:
             _LOGGER.warning("Failed to load device tracker entries: %s", err)
             errors["base"] = "cannot_connect"

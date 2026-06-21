@@ -6,7 +6,6 @@ from datetime import timedelta
 import logging
 import time
 from typing import Any
-import xmlrpc.client
 
 import aiohttp
 import awesomeversion
@@ -139,7 +138,6 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                                 TimeoutError,
                                 TypeError,
                                 ValueError,
-                                xmlrpc.client.Error,
                             ):
                                 _LOGGER.exception(
                                     "Failed to fetch SMART info for device %s",
@@ -518,7 +516,6 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                         TimeoutError,
                         TypeError,
                         ValueError,
-                        xmlrpc.client.Error,
                     ):
                         _LOGGER.exception(
                             "Failed to fetch firewall rules during initial firmware bootstrap"

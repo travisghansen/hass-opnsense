@@ -13,7 +13,7 @@ class OPNsenseClientProtocol(Protocol):
         """Close network resources and background tasks held by the client."""
 
     async def reset_query_counts(self) -> None:
-        """Reset REST and XML-RPC query counters tracked by the client."""
+        """Reset query counters tracked by the client."""
 
     async def get_query_counts(self) -> int:
         """Return accumulated REST-API query count."""

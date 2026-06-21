@@ -8,7 +8,6 @@ from collections.abc import Callable
 import importlib
 from typing import Any, Never, cast
 from unittest.mock import AsyncMock, MagicMock
-import xmlrpc.client
 
 import aiohttp
 from homeassistant.core import HomeAssistant
@@ -130,18 +129,13 @@ async def test_clean_and_parse_url_success_and_failure() -> None:
         ("missing_external_dep", "missing_external_aiopnsense"),
         ("missing_id", "missing_device_unique_id"),
         ("invalid_url", "invalid_url_format"),
-        ("xmlrpc_invalid_auth", "invalid_auth"),
-        ("xmlrpc_privilege", "privilege_missing"),
-        ("xmlrpc_other", "cannot_connect"),
         ("client_connector_ssl", "cannot_connect_ssl"),
         ("resp_401", "invalid_auth"),
         ("resp_403", "privilege_missing"),
         ("resp_500", "cannot_connect"),
-        ("protocol_307", "url_redirect"),
         ("too_many_redirects", "url_redirect"),
         ("timeout", "connect_timeout"),
         ("server_timeout", "connect_timeout"),
-        ("os_ssl", "privilege_missing"),
         ("os_timed_out", "connect_timeout"),
         ("os_ssl_handshake", "cannot_connect_ssl"),
         ("os_unknown", "unknown"),
@@ -162,12 +156,6 @@ async def test_validate_input_exception_mapping(
         exc = cf_mod.MissingDeviceUniqueID("x")
     elif exc_key == "invalid_url":
         exc = aiohttp.InvalidURL("u")
-    elif exc_key == "xmlrpc_invalid_auth":
-        exc = xmlrpc.client.Fault(1, "Invalid username or password")
-    elif exc_key == "xmlrpc_privilege":
-        exc = xmlrpc.client.Fault(1, "Authentication failed: not enough privileges")
-    elif exc_key == "xmlrpc_other":
-        exc = xmlrpc.client.Fault(1, "other fault")
     elif exc_key == "client_connector_ssl":
         # Simulate an SSL-related client error that maps to "cannot_connect_ssl".
         # ClientSSLError (and its base ClientConnectorError) require a connection
@@ -194,8 +182,6 @@ async def test_validate_input_exception_mapping(
             status=status,
             message="m",
         )
-    elif exc_key == "protocol_307":
-        exc = xmlrpc.client.ProtocolError("u", 307, "307 Temporary Redirect", {})
     elif exc_key == "too_many_redirects":
 
         class RedirectRequestInfo:
@@ -208,8 +194,6 @@ async def test_validate_input_exception_mapping(
         exc = TimeoutError("t")
     elif exc_key == "server_timeout":
         exc = aiohttp.ServerTimeoutError("t")
-    elif exc_key == "os_ssl":
-        exc = OSError("unsupported XML-RPC protocol")
     elif exc_key == "os_timed_out":
         exc = OSError("timed out")
     elif exc_key == "os_ssl_handshake":
