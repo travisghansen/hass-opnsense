@@ -15,7 +15,7 @@ import homeassistant.helpers.aiohttp_client as _hc
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from tests.utilities import patch_client_factory
+from tests.utilities import patch_opnsense_client
 
 # import the package module object so we can access its functions/attrs
 init_mod = importlib.import_module("custom_components.opnsense")
@@ -149,7 +149,7 @@ async def test_async_setup_entry_success(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """async_setup_entry should succeed with valid client and coordinator."""
-    patch_client_factory(monkeypatch, init_mod, fake_client())
+    patch_opnsense_client(monkeypatch, init_mod, fake_client())
     # use shared coordinator capture fixture
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
@@ -208,11 +208,11 @@ async def test_async_setup_entry_validates_client_before_probes(
     client.get_host_firmware_version = _get_host_firmware_version
     client.async_close = AsyncMock(return_value=True)
 
-    async def _create_client(**kwargs: Any) -> Any:
+    def _create_client(**kwargs: Any) -> Any:
         """Return the probe-tracking client used by this setup-entry test."""
         return client
 
-    monkeypatch.setattr(init_mod, "create_opnsense_client", _create_client)
+    monkeypatch.setattr(init_mod, "OPNsenseClient", _create_client)
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
     )
@@ -252,11 +252,11 @@ async def test_async_setup_entry_closes_client_when_validation_fails(
     client.validate = AsyncMock(side_effect=init_mod.OPNsenseError("boom"))
     client.async_close = AsyncMock(return_value=True)
 
-    async def _create_client(**kwargs: Any) -> Any:
+    def _create_client(**kwargs: Any) -> Any:
         """Return the validation-failing client for this setup-entry test."""
         return client
 
-    monkeypatch.setattr(init_mod, "create_opnsense_client", _create_client)
+    monkeypatch.setattr(init_mod, "OPNsenseClient", _create_client)
 
     entry = make_config_entry(
         data={
@@ -307,11 +307,11 @@ async def test_async_setup_entry_continues_after_firmware_validation_error(
     client.get_device_unique_id = _get_device_unique_id
     client.get_host_firmware_version = _get_host_firmware_version
 
-    async def _create_client(**kwargs: Any) -> Any:
+    def _create_client(**kwargs: Any) -> Any:
         """Return the firmware-failing client for this setup-entry test."""
         return client
 
-    monkeypatch.setattr(init_mod, "create_opnsense_client", _create_client)
+    monkeypatch.setattr(init_mod, "OPNsenseClient", _create_client)
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
     )
@@ -350,7 +350,7 @@ async def test_async_setup_entry_device_id_mismatch(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """async_setup_entry should fail when client reports mismatched device id."""
-    patch_client_factory(monkeypatch, init_mod, fake_client(device_id="other"))
+    patch_opnsense_client(monkeypatch, init_mod, fake_client(device_id="other"))
     # use shared coordinator capture fixture
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
@@ -377,53 +377,6 @@ async def test_async_setup_entry_device_id_mismatch(
 
     # ensure coordinator shutdown was invoked
     assert any(getattr(inst, "shut", False) for inst in coordinator_capture.instances)
-
-
-@pytest.mark.asyncio
-async def test_async_setup_entry_missing_external_dependency(
-    monkeypatch: pytest.MonkeyPatch,
-    ph_hass: Any,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """async_setup_entry should fail and create issue when external backend is required."""
-
-    async def _raise_missing_dep(**kwargs: Any) -> Any:
-        """Raise missing-dependency error to exercise setup failure handling.
-
-        Args:
-            **kwargs: Unused client-constructor kwargs from setup code.
-
-        Raises:
-            MissingExternalAiopnsenseDependency: Always raised by this test stub.
-        """
-        raise init_mod.MissingExternalAiopnsenseDependency("missing")
-
-    monkeypatch.setattr(init_mod, "create_opnsense_client", _raise_missing_dep)
-
-    created_issues: list[str] = []
-    monkeypatch.setattr(
-        init_mod.ir,
-        "async_create_issue",
-        lambda *args, **kwargs: created_issues.append(str(kwargs.get("translation_key"))),
-    )
-
-    entry = make_config_entry(
-        data={
-            init_mod.CONF_URL: "http://1.2.3.4",
-            init_mod.CONF_USERNAME: "u",
-            init_mod.CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
-        },
-        options={},
-    )
-    hass = ph_hass
-    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
-    hass.config_entries.async_reload = AsyncMock()
-    hass.data = {}
-
-    res = await init_mod.async_setup_entry(hass, entry)
-    assert res is False
-    assert "missing_external_aiopnsense" in created_issues
 
 
 @pytest.mark.asyncio
@@ -989,7 +942,7 @@ async def test_async_setup_entry_firmware_below_min(
 ) -> None:
     """async_setup_entry returns False for devices with firmware below minimum supported."""
     # fake client where device id matches but firmware is below min
-    patch_client_factory(monkeypatch, init_mod, fake_client(firmware_version="1.0"))
+    patch_opnsense_client(monkeypatch, init_mod, fake_client(firmware_version="1.0"))
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
     )
@@ -1022,7 +975,7 @@ async def test_async_setup_entry_firmware_between_min_and_ltd(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """async_setup_entry logs a warning issue for firmware between min and LTD but continues."""
-    patch_client_factory(monkeypatch, init_mod, fake_client(firmware_version="25.1"))
+    patch_opnsense_client(monkeypatch, init_mod, fake_client(firmware_version="25.1"))
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
     )
@@ -1062,7 +1015,7 @@ async def test_migrate_2_to_3_missing_device_id(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
     """_migrate_2_to_3 returns False when the client provides no device id."""
-    patch_client_factory(monkeypatch, init_mod, fake_client(device_id=None))
+    patch_opnsense_client(monkeypatch, init_mod, fake_client(device_id=None))
     cfg = MagicMock()
     cfg.data = {
         init_mod.CONF_URL: "http://1.2.3.4",
@@ -1081,56 +1034,9 @@ async def test_migrate_2_to_3_missing_device_id(
 
 
 @pytest.mark.asyncio
-async def test_migrate_2_to_3_missing_external_dependency(monkeypatch: pytest.MonkeyPatch) -> None:
-    """_migrate_2_to_3 should return False when router requires missing external backend."""
-
-    async def _raise_missing_dep(**kwargs: Any) -> Any:
-        """Raise missing-dependency error to exercise migration failure handling.
-
-        Args:
-            **kwargs: Unused client-constructor kwargs from migration code.
-
-        Raises:
-            MissingExternalAiopnsenseDependency: Always raised by this test stub.
-        """
-        raise init_mod.MissingExternalAiopnsenseDependency("missing")
-
-    monkeypatch.setattr(init_mod, "create_opnsense_client", _raise_missing_dep)
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: MagicMock())
-    monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: MagicMock())
-    create_issue_mock = MagicMock()
-    monkeypatch.setattr(init_mod.ir, "async_create_issue", create_issue_mock)
-
-    cfg = MagicMock()
-    cfg.data = {
-        init_mod.CONF_URL: "http://1.2.3.4",
-        init_mod.CONF_USERNAME: "u",
-        init_mod.CONF_PASSWORD: "p",
-    }
-    cfg.version = 2
-    cfg.entry_id = "e2"
-    cfg.unique_id = None
-
-    hass = MagicMock(spec=HomeAssistant)
-    hass.data = {}
-    res = await init_mod._migrate_2_to_3(hass, cfg)
-    assert res is False
-    create_issue_mock.assert_called_once_with(
-        hass,
-        init_mod.DOMAIN,
-        "e2_missing_external_aiopnsense",
-        is_fixable=False,
-        is_persistent=False,
-        issue_domain=init_mod.DOMAIN,
-        severity=init_mod.ir.IssueSeverity.ERROR,
-        translation_key="missing_external_aiopnsense",
-    )
-
-
-@pytest.mark.asyncio
 async def test_migrate_2_to_3_success(monkeypatch: pytest.MonkeyPatch, fake_client: Any) -> None:
     """_migrate_2_to_3 updates device and entity identifiers when client reports new device id."""
-    patch_client_factory(monkeypatch, init_mod, fake_client(device_id="newdev"))
+    patch_opnsense_client(monkeypatch, init_mod, fake_client(device_id="newdev"))
 
     # fake device entries and entity entries
     dev = MagicMock()
@@ -1190,7 +1096,7 @@ async def test_migrate_2_to_3_returns_false_when_update_entry_fails(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
     """_migrate_2_to_3 should fail when config entry update returns False."""
-    patch_client_factory(monkeypatch, init_mod, fake_client(device_id="newdev"))
+    patch_opnsense_client(monkeypatch, init_mod, fake_client(device_id="newdev"))
 
     monkeypatch.setattr(init_mod.er, "async_get", lambda hass: MagicMock())
     monkeypatch.setattr(
@@ -1242,7 +1148,7 @@ async def test_async_setup_entry_awesomeversion_exception(
             """Raise a compare exception so setup falls back to the safe path."""
             raise init_mod.awesomeversion.exceptions.AwesomeVersionCompareException
 
-    patch_client_factory(monkeypatch, init_mod, fake_client())
+    patch_opnsense_client(monkeypatch, init_mod, fake_client())
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
     )
@@ -1291,7 +1197,7 @@ async def test_migrate_3_to_4_filesystem_and_remove(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
     """_migrate_3_to_4 handles filesystem telemetry renames and removes connected_client_count entities."""
-    patch_client_factory(
+    patch_opnsense_client(
         monkeypatch,
         init_mod,
         fake_client(telemetry={"filesystems": [{"device": "/dev/sda1", "mountpoint": "/"}]}),
@@ -1342,63 +1248,11 @@ async def test_migrate_3_to_4_filesystem_and_remove(
 
 
 @pytest.mark.asyncio
-async def test_migrate_3_to_4_missing_external_dependency(monkeypatch: pytest.MonkeyPatch) -> None:
-    """_migrate_3_to_4 should return False when router requires missing external backend."""
-
-    async def _raise_missing_dep(**kwargs: Any) -> Any:
-        """Raise missing-dependency error to exercise migration failure handling.
-
-        Args:
-            **kwargs: Unused client-constructor kwargs from migration code.
-
-        Raises:
-            MissingExternalAiopnsenseDependency: Always raised by this test stub.
-        """
-        raise init_mod.MissingExternalAiopnsenseDependency("missing")
-
-    monkeypatch.setattr(init_mod, "create_opnsense_client", _raise_missing_dep)
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: MagicMock())
-    monkeypatch.setattr(
-        init_mod.er, "async_entries_for_config_entry", lambda registry, config_entry_id: []
-    )
-    create_issue_mock = MagicMock()
-    monkeypatch.setattr(init_mod.ir, "async_create_issue", create_issue_mock)
-
-    cfg = MagicMock()
-    cfg.data = {
-        init_mod.CONF_URL: "http://1.2.3.4",
-        init_mod.CONF_USERNAME: "u",
-        init_mod.CONF_PASSWORD: "p",
-    }
-    cfg.version = 3
-    cfg.entry_id = "e3"
-    cfg.unique_id = None
-
-    hass = MagicMock(spec=HomeAssistant)
-    hass.data = {}
-    hass.config_entries = MagicMock()
-    hass.config_entries.async_update_entry = MagicMock(return_value=True)
-
-    res = await init_mod._migrate_3_to_4(hass, cfg)
-    assert res is False
-    create_issue_mock.assert_called_once_with(
-        hass,
-        init_mod.DOMAIN,
-        "e3_missing_external_aiopnsense",
-        is_fixable=False,
-        is_persistent=False,
-        issue_domain=init_mod.DOMAIN,
-        severity=init_mod.ir.IssueSeverity.ERROR,
-        translation_key="missing_external_aiopnsense",
-    )
-
-
-@pytest.mark.asyncio
 async def test_migrate_2_to_3_handles_entity_update_value_error(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
     """When entity_registry.async_update_entity raises ValueError, migration continues."""
-    patch_client_factory(monkeypatch, init_mod, fake_client(device_id="newdev"))
+    patch_opnsense_client(monkeypatch, init_mod, fake_client(device_id="newdev"))
 
     # single entity that will cause async_update_entity to raise
     ent = MagicMock()
@@ -1446,7 +1300,7 @@ async def test_migrate_3_to_4_handles_remove_exceptions(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any, exc: BaseException | None
 ) -> None:
     """If entity_registry.async_remove raises KeyError/ValueError, migration continues."""
-    patch_client_factory(monkeypatch, init_mod, fake_client(telemetry={}))
+    patch_opnsense_client(monkeypatch, init_mod, fake_client(telemetry={}))
 
     e = MagicMock()
     e.entity_id = "sensor.clients"
@@ -1483,7 +1337,7 @@ async def test_migrate_3_to_4_handles_update_value_error(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
     """If entity_registry.async_update_entity raises ValueError, migration continues."""
-    patch_client_factory(monkeypatch, init_mod, fake_client(telemetry={}))
+    patch_opnsense_client(monkeypatch, init_mod, fake_client(telemetry={}))
 
     e = MagicMock()
     e.entity_id = "sensor.if"
@@ -1549,7 +1403,7 @@ async def test_async_setup_entry_firmware_above_ltd_calls_delete(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """async_setup_entry deletes previous issues when firmware is at or above LTD."""
-    patch_client_factory(
+    patch_opnsense_client(
         monkeypatch, init_mod, fake_client(firmware_version=init_mod.OPNSENSE_LTD_FIRMWARE)
     )
     monkeypatch.setattr(
@@ -1584,7 +1438,7 @@ async def test_async_setup_entry_firmware_at_or_above_ltd_deletes_previous_issue
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """async_setup_entry cleans up previous firmware-related issues for LTD and min thresholds."""
-    patch_client_factory(
+    patch_opnsense_client(
         monkeypatch, init_mod, fake_client(firmware_version=init_mod.OPNSENSE_LTD_FIRMWARE)
     )
     monkeypatch.setattr(
@@ -1629,7 +1483,7 @@ async def test_async_setup_entry_delete_uses_actual_firmware_string(
 ) -> None:
     """async_setup_entry uses the client's firmware string when deleting previous issues."""
     firmware_str = "99.9"
-    patch_client_factory(monkeypatch, init_mod, fake_client(firmware_version=firmware_str))
+    patch_opnsense_client(monkeypatch, init_mod, fake_client(firmware_version=firmware_str))
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
     )
@@ -1670,7 +1524,7 @@ async def test_async_setup_entry_delete_not_called_for_between_min_and_ltd(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """async_setup_entry should not call delete_issue for firmware between min and LTD."""
-    patch_client_factory(monkeypatch, init_mod, fake_client(firmware_version="25.1"))
+    patch_opnsense_client(monkeypatch, init_mod, fake_client(firmware_version="25.1"))
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
     )
@@ -1707,7 +1561,7 @@ async def test_async_setup_entry_with_device_tracker_enabled(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """Device tracker option creates a device-tracker coordinator and triggers initial refresh."""
-    patch_client_factory(monkeypatch, init_mod, fake_client())
+    patch_opnsense_client(monkeypatch, init_mod, fake_client())
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
     )
@@ -1738,7 +1592,7 @@ async def test_migrate_2_to_3_handles_identifier_collision(
 ) -> None:
     """_migrate_2_to_3 continues when DeviceIdentifierCollisionError occurs while updating devices."""
     # migration should continue if DeviceIdentifierCollisionError raised when updating device
-    patch_client_factory(monkeypatch, init_mod, fake_client(device_id="newdev"))
+    patch_opnsense_client(monkeypatch, init_mod, fake_client(device_id="newdev"))
 
     # fake device that will cause collision when updating
     dev = MagicMock()

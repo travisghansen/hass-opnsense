@@ -19,7 +19,7 @@ from custom_components.opnsense.const import (
     CONF_SYNC_SMART,
     CONF_SYNC_TELEMETRY,
 )
-from tests.utilities import patch_client_factory
+from tests.utilities import patch_opnsense_client
 
 cf_mod = importlib.import_module("custom_components.opnsense.config_flow")
 
@@ -137,7 +137,6 @@ async def test_clean_and_parse_url_success_and_failure() -> None:
     [
         ("below_min", "below_min_firmware"),
         ("unknown_fw", "unknown_firmware"),
-        ("missing_external_dep", "missing_external_aiopnsense"),
         ("missing_id", "missing_device_unique_id"),
         ("invalid_url", "invalid_url_format"),
         ("ssl", "cannot_connect_ssl"),
@@ -157,8 +156,6 @@ async def test_validate_input_exception_mapping(
         exc = aiopnsense_exceptions.OPNsenseBelowMinFirmware()
     elif exc_key == "unknown_fw":
         exc = aiopnsense_exceptions.OPNsenseUnknownFirmware()
-    elif exc_key == "missing_external_dep":
-        exc = cf_mod.MissingExternalAiopnsenseDependency()
     elif exc_key == "missing_id":
         exc = aiopnsense_exceptions.OPNsenseMissingDeviceUniqueID("x")
     elif exc_key == "invalid_url":
@@ -227,7 +224,7 @@ async def test_get_dt_entries_sorts_and_includes_selected(
         ]
 
     client_cls.get_arp_table = _get_arp_table
-    patch_client_factory(monkeypatch, cf_mod, client_cls)
+    patch_opnsense_client(monkeypatch, cf_mod, client_cls)
 
     # Patch async_create_clientsession on the module under test to avoid real network I/O
     def _fake_create_clientsession(*args, **kwargs) -> Any:
@@ -280,7 +277,7 @@ async def test_get_dt_entries_preserves_missing_selected_devices(
         return [{"mac": "11:22:33:44:55:66", "hostname": "", "ip": "10.0.0.5"}]
 
     client_cls.get_arp_table = _get_arp_table
-    patch_client_factory(monkeypatch, cf_mod, client_cls)
+    patch_opnsense_client(monkeypatch, cf_mod, client_cls)
     monkeypatch.setattr(cf_mod, "async_create_clientsession", lambda *a, **k: MagicMock())
 
     res = await cf_mod._get_dt_entries(
@@ -319,7 +316,7 @@ async def test_get_dt_entries_closes_client(monkeypatch: pytest.MonkeyPatch) -> 
             """
             return []
 
-    patch_client_factory(monkeypatch, cf_mod, _Client)
+    patch_opnsense_client(monkeypatch, cf_mod, _Client)
     monkeypatch.setattr(cf_mod, "async_create_clientsession", lambda *a, **k: MagicMock())
 
     await cf_mod._get_dt_entries(
@@ -378,7 +375,7 @@ async def test_handle_user_input_closes_client(monkeypatch: pytest.MonkeyPatch) 
             """
             return "dev123"
 
-    patch_client_factory(monkeypatch, cf_mod, _Client)
+    patch_opnsense_client(monkeypatch, cf_mod, _Client)
     monkeypatch.setattr(cf_mod, "async_create_clientsession", lambda *a, **k: MagicMock())
 
     user_input = {
@@ -578,19 +575,12 @@ async def test_device_tracker_shows_form_when_no_user_input(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "exc",
-    [
-        aiopnsense_exceptions.OPNsenseConnectionError("boom"),
-        cf_mod.MissingExternalAiopnsenseDependency("missing"),
-    ],
-)
 async def test_device_tracker_handles_arp_lookup_failure(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
-    exc: BaseException,
 ) -> None:
-    """ARP/dependency lookup failures should not abort device tracker form rendering."""
+    """ARP lookup failures should not abort device tracker form rendering."""
+    exc = aiopnsense_exceptions.OPNsenseConnectionError("boom")
     cfg = make_config_entry(
         data={cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"},
         options={cf_mod.CONF_DEVICES: ["AA-BB-CC-DD-EE-FF"]},
@@ -769,7 +759,7 @@ async def test_validate_input_granular_sync_uses_native_validation_only(
             return "dev-01"
 
     client = FakeClient("25.1")
-    monkeypatch.setattr(cf_mod, "create_opnsense_client", AsyncMock(return_value=client))
+    monkeypatch.setattr(cf_mod, "OPNsenseClient", lambda **_kwargs: client)
 
     user_input = {
         cf_mod.CONF_URL: "https://host.example",

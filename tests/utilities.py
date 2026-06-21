@@ -18,16 +18,16 @@ def stub_async_write_ha_state(entity: Any) -> None:
     object.__setattr__(entity, "async_write_ha_state", lambda: None)
 
 
-def patch_client_factory(monkeypatch: pytest.MonkeyPatch, module: Any, client_ctor: Any) -> None:
-    """Patch `create_opnsense_client` with a deterministic async constructor.
+def patch_opnsense_client(monkeypatch: pytest.MonkeyPatch, module: Any, client_ctor: Any) -> None:
+    """Patch `OPNsenseClient` with a deterministic constructor.
 
     Args:
         monkeypatch: Pytest monkeypatch fixture.
-        module: Target module exposing `create_opnsense_client`.
+        module: Target module exposing `OPNsenseClient`.
         client_ctor: Callable/class used to construct fake clients for tests.
     """
 
-    async def _create_opnsense_client(
+    def _opnsense_client(
         *,
         url: str,
         username: str,
@@ -61,4 +61,4 @@ def patch_client_factory(monkeypatch: pytest.MonkeyPatch, module: Any, client_ct
             name=name,
         )
 
-    monkeypatch.setattr(module, "create_opnsense_client", _create_opnsense_client)
+    monkeypatch.setattr(module, "OPNsenseClient", _opnsense_client)

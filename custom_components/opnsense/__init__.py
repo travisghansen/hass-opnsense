@@ -8,9 +8,10 @@ and various other OPNsense features through the Home Assistant interface.
 from collections.abc import Mapping
 from datetime import timedelta
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import aiohttp
+from aiopnsense import OPNsenseClient
 from aiopnsense.exceptions import OPNsenseBelowMinFirmware, OPNsenseError, OPNsenseUnknownFirmware
 import awesomeversion
 from homeassistant.config_entries import ConfigEntry
@@ -32,7 +33,6 @@ from homeassistant.helpers import (
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.typing import ConfigType
 
-from .client_factory import MissingExternalAiopnsenseDependency, create_opnsense_client
 from .const import (
     CONF_DEVICE_TRACKER_ENABLED,
     CONF_DEVICE_TRACKER_SCAN_INTERVAL,
@@ -58,9 +58,6 @@ from .coordinator import OPNsenseDataUpdateCoordinator
 from .helpers import is_private_ip
 from .models import OPNsenseData
 from .services import async_setup_services
-
-if TYPE_CHECKING:
-    from aiopnsense import OPNsenseClient
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -193,7 +190,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     client: OPNsenseClient | None = None
     try:
-        client = await create_opnsense_client(
+        client = OPNsenseClient(
             url=url,
             username=username,
             password=password,
@@ -211,23 +208,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.debug(
                 "Client validation reported firmware issues; continuing to firmware probes"
             )
-    except MissingExternalAiopnsenseDependency:
-        if client is not None:
-            await client.async_close()
-        ir.async_create_issue(
-            hass,
-            DOMAIN,
-            f"{config_device_id}_missing_external_aiopnsense",
-            is_fixable=False,
-            is_persistent=False,
-            issue_domain=DOMAIN,
-            severity=ir.IssueSeverity.ERROR,
-            translation_key="missing_external_aiopnsense",
-        )
-        _LOGGER.error(
-            "OPNsense firmware requires external aiopnsense package, but it is not available."
-        )
-        return False
     except OPNsenseError:
         if client is not None:
             await client.async_close()
@@ -470,37 +450,17 @@ async def _migrate_2_to_3(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
     username: str = config[CONF_USERNAME]
     password: str = config[CONF_PASSWORD]
     verify_ssl: bool = config.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
-    config_device_id: str = str(
-        config.get(CONF_DEVICE_UNIQUE_ID, config_entry.unique_id or config_entry.entry_id)
+    client = OPNsenseClient(
+        url=url,
+        username=username,
+        password=password,
+        session=async_create_clientsession(
+            hass=hass,
+            raise_for_status=False,
+            cookie_jar=aiohttp.CookieJar(unsafe=is_private_ip(url)),
+        ),
+        opts={"verify_ssl": verify_ssl},
     )
-
-    try:
-        client = await create_opnsense_client(
-            url=url,
-            username=username,
-            password=password,
-            session=async_create_clientsession(
-                hass=hass,
-                raise_for_status=False,
-                cookie_jar=aiohttp.CookieJar(unsafe=is_private_ip(url)),
-            ),
-            opts={"verify_ssl": verify_ssl},
-        )
-    except MissingExternalAiopnsenseDependency:
-        ir.async_create_issue(
-            hass,
-            DOMAIN,
-            f"{config_device_id}_missing_external_aiopnsense",
-            is_fixable=False,
-            is_persistent=False,
-            issue_domain=DOMAIN,
-            severity=ir.IssueSeverity.ERROR,
-            translation_key="missing_external_aiopnsense",
-        )
-        _LOGGER.error(
-            "OPNsense firmware requires external aiopnsense package, but it is not available."
-        )
-        return False
     try:
         new_device_unique_id: str | None = await client.get_device_unique_id()
         if not new_device_unique_id:
@@ -611,38 +571,17 @@ async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
     username: str = config[CONF_USERNAME]
     password: str = config[CONF_PASSWORD]
     verify_ssl: bool = config.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
-    config_device_id: str = str(
-        config.get(CONF_DEVICE_UNIQUE_ID, config_entry.unique_id or config_entry.entry_id)
+    client = OPNsenseClient(
+        url=url,
+        username=username,
+        password=password,
+        session=async_create_clientsession(
+            hass=hass,
+            raise_for_status=False,
+            cookie_jar=aiohttp.CookieJar(unsafe=is_private_ip(url)),
+        ),
+        opts={"verify_ssl": verify_ssl},
     )
-
-    client: OPNsenseClient | None = None
-    try:
-        client = await create_opnsense_client(
-            url=url,
-            username=username,
-            password=password,
-            session=async_create_clientsession(
-                hass=hass,
-                raise_for_status=False,
-                cookie_jar=aiohttp.CookieJar(unsafe=is_private_ip(url)),
-            ),
-            opts={"verify_ssl": verify_ssl},
-        )
-    except MissingExternalAiopnsenseDependency:
-        ir.async_create_issue(
-            hass,
-            DOMAIN,
-            f"{config_device_id}_missing_external_aiopnsense",
-            is_fixable=False,
-            is_persistent=False,
-            issue_domain=DOMAIN,
-            severity=ir.IssueSeverity.ERROR,
-            translation_key="missing_external_aiopnsense",
-        )
-        _LOGGER.error(
-            "OPNsense firmware requires external aiopnsense package, but it is not available."
-        )
-        return False
     try:
         telemetry = await client.get_telemetry()
 

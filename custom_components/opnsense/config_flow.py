@@ -7,10 +7,11 @@ from collections.abc import Iterable, Mapping, MutableMapping
 import ipaddress
 import logging
 import re
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from urllib.parse import ParseResult, quote_plus, urlparse
 
 import aiohttp
+from aiopnsense import OPNsenseClient
 from aiopnsense.exceptions import (
     OPNsenseBelowMinFirmware,
     OPNsenseConnectionError,
@@ -38,7 +39,6 @@ from homeassistant.helpers.aiohttp_client import async_create_clientsession
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 
-from .client_factory import MissingExternalAiopnsenseDependency, create_opnsense_client
 from .const import (
     CONF_DEVICE_TRACKER_CONSIDER_HOME,
     CONF_DEVICE_TRACKER_ENABLED,
@@ -61,10 +61,6 @@ from .const import (
     TRACKED_MACS,
 )
 from .helpers import is_private_ip
-
-if TYPE_CHECKING:
-    from aiopnsense import OPNsenseClient
-
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -325,12 +321,6 @@ async def validate_input(
         await _handle_user_input(
             hass=hass, user_input=user_input, config_step=config_step, expected_id=expected_id
         )
-    except MissingExternalAiopnsenseDependency:
-        _log_and_set_error(
-            errors=errors,
-            key="missing_external_aiopnsense",
-            message="OPNsense firmware requires external aiopnsense package",
-        )
     except OPNsenseMissingDeviceUniqueID as e:
         _log_and_set_error(
             errors=errors,
@@ -454,7 +444,7 @@ async def _get_client(user_input: MutableMapping[str, Any], hass: HomeAssistant)
     Returns:
         OPNsenseClient: Connected client used for validation probes.
     """
-    return await create_opnsense_client(
+    return OPNsenseClient(
         url=user_input[CONF_URL],
         username=user_input[CONF_USERNAME],
         password=user_input[CONF_PASSWORD],
@@ -744,7 +734,7 @@ async def _get_dt_entries(
     username: str = config[CONF_USERNAME]
     password: str = config[CONF_PASSWORD]
     verify_ssl: bool = config.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
-    client = await create_opnsense_client(
+    client = OPNsenseClient(
         url=url,
         username=username,
         password=password,
@@ -1148,7 +1138,7 @@ class OPNsenseOptionsFlow(OptionsFlow):
             dt_entries: dict[str, Any] = await _get_dt_entries(
                 hass=self.hass, config=self.config_entry.data, selected_devices=selected_devices
             )
-        except (MissingExternalAiopnsenseDependency, OPNsenseConnectionError) as err:
+        except OPNsenseConnectionError as err:
             _LOGGER.warning("Failed to load device tracker entries: %s", err)
             errors["base"] = "cannot_connect"
             dt_entries = {
