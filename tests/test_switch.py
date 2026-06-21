@@ -19,6 +19,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.opnsense import switch as switch_mod
 from custom_components.opnsense.const import (
     CONF_DEVICE_UNIQUE_ID,
+    CONF_FIRMWARE_VERSION,
     CONF_SYNC_CARP,
     CONF_SYNC_FIREWALL_AND_NAT,
     CONF_SYNC_SERVICES,
@@ -936,6 +937,64 @@ async def test_async_setup_entry_new_firewall_api(
     # Should create entities for each rule type in new API
     expected = 5  # 1 firewall rule + 4 NAT rules
     assert calls.get("len") == expected
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_new_firewall_api_without_runtime_firmware_uses_config_firmware(
+    coordinator: MagicMock, ph_hass: Any, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Runtime firmware missing should fall back to config firmware for firewall/NAT setup."""
+    calls = {}
+
+    def fake_add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Capture entities created during setup for assertion."""
+        calls["len"] = len(list(entities))
+
+    # create state without host_firmware_version; only config firmware should gate feature
+    state = {
+        "firewall": {
+            "rules": {
+                "rule1": {
+                    "uuid": "rule1",
+                    "description": "Config-Fallback Firewall Rule",
+                    "%interface": "wan",
+                    "enabled": "1",
+                }
+            },
+            "nat": {
+                "source_nat": {
+                    "nat1": {
+                        "uuid": "nat1",
+                        "description": "Config-Fallback Source NAT",
+                        "%interface": "wan",
+                        "enabled": "1",
+                    }
+                },
+            },
+        }
+    }
+    coordinator.data = state
+
+    config_entry = make_config_entry(
+        data={
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_FIRMWARE_VERSION: "26.1.1",
+            CONF_SYNC_FIREWALL_AND_NAT: True,
+            CONF_SYNC_SERVICES: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_UNBOUND: False,
+        },
+        title="OPNsenseTest",
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    await switch_mod.async_setup_entry(
+        ph_hass, config_entry, cast("AddEntitiesCallback", fake_add_entities)
+    )
+
+    # Should still create the native firewall/NAT entities when runtime firmware is missing
+    # but config stored firmware is supported.
+    assert calls.get("len") == 2
 
 
 @pytest.mark.asyncio

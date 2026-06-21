@@ -13,6 +13,7 @@ from homeassistant.helpers.event import async_call_later
 
 from .const import (
     ATTR_UNBOUND_BLOCKLIST,
+    CONF_FIRMWARE_VERSION,
     CONF_SYNC_CARP,
     CONF_SYNC_FIREWALL_AND_NAT,
     CONF_SYNC_SERVICES,
@@ -26,6 +27,50 @@ from .entity import OPNsenseEntity
 from .helpers import coerce_bool, dict_get
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+
+
+def _supports_firmware_version(
+    state: Mapping[str, Any] | None,
+    config_entry: ConfigEntry,
+    minimum_version: str,
+) -> bool:
+    """Return whether firmware meets the minimum supported version.
+
+    Args:
+        state: Latest coordinator state dictionary.
+        config_entry: Config entry containing fallback firmware when runtime state is
+            unavailable.
+        minimum_version: Minimum firmware version required.
+
+    Returns:
+        bool: ``True`` when firmware can be compared and is >= minimum_version.
+    """
+    firmware_version = None
+    if state:
+        firmware_version = state.get("host_firmware_version")
+    if not firmware_version and config_entry is not None:
+        firmware_version = config_entry.data.get(CONF_FIRMWARE_VERSION)
+
+    if not firmware_version:
+        _LOGGER.debug("Skipping firmware-gated setup because firmware version is unavailable")
+        return False
+
+    try:
+        return awesomeversion.AwesomeVersion(firmware_version) >= awesomeversion.AwesomeVersion(
+            minimum_version
+        )
+    except (
+        awesomeversion.exceptions.AwesomeVersionCompareException,
+        TypeError,
+        ValueError,
+    ) as e:
+        _LOGGER.debug(
+            "Failed to compare firmware version %s for min version %s: %s",
+            firmware_version,
+            minimum_version,
+            e,
+        )
+        return False
 
 
 async def _compile_service_switches(
@@ -448,106 +493,42 @@ async def async_setup_entry(
     entities: list = []
 
     if config.get(CONF_SYNC_FIREWALL_AND_NAT, DEFAULT_SYNC_OPTION_VALUE):
-        firmware = state.get("host_firmware_version")
-        if firmware:
-            try:
-                if awesomeversion.AwesomeVersion(firmware) >= awesomeversion.AwesomeVersion(
-                    "26.1.1"
-                ):
-                    entities.extend(
-                        await _compile_firewall_rules_switches(config_entry, coordinator, state)
-                    )
-                    entities.extend(
-                        await _compile_nat_source_rules_switches(config_entry, coordinator, state)
-                    )
-                    entities.extend(
-                        await _compile_nat_destination_rules_switches(
-                            config_entry, coordinator, state
-                        )
-                    )
-                    entities.extend(
-                        await _compile_nat_one_to_one_rules_switches(
-                            config_entry, coordinator, state
-                        )
-                    )
-                    entities.extend(
-                        await _compile_nat_npt_rules_switches(config_entry, coordinator, state)
-                    )
-                else:
-                    _LOGGER.debug(
-                        "Skipping native firewall/NAT rule switches for firmware < 26.1.1"
-                    )
-            except (
-                awesomeversion.exceptions.AwesomeVersionCompareException,
-                TypeError,
-                ValueError,
-            ) as e:
-                _LOGGER.error(
-                    "Error comparing firewall/NAT firmware version %s: %s: %s",
-                    firmware,
-                    type(e).__name__,
-                    e,
-                )
+        if _supports_firmware_version(state, config_entry, "26.1.1"):
+            entities.extend(
+                await _compile_firewall_rules_switches(config_entry, coordinator, state)
+            )
+            entities.extend(
+                await _compile_nat_source_rules_switches(config_entry, coordinator, state)
+            )
+            entities.extend(
+                await _compile_nat_destination_rules_switches(config_entry, coordinator, state)
+            )
+            entities.extend(
+                await _compile_nat_one_to_one_rules_switches(config_entry, coordinator, state)
+            )
+            entities.extend(await _compile_nat_npt_rules_switches(config_entry, coordinator, state))
         else:
             _LOGGER.debug(
-                "Skipping native firewall/NAT rule switches because firmware version is unavailable"
+                "Skipping native firewall/NAT rule switches for unsupported firmware version"
             )
     if config.get(CONF_SYNC_SERVICES, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_service_switches(config_entry, coordinator, state))
     if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_vpn_switches(config_entry, coordinator, state))
     if config.get(CONF_SYNC_CARP, DEFAULT_SYNC_OPTION_VALUE):
-        firmware = state.get("host_firmware_version")
-        if firmware:
-            try:
-                if awesomeversion.AwesomeVersion(firmware) >= awesomeversion.AwesomeVersion(
-                    "26.1.1"
-                ):
-                    entities.extend(
-                        await _compile_carp_maintenance_switch(config_entry, coordinator, state)
-                    )
-            except (
-                awesomeversion.exceptions.AwesomeVersionCompareException,
-                TypeError,
-                ValueError,
-            ) as e:
-                _LOGGER.error(
-                    "Error comparing firmware version %s when determining whether to create "
-                    "CARP maintenance switch. %s: %s",
-                    firmware,
-                    type(e).__name__,
-                    e,
-                )
+        if _supports_firmware_version(state, config_entry, "26.1.1"):
+            entities.extend(
+                await _compile_carp_maintenance_switch(config_entry, coordinator, state)
+            )
     if config.get(CONF_SYNC_UNBOUND, DEFAULT_SYNC_OPTION_VALUE):
-        firmware = state.get("host_firmware_version")
-        if firmware:
-            try:
-                if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
-                    "25.7.8"
-                ):
-                    _LOGGER.debug("Using Unbound Regular Blocklists for OPNsense < 25.7.8")
-                    entities.extend(
-                        await _compile_static_unbound_switch_legacy(
-                            config_entry, coordinator, state
-                        )
-                    )
-                else:
-                    _LOGGER.debug("Using Unbound Extended Blocklists for OPNsense >= 25.7.8")
-                    entities.extend(
-                        await _compile_unbound_switches(config_entry, coordinator, state)
-                    )
-            except (
-                awesomeversion.exceptions.AwesomeVersionCompareException,
-                TypeError,
-                ValueError,
-            ) as e:
-                _LOGGER.error(
-                    "Error comparing firmware version %s when determining creating Unbound "
-                    "Blocklist switches. %s: %s",
-                    firmware,
-                    type(e).__name__,
-                    e,
-                )
+        if _supports_firmware_version(state, config_entry, "25.7.8"):
+            _LOGGER.debug("Using Unbound Extended Blocklists for OPNsense >= 25.7.8")
+            entities.extend(await _compile_unbound_switches(config_entry, coordinator, state))
+        else:
+            _LOGGER.debug("Using Unbound Regular Blocklists for OPNsense < 25.7.8")
+            entities.extend(
+                await _compile_static_unbound_switch_legacy(config_entry, coordinator, state)
+            )
 
     _LOGGER.debug("[switch async_setup_entry] entities: %s", len(entities))
     async_add_entities(entities)
