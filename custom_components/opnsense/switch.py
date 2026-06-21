@@ -432,20 +432,6 @@ async def async_setup_entry(
         _LOGGER.error("Missing state data in switch async_setup_entry")
         return
     config: Mapping[str, Any] = config_entry.data
-    has_carp_status_summary = isinstance(dict_get(state, "carp.status_summary"), MutableMapping)
-    unbound_blocklist = state.get(ATTR_UNBOUND_BLOCKLIST)
-    unbound_legacy = bool(
-        isinstance(unbound_blocklist, MutableMapping)
-        and isinstance(unbound_blocklist.get("legacy"), MutableMapping)
-    )
-    unbound_extended_present = bool(
-        isinstance(unbound_blocklist, MutableMapping)
-        and any(
-            key != "legacy"
-            for key, value in unbound_blocklist.items()
-            if isinstance(value, MutableMapping)
-        )
-    )
 
     entities: list = []
 
@@ -463,17 +449,10 @@ async def async_setup_entry(
         entities.extend(await _compile_service_switches(config_entry, coordinator, state))
     if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_vpn_switches(config_entry, coordinator, state))
-    if config.get(CONF_SYNC_CARP, DEFAULT_SYNC_OPTION_VALUE) and has_carp_status_summary:
+    if config.get(CONF_SYNC_CARP, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_carp_maintenance_switch(config_entry, coordinator, state))
     if config.get(CONF_SYNC_UNBOUND, DEFAULT_SYNC_OPTION_VALUE):
-        if unbound_legacy:
-            _LOGGER.debug("Using Unbound Regular Blocklists")
-        if unbound_extended_present:
-            _LOGGER.debug("Using Unbound Extended Blocklists")
-        if unbound_legacy or unbound_extended_present:
-            entities.extend(await _compile_unbound_switches(config_entry, coordinator, state))
-        else:
-            _LOGGER.debug("Skipping Unbound blocklist setup because blocklist state is unavailable")
+        entities.extend(await _compile_unbound_switches(config_entry, coordinator, state))
 
     _LOGGER.debug("[switch async_setup_entry] entities: %s", len(entities))
     async_add_entities(entities)
