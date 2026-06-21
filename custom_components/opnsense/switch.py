@@ -522,12 +522,8 @@ async def async_setup_entry(
         entities.extend(await _compile_service_switches(config_entry, coordinator, state))
     if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_vpn_switches(config_entry, coordinator, state))
-    if config.get(CONF_SYNC_CARP, DEFAULT_SYNC_OPTION_VALUE):
-        carp_support = _supports_firmware_version(state, config_entry, "26.1.1")
-        if carp_support is True or (carp_support is None and has_carp_status_summary):
-            entities.extend(
-                await _compile_carp_maintenance_switch(config_entry, coordinator, state)
-            )
+    if config.get(CONF_SYNC_CARP, DEFAULT_SYNC_OPTION_VALUE) and has_carp_status_summary:
+        entities.extend(await _compile_carp_maintenance_switch(config_entry, coordinator, state))
     if config.get(CONF_SYNC_UNBOUND, DEFAULT_SYNC_OPTION_VALUE):
         if unbound_legacy:
             _LOGGER.debug("Using Unbound Regular Blocklists")

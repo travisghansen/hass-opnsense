@@ -99,6 +99,7 @@ async def collect_setup_carp_switches(
     *,
     config_data: dict[str, Any] | None = None,
     firmware: Any = "26.1.1",
+    include_summary: bool = True,
 ) -> list[OPNsenseCarpMaintenanceSwitch]:
     """Run switch setup and return CARP maintenance switches."""
     calls: dict[str, list[Any]] = {}
@@ -112,10 +113,9 @@ async def collect_setup_carp_switches(
         """
         calls["entities"] = list(entities)
 
-    coordinator.data = {
-        "carp": {"status_summary": {"maintenance_mode": False, "enabled": True}},
-        "host_firmware_version": firmware,
-    }
+    coordinator.data = {"host_firmware_version": firmware}
+    if include_summary:
+        coordinator.data["carp"] = {"status_summary": {"maintenance_mode": False, "enabled": True}}
     config_entry = make_carp_config_entry(
         make_config_entry,
         coordinator,
@@ -208,25 +208,28 @@ async def test_async_setup_entry_carp_maintenance_switch_sync_gate(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("firmware", "expected_count"),
+    ("firmware", "include_summary", "expected_count"),
     [
-        pytest.param("26.1", 0, id="firmware-too-old"),
-        pytest.param(object(), 1, id="invalid-firmware-but-decisive-runtime-state"),
+        pytest.param("26.1", True, 1, id="old-firmware-with-carp-summary"),
+        pytest.param(object(), True, 1, id="invalid-firmware-with-carp-summary"),
+        pytest.param("26.1.1", False, 0, id="supported-firmware-without-carp-summary"),
     ],
 )
-async def test_async_setup_entry_carp_maintenance_switch_firmware_gate(
+async def test_async_setup_entry_carp_maintenance_switch_uses_summary_shape(
     coordinator: MagicMock,
     ph_hass: HomeAssistant,
     make_config_entry: Callable[..., MockConfigEntry],
     firmware: Any,
+    include_summary: bool,
     expected_count: int,
 ) -> None:
-    """CARP maintenance switch should only compile for supported firmware."""
+    """CARP maintenance switch should compile from CARP summary shape."""
     carp_switches = await collect_setup_carp_switches(
         ph_hass,
         make_config_entry,
         coordinator,
         firmware=firmware,
+        include_summary=include_summary,
     )
     assert len(carp_switches) == expected_count
 
