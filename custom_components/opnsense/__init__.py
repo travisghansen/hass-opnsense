@@ -11,6 +11,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
+from aiopnsense.exceptions import OPNsenseBelowMinFirmware, OPNsenseError, OPNsenseUnknownFirmware
 import awesomeversion
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
@@ -204,7 +205,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             opts={"verify_ssl": verify_ssl},
             name=entry.title,
         )
-        await client.validate()
+        try:
+            await client.validate()
+        except OPNsenseBelowMinFirmware, OPNsenseUnknownFirmware:
+            _LOGGER.debug(
+                "Client validation reported firmware issues; continuing to firmware probes"
+            )
     except MissingExternalAiopnsenseDependency:
         if client is not None:
             await client.async_close()
@@ -222,6 +228,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "OPNsense firmware requires external aiopnsense package, but it is not available."
         )
         return False
+    except aiohttp.ClientError, OPNsenseError, OSError, TimeoutError, TypeError, ValueError:
+        if client is not None:
+            await client.async_close()
+        raise
 
     scan_interval: int = options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     _LOGGER.info("Starting hass-opnsense %s", VERSION)
