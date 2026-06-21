@@ -1010,12 +1010,33 @@ async def test_async_setup_entry_skips_firewall_and_nat_for_old_firmware(
 
     state = {
         "firewall": {
-            "config": {
-                "filter": {"rule": [{"descr": "Allow", "created": {"time": "f1"}}]},
-                "nat": {
-                    "rule": [{"descr": "PF", "created": {"time": "p1"}}],
-                    "outbound": {"rule": [{"descr": "OB", "created": {"time": "o1"}}]},
+            "rules": {
+                "rule1": {
+                    "uuid": "rule1",
+                    "description": "Old firmware legacy path",
+                    "%interface": "wan",
+                    "enabled": "1",
+                }
+            },
+            "nat": {
+                "source_nat": {
+                    "nat1": {
+                        "uuid": "nat1",
+                        "description": "Old firmware source nat",
+                        "%interface": "wan",
+                        "enabled": "1",
+                    }
                 },
+                "d_nat": {
+                    "dnat1": {
+                        "uuid": "dnat1",
+                        "description": "Old firmware destination nat",
+                        "%interface": "wan",
+                        "enabled": "1",
+                    }
+                },
+                "one_to_one": {},
+                "npt": {},
             },
         },
         "host_firmware_version": "25.1",
