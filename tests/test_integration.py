@@ -60,18 +60,6 @@ class _FakeFlowClient:
         """Return the firmware version configured for this fake flow client."""
         return self._firmware
 
-    async def set_use_snake_case(self, initial: bool = False) -> None:
-        """Accept the snake-case toggle call used by flow validation without side effects."""
-        return
-
-    async def is_plugin_installed(self) -> bool:  # for SYNC_ITEMS_REQUIRING_PLUGIN path
-        """Report plugin availability for config-flow validation checks.
-
-        Returns:
-            bool: Always returns ``True`` so plugin-gated flow branches remain enabled.
-        """
-        return True
-
     async def get_system_info(self) -> MutableMapping[str, Any]:
         """Return a minimal system info payload used by flow validation."""
         return {"name": "OPNsenseTest"}
@@ -147,9 +135,9 @@ class _FakeRuntimeClient:
         """Accept query-count reset calls without changing test state."""
         return
 
-    async def get_query_counts(self) -> tuple[int, int]:
-        """Return a fixed pair of query counters for coordinator assertions."""
-        return (0, 0)
+    async def get_query_counts(self) -> int:
+        """Return a fixed query-count value for coordinator assertions."""
+        return 0
 
     async def get_system_info(self) -> dict[str, str]:  # first refresh path
         """Return minimal system information for the initial refresh path."""
