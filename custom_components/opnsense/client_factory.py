@@ -77,7 +77,7 @@ async def create_opnsense_client(
     """Create the external aiopnsense client.
 
     Raises:
-        MissingExternalAiopnsenseDependency: External aiopnsense dependency
+        MissingExternalAiopnsenseDependencyError: External aiopnsense dependency
         is unavailable or invalid for this constructor call.
     """
     kwargs = _build_client_kwargs(

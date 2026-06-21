@@ -229,7 +229,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             categories.append({"function": "get_notices", "state_key": "notices"})
         if (
             config.get(CONF_SYNC_FIREWALL_AND_NAT, DEFAULT_SYNC_OPTION_VALUE)
-            and self._firmware_supports_firewall_rules() is True
+            and self._firmware_supports_firewall_rules(use_stored_firmware=False) is True
         ):
             categories.append({"function": "get_firewall", "state_key": "firewall"})
         if config.get(CONF_SYNC_UNBOUND, DEFAULT_SYNC_OPTION_VALUE):
@@ -248,15 +248,19 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         )
         return categories
 
-    def _firmware_supports_firewall_rules(self) -> bool | None:
+    def _firmware_supports_firewall_rules(self, *, use_stored_firmware: bool = True) -> bool | None:
         """Return whether firewall and NAT rule polling should run.
+
+        Args:
+            use_stored_firmware: Whether to use stored config firmware when runtime
+                firmware is not yet available.
 
         Returns:
             bool | None: ``True`` when firmware is >= 26.1.1, ``False`` when older,
                 and ``None`` when comparison fails or is unavailable.
         """
         firmware_version = self._state.get("host_firmware_version")
-        if not firmware_version and self.config_entry is not None:
+        if not firmware_version and use_stored_firmware and self.config_entry is not None:
             firmware_version = self.config_entry.data.get(CONF_FIRMWARE_VERSION)
 
         if not firmware_version:
@@ -505,7 +509,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                     CONF_SYNC_FIREWALL_AND_NAT, DEFAULT_SYNC_OPTION_VALUE
                 )
                 and "get_firewall" not in {cat.get("function") for cat in self._categories}
-                and self._firmware_supports_firewall_rules() is True
+                and self._firmware_supports_firewall_rules(use_stored_firmware=False) is True
                 and "firewall" not in self._state
             ):
                 get_firewall = getattr(self._client, "get_firewall", None)

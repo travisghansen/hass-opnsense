@@ -9,6 +9,7 @@ import importlib
 from typing import Any, Never
 from unittest.mock import AsyncMock, MagicMock
 
+from aiopnsense import exceptions as aiopnsense_exceptions
 from homeassistant.core import HomeAssistant
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -113,6 +114,14 @@ async def test_clean_and_parse_url_success_and_failure() -> None:
     await cf_mod._clean_and_parse_url(ui)
     assert ui[cf_mod.CONF_URL] == "https://router.example"
 
+    auth_ui = {cf_mod.CONF_URL: "https://user:pass@router.example:8443"}
+    await cf_mod._clean_and_parse_url(auth_ui)
+    assert auth_ui[cf_mod.CONF_URL] == "https://router.example:8443"
+
+    ipv6_ui = {cf_mod.CONF_URL: "https://user:pass@[2001:db8::1]:8443"}
+    await cf_mod._clean_and_parse_url(ipv6_ui)
+    assert ipv6_ui[cf_mod.CONF_URL] == "https://[2001:db8::1]:8443"
+
     # invalid netloc -> raise OPNsenseInvalidURL
     with pytest.raises(cf_mod.OPNsenseInvalidURL):
         await cf_mod._clean_and_parse_url({cf_mod.CONF_URL: ""})
@@ -139,26 +148,27 @@ async def test_validate_input_exception_mapping(
 ) -> None:
     """Ensure validate_input maps various exceptions to the expected error code."""
     # Build exception object lazily to avoid constructor issues at collection time
+    exc: BaseException
     if exc_key == "below_min":
-        exc = cf_mod.OPNsenseBelowMinFirmware()
+        exc = aiopnsense_exceptions.OPNsenseBelowMinFirmware()
     elif exc_key == "unknown_fw":
-        exc = cf_mod.OPNsenseUnknownFirmware()
+        exc = aiopnsense_exceptions.OPNsenseUnknownFirmware()
     elif exc_key == "missing_external_dep":
         exc = cf_mod.MissingExternalAiopnsenseDependency()
     elif exc_key == "missing_id":
-        exc = cf_mod.OPNsenseMissingDeviceUniqueID("x")
+        exc = aiopnsense_exceptions.OPNsenseMissingDeviceUniqueID("x")
     elif exc_key == "invalid_url":
         exc = cf_mod.OPNsenseInvalidURL("u")
     elif exc_key == "ssl":
-        exc = cf_mod.OPNsenseSSLError("ssl error")
+        exc = aiopnsense_exceptions.OPNsenseSSLError("ssl error")
     elif exc_key == "invalid_auth":
-        exc = cf_mod.OPNsenseInvalidAuth("auth error")
+        exc = aiopnsense_exceptions.OPNsenseInvalidAuth("auth error")
     elif exc_key == "privilege_missing":
-        exc = cf_mod.OPNsensePrivilegeMissing("privilege error")
+        exc = aiopnsense_exceptions.OPNsensePrivilegeMissing("privilege error")
     elif exc_key == "timeout":
-        exc = cf_mod.OPNsenseTimeoutError("t")
+        exc = aiopnsense_exceptions.OPNsenseTimeoutError("t")
     elif exc_key == "connection":
-        exc = cf_mod.OPNsenseConnectionError("boom")
+        exc = aiopnsense_exceptions.OPNsenseConnectionError("boom")
     else:
         exc = OSError("unknown")
 
@@ -351,11 +361,13 @@ async def test_handle_user_input_closes_client(monkeypatch: pytest.MonkeyPatch) 
             """
             return {"name": "OPNsense"}
 
-        async def get_device_unique_id(self, expected_id: str | None = None) -> str:
+        async def get_device_unique_id(
+            self, _expected_id: str | None = None, **_kwargs: Any
+        ) -> str:
             """Return deterministic device identifier for validation.
 
             Args:
-                expected_id: Expected device ID from caller and ignored in this stub.
+                _expected_id: Expected device ID from caller and ignored in this stub.
 
             Returns:
                 str: Fake device identifier.
@@ -565,7 +577,7 @@ async def test_device_tracker_shows_form_when_no_user_input(
 @pytest.mark.parametrize(
     "exc",
     [
-        cf_mod.OPNsenseConnectionError("boom"),
+        aiopnsense_exceptions.OPNsenseConnectionError("boom"),
         cf_mod.MissingExternalAiopnsenseDependency("missing"),
     ],
 )
@@ -746,7 +758,9 @@ async def test_validate_input_granular_sync_uses_native_validation_only(
             """Return static system metadata for validation."""
             return {"name": "OPNsense"}
 
-        async def get_device_unique_id(self, expected_id: str | None = None) -> str:
+        async def get_device_unique_id(
+            self, _expected_id: str | None = None, **_kwargs: Any
+        ) -> str:
             """Return a stable device unique id."""
             return "dev-01"
 

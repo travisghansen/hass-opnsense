@@ -14,6 +14,7 @@ import aiohttp
 from aiopnsense.exceptions import (
     OPNsenseBelowMinFirmware,
     OPNsenseConnectionError,
+    OPNsenseError,
     OPNsenseInvalidAuth,
     OPNsenseInvalidURL,
     OPNsenseMissingDeviceUniqueID,
@@ -63,6 +64,7 @@ from .helpers import is_private_ip
 
 if TYPE_CHECKING:
     from aiopnsense import OPNsenseClient
+
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -323,19 +325,6 @@ async def validate_input(
         await _handle_user_input(
             hass=hass, user_input=user_input, config_step=config_step, expected_id=expected_id
         )
-    except OPNsenseBelowMinFirmware:
-        _log_and_set_error(
-            errors=errors,
-            key="below_min_firmware",
-            message=f"OPNsense Firmware of {user_input.get(CONF_FIRMWARE_VERSION)} is below the "
-            f"minimum supported version of {OPNSENSE_MIN_FIRMWARE}",
-        )
-    except OPNsenseUnknownFirmware:
-        _log_and_set_error(
-            errors=errors,
-            key="unknown_firmware",
-            message="Unable to get OPNsense Firmware version",
-        )
     except MissingExternalAiopnsenseDependency:
         _log_and_set_error(
             errors=errors,
@@ -354,52 +343,69 @@ async def validate_input(
             key="invalid_url_format",
             message=f"Invalid URL Error. {type(e).__name__}: {e}",
         )
-    except OPNsenseSSLError as e:
-        _log_and_set_error(
+    except OPNsenseError as e:
+        if not _log_aiopnsense_error(
             errors=errors,
-            key="cannot_connect_ssl",
-            message=cleanse_sensitive_data(
-                f"aiopnsense Error. {type(e).__name__}: {e}",
-                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
-            ),
-        )
-    except OPNsenseInvalidAuth as e:
-        _log_and_set_error(
-            errors=errors,
-            key="invalid_auth",
-            message=cleanse_sensitive_data(
-                f"aiopnsense Error. {type(e).__name__}: {e}",
-                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
-            ),
-        )
-    except OPNsensePrivilegeMissing as e:
-        _log_and_set_error(
-            errors=errors,
-            key="privilege_missing",
-            message=cleanse_sensitive_data(
-                f"aiopnsense Error. {type(e).__name__}: {e}",
-                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
-            ),
-        )
-    except OPNsenseTimeoutError as e:
-        _log_and_set_error(
-            errors=errors,
-            key="connect_timeout",
-            message=cleanse_sensitive_data(
-                f"aiopnsense Error. {type(e).__name__}: {e}",
-                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
-            ),
-        )
-    except OPNsenseConnectionError as e:
-        _log_and_set_error(
-            errors=errors,
-            key="cannot_connect",
-            message=cleanse_sensitive_data(
-                f"aiopnsense Error. {type(e).__name__}: {e}",
-                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
-            ),
-        )
+            error=e,
+            user_input=user_input,
+        ):
+            raise
     return errors
+
+
+def _log_aiopnsense_error(
+    errors: MutableMapping[str, Any],
+    error: OPNsenseError,
+    user_input: Mapping[str, Any],
+) -> bool:
+    """Map an aiopnsense validation exception to a config-flow error.
+
+    Args:
+        errors: Mutable error mapping populated by this validator.
+        error: aiopnsense exception raised while validating the input.
+        user_input: User input containing optional secrets for log redaction.
+
+    Returns:
+        bool: ``True`` when the exception was mapped, otherwise ``False``.
+    """
+    if isinstance(error, OPNsenseBelowMinFirmware):
+        _log_and_set_error(
+            errors=errors,
+            key="below_min_firmware",
+            message=f"OPNsense Firmware of {user_input.get(CONF_FIRMWARE_VERSION)} is below the "
+            f"minimum supported version of {OPNSENSE_MIN_FIRMWARE}",
+        )
+        return True
+    if isinstance(error, OPNsenseUnknownFirmware):
+        _log_and_set_error(
+            errors=errors,
+            key="unknown_firmware",
+            message="Unable to get OPNsense Firmware version",
+        )
+        return True
+
+    if isinstance(error, OPNsenseSSLError):
+        error_key = "cannot_connect_ssl"
+    elif isinstance(error, OPNsenseInvalidAuth):
+        error_key = "invalid_auth"
+    elif isinstance(error, OPNsensePrivilegeMissing):
+        error_key = "privilege_missing"
+    elif isinstance(error, OPNsenseTimeoutError):
+        error_key = "connect_timeout"
+    elif isinstance(error, OPNsenseConnectionError):
+        error_key = "cannot_connect"
+    else:
+        return False
+
+    _log_and_set_error(
+        errors=errors,
+        key=error_key,
+        message=cleanse_sensitive_data(
+            f"aiopnsense Error. {type(error).__name__}: {error}",
+            [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
+        ),
+    )
+    return True
 
 
 async def _clean_and_parse_url(user_input: MutableMapping[str, Any]) -> None:
@@ -421,7 +427,16 @@ async def _clean_and_parse_url(user_input: MutableMapping[str, Any]) -> None:
     if not url_parts.netloc:
         raise OPNsenseInvalidURL
 
-    user_input[CONF_URL] = f"{url_parts.scheme}://{url_parts.netloc}"
+    host = url_parts.hostname
+    if host is None:
+        raise OPNsenseInvalidURL
+
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    if url_parts.port:
+        host = f"{host}:{url_parts.port}"
+
+    user_input[CONF_URL] = f"{url_parts.scheme}://{host}"
     _LOGGER.debug("[config_flow] Cleaned URL: %s", user_input[CONF_URL])
 
 
@@ -1129,10 +1144,7 @@ class OPNsenseOptionsFlow(OptionsFlow):
             dt_entries: dict[str, Any] = await _get_dt_entries(
                 hass=self.hass, config=self.config_entry.data, selected_devices=selected_devices
             )
-        except (
-            OPNsenseConnectionError,
-            MissingExternalAiopnsenseDependency,
-        ) as err:
+        except (MissingExternalAiopnsenseDependency, OPNsenseConnectionError) as err:
             _LOGGER.warning("Failed to load device tracker entries: %s", err)
             errors["base"] = "cannot_connect"
             dt_entries = {

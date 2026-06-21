@@ -190,6 +190,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             opts={"verify_ssl": verify_ssl},
             name=entry.title,
         )
+        await client.validate()
     except MissingExternalAiopnsenseDependency:
         if client is not None:
             await client.async_close()

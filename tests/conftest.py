@@ -299,6 +299,10 @@ def fake_client() -> Any:
                 """
                 return self._device_id
 
+            async def validate(self) -> bool:
+                """Perform a no-op validation check for setup-time assertions."""
+                return True
+
             async def get_host_firmware_version(self) -> Any:
                 """Return the configured firmware version for test assertions."""
                 return self._firmware

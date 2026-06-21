@@ -104,6 +104,10 @@ class _FakeRuntimeClient:
         self._firmware = firmware
         self._closed = False
 
+    async def validate(self) -> None:
+        """Satisfy aiopnsense validation during setup-entry tests."""
+        return
+
     async def get_device_unique_id(
         self, expected_id: str | None = None
     ) -> str:  # used by setup & coordinator
