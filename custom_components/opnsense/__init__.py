@@ -8,9 +8,10 @@ and various other OPNsense features through the Home Assistant interface.
 from collections.abc import Mapping
 from datetime import timedelta
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
+from aiopnsense.exceptions import OPNsenseBelowMinFirmware, OPNsenseError, OPNsenseUnknownFirmware
 import awesomeversion
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
@@ -32,7 +33,6 @@ from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.typing import ConfigType
 
 from .client_factory import MissingExternalAiopnsenseDependency, create_opnsense_client
-from .client_protocol import OPNsenseClientProtocol
 from .const import (
     CONF_DEVICE_TRACKER_ENABLED,
     CONF_DEVICE_TRACKER_SCAN_INTERVAL,
@@ -59,8 +59,20 @@ from .helpers import is_private_ip
 from .models import OPNsenseData
 from .services import async_setup_services
 
+if TYPE_CHECKING:
+    from aiopnsense import OPNsenseClient
+
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+LEGACY_RULE_ENTITY_TOKENS: tuple[str, ...] = (
+    "_filter_",
+    "_nat_port_forward_",
+    "_nat_outbound_",
+)
+NATIVE_RULE_ENTITY_TOKENS: tuple[str, ...] = (
+    "_firewall_rule_",
+    "_firewall_nat_",
+)
 
 
 def _align_aiopnsense_log_level() -> None:
@@ -105,6 +117,16 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
                     )
                     entity_registry.async_remove(ent.entity_id)
                     break
+            else:
+                for pre in NATIVE_RULE_ENTITY_TOKENS:
+                    if ent.unique_id.startswith(f"{uid_prefix}{pre}"):
+                        _LOGGER.debug(
+                            "[async_update_listener] removing native entity_id: %s, unique_id: %s",
+                            ent.entity_id,
+                            ent.unique_id,
+                        )
+                        entity_registry.async_remove(ent.entity_id)
+                        break
         dt_enabled = entry.options.get(CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED)
         if not dt_enabled:
             device_registry = dr.async_get(hass)
@@ -169,7 +191,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     config_device_id: str = config[CONF_DEVICE_UNIQUE_ID]
 
-    client: OPNsenseClientProtocol | None = None
+    client: OPNsenseClient | None = None
     try:
         client = await create_opnsense_client(
             url=url,
@@ -184,6 +206,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             probe_timeout_fallback=True,
             name=entry.title,
         )
+        try:
+            await client.validate()
+        except OPNsenseBelowMinFirmware, OPNsenseUnknownFirmware:
+            _LOGGER.debug(
+                "Client validation reported firmware issues; continuing to firmware probes"
+            )
     except MissingExternalAiopnsenseDependency:
         if client is not None:
             await client.async_close()
@@ -201,6 +229,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "OPNsense firmware requires external aiopnsense package, but it is not available."
         )
         return False
+    except OPNsenseError:
+        if client is not None:
+            await client.async_close()
+        raise
 
     scan_interval: int = options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     _LOGGER.info("Starting hass-opnsense %s", VERSION)
@@ -298,20 +330,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError:
             _LOGGER.warning("Unable to confirm OPNsense Firmware version")
 
-        try:
-            if awesomeversion.AwesomeVersion(firmware) > awesomeversion.AwesomeVersion(
-                "26.1"
-            ) and awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion("26.7"):
-                await _deprecated_plugin_cleanup_26_1_1(
-                    hass=hass,
-                    client=client,
-                    entry_id=entry.entry_id,
-                    config_device_id=config_device_id,
-                    firmware=firmware,
-                )
-        except awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError:
-            _LOGGER.warning("Unable to confirm OPNsense Firmware version")
-
         await coordinator.async_config_entry_first_refresh()
 
         platforms: list[Platform] = PLATFORMS.copy()
@@ -363,119 +381,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await client.async_close()
 
 
-async def _deprecated_plugin_cleanup_26_1_1(
-    hass: HomeAssistant,
-    client: OPNsenseClientProtocol,
-    entry_id: str,
-    config_device_id: str,
-    firmware: str | None = None,
-) -> None:
-    """Remove deprecated switch entities tied to plugin migration behavior.
-
-    Args:
-        hass: Home Assistant instance.
-        client: OPNsense API client used to inspect plugin status.
-        entry_id: Config entry identifier whose entities are evaluated for cleanup.
-        config_device_id: Router unique ID used in generated repair issue IDs.
-        firmware: Optional firmware string used to infer plugin deprecation behavior.
-    """
-    _LOGGER.debug("Starting OPNsense 26.1.1 and Plugin cleanup")
-    entity_registry = er.async_get(hass)
-    plugin_installed: bool = await client.is_plugin_installed()
-    plugin_deprecated: bool = False
-    if firmware:
-        try:
-            plugin_deprecated = awesomeversion.AwesomeVersion(
-                firmware
-            ) >= awesomeversion.AwesomeVersion("26.1.3")
-        except awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError:
-            _LOGGER.debug(
-                "Unable to compare firmware '%s' for plugin cleanup deprecation fallback.",
-                firmware,
-            )
-    plugin_deprecated = plugin_deprecated or await client.is_plugin_deprecated()
-    cleanup_started: bool = False
-
-    for ent in er.async_entries_for_config_entry(entity_registry, entry_id):
-        platform = ent.entity_id.split(".")[0]
-        if platform != Platform.SWITCH:
-            continue
-        # _LOGGER.debug("[deprecated_plugin_cleanup] ent: %s", ent)
-        if (
-            ((plugin_deprecated or not plugin_installed) and "_filter_" in ent.unique_id)
-            or "_nat_port_forward_" in ent.unique_id
-            or "_nat_outbound_" in ent.unique_id
-        ):
-            cleanup_started = True
-            try:
-                entity_registry.async_remove(ent.entity_id)
-                _LOGGER.debug("[deprecated_plugin_cleanup] removed entity_id: %s", ent.entity_id)
-            except (KeyError, ValueError) as e:
-                _LOGGER.error(
-                    "Error removing entity: %s. %s: %s",
-                    ent.entity_id,
-                    type(e).__name__,
-                    e,
-                )
-    if cleanup_started:
-        if plugin_installed and not plugin_deprecated:
-            _LOGGER.info(
-                "OPNsense 26.1.1+ and Plugin cleanup partially completed. OPNsense Plugin is still "
-                "installed. NAT Outbound and NAT Port Forward rules removed. Firewall Filter rules "
-                "will be removed once the plugin is removed."
-            )
-            ir.async_create_issue(
-                hass,
-                DOMAIN,
-                f"{config_device_id}_plugin_cleanup_partial",
-                is_fixable=False,
-                is_persistent=False,
-                issue_domain=DOMAIN,
-                severity=ir.IssueSeverity.WARNING,
-                translation_key="plugin_cleanup_partial",
-            )
-        else:
-            if plugin_deprecated:
-                _LOGGER.info(
-                    "OPNsense 26.1.1+ and Plugin cleanup completed. OPNsense Plugin is deprecated. "
-                    "NAT Outbound, NAT Port Forward, and Firewall Filter rules removed."
-                )
-            else:
-                _LOGGER.info(
-                    "OPNsense 26.1.1+ and Plugin cleanup completed. OPNsense Plugin is not "
-                    "installed. NAT Outbound, NAT Port Forward, and Firewall Filter rules removed."
-                )
-            ir.async_create_issue(
-                hass,
-                DOMAIN,
-                f"{config_device_id}_plugin_cleanup_done",
-                is_fixable=False,
-                is_persistent=False,
-                issue_domain=DOMAIN,
-                severity=ir.IssueSeverity.WARNING,
-                translation_key="plugin_cleanup_deprecated"
-                if plugin_deprecated
-                else "plugin_cleanup_done",
-            )
-
-    if plugin_deprecated and plugin_installed:
-        _LOGGER.info(
-            "OPNsense Firmware is 26.1.3+ and the deprecated Plugin is still installed. Both "
-            "because it will no longer work and for security reasons, please remove this plugin "
-            "from OPNsense."
-        )
-        ir.async_create_issue(
-            hass,
-            DOMAIN,
-            f"{config_device_id}_remove_plugin",
-            is_fixable=False,
-            is_persistent=False,
-            issue_domain=DOMAIN,
-            severity=ir.IssueSeverity.WARNING,
-            translation_key="remove_plugin",
-        )
-
-
 async def async_remove_config_entry_device(
     hass: HomeAssistant, config_entry: ConfigEntry, device_entry: dr.DeviceEntry
 ) -> bool:
@@ -512,7 +417,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """
     _LOGGER.info("Unloading: %s", entry.as_dict())
     platforms: list[Platform] = getattr(entry.runtime_data, LOADED_PLATFORMS)
-    client: OPNsenseClientProtocol = getattr(entry.runtime_data, OPNSENSE_CLIENT)
+    client: OPNsenseClient = getattr(entry.runtime_data, OPNSENSE_CLIENT)
     unload_ok: bool = await hass.config_entries.async_unload_platforms(entry, platforms)
 
     await client.async_close()
@@ -711,7 +616,7 @@ async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
         config.get(CONF_DEVICE_UNIQUE_ID, config_entry.unique_id or config_entry.entry_id)
     )
 
-    client: OPNsenseClientProtocol | None = None
+    client: OPNsenseClient | None = None
     try:
         client = await create_opnsense_client(
             url=url,
@@ -825,6 +730,44 @@ async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
             await client.async_close()
 
 
+async def _migrate_4_to_5(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    """Prune stale legacy rule entities during migration from 4 to 5.
+
+    Args:
+        hass: Home Assistant instance.
+        config_entry: Config entry being migrated.
+
+    Returns:
+        bool: `True` when legacy entities are removed and entry version is updated.
+    """
+    _LOGGER.debug("[migrate_4_to_5] Initial Version: %s", config_entry.version)
+    entity_registry = er.async_get(hass)
+
+    for ent in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
+        platform = ent.entity_id.split(".")[0]
+        if platform != Platform.SWITCH:
+            continue
+        if any(token in ent.unique_id for token in LEGACY_RULE_ENTITY_TOKENS):
+            try:
+                entity_registry.async_remove(ent.entity_id)
+                _LOGGER.debug("[migrate_4_to_5] removed entity_id: %s", ent.entity_id)
+            except (KeyError, ValueError) as e:
+                _LOGGER.error(
+                    "Error removing entity: %s. %s: %s",
+                    ent.entity_id,
+                    type(e).__name__,
+                    e,
+                )
+
+    migration_ok: bool = hass.config_entries.async_update_entry(config_entry, version=5)
+    if not migration_ok:
+        _LOGGER.error("Migration of config_entry to version 5 unsuccessful")
+        return False
+
+    _LOGGER.debug("[migrate_4_to_5] config_entry update successful")
+    return True
+
+
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Migrate a stored config entry to the latest supported schema.
 
@@ -837,7 +780,7 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
     """
     version = config_entry.version
 
-    if version > 4:
+    if version > 5:
         # This means the user has downgraded from a future version
         _LOGGER.error(
             "hass-opnsense downgraded and current config not compatible with earlier versions. "
@@ -867,6 +810,12 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
         if not v3to4:
             return False
         version = 4
+
+    if version == 4:
+        v4to5: bool = await _migrate_4_to_5(hass, config_entry)
+        if not v4to5:
+            return False
+        version = 5
 
     _LOGGER.info("Migration to version %s successful", version)
     return True

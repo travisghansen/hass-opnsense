@@ -5,6 +5,7 @@ import functools
 import logging
 from typing import Any
 
+from aiopnsense.exceptions import OPNsenseVoucherServerError
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import (
@@ -30,7 +31,6 @@ from .const import (
     SERVICE_SYSTEM_REBOOT,
     SERVICE_TOGGLE_ALIAS,
 )
-from .pyopnsense import OPNsenseVoucherServerError
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 _VNSTAT_PERIODS: tuple[str, ...] = ("hourly", "daily", "monthly", "yearly")

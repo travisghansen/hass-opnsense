@@ -5,8 +5,7 @@ import copy
 from datetime import timedelta
 import logging
 import time
-from typing import Any
-import xmlrpc.client
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 from homeassistant.config_entries import ConfigEntry
@@ -14,7 +13,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .client_protocol import OPNsenseClientProtocol
 from .const import (
     ATTR_UNBOUND_BLOCKLIST,
     CONF_SYNC_CARP,
@@ -37,6 +35,9 @@ from .const import (
 )
 from .helpers import dict_get
 
+if TYPE_CHECKING:
+    from aiopnsense import OPNsenseClient
+
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
@@ -46,7 +47,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
     def __init__(
         self,
         hass: HomeAssistant,
-        client: OPNsenseClientProtocol,
+        client: OPNsenseClient,
         name: str,
         update_interval: timedelta,
         device_unique_id: str,
@@ -73,7 +74,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         )
         if config_entry is None:
             raise ValueError("config_entry is required for OPNsenseDataUpdateCoordinator")
-        self._client: OPNsenseClientProtocol = client
+        self._client: OPNsenseClient = client
         self._state: dict[str, Any] = {}
         self._device_tracker_coordinator: bool = device_tracker_coordinator
         self._mismatched_count = 0
@@ -96,7 +97,6 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         )
         # await self._client.get_host_firmware_version() # Already triggered in
         # __init__.py async_setup_entry
-        await self._client.set_use_snake_case()
 
     async def _get_states(self, categories: list) -> dict[str, Any]:
         """Fetch state payloads for the requested category call definitions.
@@ -138,7 +138,6 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                                 TimeoutError,
                                 TypeError,
                                 ValueError,
-                                xmlrpc.client.Error,
                             ):
                                 _LOGGER.exception(
                                     "Failed to fetch SMART info for device %s",
@@ -179,8 +178,6 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 "function": "get_host_firmware_version",
                 "state_key": "host_firmware_version",
             },
-            {"function": "is_plugin_installed", "state_key": "plugin_installed"},
-            {"function": "is_plugin_deprecated", "state_key": "plugin_deprecated"},
         ]
 
         if config.get(CONF_SYNC_TELEMETRY, DEFAULT_SYNC_OPTION_VALUE):
@@ -323,11 +320,10 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             )
             # Create repair task here
             return {}
-        restapi_count, xmlrpc_count = await self._client.get_query_counts()
+        restapi_count = await self._client.get_query_counts()
         _LOGGER.debug(
-            "DT Update Complete. REST API Queries: %s, XMLRPC Queries: %s",
+            "DT Update Complete. REST API Queries: %s",
             restapi_count,
-            xmlrpc_count,
         )
         return self._state
 
@@ -460,6 +456,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
 
             # ensure clean state each interval
             self._state = {}
+            self._categories = self._build_categories()
             self._state["update_time"] = time.time()
             self._state["previous_state"] = previous_state
 
@@ -473,11 +470,10 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
 
             await self._calculate_entity_speeds()
 
-            restapi_count, xmlrpc_count = await self._client.get_query_counts()
+            restapi_count = await self._client.get_query_counts()
             _LOGGER.debug(
-                "Update Complete. REST API Queries: %s, XMLRPC Queries: %s",
+                "Update Complete. REST API Queries: %s",
                 restapi_count,
-                xmlrpc_count,
             )
             return self._state
         finally:
