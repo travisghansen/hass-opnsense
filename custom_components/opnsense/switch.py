@@ -194,39 +194,6 @@ async def _compile_carp_maintenance_switch(
     ]
 
 
-async def _compile_static_unbound_switch_legacy(
-    config_entry: ConfigEntry,
-    coordinator: OPNsenseDataUpdateCoordinator,
-    state: MutableMapping[str, Any],
-) -> list:
-    """Compile legacy static Unbound blocklist switch from OPNsense state.
-
-    Args:
-        config_entry: The Home Assistant config entry.
-        coordinator: The data update coordinator.
-        state: The current state data from OPNsense.
-
-    Returns:
-        list: A list containing a single OPNsenseUnboundBlocklistSwitchLegacy entity.
-    """
-    entities: list = []
-    entity = OPNsenseUnboundBlocklistSwitchLegacy(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=SwitchEntityDescription(
-            key="unbound_blocklist.switch",
-            name="Unbound Blocklist Switch",
-            # icon=icon,
-            # entity_category=ENTITY_CATEGORY_CONFIG,
-            device_class=SwitchDeviceClass.SWITCH,
-            entity_registry_enabled_default=False,
-        ),
-    )
-    entities.append(entity)
-
-    return entities
-
-
 async def _compile_unbound_switches(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
@@ -240,12 +207,34 @@ async def _compile_unbound_switches(
         state: The current state data from OPNsense.
 
     Returns:
-        list: A list of OPNsenseUnboundBlocklistSwitch entities.
+        list: A list of legacy or extended OPNsense unbound blocklist switch entities.
     """
     if not isinstance(state, MutableMapping):
         return []
+    unbound_blocklist = state.get(ATTR_UNBOUND_BLOCKLIST)
+    if not isinstance(unbound_blocklist, MutableMapping):
+        return []
+
     entities: list = []
-    for uuid, dnsbl in state.get(ATTR_UNBOUND_BLOCKLIST, {}).items():
+    if isinstance(unbound_blocklist.get("legacy"), MutableMapping):
+        entities.append(
+            OPNsenseUnboundBlocklistSwitchLegacy(
+                config_entry=config_entry,
+                coordinator=coordinator,
+                entity_description=SwitchEntityDescription(
+                    key="unbound_blocklist.switch",
+                    name="Unbound Blocklist Switch",
+                    # icon=icon,
+                    # entity_category=ENTITY_CATEGORY_CONFIG,
+                    device_class=SwitchDeviceClass.SWITCH,
+                    entity_registry_enabled_default=False,
+                ),
+            )
+        )
+
+    for uuid, dnsbl in unbound_blocklist.items():
+        if uuid == "legacy":
+            continue
         if not isinstance(dnsbl, MutableMapping):
             continue
 
@@ -540,19 +529,14 @@ async def async_setup_entry(
                 await _compile_carp_maintenance_switch(config_entry, coordinator, state)
             )
     if config.get(CONF_SYNC_UNBOUND, DEFAULT_SYNC_OPTION_VALUE):
-        unbound_support = _supports_firmware_version(state, config_entry, "25.7.8")
-        if unbound_support is True or (unbound_support is None and unbound_extended_present):
-            _LOGGER.debug("Using Unbound Extended Blocklists for OPNsense >= 25.7.8")
+        if unbound_legacy:
+            _LOGGER.debug("Using Unbound Regular Blocklists")
+        if unbound_extended_present:
+            _LOGGER.debug("Using Unbound Extended Blocklists")
+        if unbound_legacy or unbound_extended_present:
             entities.extend(await _compile_unbound_switches(config_entry, coordinator, state))
-        elif unbound_support is False or (unbound_support is None and unbound_legacy):
-            _LOGGER.debug("Using Unbound Regular Blocklists for OPNsense < 25.7.8")
-            entities.extend(
-                await _compile_static_unbound_switch_legacy(config_entry, coordinator, state)
-            )
         else:
-            _LOGGER.debug(
-                "Skipping Unbound blocklist setup because firmware version is unavailable"
-            )
+            _LOGGER.debug("Skipping Unbound blocklist setup because blocklist state is unavailable")
 
     _LOGGER.debug("[switch async_setup_entry] entities: %s", len(entities))
     async_add_entities(entities)
@@ -1195,7 +1179,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
 
 
 class OPNsenseUnboundBlocklistSwitchLegacy(OPNsenseSwitch):
-    """Class for OPNsense Unbound Blocklist Switch entity for Firmware < 25.7.8."""
+    """Class for legacy OPNsense Unbound Blocklist Switch entity."""
 
     @callback
     def _handle_coordinator_update(self) -> None:

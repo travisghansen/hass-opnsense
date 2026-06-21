@@ -33,6 +33,8 @@ from custom_components.opnsense.switch import (
     OPNsenseFirewallRuleSwitch,
     OPNsenseNATRuleSwitch,
     OPNsenseServiceSwitch,
+    OPNsenseUnboundBlocklistSwitch,
+    OPNsenseUnboundBlocklistSwitchLegacy,
     OPNsenseVPNSwitch,
     _compile_carp_maintenance_switch,
     _compile_firewall_rules_switches,
@@ -41,7 +43,6 @@ from custom_components.opnsense.switch import (
     _compile_nat_one_to_one_rules_switches,
     _compile_nat_source_rules_switches,
     _compile_service_switches,
-    _compile_static_unbound_switch_legacy,
     _compile_unbound_switches,
     _compile_vpn_switches,
 )
@@ -642,7 +643,7 @@ async def test_carp_maintenance_switch_icon(
             ("start_service", "stop_service"),
         ),
         (
-            _compile_static_unbound_switch_legacy,
+            _compile_unbound_switches,
             {"unbound_blocklist": {"legacy": {"enabled": "1"}}},
             ("enable_unbound_blocklist", "disable_unbound_blocklist"),
         ),
@@ -1449,6 +1450,28 @@ async def test_compile_unbound_extended_and_toggle(
 
 
 @pytest.mark.asyncio
+async def test_compile_unbound_switches_handles_legacy_and_extended_payloads(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Compile legacy and extended unbound switches from payload shape."""
+    state = {
+        "unbound_blocklist": {
+            "legacy": {"enabled": "1"},
+            "u1": {"enabled": "1", "description": "One"},
+        },
+    }
+    coordinator.data = state
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    ents = await _compile_unbound_switches(config_entry, coordinator, state)
+
+    assert len(ents) == 2
+    assert any(isinstance(ent, OPNsenseUnboundBlocklistSwitchLegacy) for ent in ents)
+    assert any(isinstance(ent, OPNsenseUnboundBlocklistSwitch) for ent in ents)
+
+
+@pytest.mark.asyncio
 async def test_vpn_turn_on_off_noops_when_preconditions_fail(
     monkeypatch: pytest.MonkeyPatch,
     coordinator: MagicMock,
@@ -1576,7 +1599,7 @@ async def test_unbound_missing_sets_unavailable(
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     state: dict[str, Any] = {"unbound_blocklist": {"legacy": {}}}
     coordinator.data = state
-    ent = (await _compile_static_unbound_switch_legacy(config_entry, coordinator, state))[0]
+    ent = (await _compile_unbound_switches(config_entry, coordinator, state))[0]
     # use PHCC-provided hass fixture
     hass = ph_hass
     ent.hass = hass
@@ -1598,7 +1621,7 @@ async def test_unbound_skips_update_when_delay_set(
     # coordinator contains enabled blocklist; handler would normally set is_on True
     state = {"unbound_blocklist": {"legacy": {"enabled": "1"}}}
     coordinator.data = state
-    ent = (await _compile_static_unbound_switch_legacy(config_entry, coordinator, state))[0]
+    ent = (await _compile_unbound_switches(config_entry, coordinator, state))[0]
 
     hass = ph_hass
     ent.hass = hass
@@ -1623,7 +1646,7 @@ async def test_unbound_skips_update_when_delay_set(
     [
         (
             "unbound",
-            _compile_static_unbound_switch_legacy,
+            _compile_unbound_switches,
             {"unbound_blocklist": {"legacy": {"enabled": "1"}}},
             "first",
             {CONF_SYNC_UNBOUND: True},
@@ -1798,9 +1821,7 @@ async def test_compile_helpers_bad_input(
     # non-mapping state
     bad_state = cast("MutableMapping[str, Any]", None)
     assert await _compile_service_switches(config_entry, coordinator, bad_state) == []
-    legacy_ents = await _compile_static_unbound_switch_legacy(config_entry, coordinator, bad_state)
-    assert legacy_ents is not None
-    assert len(legacy_ents) == 1
+    assert await _compile_unbound_switches(config_entry, coordinator, bad_state) == []
 
 
 @pytest.mark.asyncio
@@ -2119,8 +2140,8 @@ async def test_async_setup_entry_respects_config_flags(
         }
     )
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    # coordinator.data can be minimal; include firmware so unbound is compiled
-    coordinator.data = {"host_firmware_version": "25.7.7"}
+    # coordinator.data can be minimal; include a legacy payload so unbound is compiled
+    coordinator.data = {"unbound_blocklist": {"legacy": {"enabled": "1"}}}
     # run the async setup
     hass = ph_hass
     await switch_mod.async_setup_entry(
@@ -2318,7 +2339,7 @@ async def test_unbound_turn_on_off_failure_logs(
     dnsbl = {"enabled": "0", "safesearch": "0"}
     state = {"unbound_blocklist": {"legacy": dnsbl}}
     coordinator.data = state
-    ent = (await _compile_static_unbound_switch_legacy(config_entry, coordinator, state))[0]
+    ent = (await _compile_unbound_switches(config_entry, coordinator, state))[0]
     hass = ph_hass
     ent.hass = hass
     ent.coordinator = make_coord(state)
@@ -2345,7 +2366,7 @@ async def test_unbound_turn_on_off_failure_logs(
             False,
         ),
         (
-            _compile_static_unbound_switch_legacy,
+            _compile_unbound_switches,
             {"unbound_blocklist": {"legacy": {"enabled": "0", "safesearch": "0"}}},
             ("enable_unbound_blocklist", "disable_unbound_blocklist"),
             "async_turn_on",
@@ -2689,7 +2710,7 @@ async def test_unbound_legacy_switch_toggle_failures(
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     state = {"unbound_blocklist": {"legacy": {"enabled": "0"}}}
     coordinator.data = state
-    ent = (await _compile_static_unbound_switch_legacy(config_entry, coordinator, state))[0]
+    ent = (await _compile_unbound_switches(config_entry, coordinator, state))[0]
 
     hass = ph_hass
     ent.hass = hass
