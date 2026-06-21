@@ -16,12 +16,12 @@ from aiopnsense.exceptions import (
     OPNsenseConnectionError,
     OPNsenseInvalidAuth,
     OPNsenseInvalidURL,
+    OPNsenseMissingDeviceUniqueID,
     OPNsensePrivilegeMissing,
     OPNsenseSSLError,
     OPNsenseTimeoutError,
     OPNsenseUnknownFirmware,
 )
-import awesomeversion
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import (
     CONF_NAME,
@@ -342,7 +342,7 @@ async def validate_input(
             key="missing_external_aiopnsense",
             message="OPNsense firmware requires external aiopnsense package",
         )
-    except MissingDeviceUniqueID as e:
+    except OPNsenseMissingDeviceUniqueID as e:
         _log_and_set_error(
             errors=errors,
             key="missing_device_unique_id",
@@ -449,21 +449,6 @@ async def _get_client(user_input: MutableMapping[str, Any], hass: HomeAssistant)
     )
 
 
-def _validate_firmware_version(firmware_version: str) -> None:
-    """Validate that firmware meets the minimum supported version.
-
-    Args:
-        firmware_version: Firewall firmware string returned by the backend.
-
-    Raises:
-        OPNsenseBelowMinFirmware: Firmware is older than the supported minimum.
-    """
-    if awesomeversion.AwesomeVersion(firmware_version) < awesomeversion.AwesomeVersion(
-        OPNSENSE_MIN_FIRMWARE
-    ):
-        raise OPNsenseBelowMinFirmware
-
-
 async def _handle_user_input(
     hass: HomeAssistant,
     user_input: MutableMapping[str, Any],
@@ -481,23 +466,16 @@ async def _handle_user_input(
     Raises:
         OPNsenseUnknownFirmware: Firmware could not be parsed or compared safely.
         OPNsenseBelowMinFirmware: Firmware is below the minimum supported version.
-        MissingDeviceUniqueID: Backend did not return a device unique ID.
+        OPNsenseMissingDeviceUniqueID: Backend did not return a device unique ID.
     """
     await _clean_and_parse_url(user_input)
 
     client: OPNsenseClient = await _get_client(user_input, hass)
     try:
+        await client.validate()
+
         user_input[CONF_FIRMWARE_VERSION] = await client.get_host_firmware_version()
         _LOGGER.debug("[handle_user_input] Firmware Version: %s", user_input[CONF_FIRMWARE_VERSION])
-
-        try:
-            _validate_firmware_version(user_input[CONF_FIRMWARE_VERSION])
-        except (
-            awesomeversion.exceptions.AwesomeVersionCompareException,
-            TypeError,
-            ValueError,
-        ) as e:
-            raise OPNsenseUnknownFirmware from e
 
         system_info: dict[str, Any] = await client.get_system_info()
         _LOGGER.debug("[handle_user_input] system_info: %s", system_info)
@@ -511,7 +489,7 @@ async def _handle_user_input(
         _LOGGER.debug("[handle_user_input] Device Unique ID: %s", user_input[CONF_DEVICE_UNIQUE_ID])
 
         if not user_input.get(CONF_DEVICE_UNIQUE_ID):
-            raise MissingDeviceUniqueID
+            raise OPNsenseMissingDeviceUniqueID
     finally:
         await client.async_close()
 
@@ -1170,10 +1148,3 @@ class OPNsenseOptionsFlow(OptionsFlow):
             ),
             errors=errors,
         )
-
-
-class MissingDeviceUniqueIDError(Exception):
-    """Missing the Device Unique ID."""
-
-
-MissingDeviceUniqueID = MissingDeviceUniqueIDError

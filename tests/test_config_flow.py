@@ -146,7 +146,7 @@ async def test_validate_input_exception_mapping(
     elif exc_key == "missing_external_dep":
         exc = cf_mod.MissingExternalAiopnsenseDependency()
     elif exc_key == "missing_id":
-        exc = cf_mod.MissingDeviceUniqueID("x")
+        exc = cf_mod.OPNsenseMissingDeviceUniqueID("x")
     elif exc_key == "invalid_url":
         exc = cf_mod.OPNsenseInvalidURL("u")
     elif exc_key == "ssl":
@@ -180,13 +180,6 @@ async def test_validate_input_exception_mapping(
         hass=MagicMock(), user_input={}, errors=errors, config_step="user"
     )
     assert res.get("base") == expected
-
-
-def test_validate_firmware_version_raises() -> None:
-    """_validate_firmware_version should raise OPNsenseBelowMinFirmware for old versions."""
-    # pick an obviously old version
-    with pytest.raises(cf_mod.OPNsenseBelowMinFirmware):
-        cf_mod._validate_firmware_version("1.0")
 
 
 def test_log_and_set_error_sets_base(caplog: pytest.LogCaptureFixture) -> None:
@@ -339,6 +332,7 @@ async def test_handle_user_input_closes_client(monkeypatch: pytest.MonkeyPatch) 
                 **kwargs: Unused keyword constructor args from factory helper.
             """
             type(self).last_instance = self
+            self.validate = AsyncMock()
             self.async_close = AsyncMock()
 
         async def get_host_firmware_version(self) -> str:
@@ -383,6 +377,7 @@ async def test_handle_user_input_closes_client(monkeypatch: pytest.MonkeyPatch) 
         config_step="user",
     )
     assert _Client.last_instance is not None
+    _Client.last_instance.validate.assert_awaited_once()
     _Client.last_instance.async_close.assert_awaited_once()
 
 
@@ -740,6 +735,7 @@ async def test_validate_input_granular_sync_uses_native_validation_only(
             self.removed_backend_check = AsyncMock(
                 side_effect=AssertionError("removed backend check called")
             )
+            self.validate = AsyncMock()
             self.async_close = AsyncMock()
 
         async def get_host_firmware_version(self) -> str:
@@ -776,5 +772,6 @@ async def test_validate_input_granular_sync_uses_native_validation_only(
 
     assert res == {}
     assert user_input[cf_mod.CONF_FIRMWARE_VERSION] == "25.1"
+    client.validate.assert_awaited_once()
     client.removed_backend_check.assert_not_awaited()
     client.async_close.assert_awaited_once()

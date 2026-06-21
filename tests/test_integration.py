@@ -56,6 +56,10 @@ class _FakeFlowClient:
         self._device_id = device_id
         self._firmware = firmware
 
+    async def validate(self) -> None:
+        """Satisfy aiopnsense validation during config-flow tests."""
+        return
+
     async def get_host_firmware_version(self) -> str:
         """Return the firmware version configured for this fake flow client."""
         return self._firmware
