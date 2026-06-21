@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock
@@ -55,6 +56,35 @@ async def test_create_opnsense_client_constructs_aiopnsense_client(
         "initial": True,
         "name": "Test Router",
     }
+
+
+@pytest.mark.asyncio
+async def test_create_opnsense_client_logs_without_resolved_aiopnsense_version(
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Direct construction should log a generic backend message when version is unavailable."""
+    monkeypatch.setattr(
+        factory_mod,
+        "import_module",
+        lambda module_name: SimpleNamespace(OPNsenseClient=FakeExternalClient),
+    )
+    monkeypatch.setattr(
+        factory_mod,
+        "_get_external_aiopnsense_version",
+        AsyncMock(return_value=None),
+    )
+    session = cast("aiohttp.ClientSession", SimpleNamespace())
+    caplog.set_level(logging.INFO, logger=factory_mod.__name__)
+
+    await factory_mod.create_opnsense_client(
+        url="https://router",
+        username="u",
+        password=TEST_PASSWORD,
+        session=session,
+    )
+
+    assert "Using aiopnsense" in caplog.text
 
 
 @pytest.mark.asyncio

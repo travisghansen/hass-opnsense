@@ -905,6 +905,89 @@ async def test_build_categories_skips_firewall_polling_for_legacy_firmware(
 
 
 @pytest.mark.asyncio
+async def test_firmware_supports_firewall_rules_returns_unknown_for_unparseable_firmware(
+    caplog: pytest.LogCaptureFixture,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
+    """Unparsable firmware should leave firewall rule support undecided."""
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_FIREWALL_AND_NAT: True,
+            CONF_FIRMWARE_VERSION: "26.1.1",
+        }
+    )
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=fake_client()(),
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+    coord._state["host_firmware_version"] = object()
+    caplog.set_level(logging.DEBUG, logger=coordinator_module.__name__)
+
+    assert coord._firmware_supports_firewall_rules() is None
+    assert "Failed to compare firmware version" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_async_update_data_logs_firewall_bootstrap_failure(
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
+    """Firewall bootstrap failures should be logged without failing the refresh."""
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_FIREWALL_AND_NAT: True,
+            CONF_FIRMWARE_VERSION: "25.1",
+        }
+    )
+    client = fake_client(device_id="id", firmware_version="25.1")()
+    object.__setattr__(
+        client,
+        "get_host_firmware_version",
+        AsyncMock(side_effect=["26.1.1"]),
+    )
+    object.__setattr__(client, "get_firewall", AsyncMock(side_effect=ValueError("boom")))
+    object.__setattr__(client, "get_system_info", AsyncMock(return_value={"name": "router"}))
+
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    async def true_check() -> bool:
+        """Force the device-id validation step to succeed."""
+        return True
+
+    monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
+
+    async def fake_calc() -> None:
+        """Skip speed calculations for this path under test."""
+        return
+
+    monkeypatch.setattr(coord, "_calculate_entity_speeds", fake_calc)
+    caplog.set_level(logging.ERROR, logger=coordinator_module.__name__)
+
+    state = await coord._async_update_data()
+
+    assert state == coord._state
+    assert "firewall" not in state
+    assert client.get_firewall.await_count == 1
+    assert "Failed to fetch firewall rules during initial firmware bootstrap" in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_async_update_data_strips_nested_previous_state(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
