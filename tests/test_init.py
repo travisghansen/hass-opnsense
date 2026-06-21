@@ -711,6 +711,62 @@ async def test_async_update_listener_reload_and_remove(
 
 
 @pytest.mark.asyncio
+async def test_async_update_listener_removes_native_firewall_entities(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Update listener should remove native firewall entities when sync is disabled."""
+    entry = make_config_entry(
+        data={
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            "sync_firewall_and_nat": False,
+        },
+        unique_id="u123",
+    )
+    setattr(entry.runtime_data, init_mod.SHOULD_RELOAD, True)
+
+    hass = ph_hass
+    hass.config_entries.async_reload = AsyncMock()
+    hass.data = {}
+
+    class Ent:
+        """Simple entity record for registry cleanup assertions."""
+
+        def __init__(self, entity_id: str, unique_id: str) -> None:
+            """Store entity and unique IDs for the test."""
+            self.entity_id = entity_id
+            self.unique_id = unique_id
+
+    ent = Ent("switch.native_firewall", f"{entry.unique_id}_firewall_rule_rule1")
+
+    entity_registry = MagicMock()
+    entity_registry.async_remove = MagicMock()
+    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(
+        init_mod.er,
+        "async_entries_for_config_entry",
+        lambda registry, config_entry_id: [ent],
+    )
+
+    device_registry = MagicMock()
+    device_registry.async_remove_device = MagicMock()
+    monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: device_registry)
+    monkeypatch.setattr(
+        init_mod.dr,
+        "async_entries_for_config_entry",
+        lambda registry, config_entry_id: [],
+    )
+
+    if not hasattr(hass, "async_create_task"):
+        hass.async_create_task = MagicMock()
+
+    await init_mod._async_update_listener(hass, entry)
+
+    entity_registry.async_remove.assert_called_once_with(ent.entity_id)
+
+
+@pytest.mark.asyncio
 async def test_async_update_listener_uses_shared_default_for_smart_entity_pruning(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,

@@ -433,8 +433,12 @@ async def _clean_and_parse_url(user_input: MutableMapping[str, Any]) -> None:
 
     if ":" in host and not host.startswith("["):
         host = f"[{host}]"
-    if url_parts.port:
-        host = f"{host}:{url_parts.port}"
+    try:
+        port = url_parts.port
+    except ValueError as err:
+        raise OPNsenseInvalidURL from err
+    if port:
+        host = f"{host}:{port}"
 
     user_input[CONF_URL] = f"{url_parts.scheme}://{host}"
     _LOGGER.debug("[config_flow] Cleaned URL: %s", user_input[CONF_URL])
@@ -504,7 +508,7 @@ async def _handle_user_input(
         _LOGGER.debug("[handle_user_input] Device Unique ID: %s", user_input[CONF_DEVICE_UNIQUE_ID])
 
         if not user_input.get(CONF_DEVICE_UNIQUE_ID):
-            raise OPNsenseMissingDeviceUniqueID
+            raise OPNsenseMissingDeviceUniqueID("OPNsense device unique ID is unavailable")
     finally:
         await client.async_close()
 

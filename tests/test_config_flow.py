@@ -122,6 +122,10 @@ async def test_clean_and_parse_url_success_and_failure() -> None:
     await cf_mod._clean_and_parse_url(ipv6_ui)
     assert ipv6_ui[cf_mod.CONF_URL] == "https://[2001:db8::1]:8443"
 
+    invalid_port_ui = {cf_mod.CONF_URL: "https://router.example:abc"}
+    with pytest.raises(cf_mod.OPNsenseInvalidURL):
+        await cf_mod._clean_and_parse_url(invalid_port_ui)
+
     # invalid netloc -> raise OPNsenseInvalidURL
     with pytest.raises(cf_mod.OPNsenseInvalidURL):
         await cf_mod._clean_and_parse_url({cf_mod.CONF_URL: ""})

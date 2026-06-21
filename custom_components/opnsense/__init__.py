@@ -68,6 +68,10 @@ LEGACY_RULE_ENTITY_TOKENS: tuple[str, ...] = (
     "_nat_port_forward_",
     "_nat_outbound_",
 )
+NATIVE_RULE_ENTITY_TOKENS: tuple[str, ...] = (
+    "_firewall_rule_",
+    "_firewall_nat_",
+)
 
 
 def _align_aiopnsense_log_level() -> None:
@@ -112,6 +116,16 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
                     )
                     entity_registry.async_remove(ent.entity_id)
                     break
+            else:
+                for pre in NATIVE_RULE_ENTITY_TOKENS:
+                    if ent.unique_id.startswith(f"{uid_prefix}{pre}"):
+                        _LOGGER.debug(
+                            "[async_update_listener] removing native entity_id: %s, unique_id: %s",
+                            ent.entity_id,
+                            ent.unique_id,
+                        )
+                        entity_registry.async_remove(ent.entity_id)
+                        break
         dt_enabled = entry.options.get(CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED)
         if not dt_enabled:
             device_registry = dr.async_get(hass)

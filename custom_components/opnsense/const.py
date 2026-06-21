@@ -89,7 +89,7 @@ GRANULAR_SYNC_PREFIX = {
     CONF_SYNC_CARP: ["carp"],
     CONF_SYNC_CERTIFICATES: ["certificates"],
     CONF_SYNC_DHCP_LEASES: ["dhcp_leases"],
-    CONF_SYNC_FIREWALL_AND_NAT: ["filter", "nat"],
+    CONF_SYNC_FIREWALL_AND_NAT: ["filter", "nat", "firewall_rule", "firewall_nat"],
     CONF_SYNC_FIRMWARE_UPDATES: ["firmware"],
     CONF_SYNC_GATEWAYS: ["gateway"],
     CONF_SYNC_INTERFACES: ["interface"],

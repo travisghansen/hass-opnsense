@@ -1865,10 +1865,9 @@ async def test_switch_handle_error_sets_unavailable(
 
         object.__setattr__(ent, "_opnsense_get_service", cast("Any", _fake_get_service))
 
-        # Exercise the update logic; ensure the handler did not raise and
-        # availability is reported as a boolean (handlers may early-return).
+        # Exercise the update logic and verify the entity transitions to unavailable.
         ent._handle_coordinator_update()
-        assert isinstance(ent.available, bool)
+        assert ent.available is False
     finally:
         # make sure we close the loop created for this test
         with contextlib.suppress(RuntimeError):
@@ -2085,8 +2084,10 @@ async def test_compile_service_skips_locked(
     }
     coordinator.data = state
     ents = await _compile_service_switches(config_entry, coordinator, state)
-    # only unlocked service should be present
-    assert any("service.s2" in e.entity_description.key for e in ents)
+    keys = {entity.entity_description.key for entity in ents}
+    assert "service.s2.status" in keys
+    assert "service.s1.status" not in keys
+    assert len(ents) == 1
 
 
 @pytest.mark.asyncio
