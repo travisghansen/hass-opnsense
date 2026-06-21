@@ -603,7 +603,7 @@ async def test_async_update_data_enables_firewall_polling_when_runtime_firmware_
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """Runtime firmware should enable firewall bootstrap when stored firmware is old."""
+    """Firewall polling should run when sync is enabled, regardless of stored firmware."""
     entry = make_config_entry(
         {
             CONF_DEVICE_UNIQUE_ID: "id",
@@ -680,17 +680,16 @@ async def test_async_update_data_enables_firewall_polling_when_runtime_firmware_
     second_update = await coord._async_update_data()
     assert second_update == coord._state
     assert coord._state.get("firewall") == {"config": {"filter": {"rule": []}}}
-    # enabled when runtime firmware >= 26.1.1
     assert client.get_firewall.await_count == 2
 
 
 @pytest.mark.asyncio
-async def test_build_categories_and_refresh_do_not_queue_firewall_with_stale_stored_firmware(
+async def test_build_categories_and_refresh_queue_firewall_for_legacy_firmware(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """Stale stored firmware >=26.1.1 should not queue firewall fetch before runtime check."""
+    """Legacy firmware should rely on aiopnsense empty firewall responses."""
     entry = make_config_entry(
         {
             CONF_DEVICE_UNIQUE_ID: "id",
@@ -717,7 +716,7 @@ async def test_build_categories_and_refresh_do_not_queue_firewall_with_stale_sto
     object.__setattr__(
         client,
         "get_firewall",
-        AsyncMock(return_value={"config": {"filter": {"rule": []}}}),
+        AsyncMock(return_value={"rules": {}, "nat": {}}),
     )
     object.__setattr__(
         client,
@@ -740,7 +739,7 @@ async def test_build_categories_and_refresh_do_not_queue_firewall_with_stale_sto
         config_entry=entry,
     )
 
-    assert "firewall" not in [category["state_key"] for category in coord._categories]
+    assert "firewall" in [category["state_key"] for category in coord._categories]
 
     async def true_check() -> bool:
         """Force the device-id validation step to succeed."""
@@ -757,17 +756,17 @@ async def test_build_categories_and_refresh_do_not_queue_firewall_with_stale_sto
     first_update = await coord._async_update_data()
     assert first_update == coord._state
     assert coord._state.get("host_firmware_version") == "25.1"
-    assert "firewall" not in coord._state
-    assert client.get_firewall.await_count == 0
+    assert coord._state.get("firewall") == {"rules": {}, "nat": {}}
+    assert client.get_firewall.await_count == 1
 
 
 @pytest.mark.asyncio
-async def test_async_update_data_ignores_stale_previous_runtime_firmware_for_firewall_queueing(
+async def test_async_update_data_continues_firewall_polling_after_runtime_downgrade(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """A downgraded runtime firmware should not inherit the previous refresh's firewall queue."""
+    """Downgraded runtime firmware should still poll firewall state through aiopnsense."""
     entry = make_config_entry(
         {
             CONF_DEVICE_UNIQUE_ID: "id",
@@ -795,7 +794,12 @@ async def test_async_update_data_ignores_stale_previous_runtime_firmware_for_fir
     object.__setattr__(
         client,
         "get_firewall",
-        AsyncMock(return_value={"config": {"filter": {"rule": []}}}),
+        AsyncMock(
+            side_effect=[
+                {"rules": {"r1": {"uuid": "r1", "description": "Modern"}}},
+                {"rules": {}, "nat": {}},
+            ]
+        ),
     )
     object.__setattr__(
         client,
@@ -833,14 +837,16 @@ async def test_async_update_data_ignores_stale_previous_runtime_firmware_for_fir
     first_update = await coord._async_update_data()
     assert first_update == coord._state
     assert coord._state.get("host_firmware_version") == "26.1.1"
-    assert coord._state.get("firewall") == {"config": {"filter": {"rule": []}}}
+    assert coord._state.get("firewall") == {
+        "rules": {"r1": {"uuid": "r1", "description": "Modern"}}
+    }
     assert client.get_firewall.await_count == 1
 
     second_update = await coord._async_update_data()
     assert second_update == coord._state
     assert coord._state.get("host_firmware_version") == "25.1"
-    assert "firewall" not in coord._state
-    assert client.get_firewall.await_count == 1
+    assert coord._state.get("firewall") == {"rules": {}, "nat": {}}
+    assert client.get_firewall.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -1028,11 +1034,11 @@ async def test_build_categories_flag_true_and_false(
 
 
 @pytest.mark.asyncio
-async def test_build_categories_includes_firewall_when_runtime_firmware_is_modern(
+async def test_build_categories_includes_firewall_when_sync_is_enabled(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """Firewall categories require runtime firmware >=26.1.1, not stored firmware."""
+    """Firewall category should be queued whenever firewall sync is enabled."""
     entry = make_config_entry(
         {
             "device_unique_id": "id",
@@ -1049,17 +1055,16 @@ async def test_build_categories_includes_firewall_when_runtime_firmware_is_moder
         device_unique_id="id",
         config_entry=entry,
     )
-    coord._state["host_firmware_version"] = "26.1.1"
     keys_true = [c["state_key"] for c in coord._build_categories()]
     assert "firewall" in keys_true
 
 
 @pytest.mark.asyncio
-async def test_build_categories_skips_firewall_polling_for_legacy_firmware(
+async def test_build_categories_keeps_firewall_polling_for_legacy_firmware(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """Legacy firmware should skip native firewall and removed backend polling."""
+    """Legacy firmware should keep native firewall polling and skip removed backends."""
     entry = make_config_entry(
         {
             CONF_DEVICE_UNIQUE_ID: "id",
@@ -1082,94 +1087,11 @@ async def test_build_categories_skips_firewall_polling_for_legacy_firmware(
     keys = [cat["state_key"] for cat in coord._build_categories()]
     functions = [cat["function"] for cat in coord._build_categories()]
 
-    assert "firewall" not in keys
-    assert "get_firewall" not in functions
+    assert "firewall" in keys
+    assert "get_firewall" in functions
     removed_backend = "plug" + "in"
     assert f"is_{removed_backend}_installed" not in functions
     assert f"is_{removed_backend}_deprecated" not in functions
-
-
-@pytest.mark.asyncio
-async def test_firmware_supports_firewall_rules_returns_unknown_for_unparseable_firmware(
-    caplog: pytest.LogCaptureFixture,
-    make_config_entry: Callable[..., MockConfigEntry],
-    fake_client: Any,
-) -> None:
-    """Unparsable firmware should leave firewall rule support undecided."""
-    entry = make_config_entry(
-        {
-            CONF_DEVICE_UNIQUE_ID: "id",
-            CONF_SYNC_FIREWALL_AND_NAT: True,
-            CONF_FIRMWARE_VERSION: "26.1.1",
-        }
-    )
-    coord = OPNsenseDataUpdateCoordinator(
-        hass=MagicMock(),
-        client=fake_client()(),
-        name="n",
-        update_interval=timedelta(seconds=1),
-        device_unique_id="id",
-        config_entry=entry,
-    )
-    coord._state["host_firmware_version"] = object()
-    caplog.set_level(logging.DEBUG, logger=coordinator_module.__name__)
-
-    assert coord._firmware_supports_firewall_rules() is None
-    assert "Failed to compare firmware version" in caplog.text
-
-
-@pytest.mark.asyncio
-async def test_async_update_data_logs_firewall_bootstrap_failure(
-    caplog: pytest.LogCaptureFixture,
-    monkeypatch: pytest.MonkeyPatch,
-    make_config_entry: Callable[..., MockConfigEntry],
-    fake_client: Any,
-) -> None:
-    """Firewall bootstrap failures should be logged without failing the refresh."""
-    entry = make_config_entry(
-        {
-            CONF_DEVICE_UNIQUE_ID: "id",
-            CONF_SYNC_FIREWALL_AND_NAT: True,
-            CONF_FIRMWARE_VERSION: "25.1",
-        }
-    )
-    client = fake_client(device_id="id", firmware_version="25.1")()
-    object.__setattr__(
-        client,
-        "get_host_firmware_version",
-        AsyncMock(side_effect=["26.1.1"]),
-    )
-    object.__setattr__(client, "get_firewall", AsyncMock(side_effect=ValueError("boom")))
-    object.__setattr__(client, "get_system_info", AsyncMock(return_value={"name": "router"}))
-
-    coord = OPNsenseDataUpdateCoordinator(
-        hass=MagicMock(),
-        client=client,
-        name="n",
-        update_interval=timedelta(seconds=1),
-        device_unique_id="id",
-        config_entry=entry,
-    )
-
-    async def true_check() -> bool:
-        """Force the device-id validation step to succeed."""
-        return True
-
-    monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
-
-    async def fake_calc() -> None:
-        """Skip speed calculations for this path under test."""
-        return
-
-    monkeypatch.setattr(coord, "_calculate_entity_speeds", fake_calc)
-    caplog.set_level(logging.ERROR, logger=coordinator_module.__name__)
-
-    state = await coord._async_update_data()
-
-    assert state == coord._state
-    assert "firewall" not in state
-    assert client.get_firewall.await_count == 1
-    assert "Failed to fetch firewall rules during initial firmware bootstrap" in caplog.text
 
 
 @pytest.mark.asyncio
