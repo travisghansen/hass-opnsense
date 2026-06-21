@@ -678,14 +678,21 @@ async def test_e2e_full_migration_chain(
     )
 
     # Patch client used during migrations (v2->3 get_device_unique_id, v3->4 get_telemetry)
+    migration_clients: list[Any] = []
+
     class _MigClient:
+        def __init__(self) -> None:
+            """Track migration client instances created during the migration chain."""
+            self.close_calls = 0
+            migration_clients.append(self)
+
         async def get_device_unique_id(self) -> str:
             """Return the migrated device identifier used by the migration test."""
             return "newmacid"
 
         async def async_close(self) -> None:
             """Satisfy migration helper cleanup calls in the fake migration client."""
-            return
+            self.close_calls += 1
 
         async def get_host_firmware_version(self) -> str:  # not used in migration chain here
             """Return a placeholder firmware version for migration compatibility."""
@@ -720,6 +727,8 @@ async def test_e2e_full_migration_chain(
     ok = await init_mod.async_migrate_entry(hass, entry)
     assert ok is True
     assert entry.version == 5
+    assert len(migration_clients) == 1
+    assert migration_clients[0].close_calls == 1
     # v1->2: tls_insecure removed, verify_ssl added (inverse of True -> False)
     assert init_mod.CONF_TLS_INSECURE not in entry.data
     assert entry.data.get(CONF_VERIFY_SSL) is False

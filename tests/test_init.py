@@ -1015,7 +1015,7 @@ async def test_migrate_2_to_3_missing_device_id(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
     """_migrate_2_to_3 returns False when the client provides no device id."""
-    patch_opnsense_client(monkeypatch, init_mod, fake_client(device_id=None))
+    client = fake_client(device_id=None)()
     cfg = MagicMock()
     cfg.data = {
         init_mod.CONF_URL: "http://1.2.3.4",
@@ -1029,14 +1029,14 @@ async def test_migrate_2_to_3_missing_device_id(
     # avoid touching real entity/device registry and aiohttp helpers
     monkeypatch.setattr(init_mod.er, "async_get", lambda hass: MagicMock())
     monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: MagicMock())
-    res = await init_mod._migrate_2_to_3(hass, cfg)
+    res = await init_mod._migrate_2_to_3(hass, cfg, client)
     assert res is False
 
 
 @pytest.mark.asyncio
 async def test_migrate_2_to_3_success(monkeypatch: pytest.MonkeyPatch, fake_client: Any) -> None:
     """_migrate_2_to_3 updates device and entity identifiers when client reports new device id."""
-    patch_opnsense_client(monkeypatch, init_mod, fake_client(device_id="newdev"))
+    client = fake_client(device_id="newdev")()
 
     # fake device entries and entity entries
     dev = MagicMock()
@@ -1080,7 +1080,7 @@ async def test_migrate_2_to_3_success(monkeypatch: pytest.MonkeyPatch, fake_clie
     hass.data = {}
     hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock(return_value=True)
-    res = await init_mod._migrate_2_to_3(hass, cfg)
+    res = await init_mod._migrate_2_to_3(hass, cfg, client)
     assert res is True
     assert dr_reg.async_update_device.called, "device identifiers should be updated"
     assert er_reg.async_update_entity.called, "entity unique_ids should be updated"
@@ -1096,7 +1096,7 @@ async def test_migrate_2_to_3_returns_false_when_update_entry_fails(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
     """_migrate_2_to_3 should fail when config entry update returns False."""
-    patch_opnsense_client(monkeypatch, init_mod, fake_client(device_id="newdev"))
+    client = fake_client(device_id="newdev")()
 
     monkeypatch.setattr(init_mod.er, "async_get", lambda hass: MagicMock())
     monkeypatch.setattr(
@@ -1122,7 +1122,7 @@ async def test_migrate_2_to_3_returns_false_when_update_entry_fails(
     hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock(return_value=False)
 
-    res = await init_mod._migrate_2_to_3(hass, cfg)
+    res = await init_mod._migrate_2_to_3(hass, cfg, client)
     assert res is False
 
 
@@ -1197,11 +1197,7 @@ async def test_migrate_3_to_4_filesystem_and_remove(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
     """_migrate_3_to_4 handles filesystem telemetry renames and removes connected_client_count entities."""
-    patch_opnsense_client(
-        monkeypatch,
-        init_mod,
-        fake_client(telemetry={"filesystems": [{"device": "/dev/sda1", "mountpoint": "/"}]}),
-    )
+    client = fake_client(telemetry={"filesystems": [{"device": "/dev/sda1", "mountpoint": "/"}]})()
 
     # entities: one that maps telemetry_filesystems, one that is connected_client_count
     # make e1's unique_id include the processed device name so the migration will match
@@ -1236,7 +1232,7 @@ async def test_migrate_3_to_4_filesystem_and_remove(
     hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock(return_value=True)
     # avoid aiohttp connector creation
-    res = await init_mod._migrate_3_to_4(hass, cfg)
+    res = await init_mod._migrate_3_to_4(hass, cfg, client)
     assert res is True
     # Ensure the connected_client_count entity was removed (called with entity_id)
     er_reg.async_remove.assert_called_once_with(e2.entity_id)
@@ -1252,7 +1248,7 @@ async def test_migrate_2_to_3_handles_entity_update_value_error(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
     """When entity_registry.async_update_entity raises ValueError, migration continues."""
-    patch_opnsense_client(monkeypatch, init_mod, fake_client(device_id="newdev"))
+    client = fake_client(device_id="newdev")()
 
     # single entity that will cause async_update_entity to raise
     ent = MagicMock()
@@ -1287,7 +1283,7 @@ async def test_migrate_2_to_3_handles_entity_update_value_error(
     hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock(return_value=True)
 
-    res = await init_mod._migrate_2_to_3(hass, cfg)
+    res = await init_mod._migrate_2_to_3(hass, cfg, client)
     assert res is True
     # ensure we attempted to update the entity (which raised) and migration completed
     er_reg.async_update_entity.assert_called_once_with(ent.entity_id, new_unique_id=ANY)
@@ -1300,7 +1296,7 @@ async def test_migrate_3_to_4_handles_remove_exceptions(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any, exc: BaseException | None
 ) -> None:
     """If entity_registry.async_remove raises KeyError/ValueError, migration continues."""
-    patch_opnsense_client(monkeypatch, init_mod, fake_client(telemetry={}))
+    client = fake_client(telemetry={})()
 
     e = MagicMock()
     e.entity_id = "sensor.clients"
@@ -1327,7 +1323,7 @@ async def test_migrate_3_to_4_handles_remove_exceptions(
     hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock(return_value=True)
 
-    res = await init_mod._migrate_3_to_4(hass, cfg)
+    res = await init_mod._migrate_3_to_4(hass, cfg, client)
     assert res is True
     er_reg.async_remove.assert_called_once_with(e.entity_id)
 
@@ -1337,7 +1333,7 @@ async def test_migrate_3_to_4_handles_update_value_error(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
     """If entity_registry.async_update_entity raises ValueError, migration continues."""
-    patch_opnsense_client(monkeypatch, init_mod, fake_client(telemetry={}))
+    client = fake_client(telemetry={})()
 
     e = MagicMock()
     e.entity_id = "sensor.if"
@@ -1364,7 +1360,7 @@ async def test_migrate_3_to_4_handles_update_value_error(
     hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock(return_value=True)
 
-    res = await init_mod._migrate_3_to_4(hass, cfg)
+    res = await init_mod._migrate_3_to_4(hass, cfg, client)
     assert res is True
     er_reg.async_update_entity.assert_called_once()
 
@@ -1384,9 +1380,17 @@ async def test_async_migrate_entry_returns_false_when_submigration_fails(
     """async_migrate_entry should return False when a sub-migration returns False."""
     # make the targeted sub-migration return False
     monkeypatch.setattr(init_mod, failing_fn, AsyncMock(return_value=False))
+    client = MagicMock()
+    client.async_close = AsyncMock()
+    monkeypatch.setattr(init_mod, "OPNsenseClient", lambda **_kwargs: client)
 
     cfg = MagicMock()
     cfg.version = version
+    cfg.data = {
+        init_mod.CONF_URL: "http://1.2.3.4",
+        init_mod.CONF_USERNAME: "u",
+        init_mod.CONF_PASSWORD: "p",
+    }
 
     # call with a real hass fixture
     res = await init_mod.async_migrate_entry(ph_hass, cfg)
@@ -1592,7 +1596,7 @@ async def test_migrate_2_to_3_handles_identifier_collision(
 ) -> None:
     """_migrate_2_to_3 continues when DeviceIdentifierCollisionError occurs while updating devices."""
     # migration should continue if DeviceIdentifierCollisionError raised when updating device
-    patch_opnsense_client(monkeypatch, init_mod, fake_client(device_id="newdev"))
+    client = fake_client(device_id="newdev")()
 
     # fake device that will cause collision when updating
     dev = MagicMock()
@@ -1631,5 +1635,5 @@ async def test_migrate_2_to_3_handles_identifier_collision(
     hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock(return_value=True)
 
-    res = await init_mod._migrate_2_to_3(hass, cfg)
+    res = await init_mod._migrate_2_to_3(hass, cfg, client)
     assert res is True
