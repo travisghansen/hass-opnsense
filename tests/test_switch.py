@@ -19,7 +19,6 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.opnsense import switch as switch_mod
 from custom_components.opnsense.const import (
     CONF_DEVICE_UNIQUE_ID,
-    CONF_FIRMWARE_VERSION,
     CONF_SYNC_CARP,
     CONF_SYNC_FIREWALL_AND_NAT,
     CONF_SYNC_SERVICES,
@@ -987,17 +986,17 @@ async def test_async_setup_entry_new_firewall_api(
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_new_firewall_api_without_runtime_firmware_uses_config_firmware(
+async def test_async_setup_entry_new_firewall_api_without_firmware_uses_firewall_state(
     coordinator: MagicMock, ph_hass: Any, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Runtime firmware missing should fall back to config firmware for firewall/NAT setup."""
+    """Runtime firmware should not gate firewall/NAT setup when state exists."""
     calls = {}
 
     def fake_add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
         """Capture entities created during setup for assertion."""
         calls["len"] = len(list(entities))
 
-    # create state without host_firmware_version; only config firmware should gate feature
+    # create state without host_firmware_version; firewall state should gate feature
     state = {
         "firewall": {
             "rules": {
@@ -1025,7 +1024,6 @@ async def test_async_setup_entry_new_firewall_api_without_runtime_firmware_uses_
     config_entry = make_config_entry(
         data={
             CONF_DEVICE_UNIQUE_ID: "dev1",
-            CONF_FIRMWARE_VERSION: "26.1.1",
             CONF_SYNC_FIREWALL_AND_NAT: True,
             CONF_SYNC_SERVICES: False,
             CONF_SYNC_VPN: False,
@@ -1039,16 +1037,15 @@ async def test_async_setup_entry_new_firewall_api_without_runtime_firmware_uses_
         ph_hass, config_entry, cast("AddEntitiesCallback", fake_add_entities)
     )
 
-    # Should still create the native firewall/NAT entities when runtime firmware is missing
-    # but config stored firmware is supported.
+    # Should still create the native firewall/NAT entities when runtime firmware is missing.
     assert calls.get("len") == 2
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_skips_firewall_and_nat_for_old_firmware(
+async def test_async_setup_entry_uses_firewall_state_for_old_firmware(
     coordinator: MagicMock, ph_hass: Any, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Firewall/NAT entities are skipped in switch setup when firmware is older than 26.1.1."""
+    """Firewall/NAT entities compile from state even when firmware is older than 26.1.1."""
     calls: dict[str, list[Any]] = {}
 
     def fake_add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
@@ -1109,8 +1106,8 @@ async def test_async_setup_entry_skips_firewall_and_nat_for_old_firmware(
     )
 
     entities = calls.get("entities", [])
-    assert not any(isinstance(entity, OPNsenseFirewallRuleSwitch) for entity in entities)
-    assert not any(isinstance(entity, OPNsenseNATRuleSwitch) for entity in entities)
+    assert any(isinstance(entity, OPNsenseFirewallRuleSwitch) for entity in entities)
+    assert any(isinstance(entity, OPNsenseNATRuleSwitch) for entity in entities)
 
 
 @pytest.mark.asyncio
