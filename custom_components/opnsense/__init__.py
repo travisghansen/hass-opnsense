@@ -714,7 +714,6 @@ async def _migrate_4_to_5(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
     """
     _LOGGER.debug("[migrate_4_to_5] Initial Version: %s", config_entry.version)
     entity_registry = er.async_get(hass)
-    removal_error: bool = False
 
     for ent in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
         platform = ent.entity_id.split(".")[0]
@@ -725,16 +724,12 @@ async def _migrate_4_to_5(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
                 entity_registry.async_remove(ent.entity_id)
                 _LOGGER.debug("[migrate_4_to_5] removed entity_id: %s", ent.entity_id)
             except (KeyError, ValueError) as e:
-                removal_error = True
                 _LOGGER.error(
                     "Error removing entity: %s. %s: %s",
                     ent.entity_id,
                     type(e).__name__,
                     e,
                 )
-    if removal_error:
-        _LOGGER.error("Migration of config_entry to version 5 failed: entity removal errors")
-        return False
 
     migration_ok: bool = hass.config_entries.async_update_entry(config_entry, version=5)
     if not migration_ok:
