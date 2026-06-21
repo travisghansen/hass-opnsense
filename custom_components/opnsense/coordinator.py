@@ -501,10 +501,12 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             self._state.update(await self._get_states(self._categories))
             if (
                 self.config_entry is not None
-                and self.config_entry.data.get(CONF_FIRMWARE_VERSION) is None
-                and self.config_entry.data.get(CONF_SYNC_FIREWALL_AND_NAT, DEFAULT_SYNC_OPTION_VALUE)
+                and self.config_entry.data.get(
+                    CONF_SYNC_FIREWALL_AND_NAT, DEFAULT_SYNC_OPTION_VALUE
+                )
                 and "get_firewall" not in {cat.get("function") for cat in self._categories}
                 and self._firmware_supports_firewall_rules() is True
+                and "firewall" not in self._state
             ):
                 get_firewall = getattr(self._client, "get_firewall", None)
                 if get_firewall is not None:

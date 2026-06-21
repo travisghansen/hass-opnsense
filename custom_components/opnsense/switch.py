@@ -64,7 +64,7 @@ def _supports_firmware_version(
         awesomeversion.exceptions.AwesomeVersionCompareException,
         TypeError,
         ValueError,
-        ) as e:
+    ) as e:
         _LOGGER.debug(
             "Failed to compare firmware version %s for min version %s: %s",
             firmware_version,
@@ -490,11 +490,28 @@ async def async_setup_entry(
         _LOGGER.error("Missing state data in switch async_setup_entry")
         return
     config: Mapping[str, Any] = config_entry.data
+    firewall_support = _supports_firmware_version(state, config_entry, "26.1.1")
+    firewall_state = dict_get(state, "firewall")
+    firewall_state_present = isinstance(firewall_state, MutableMapping)
+    has_carp_status_summary = isinstance(dict_get(state, "carp.status_summary"), MutableMapping)
+    unbound_blocklist = state.get(ATTR_UNBOUND_BLOCKLIST)
+    unbound_legacy = bool(
+        isinstance(unbound_blocklist, MutableMapping)
+        and isinstance(unbound_blocklist.get("legacy"), MutableMapping)
+    )
+    unbound_extended_present = bool(
+        isinstance(unbound_blocklist, MutableMapping)
+        and any(
+            key != "legacy"
+            for key, value in unbound_blocklist.items()
+            if isinstance(value, MutableMapping)
+        )
+    )
 
     entities: list = []
 
     if config.get(CONF_SYNC_FIREWALL_AND_NAT, DEFAULT_SYNC_OPTION_VALUE):
-        if _supports_firmware_version(state, config_entry, "26.1.1"):
+        if firewall_support is True or (firewall_support is None and firewall_state_present):
             entities.extend(
                 await _compile_firewall_rules_switches(config_entry, coordinator, state)
             )
@@ -517,16 +534,17 @@ async def async_setup_entry(
     if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_vpn_switches(config_entry, coordinator, state))
     if config.get(CONF_SYNC_CARP, DEFAULT_SYNC_OPTION_VALUE):
-        if _supports_firmware_version(state, config_entry, "26.1.1"):
+        carp_support = _supports_firmware_version(state, config_entry, "26.1.1")
+        if carp_support is True or (carp_support is None and has_carp_status_summary):
             entities.extend(
                 await _compile_carp_maintenance_switch(config_entry, coordinator, state)
             )
     if config.get(CONF_SYNC_UNBOUND, DEFAULT_SYNC_OPTION_VALUE):
         unbound_support = _supports_firmware_version(state, config_entry, "25.7.8")
-        if unbound_support is True:
+        if unbound_support is True or (unbound_support is None and unbound_extended_present):
             _LOGGER.debug("Using Unbound Extended Blocklists for OPNsense >= 25.7.8")
             entities.extend(await _compile_unbound_switches(config_entry, coordinator, state))
-        elif unbound_support is False:
+        elif unbound_support is False or (unbound_support is None and unbound_legacy):
             _LOGGER.debug("Using Unbound Regular Blocklists for OPNsense < 25.7.8")
             entities.extend(
                 await _compile_static_unbound_switch_legacy(config_entry, coordinator, state)
@@ -654,6 +672,7 @@ class OPNsenseCarpMaintenanceSwitch(OPNsenseSwitch):
         status_summary = self._opnsense_get_status_summary()
         if status_summary is None:
             self._available = False
+            self._attr_extra_state_attributes = {}
             self.async_write_ha_state()
             return
 
@@ -664,6 +683,7 @@ class OPNsenseCarpMaintenanceSwitch(OPNsenseSwitch):
         ):
             self._available = False
             self._attr_is_on = False
+            self._attr_extra_state_attributes = {}
             self.async_write_ha_state()
             return
 

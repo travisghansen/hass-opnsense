@@ -210,7 +210,7 @@ async def test_async_setup_entry_carp_maintenance_switch_sync_gate(
     ("firmware", "expected_count"),
     [
         pytest.param("26.1", 0, id="firmware-too-old"),
-        pytest.param(object(), 0, id="invalid-firmware"),
+        pytest.param(object(), 1, id="invalid-firmware-but-decisive-runtime-state"),
     ],
 )
 async def test_async_setup_entry_carp_maintenance_switch_firmware_gate(
@@ -508,6 +508,49 @@ async def test_carp_maintenance_switch_unavailable_without_summary(
     entity._handle_coordinator_update()
 
     assert entity.available is False
+
+
+@pytest.mark.asyncio
+async def test_carp_maintenance_switch_unavailable_clears_attrs(
+    coordinator: MagicMock,
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP entity should clear stale attrs when state becomes unavailable."""
+    state = {
+        "carp": {
+            "status_summary": {
+                "maintenance_mode": False,
+                "state": "MASTER",
+                "enabled": True,
+                "demotion": 1,
+                "status_message": "ok",
+                "vip_count": 2,
+            }
+        }
+    }
+    coordinator = make_coord(state)
+    entity = make_carp_maintenance_switch(ph_hass, make_config_entry, coordinator)
+
+    entity._handle_coordinator_update()
+    assert entity.available is True
+    assert entity.extra_state_attributes == {
+        "state": "MASTER",
+        "enabled": True,
+        "demotion": 1,
+        "status_message": "ok",
+        "vip_count": 2,
+        "master_count": None,
+        "backup_count": None,
+        "other_count": None,
+        "interfaces": None,
+    }
+
+    state["carp"] = {}
+    entity._handle_coordinator_update()
+
+    assert entity.available is False
+    assert entity.extra_state_attributes == {}
 
 
 @pytest.mark.asyncio
@@ -1064,6 +1107,67 @@ async def test_async_setup_entry_skips_firewall_and_nat_for_old_firmware(
     entities = calls.get("entities", [])
     assert not any(isinstance(entity, OPNsenseFirewallRuleSwitch) for entity in entities)
     assert not any(isinstance(entity, OPNsenseNATRuleSwitch) for entity in entities)
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_uses_firewall_state_when_firmware_unknown(
+    coordinator: MagicMock,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Unknown firmware should still create native firewall/NAT entities when state is present."""
+    calls: dict[str, list[Any]] = {}
+
+    def fake_add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Capture entities emitted by setup for assertion."""
+        calls["entities"] = list(entities)
+
+    state = {
+        "firewall": {
+            "rules": {
+                "rule1": {
+                    "uuid": "rule1",
+                    "description": "Decisive firmware",
+                    "%interface": "wan",
+                    "enabled": "1",
+                }
+            },
+            "nat": {
+                "source_nat": {
+                    "nat1": {
+                        "uuid": "nat1",
+                        "description": "Decisive source nat",
+                        "%interface": "wan",
+                        "enabled": "1",
+                    }
+                },
+            },
+        },
+        "host_firmware_version": object(),
+    }
+    coordinator.data = state
+
+    config_entry = make_config_entry(
+        data={
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_SYNC_FIREWALL_AND_NAT: True,
+            CONF_SYNC_SERVICES: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_UNBOUND: False,
+        },
+        title="OPNsenseTest",
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    await switch_mod.async_setup_entry(
+        ph_hass,
+        config_entry,
+        cast("AddEntitiesCallback", fake_add_entities),
+    )
+
+    entities = calls.get("entities", [])
+    assert any(isinstance(entity, OPNsenseFirewallRuleSwitch) for entity in entities)
+    assert any(isinstance(entity, OPNsenseNATRuleSwitch) for entity in entities)
 
 
 def test_vpn_icon_property(make_config_entry: Callable[..., MockConfigEntry]) -> None:
@@ -2031,7 +2135,7 @@ async def test_async_setup_entry_unbound_skips_when_firmware_unparseable(
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Unparseable firmware should not default to legacy Unbound switch setup."""
+    """Unparsable firmware should use runtime Unbound state shape for setup."""
     calls: dict[str, list[Any]] = {}
 
     def fake_add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
@@ -2052,6 +2156,76 @@ async def test_async_setup_entry_unbound_skips_when_firmware_unparseable(
         "unbound_blocklist": {"legacy": {"enabled": "1"}},
         "host_firmware_version": object(),
     }
+
+    await switch_mod.async_setup_entry(
+        ph_hass, config_entry, cast("AddEntitiesCallback", fake_add_entities)
+    )
+
+    assert len(calls.get("entities", [])) == 1
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_unbound_uses_state_shape_for_unknown_firmware_extended(
+    coordinator: MagicMock,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Unknown firmware should allow extended Unbound switches when decisive state exists."""
+    calls: dict[str, list[Any]] = {}
+
+    def fake_add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Capture entities emitted by setup for assertion."""
+        calls["entities"] = list(entities)
+
+    config_entry = make_config_entry(
+        data={
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_SYNC_FIREWALL_AND_NAT: False,
+            CONF_SYNC_SERVICES: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_UNBOUND: True,
+        }
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    coordinator.data = {
+        "unbound_blocklist": {
+            "u1": {"enabled": "1", "description": "One"},
+            "u2": {"enabled": "0", "description": "Two"},
+        },
+        "host_firmware_version": object(),
+    }
+
+    await switch_mod.async_setup_entry(
+        ph_hass, config_entry, cast("AddEntitiesCallback", fake_add_entities)
+    )
+
+    assert len(calls.get("entities", [])) == 2
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_unbound_skips_when_firmware_unparseable_and_no_state(
+    coordinator: MagicMock,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Unknown firmware should skip Unbound switches without decisive state."""
+    calls: dict[str, list[Any]] = {}
+
+    def fake_add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Capture entities emitted by setup for assertion."""
+        calls["entities"] = list(entities)
+
+    config_entry = make_config_entry(
+        data={
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_SYNC_FIREWALL_AND_NAT: False,
+            CONF_SYNC_SERVICES: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_UNBOUND: True,
+        }
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    coordinator.data = {"host_firmware_version": object()}
 
     await switch_mod.async_setup_entry(
         ph_hass, config_entry, cast("AddEntitiesCallback", fake_add_entities)

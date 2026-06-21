@@ -604,7 +604,7 @@ async def test_async_update_data_enables_firewall_polling_when_runtime_firmware_
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """Firewall polling is re-evaluated across refreshes using runtime firmware."""
+    """Stale stored firmware should not block firewall bootstrap on the first refresh."""
     entry = make_config_entry(
         {
             CONF_DEVICE_UNIQUE_ID: "id",
@@ -645,8 +645,10 @@ async def test_async_update_data_enables_firewall_polling_when_runtime_firmware_
     object.__setattr__(
         client,
         "reset_query_counts",
-        AsyncMock(wraps=getattr(client, "reset_query_counts", None),
-    ))
+        AsyncMock(
+            wraps=getattr(client, "reset_query_counts", None),
+        ),
+    )
     object.__setattr__(client, "get_query_counts", AsyncMock(return_value=11))
 
     coord = OPNsenseDataUpdateCoordinator(
@@ -673,13 +675,14 @@ async def test_async_update_data_enables_firewall_polling_when_runtime_firmware_
     first_update = await coord._async_update_data()
     assert first_update == coord._state
     assert coord._state.get("host_firmware_version") == "26.1.1"
-    assert client.get_firewall.await_count == 0
+    assert client.get_firewall.await_count == 1
+    assert coord._state.get("firewall") == {"config": {"filter": {"rule": []}}}
 
     second_update = await coord._async_update_data()
     assert second_update == coord._state
-    assert coord._state.get("firewall") == {"config": {"filter": {"rule": []}}
-    }  # enabled when runtime firmware >= 26.1.1
-    assert client.get_firewall.await_count == 1
+    assert coord._state.get("firewall") == {"config": {"filter": {"rule": []}}}
+    # enabled when runtime firmware >= 26.1.1
+    assert client.get_firewall.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -756,7 +759,9 @@ async def test_async_update_data_fetches_firewall_on_first_refresh_if_firmware_i
     first_update = await coord._async_update_data()
     assert first_update == coord._state
     assert coord._state.get("host_firmware_version") == "26.1.1"
-    assert coord._state.get("firewall") == {"rules": {"r1": {"uuid": "r1", "description": "Bootstrapped"}}}
+    assert coord._state.get("firewall") == {
+        "rules": {"r1": {"uuid": "r1", "description": "Bootstrapped"}}
+    }
     assert client.get_firewall.await_count == 1
 
 
