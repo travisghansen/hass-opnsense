@@ -229,7 +229,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             categories.append({"function": "get_notices", "state_key": "notices"})
         if (
             config.get(CONF_SYNC_FIREWALL_AND_NAT, DEFAULT_SYNC_OPTION_VALUE)
-            and self._firmware_supports_firewall_rules()
+            and self._firmware_supports_firewall_rules() is True
         ):
             categories.append({"function": "get_firewall", "state_key": "firewall"})
         if config.get(CONF_SYNC_UNBOUND, DEFAULT_SYNC_OPTION_VALUE):
@@ -248,11 +248,12 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         )
         return categories
 
-    def _firmware_supports_firewall_rules(self) -> bool:
+    def _firmware_supports_firewall_rules(self) -> bool | None:
         """Return whether firewall and NAT rule polling should run.
 
         Returns:
-            bool: ``True`` when firmware is >= 26.1.1 and comparison succeeds.
+            bool | None: ``True`` when firmware is >= 26.1.1, ``False`` when older,
+                and ``None`` when comparison fails or is unavailable.
         """
         firmware_version = self._state.get("host_firmware_version")
         if not firmware_version and self.config_entry is not None:
@@ -260,7 +261,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
 
         if not firmware_version:
             _LOGGER.debug("Skipping firewall category because firmware version is unavailable")
-            return False
+            return None
         try:
             return awesomeversion.AwesomeVersion(firmware_version) >= awesomeversion.AwesomeVersion(
                 "26.1.1"
@@ -275,7 +276,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 firmware_version,
                 e,
             )
-            return False
+            return None
 
     async def _check_device_unique_id(self) -> bool:
         """Validate that the runtime router ID matches the configured device ID.
@@ -498,6 +499,28 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 return await self._async_update_dt_data()
 
             self._state.update(await self._get_states(self._categories))
+            if (
+                self.config_entry is not None
+                and self.config_entry.data.get(CONF_FIRMWARE_VERSION) is None
+                and self.config_entry.data.get(CONF_SYNC_FIREWALL_AND_NAT, DEFAULT_SYNC_OPTION_VALUE)
+                and "get_firewall" not in {cat.get("function") for cat in self._categories}
+                and self._firmware_supports_firewall_rules() is True
+            ):
+                get_firewall = getattr(self._client, "get_firewall", None)
+                if get_firewall is not None:
+                    try:
+                        self._state["firewall"] = await get_firewall()
+                    except (
+                        aiohttp.ClientError,
+                        OSError,
+                        TimeoutError,
+                        TypeError,
+                        ValueError,
+                        xmlrpc.client.Error,
+                    ):
+                        _LOGGER.exception(
+                            "Failed to fetch firewall rules during initial firmware bootstrap"
+                        )
 
             if not await self._check_device_unique_id():
                 return {}

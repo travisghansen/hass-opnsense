@@ -2026,6 +2026,41 @@ async def test_async_setup_entry_respects_config_flags(
 
 
 @pytest.mark.asyncio
+async def test_async_setup_entry_unbound_skips_when_firmware_unparseable(
+    coordinator: MagicMock,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Unparseable firmware should not default to legacy Unbound switch setup."""
+    calls: dict[str, list[Any]] = {}
+
+    def fake_add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Capture entities emitted by setup for assertion."""
+        calls["entities"] = list(entities)
+
+    config_entry = make_config_entry(
+        data={
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_SYNC_FIREWALL_AND_NAT: False,
+            CONF_SYNC_SERVICES: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_UNBOUND: True,
+        }
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    coordinator.data = {
+        "unbound_blocklist": {"legacy": {"enabled": "1"}},
+        "host_firmware_version": object(),
+    }
+
+    await switch_mod.async_setup_entry(
+        ph_hass, config_entry, cast("AddEntitiesCallback", fake_add_entities)
+    )
+
+    assert calls.get("entities") == []
+
+
+@pytest.mark.asyncio
 async def test_vpn_servers_properties_and_toggle(
     coordinator: MagicMock, ph_hass: Any, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:

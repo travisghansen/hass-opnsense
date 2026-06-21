@@ -33,7 +33,7 @@ def _supports_firmware_version(
     state: Mapping[str, Any] | None,
     config_entry: ConfigEntry,
     minimum_version: str,
-) -> bool:
+) -> bool | None:
     """Return whether firmware meets the minimum supported version.
 
     Args:
@@ -43,7 +43,8 @@ def _supports_firmware_version(
         minimum_version: Minimum firmware version required.
 
     Returns:
-        bool: ``True`` when firmware can be compared and is >= minimum_version.
+        bool | None: ``True`` when firmware can be compared and is >= minimum_version,
+            ``False`` when older, and ``None`` when comparison cannot be made.
     """
     firmware_version = None
     if state:
@@ -53,7 +54,7 @@ def _supports_firmware_version(
 
     if not firmware_version:
         _LOGGER.debug("Skipping firmware-gated setup because firmware version is unavailable")
-        return False
+        return None
 
     try:
         return awesomeversion.AwesomeVersion(firmware_version) >= awesomeversion.AwesomeVersion(
@@ -63,14 +64,14 @@ def _supports_firmware_version(
         awesomeversion.exceptions.AwesomeVersionCompareException,
         TypeError,
         ValueError,
-    ) as e:
+        ) as e:
         _LOGGER.debug(
             "Failed to compare firmware version %s for min version %s: %s",
             firmware_version,
             minimum_version,
             e,
         )
-        return False
+        return None
 
 
 async def _compile_service_switches(
@@ -521,13 +522,18 @@ async def async_setup_entry(
                 await _compile_carp_maintenance_switch(config_entry, coordinator, state)
             )
     if config.get(CONF_SYNC_UNBOUND, DEFAULT_SYNC_OPTION_VALUE):
-        if _supports_firmware_version(state, config_entry, "25.7.8"):
+        unbound_support = _supports_firmware_version(state, config_entry, "25.7.8")
+        if unbound_support is True:
             _LOGGER.debug("Using Unbound Extended Blocklists for OPNsense >= 25.7.8")
             entities.extend(await _compile_unbound_switches(config_entry, coordinator, state))
-        else:
+        elif unbound_support is False:
             _LOGGER.debug("Using Unbound Regular Blocklists for OPNsense < 25.7.8")
             entities.extend(
                 await _compile_static_unbound_switch_legacy(config_entry, coordinator, state)
+            )
+        else:
+            _LOGGER.debug(
+                "Skipping Unbound blocklist setup because firmware version is unavailable"
             )
 
     _LOGGER.debug("[switch async_setup_entry] entities: %s", len(entities))
