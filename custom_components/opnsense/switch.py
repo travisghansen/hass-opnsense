@@ -4,7 +4,6 @@ from collections.abc import Callable, Mapping, MutableMapping
 import logging
 from typing import Any
 
-import awesomeversion
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity, SwitchEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
@@ -12,8 +11,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later
 
 from .const import (
-    ATTR_NAT_OUTBOUND,
-    ATTR_NAT_PORT_FORWARD,
     ATTR_UNBOUND_BLOCKLIST,
     CONF_SYNC_CARP,
     CONF_SYNC_FIREWALL_AND_NAT,
@@ -28,154 +25,6 @@ from .entity import OPNsenseEntity
 from .helpers import coerce_bool, dict_get
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
-
-
-async def _compile_filter_switches_legacy(
-    config_entry: ConfigEntry,
-    coordinator: OPNsenseDataUpdateCoordinator,
-    state: MutableMapping[str, Any],
-) -> list:
-    """Compile legacy filter rule switches from OPNsense state.
-
-    Args:
-        config_entry: The Home Assistant config entry.
-        coordinator: The data update coordinator.
-        state: The current state data from OPNsense.
-
-    Returns:
-        list: A list of OPNsenseFilterSwitchLegacy entities.
-    """
-    rules = dict_get(state, "firewall.config.filter.rule")
-    if not isinstance(rules, list):
-        return []
-    entities: list = []
-    for rule in rules:
-        if not isinstance(rule, MutableMapping):
-            continue
-
-        # do NOT add rules that are NAT rules
-        if "associated-rule-id" in rule:
-            continue
-
-        # not possible to disable these rules
-        if rule.get("description", "") == "Anti-Lockout Rule":
-            continue
-
-        tracker = dict_get(rule, "created.time")
-        # we use tracker as the unique id
-        if tracker is None or len(tracker) < 1:
-            continue
-
-        entities.append(
-            OPNsenseFilterSwitchLegacy(
-                config_entry=config_entry,
-                coordinator=coordinator,
-                entity_description=SwitchEntityDescription(
-                    key=f"filter.{tracker}",
-                    name=f"Filter Rule {tracker} ({rule.get('descr', '')})",
-                    icon="mdi:play-network-outline",
-                    # entity_category=entity_category,
-                    device_class=SwitchDeviceClass.SWITCH,
-                    entity_registry_enabled_default=False,
-                ),
-            )
-        )
-    _LOGGER.debug("[compile_filter_switches_legacy] entities: %s", len(entities))
-    return entities
-
-
-async def _compile_port_forward_switches_legacy(
-    config_entry: ConfigEntry,
-    coordinator: OPNsenseDataUpdateCoordinator,
-    state: MutableMapping[str, Any],
-) -> list:
-    """Compile legacy NAT port forward rule switches from OPNsense state.
-
-    Args:
-        config_entry: The Home Assistant config entry.
-        coordinator: The data update coordinator.
-        state: The current state data from OPNsense.
-
-    Returns:
-        list: A list of OPNsenseNatSwitchLegacy entities for port forward rules.
-    """
-    rules = dict_get(state, "firewall.config.nat.rule")
-    if not isinstance(rules, list):
-        return []
-    entities: list = []
-    for rule in rules:
-        if not isinstance(rule, MutableMapping):
-            continue
-
-        tracker = dict_get(rule, "created.time")
-        # we use tracker as the unique id
-        if tracker is None or len(tracker) < 1:
-            continue
-
-        entity = OPNsenseNatSwitchLegacy(
-            config_entry=config_entry,
-            coordinator=coordinator,
-            entity_description=SwitchEntityDescription(
-                key=f"nat_port_forward.{tracker}",
-                name=f"NAT Port Forward Rule {tracker} ({rule.get('descr', '')})",
-                icon="mdi:network-outline",
-                # entity_category=ENTITY_CATEGORY_CONFIG,
-                device_class=SwitchDeviceClass.SWITCH,
-                entity_registry_enabled_default=False,
-            ),
-        )
-        entities.append(entity)
-    _LOGGER.debug("[compile_port_forward_switches_legacy] entities: %s", len(entities))
-    return entities
-
-
-async def _compile_nat_outbound_switches_legacy(
-    config_entry: ConfigEntry,
-    coordinator: OPNsenseDataUpdateCoordinator,
-    state: MutableMapping[str, Any],
-) -> list:
-    """Compile legacy NAT outbound rule switches from OPNsense state.
-
-    Args:
-        config_entry: The Home Assistant config entry.
-        coordinator: The data update coordinator.
-        state: The current state data from OPNsense.
-
-    Returns:
-        list: A list of OPNsenseNatSwitchLegacy entities for outbound rules.
-    """
-    rules = dict_get(state, "firewall.config.nat.outbound.rule")
-    if not isinstance(rules, list):
-        return []
-    entities: list = []
-
-    for rule in rules:
-        if not isinstance(rule, MutableMapping):
-            continue
-
-        tracker = dict_get(rule, "created.time")
-        # we use tracker as the unique id
-        if tracker is None or len(tracker) < 1:
-            continue
-
-        if "Auto created rule" in rule.get("descr", ""):
-            continue
-
-        entity = OPNsenseNatSwitchLegacy(
-            config_entry=config_entry,
-            coordinator=coordinator,
-            entity_description=SwitchEntityDescription(
-                key=f"nat_outbound.{tracker}",
-                name=f"NAT Outbound Rule {tracker} ({rule.get('descr', '')})",
-                icon="mdi:network-outline",
-                # entity_category=ENTITY_CATEGORY_CONFIG,
-                device_class=SwitchDeviceClass.SWITCH,
-                entity_registry_enabled_default=False,
-            ),
-        )
-        entities.append(entity)
-    _LOGGER.debug("[compile_nat_outbound_switches_legacy] entities: %s", len(entities))
-    return entities
 
 
 async def _compile_service_switches(
@@ -298,39 +147,6 @@ async def _compile_carp_maintenance_switch(
     ]
 
 
-async def _compile_static_unbound_switch_legacy(
-    config_entry: ConfigEntry,
-    coordinator: OPNsenseDataUpdateCoordinator,
-    state: MutableMapping[str, Any],
-) -> list:
-    """Compile legacy static Unbound blocklist switch from OPNsense state.
-
-    Args:
-        config_entry: The Home Assistant config entry.
-        coordinator: The data update coordinator.
-        state: The current state data from OPNsense.
-
-    Returns:
-        list: A list containing a single OPNsenseUnboundBlocklistSwitchLegacy entity.
-    """
-    entities: list = []
-    entity = OPNsenseUnboundBlocklistSwitchLegacy(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=SwitchEntityDescription(
-            key="unbound_blocklist.switch",
-            name="Unbound Blocklist Switch",
-            # icon=icon,
-            # entity_category=ENTITY_CATEGORY_CONFIG,
-            device_class=SwitchDeviceClass.SWITCH,
-            entity_registry_enabled_default=False,
-        ),
-    )
-    entities.append(entity)
-
-    return entities
-
-
 async def _compile_unbound_switches(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
@@ -344,12 +160,34 @@ async def _compile_unbound_switches(
         state: The current state data from OPNsense.
 
     Returns:
-        list: A list of OPNsenseUnboundBlocklistSwitch entities.
+        list: A list of legacy or extended OPNsense unbound blocklist switch entities.
     """
     if not isinstance(state, MutableMapping):
         return []
+    unbound_blocklist = state.get(ATTR_UNBOUND_BLOCKLIST)
+    if not isinstance(unbound_blocklist, MutableMapping):
+        return []
+
     entities: list = []
-    for uuid, dnsbl in state.get(ATTR_UNBOUND_BLOCKLIST, {}).items():
+    if isinstance(unbound_blocklist.get("legacy"), MutableMapping):
+        entities.append(
+            OPNsenseUnboundBlocklistSwitchLegacy(
+                config_entry=config_entry,
+                coordinator=coordinator,
+                entity_description=SwitchEntityDescription(
+                    key="unbound_blocklist.switch",
+                    name="Unbound Blocklist Switch",
+                    # icon=icon,
+                    # entity_category=ENTITY_CATEGORY_CONFIG,
+                    device_class=SwitchDeviceClass.SWITCH,
+                    entity_registry_enabled_default=False,
+                ),
+            )
+        )
+
+    for uuid, dnsbl in unbound_blocklist.items():
+        if uuid == "legacy":
+            continue
         if not isinstance(dnsbl, MutableMapping):
             continue
 
@@ -598,119 +436,23 @@ async def async_setup_entry(
     entities: list = []
 
     if config.get(CONF_SYNC_FIREWALL_AND_NAT, DEFAULT_SYNC_OPTION_VALUE):
-        firmware = state.get("host_firmware_version")
-        if firmware:
-            try:
-                if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
-                    "26.1.1"
-                ):
-                    entities.extend(
-                        await _compile_filter_switches_legacy(config_entry, coordinator, state)
-                    )
-                    entities.extend(
-                        await _compile_port_forward_switches_legacy(
-                            config_entry, coordinator, state
-                        )
-                    )
-                    entities.extend(
-                        await _compile_nat_outbound_switches_legacy(
-                            config_entry, coordinator, state
-                        )
-                    )
-                else:
-                    if not state.get("plugin_deprecated", False) and state.get(
-                        "plugin_installed", False
-                    ):
-                        entities.extend(
-                            await _compile_filter_switches_legacy(config_entry, coordinator, state)
-                        )
-                    entities.extend(
-                        await _compile_firewall_rules_switches(config_entry, coordinator, state)
-                    )
-                    entities.extend(
-                        await _compile_nat_source_rules_switches(config_entry, coordinator, state)
-                    )
-                    entities.extend(
-                        await _compile_nat_destination_rules_switches(
-                            config_entry, coordinator, state
-                        )
-                    )
-                    entities.extend(
-                        await _compile_nat_one_to_one_rules_switches(
-                            config_entry, coordinator, state
-                        )
-                    )
-                    entities.extend(
-                        await _compile_nat_npt_rules_switches(config_entry, coordinator, state)
-                    )
-
-            except (
-                awesomeversion.exceptions.AwesomeVersionCompareException,
-                TypeError,
-                ValueError,
-            ) as e:
-                _LOGGER.error(
-                    "Error comparing firewall/NAT firmware version %s: %s: %s",
-                    firmware,
-                    type(e).__name__,
-                    e,
-                )
+        entities.extend(await _compile_firewall_rules_switches(config_entry, coordinator, state))
+        entities.extend(await _compile_nat_source_rules_switches(config_entry, coordinator, state))
+        entities.extend(
+            await _compile_nat_destination_rules_switches(config_entry, coordinator, state)
+        )
+        entities.extend(
+            await _compile_nat_one_to_one_rules_switches(config_entry, coordinator, state)
+        )
+        entities.extend(await _compile_nat_npt_rules_switches(config_entry, coordinator, state))
     if config.get(CONF_SYNC_SERVICES, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_service_switches(config_entry, coordinator, state))
     if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_vpn_switches(config_entry, coordinator, state))
     if config.get(CONF_SYNC_CARP, DEFAULT_SYNC_OPTION_VALUE):
-        firmware = state.get("host_firmware_version")
-        if firmware:
-            try:
-                if awesomeversion.AwesomeVersion(firmware) >= awesomeversion.AwesomeVersion(
-                    "26.1.1"
-                ):
-                    entities.extend(
-                        await _compile_carp_maintenance_switch(config_entry, coordinator, state)
-                    )
-            except (
-                awesomeversion.exceptions.AwesomeVersionCompareException,
-                TypeError,
-                ValueError,
-            ) as e:
-                _LOGGER.error(
-                    "Error comparing firmware version %s when determining whether to create "
-                    "CARP maintenance switch. %s: %s",
-                    firmware,
-                    type(e).__name__,
-                    e,
-                )
+        entities.extend(await _compile_carp_maintenance_switch(config_entry, coordinator, state))
     if config.get(CONF_SYNC_UNBOUND, DEFAULT_SYNC_OPTION_VALUE):
-        firmware = state.get("host_firmware_version")
-        if firmware:
-            try:
-                if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
-                    "25.7.8"
-                ):
-                    _LOGGER.debug("Using Unbound Regular Blocklists for OPNsense < 25.7.8")
-                    entities.extend(
-                        await _compile_static_unbound_switch_legacy(
-                            config_entry, coordinator, state
-                        )
-                    )
-                else:
-                    _LOGGER.debug("Using Unbound Extended Blocklists for OPNsense >= 25.7.8")
-                    entities.extend(
-                        await _compile_unbound_switches(config_entry, coordinator, state)
-                    )
-            except (
-                awesomeversion.exceptions.AwesomeVersionCompareException,
-                TypeError,
-                ValueError,
-            ) as e:
-                _LOGGER.error(
-                    "Error comparing firmware version %s when determining creating Unbound "
-                    "Blocklist switches. %s: %s",
-                    firmware,
-                    type(e).__name__,
-                    e,
-                )
+        entities.extend(await _compile_unbound_switches(config_entry, coordinator, state))
 
     _LOGGER.debug("[switch async_setup_entry] entities: %s", len(entities))
     async_add_entities(entities)
@@ -830,6 +572,7 @@ class OPNsenseCarpMaintenanceSwitch(OPNsenseSwitch):
         status_summary = self._opnsense_get_status_summary()
         if status_summary is None:
             self._available = False
+            self._attr_extra_state_attributes = {}
             self.async_write_ha_state()
             return
 
@@ -840,6 +583,7 @@ class OPNsenseCarpMaintenanceSwitch(OPNsenseSwitch):
         ):
             self._available = False
             self._attr_is_on = False
+            self._attr_extra_state_attributes = {}
             self.async_write_ha_state()
             return
 
@@ -1227,244 +971,6 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
         return super().icon
 
 
-class OPNsenseFilterSwitchLegacy(OPNsenseSwitch):
-    """Class for OPNsense Filter Switch entities."""
-
-    def __init__(
-        self,
-        config_entry: ConfigEntry,
-        coordinator: OPNsenseDataUpdateCoordinator,
-        entity_description: SwitchEntityDescription,
-    ) -> None:
-        """Initialize switch entity.
-
-        Args:
-            config_entry: The Home Assistant config entry.
-            coordinator: The data update coordinator.
-            entity_description: The entity description.
-        """
-        super().__init__(
-            config_entry=config_entry,
-            coordinator=coordinator,
-            entity_description=entity_description,
-        )
-        self._tracker: str = self._opnsense_get_tracker()
-        self._rule: MutableMapping[str, Any] | None = None
-        # _LOGGER.debug(f"[OPNsenseFilterSwitchLegacy init] Name: {self.name}, tracker:
-        # {self._tracker}")
-
-    def _opnsense_get_tracker(self) -> str:
-        """Get the tracker from the entity description.
-
-        Returns:
-            str: The tracker string.
-        """
-        parts = self.entity_description.key.split(".")
-        parts.pop(0)
-        return ".".join(parts)
-
-    def _opnsense_get_rule(self) -> MutableMapping[str, Any] | None:
-        """Get the filter rule data from the coordinator.
-
-        Returns:
-            MutableMapping[str, Any] | None: The rule data if available, None otherwise.
-        """
-        state: dict[str, Any] = self.coordinator.data
-        tracker: str = self._opnsense_get_tracker()
-        if not isinstance(state, MutableMapping):
-            return None
-        for rule in state.get("firewall", {}).get("config", {}).get("filter", {}).get("rule", {}):
-            if dict_get(rule, "created.time") == tracker:
-                return rule
-        return None
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Handle coordinator update for the filter switch."""
-        if self.delay_update:
-            _LOGGER.debug(
-                "Skipping coordinator update for filter switch %s due to delay", self.name
-            )
-            return
-        self._rule = self._opnsense_get_rule()
-        if not self._rule:
-            self._available = False
-            self.async_write_ha_state()
-            return
-        try:
-            self._attr_is_on = bool(self._rule.get("disabled", "0") != "1")
-        except TypeError, KeyError, AttributeError:
-            self._available = False
-            self.async_write_ha_state()
-            return
-        self._available = True
-        self.async_write_ha_state()
-        # _LOGGER.debug(f"[OPNsenseFilterSwitchLegacy handle_coordinator_update] Name:
-        # {self.name}, available: {self.available}, is_on: {self.is_on},
-        # extra_state_attributes: {self.extra_state_attributes}")
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn the entity on."""
-        if self._rule is None or not self._client:
-            return
-        await self._client.enable_filter_rule_by_created_time_legacy(self._tracker)
-        _LOGGER.info("Turned on filter rule: %s", self.name)
-        self._attr_is_on = True
-        self.async_write_ha_state()
-        self.delay_update = True
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn the entity off."""
-        if self._rule is None or not self._client:
-            return
-        await self._client.disable_filter_rule_by_created_time_legacy(self._tracker)
-        _LOGGER.info("Turned off filter rule: %s", self.name)
-        self._attr_is_on = False
-        self.async_write_ha_state()
-        self.delay_update = True
-
-    @property
-    def icon(self) -> str | None:
-        """Return the icon for the entity."""
-        if self.available and self.is_on:
-            return "mdi:play-network"
-        return super().icon
-
-
-class OPNsenseNatSwitchLegacy(OPNsenseSwitch):
-    """Class for OPNsense NAT Switch entities."""
-
-    def __init__(
-        self,
-        config_entry: ConfigEntry,
-        coordinator: OPNsenseDataUpdateCoordinator,
-        entity_description: SwitchEntityDescription,
-    ) -> None:
-        """Initialize switch entity.
-
-        Args:
-            config_entry: The Home Assistant config entry.
-            coordinator: The data update coordinator.
-            entity_description: The entity description.
-        """
-        super().__init__(
-            config_entry=config_entry,
-            coordinator=coordinator,
-            entity_description=entity_description,
-        )
-        self._rule_type: str = self._opnsense_get_rule_type()
-        self._tracker: str = self._opnsense_get_tracker()
-        self._rule: MutableMapping[str, Any] | None = None
-        # _LOGGER.debug(f"[OPNsenseNatSwitchLegacy init] Name: {self.name}, tracker:
-        # {self._tracker}, rule_type: {self._rule_type}")
-
-    def _opnsense_get_rule_type(self) -> str:
-        """Get the rule type from the entity description.
-
-        Returns:
-            str: The rule type.
-        """
-        return self.entity_description.key.split(".")[0]
-
-    def _opnsense_get_tracker(self) -> str:
-        """Get the tracker from the entity description.
-
-        Returns:
-            str: The tracker string.
-        """
-        parts = self.entity_description.key.split(".")
-        parts.pop(0)
-        return ".".join(parts)
-
-    def _opnsense_get_rule(self) -> MutableMapping[str, Any] | None:
-        """Get the NAT rule data from the coordinator.
-
-        Returns:
-            MutableMapping[str, Any] | None: The rule data if available, None otherwise.
-        """
-        state: dict[str, Any] = self.coordinator.data
-        if not isinstance(state, MutableMapping):
-            return None
-        rules: list = []
-        if self._rule_type == ATTR_NAT_PORT_FORWARD:
-            rules = state.get("firewall", {}).get("config", {}).get("nat", {}).get("rule", [])
-        if self._rule_type == ATTR_NAT_OUTBOUND:
-            rules = (
-                state.get("firewall", {})
-                .get("config", {})
-                .get("nat", {})
-                .get("outbound", {})
-                .get("rule", [])
-            )
-
-        for rule in rules:
-            if dict_get(rule, "created.time") == self._tracker:
-                return rule
-        return None
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Handle coordinator update for the NAT switch."""
-        if self.delay_update:
-            _LOGGER.debug("Skipping coordinator update for NAT switch %s due to delay", self.name)
-            return
-        self._rule = self._opnsense_get_rule()
-        if not isinstance(self._rule, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
-            return
-        try:
-            self._attr_is_on = "disabled" not in self._rule
-        except TypeError, KeyError, AttributeError:
-            self._available = False
-            self.async_write_ha_state()
-            return
-        self._available = True
-        self.async_write_ha_state()
-        # _LOGGER.debug(f"[OPNsenseNatSwitchLegacy handle_coordinator_update] Name:
-        # {self.name}, available: {self.available}, is_on: {self.is_on},
-        # extra_state_attributes: {self.extra_state_attributes}")
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn the entity on."""
-        if not isinstance(self._rule, MutableMapping) or not self._client:
-            return
-        if self._rule_type == ATTR_NAT_PORT_FORWARD:
-            method = self._client.enable_nat_port_forward_rule_by_created_time_legacy
-        elif self._rule_type == ATTR_NAT_OUTBOUND:
-            method = self._client.enable_nat_outbound_rule_by_created_time_legacy
-        else:
-            return
-        await method(self._tracker)
-        _LOGGER.info("Turned on NAT rule: %s", self.name)
-        self._attr_is_on = True
-        self.async_write_ha_state()
-        self.delay_update = True
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn the entity off."""
-        if not isinstance(self._rule, MutableMapping) or not self._client:
-            return
-        if self._rule_type == ATTR_NAT_PORT_FORWARD:
-            method = self._client.disable_nat_port_forward_rule_by_created_time_legacy
-        elif self._rule_type == ATTR_NAT_OUTBOUND:
-            method = self._client.disable_nat_outbound_rule_by_created_time_legacy
-        else:
-            return
-        await method(self._tracker)
-        _LOGGER.info("Turned off NAT rule: %s", self.name)
-        self._attr_is_on = False
-        self.async_write_ha_state()
-        self.delay_update = True
-
-    @property
-    def icon(self) -> str | None:
-        """Return the icon for the entity."""
-        if self.available and self.is_on:
-            return "mdi:network"
-        return super().icon
-
-
 class OPNsenseServiceSwitch(OPNsenseSwitch):
     """Class for OPNsense Service Switch entities."""
 
@@ -1589,7 +1095,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
 
 
 class OPNsenseUnboundBlocklistSwitchLegacy(OPNsenseSwitch):
-    """Class for OPNsense Unbound Blocklist Switch entity for Firmware < 25.7.8."""
+    """Class for legacy OPNsense Unbound Blocklist Switch entity."""
 
     @callback
     def _handle_coordinator_update(self) -> None:

@@ -87,32 +87,6 @@ async def test_async_setup_entry_skips_when_disabled(
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_creates_only_notices_when_notices_enabled(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Create only Notices entity when notices sync is enabled."""
-    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_NOTICES: True})
-    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = {}
-    setattr(entry.runtime_data, COORDINATOR, coord)
-
-    created: list = []
-
-    def add_entities(ents: Iterable[Any], _update_before_add: bool = False) -> None:
-        """Add entities.
-
-        Args:
-            ents: Ents provided by pytest or the test case.
-        """
-        created.extend(ents)
-
-    await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
-    # expect one Notices entity created
-    assert len(created) == 1
-    assert isinstance(created[0], OPNsensePendingNoticesPresentBinarySensor)
-
-
-@pytest.mark.asyncio
 async def test_async_setup_entry_creates_disabled_interface_enabled_sensors(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:

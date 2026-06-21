@@ -6,15 +6,13 @@ background tasks, and simplify Home Assistant testing.
 """
 
 import asyncio
-from collections.abc import AsyncIterator, Generator, MutableMapping
+from collections.abc import AsyncIterator
 import contextlib
 import inspect
 import logging
-from pathlib import Path
-from typing import Any, cast
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
-import aiohttp
 import homeassistant.core as ha_core
 from homeassistant.core import HomeAssistant
 import pytest
@@ -22,14 +20,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.plugins import get_scheduled_timer_handles
 
 import custom_components.opnsense as _init_mod
-from custom_components.opnsense import pyopnsense as _pyopnsense_mod
 from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID
-
-TEST_PASSWORD = "p"
-
-# expose the pyopnsense module under the plain name for tests that
-# import the fixture and expect `pyopnsense` to be available.
-pyopnsense = _pyopnsense_mod
 
 
 # Provide a shared FakeClientSession for tests to avoid creating real aiohttp sessions
@@ -202,45 +193,6 @@ def fake_stream_response_factory() -> Any:
     return _make
 
 
-@pytest.fixture
-async def make_client() -> Any:
-    """Return a factory that constructs an OPNsenseClient for tests. This mirrors the local helper used in some test modules but exposes it as a fixture so tests can request it via parameters for consistency."""
-    clients: list[pyopnsense.OPNsenseClient] = []
-
-    def _make(
-        session: aiohttp.ClientSession | None = None,
-        username: str = "u",
-        password: str = TEST_PASSWORD,
-        url: str = "http://localhost",
-    ) -> pyopnsense.OPNsenseClient:
-        # Tests should not pass a real aiohttp.ClientSession. If session is
-        # omitted, substitute the test FakeClientSession to avoid passing None
-        # into the production client which expects a session-like object.
-        """Create an ``OPNsenseClient`` instance configured for the current test.
-
-        Args:
-            session: HTTP client session used for outbound requests.
-            username: Username used to authenticate with OPNsense.
-            password: Password used to authenticate with OPNsense.
-            url: URL used to reach the OPNsense host or related endpoint.
-        """
-        if session is None:
-            session = cast("aiohttp.ClientSession", FakeClientSession())
-        client = pyopnsense.OPNsenseClient(
-            url=url, username=username, password=password, session=session
-        )
-        clients.append(client)
-        return client
-
-    try:
-        yield _make
-    finally:
-        # Ensure all created clients are closed to avoid leaking background tasks.
-        for c in clients:
-            with contextlib.suppress(Exception):
-                await c.async_close()
-
-
 # Module logger for test diagnostics
 logger = logging.getLogger(__name__)
 
@@ -274,346 +226,6 @@ def _patch_homeassistant_stop(monkeypatch: pytest.MonkeyPatch) -> Any:
             raise
 
     monkeypatch.setattr(ha_core.HomeAssistant, "stop", _safe_stop, raising=False)
-
-
-@pytest.fixture(autouse=True)
-def _patch_asyncio_create_task(
-    monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
-) -> None:
-    """Patch pyopnsense task scheduling outside direct pyopnsense tests."""
-    try:
-        test_path = getattr(request, "fspath", None)
-        if test_path:
-            normalized_path = Path(str(test_path).replace("\\", "/"))
-            path_parts = tuple(part.lower() for part in normalized_path.parts)
-            has_pyopnsense_test_segments = any(
-                path_parts[index : index + 2] == ("tests", "pyopnsense")
-                for index in range(len(path_parts) - 1)
-            )
-            if normalized_path.name == "test_pyopnsense.py" or has_pyopnsense_test_segments:
-                return
-    except AttributeError, TypeError:
-        # If we cannot determine the requesting test, continue with patching.
-        pass
-
-    # Patch asyncio.create_task to avoid creating background workers for pyopnsense during tests.
-    # For coroutines created by pyopnsense, close the coroutine object and return a dummy
-    # task-like object to prevent "coroutine was never awaited" warnings while avoiding
-    # scheduling real background work during tests.
-    # keep a reference to the original so we can delegate for non-target coroutines
-    # Prefer the one from the pyopnsense module if present, otherwise fall back
-    # to the global asyncio.create_task.
-    # Prefer the pyopnsense module's asyncio.create_task when available; fall
-    # back to the global asyncio.create_task otherwise. Avoid relying on an
-    # ImportError here since the module import already occurred at module
-    # load time. Instead, detect presence safely using globals() and
-    # getattr.
-    if "_pyopnsense_mod" in globals() and getattr(_pyopnsense_mod, "asyncio", None) is not None:
-        # Prefer the module-scoped asyncio.create_task when available so we can
-        # delegate for non-target coroutines. Fall back to the global
-        # asyncio.create_task if the module doesn't expose one.
-        module_asyncio = cast("Any", _pyopnsense_mod).asyncio
-        _original_create_task = getattr(module_asyncio, "create_task", asyncio.create_task)
-    else:
-        # pyopnsense.asyncio is not present; delegate to the global
-        # asyncio.create_task. We intentionally avoid patching the global
-        # asyncio module below unless necessary.
-        _original_create_task = asyncio.create_task
-        logger.debug(
-            "pyopnsense.asyncio not present; attaching minimal namespace with fake create_task; delegating others to global asyncio"
-        )
-
-    def _fake_create_task(coro: Any, *args, **kwargs) -> Any:
-        # If the coroutine originates from pyopnsense background workers, close
-        # it to avoid 'coroutine was never awaited' warnings and return a dummy
-        # task-like object. Otherwise delegate to the original create_task.
-        """Create a safe stand-in task for patched asyncio scheduling.
-
-        Args:
-            coro: Coro provided by pytest or the test case.
-            *args: Additional positional arguments forwarded by the function.
-            **kwargs: Additional keyword arguments forwarded by the function.
-        """
-        frame = getattr(coro, "cr_frame", None)
-        module_name = ""
-        if frame:
-            try:
-                g = getattr(frame, "f_globals", None) or {}
-                module_name = g.get("__name__", "") if isinstance(g, MutableMapping) else ""
-            except AttributeError, TypeError:
-                module_name = ""
-
-        # Match module names that include 'pyopnsense' (e.g. 'custom_components.opnsense.pyopnsense')
-        if isinstance(module_name, str) and "pyopnsense" in module_name:
-            with contextlib.suppress(Exception):
-                coro.close()
-            # Return an already-completed future if a running loop is present.
-            try:
-                loop = asyncio.get_running_loop()
-                fut = loop.create_future()
-                fut.set_result(None)
-            except RuntimeError:
-                # No running loop; provide a minimally awaitable stub.
-                class _DoneTask:
-                    def done(self) -> bool:
-                        """Done."""
-                        return True
-
-                    def cancel(self) -> None:
-                        """Cancel."""
-                        return
-
-                    def cancelled(self) -> bool:
-                        """Cancelled."""
-                        return False
-
-                    def result(self) -> None:
-                        """Result."""
-                        return
-
-                    def exception(self) -> None:
-                        """Exception."""
-                        return
-
-                    def add_done_callback(self, cb: Any) -> None:
-                        """Add done callback.
-
-                        Args:
-                            cb: Cb provided by pytest or the test case.
-                        """
-                        with contextlib.suppress(Exception):
-                            cb(self)
-
-                    def __await__(self) -> Generator[Any]:
-                        """Await."""
-                        if False:
-                            yield None  # pragma: no cover
-
-                return _DoneTask()
-            else:
-                return fut
-        # Delegate to the original create_task for all other coroutines.
-        return _original_create_task(coro, *args, **kwargs)
-
-    # Patch create_task only on the pyopnsense module to avoid interfering
-    # with the rest of the test environment (Home Assistant / pytest-asyncio).
-    # If the pyopnsense module does not expose an `asyncio` attribute, attach
-    # a minimal namespace with our patched create_task so tests that construct
-    # OPNsenseClient outside a running loop do not attempt to schedule real
-    # background work. This avoids touching the global asyncio module.
-    try:
-        # Construct a proxy object that delegates all attributes to the real
-        # asyncio module except `create_task`, which we override with our
-        # test-local `_fake_create_task`. This avoids mutating the global
-        # asyncio module and confines behavior to the pyopnsense module.
-        real_asyncio = getattr(_pyopnsense_mod, "asyncio", asyncio)
-
-        class _AsyncioProxy:
-            """Proxy delegating attribute access to the real asyncio module.
-
-            Only `create_task` is implemented on the proxy to forward to the
-            provided fake implementation; all other attributes are looked up
-            on the underlying real asyncio module via __getattr__.
-            """
-
-            def __init__(self, real: Any, create_task_impl: Any) -> None:
-                """Initialize _AsyncioProxy.
-
-                Args:
-                    real: Real provided by pytest or the test case.
-                    create_task_impl: Create task impl provided by pytest or the test case.
-                """
-                self._real = real
-                # store the impl as a bound attribute so monkeypatch can
-                # replace it later if needed
-                self.create_task = create_task_impl
-
-            def __getattr__(self, name: str) -> Any:
-                """Getattr.
-
-                Args:
-                    name: Name provided by pytest or the test case.
-                """
-                return getattr(self._real, name)
-
-        proxy = _AsyncioProxy(real_asyncio, _fake_create_task)
-
-        # Replace whatever the pyopnsense module exposes with our proxy so
-        # calls like `pyopnsense.asyncio.create_task(...)` hit the proxy and
-        # use the fake implementation while all other asyncio behavior
-        # delegates to the real module.
-        monkeypatch.setattr(_pyopnsense_mod, "asyncio", proxy, raising=False)
-    except Exception:  # noqa: BLE001
-        logger.debug(
-            "Failed to attach asyncio proxy on pyopnsense; falling back to direct patching"
-        )
-
-
-@pytest.fixture(autouse=True)
-def _neutralize_pyopnsense_background_tasks(
-    monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
-) -> None:
-    """Autouse fixture to replace pyopnsense background queue workers with no-ops. This prevents the integration from scheduling background coroutines during tests which could interact with the event loop, create network IO, or produce 'coroutine was never awaited' warnings."""
-
-    async def _noop_async(self: Any, *args, **kwargs) -> None:
-        """Replace pyopnsense background workers with an async no-op.
-
-        Args:
-            self: Client instance whose background worker was patched.
-            *args: Additional positional arguments forwarded by the function.
-            **kwargs: Additional keyword arguments forwarded by the function.
-        """
-        return
-
-    # Try patching via the module/class object when available; fall back to
-    # import-path based monkeypatching for resilience in different test envs.
-    # Do not neutralize when running tests that exercise pyopnsense internals
-    # directly (they need the real implementations). Skip patching for those
-    # test modules (legacy tests/test_pyopnsense.py and split tests/pyopnsense/*).
-    try:
-        test_path = getattr(request, "fspath", None)
-        if test_path:
-            normalized_path = Path(str(test_path).replace("\\", "/"))
-            path_parts = tuple(part.lower() for part in normalized_path.parts)
-            has_pyopnsense_test_segments = any(
-                path_parts[index : index + 2] == ("tests", "pyopnsense")
-                for index in range(len(path_parts) - 1)
-            )
-            if normalized_path.name == "test_pyopnsense.py" or has_pyopnsense_test_segments:
-                return
-    except AttributeError, TypeError:
-        # If we cannot determine the requesting test, continue with patching.
-        pass
-
-    try:
-        if getattr(pyopnsense, "OPNsenseClient", None) is not None:
-            monkeypatch.setattr(
-                pyopnsense.OPNsenseClient, "_monitor_queue", _noop_async, raising=False
-            )
-            monkeypatch.setattr(
-                pyopnsense.OPNsenseClient, "_process_queue", _noop_async, raising=False
-            )
-    except AttributeError, TypeError:
-        # best-effort; continue to fallback below
-        pass
-
-    # Fallback to import path strings in case direct attribute access failed.
-    with contextlib.suppress(Exception):
-        monkeypatch.setattr(
-            "custom_components.opnsense.pyopnsense.OPNsenseClient._monitor_queue",
-            _noop_async,
-            raising=False,
-        )
-    with contextlib.suppress(Exception):
-        monkeypatch.setattr(
-            "custom_components.opnsense.pyopnsense.OPNsenseClient._process_queue",
-            _noop_async,
-            raising=False,
-        )
-
-    # Also make our patched asyncio.create_task (defined earlier in this file)
-    # recognize coroutines that are bound methods of OPNsenseClient even when
-    # the coroutine object originates from the test module (for example when
-    # tests replace the methods with test-local no-ops). Inspect the
-    # coroutine frame locals and treat coroutines with a `self` that is an
-    # OPNsenseClient as pyopnsense background workers.
-    try:
-        # If the module-level fake_create_task exists, decorate it to be more
-        # permissive. We patch the pyopnsense.asyncio.create_task if present.
-        target_asyncio = getattr(_pyopnsense_mod, "asyncio", None)
-        if target_asyncio is not None and hasattr(target_asyncio, "create_task"):
-            orig = target_asyncio.create_task
-
-            def _wrap_create_task(coro: Any, *args, **kwargs) -> Any:
-                """Wrap create task.
-
-                Args:
-                    coro: Coro provided by pytest or the test case.
-                    *args: Additional positional arguments forwarded by the function.
-                    **kwargs: Additional keyword arguments forwarded by the function.
-                """
-                frame = getattr(coro, "cr_frame", None)
-                module_name = ""
-                if frame:
-                    try:
-                        g = getattr(frame, "f_globals", None) or {}
-                        module_name = g.get("__name__", "") if isinstance(g, MutableMapping) else ""
-                    except AttributeError, TypeError:
-                        module_name = ""
-
-                # If the coroutine originates from a test-local no-op but is a
-                # bound method (has 'self' local that's an OPNsenseClient),
-                # treat it like a pyopnsense background worker.
-                is_pyopnsense_bound = False
-                if frame:
-                    try:
-                        locs = getattr(frame, "f_locals", {}) or {}
-                        self_obj = locs.get("self")
-                        if (
-                            self_obj is not None
-                            and getattr(pyopnsense, "OPNsenseClient", None) is not None
-                            and isinstance(self_obj, pyopnsense.OPNsenseClient)
-                        ):
-                            is_pyopnsense_bound = True
-                    except AttributeError, TypeError:
-                        is_pyopnsense_bound = False
-
-                if is_pyopnsense_bound or (
-                    isinstance(module_name, str) and "pyopnsense" in module_name
-                ):
-                    with contextlib.suppress(AttributeError, TypeError):
-                        coro.close()
-                    try:
-                        loop = asyncio.get_running_loop()
-                        fut = loop.create_future()
-                        fut.set_result(None)
-                    except RuntimeError:
-
-                        class _DoneTask:
-                            def done(self) -> bool:
-                                """Done."""
-                                return True
-
-                            def cancel(self) -> None:
-                                """Cancel."""
-                                return
-
-                            def cancelled(self) -> bool:
-                                """Cancelled."""
-                                return False
-
-                            def result(self) -> None:
-                                """Result."""
-                                return
-
-                            def exception(self) -> None:
-                                """Exception."""
-                                return
-
-                            def add_done_callback(self, cb: Any) -> None:
-                                """Add done callback.
-
-                                Args:
-                                    cb: Cb provided by pytest or the test case.
-                                """
-                                with contextlib.suppress(AttributeError, TypeError):
-                                    cb(self)
-
-                            def __await__(self) -> Generator[Any]:
-                                """Await."""
-                                if False:
-                                    yield None  # pragma: no cover
-
-                        return _DoneTask()
-                    else:
-                        return fut
-
-                return orig(coro, *args, **kwargs)
-
-            monkeypatch.setattr(target_asyncio, "create_task", _wrap_create_task, raising=False)
-    except AttributeError, TypeError:
-        # Best-effort; do not fail tests if this decoration cannot be applied.
-        pass
 
 
 @pytest.fixture
@@ -676,9 +288,7 @@ def fake_client() -> Any:
                 self._telemetry = telemetry or {}
                 self._close_result = close_result
 
-                # state for query counts used by coordinator tests
-                self._query_counts_reset = False
-                self._query_counts = (1, 1)
+                self._query_counts = 0
 
             async def get_device_unique_id(self, expected_id: str | None = None) -> Any:
                 """Return the fake device identifier configured for this client.
@@ -688,6 +298,10 @@ def fake_client() -> Any:
                         and ignored by this fake implementation.
                 """
                 return self._device_id
+
+            async def validate(self) -> bool:
+                """Perform a no-op validation check for setup-time assertions."""
+                return True
 
             async def get_host_firmware_version(self) -> Any:
                 """Return the configured firmware version for test assertions."""
@@ -701,17 +315,13 @@ def fake_client() -> Any:
                 """Return the preloaded telemetry payload for coordinator tests."""
                 return self._telemetry
 
-            async def set_use_snake_case(self) -> bool:
-                """Acknowledge snake-case setup without mutating any fake state."""
-                return True
-
             async def reset_query_counts(self) -> None:
                 # mark reset and return None (used by coordinator)
                 """Mark that the query counters were reset during a coordinator update."""
                 self._query_counts_reset = True
 
-            async def get_query_counts(self) -> Any:
-                """Return the stored pair of fake REST and XML-RPC query counters."""
+            async def get_query_counts(self) -> int:
+                """Return the stored number of fake REST/API query calls."""
                 return self._query_counts
 
             async def get_interfaces(self) -> Any:
@@ -830,19 +440,17 @@ def fake_reg_factory() -> Any:
 
 @pytest.fixture
 def fake_flow_client() -> Any:
-    """Return a factory that constructs a lightweight FakeClient used in flow tests. The returned factory when called yields a FakeClient class suitable for config/option flow validation paths and records calls to is_plugin_installed."""
+    """Return a factory that constructs a lightweight FakeClient used in flow tests."""
 
     def _make(
         device_id: str = "unique-id",
         firmware: str = "25.1",
-        plugin_installed: bool = False,
     ) -> Any:
         """Build a lightweight flow-test client class with configurable identity.
 
         Args:
             device_id: Device identifier returned by the fake client.
             firmware: Firmware version returned by the fake client.
-            plugin_installed: Whether ``is_plugin_installed`` should report success.
         """
 
         class FakeFlowClient:
@@ -863,18 +471,12 @@ def fake_flow_client() -> Any:
                     **kwargs: Additional keyword arguments forwarded by the function.
                 """
                 FakeFlowClient.last_instance = self
-                self._is_plugin_called = 0
                 self._device_id = device_id
                 self._firmware = firmware
-                self._plugin_installed = plugin_installed
 
             async def get_host_firmware_version(self) -> str:
                 """Return the configured firmware version for flow validation."""
                 return self._firmware
-
-            async def set_use_snake_case(self, initial: bool = False) -> None:
-                """Accept the snake-case toggle call without mutating fake state."""
-                return
 
             async def get_system_info(self) -> dict:
                 """Return minimal system information for config-flow validation."""
@@ -887,15 +489,6 @@ def fake_flow_client() -> Any:
                     expected_id: Expected device identifier supplied by the caller and ignored.
                 """
                 return self._device_id
-
-            async def is_plugin_installed(self) -> bool:
-                """Return whether plugin installed.
-
-                Returns:
-                    bool: True if plugin installed; otherwise, False.
-                """
-                self._is_plugin_called += 1
-                return self._plugin_installed
 
             async def async_close(self) -> None:
                 """Record a successful close operation for flow-client assertions."""

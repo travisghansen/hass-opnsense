@@ -7,13 +7,22 @@ from collections.abc import Iterable, Mapping, MutableMapping
 import ipaddress
 import logging
 import re
-import socket
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import ParseResult, quote_plus, urlparse
-import xmlrpc
 
 import aiohttp
-import awesomeversion
+from aiopnsense.exceptions import (
+    OPNsenseBelowMinFirmware,
+    OPNsenseConnectionError,
+    OPNsenseError,
+    OPNsenseInvalidAuth,
+    OPNsenseInvalidURL,
+    OPNsenseMissingDeviceUniqueID,
+    OPNsensePrivilegeMissing,
+    OPNsenseSSLError,
+    OPNsenseTimeoutError,
+    OPNsenseUnknownFirmware,
+)
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import (
     CONF_NAME,
@@ -30,7 +39,6 @@ import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 
 from .client_factory import MissingExternalAiopnsenseDependency, create_opnsense_client
-from .client_protocol import OPNsenseClientProtocol
 from .const import (
     CONF_DEVICE_TRACKER_CONSIDER_HOME,
     CONF_DEVICE_TRACKER_ENABLED,
@@ -50,11 +58,13 @@ from .const import (
     DOMAIN,
     GRANULAR_SYNC_ITEMS,
     OPNSENSE_MIN_FIRMWARE,
-    SYNC_ITEMS_REQUIRING_PLUGIN,
     TRACKED_MACS,
 )
 from .helpers import is_private_ip
-from .pyopnsense import OPNsenseUnknownFirmware
+
+if TYPE_CHECKING:
+    from aiopnsense import OPNsenseClient
+
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -315,140 +325,87 @@ async def validate_input(
         await _handle_user_input(
             hass=hass, user_input=user_input, config_step=config_step, expected_id=expected_id
         )
-    except BelowMinFirmware:
-        _log_and_set_error(
-            errors=errors,
-            key="below_min_firmware",
-            message=f"OPNsense Firmware of {user_input.get(CONF_FIRMWARE_VERSION)} is below the "
-            f"minimum supported version of {OPNSENSE_MIN_FIRMWARE}",
-        )
-    except OPNsenseUnknownFirmware:
-        _log_and_set_error(
-            errors=errors,
-            key="unknown_firmware",
-            message="Unable to get OPNsense Firmware version",
-        )
     except MissingExternalAiopnsenseDependency:
         _log_and_set_error(
             errors=errors,
             key="missing_external_aiopnsense",
             message="OPNsense firmware requires external aiopnsense package",
         )
-    except MissingDeviceUniqueID as e:
+    except OPNsenseMissingDeviceUniqueID as e:
         _log_and_set_error(
             errors=errors,
             key="missing_device_unique_id",
             message=f"Missing Device Unique ID Error. {type(e).__name__}: {e}",
         )
-    except PluginMissing:
-        _log_and_set_error(errors=errors, key="plugin_missing", message="OPNsense Plugin Missing")
-
-    except (
-        aiohttp.InvalidURL,
-        InvalidURL,
-        aiohttp.ClientConnectorDNSError,
-    ) as e:
+    except OPNsenseInvalidURL as e:
         _log_and_set_error(
             errors=errors,
             key="invalid_url_format",
-            message=f"InvalidURL Error. {type(e).__name__}: {e}",
+            message=f"Invalid URL Error. {type(e).__name__}: {e}",
         )
-
-    except xmlrpc.client.Fault as e:
-        error_message = str(e)
-        if "Invalid username or password" in error_message:
-            errors["base"] = "invalid_auth"
-        elif "Authentication failed: not enough privileges" in error_message:
-            errors["base"] = "privilege_missing"
-        elif "opnsense.exec_php does not exist" in error_message:
-            errors["base"] = "plugin_missing"
-        else:
-            errors["base"] = "cannot_connect"
-        _LOGGER.error(
-            cleanse_sensitive_data(
-                f"XMLRPC Error. {type(e).__name__}: {e}",
-                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
-            )
-        )
-    except aiohttp.ClientSSLError as e:
-        _log_and_set_error(
+    except OPNsenseError as e:
+        if not _log_aiopnsense_error(
             errors=errors,
-            key="cannot_connect_ssl",
-            message=cleanse_sensitive_data(
-                f"Aiohttp Error. {type(e).__name__}: {e}",
-                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
-            ),
-        )
-    except (aiohttp.TooManyRedirects, aiohttp.RedirectClientError) as e:
-        _log_and_set_error(
-            errors=errors,
-            key="url_redirect",
-            message=cleanse_sensitive_data(
-                f"Redirect Error. {type(e).__name__}: {e}",
-                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
-            ),
-        )
-    except (TimeoutError, aiohttp.ServerTimeoutError) as e:
-        _log_and_set_error(
-            errors=errors,
-            key="connect_timeout",
-            message=cleanse_sensitive_data(
-                f"Timeout Error. {type(e).__name__}: {e}",
-                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
-            ),
-        )
-
-    except aiohttp.ClientResponseError as e:
-        if e.status == 401:
-            errors["base"] = "invalid_auth"
-        elif e.status == 403:
-            errors["base"] = "privilege_missing"
-        else:
-            errors["base"] = "cannot_connect"
-        _LOGGER.error(
-            cleanse_sensitive_data(
-                f"Aiohttp Error. {type(e).__name__}: {e}",
-                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
-            )
-        )
-    except xmlrpc.client.ProtocolError as e:
-        error_message = str(e)
-        if "307 Temporary Redirect" in error_message or "301 Moved Permanently" in error_message:
-            errors["base"] = "url_redirect"
-        else:
-            errors["base"] = "cannot_connect"
-        _LOGGER.error(
-            cleanse_sensitive_data(
-                f"XMLRPC Error. {type(e).__name__}: {e}",
-                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
-            )
-        )
-    except (aiohttp.ClientError, socket.gaierror) as e:
-        _log_and_set_error(
-            errors=errors,
-            key="cannot_connect",
-            message=cleanse_sensitive_data(
-                f"Aiohttp Error. {type(e).__name__}: {e}",
-                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
-            ),
-        )
-    except OSError as e:
-        error_message = str(e)
-        if "unsupported XML-RPC protocol" in error_message:
-            errors["base"] = "privilege_missing"
-        elif "timed out" in error_message:
-            errors["base"] = "connect_timeout"
-        elif "SSL:" in error_message:
-            errors["base"] = "cannot_connect_ssl"
-        else:
-            errors["base"] = "unknown"
-        _LOGGER.error(
-            cleanse_sensitive_data(
-                f"Error. {type(e).__name__}: {e}",
-                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
-            )
-        )
+            error=e,
+            user_input=user_input,
+        ):
+            raise
     return errors
+
+
+def _log_aiopnsense_error(
+    errors: MutableMapping[str, Any],
+    error: OPNsenseError,
+    user_input: Mapping[str, Any],
+) -> bool:
+    """Map an aiopnsense validation exception to a config-flow error.
+
+    Args:
+        errors: Mutable error mapping populated by this validator.
+        error: aiopnsense exception raised while validating the input.
+        user_input: User input containing optional secrets for log redaction.
+
+    Returns:
+        bool: ``True`` when the exception was mapped, otherwise ``False``.
+    """
+    if isinstance(error, OPNsenseBelowMinFirmware):
+        _log_and_set_error(
+            errors=errors,
+            key="below_min_firmware",
+            message=f"OPNsense Firmware of {user_input.get(CONF_FIRMWARE_VERSION)} is below the "
+            f"minimum supported version of {OPNSENSE_MIN_FIRMWARE}",
+        )
+        return True
+    if isinstance(error, OPNsenseUnknownFirmware):
+        _log_and_set_error(
+            errors=errors,
+            key="unknown_firmware",
+            message="Unable to get OPNsense Firmware version",
+        )
+        return True
+
+    if isinstance(error, OPNsenseSSLError):
+        error_key = "cannot_connect_ssl"
+    elif isinstance(error, OPNsenseInvalidAuth):
+        error_key = "invalid_auth"
+    elif isinstance(error, OPNsensePrivilegeMissing):
+        error_key = "privilege_missing"
+    elif isinstance(error, OPNsenseTimeoutError):
+        error_key = "connect_timeout"
+    elif isinstance(error, OPNsenseConnectionError):
+        error_key = "cannot_connect"
+    else:
+        return False
+
+    _log_and_set_error(
+        errors=errors,
+        key=error_key,
+        message=cleanse_sensitive_data(
+            f"aiopnsense Error. {type(error).__name__}: {error}",
+            [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
+        ),
+    )
+    return True
 
 
 async def _clean_and_parse_url(user_input: MutableMapping[str, Any]) -> None:
@@ -458,7 +415,7 @@ async def _clean_and_parse_url(user_input: MutableMapping[str, Any]) -> None:
         user_input: Mutable form payload containing `CONF_URL`.
 
     Raises:
-        InvalidURL: URL is missing a host after normalization.
+        OPNsenseInvalidURL: URL is missing a host after normalization.
     """
     fix_url: str = user_input.get(CONF_URL, "").strip()
     url_parts: ParseResult = urlparse(fix_url)
@@ -468,15 +425,26 @@ async def _clean_and_parse_url(user_input: MutableMapping[str, Any]) -> None:
         url_parts = urlparse(fix_url)
 
     if not url_parts.netloc:
-        raise InvalidURL
+        raise OPNsenseInvalidURL
 
-    user_input[CONF_URL] = f"{url_parts.scheme}://{url_parts.netloc}"
+    host = url_parts.hostname
+    if host is None:
+        raise OPNsenseInvalidURL
+
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    try:
+        port = url_parts.port
+    except ValueError as err:
+        raise OPNsenseInvalidURL from err
+    if port:
+        host = f"{host}:{port}"
+
+    user_input[CONF_URL] = f"{url_parts.scheme}://{host}"
     _LOGGER.debug("[config_flow] Cleaned URL: %s", user_input[CONF_URL])
 
 
-async def _get_client(
-    user_input: MutableMapping[str, Any], hass: HomeAssistant
-) -> OPNsenseClientProtocol:
+async def _get_client(user_input: MutableMapping[str, Any], hass: HomeAssistant) -> OPNsenseClient:
     """Create a temporary OPNsense client for flow validation calls.
 
     Args:
@@ -484,7 +452,7 @@ async def _get_client(
         hass: Home Assistant instance used to create the aiohttp session.
 
     Returns:
-        OPNsenseClientProtocol: Connected client used for validation probes.
+        OPNsenseClient: Connected client used for validation probes.
     """
     return await create_opnsense_client(
         url=user_input[CONF_URL],
@@ -500,21 +468,6 @@ async def _get_client(
     )
 
 
-def _validate_firmware_version(firmware_version: str) -> None:
-    """Validate that firmware meets the minimum supported version.
-
-    Args:
-        firmware_version: Firewall firmware string returned by the backend.
-
-    Raises:
-        BelowMinFirmware: Firmware is older than the supported minimum.
-    """
-    if awesomeversion.AwesomeVersion(firmware_version) < awesomeversion.AwesomeVersion(
-        OPNSENSE_MIN_FIRMWARE
-    ):
-        raise BelowMinFirmware
-
-
 async def _handle_user_input(
     hass: HomeAssistant,
     user_input: MutableMapping[str, Any],
@@ -526,60 +479,22 @@ async def _handle_user_input(
     Args:
         hass: Home Assistant instance.
         user_input: Mutable user input mapping to validate and enrich.
-        config_step: Flow step identifier controlling plugin-check behavior.
+        config_step: Flow step identifier.
         expected_id: Expected device unique ID for reconfigure/options validation.
 
     Raises:
         OPNsenseUnknownFirmware: Firmware could not be parsed or compared safely.
-        BelowMinFirmware: Firmware is below the minimum supported version.
-        PluginMissing: Plugin is required for enabled sync options but not installed.
-        MissingDeviceUniqueID: Backend did not return a device unique ID.
+        OPNsenseBelowMinFirmware: Firmware is below the minimum supported version.
+        OPNsenseMissingDeviceUniqueID: Backend did not return a device unique ID.
     """
     await _clean_and_parse_url(user_input)
 
-    client: OPNsenseClientProtocol = await _get_client(user_input, hass)
+    client: OPNsenseClient = await _get_client(user_input, hass)
     try:
+        await client.validate()
+
         user_input[CONF_FIRMWARE_VERSION] = await client.get_host_firmware_version()
         _LOGGER.debug("[handle_user_input] Firmware Version: %s", user_input[CONF_FIRMWARE_VERSION])
-
-        try:
-            _validate_firmware_version(user_input[CONF_FIRMWARE_VERSION])
-        except (
-            awesomeversion.exceptions.AwesomeVersionCompareException,
-            TypeError,
-            ValueError,
-        ) as e:
-            raise OPNsenseUnknownFirmware from e
-
-        await client.set_use_snake_case(initial=True)
-
-        # Plugin check not required for config step of user. Otherwise, plugin check is required if
-        # granular sync options is enabled
-        try:
-            require_plugin_check = (
-                config_step != "user"
-                and user_input.get(CONF_GRANULAR_SYNC_OPTIONS, DEFAULT_GRANULAR_SYNC_OPTIONS)
-                and any(
-                    user_input.get(item, DEFAULT_SYNC_OPTION_VALUE)
-                    for item in SYNC_ITEMS_REQUIRING_PLUGIN
-                )
-                and awesomeversion.AwesomeVersion(user_input[CONF_FIRMWARE_VERSION])
-                < awesomeversion.AwesomeVersion("26.1.1")
-            )
-        except (
-            awesomeversion.exceptions.AwesomeVersionCompareException,
-            TypeError,
-            ValueError,
-        ) as e:
-            raise OPNsenseUnknownFirmware from e
-
-        _LOGGER.debug(
-            "[handle_user_input] config_step: %s, require_plugin_check: %s",
-            config_step,
-            require_plugin_check,
-        )
-        if require_plugin_check and not await client.is_plugin_installed():
-            raise PluginMissing
 
         system_info: dict[str, Any] = await client.get_system_info()
         _LOGGER.debug("[handle_user_input] system_info: %s", system_info)
@@ -593,7 +508,7 @@ async def _handle_user_input(
         _LOGGER.debug("[handle_user_input] Device Unique ID: %s", user_input[CONF_DEVICE_UNIQUE_ID])
 
         if not user_input.get(CONF_DEVICE_UNIQUE_ID):
-            raise MissingDeviceUniqueID
+            raise OPNsenseMissingDeviceUniqueID("OPNsense device unique ID is unavailable")
     finally:
         await client.async_close()
 
@@ -873,7 +788,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for OPNsense."""
 
     # bumping this is what triggers async_migrate_entry for the component
-    VERSION = 4
+    VERSION = 5
 
     def __init__(self) -> None:
         """Initialize transient config-flow storage."""
@@ -1233,13 +1148,7 @@ class OPNsenseOptionsFlow(OptionsFlow):
             dt_entries: dict[str, Any] = await _get_dt_entries(
                 hass=self.hass, config=self.config_entry.data, selected_devices=selected_devices
             )
-        except (
-            aiohttp.ClientError,
-            MissingExternalAiopnsenseDependency,
-            OSError,
-            TimeoutError,
-            xmlrpc.client.Error,
-        ) as err:
+        except (MissingExternalAiopnsenseDependency, OPNsenseConnectionError) as err:
             _LOGGER.warning("Failed to load device tracker entries: %s", err)
             errors["base"] = "cannot_connect"
             dt_entries = {
@@ -1255,31 +1164,3 @@ class OPNsenseOptionsFlow(OptionsFlow):
             ),
             errors=errors,
         )
-
-
-class InvalidURLError(Exception):
-    """InvalidURL."""
-
-
-InvalidURL = InvalidURLError
-
-
-class MissingDeviceUniqueIDError(Exception):
-    """Missing the Device Unique ID."""
-
-
-MissingDeviceUniqueID = MissingDeviceUniqueIDError
-
-
-class BelowMinFirmwareError(Exception):
-    """Current firmware is below the Minimum supported version."""
-
-
-BelowMinFirmware = BelowMinFirmwareError
-
-
-class PluginMissingError(Exception):
-    """OPNsense plugin missing."""
-
-
-PluginMissing = PluginMissingError

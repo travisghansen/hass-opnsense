@@ -56,21 +56,13 @@ class _FakeFlowClient:
         self._device_id = device_id
         self._firmware = firmware
 
+    async def validate(self) -> None:
+        """Satisfy aiopnsense validation during config-flow tests."""
+        return
+
     async def get_host_firmware_version(self) -> str:
         """Return the firmware version configured for this fake flow client."""
         return self._firmware
-
-    async def set_use_snake_case(self, initial: bool = False) -> None:
-        """Accept the snake-case toggle call used by flow validation without side effects."""
-        return
-
-    async def is_plugin_installed(self) -> bool:  # for SYNC_ITEMS_REQUIRING_PLUGIN path
-        """Report plugin availability for config-flow validation checks.
-
-        Returns:
-            bool: Always returns ``True`` so plugin-gated flow branches remain enabled.
-        """
-        return True
 
     async def get_system_info(self) -> MutableMapping[str, Any]:
         """Return a minimal system info payload used by flow validation."""
@@ -112,6 +104,10 @@ class _FakeRuntimeClient:
         self._firmware = firmware
         self._closed = False
 
+    async def validate(self) -> None:
+        """Satisfy aiopnsense validation during setup-entry tests."""
+        return
+
     async def get_device_unique_id(
         self, expected_id: str | None = None
     ) -> str:  # used by setup & coordinator
@@ -136,20 +132,13 @@ class _FakeRuntimeClient:
         self._closed = True
         return True
 
-    async def set_use_snake_case(
-        self, initial: bool = False
-    ) -> None:  # called during coordinator _async_setup
-        # Accept the optional `initial` flag like the production client. No-op for tests.
-        """Accept the snake-case toggle call used during coordinator setup."""
-        return
-
     async def reset_query_counts(self) -> None:
         """Accept query-count reset calls without changing test state."""
         return
 
-    async def get_query_counts(self) -> tuple[int, int]:
-        """Return a fixed pair of query counters for coordinator assertions."""
-        return (0, 0)
+    async def get_query_counts(self) -> int:
+        """Return a fixed query-count value for coordinator assertions."""
+        return 0
 
     async def get_system_info(self) -> dict[str, str]:  # first refresh path
         """Return minimal system information for the initial refresh path."""
@@ -557,13 +546,14 @@ async def test_e2e_reload_and_unload(
 async def test_e2e_full_migration_chain(
     monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Exercise the full ``async_migrate_entry`` path from version 1 to 4.
+    """Exercise the full ``async_migrate_entry`` path from version 1 to 5.
 
     Verifies:
         - v1 to v2 removes ``tls_insecure`` and adds ``verify_ssl`` as its inverse.
         - v2 to v3 updates the device unique ID across the entry, entities, and devices.
         - v3 to v4 transforms telemetry-related sensor unique IDs and removes
           ``*_connected_client_count`` entities.
+        - v4 to v5 removes legacy switch entities using legacy rule tokens.
     """
     # Build hass mock with update_entry bypass logic
     hass = _build_mock_hass()
@@ -628,6 +618,11 @@ async def test_e2e_full_migration_chain(
                 ),
                 FakeEntity(
                     "sensor.router_vpn_clients", "oldmacid_connected_client_count", "dev-main"
+                ),
+                FakeEntity(
+                    "switch.router_nat_port_forward_rule",
+                    "oldmacid_nat_port_forward_rule",
+                    "dev-main",
                 ),
                 FakeEntity(
                     "sensor.router_openvpn_status0",
@@ -724,7 +719,7 @@ async def test_e2e_full_migration_chain(
     # Run full migration
     ok = await init_mod.async_migrate_entry(hass, entry)
     assert ok is True
-    assert entry.version == 4
+    assert entry.version == 5
     # v1->2: tls_insecure removed, verify_ssl added (inverse of True -> False)
     assert init_mod.CONF_TLS_INSECURE not in entry.data
     assert entry.data.get(CONF_VERIFY_SSL) is False
@@ -739,6 +734,8 @@ async def test_e2e_full_migration_chain(
     # connected_client_count entity should be removed during v3->4 migration
     assert "sensor.router_vpn_clients" in fake_entity_reg.removed
     assert "sensor.router_vpn_clients" not in fake_entity_reg._entities
+    assert "switch.router_nat_port_forward_rule" in fake_entity_reg.removed
+    assert "switch.router_nat_port_forward_rule" not in fake_entity_reg._entities
     # Remaining entities use new prefix and no _telemetry_ substring
     for ent in ent_ids.values():
         assert ent.unique_id.startswith("newmacid_")
