@@ -6,11 +6,12 @@ import asyncio
 from importlib import import_module
 from importlib.metadata import PackageNotFoundError, version as package_version
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 
-from .client_protocol import OPNsenseClientProtocol
+if TYPE_CHECKING:
+    from aiopnsense import OPNsenseClient
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -72,7 +73,7 @@ async def create_opnsense_client(
     opts: dict[str, Any] | None = None,
     initial: bool = False,
     name: str | None = None,
-) -> OPNsenseClientProtocol:
+) -> OPNsenseClient:
     """Create the external aiopnsense client.
 
     Raises:

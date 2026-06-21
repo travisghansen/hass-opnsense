@@ -8,7 +8,7 @@ import ipaddress
 import logging
 import re
 import socket
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import ParseResult, quote_plus, urlparse
 
 import aiohttp
@@ -29,7 +29,6 @@ import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 
 from .client_factory import MissingExternalAiopnsenseDependency, create_opnsense_client
-from .client_protocol import OPNsenseClientProtocol
 from .const import (
     CONF_DEVICE_TRACKER_CONSIDER_HOME,
     CONF_DEVICE_TRACKER_ENABLED,
@@ -52,6 +51,9 @@ from .const import (
     TRACKED_MACS,
 )
 from .helpers import is_private_ip
+
+if TYPE_CHECKING:
+    from aiopnsense import OPNsenseClient
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -438,9 +440,7 @@ async def _clean_and_parse_url(user_input: MutableMapping[str, Any]) -> None:
     _LOGGER.debug("[config_flow] Cleaned URL: %s", user_input[CONF_URL])
 
 
-async def _get_client(
-    user_input: MutableMapping[str, Any], hass: HomeAssistant
-) -> OPNsenseClientProtocol:
+async def _get_client(user_input: MutableMapping[str, Any], hass: HomeAssistant) -> OPNsenseClient:
     """Create a temporary OPNsense client for flow validation calls.
 
     Args:
@@ -448,7 +448,7 @@ async def _get_client(
         hass: Home Assistant instance used to create the aiohttp session.
 
     Returns:
-        OPNsenseClientProtocol: Connected client used for validation probes.
+        OPNsenseClient: Connected client used for validation probes.
     """
     return await create_opnsense_client(
         url=user_input[CONF_URL],
@@ -500,7 +500,7 @@ async def _handle_user_input(
     """
     await _clean_and_parse_url(user_input)
 
-    client: OPNsenseClientProtocol = await _get_client(user_input, hass)
+    client: OPNsenseClient = await _get_client(user_input, hass)
     try:
         user_input[CONF_FIRMWARE_VERSION] = await client.get_host_firmware_version()
         _LOGGER.debug("[handle_user_input] Firmware Version: %s", user_input[CONF_FIRMWARE_VERSION])

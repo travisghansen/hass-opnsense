@@ -17,7 +17,6 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.opnsense import coordinator as coordinator_module
-from custom_components.opnsense.client_protocol import OPNsenseClientProtocol
 from custom_components.opnsense.const import (
     ATTR_UNBOUND_BLOCKLIST,
     CONF_DEVICE_UNIQUE_ID,
@@ -245,7 +244,7 @@ async def test_build_categories_includes_smart_without_smart_info_when_client_la
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_SMART: True})
     coordinator = OPNsenseDataUpdateCoordinator(
         hass=MagicMock(),
-        client=cast("OPNsenseClientProtocol", ClientWithoutSmartInfo()),
+        client=cast("Any", ClientWithoutSmartInfo()),
         name="n",
         update_interval=timedelta(seconds=1),
         device_unique_id="id",

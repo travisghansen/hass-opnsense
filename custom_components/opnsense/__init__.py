@@ -8,7 +8,7 @@ and various other OPNsense features through the Home Assistant interface.
 from collections.abc import Mapping
 from datetime import timedelta
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 import awesomeversion
@@ -32,7 +32,6 @@ from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.typing import ConfigType
 
 from .client_factory import MissingExternalAiopnsenseDependency, create_opnsense_client
-from .client_protocol import OPNsenseClientProtocol
 from .const import (
     CONF_DEVICE_TRACKER_ENABLED,
     CONF_DEVICE_TRACKER_SCAN_INTERVAL,
@@ -58,6 +57,9 @@ from .coordinator import OPNsenseDataUpdateCoordinator
 from .helpers import is_private_ip
 from .models import OPNsenseData
 from .services import async_setup_services
+
+if TYPE_CHECKING:
+    from aiopnsense import OPNsenseClient
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -174,7 +176,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     config_device_id: str = config[CONF_DEVICE_UNIQUE_ID]
 
-    client: OPNsenseClientProtocol | None = None
+    client: OPNsenseClient | None = None
     try:
         client = await create_opnsense_client(
             url=url,
@@ -389,7 +391,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """
     _LOGGER.info("Unloading: %s", entry.as_dict())
     platforms: list[Platform] = getattr(entry.runtime_data, LOADED_PLATFORMS)
-    client: OPNsenseClientProtocol = getattr(entry.runtime_data, OPNSENSE_CLIENT)
+    client: OPNsenseClient = getattr(entry.runtime_data, OPNSENSE_CLIENT)
     unload_ok: bool = await hass.config_entries.async_unload_platforms(entry, platforms)
 
     await client.async_close()
@@ -588,7 +590,7 @@ async def _migrate_3_to_4(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
         config.get(CONF_DEVICE_UNIQUE_ID, config_entry.unique_id or config_entry.entry_id)
     )
 
-    client: OPNsenseClientProtocol | None = None
+    client: OPNsenseClient | None = None
     try:
         client = await create_opnsense_client(
             url=url,
