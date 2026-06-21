@@ -476,6 +476,47 @@ async def test_migrate_4_to_5_removes_legacy_rule_switch_entities(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("exc", [KeyError("legacy"), ValueError("legacy")])
+async def test_migrate_4_to_5_legacy_entity_remove_failure_aborts_migration(
+    monkeypatch: pytest.MonkeyPatch, ph_hass: Any, exc: BaseException
+) -> None:
+    """_migrate_4_to_5 returns False and does not bump version when removals fail."""
+    ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
+    entry = MockConfigEntry(
+        domain=init_mod.DOMAIN,
+        data={init_mod.CONF_DEVICE_UNIQUE_ID: "device-id"},
+        version=4,
+    )
+    entry.add_to_hass(ph_hass)
+
+    class Ent:
+        def __init__(self, entity_id: str, unique_id: str) -> None:
+            self.entity_id = entity_id
+            self.unique_id = unique_id
+
+    broken_ent = Ent("switch.filter", "device-id_filter_123")
+    ok_ent = Ent("switch.nat_pf", "device-id_nat_port_forward_123")
+
+    entity_registry = MagicMock()
+    entity_registry.async_remove = MagicMock(side_effect=[exc, None])
+    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(
+        init_mod.er,
+        "async_entries_for_config_entry",
+        lambda registry, config_entry_id: [broken_ent, ok_ent],
+    )
+
+    res = await init_mod.async_migrate_entry(ph_hass, entry)
+    assert res is False
+    assert entity_registry.async_remove.call_count == 2
+    entity_registry.async_remove.assert_has_calls(
+        [call(broken_ent.entity_id), call(ok_ent.entity_id)],
+        any_order=False,
+    )
+    ph_hass.config_entries.async_update_entry.assert_not_called()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("should_raise", [False, True])
 async def test_async_setup_calls_services_and_handles_exceptions(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any, should_raise: Any
