@@ -228,7 +228,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "OPNsense firmware requires external aiopnsense package, but it is not available."
         )
         return False
-    except aiohttp.ClientError, OPNsenseError, OSError, TimeoutError, TypeError, ValueError:
+    except OPNsenseError:
         if client is not None:
             await client.async_close()
         raise

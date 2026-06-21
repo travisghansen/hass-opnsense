@@ -249,7 +249,7 @@ async def test_async_setup_entry_closes_client_when_validation_fails(
 ) -> None:
     """async_setup_entry should close a constructed client when validation fails."""
     client = MagicMock()
-    client.validate = AsyncMock(side_effect=init_mod.aiohttp.ClientError("boom"))
+    client.validate = AsyncMock(side_effect=init_mod.OPNsenseError("boom"))
     client.async_close = AsyncMock(return_value=True)
 
     async def _create_client(**kwargs: Any) -> Any:
@@ -273,7 +273,7 @@ async def test_async_setup_entry_closes_client_when_validation_fails(
     hass.config_entries.async_reload = AsyncMock()
     hass.data = {}
 
-    with pytest.raises(init_mod.aiohttp.ClientError):
+    with pytest.raises(init_mod.OPNsenseError):
         await init_mod.async_setup_entry(hass, entry)
 
     client.async_close.assert_awaited_once()
