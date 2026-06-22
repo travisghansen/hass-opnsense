@@ -10,8 +10,6 @@ import re
 from typing import Any
 from urllib.parse import ParseResult, quote_plus, urlparse
 
-import aiohttp
-from aiopnsense import OPNsenseClient
 from aiopnsense.exceptions import (
     OPNsenseBelowMinFirmware,
     OPNsenseConnectionError,
@@ -35,7 +33,6 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
-from homeassistant.helpers.aiohttp_client import async_create_clientsession
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 
@@ -60,7 +57,7 @@ from .const import (
     OPNSENSE_MIN_FIRMWARE,
     TRACKED_MACS,
 )
-from .helpers import is_private_ip
+from .helpers import create_opnsense_client
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -401,30 +398,6 @@ async def _clean_and_parse_url(user_input: MutableMapping[str, Any]) -> None:
     _LOGGER.debug("[config_flow] Cleaned URL: %s", user_input[CONF_URL])
 
 
-async def _get_client(user_input: MutableMapping[str, Any], hass: HomeAssistant) -> OPNsenseClient:
-    """Create a temporary OPNsense client for flow validation calls.
-
-    Args:
-        user_input: User input containing URL, credentials, and SSL preference.
-        hass: Home Assistant instance used to create the aiohttp session.
-
-    Returns:
-        OPNsenseClient: Connected client used for validation probes.
-    """
-    return OPNsenseClient(
-        url=user_input[CONF_URL],
-        username=user_input[CONF_USERNAME],
-        password=user_input[CONF_PASSWORD],
-        session=async_create_clientsession(
-            hass=hass,
-            raise_for_status=True,
-            cookie_jar=aiohttp.CookieJar(unsafe=is_private_ip(user_input[CONF_URL])),
-        ),
-        opts={"verify_ssl": user_input.get(CONF_VERIFY_SSL)},
-        initial=True,
-    )
-
-
 async def _validate_client_details(
     hass: HomeAssistant,
     user_input: MutableMapping[str, Any],
@@ -444,7 +417,14 @@ async def _validate_client_details(
     """
     await _clean_and_parse_url(user_input)
 
-    client: OPNsenseClient = await _get_client(user_input, hass)
+    client = create_opnsense_client(
+        hass=hass,
+        url=user_input[CONF_URL],
+        username=user_input[CONF_USERNAME],
+        password=user_input[CONF_PASSWORD],
+        verify_ssl=user_input.get(CONF_VERIFY_SSL),
+        throw_errors=True,
+    )
     try:
         await client.validate()
 
@@ -699,16 +679,12 @@ async def _get_dt_entries(
     username: str = config[CONF_USERNAME]
     password: str = config[CONF_PASSWORD]
     verify_ssl: bool = config.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
-    client = OPNsenseClient(
+    client = create_opnsense_client(
+        hass=hass,
         url=url,
         username=username,
         password=password,
-        session=async_create_clientsession(
-            hass=hass,
-            raise_for_status=False,
-            cookie_jar=aiohttp.CookieJar(unsafe=is_private_ip(url)),
-        ),
-        opts={"verify_ssl": verify_ssl},
+        verify_ssl=verify_ssl,
     )
     try:
         # dicts are ordered so put all previously selected items at the top

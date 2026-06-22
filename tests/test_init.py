@@ -19,6 +19,7 @@ from tests.utilities import patch_opnsense_client
 
 # import the package module object so we can access its functions/attrs
 init_mod = importlib.import_module("custom_components.opnsense")
+helpers_mod = importlib.import_module("custom_components.opnsense.helpers")
 
 
 @pytest.fixture(autouse=True)
@@ -62,16 +63,14 @@ def _patch_hass_async_create_clientsession(monkeypatch: pytest.MonkeyPatch) -> N
         raising=False,
     )
 
-    # Also patch the integration's local import of the helper so the
-    # integration doesn't create a real session when tests import the
-    # symbol into its own namespace (e.g., `from ...aiohttp_client import async_create_clientsession`).
-    # Use raising=False and a fallback import path to be resilient.
+    # Also patch the integration helper's local import so shared client construction
+    # does not create a real session.
     monkeypatch.setattr(
-        init_mod, "async_create_clientsession", _fake_create_clientsession, raising=False
+        helpers_mod, "async_create_clientsession", _fake_create_clientsession, raising=False
     )
     # Stub CookieJar used by migrations so aiohttp isn't required in the test env
     monkeypatch.setattr(
-        "custom_components.opnsense.aiohttp.CookieJar",
+        "custom_components.opnsense.helpers.aiohttp.CookieJar",
         lambda *a, **k: object(),
         raising=False,
     )
@@ -212,7 +211,7 @@ async def test_async_setup_entry_validates_client_before_probes(
         """Return the probe-tracking client used by this setup-entry test."""
         return client
 
-    monkeypatch.setattr(init_mod, "OPNsenseClient", _create_client)
+    monkeypatch.setattr(init_mod, "create_opnsense_client", _create_client)
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
     )
@@ -256,7 +255,7 @@ async def test_async_setup_entry_closes_client_when_validation_fails(
         """Return the validation-failing client for this setup-entry test."""
         return client
 
-    monkeypatch.setattr(init_mod, "OPNsenseClient", _create_client)
+    monkeypatch.setattr(init_mod, "create_opnsense_client", _create_client)
 
     entry = make_config_entry(
         data={
@@ -311,7 +310,7 @@ async def test_async_setup_entry_continues_after_firmware_validation_error(
         """Return the firmware-failing client for this setup-entry test."""
         return client
 
-    monkeypatch.setattr(init_mod, "OPNsenseClient", _create_client)
+    monkeypatch.setattr(init_mod, "create_opnsense_client", _create_client)
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
     )
@@ -1382,7 +1381,7 @@ async def test_async_migrate_entry_returns_false_when_submigration_fails(
     monkeypatch.setattr(init_mod, failing_fn, AsyncMock(return_value=False))
     client = MagicMock()
     client.async_close = AsyncMock()
-    monkeypatch.setattr(init_mod, "OPNsenseClient", lambda **_kwargs: client)
+    monkeypatch.setattr(init_mod, "create_opnsense_client", lambda **_kwargs: client)
 
     cfg = MagicMock()
     cfg.version = version

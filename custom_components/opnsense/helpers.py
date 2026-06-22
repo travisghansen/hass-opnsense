@@ -6,6 +6,11 @@ import re
 from typing import Any
 from urllib.parse import urlparse
 
+import aiohttp
+from aiopnsense import OPNsenseClient
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
+
 
 def dict_get(data: MutableMapping[str, Any], path: str, default: Any | None = None) -> Any | None:
     """Parse the path to get the desired value out of the data."""
@@ -37,6 +42,49 @@ def is_private_ip(url: str) -> bool:
         return False
     else:
         return ip_obj.is_private
+
+
+def create_opnsense_client(
+    *,
+    hass: HomeAssistant,
+    url: str,
+    username: str,
+    password: str,
+    verify_ssl: bool | None,
+    throw_errors: bool = False,
+    name: str | None = None,
+) -> OPNsenseClient:
+    """Create an OPNsense client with Home Assistant session settings.
+
+    Args:
+        hass: Home Assistant instance used to create the aiohttp session.
+        url: OPNsense base URL.
+        username: OPNsense API username.
+        password: OPNsense API password.
+        verify_ssl: Whether the client should verify TLS certificates.
+        throw_errors: Whether aiopnsense should propagate request/decorator errors.
+        name: Optional client display name used for logging and diagnostics.
+
+    Returns:
+        OPNsenseClient: Configured aiopnsense client.
+    """
+    client_kwargs: dict[str, Any] = {}
+    if name is not None:
+        client_kwargs["name"] = name
+
+    return OPNsenseClient(
+        url=url,
+        username=username,
+        password=password,
+        session=async_create_clientsession(
+            hass=hass,
+            raise_for_status=False,
+            cookie_jar=aiohttp.CookieJar(unsafe=is_private_ip(url)),
+        ),
+        opts={"verify_ssl": verify_ssl},
+        throw_errors=throw_errors,
+        **client_kwargs,
+    )
 
 
 def coerce_bool(value: Any) -> bool | None:

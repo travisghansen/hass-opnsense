@@ -10,7 +10,6 @@ from datetime import timedelta
 import logging
 from typing import Any
 
-import aiohttp
 from aiopnsense import OPNsenseClient
 from aiopnsense.exceptions import OPNsenseBelowMinFirmware, OPNsenseError, OPNsenseUnknownFirmware
 import awesomeversion
@@ -30,7 +29,6 @@ from homeassistant.helpers import (
     entity_registry as er,
     issue_registry as ir,
 )
-from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.typing import ConfigType
 
 from .const import (
@@ -55,7 +53,7 @@ from .const import (
     VERSION,
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
-from .helpers import is_private_ip
+from .helpers import create_opnsense_client
 from .models import OPNsenseData
 from .services import async_setup_services
 
@@ -167,11 +165,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         bool: `True` when setup and initial refresh succeed; otherwise `False`.
 
     Raises:
-        aiohttp.ClientResponseError: Raised when the initial API probes or first
-            refresh receives an HTTP error response, including authorization
-            failures such as ``403 Forbidden``.
-        aiohttp.ClientError: Raised when the client cannot complete the initial
-            OPNsense requests because of transport or session-level failures.
+        OPNsenseError: Raised when validation cannot complete because of
+            authentication, privilege, firmware, or transport failures.
         TimeoutError: Raised when an initial OPNsense request times out during
             setup or the first coordinator refresh.
     """
@@ -186,7 +181,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     client: OPNsenseClient | None = None
     try:
-        client = _create_client(hass, entry, name=entry.title)
+        client = create_opnsense_client(
+            hass=hass,
+            url=config[CONF_URL],
+            username=config[CONF_USERNAME],
+            password=config[CONF_PASSWORD],
+            verify_ssl=config.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
+            name=entry.title,
+        )
         try:
             await client.validate()
         except OPNsenseBelowMinFirmware, OPNsenseUnknownFirmware:
@@ -414,39 +416,6 @@ async def _migrate_1_to_2(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
 
     hass.config_entries.async_update_entry(config_entry, data=data, version=2)
     return True
-
-
-def _create_client(
-    hass: HomeAssistant, config_entry: ConfigEntry, *, name: str | None = None
-) -> OPNsenseClient:
-    """Create an OPNsense client from the current config entry data.
-
-    Args:
-        hass: Home Assistant instance.
-        config_entry: Config entry providing connection credentials and options.
-        name: Optional client name used for logging and diagnostics.
-
-    Returns:
-        OPNsenseClient: Client configured from the current config entry data.
-    """
-    config: Mapping[str, Any] = config_entry.data
-    url: str = config[CONF_URL]
-    username: str = config[CONF_USERNAME]
-    password: str = config[CONF_PASSWORD]
-    verify_ssl: bool = config.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
-    client_name = name or config_entry.title
-    return OPNsenseClient(
-        url=url,
-        username=username,
-        password=password,
-        session=async_create_clientsession(
-            hass=hass,
-            raise_for_status=False,
-            cookie_jar=aiohttp.CookieJar(unsafe=is_private_ip(url)),
-        ),
-        opts={"verify_ssl": verify_ssl},
-        name=client_name,
-    )
 
 
 async def _migrate_2_to_3(
@@ -719,7 +688,14 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
     migration_client: OPNsenseClient | None = None
     try:
         if version in (2, 3):
-            migration_client = _create_client(hass, config_entry)
+            migration_client = create_opnsense_client(
+                hass=hass,
+                url=config_entry.data[CONF_URL],
+                username=config_entry.data[CONF_USERNAME],
+                password=config_entry.data[CONF_PASSWORD],
+                verify_ssl=config_entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
+                name=config_entry.title,
+            )
 
         # 2 -> 3: Change unique device id to use lowest MAC address
         if version == 2:

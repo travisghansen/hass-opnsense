@@ -223,18 +223,6 @@ async def test_get_dt_entries_sorts_and_includes_selected(
     client_cls.get_arp_table = _get_arp_table
     patch_opnsense_client(monkeypatch, cf_mod, client_cls)
 
-    # Patch async_create_clientsession on the module under test to avoid real network I/O
-    def _fake_create_clientsession(*args, **kwargs) -> Any:
-        """Return a mock client session so the test avoids real network I/O.
-
-        Args:
-            *args: Positional arguments forwarded from the patched helper and ignored.
-            **kwargs: Keyword arguments forwarded from the patched helper and ignored.
-        """
-        return MagicMock()
-
-    monkeypatch.setattr(cf_mod, "async_create_clientsession", _fake_create_clientsession)
-
     hass = MagicMock()
     config = {cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"}
     selected = ["aa:bb:cc:00:00:01"]
@@ -275,7 +263,6 @@ async def test_get_dt_entries_preserves_missing_selected_devices(
 
     client_cls.get_arp_table = _get_arp_table
     patch_opnsense_client(monkeypatch, cf_mod, client_cls)
-    monkeypatch.setattr(cf_mod, "async_create_clientsession", lambda *a, **k: MagicMock())
 
     res = await cf_mod._get_dt_entries(
         hass=MagicMock(),
@@ -314,7 +301,6 @@ async def test_get_dt_entries_closes_client(monkeypatch: pytest.MonkeyPatch) -> 
             return []
 
     patch_opnsense_client(monkeypatch, cf_mod, _Client)
-    monkeypatch.setattr(cf_mod, "async_create_clientsession", lambda *a, **k: MagicMock())
 
     await cf_mod._get_dt_entries(
         hass=MagicMock(),
@@ -373,7 +359,6 @@ async def test_validate_client_details_closes_client(monkeypatch: pytest.MonkeyP
             return "dev123"
 
     patch_opnsense_client(monkeypatch, cf_mod, _Client)
-    monkeypatch.setattr(cf_mod, "async_create_clientsession", lambda *a, **k: MagicMock())
 
     user_input = {
         cf_mod.CONF_URL: "https://router.example",
@@ -755,7 +740,7 @@ async def test_validate_input_granular_sync_uses_native_validation_only(
             return "dev-01"
 
     client = FakeClient("25.1")
-    monkeypatch.setattr(cf_mod, "OPNsenseClient", lambda **_kwargs: client)
+    monkeypatch.setattr(cf_mod, "create_opnsense_client", lambda **_kwargs: client)
 
     user_input = {
         cf_mod.CONF_URL: "https://host.example",
