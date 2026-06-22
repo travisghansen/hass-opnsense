@@ -68,18 +68,14 @@ CONF_DEVICE_TRACKING_MODE = "device_tracking_mode"
 DEVICE_TRACKING_MODE_DISABLED = "disabled"
 DEVICE_TRACKING_MODE_ALL = "all_detected"
 DEVICE_TRACKING_MODE_SELECTED = "selected_only"
-
-
-def is_valid_mac_address(mac: str) -> bool:
-    """Validate that the input is a normalized MAC-compatible string.
-
-    Args:
-        mac: Raw MAC address value to validate.
-
-    Returns:
-        bool: `True` when the input can be normalized as a MAC address.
-    """
-    return normalize_mac_address(mac) is not None
+MAC_ADDRESS_PATTERN = re.compile(r"^([0-9a-f]{2}:){5}([0-9a-f]{2})$")
+CONNECTION_ERROR_KEYS: tuple[tuple[type[OPNsenseError], str], ...] = (
+    (OPNsenseSSLError, "cannot_connect_ssl"),
+    (OPNsenseInvalidAuth, "invalid_auth"),
+    (OPNsensePrivilegeMissing, "privilege_missing"),
+    (OPNsenseTimeoutError, "connect_timeout"),
+    (OPNsenseConnectionError, "cannot_connect"),
+)
 
 
 def normalize_mac_address(mac: str) -> str | None:
@@ -94,8 +90,7 @@ def normalize_mac_address(mac: str) -> str | None:
     if not isinstance(mac, str):
         return None
     normalized = mac.strip().lower().replace("-", ":")
-    mac_regex = re.compile(r"^([0-9a-f]{2}:){5}([0-9a-f]{2})$")
-    if not mac_regex.match(normalized):
+    if not MAC_ADDRESS_PATTERN.match(normalized):
         return None
     return normalized
 
@@ -297,7 +292,6 @@ def cleanse_sensitive_data(message: str, secrets: list | None = None) -> str:
 async def validate_input(
     hass: HomeAssistant,
     user_input: MutableMapping[str, Any],
-    config_step: str,
     errors: dict[str, Any],
     expected_id: str | None = None,
 ) -> dict[str, Any]:
@@ -306,7 +300,6 @@ async def validate_input(
     Args:
         hass: Home Assistant instance.
         user_input: Input payload being validated for this flow step.
-        config_step: Flow step identifier (for example `user` or `granular_sync`).
         errors: Mutable error mapping populated by this validator.
         expected_id: Expected device unique ID for reconfigure and options validation.
 
@@ -318,84 +311,62 @@ async def validate_input(
     # _LOGGER.debug("[validate_input] user_input: %s", filtered_user_input)
 
     try:
-        await _handle_user_input(
-            hass=hass, user_input=user_input, config_step=config_step, expected_id=expected_id
-        )
-    except OPNsenseMissingDeviceUniqueID as e:
-        _log_and_set_error(
-            errors=errors,
-            key="missing_device_unique_id",
-            message=f"Missing Device Unique ID Error. {type(e).__name__}: {e}",
-        )
-    except OPNsenseInvalidURL as e:
-        _log_and_set_error(
-            errors=errors,
-            key="invalid_url_format",
-            message=f"Invalid URL Error. {type(e).__name__}: {e}",
-        )
-    except OPNsenseError as e:
-        if not _log_aiopnsense_error(
-            errors=errors,
-            error=e,
-            user_input=user_input,
-        ):
+        await _validate_client_details(hass=hass, user_input=user_input, expected_id=expected_id)
+    except OPNsenseError as err:
+        validation_error = _get_validation_error_details(err, user_input)
+        if validation_error is None:
             raise
+        error_key, log_message = validation_error
+        _record_validation_error(errors=errors, key=error_key, message=log_message)
     return errors
 
 
-def _log_aiopnsense_error(
-    errors: MutableMapping[str, Any],
+def _get_validation_error_details(
     error: OPNsenseError,
     user_input: Mapping[str, Any],
-) -> bool:
-    """Map an aiopnsense validation exception to a config-flow error.
+) -> tuple[str, str] | None:
+    """Return config-flow error details for an aiopnsense validation exception.
 
     Args:
-        errors: Mutable error mapping populated by this validator.
         error: aiopnsense exception raised while validating the input.
         user_input: User input containing optional secrets for log redaction.
 
     Returns:
-        bool: ``True`` when the exception was mapped, otherwise ``False``.
+        tuple[str, str] | None: Error key and log message when mapped, otherwise ``None``.
     """
     if isinstance(error, OPNsenseBelowMinFirmware):
-        _log_and_set_error(
-            errors=errors,
-            key="below_min_firmware",
-            message=f"OPNsense Firmware of {user_input.get(CONF_FIRMWARE_VERSION)} is below the "
+        return (
+            "below_min_firmware",
+            f"OPNsense Firmware of {user_input.get(CONF_FIRMWARE_VERSION)} is below the "
             f"minimum supported version of {OPNSENSE_MIN_FIRMWARE}",
         )
-        return True
     if isinstance(error, OPNsenseUnknownFirmware):
-        _log_and_set_error(
-            errors=errors,
-            key="unknown_firmware",
-            message="Unable to get OPNsense Firmware version",
+        return (
+            "unknown_firmware",
+            "Unable to get OPNsense Firmware version",
         )
-        return True
+    if isinstance(error, OPNsenseMissingDeviceUniqueID):
+        return (
+            "missing_device_unique_id",
+            f"Missing Device Unique ID Error. {type(error).__name__}: {error}",
+        )
+    if isinstance(error, OPNsenseInvalidURL):
+        return (
+            "invalid_url_format",
+            f"Invalid URL Error. {type(error).__name__}: {error}",
+        )
 
-    if isinstance(error, OPNsenseSSLError):
-        error_key = "cannot_connect_ssl"
-    elif isinstance(error, OPNsenseInvalidAuth):
-        error_key = "invalid_auth"
-    elif isinstance(error, OPNsensePrivilegeMissing):
-        error_key = "privilege_missing"
-    elif isinstance(error, OPNsenseTimeoutError):
-        error_key = "connect_timeout"
-    elif isinstance(error, OPNsenseConnectionError):
-        error_key = "cannot_connect"
-    else:
-        return False
+    for error_type, error_key in CONNECTION_ERROR_KEYS:
+        if isinstance(error, error_type):
+            return (
+                error_key,
+                cleanse_sensitive_data(
+                    f"aiopnsense Error. {type(error).__name__}: {error}",
+                    [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
+                ),
+            )
 
-    _log_and_set_error(
-        errors=errors,
-        key=error_key,
-        message=cleanse_sensitive_data(
-            f"aiopnsense Error. {type(error).__name__}: {error}",
-            [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
-        ),
-    )
-    return True
+    return None
 
 
 async def _clean_and_parse_url(user_input: MutableMapping[str, Any]) -> None:
@@ -458,18 +429,16 @@ async def _get_client(user_input: MutableMapping[str, Any], hass: HomeAssistant)
     )
 
 
-async def _handle_user_input(
+async def _validate_client_details(
     hass: HomeAssistant,
     user_input: MutableMapping[str, Any],
-    config_step: str,
     expected_id: str | None = None,
 ) -> None:
-    """Run end-to-end validation against a live OPNsense endpoint.
+    """Validate and enrich OPNsense client details from a flow submission.
 
     Args:
         hass: Home Assistant instance.
         user_input: Mutable user input mapping to validate and enrich.
-        config_step: Flow step identifier.
         expected_id: Expected device unique ID for reconfigure/options validation.
 
     Raises:
@@ -503,7 +472,7 @@ async def _handle_user_input(
         await client.async_close()
 
 
-def _log_and_set_error(errors: MutableMapping[str, Any], key: str, message: str) -> None:
+def _record_validation_error(errors: MutableMapping[str, Any], key: str, message: str) -> None:
     """Log an error and set the form-level `base` error key.
 
     Args:
@@ -799,9 +768,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         """
         errors: dict[str, Any] = {}
         if user_input is not None:
-            errors = await validate_input(
-                hass=self.hass, user_input=user_input, config_step="user", errors=errors
-            )
+            errors = await validate_input(hass=self.hass, user_input=user_input, errors=errors)
             if not errors:
                 # https://developers.home-assistant.io/docs/config_entries_config_flow_handler#unique-ids
                 await self.async_set_unique_id(user_input.get(CONF_DEVICE_UNIQUE_ID))
@@ -849,7 +816,6 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
             errors = await validate_input(
                 hass=self.hass,
                 user_input=self._config,
-                config_step="granular_sync",
                 errors=errors,
                 expected_id=self._config.get(CONF_DEVICE_UNIQUE_ID),
             )
@@ -890,7 +856,6 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
             errors = await validate_input(
                 hass=self.hass,
                 user_input=self._config,
-                config_step="reconfigure",
                 errors=errors,
                 expected_id=self._config.get(CONF_DEVICE_UNIQUE_ID),
             )
@@ -1061,7 +1026,6 @@ class OPNsenseOptionsFlow(OptionsFlow):
             errors = await validate_input(
                 hass=self.hass,
                 user_input=self._config,
-                config_step="granular_sync",
                 errors=errors,
                 expected_id=self._config.get(CONF_DEVICE_UNIQUE_ID),
             )

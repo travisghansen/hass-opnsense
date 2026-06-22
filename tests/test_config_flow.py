@@ -26,10 +26,9 @@ cf_mod = importlib.import_module("custom_components.opnsense.config_flow")
 
 def test_mac_and_ip_and_cleanse() -> None:
     """Validate MAC/IP helpers and cleanse sensitive data."""
-    assert cf_mod.is_valid_mac_address("aa:bb:cc:dd:ee:ff")
-    assert cf_mod.is_valid_mac_address("AA-BB-CC-DD-EE-FF")
+    assert cf_mod.normalize_mac_address("aa:bb:cc:dd:ee:ff") == "aa:bb:cc:dd:ee:ff"
     assert cf_mod.normalize_mac_address("AA-BB-CC-DD-EE-FF") == "aa:bb:cc:dd:ee:ff"
-    assert not cf_mod.is_valid_mac_address("not-a-mac")
+    assert cf_mod.normalize_mac_address("not-a-mac") is None
 
     # IP validation
     assert cf_mod.is_ip_address("192.168.1.1")
@@ -185,18 +184,16 @@ async def test_validate_input_exception_mapping(
         """
         raise exc
 
-    monkeypatch.setattr(cf_mod, "_handle_user_input", _raiser)
+    monkeypatch.setattr(cf_mod, "_validate_client_details", _raiser)
     errors: dict[str, str] = {}
-    res = await cf_mod.validate_input(
-        hass=MagicMock(), user_input={}, errors=errors, config_step="user"
-    )
+    res = await cf_mod.validate_input(hass=MagicMock(), user_input={}, errors=errors)
     assert res.get("base") == expected
 
 
-def test_log_and_set_error_sets_base(caplog: pytest.LogCaptureFixture) -> None:
-    """_log_and_set_error should log the message and set errors['base']."""
+def test_record_validation_error_sets_base(caplog: pytest.LogCaptureFixture) -> None:
+    """_record_validation_error should log the message and set errors['base']."""
     errors: dict[str, str] = {}
-    cf_mod._log_and_set_error(errors=errors, key="test_key", message="an msg")
+    cf_mod._record_validation_error(errors=errors, key="test_key", message="an msg")
     assert errors.get("base") == "test_key"
     assert "an msg" in caplog.text
 
@@ -329,8 +326,8 @@ async def test_get_dt_entries_closes_client(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 @pytest.mark.asyncio
-async def test_handle_user_input_closes_client(monkeypatch: pytest.MonkeyPatch) -> None:
-    """_handle_user_input should always close the temporary client."""
+async def test_validate_client_details_closes_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_validate_client_details should always close the temporary client."""
 
     class _Client:
         last_instance = None
@@ -384,10 +381,9 @@ async def test_handle_user_input_closes_client(monkeypatch: pytest.MonkeyPatch) 
         cf_mod.CONF_PASSWORD: "p",
         cf_mod.CONF_GRANULAR_SYNC_OPTIONS: False,
     }
-    await cf_mod._handle_user_input(
+    await cf_mod._validate_client_details(
         hass=MagicMock(),
         user_input=user_input,
-        config_step="user",
     )
     assert _Client.last_instance is not None
     _Client.last_instance.validate.assert_awaited_once()
@@ -774,7 +770,6 @@ async def test_validate_input_granular_sync_uses_native_validation_only(
     res = await cf_mod.validate_input(
         hass=MagicMock(),
         user_input=user_input,
-        config_step="granular_sync",
         errors=errors,
     )
 
