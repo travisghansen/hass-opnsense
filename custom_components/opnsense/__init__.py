@@ -434,6 +434,7 @@ def _create_client(
     username: str = config[CONF_USERNAME]
     password: str = config[CONF_PASSWORD]
     verify_ssl: bool = config.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
+    client_name = name or config_entry.title
     return OPNsenseClient(
         url=url,
         username=username,
@@ -444,7 +445,7 @@ def _create_client(
             cookie_jar=aiohttp.CookieJar(unsafe=is_private_ip(url)),
         ),
         opts={"verify_ssl": verify_ssl},
-        name=name,
+        name=client_name,
     )
 
 
@@ -724,6 +725,9 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
 
         # 2 -> 3: Change unique device id to use lowest MAC address
         if version == 2:
+            if migration_client is None:
+                _LOGGER.error("Missing migration client for Migration to Version 3")
+                return False
             v2to3: bool = await _migrate_2_to_3(hass, config_entry, migration_client)
             if not v2to3:
                 return False
@@ -731,6 +735,9 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
 
         # 3 -> 4: Moving interfaces, gateways and openvpn out of telemetry
         if version == 3:
+            if migration_client is None:
+                _LOGGER.error("Missing migration client for Migration to Version 4")
+                return False
             v3to4: bool = await _migrate_3_to_4(hass, config_entry, migration_client)
             if not v3to4:
                 return False
