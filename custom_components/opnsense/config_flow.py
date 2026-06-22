@@ -306,10 +306,6 @@ async def validate_input(
     Returns:
         dict[str, Any]: Updated error mapping suitable for form rendering.
     """
-    # filtered_user_input: MutableMapping[str, Any] = {key: value for key, value in
-    # user_input.items() if key != CONF_PASSWORD}
-    # _LOGGER.debug("[validate_input] user_input: %s", filtered_user_input)
-
     try:
         await _validate_client_details(hass=hass, user_input=user_input, expected_id=expected_id)
     except OPNsenseError as err:
@@ -810,9 +806,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         """
         errors: dict[str, Any] = {}
         if user_input is not None:
-            # _LOGGER.debug("[config_flow granular_sync] raw user_input: %s", user_input)
             self._config.update(user_input)
-            # _LOGGER.debug("[config_flow granular_sync] merged config: %s", self._config)
             errors = await validate_input(
                 hass=self.hass,
                 user_input=self._config,
@@ -850,9 +844,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         self._config = dict(reconfigure_entry.data)
 
         if user_input is not None:
-            # _LOGGER.debug("[config_flow reconfigure] raw user_input: %s", user_input)
             self._config.update(user_input)
-            # _LOGGER.debug("[config_flow reconfigure] merged config: %s", self._config)
             errors = await validate_input(
                 hass=self.hass,
                 user_input=self._config,
@@ -1019,10 +1011,7 @@ class OPNsenseOptionsFlow(OptionsFlow):
         """
         errors: dict[str, Any] = {}
         if user_input is not None:
-            # _LOGGER.debug("[options_flow granular_sync] raw user_input: %s", user_input)
             self._config.update(user_input)
-            # _LOGGER.debug("[options_flow granular_sync] merged user_input. config:
-            # %s. options: %s", self._config, self._options)
             errors = await validate_input(
                 hass=self.hass,
                 user_input=self._config,

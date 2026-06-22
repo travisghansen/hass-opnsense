@@ -500,7 +500,6 @@ async def _migrate_2_to_3(
                 )
 
     for ent in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
-        # _LOGGER.debug(f"[migrate_2_to_3] ent: {ent}")
         platform = ent.entity_id.split(".")[0]
         try:
             _, unique_id_suffix = ent.unique_id.split("_", 1)
@@ -574,7 +573,6 @@ async def _migrate_3_to_4(
     for ent in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
         platform = ent.entity_id.split(".")[0]
         if platform == Platform.SENSOR:
-            # _LOGGER.debug("[migrate_3_to_4] ent: %s", ent)
             if "_telemetry_interface_" in ent.unique_id:
                 new_unique_id: str | None = ent.unique_id.replace(
                     "_telemetry_interface_", "_interface_"
