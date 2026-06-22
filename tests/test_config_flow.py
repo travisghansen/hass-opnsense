@@ -19,17 +19,16 @@ from custom_components.opnsense.const import (
     CONF_SYNC_SMART,
     CONF_SYNC_TELEMETRY,
 )
-from tests.utilities import patch_client_factory
+from tests.utilities import patch_opnsense_client
 
 cf_mod = importlib.import_module("custom_components.opnsense.config_flow")
 
 
 def test_mac_and_ip_and_cleanse() -> None:
     """Validate MAC/IP helpers and cleanse sensitive data."""
-    assert cf_mod.is_valid_mac_address("aa:bb:cc:dd:ee:ff")
-    assert cf_mod.is_valid_mac_address("AA-BB-CC-DD-EE-FF")
+    assert cf_mod.normalize_mac_address("aa:bb:cc:dd:ee:ff") == "aa:bb:cc:dd:ee:ff"
     assert cf_mod.normalize_mac_address("AA-BB-CC-DD-EE-FF") == "aa:bb:cc:dd:ee:ff"
-    assert not cf_mod.is_valid_mac_address("not-a-mac")
+    assert cf_mod.normalize_mac_address("not-a-mac") is None
 
     # IP validation
     assert cf_mod.is_ip_address("192.168.1.1")
@@ -130,6 +129,10 @@ async def test_clean_and_parse_url_success_and_failure() -> None:
     with pytest.raises(cf_mod.OPNsenseInvalidURL):
         await cf_mod._clean_and_parse_url({cf_mod.CONF_URL: ""})
 
+    missing_host_ui = {cf_mod.CONF_URL: "https://:8443"}
+    with pytest.raises(cf_mod.OPNsenseInvalidURL):
+        await cf_mod._clean_and_parse_url(missing_host_ui)
+
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
@@ -137,7 +140,6 @@ async def test_clean_and_parse_url_success_and_failure() -> None:
     [
         ("below_min", "below_min_firmware"),
         ("unknown_fw", "unknown_firmware"),
-        ("missing_external_dep", "missing_external_aiopnsense"),
         ("missing_id", "missing_device_unique_id"),
         ("invalid_url", "invalid_url_format"),
         ("ssl", "cannot_connect_ssl"),
@@ -157,8 +159,6 @@ async def test_validate_input_exception_mapping(
         exc = aiopnsense_exceptions.OPNsenseBelowMinFirmware()
     elif exc_key == "unknown_fw":
         exc = aiopnsense_exceptions.OPNsenseUnknownFirmware()
-    elif exc_key == "missing_external_dep":
-        exc = cf_mod.MissingExternalAiopnsenseDependency()
     elif exc_key == "missing_id":
         exc = aiopnsense_exceptions.OPNsenseMissingDeviceUniqueID("x")
     elif exc_key == "invalid_url":
@@ -188,18 +188,43 @@ async def test_validate_input_exception_mapping(
         """
         raise exc
 
-    monkeypatch.setattr(cf_mod, "_handle_user_input", _raiser)
+    monkeypatch.setattr(cf_mod, "_validate_client_details", _raiser)
     errors: dict[str, str] = {}
-    res = await cf_mod.validate_input(
-        hass=MagicMock(), user_input={}, errors=errors, config_step="user"
-    )
+    res = await cf_mod.validate_input(hass=MagicMock(), user_input={}, errors=errors)
     assert res.get("base") == expected
 
 
-def test_log_and_set_error_sets_base(caplog: pytest.LogCaptureFixture) -> None:
-    """_log_and_set_error should log the message and set errors['base']."""
+@pytest.mark.asyncio
+async def test_validate_input_reraises_unmapped_opnsense_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """validate_input should re-raise OPNsense errors without form mappings."""
+    exc = cf_mod.OPNsenseError("unmapped")
+
+    async def _raiser(*args: object, **kwargs: object) -> Never:
+        """Raise an unmapped OPNsense error.
+
+        Args:
+            *args: Positional validation arguments ignored by this stub.
+            **kwargs: Keyword validation arguments ignored by this stub.
+
+        Raises:
+            OPNsenseError: Always raised to exercise the re-raise path.
+        """
+        raise exc
+
+    monkeypatch.setattr(cf_mod, "_validate_client_details", _raiser)
+
+    with pytest.raises(cf_mod.OPNsenseError) as err:
+        await cf_mod.validate_input(hass=MagicMock(), user_input={}, errors={})
+
+    assert err.value is exc
+
+
+def test_record_validation_error_sets_base(caplog: pytest.LogCaptureFixture) -> None:
+    """_record_validation_error should log the message and set errors['base']."""
     errors: dict[str, str] = {}
-    cf_mod._log_and_set_error(errors=errors, key="test_key", message="an msg")
+    cf_mod._record_validation_error(errors=errors, key="test_key", message="an msg")
     assert errors.get("base") == "test_key"
     assert "an msg" in caplog.text
 
@@ -227,19 +252,7 @@ async def test_get_dt_entries_sorts_and_includes_selected(
         ]
 
     client_cls.get_arp_table = _get_arp_table
-    patch_client_factory(monkeypatch, cf_mod, client_cls)
-
-    # Patch async_create_clientsession on the module under test to avoid real network I/O
-    def _fake_create_clientsession(*args, **kwargs) -> Any:
-        """Return a mock client session so the test avoids real network I/O.
-
-        Args:
-            *args: Positional arguments forwarded from the patched helper and ignored.
-            **kwargs: Keyword arguments forwarded from the patched helper and ignored.
-        """
-        return MagicMock()
-
-    monkeypatch.setattr(cf_mod, "async_create_clientsession", _fake_create_clientsession)
+    patch_opnsense_client(monkeypatch, cf_mod, client_cls)
 
     hass = MagicMock()
     config = {cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"}
@@ -280,8 +293,7 @@ async def test_get_dt_entries_preserves_missing_selected_devices(
         return [{"mac": "11:22:33:44:55:66", "hostname": "", "ip": "10.0.0.5"}]
 
     client_cls.get_arp_table = _get_arp_table
-    patch_client_factory(monkeypatch, cf_mod, client_cls)
-    monkeypatch.setattr(cf_mod, "async_create_clientsession", lambda *a, **k: MagicMock())
+    patch_opnsense_client(monkeypatch, cf_mod, client_cls)
 
     res = await cf_mod._get_dt_entries(
         hass=MagicMock(),
@@ -319,8 +331,7 @@ async def test_get_dt_entries_closes_client(monkeypatch: pytest.MonkeyPatch) -> 
             """
             return []
 
-    patch_client_factory(monkeypatch, cf_mod, _Client)
-    monkeypatch.setattr(cf_mod, "async_create_clientsession", lambda *a, **k: MagicMock())
+    patch_opnsense_client(monkeypatch, cf_mod, _Client)
 
     await cf_mod._get_dt_entries(
         hass=MagicMock(),
@@ -332,8 +343,8 @@ async def test_get_dt_entries_closes_client(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 @pytest.mark.asyncio
-async def test_handle_user_input_closes_client(monkeypatch: pytest.MonkeyPatch) -> None:
-    """_handle_user_input should always close the temporary client."""
+async def test_validate_client_details_closes_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_validate_client_details should always close the temporary client."""
 
     class _Client:
         last_instance = None
@@ -378,8 +389,7 @@ async def test_handle_user_input_closes_client(monkeypatch: pytest.MonkeyPatch) 
             """
             return "dev123"
 
-    patch_client_factory(monkeypatch, cf_mod, _Client)
-    monkeypatch.setattr(cf_mod, "async_create_clientsession", lambda *a, **k: MagicMock())
+    patch_opnsense_client(monkeypatch, cf_mod, _Client)
 
     user_input = {
         cf_mod.CONF_URL: "https://router.example",
@@ -387,13 +397,62 @@ async def test_handle_user_input_closes_client(monkeypatch: pytest.MonkeyPatch) 
         cf_mod.CONF_PASSWORD: "p",
         cf_mod.CONF_GRANULAR_SYNC_OPTIONS: False,
     }
-    await cf_mod._handle_user_input(
+    await cf_mod._validate_client_details(
         hass=MagicMock(),
         user_input=user_input,
-        config_step="user",
     )
     assert _Client.last_instance is not None
     _Client.last_instance.validate.assert_awaited_once()
+    _Client.last_instance.async_close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_validate_client_details_raises_when_device_id_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_validate_client_details should reject clients that return no device id."""
+
+    class _Client:
+        last_instance = None
+
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            """Capture the created client instance.
+
+            Args:
+                *args: Positional constructor arguments ignored by this stub.
+                **kwargs: Keyword constructor arguments ignored by this stub.
+            """
+            type(self).last_instance = self
+            self.validate = AsyncMock()
+            self.async_close = AsyncMock()
+
+        async def get_host_firmware_version(self) -> str:
+            """Return firmware that passes minimum-version validation."""
+            return "26.1.1"
+
+        async def get_system_info(self) -> dict[str, str]:
+            """Return minimal system metadata for validation."""
+            return {"name": "OPNsense"}
+
+        async def get_device_unique_id(self, expected_id: str | None = None) -> str:
+            """Return an empty device identifier.
+
+            Args:
+                expected_id: Expected device ID supplied by validation and ignored.
+            """
+            return ""
+
+    patch_opnsense_client(monkeypatch, cf_mod, _Client)
+
+    user_input = {
+        cf_mod.CONF_URL: "https://router.example",
+        cf_mod.CONF_USERNAME: "u",
+        cf_mod.CONF_PASSWORD: "p",
+    }
+    with pytest.raises(cf_mod.OPNsenseMissingDeviceUniqueID):
+        await cf_mod._validate_client_details(hass=MagicMock(), user_input=user_input)
+
+    assert _Client.last_instance is not None
     _Client.last_instance.async_close.assert_awaited_once()
 
 
@@ -578,19 +637,12 @@ async def test_device_tracker_shows_form_when_no_user_input(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "exc",
-    [
-        aiopnsense_exceptions.OPNsenseConnectionError("boom"),
-        cf_mod.MissingExternalAiopnsenseDependency("missing"),
-    ],
-)
 async def test_device_tracker_handles_arp_lookup_failure(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
-    exc: BaseException,
 ) -> None:
-    """ARP/dependency lookup failures should not abort device tracker form rendering."""
+    """ARP lookup failures should not abort device tracker form rendering."""
+    exc = aiopnsense_exceptions.OPNsenseConnectionError("boom")
     cfg = make_config_entry(
         data={cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"},
         options={cf_mod.CONF_DEVICES: ["AA-BB-CC-DD-EE-FF"]},
@@ -769,7 +821,7 @@ async def test_validate_input_granular_sync_uses_native_validation_only(
             return "dev-01"
 
     client = FakeClient("25.1")
-    monkeypatch.setattr(cf_mod, "create_opnsense_client", AsyncMock(return_value=client))
+    monkeypatch.setattr(cf_mod, "create_opnsense_client", lambda **_kwargs: client)
 
     user_input = {
         cf_mod.CONF_URL: "https://host.example",
@@ -784,7 +836,6 @@ async def test_validate_input_granular_sync_uses_native_validation_only(
     res = await cf_mod.validate_input(
         hass=MagicMock(),
         user_input=user_input,
-        config_step="granular_sync",
         errors=errors,
     )
 
