@@ -5,13 +5,57 @@ from collections.abc import Callable, MutableMapping
 from typing import Any, Never, cast
 from unittest.mock import AsyncMock, MagicMock
 
-from homeassistant.components.update import UpdateEntityDescription
+from homeassistant.components.update import UpdateDeviceClass, UpdateEntityDescription
+from homeassistant.components.update.const import UpdateEntityFeature
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.opnsense import update as update_module
-from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID
+from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID, CONF_SYNC_FIRMWARE_UPDATES
 from custom_components.opnsense.update import OPNsenseFirmwareUpdatesAvailableUpdate
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_adds_firmware_update_entity_contract(
+    hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    dummy_coordinator: MagicMock,
+) -> None:
+    """async_setup_entry creates the firmware update entity with its public contract."""
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "test-device-123",
+            CONF_SYNC_FIRMWARE_UPDATES: True,
+        }
+    )
+    setattr(entry.runtime_data, update_module.COORDINATOR, dummy_coordinator)
+    added_entities: list[OPNsenseFirmwareUpdatesAvailableUpdate] = []
+
+    def async_add_entities(
+        entities: list[OPNsenseFirmwareUpdatesAvailableUpdate],
+        _update_before_add: bool = False,
+    ) -> None:
+        """Capture entities added by the platform setup callback."""
+        added_entities.extend(entities)
+
+    await update_module.async_setup_entry(
+        hass, entry, cast("AddEntitiesCallback", async_add_entities)
+    )
+
+    assert len(added_entities) == 1
+    entity = added_entities[0]
+    assert isinstance(entity, OPNsenseFirmwareUpdatesAvailableUpdate)
+    assert entity.entity_description.key == "firmware.update_available"
+    assert entity.entity_description.name == "Firmware Updates Available"
+    assert entity.entity_description.entity_category is EntityCategory.DIAGNOSTIC
+    assert entity.entity_description.device_class is UpdateDeviceClass.FIRMWARE
+    assert entity.entity_description.entity_registry_enabled_default is True
+    assert entity.supported_features == (
+        UpdateEntityFeature.INSTALL | UpdateEntityFeature.RELEASE_NOTES
+    )
 
 
 @pytest.mark.parametrize(

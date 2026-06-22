@@ -28,6 +28,48 @@ from .helpers import coerce_bool, dict_get
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
+def _smart_device_slug(device_name: str) -> str:
+    """Return the entity key slug for a SMART device name."""
+    return slugify(device_name) or "unknown"
+
+
+def _build_interface_enabled_binary_sensor_description(
+    interface_name: str,
+    interface: Mapping[str, Any],
+) -> BinarySensorEntityDescription:
+    """Build an interface enabled-state binary sensor description."""
+    return BinarySensorEntityDescription(
+        key=f"interface.{interface_name}.enabled",
+        name=f"Interface {interface.get('name', interface_name)} Enabled",
+        icon="mdi:network",
+        entity_registry_enabled_default=False,
+    )
+
+
+def _build_smart_status_binary_sensor_description(
+    device_name: str,
+) -> BinarySensorEntityDescription:
+    """Build a SMART status binary sensor description."""
+    return BinarySensorEntityDescription(
+        key=f"smart.{_smart_device_slug(device_name)}.status",
+        name=f"SMART {device_name} Status",
+        icon="mdi:harddisk",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        entity_registry_enabled_default=False,
+    )
+
+
+def _build_pending_notices_present_binary_sensor_description() -> BinarySensorEntityDescription:
+    """Build the pending notices presence binary sensor description."""
+    return BinarySensorEntityDescription(
+        key="notices.pending_notices_present",
+        name="Pending Notices Present",
+        icon="mdi:alert",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        entity_registry_enabled_default=True,
+    )
+
+
 async def _compile_interface_enabled_binary_sensors(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
@@ -58,11 +100,9 @@ async def _compile_interface_enabled_binary_sensors(
             OPNsenseInterfaceEnabledBinarySensor(
                 config_entry=config_entry,
                 coordinator=coordinator,
-                entity_description=BinarySensorEntityDescription(
-                    key=f"interface.{interface_name}.enabled",
-                    name=f"Interface {interface.get('name', interface_name)} Enabled",
-                    icon="mdi:network",
-                    entity_registry_enabled_default=False,
+                entity_description=_build_interface_enabled_binary_sensor_description(
+                    interface_name,
+                    interface,
                 ),
             )
         )
@@ -99,18 +139,11 @@ async def _compile_smart_status_binary_sensors(
             continue
         device_name = device_name.strip()
 
-        device_slug = slugify(device_name) or "unknown"
         entities.append(
             OPNsenseSmartStatusBinarySensor(
                 config_entry=config_entry,
                 coordinator=coordinator,
-                entity_description=BinarySensorEntityDescription(
-                    key=f"smart.{device_slug}.status",
-                    name=f"SMART {device_name} Status",
-                    icon="mdi:harddisk",
-                    device_class=BinarySensorDeviceClass.PROBLEM,
-                    entity_registry_enabled_default=False,
-                ),
+                entity_description=_build_smart_status_binary_sensor_description(device_name),
             )
         )
     return entities
@@ -135,14 +168,7 @@ async def async_setup_entry(
             OPNsensePendingNoticesPresentBinarySensor(
                 config_entry=config_entry,
                 coordinator=coordinator,
-                entity_description=BinarySensorEntityDescription(
-                    key="notices.pending_notices_present",
-                    name="Pending Notices Present",
-                    icon="mdi:alert",
-                    device_class=BinarySensorDeviceClass.PROBLEM,
-                    # entity_category=entity_category,
-                    entity_registry_enabled_default=True,
-                ),
+                entity_description=_build_pending_notices_present_binary_sensor_description(),
             ),
         )
     async_add_entities(entities)
@@ -246,7 +272,7 @@ class OPNsenseSmartStatusBinarySensor(OPNsenseBinarySensor):
             device_name = candidate.get("device")
             if not isinstance(device_name, str) or not device_name.strip():
                 continue
-            if (slugify(device_name.strip()) or "unknown") == expected_device_slug:
+            if _smart_device_slug(device_name.strip()) == expected_device_slug:
                 smart_device = candidate
                 break
 

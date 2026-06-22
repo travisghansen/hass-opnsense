@@ -20,6 +20,9 @@ from custom_components.opnsense.binary_sensor import (
     OPNsenseInterfaceEnabledBinarySensor,
     OPNsensePendingNoticesPresentBinarySensor,
     OPNsenseSmartStatusBinarySensor,
+    _build_interface_enabled_binary_sensor_description,
+    _build_pending_notices_present_binary_sensor_description,
+    _build_smart_status_binary_sensor_description,
     _compile_interface_enabled_binary_sensors,
     _compile_smart_status_binary_sensors,
     async_setup_entry,
@@ -33,6 +36,33 @@ from custom_components.opnsense.const import (
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 from tests.utilities import stub_async_write_ha_state
+
+
+def test_binary_sensor_description_builders_preserve_entity_contract() -> None:
+    """Binary sensor description builders should preserve generated entity metadata."""
+    interface_description = _build_interface_enabled_binary_sensor_description(
+        "wan", {"name": "WAN"}
+    )
+    smart_description = _build_smart_status_binary_sensor_description("nvme0")
+    notices_description = _build_pending_notices_present_binary_sensor_description()
+
+    assert interface_description.key == "interface.wan.enabled"
+    assert interface_description.name == "Interface WAN Enabled"
+    assert interface_description.icon == "mdi:network"
+    assert interface_description.device_class is None
+    assert interface_description.entity_registry_enabled_default is False
+
+    assert smart_description.key == "smart.nvme0.status"
+    assert smart_description.name == "SMART nvme0 Status"
+    assert smart_description.icon == "mdi:harddisk"
+    assert smart_description.device_class is BinarySensorDeviceClass.PROBLEM
+    assert smart_description.entity_registry_enabled_default is False
+
+    assert notices_description.key == "notices.pending_notices_present"
+    assert notices_description.name == "Pending Notices Present"
+    assert notices_description.icon == "mdi:alert"
+    assert notices_description.device_class is BinarySensorDeviceClass.PROBLEM
+    assert notices_description.entity_registry_enabled_default is True
 
 
 @pytest.mark.asyncio

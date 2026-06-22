@@ -27,6 +27,118 @@ from .helpers import coerce_bool, dict_get
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
+def _create_switch[EntityT: OPNsenseSwitch](
+    entity_cls: type[EntityT],
+    config_entry: ConfigEntry,
+    coordinator: OPNsenseDataUpdateCoordinator,
+    entity_description: SwitchEntityDescription,
+) -> EntityT:
+    """Create a switch entity from a description."""
+    return entity_cls(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=entity_description,
+    )
+
+
+def _build_service_switch_description(service: Mapping[str, Any]) -> SwitchEntityDescription:
+    """Build the service switch description."""
+    prop_name = "status"
+    service_id = service.get("id", service.get("name", "unknown"))
+    service_name = service.get("description", service.get("name", "Unknown"))
+    return SwitchEntityDescription(
+        key=f"service.{service_id}.{prop_name}",
+        name=f"Service {service_name} {prop_name}",
+        icon="mdi:application-cog-outline",
+        device_class=SwitchDeviceClass.SWITCH,
+        entity_registry_enabled_default=False,
+    )
+
+
+def _build_vpn_switch_description(
+    vpn_type: str,
+    clients_servers: str,
+    uuid: str,
+    instance: Mapping[str, Any],
+) -> SwitchEntityDescription:
+    """Build the VPN switch description."""
+    return SwitchEntityDescription(
+        key=f"{vpn_type}.{clients_servers}.{uuid}",
+        name=(
+            f"{'OpenVPN' if vpn_type == 'openvpn' else vpn_type.title()} "
+            f"{clients_servers.title().rstrip('s')} {instance['name']}"
+        ),
+        icon="mdi:folder-key-network-outline",
+        device_class=SwitchDeviceClass.SWITCH,
+        entity_registry_enabled_default=False,
+    )
+
+
+def _build_carp_maintenance_switch_description() -> SwitchEntityDescription:
+    """Build the CARP maintenance switch description."""
+    return SwitchEntityDescription(
+        key="carp.maintenance_mode",
+        name="CARP Persistent Maintenance Mode",
+        icon="mdi:server-network",
+        device_class=SwitchDeviceClass.SWITCH,
+        entity_registry_enabled_default=False,
+    )
+
+
+def _build_unbound_legacy_switch_description() -> SwitchEntityDescription:
+    """Build the legacy Unbound blocklist switch description."""
+    return SwitchEntityDescription(
+        key="unbound_blocklist.switch",
+        name="Unbound Blocklist Switch",
+        device_class=SwitchDeviceClass.SWITCH,
+        entity_registry_enabled_default=False,
+    )
+
+
+def _build_unbound_switch_description(
+    uuid: str, dnsbl: Mapping[str, Any]
+) -> SwitchEntityDescription:
+    """Build an extended Unbound blocklist switch description."""
+    return SwitchEntityDescription(
+        key=f"unbound_blocklist.switch.{uuid}",
+        name=f"Unbound Blocklist {dnsbl.get('description', 'Unknown')}",
+        icon="mdi:folder-key-network-outline",
+        device_class=SwitchDeviceClass.SWITCH,
+        entity_registry_enabled_default=False,
+    )
+
+
+def _build_firewall_rule_switch_description(rule: Mapping[str, Any]) -> SwitchEntityDescription:
+    """Build the firewall rule switch description."""
+    interface = rule.get("%interface", rule.get("interface", ""))
+    if not isinstance(interface, str):
+        interface = ""
+    if "," in interface or interface == "":
+        interface = "Floating"
+    return SwitchEntityDescription(
+        key=f"firewall.rule.{rule.get('uuid', 'unknown')}",
+        name=f"Firewall: {interface}: {rule.get('description', 'unknown')}",
+        icon="mdi:play-network-outline",
+        device_class=SwitchDeviceClass.SWITCH,
+        entity_registry_enabled_default=False,
+    )
+
+
+def _build_nat_rule_switch_description(
+    nat_rule_type: str,
+    name_prefix: str,
+    rule: Mapping[str, Any],
+) -> SwitchEntityDescription:
+    """Build a NAT rule switch description."""
+    return SwitchEntityDescription(
+        key=f"firewall.nat.{nat_rule_type}.{rule.get('uuid', 'unknown')}",
+        name=f"{name_prefix}: {rule.get('%interface', '')}: {rule.get('description', 'unknown')}",
+        icon="mdi:network-outline",
+        device_class=SwitchDeviceClass.SWITCH,
+        entity_registry_enabled_default=False,
+    )
+
+
 async def _compile_service_switches(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
@@ -46,25 +158,19 @@ async def _compile_service_switches(
         return []
 
     entities: list = []
-    # services
     for service in state.get("services", []):
+        if not isinstance(service, Mapping):
+            continue
         if service.get("locked", 1) == 1:
             continue
-        for prop_name in ["status"]:
-            entity = OPNsenseServiceSwitch(
-                config_entry=config_entry,
-                coordinator=coordinator,
-                entity_description=SwitchEntityDescription(
-                    key=f"service.{service.get('id', service.get('name', 'unknown'))}.{prop_name}",
-                    name=f"Service {service.get('description', service.get('name', 'Unknown'))} "
-                    f"{prop_name}",
-                    icon="mdi:application-cog-outline",
-                    # entity_category=ENTITY_CATEGORY_CONFIG,
-                    device_class=SwitchDeviceClass.SWITCH,
-                    entity_registry_enabled_default=False,
-                ),
+        entities.append(
+            _create_switch(
+                OPNsenseServiceSwitch,
+                config_entry,
+                coordinator,
+                _build_service_switch_description(service),
             )
-            entities.append(entity)
+        )
     return entities
 
 
@@ -95,20 +201,14 @@ async def _compile_vpn_switches(
                 ):
                     continue
 
-                entity = OPNsenseVPNSwitch(
-                    config_entry=config_entry,
-                    coordinator=coordinator,
-                    entity_description=SwitchEntityDescription(
-                        key=f"{vpn_type}.{clients_servers}.{uuid}",
-                        name=f"{'OpenVPN' if vpn_type == 'openvpn' else vpn_type.title()} "
-                        f"{clients_servers.title().rstrip('s')} {instance['name']}",
-                        icon="mdi:folder-key-network-outline",
-                        # entity_category=ENTITY_CATEGORY_CONFIG,
-                        device_class=SwitchDeviceClass.SWITCH,
-                        entity_registry_enabled_default=False,
-                    ),
+                entities.append(
+                    _create_switch(
+                        OPNsenseVPNSwitch,
+                        config_entry,
+                        coordinator,
+                        _build_vpn_switch_description(vpn_type, clients_servers, uuid, instance),
+                    )
                 )
-                entities.append(entity)
     return entities
 
 
@@ -133,16 +233,11 @@ async def _compile_carp_maintenance_switch(
         return []
 
     return [
-        OPNsenseCarpMaintenanceSwitch(
-            config_entry=config_entry,
-            coordinator=coordinator,
-            entity_description=SwitchEntityDescription(
-                key="carp.maintenance_mode",
-                name="CARP Persistent Maintenance Mode",
-                icon="mdi:server-network",
-                device_class=SwitchDeviceClass.SWITCH,
-                entity_registry_enabled_default=False,
-            ),
+        _create_switch(
+            OPNsenseCarpMaintenanceSwitch,
+            config_entry,
+            coordinator,
+            _build_carp_maintenance_switch_description(),
         )
     ]
 
@@ -171,17 +266,11 @@ async def _compile_unbound_switches(
     entities: list = []
     if isinstance(unbound_blocklist.get("legacy"), MutableMapping):
         entities.append(
-            OPNsenseUnboundBlocklistSwitchLegacy(
-                config_entry=config_entry,
-                coordinator=coordinator,
-                entity_description=SwitchEntityDescription(
-                    key="unbound_blocklist.switch",
-                    name="Unbound Blocklist Switch",
-                    # icon=icon,
-                    # entity_category=ENTITY_CATEGORY_CONFIG,
-                    device_class=SwitchDeviceClass.SWITCH,
-                    entity_registry_enabled_default=False,
-                ),
+            _create_switch(
+                OPNsenseUnboundBlocklistSwitchLegacy,
+                config_entry,
+                coordinator,
+                _build_unbound_legacy_switch_description(),
             )
         )
 
@@ -191,19 +280,14 @@ async def _compile_unbound_switches(
         if not isinstance(dnsbl, MutableMapping):
             continue
 
-        entity = OPNsenseUnboundBlocklistSwitch(
-            config_entry=config_entry,
-            coordinator=coordinator,
-            entity_description=SwitchEntityDescription(
-                key=f"unbound_blocklist.switch.{uuid}",
-                name=f"Unbound Blocklist {dnsbl.get('description', 'Unknown')}",
-                icon="mdi:folder-key-network-outline",
-                # entity_category=ENTITY_CATEGORY_CONFIG,
-                device_class=SwitchDeviceClass.SWITCH,
-                entity_registry_enabled_default=False,
-            ),
+        entities.append(
+            _create_switch(
+                OPNsenseUnboundBlocklistSwitch,
+                config_entry,
+                coordinator,
+                _build_unbound_switch_description(uuid, dnsbl),
+            )
         )
-        entities.append(entity)
 
     return entities
 
@@ -234,20 +318,41 @@ async def _compile_firewall_rules_switches(
         interface = rule.get("%interface", rule.get("interface", ""))
         if not isinstance(interface, str):
             continue
-        if "," in interface or interface == "":
-            interface = "Floating"
-        entity = OPNsenseFirewallRuleSwitch(
-            config_entry=config_entry,
-            coordinator=coordinator,
-            entity_description=SwitchEntityDescription(
-                key=f"firewall.rule.{rule.get('uuid', 'unknown')}",
-                name=f"Firewall: {interface}: {rule.get('description', 'unknown')}",
-                icon="mdi:play-network-outline",
-                device_class=SwitchDeviceClass.SWITCH,
-                entity_registry_enabled_default=False,
-            ),
+        entities.append(
+            _create_switch(
+                OPNsenseFirewallRuleSwitch,
+                config_entry,
+                coordinator,
+                _build_firewall_rule_switch_description(rule),
+            )
         )
-        entities.append(entity)
+    return entities
+
+
+async def _compile_nat_rule_switches(
+    config_entry: ConfigEntry,
+    coordinator: OPNsenseDataUpdateCoordinator,
+    state: MutableMapping[str, Any],
+    nat_rule_type: str,
+    name_prefix: str,
+) -> list:
+    """Compile NAT rule switches from OPNsense state."""
+    rules = dict_get(state, f"firewall.nat.{nat_rule_type}")
+    if not isinstance(rules, MutableMapping):
+        return []
+
+    entities: list = []
+    for rule in rules.values():
+        if not isinstance(rule, MutableMapping):
+            continue
+        entities.append(
+            _create_switch(
+                OPNsenseNATRuleSwitch,
+                config_entry,
+                coordinator,
+                _build_nat_rule_switch_description(nat_rule_type, name_prefix, rule),
+            )
+        )
     return entities
 
 
@@ -266,30 +371,9 @@ async def _compile_nat_source_rules_switches(
     Returns:
         list: A list of OPNsenseNATRuleSwitch entities for source NAT rules.
     """
-    rules = dict_get(state, "firewall.nat.source_nat")
-    if not isinstance(rules, MutableMapping):
-        return []
-
-    entities: list = []
-    for rule in rules.values():
-        if not isinstance(rule, MutableMapping):
-            continue
-        entity = OPNsenseNATRuleSwitch(
-            config_entry=config_entry,
-            coordinator=coordinator,
-            entity_description=SwitchEntityDescription(
-                key=f"firewall.nat.source_nat.{rule.get('uuid', 'unknown')}",
-                name=(
-                    f"NAT Source: {rule.get('%interface', '')}: "
-                    f"{rule.get('description', 'unknown')}"
-                ),
-                icon="mdi:network-outline",
-                device_class=SwitchDeviceClass.SWITCH,
-                entity_registry_enabled_default=False,
-            ),
-        )
-        entities.append(entity)
-    return entities
+    return await _compile_nat_rule_switches(
+        config_entry, coordinator, state, "source_nat", "NAT Source"
+    )
 
 
 async def _compile_nat_destination_rules_switches(
@@ -307,30 +391,9 @@ async def _compile_nat_destination_rules_switches(
     Returns:
         list: A list of OPNsenseNATRuleSwitch entities for destination NAT rules.
     """
-    rules = dict_get(state, "firewall.nat.d_nat")
-    if not isinstance(rules, MutableMapping):
-        return []
-
-    entities: list = []
-    for rule in rules.values():
-        if not isinstance(rule, MutableMapping):
-            continue
-        entity = OPNsenseNATRuleSwitch(
-            config_entry=config_entry,
-            coordinator=coordinator,
-            entity_description=SwitchEntityDescription(
-                key=f"firewall.nat.d_nat.{rule.get('uuid', 'unknown')}",
-                name=(
-                    f"NAT Destination: {rule.get('%interface', '')}: "
-                    f"{rule.get('description', 'unknown')}"
-                ),
-                icon="mdi:network-outline",
-                device_class=SwitchDeviceClass.SWITCH,
-                entity_registry_enabled_default=False,
-            ),
-        )
-        entities.append(entity)
-    return entities
+    return await _compile_nat_rule_switches(
+        config_entry, coordinator, state, "d_nat", "NAT Destination"
+    )
 
 
 async def _compile_nat_one_to_one_rules_switches(
@@ -348,30 +411,9 @@ async def _compile_nat_one_to_one_rules_switches(
     Returns:
         list: A list of OPNsenseNATRuleSwitch entities for one-to-one NAT rules.
     """
-    rules = dict_get(state, "firewall.nat.one_to_one")
-    if not isinstance(rules, MutableMapping):
-        return []
-
-    entities: list = []
-    for rule in rules.values():
-        if not isinstance(rule, MutableMapping):
-            continue
-        entity = OPNsenseNATRuleSwitch(
-            config_entry=config_entry,
-            coordinator=coordinator,
-            entity_description=SwitchEntityDescription(
-                key=f"firewall.nat.one_to_one.{rule.get('uuid', 'unknown')}",
-                name=(
-                    f"NAT One to One: {rule.get('%interface', '')}: "
-                    f"{rule.get('description', 'unknown')}"
-                ),
-                icon="mdi:network-outline",
-                device_class=SwitchDeviceClass.SWITCH,
-                entity_registry_enabled_default=False,
-            ),
-        )
-        entities.append(entity)
-    return entities
+    return await _compile_nat_rule_switches(
+        config_entry, coordinator, state, "one_to_one", "NAT One to One"
+    )
 
 
 async def _compile_nat_npt_rules_switches(
@@ -389,29 +431,7 @@ async def _compile_nat_npt_rules_switches(
     Returns:
         list: A list of OPNsenseNATRuleSwitch entities for NPTv6 NAT rules.
     """
-    rules = dict_get(state, "firewall.nat.npt")
-    if not isinstance(rules, MutableMapping):
-        return []
-
-    entities: list = []
-    for rule in rules.values():
-        if not isinstance(rule, MutableMapping):
-            continue
-        entity = OPNsenseNATRuleSwitch(
-            config_entry=config_entry,
-            coordinator=coordinator,
-            entity_description=SwitchEntityDescription(
-                key=f"firewall.nat.npt.{rule.get('uuid', 'unknown')}",
-                name=(
-                    f"NAT NPTv6: {rule.get('%interface', '')}: {rule.get('description', 'unknown')}"
-                ),
-                icon="mdi:network-outline",
-                device_class=SwitchDeviceClass.SWITCH,
-                entity_registry_enabled_default=False,
-            ),
-        )
-        entities.append(entity)
-    return entities
+    return await _compile_nat_rule_switches(config_entry, coordinator, state, "npt", "NAT NPTv6")
 
 
 async def async_setup_entry(
@@ -686,9 +706,6 @@ class OPNsenseFirewallRuleSwitch(OPNsenseSwitch):
             entity_description=entity_description,
         )
         self._rule_id: str = self._opnsense_get_rule_id()
-        # _LOGGER.debug(
-        #     "[OPNsenseFirewallRuleSwitch init] Name: %s, rule_id: %s", self.name, self._rule_id
-        # )
 
     def _opnsense_get_rule_id(self) -> str:
         """Get the rule ID from the entity description.
@@ -748,14 +765,6 @@ class OPNsenseFirewallRuleSwitch(OPNsenseSwitch):
         for name, attr in properties.items():
             self._attr_extra_state_attributes[name] = rule.get(attr, None)
         self.async_write_ha_state()
-        # _LOGGER.debug(
-        #     "[OPNsenseFirewallRuleSwitch handle_coordinator_update] "
-        #     "Name: %s, available: %s, is_on: %s, extra_state_attributes: %s",
-        #     self.name,
-        #     self.available,
-        #     self.is_on,
-        #     self.extra_state_attributes,
-        # )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""
@@ -814,13 +823,6 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
         )
         self._rule_id: str = self._opnsense_get_rule_id()
         self._nat_rule_type: str = self._get_nat_rule_type()
-        # _LOGGER.debug(
-        #     "[OPNsenseNATRuleSwitch init] Name: %s, key: %s, rule_id: %s, rule_type: %s",
-        #     self.name,
-        #     self.entity_description.key,
-        #     self._rule_id,
-        #     self._nat_rule_type,
-        # )
 
     def _get_nat_rule_type(self) -> str:
         """Get the NAT rule type from the entity description.
@@ -861,7 +863,6 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
             _LOGGER.debug("Skipping coordinator update for NAT switch %s due to delay", self.name)
             return
         rule = self._opnsense_get_rule()
-        # _LOGGER.debug("[OPNsenseNATRuleSwitch handle_coordinator_update] fetched rule: %s", rule)
         if not rule:
             self._available = False
             self.async_write_ha_state()
@@ -927,15 +928,6 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
             self._attr_extra_state_attributes[name] = rule.get(attr, None)
 
         self.async_write_ha_state()
-        # _LOGGER.debug(
-        #     "[OPNsenseNATRuleSwitch handle_coordinator_update] "
-        #     "Name: %s, available: %s, is_on: %s, "
-        #     "extra_state_attributes: %s",
-        #     self.name,
-        #     self.available,
-        #     self.is_on,
-        #     self.extra_state_attributes,
-        # )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""
@@ -994,8 +986,6 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         )
         self._service: MutableMapping[str, Any] | None = None
         self._prop_name: str = self._opnsense_get_property_name()
-        # _LOGGER.debug(f"[OPNsenseServiceSwitch init] Name: {self.name}, prop_name:
-        # {self._prop_name}")
 
     def _opnsense_get_property_name(self) -> str:
         """Get the property name from the entity description.
@@ -1050,9 +1040,6 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         for attr in ("id", "name"):
             self._attr_extra_state_attributes[f"service_{attr}"] = self._service.get(attr, None)
         self.async_write_ha_state()
-        # _LOGGER.debug(f"[OPNsenseServiceSwitch handle_coordinator_update] Name:
-        # {self.name}, available: {self.available}, is_on: {self.is_on},
-        # extra_state_attributes: {self.extra_state_attributes}")
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""
@@ -1124,9 +1111,6 @@ class OPNsenseUnboundBlocklistSwitchLegacy(OPNsenseSwitch):
             "Return NXDOMAIN": bool(dnsbl.get("nxdomain", "0") == "1"),
         }
         self.async_write_ha_state()
-        # _LOGGER.debug(f"[OPNsenseUnboundBlocklistSwitch handle_coordinator_update] Name:
-        # {self.name}, available: {self.available}, is_on: {self.is_on},
-        # extra_state_attributes: {self.extra_state_attributes}")
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""
@@ -1212,9 +1196,6 @@ class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
             "Return NXDOMAIN": bool(dnsbl.get("nxdomain", "0") == "1"),
         }
         self.async_write_ha_state()
-        # _LOGGER.debug(f"[OPNsenseUnboundBlocklistSwitch handle_coordinator_update] Name:
-        # {self.name}, available: {self.available}, is_on: {self.is_on},
-        # extra_state_attributes: {self.extra_state_attributes}")
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""
@@ -1267,7 +1248,6 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
         self._vpn_type = self.entity_description.key.split(".")[0]
         self._clients_servers = self.entity_description.key.split(".")[1]
         self._uuid = self.entity_description.key.split(".")[2]
-        # _LOGGER.debug(f"[OPNsenseVPNSwitch init] Name: {self.name}")
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -1329,9 +1309,6 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
             if instance.get(attr):
                 self._attr_extra_state_attributes[attr] = instance.get(attr)
         self.async_write_ha_state()
-        # _LOGGER.debug(f"[OPNsenseVPNSwitch handle_coordinator_update] Name: {self.name},
-        # available: {self.available}, is_on: {self.is_on}, extra_state_attributes:
-        # {self.extra_state_attributes}")
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on the VPN switch.

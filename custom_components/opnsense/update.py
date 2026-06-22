@@ -21,6 +21,31 @@ from .helpers import dict_get
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
+def _build_firmware_update_entity_description() -> UpdateEntityDescription:
+    """Build the firmware update entity description."""
+    return UpdateEntityDescription(
+        key="firmware.update_available",
+        name="Firmware Updates Available",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        device_class=UpdateDeviceClass.FIRMWARE,
+        entity_registry_enabled_default=True,
+    )
+
+
+def _compile_firmware_update_entities(
+    config_entry: ConfigEntry,
+    coordinator: OPNsenseDataUpdateCoordinator,
+) -> list[OPNsenseFirmwareUpdatesAvailableUpdate]:
+    """Compile firmware update entities for the update platform."""
+    return [
+        OPNsenseFirmwareUpdatesAvailableUpdate(
+            config_entry=config_entry,
+            coordinator=coordinator,
+            entity_description=_build_firmware_update_entity_description(),
+        )
+    ]
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -28,22 +53,11 @@ async def async_setup_entry(
 ) -> None:
     """Set up the OPNsense update entities."""
     coordinator: OPNsenseDataUpdateCoordinator = getattr(config_entry.runtime_data, COORDINATOR)
-    entities: list = []
+    entities: list[OPNsenseFirmwareUpdatesAvailableUpdate] = []
     config: Mapping[str, Any] = config_entry.data
 
     if config.get(CONF_SYNC_FIRMWARE_UPDATES, DEFAULT_SYNC_OPTION_VALUE):
-        entity = OPNsenseFirmwareUpdatesAvailableUpdate(
-            config_entry=config_entry,
-            coordinator=coordinator,
-            entity_description=UpdateEntityDescription(
-                key="firmware.update_available",
-                name="Firmware Updates Available",
-                entity_category=EntityCategory.DIAGNOSTIC,
-                device_class=UpdateDeviceClass.FIRMWARE,
-                entity_registry_enabled_default=True,
-            ),
-        )
-        entities.append(entity)
+        entities.extend(_compile_firmware_update_entities(config_entry, coordinator))
 
     async_add_entities(entities)
 
@@ -73,9 +87,6 @@ class OPNsenseUpdate(OPNsenseEntity, UpdateEntity):
         self.entity_description: UpdateEntityDescription = entity_description
         self._attr_supported_features |= (
             UpdateEntityFeature.INSTALL | UpdateEntityFeature.RELEASE_NOTES
-            # | UpdateEntityFeature.BACKUP
-            # | UpdateEntityFeature.PROGRESS
-            # | UpdateEntityFeature.SPECIFIC_VERSION
         )
         self._attr_title: str = "OPNsense"
         self._attr_in_progress: bool = False
@@ -104,14 +115,6 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
         self._attr_latest_version = product_latest.replace("_", ".") if product_latest else None
 
         product_class = self._get_product_class(product_series)
-        # _LOGGER.debug(
-        #     "[Update handle_coordinator_update] product_version: %s, product_latest: %s, "
-        #     "product_series: %s, product_class: %s",
-        #     product_version,
-        #     product_latest,
-        #     product_series,
-        #     product_class,
-        # )
 
         if product_series and product_latest and product_class:
             self._attr_release_url = f"https://github.com/opnsense/changelog/blob/master/{product_class}/{product_series}/{product_latest.split('+')[0].split('_')[0]}"
@@ -120,10 +123,6 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
                 self.config_entry.data.get("url", None) + "/ui/core/firmware#changelog"
             )
 
-        # _LOGGER.debug(
-        #     "[Update handle_coordinator_update] release_url: %s",
-        #     self._attr_release_url
-        # )
         self._release_notes = self._get_release_notes(state, product_latest, product_version)
         self._attr_release_summary = dict_get(state, "firmware_update_info.status_msg")
 
