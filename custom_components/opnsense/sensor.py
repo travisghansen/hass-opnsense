@@ -1592,7 +1592,18 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
             self._available = False
             self.async_write_ha_state()
             return
-        interface_name: str = self.entity_description.key.split(".")[1]
+        key_parts = self.entity_description.key.split(".", 1)
+        if len(key_parts) != 2:
+            self._available = False
+            self.async_write_ha_state()
+            return
+        interface_and_prop = key_parts[1]
+        interface_name_parts = interface_and_prop.rsplit(".", 1)
+        if len(interface_name_parts) != 2:
+            self._available = False
+            self.async_write_ha_state()
+            return
+        interface_name, prop_name = interface_name_parts
         interface: dict[str, Any] = {}
         interfaces = state.get("interfaces")
         if not isinstance(interfaces, Mapping):
@@ -1607,7 +1618,6 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
             self._available = False
             self.async_write_ha_state()
             return
-        prop_name: str = self.entity_description.key.split(".")[2]
         try:
             self._attr_native_value = interface[prop_name]
         except TypeError, KeyError, ZeroDivisionError:
@@ -1644,7 +1654,10 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
     @property
     def icon(self) -> str | None:
         """Return the icon for the sensor."""
-        prop_name: str = self.entity_description.key.split(".")[2]
+        key_parts = self.entity_description.key.rsplit(".", 1)
+        if len(key_parts) != 2:
+            return super().icon
+        prop_name: str = key_parts[1]
         if prop_name == "status" and self.native_value != "up":
             return "mdi:close-network-outline"
         return super().icon
@@ -1822,13 +1835,23 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
             self._available = False
             self.async_write_ha_state()
             return
-        gateway_name: str = self.entity_description.key.split(".")[1]
+        key_parts = self.entity_description.key.split(".", 1)
+        if len(key_parts) != 2:
+            self._available = False
+            self.async_write_ha_state()
+            return
+        gateway_and_prop = key_parts[1]
+        gateway_name_parts = gateway_and_prop.rsplit(".", 1)
+        if len(gateway_name_parts) != 2:
+            self._available = False
+            self.async_write_ha_state()
+            return
+        gateway_name, prop_name = gateway_name_parts
         gateway: dict[str, Any] = self._opnsense_get_gateway_entry(gateway_name)
         if not gateway:
             self._available = False
             self.async_write_ha_state()
             return
-        prop_name: str = self.entity_description.key.split(".")[2]
         try:
             value = gateway[prop_name]
             if prop_name in {"stddev", "delay", "loss"} and isinstance(value, str):
@@ -1853,7 +1876,10 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
     @property
     def icon(self) -> str | None:
         """Return the icon for the sensor."""
-        prop_name: str = self.entity_description.key.split(".")[2]
+        key_parts = self.entity_description.key.rsplit(".", 1)
+        if len(key_parts) != 2:
+            return super().icon
+        prop_name: str = key_parts[1]
         if prop_name == "status" and self.native_value != "online":
             return "mdi:close-network-outline"
         return super().icon

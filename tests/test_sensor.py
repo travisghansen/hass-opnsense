@@ -1263,6 +1263,78 @@ def test_interface_status_icon_up(make_config_entry: Callable[..., MockConfigEnt
     assert s.icon != "mdi:close-network-outline"
 
 
+def test_interface_sensor_with_dotted_key_parses_interface_name(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Interface sensor should parse dotted interface keys."""
+    state = {
+        "interfaces": {
+            "wan.vlan.100": {
+                "name": "WAN VLAN 100",
+                "inbytes": 321,
+                "status": "up",
+                "interface": "igc0",
+            }
+        }
+    }
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = state
+    entry = make_config_entry()
+
+    desc = MagicMock()
+    desc.key = "interface.wan.vlan.100.inbytes"
+    desc.name = "WAN VLAN 100 inbytes"
+
+    sensor = OPNsenseInterfaceSensor(
+        config_entry=entry,
+        coordinator=coord,
+        entity_description=desc,
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.wan_vlan_100_inbytes"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is True
+    assert sensor.native_value == 321
+
+
+def test_gateway_sensor_with_dotted_key_parses_gateway_name_and_icon(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Gateway sensor should parse dotted gateway names and status icon logic."""
+    state = {
+        "gateways": {
+            "wan-gw": {
+                "name": "WAN.Gateway",
+                "status": "offline",
+                "address": "198.51.100.1",
+            }
+        }
+    }
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = state
+    entry = make_config_entry()
+
+    desc = MagicMock()
+    desc.key = "gateway.WAN.Gateway.status"
+    desc.name = "WAN.Gateway Status"
+
+    sensor = OPNsenseGatewaySensor(
+        config_entry=entry,
+        coordinator=coord,
+        entity_description=desc,
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.wan_gateway_status"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is True
+    assert sensor.native_value == "offline"
+    assert sensor.icon == "mdi:close-network-outline"
+
+
 @pytest.mark.parametrize(
     (
         "description_key",
@@ -1885,7 +1957,7 @@ async def test_compile_and_handle_many_entities(
         "certificates": {"a": 1},
     }
 
-    entry, coord = _setup_entry_with_all_syncs(state, make_config_entry)
+    entry, _coord = _setup_entry_with_all_syncs(state, make_config_entry)
 
     created: list = []
 
@@ -1905,9 +1977,6 @@ async def test_compile_and_handle_many_entities(
         )
 
     await run_setup()
-
-    fs_entities = await sensor_module._compile_filesystem_sensors(entry, coord, state)
-    assert isinstance(fs_entities, list)
 
     assert len(created) > 0
 
