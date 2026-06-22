@@ -9,7 +9,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.opnsense import sensor as sensor_module
+from custom_components.opnsense import const as const_module, sensor as sensor_module
 from custom_components.opnsense.const import (
     CONF_SYNC_CARP,
     CONF_SYNC_CERTIFICATES,
@@ -40,6 +40,17 @@ from custom_components.opnsense.sensor import (
     normalize_filesystem_mountpoint,
     slugify_filesystem_mountpoint,
 )
+
+
+def test_static_sensor_descriptions_live_in_sensor_module() -> None:
+    """Static sensor descriptions should be owned by the sensor platform."""
+    telemetry_keys = {description.key for description in sensor_module.STATIC_TELEMETRY_SENSORS}
+    certificate_keys = {description.key for description in sensor_module.STATIC_CERTIFICATE_SENSORS}
+
+    assert not hasattr(const_module, "STATIC_TELEMETRY_SENSORS")
+    assert not hasattr(const_module, "STATIC_CERTIFICATE_SENSORS")
+    assert "telemetry.cpu.usage_total" in telemetry_keys
+    assert "certificates" in certificate_keys
 
 
 @pytest.mark.asyncio
