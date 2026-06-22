@@ -169,7 +169,6 @@ def test_carp_sensor_unavailable_variants(
 def test_carp_sensor_state_wrong_type(make_config_entry: Callable[..., MockConfigEntry]) -> None:
     """CARP sensor should be unavailable when coordinator.data is not a mapping (e.g., list)."""
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    # use a list to ensure isinstance(state, MutableMapping) is False
     coord.data = []
     entry = make_config_entry()
 
@@ -1138,7 +1137,6 @@ def test_vpn_sensor_icon_variants(
     desc = MagicMock()
     desc.key = desc_key
     desc.name = "VPN Icon Test"
-    # supply a fallback icon for non-status case
     desc.icon = "mdi:custom-icon"
 
     s = OPNsenseVPNSensor(config_entry=entry, coordinator=coord, entity_description=desc)
@@ -1489,7 +1487,6 @@ def test_dhcp_leases_handles_exceptions(
     entry = make_config_entry()
 
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    # lease_interfaces is a normal mapping, leases contains a list with a BrokenLease
     coord.data = {
         "dhcp_leases": {
             "leases": {"lan": [BrokenLease(exc_type)]},
@@ -1625,7 +1622,6 @@ def test_dhcp_leases_inner_except_writes_unavailable(
     writes: list[bool] = []
 
     def collector() -> None:
-        # capture the availability at the time async_write_ha_state is invoked
         """Collector."""
         writes.append(bool(getattr(s, "_available", None)))
 
@@ -1905,9 +1901,6 @@ async def test_compile_and_handle_many_entities(
 
     entry, coord = _setup_entry_with_all_syncs(state, make_config_entry)
 
-    # Prefer exercising the public integration path: run async_setup_entry to
-    # create entities and reduce coupling to private compile helpers. Keep a
-    # tiny smoke check for filesystem helper only.
     created: list = []
 
     async def run_setup() -> None:
@@ -1927,14 +1920,11 @@ async def test_compile_and_handle_many_entities(
 
     await run_setup()
 
-    # minimal private helper smoke check for filesystem compilation
     fs_entities = await sensor_module._compile_filesystem_sensors(entry, coord, state)
     assert isinstance(fs_entities, list)
 
-    # Ensure we produced entities via the public setup
     assert len(created) > 0
 
-    # Exercise each entity's update handler
     failures: list[str] = []
     for i, ent in enumerate(created):
         ent.hass = MagicMock()
@@ -1979,7 +1969,6 @@ async def test_async_setup_entry_creates_entities(
         created.extend(ents)
 
     await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
-    # Ensure setup produced at least one created entity
     assert created, "no entities created"
     assert any(isinstance(e, OPNsenseStaticKeySensor) for e in created)
 
