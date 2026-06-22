@@ -738,13 +738,13 @@ async def test_async_install_exceptions_loop(
             return {"started": True}
 
         async def upgrade_status(self) -> dict[str, Any]:
-            """Raise a runtime error while the entity polls upgrade status.
+            """Raise a timeout error while the entity polls upgrade status.
 
             Raises:
-                RuntimeError: Always raised to exercise the entity's exception
+                TimeoutError: Always raised to exercise the entity's exception
                     handling path.
             """
-            raise RuntimeError("fail")
+            raise TimeoutError("fail")
 
         async def get_firmware_update_info(self) -> dict[str, Any]:
             """Return update metadata showing that no reboot is required."""
@@ -761,6 +761,45 @@ async def test_async_install_exceptions_loop(
 
     await ent.async_install()
     assert bad.rebooted is False
+
+
+@pytest.mark.asyncio
+async def test_async_install_unexpected_polling_error_raises(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    dummy_coordinator: MagicMock,
+) -> None:
+    """async_install should not hide unexpected polling errors."""
+    entry = make_config_entry()
+    ent = OPNsenseFirmwareUpdatesAvailableUpdate(
+        config_entry=entry,
+        coordinator=dummy_coordinator,
+        entity_description=UpdateEntityDescription(
+            key="firmware.update_available", name="Firmware"
+        ),
+    )
+
+    class BadClient:
+        async def upgrade_firmware(self, _upgrade_type: Any) -> dict[str, Any]:
+            """Simulate accepting an upgrade request before polling fails."""
+            return {"started": True}
+
+        async def upgrade_status(self) -> dict[str, Any]:
+            """Raise an unexpected polling error.
+
+            Raises:
+                RuntimeError: Always raised to verify unexpected errors are not
+                    swallowed by retry handling.
+            """
+            raise RuntimeError("unexpected")
+
+    bad: Any = BadClient()
+    object.__setattr__(ent, "_client", bad)
+    ent.coordinator.data = {"firmware_update_info": {"status": "update"}}
+    monkeypatch.setattr(asyncio, "sleep", AsyncMock(return_value=None))
+
+    with pytest.raises(RuntimeError, match="unexpected"):
+        await ent.async_install()
 
 
 def test_get_installed_version_none_on_error(

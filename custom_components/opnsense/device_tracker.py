@@ -79,6 +79,47 @@ def _devices_from_arp_entries(arp_entries: list[Any]) -> tuple[list[dict[str, An
     return devices, mac_addresses
 
 
+def _non_empty_string(value: Any) -> str | None:
+    """Return a non-empty string value, if available."""
+    return value if isinstance(value, str) and value else None
+
+
+def _hostname_from_arp_entry(entry: MutableMapping[str, Any]) -> str | None:
+    """Return the normalized hostname from an ARP entry."""
+    hostname = entry.get("hostname")
+    if not isinstance(hostname, str):
+        return None
+    hostname = hostname.strip("?")
+    return hostname or None
+
+
+def _arp_expires_attribute(value: Any) -> str | datetime | None:
+    """Return the Home Assistant attribute value for an ARP expiry."""
+    if value == -1:
+        return "Never"
+    if isinstance(value, int | float):
+        return datetime.now().astimezone() + timedelta(seconds=value)
+    return None
+
+
+def _update_arp_extra_state_attributes(
+    attributes: dict[str, Any],
+    entry: MutableMapping[str, Any],
+) -> None:
+    """Update optional ARP extra state attributes from a coordinator entry."""
+    interface = entry.get("intf_description")
+    if interface:
+        attributes["interface"] = interface
+
+    expires = _arp_expires_attribute(entry.get("expires"))
+    if expires is not None:
+        attributes["expires"] = expires
+
+    arp_type = entry.get("type")
+    if arp_type:
+        attributes["type"] = arp_type
+
+
 def _compile_tracked_devices(
     config_entry: ConfigEntry,
     arp_entries: list[Any],
@@ -236,22 +277,12 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
                 break
         if not entry:
             entry = {}
-        try:
-            self._attr_ip_address = entry.get("ip") if len(entry.get("ip", 0)) > 0 else None
-        except TypeError, KeyError, AttributeError:
-            self._attr_ip_address = None
+        self._attr_ip_address = _non_empty_string(entry.get("ip"))
 
         if self._attr_ip_address:
             self._last_known_ip = self._attr_ip_address
 
-        try:
-            self._attr_hostname = (
-                entry.get("hostname", "").strip("?")
-                if len(entry.get("hostname", "").strip("?")) > 0
-                else None
-            )
-        except TypeError, KeyError, AttributeError:
-            self._attr_hostname = None
+        self._attr_hostname = _hostname_from_arp_entry(entry)
 
         if self._attr_hostname:
             self._last_known_hostname = self._attr_hostname
@@ -277,26 +308,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
                 )
             self._is_connected = True
 
-        ha_to_opnsense: dict[str, Any] = {
-            "interface": "intf_description",
-            "expires": "expires",
-            "type": "type",
-        }
-        try:
-            for prop_name in ("interface", "expires", "type"):
-                prop = entry.get(ha_to_opnsense[prop_name])
-                if prop:
-                    if prop_name == "expires":
-                        if prop == -1:
-                            self._attr_extra_state_attributes[prop_name] = "Never"
-                        else:
-                            self._attr_extra_state_attributes[prop_name] = (
-                                datetime.now().astimezone() + timedelta(seconds=prop)
-                            )
-                    else:
-                        self._attr_extra_state_attributes[prop_name] = prop
-        except TypeError, KeyError, AttributeError:
-            pass
+        _update_arp_extra_state_attributes(self._attr_extra_state_attributes, entry)
 
         if self._attr_hostname is None and self._last_known_hostname:
             self._attr_extra_state_attributes["last_known_hostname"] = self._last_known_hostname
@@ -313,10 +325,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
                 self._last_known_connected_time
             )
 
-        try:
-            self._attr_icon = "mdi:lan-connect" if self.is_connected else "mdi:lan-disconnect"
-        except TypeError, KeyError, AttributeError:
-            self._attr_icon = "mdi:lan-disconnect"
+        self._attr_icon = "mdi:lan-connect" if self.is_connected else "mdi:lan-disconnect"
 
         self.async_write_ha_state()
 
@@ -337,17 +346,16 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             return
 
         state = last_state.attributes
+        if not isinstance(state, MutableMapping):
+            return
 
         self._last_known_hostname = state.get("last_known_hostname", None)
         self._last_known_ip = state.get("last_known_ip", None)
 
-        try:
-            for attr in ("interface", "expires", "type"):
-                value = state.get(attr, None)
-                if value:
-                    self._attr_extra_state_attributes[attr] = value
-        except TypeError, KeyError, AttributeError:
-            pass
+        for attr in ("interface", "expires", "type"):
+            value = state.get(attr, None)
+            if value:
+                self._attr_extra_state_attributes[attr] = value
 
         lkct = state.get("last_known_connected_time", None)
         if isinstance(lkct, datetime):

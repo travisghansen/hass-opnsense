@@ -420,6 +420,43 @@ def test_handle_coordinator_update_expires_positive(
     assert isinstance(ent.extra_state_attributes.get("expires"), datetime)
 
 
+def test_handle_coordinator_update_skips_malformed_expires(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Malformed ARP expiry data should not hide other valid ARP attributes."""
+    coordinator.data = {
+        "arp_table": [
+            {
+                "mac": "aa:bb:cc",
+                "ip": "1.2.3.4",
+                "intf_description": "lan",
+                "expires": "soon",
+                "type": "arp",
+            }
+        ],
+        "update_time": float(int(datetime.now(UTC).timestamp())),
+    }
+
+    entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
+
+    ent = dt_mod.OPNsenseScannerEntity(
+        config_entry=entry,
+        coordinator=coordinator,
+        enabled_default=False,
+        mac="aa:bb:cc",
+        mac_vendor=None,
+        hostname=None,
+    )
+    object.__setattr__(ent, "async_write_ha_state", MagicMock())
+
+    ent._handle_coordinator_update()
+
+    assert ent.extra_state_attributes.get("interface") == "lan"
+    assert "expires" not in ent.extra_state_attributes
+    assert ent.extra_state_attributes.get("type") == "arp"
+
+
 def test_handle_coordinator_update_ip_typeerror(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
