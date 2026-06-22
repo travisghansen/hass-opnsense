@@ -862,7 +862,6 @@ async def _compile_interface_sensors(
     context = _compile_context(config_entry, coordinator)
     entities: list[OPNsenseInterfaceSensor] = []
 
-    # interfaces
     for interface_name, interface in (dict_get(state, "interfaces", {}) or {}).items():
         entities.extend(
             _create_sensor(
@@ -924,7 +923,6 @@ async def _compile_temperature_sensors(
     context = _compile_context(config_entry, coordinator)
     entities: list = []
 
-    # temperatures
     for temp_device, temp in state.get("telemetry", {}).get("temps", {}).items():
         entities.append(
             _create_sensor(
@@ -953,7 +951,6 @@ async def _compile_dhcp_leases_sensors(
     context = _compile_context(config_entry, coordinator)
     entities: list = []
 
-    # interfaces
     for interface, interface_name in (
         dict_get(state, "dhcp_leases.lease_interfaces", {}) or {}
     ).items():
@@ -1153,12 +1150,10 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
         self._attr_extra_state_attributes = {}
         if self.entity_description.key == "telemetry.cpu.usage_total":
             temp_attr = self._get_opnsense_state_value("telemetry.cpu")
-            # _LOGGER.debug(f"[extra_state_attributes] temp_attr: {temp_attr}")
             if isinstance(temp_attr, MutableMapping):
                 for k, v in temp_attr.items():
                     if k.startswith("usage_") and k != "usage_total":
                         self._attr_extra_state_attributes[k.replace("usage_", "")] = f"{v}%"
-                # _LOGGER.debug(f"[extra_state_attributes] attributes: {attributes}")
         elif self.entity_description.key == "certificates":
             certs = self._get_opnsense_state_value(self.entity_description.key)
             if isinstance(certs, MutableMapping):
@@ -1390,10 +1385,6 @@ class OPNsenseFilesystemSensor(OPNsenseSensor):
 class OPNsenseInterfaceSensor(OPNsenseSensor):
     """Class for OPNsense Interface Sensors."""
 
-    def _opnsense_get_interface_property_name(self) -> str:
-        """Opnsense get interface property name."""
-        return self.entity_description.key.split(".")[2]
-
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update."""
@@ -1417,7 +1408,7 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
             self._available = False
             self.async_write_ha_state()
             return
-        prop_name: str = self._opnsense_get_interface_property_name()
+        prop_name: str = self.entity_description.key.split(".")[2]
         try:
             self._attr_native_value = interface[prop_name]
         except TypeError, KeyError, ZeroDivisionError:
@@ -1454,7 +1445,7 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
     @property
     def icon(self) -> str | None:
         """Return the icon for the sensor."""
-        prop_name: str = self._opnsense_get_interface_property_name()
+        prop_name: str = self.entity_description.key.split(".")[2]
         if prop_name == "status" and self.native_value != "up":
             return "mdi:close-network-outline"
         return super().icon
@@ -1624,10 +1615,6 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
                 return dict(gateway)
         return {}
 
-    def _opnsense_get_gateway_property_name(self) -> str:
-        """Opnsense get gateway property name."""
-        return self.entity_description.key.split(".")[2]
-
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update."""
@@ -1642,10 +1629,9 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
             self._available = False
             self.async_write_ha_state()
             return
-        prop_name: str = self._opnsense_get_gateway_property_name()
+        prop_name: str = self.entity_description.key.split(".")[2]
         try:
             value = gateway[prop_name]
-            # cleanse "ms", etc from values
             if prop_name in {"stddev", "delay", "loss"} and isinstance(value, str):
                 value = re.sub(r"[^0-9\.]*", "", value)
                 if len(value) > 0:
@@ -1668,7 +1654,7 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
     @property
     def icon(self) -> str | None:
         """Return the icon for the sensor."""
-        prop_name: str = self._opnsense_get_gateway_property_name()
+        prop_name: str = self.entity_description.key.split(".")[2]
         if prop_name == "status" and self.native_value != "online":
             return "mdi:close-network-outline"
         return super().icon
@@ -1676,10 +1662,6 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
 
 class OPNsenseVPNSensor(OPNsenseSensor):
     """Class for OPNsense VPN Sensors."""
-
-    def _get_property_name(self) -> str:
-        """Return property name."""
-        return self.entity_description.key.split(".")[3]
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -1699,7 +1681,7 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             if uuid == instance_uuid:
                 instance = ins
                 break
-        prop_name: str = self._get_property_name()
+        prop_name: str = self.entity_description.key.split(".")[3]
         if not instance or (
             prop_name != "status"
             and instance.get("enabled", None) is not None
@@ -1797,7 +1779,7 @@ class OPNsenseVPNSensor(OPNsenseSensor):
     @property
     def icon(self) -> str | None:
         """Return the icon for the sensor."""
-        prop_name: str = self._get_property_name()
+        prop_name: str = self.entity_description.key.split(".")[3]
         if prop_name == "status" and self.native_value != "up":
             return "mdi:close-network-outline"
         return super().icon
@@ -1853,7 +1835,6 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
             self.async_write_ha_state()
             return
         if_name: str = self.entity_description.key.split(".")[1].strip()
-        # _LOGGER.debug(f"[OPNsenseDHCPLeasesSensor handle_coordinator_update] if_name: {if_name}")
         dhcp_leases = state.get("dhcp_leases")
         if not isinstance(dhcp_leases, MutableMapping):
             self._available = False
@@ -1862,10 +1843,6 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
         if if_name.lower() == "all":
             leases = dhcp_leases.get("leases", {})
             lease_interfaces = dhcp_leases.get("lease_interfaces", {})
-            # _LOGGER.debug(f"[OPNsenseDHCPLeasesSensor handle_coordinator_update]
-            # lease_interfaces: {lease_interfaces}")
-            # _LOGGER.debug(f"[OPNsenseDHCPLeasesSensor handle_coordinator_update]
-            # leases: {leases}")
             if not isinstance(leases, MutableMapping) or not isinstance(
                 lease_interfaces, MutableMapping
             ):

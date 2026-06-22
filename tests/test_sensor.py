@@ -1,8 +1,6 @@
 """These tests import the integration code via relative imports and assert behavior across sensor variants using a synthesized coordinator state."""
 
 from collections.abc import Callable, Iterable
-
-# removed unused `inspect` and `sys` imports when tracer-based test was replaced
 from typing import Any, Never, cast
 from unittest.mock import MagicMock
 
