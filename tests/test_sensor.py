@@ -128,7 +128,9 @@ async def test_compile_gateway_sensors_creates_disabled_address_sensor(
 
     entities = await sensor_module._compile_gateway_sensors(entry, coordinator, coordinator.data)
     address_sensor = next(
-        entity for entity in entities if entity.entity_description.key == "gateway.wan.address"
+        entity
+        for entity in entities
+        if entity.entity_description.key == "gateway.WAN Gateway.address"
     )
 
     assert isinstance(address_sensor, OPNsenseGatewaySensor)
@@ -262,13 +264,40 @@ def test_gateway_sensor_value_parsing(
         if isinstance(expected_value, float):
             assert isinstance(s.native_value, str | int | float)
             assert float(s.native_value) == pytest.approx(expected_value)
-        else:
-            assert s.native_value == expected_value
+    else:
+        assert s.native_value == expected_value
         if prop_name == "status":
             if expect_down_icon:
                 assert s.icon == "mdi:close-network-outline"
             else:
                 assert s.icon != "mdi:close-network-outline"
+
+
+def test_gateway_sensor_resolves_display_name_when_mapping_key_differs(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Gateway sensor should resolve payload when description key uses display name."""
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {
+        "gateways": {
+            "wan_primary": {"name": "WAN Gateway", "status": "online"},
+        }
+    }
+
+    desc = MagicMock()
+    desc.key = "gateway.WAN Gateway.status"
+    desc.name = "Gateway WAN Gateway status"
+
+    s = OPNsenseGatewaySensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    s.hass = MagicMock()
+    s.entity_id = "sensor.wan_gateway_status"
+    object.__setattr__(s, "async_write_ha_state", lambda: None)
+    s._handle_coordinator_update()
+
+    assert s.available is True
+    assert s.native_value == "online"
+    assert s.icon != "mdi:close-network-outline"
 
 
 def test_gateway_sensor_missing_and_missing_prop(
@@ -2326,7 +2355,7 @@ async def test_generated_sensor_entity_contract(
             "suggested_display_precision": 1,
             "entity_registry_enabled_default": False,
         },
-        "gateway.gw1.address": {
+        "gateway.WAN Gateway.address": {
             "name": "Gateway WAN Gateway address",
             "native_unit_of_measurement": None,
             "device_class": None,
@@ -2375,13 +2404,13 @@ async def test_generated_sensor_entity_contract(
         "interface.wan.outpkts_packets_per_second",
     }
 
-    gateway_keys = {key for key in entities_by_key if key.startswith("gateway.gw1.")}
+    gateway_keys = {key for key in entities_by_key if key.startswith("gateway.WAN Gateway.")}
     assert gateway_keys == {
-        "gateway.gw1.status",
-        "gateway.gw1.delay",
-        "gateway.gw1.stddev",
-        "gateway.gw1.loss",
-        "gateway.gw1.address",
+        "gateway.WAN Gateway.status",
+        "gateway.WAN Gateway.delay",
+        "gateway.WAN Gateway.stddev",
+        "gateway.WAN Gateway.loss",
+        "gateway.WAN Gateway.address",
     }
 
     openvpn_server_keys = {key for key in entities_by_key if key.startswith("openvpn.servers.s1.")}

@@ -341,7 +341,6 @@ def _build_interface_sensor_description(
 
 
 def _build_gateway_sensor_description(
-    gateway_key: str,
     gateway_name: str,
     prop_name: str,
 ) -> SensorEntityDescription:
@@ -365,7 +364,7 @@ def _build_gateway_sensor_description(
         state_class = None
 
     return SensorEntityDescription(
-        key=f"gateway.{gateway_key}.{prop_name}",
+        key=f"gateway.{gateway_name}.{prop_name}",
         name=f"Gateway {gateway_name} {prop_name}",
         native_unit_of_measurement=native_unit_of_measurement,
         device_class=device_class,
@@ -900,7 +899,7 @@ async def _compile_gateway_sensors(
             _create_sensor(
                 OPNsenseGatewaySensor,
                 context,
-                _build_gateway_sensor_description(gateway_key, gateway_name, prop_name),
+                _build_gateway_sensor_description(gateway_name, prop_name),
             )
             for prop_name in _GATEWAY_SENSOR_PROPERTIES
         )
@@ -1604,6 +1603,27 @@ class OPNsenseCarpStatusSensor(OPNsenseSensor):
 class OPNsenseGatewaySensor(OPNsenseSensor):
     """Class for OPNsense Gateway Sensors."""
 
+    def _opnsense_get_gateway_entry(self, gateway_name: str) -> dict[str, Any]:
+        """Return matching gateway payload by mapping key or display name."""
+        gateways = self.coordinator.data.get("gateways", {})
+        if not isinstance(gateways, Mapping):
+            return {}
+        if isinstance(gateways.get(gateway_name), Mapping):
+            return dict(gateways[gateway_name])
+        gateway_name_normalized = gateway_name.strip()
+        for gateway in gateways.values():
+            if not isinstance(gateway, Mapping):
+                continue
+            configured_name = gateway.get("name")
+            if configured_name == gateway_name_normalized:
+                return dict(gateway)
+            if (
+                isinstance(configured_name, str)
+                and configured_name.casefold() == gateway_name_normalized.casefold()
+            ):
+                return dict(gateway)
+        return {}
+
     def _opnsense_get_gateway_property_name(self) -> str:
         """Opnsense get gateway property name."""
         return self.entity_description.key.split(".")[2]
@@ -1616,12 +1636,8 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
             self._available = False
             self.async_write_ha_state()
             return
-        gateway: dict[str, Any] = {}
         gateway_name: str = self.entity_description.key.split(".")[1]
-        for i_gateway_name, gway in state.get("gateways", {}).items():
-            if i_gateway_name == gateway_name:
-                gateway = gway
-                break
+        gateway: dict[str, Any] = self._opnsense_get_gateway_entry(gateway_name)
         if not gateway:
             self._available = False
             self.async_write_ha_state()
