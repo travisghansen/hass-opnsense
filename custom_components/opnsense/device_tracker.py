@@ -36,6 +36,19 @@ from .helpers import dict_get
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
+def _device_data_from_arp_entry(
+    mac_address: str,
+    arp_entry: MutableMapping[str, Any],
+) -> dict[str, Any]:
+    """Build tracked device data from an ARP table entry."""
+    device: dict[str, Any] = {"mac": mac_address}
+    for attr in ("hostname", "manufacturer"):
+        value = arp_entry.get(attr)
+        if value:
+            device[attr] = value
+    return device
+
+
 def _device_from_arp_entry(mac_address: str, arp_entries: list[Any]) -> dict[str, Any]:
     """Build tracked device data from a configured MAC and matching ARP entry."""
     device: dict[str, Any] = {"mac": mac_address}
@@ -44,10 +57,7 @@ def _device_from_arp_entry(mac_address: str, arp_entries: list[Any]) -> dict[str
             continue
         if mac_address != arp_entry.get("mac", ""):
             continue
-        for attr in ("hostname", "manufacturer"):
-            value = arp_entry.get(attr)
-            if value:
-                device[attr] = value
+        device.update(_device_data_from_arp_entry(mac_address, arp_entry))
         break
     return device
 
@@ -61,15 +71,10 @@ def _devices_from_arp_entries(arp_entries: list[Any]) -> tuple[list[dict[str, An
         if not isinstance(arp_entry, MutableMapping):
             continue
         mac_address = arp_entry.get("mac")
-        if not mac_address or mac_address in mac_addresses:
+        if not isinstance(mac_address, str) or not mac_address or mac_address in mac_addresses:
             continue
-        device: dict[str, Any] = {"mac": mac_address}
-        for attr in ("hostname", "manufacturer"):
-            value = arp_entry.get(attr)
-            if value:
-                device[attr] = value
         mac_addresses.append(mac_address)
-        devices.append(device)
+        devices.append(_device_data_from_arp_entry(mac_address, arp_entry))
 
     return devices, mac_addresses
 

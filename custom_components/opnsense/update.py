@@ -32,20 +32,6 @@ def _build_firmware_update_entity_description() -> UpdateEntityDescription:
     )
 
 
-def _compile_firmware_update_entities(
-    config_entry: ConfigEntry,
-    coordinator: OPNsenseDataUpdateCoordinator,
-) -> list[OPNsenseFirmwareUpdatesAvailableUpdate]:
-    """Compile firmware update entities for the update platform."""
-    return [
-        OPNsenseFirmwareUpdatesAvailableUpdate(
-            config_entry=config_entry,
-            coordinator=coordinator,
-            entity_description=_build_firmware_update_entity_description(),
-        )
-    ]
-
-
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -57,7 +43,13 @@ async def async_setup_entry(
     config: Mapping[str, Any] = config_entry.data
 
     if config.get(CONF_SYNC_FIRMWARE_UPDATES, DEFAULT_SYNC_OPTION_VALUE):
-        entities.extend(_compile_firmware_update_entities(config_entry, coordinator))
+        entities.append(
+            OPNsenseFirmwareUpdatesAvailableUpdate(
+                config_entry=config_entry,
+                coordinator=coordinator,
+                entity_description=_build_firmware_update_entity_description(),
+            )
+        )
 
     async_add_entities(entities)
 
