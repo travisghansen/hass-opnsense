@@ -334,6 +334,72 @@ def test_gateway_sensor_missing_and_missing_prop(
     assert s2.available is False
 
 
+def test_gateway_lookup_handles_invalid_payloads_and_casefold_match(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Gateway lookup should skip invalid payloads and fall back to case-insensitive names."""
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {"gateways": []}
+    desc = MagicMock()
+    desc.key = "gateway.wan gateway.status"
+    desc.name = "Gateway Status"
+    sensor = OPNsenseGatewaySensor(config_entry=entry, coordinator=coord, entity_description=desc)
+
+    assert sensor._opnsense_get_gateway_entry("wan gateway") == {}
+
+    coord.data = {
+        "gateways": {
+            "bad": [],
+            "other": {"name": "LAN Gateway", "status": "online"},
+            "wan": {"name": "WAN Gateway", "status": "online"},
+        }
+    }
+    assert sensor._opnsense_get_gateway_entry("wan gateway") == {
+        "name": "WAN Gateway",
+        "status": "online",
+    }
+
+
+@pytest.mark.parametrize("description_key", ["gateway", "gateway.wan"])
+def test_gateway_sensor_invalid_description_key_unavailable(
+    description_key: str,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Gateway sensor should be unavailable when its description key cannot be parsed."""
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {"gateways": {"wan": {"name": "WAN", "status": "online"}}}
+    desc = MagicMock()
+    desc.key = description_key
+    desc.name = "Gateway Invalid"
+
+    sensor = OPNsenseGatewaySensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.gateway_invalid"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
+
+
+def test_gateway_sensor_invalid_icon_key_uses_description_icon(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Gateway sensor icon should fall back when its description key cannot be parsed."""
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {"gateways": {"wan": {"name": "WAN", "status": "online"}}}
+    desc = MagicMock()
+    desc.key = "gateway"
+    desc.name = "Gateway Invalid"
+    desc.icon = "mdi:gauge"
+
+    sensor = OPNsenseGatewaySensor(config_entry=entry, coordinator=coord, entity_description=desc)
+
+    assert sensor.icon == "mdi:gauge"
+
+
 @pytest.mark.parametrize(
     ("carp_entry", "expected_value", "expected_icon", "expect_keys"),
     [
@@ -1143,6 +1209,19 @@ def test_vpn_sensor_icon_variants(
         assert s.icon != "mdi:close-network-outline"
 
 
+def test_build_vpn_sensor_description_uses_gauge_icon_for_generic_properties() -> None:
+    """VPN sensor descriptions should use the gauge icon for unclassified properties."""
+    description = sensor_module._build_vpn_sensor_description(
+        "wireguard",
+        "servers",
+        "uuid1",
+        "wg0",
+        "uptime",
+    )
+
+    assert description.icon == "mdi:gauge"
+
+
 def test_sensor_module_import() -> None:
     """Test that the sensor module can be imported via relative import."""
     assert sensor_module is not None
@@ -1297,6 +1376,53 @@ def test_interface_sensor_with_dotted_key_parses_interface_name(
 
     assert sensor.available is True
     assert sensor.native_value == 321
+
+
+@pytest.mark.parametrize("description_key", ["interface", "interface.lan"])
+def test_interface_sensor_invalid_description_key_unavailable(
+    description_key: str,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Interface sensor should be unavailable when its description key cannot be parsed."""
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {"interfaces": {"lan": {"name": "LAN", "status": "up"}}}
+    desc = MagicMock()
+    desc.key = description_key
+    desc.name = "Interface Invalid"
+
+    sensor = OPNsenseInterfaceSensor(
+        config_entry=entry,
+        coordinator=coord,
+        entity_description=desc,
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.interface_invalid"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
+
+
+def test_interface_sensor_invalid_icon_key_uses_description_icon(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Interface sensor icon should fall back when its description key cannot be parsed."""
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {"interfaces": {"lan": {"name": "LAN", "status": "up"}}}
+    desc = MagicMock()
+    desc.key = "interface"
+    desc.name = "Interface Invalid"
+    desc.icon = "mdi:gauge"
+
+    sensor = OPNsenseInterfaceSensor(
+        config_entry=entry,
+        coordinator=coord,
+        entity_description=desc,
+    )
+
+    assert sensor.icon == "mdi:gauge"
 
 
 def test_gateway_sensor_with_dotted_key_parses_gateway_name_and_icon(
