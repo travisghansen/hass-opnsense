@@ -550,7 +550,6 @@ async def test_async_install_reboots_when_needed(
             return {"started": True}
 
         async def upgrade_status(self) -> dict[str, str]:
-            # placeholder; will be replaced by AsyncMock in test below
             """Return the next queued upgrade status payload."""
             return self._status_calls.pop(0)
 
@@ -757,7 +756,7 @@ async def test_async_install_unexpected_polling_error_raises(
 
             Raises:
                 RuntimeError: Always raised to verify unexpected errors are not
-                    swallowed by retry handling.
+                    handled as retryable polling errors.
             """
             raise RuntimeError("unexpected")
 
