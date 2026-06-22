@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import Callable, MutableMapping
-from typing import Any, Never, cast
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 from homeassistant.components.update import UpdateDeviceClass, UpdateEntityDescription
@@ -641,14 +641,11 @@ async def test_async_install_early_returns_and_no_client(
     await ent.async_install()
 
 
-def test_get_versions_exception_path(
-    monkeypatch: pytest.MonkeyPatch,
+def test_get_versions_malformed_state_returns_empty_versions(
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
 ) -> None:
-    """_get_versions returns None tuple when underlying dict_get raises."""
-    # force dict_get to raise so we hit the exception return
-
+    """_get_versions returns empty version data for malformed firmware state."""
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,
@@ -658,29 +655,15 @@ def test_get_versions_exception_path(
         ),
     )
 
-    def raise_type(*args, **kwargs) -> Never:
-        """Raise ``TypeError`` so version parsing error handling can be exercised.
-
-        Args:
-            *args: Additional positional arguments forwarded by the function.
-            **kwargs: Additional keyword arguments forwarded by the function.
-
-        Raises:
-            TypeError: If a supplied argument has an unsupported type.
-        """
-        raise TypeError("boom")
-
-    monkeypatch.setattr(update_module, "dict_get", raise_type)
-    pv, pl, ps = ent._get_versions({})
+    pv, pl, ps = ent._get_versions({"firmware_update_info": []})
     assert pv is None and pl is None and ps is None
 
 
-def test_get_release_notes_exception_path(
-    monkeypatch: pytest.MonkeyPatch,
+def test_get_release_notes_malformed_state_returns_none(
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
 ) -> None:
-    """_get_release_notes returns an unavailable message when dict_get raises."""
+    """_get_release_notes returns None for malformed firmware state."""
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,
@@ -690,22 +673,7 @@ def test_get_release_notes_exception_path(
         ),
     )
 
-    def raise_key(*args, **kwargs) -> Never:
-        """Raise ``KeyError`` so release-note fallback handling can be exercised.
-
-        Args:
-            *args: Additional positional arguments forwarded by the function.
-            **kwargs: Additional keyword arguments forwarded by the function.
-
-        Raises:
-            KeyError: Always raised to test the release-note exception path.
-        """
-        raise KeyError("nope")
-
-    monkeypatch.setattr(update_module, "dict_get", raise_key)
-    res = ent._get_release_notes({}, None, None)
-    assert res is not None
-    assert "Release notes unavailable" in res
+    assert ent._get_release_notes({"firmware_update_info": []}, None, None) is None
 
 
 @pytest.mark.asyncio
