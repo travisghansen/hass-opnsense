@@ -48,7 +48,6 @@ async def test_async_setup_entry_invalid_state(
 ) -> None:
     """async_setup_entry should do nothing when coordinator.data is invalid."""
     config_entry = make_config_entry()
-    # runtime_data used by async_setup_entry expects an attribute named COORDINATOR
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coordinator.data = None
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
@@ -84,7 +83,6 @@ async def test_static_key_sensor_cpu_and_boot_and_certificates(
 
     entry = make_config_entry()
 
-    # CPU total sensor
     desc = MagicMock()
     desc.key = "telemetry.cpu.usage_total"
     desc.name = "CPU Total"
@@ -94,7 +92,6 @@ async def test_static_key_sensor_cpu_and_boot_and_certificates(
     s_cpu.hass = MagicMock()
     s_cpu.entity_id = "sensor.cpu_total"
     object.__setattr__(s_cpu, "async_write_ha_state", lambda: None)
-    # first call when previous is None and value !=0 -> available True and extra attributes
     s_cpu._handle_coordinator_update()
     assert s_cpu.available is True
     assert s_cpu.native_value == 30
@@ -201,7 +198,6 @@ def test_sensors_unavailable_on_non_mapping_state(
 ) -> None:
     """Sensors should mark themselves unavailable when coordinator.data is not a mapping."""
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    # provide a non-mapping value (list) to trigger the isinstance guard
     coord.data = []
     entry = make_config_entry()
 
@@ -221,7 +217,7 @@ def test_sensors_unavailable_on_non_mapping_state(
     ("prop_name", "input_value", "expected_available", "expected_value", "expect_down_icon"),
     [
         ("status", "online", True, "online", False),
-        ("status", "", False, None, True),  # empty status -> unavailable
+        ("status", "", False, None, True),
         ("delay", "15ms", True, 15.0, False),
         ("stddev", "1ms", True, 1.0, False),
         ("loss", "0%", True, 0.0, False),
@@ -257,7 +253,6 @@ def test_gateway_sensor_value_parsing(
 
     assert s.available is expected_available
     if expected_available:
-        # compare floats approximately when numeric
         if isinstance(expected_value, float):
             assert isinstance(s.native_value, str | int | float)
             assert float(s.native_value) == pytest.approx(expected_value)
@@ -303,7 +298,6 @@ def test_gateway_sensor_missing_and_missing_prop(
     """Gateway sensor should be unavailable when gateway missing or property missing."""
     entry = make_config_entry()
 
-    # missing gateway
     coord1 = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord1.data = {"gateways": {}}
     desc1 = MagicMock()
@@ -316,7 +310,6 @@ def test_gateway_sensor_missing_and_missing_prop(
     s1._handle_coordinator_update()
     assert s1.available is False
 
-    # gateway present but property missing
     coord2 = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord2.data = {"gateways": {"gw1": {"name": "gw1"}}}
     desc2 = MagicMock()
@@ -863,7 +856,6 @@ def test_compiled_sensor_variants(
         "expect_extra_keys",
     ),
     [
-        # missing instance -> unavailable
         (
             {"openvpn": {"servers": {}}},
             "openvpn.servers.uuid_missing.status",
@@ -872,7 +864,6 @@ def test_compiled_sensor_variants(
             False,
             (),
         ),
-        # instance present but disabled and prop != status -> unavailable
         (
             {"openvpn": {"servers": {"uuid1": {"name": "ovpn1", "enabled": False}}}},
             "openvpn.servers.uuid1.connected_clients",
@@ -881,7 +872,6 @@ def test_compiled_sensor_variants(
             False,
             (),
         ),
-        # instance present, disabled and requesting status -> 'disabled'
         (
             {"openvpn": {"servers": {"uuid1": {"name": "ovpn1", "enabled": False}}}},
             "openvpn.servers.uuid1.status",
@@ -890,7 +880,6 @@ def test_compiled_sensor_variants(
             False,
             ("uuid", "name", "enabled"),
         ),
-        # instance present with status and clients -> available, clients attribute populated
         (
             {
                 "openvpn": {
@@ -939,17 +928,13 @@ def test_vpn_sensor_variants(
     assert s.available is expected_available
     if expected_available:
         assert s.native_value == expected_value
-        # clients attribute present when expected
         attrs = s.extra_state_attributes
         assert attrs is not None
         if expect_clients:
             assert "clients" in attrs
-            # verify client attr was filtered to allowed fields
             assert isinstance(attrs["clients"], list)
             assert attrs["clients"][0]["name"] == "c1"
         for key in expect_extra_keys:
-            # only check presence if the attribute was populated by the handler
-            # some keys may be absent depending on input; assert no exception
             if key in attrs:
                 assert key in attrs
 
@@ -1007,11 +992,8 @@ def test_vpn_sensor_handles_exceptions_from_instance_get(
 @pytest.mark.parametrize(
     ("coord_data", "expected_available", "expected_value", "expect_device"),
     [
-        # non-mapping coordinator.data -> unavailable
         ([], False, None, False),
-        # telemetry present but no temps -> unavailable
         ({"telemetry": {}}, False, None, False),
-        # valid temp -> available with native_value and device_id
         (
             {"telemetry": {"temps": {"sensor1": {"temperature": 55, "device_id": "dev0"}}}},
             True,
@@ -1068,7 +1050,6 @@ def test_temp_sensor_handles_index_exceptions(
             self._exc = exc
 
         def __bool__(self) -> bool:
-            # truthy so code proceeds to try block
             """Bool."""
             return True
 
@@ -1212,7 +1193,6 @@ def test_static_cpu_zero_variants(
     """
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord.data = {"telemetry": {"cpu": cpu_map}}
-    # require fixture usage for config entry
     entry = make_config_entry()
 
     desc = MagicMock()
@@ -1269,7 +1249,6 @@ def test_interface_status_icon_up(make_config_entry: Callable[..., MockConfigEnt
     s.entity_id = "sensor.lan_status_up"
     object.__setattr__(s, "async_write_ha_state", lambda: None)
     s._handle_coordinator_update()
-    # when native_value is 'up', icon should not be the down icon
     assert s.icon != "mdi:close-network-outline"
 
 
@@ -1628,7 +1607,6 @@ def test_dhcp_leases_inner_except_writes_unavailable(
     object.__setattr__(s, "async_write_ha_state", collector)
     s._handle_coordinator_update()
 
-    # ensure the handler wrote state at least once and recorded a False (from except)
     assert writes, "async_write_ha_state was not called"
     assert any(w is False for w in writes), f"expected a False write captured, got {writes}"
 
@@ -1789,7 +1767,6 @@ def _setup_entry_with_all_syncs(
         make_config_entry: Fixture that builds config entries tailored for the test scenario.
     """
     entry = make_config_entry()
-    # enable all sync options; entry.data may be a mappingproxy so construct a new dict
     base = dict(entry.data)
     base.update(
         {
@@ -1805,7 +1782,6 @@ def _setup_entry_with_all_syncs(
             CONF_SYNC_DHCP_LEASES: True,
         }
     )
-    # create a new MockConfigEntry with the updated data to avoid mutating mappingproxy
     entry = make_config_entry(base)
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord.data = state
@@ -1818,7 +1794,6 @@ async def test_compile_and_handle_many_entities(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """Compile a complex state and verify many sensor branches are handled."""
-    # craft a rich state to exercise many branches
     state = {
         "telemetry": {
             "filesystems": [
