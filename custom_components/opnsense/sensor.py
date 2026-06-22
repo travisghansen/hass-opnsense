@@ -1,7 +1,6 @@
 """Provides sensors to track various status aspects of OPNsense."""
 
 from collections.abc import Mapping, MutableMapping
-from dataclasses import dataclass
 import inspect
 import logging
 import re
@@ -53,14 +52,6 @@ from .helpers import coerce_bool, dict_get
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True, slots=True)
-class _CompileContext:
-    """Typed context shared by sensor compile helpers."""
-
-    config_entry: ConfigEntry
-    coordinator: OPNsenseDataUpdateCoordinator
-
-
 _INTERFACE_SENSOR_PROPERTIES: tuple[str, ...] = (
     "status",
     "inerrs",
@@ -87,35 +78,29 @@ _VPN_SERVER_PROPERTIES: tuple[str, ...] = ("status", "connected_clients")
 _VPN_WIREGUARD_CLIENT_PROPERTIES: tuple[str, ...] = ("connected_servers",)
 
 
-def _compile_context(
-    config_entry: ConfigEntry,
-    coordinator: OPNsenseDataUpdateCoordinator,
-) -> _CompileContext:
-    """Build a typed compile context for entity generation."""
-    return _CompileContext(config_entry=config_entry, coordinator=coordinator)
-
-
 def _create_sensor[SensorT: OPNsenseSensor](
     entity_cls: type[SensorT],
-    context: _CompileContext,
+    config_entry: ConfigEntry,
+    coordinator: OPNsenseDataUpdateCoordinator,
     entity_description: SensorEntityDescription,
 ) -> SensorT:
     """Create a sensor entity from shared compile context."""
     return entity_cls(
-        config_entry=context.config_entry,
-        coordinator=context.coordinator,
+        config_entry=config_entry,
+        coordinator=coordinator,
         entity_description=entity_description,
     )
 
 
 def _create_sensors[SensorT: OPNsenseSensor](
     entity_cls: type[SensorT],
-    context: _CompileContext,
+    config_entry: ConfigEntry,
+    coordinator: OPNsenseDataUpdateCoordinator,
     entity_descriptions: list[SensorEntityDescription],
 ) -> list[SensorT]:
     """Create multiple sensor entities from shared compile context."""
     return [
-        _create_sensor(entity_cls, context, entity_description)
+        _create_sensor(entity_cls, config_entry, coordinator, entity_description)
         for entity_description in entity_descriptions
     ]
 
@@ -489,10 +474,10 @@ async def _compile_static_telemetry_sensors(
         config_entry: Config entry being exercised by the helper or test.
         coordinator: Data update coordinator that caches OPNsense state for entities.
     """
-    context = _compile_context(config_entry, coordinator)
     return _create_sensors(
         OPNsenseStaticKeySensor,
-        context,
+        config_entry,
+        coordinator,
         list(STATIC_TELEMETRY_SENSORS.values()),
     )
 
@@ -507,10 +492,10 @@ async def _compile_static_certificate_sensors(
         config_entry: Config entry being exercised by the helper or test.
         coordinator: Data update coordinator that caches OPNsense state for entities.
     """
-    context = _compile_context(config_entry, coordinator)
     return _create_sensors(
         OPNsenseStaticKeySensor,
-        context,
+        config_entry,
+        coordinator,
         list(STATIC_CERTIFICATE_SENSORS.values()),
     )
 
@@ -523,7 +508,6 @@ async def _compile_vnstat_sensors(
     """Compile per-interface vnStat sensors."""
     if not isinstance(state, MutableMapping):
         return []
-    context = _compile_context(config_entry, coordinator)
     vnstat_interfaces = dict_get(state, "vnstat.interfaces", {}) or {}
     if not isinstance(vnstat_interfaces, MutableMapping):
         return []
@@ -561,7 +545,8 @@ async def _compile_vnstat_sensors(
             entities.append(
                 _create_sensor(
                     OPNsenseVnstatSensor,
-                    context,
+                    config_entry,
+                    coordinator,
                     _build_vnstat_sensor_description(
                         interface_name,
                         interface_display_name,
@@ -581,7 +566,6 @@ async def _compile_speedtest_sensors(
     """Compile speedtest sensors from normalized coordinator state."""
     if not isinstance(state, MutableMapping):
         return []
-    context = _compile_context(config_entry, coordinator)
     speedtest = state.get("speedtest")
     if not isinstance(speedtest, MutableMapping) or not speedtest.get("available", False):
         return []
@@ -626,7 +610,8 @@ async def _compile_speedtest_sensors(
     )
     return _create_sensors(
         OPNsenseSpeedtestSensor,
-        context,
+        config_entry,
+        coordinator,
         [
             _build_speedtest_sensor_description(key, name, native_unit, icon)
             for key, name, native_unit, icon in metric_definitions
@@ -664,7 +649,6 @@ async def _compile_smart_sensors(
     """
     if not isinstance(state, MutableMapping):
         return []
-    context = _compile_context(config_entry, coordinator)
     if "smart_info" not in state:
         return []
     smart_devices = state.get("smart")
@@ -682,7 +666,8 @@ async def _compile_smart_sensors(
         entities.append(
             _create_sensor(
                 OPNsenseSmartSensor,
-                context,
+                config_entry,
+                coordinator,
                 _build_smart_sensor_description(device_name),
             )
         )
@@ -703,10 +688,10 @@ async def _compile_filesystem_sensors(
     """
     if not isinstance(state, MutableMapping):
         return []
-    context = _compile_context(config_entry, coordinator)
     return _create_sensors(
         OPNsenseFilesystemSensor,
-        context,
+        config_entry,
+        coordinator,
         [
             _build_filesystem_sensor_description(filesystem)
             for filesystem in dict_get(state, "telemetry.filesystems", []) or []
@@ -728,7 +713,6 @@ async def _compile_carp_interface_sensors(
     """
     if not isinstance(state, MutableMapping):
         return []
-    context = _compile_context(config_entry, coordinator)
     entities: list[OPNsenseCarpInterfaceSensor] = []
 
     interface_descriptions = _build_interface_device_description_map(
@@ -759,7 +743,8 @@ async def _compile_carp_interface_sensors(
             entities.append(
                 _create_sensor(
                     OPNsenseCarpInterfaceSensor,
-                    context,
+                    config_entry,
+                    coordinator,
                     SensorEntityDescription(
                         key=_build_carp_interface_sensor_key(interface_label, subnet),
                         name=display_name,
@@ -827,11 +812,11 @@ async def _compile_carp_status_sensor(
     """
     if not isinstance(state, MutableMapping):
         return []
-    context = _compile_context(config_entry, coordinator)
     return [
         _create_sensor(
             OPNsenseCarpStatusSensor,
-            context,
+            config_entry,
+            coordinator,
             SensorEntityDescription(
                 key="carp.status_summary",
                 name="CARP Status",
@@ -859,14 +844,14 @@ async def _compile_interface_sensors(
     """
     if not isinstance(state, MutableMapping):
         return []
-    context = _compile_context(config_entry, coordinator)
     entities: list[OPNsenseInterfaceSensor] = []
 
     for interface_name, interface in (dict_get(state, "interfaces", {}) or {}).items():
         entities.extend(
             _create_sensor(
                 OPNsenseInterfaceSensor,
-                context,
+                config_entry,
+                coordinator,
                 _build_interface_sensor_description(interface_name, interface, prop_name),
             )
             for prop_name in _INTERFACE_SENSOR_PROPERTIES
@@ -889,7 +874,6 @@ async def _compile_gateway_sensors(
     """
     if not isinstance(state, MutableMapping):
         return []
-    context = _compile_context(config_entry, coordinator)
     entities: list[OPNsenseGatewaySensor] = []
 
     for gateway_key, gateway in (dict_get(state, "gateways", {}) or {}).items():
@@ -897,7 +881,8 @@ async def _compile_gateway_sensors(
         entities.extend(
             _create_sensor(
                 OPNsenseGatewaySensor,
-                context,
+                config_entry,
+                coordinator,
                 _build_gateway_sensor_description(gateway_name, prop_name),
             )
             for prop_name in _GATEWAY_SENSOR_PROPERTIES
@@ -920,14 +905,14 @@ async def _compile_temperature_sensors(
     """
     if not isinstance(state, MutableMapping):
         return []
-    context = _compile_context(config_entry, coordinator)
     entities: list = []
 
     for temp_device, temp in state.get("telemetry", {}).get("temps", {}).items():
         entities.append(
             _create_sensor(
                 OPNsenseTempSensor,
-                context,
+                config_entry,
+                coordinator,
                 _build_temperature_sensor_description(temp_device, temp),
             )
         )
@@ -948,7 +933,6 @@ async def _compile_dhcp_leases_sensors(
     """
     if not isinstance(state, MutableMapping):
         return []
-    context = _compile_context(config_entry, coordinator)
     entities: list = []
 
     for interface, interface_name in (
@@ -957,7 +941,8 @@ async def _compile_dhcp_leases_sensors(
         entities.append(
             _create_sensor(
                 OPNsenseDHCPLeasesSensor,
-                context,
+                config_entry,
+                coordinator,
                 _build_dhcp_leases_sensor_description(interface, interface_name),
             )
         )
@@ -965,7 +950,8 @@ async def _compile_dhcp_leases_sensors(
     entities.append(
         _create_sensor(
             OPNsenseDHCPLeasesSensor,
-            context,
+            config_entry,
+            coordinator,
             _build_dhcp_leases_total_sensor_description(),
         )
     )
@@ -987,7 +973,6 @@ async def _compile_vpn_sensors(
     """
     if not isinstance(state, MutableMapping):
         return []
-    context = _compile_context(config_entry, coordinator)
     entities: list = []
 
     for vpn_type in ("openvpn", "wireguard"):
@@ -1006,7 +991,8 @@ async def _compile_vpn_sensors(
                 entities.extend(
                     _create_sensor(
                         OPNsenseVPNSensor,
-                        context,
+                        config_entry,
+                        coordinator,
                         _build_vpn_sensor_description(
                             vpn_type,
                             clients_servers,
