@@ -116,7 +116,7 @@ async def test_compile_gateway_sensors_creates_disabled_address_sensor(
     coordinator.data = {
         "gateways": {
             "wan": {
-                "name": "wan",
+                "name": "WAN Gateway",
                 "address": "203.0.113.1",
                 "delay": "15ms",
                 "stddev": "1ms",
@@ -132,7 +132,7 @@ async def test_compile_gateway_sensors_creates_disabled_address_sensor(
     )
 
     assert isinstance(address_sensor, OPNsenseGatewaySensor)
-    assert address_sensor.entity_description.name == "Gateway wan address"
+    assert address_sensor.entity_description.name == "Gateway WAN Gateway address"
     assert address_sensor.entity_description.icon == "mdi:ip-network"
     assert address_sensor.entity_description.state_class is None
     assert address_sensor.entity_description.entity_registry_enabled_default is False
@@ -2261,7 +2261,7 @@ async def test_generated_sensor_entity_contract(
         },
         "smart": [{"device": "nvme0"}],
         "smart_info": {"nvme0": {"temperature": {"current": 37}}},
-        "gateways": {"gw1": {"name": "gw1", "status": "online", "address": "203.0.113.1"}},
+        "gateways": {"gw1": {"name": "WAN Gateway", "status": "online", "address": "203.0.113.1"}},
         "openvpn": {"servers": {"s1": {"name": "ovpn1", "status": "up", "connected_clients": 2}}},
         "wireguard": {
             "clients": {"c1": {"name": "wg-client-1", "connected_servers": 1}},
@@ -2279,7 +2279,12 @@ async def test_generated_sensor_entity_contract(
         created.extend(entities)
 
     await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
-    entities_by_key = {entity.entity_description.key: entity for entity in created}
+    entities_by_key: dict[str, Any] = {}
+    for entity in created:
+        key = entity.entity_description.key
+        if key in entities_by_key:
+            pytest.fail(f"duplicate entity key generated during setup: {key}")
+        entities_by_key[key] = entity
     expected_contracts: dict[str, dict[str, Any]] = {
         "telemetry.filesystems.root": {
             "name": "Filesystem Used Percentage root",
@@ -2322,7 +2327,7 @@ async def test_generated_sensor_entity_contract(
             "entity_registry_enabled_default": False,
         },
         "gateway.gw1.address": {
-            "name": "Gateway gw1 address",
+            "name": "Gateway WAN Gateway address",
             "native_unit_of_measurement": None,
             "device_class": None,
             "state_class": None,

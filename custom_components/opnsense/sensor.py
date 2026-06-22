@@ -340,7 +340,11 @@ def _build_interface_sensor_description(
     )
 
 
-def _build_gateway_sensor_description(gateway_name: str, prop_name: str) -> SensorEntityDescription:
+def _build_gateway_sensor_description(
+    gateway_key: str,
+    gateway_name: str,
+    prop_name: str,
+) -> SensorEntityDescription:
     """Build a gateway sensor description."""
     native_unit_of_measurement = None
     device_class: SensorDeviceClass | None = None
@@ -361,7 +365,7 @@ def _build_gateway_sensor_description(gateway_name: str, prop_name: str) -> Sens
         state_class = None
 
     return SensorEntityDescription(
-        key=f"gateway.{gateway_name}.{prop_name}",
+        key=f"gateway.{gateway_key}.{prop_name}",
         name=f"Gateway {gateway_name} {prop_name}",
         native_unit_of_measurement=native_unit_of_measurement,
         device_class=device_class,
@@ -890,13 +894,13 @@ async def _compile_gateway_sensors(
     context = _compile_context(config_entry, coordinator)
     entities: list[OPNsenseGatewaySensor] = []
 
-    for gateway in (dict_get(state, "gateways", {}) or {}).values():
-        gateway_name = gateway["name"]
+    for gateway_key, gateway in (dict_get(state, "gateways", {}) or {}).items():
+        gateway_name = gateway.get("name", gateway_key)
         entities.extend(
             _create_sensor(
                 OPNsenseGatewaySensor,
                 context,
-                _build_gateway_sensor_description(gateway_name, prop_name),
+                _build_gateway_sensor_description(gateway_key, gateway_name, prop_name),
             )
             for prop_name in _GATEWAY_SENSOR_PROPERTIES
         )
