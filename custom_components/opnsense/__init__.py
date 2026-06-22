@@ -179,10 +179,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     options: Mapping[str, Any] = entry.options
     # _LOGGER.debug("[async_setup_entry] entry: %s", entry.as_dict())
 
-    url: str = config[CONF_URL]
-    username: str = config[CONF_USERNAME]
-    password: str = config[CONF_PASSWORD]
-    verify_ssl: bool = config.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
     device_tracker_enabled: bool = options.get(
         CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED
     )
@@ -190,18 +186,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     client: OPNsenseClient | None = None
     try:
-        client = OPNsenseClient(
-            url=url,
-            username=username,
-            password=password,
-            session=async_create_clientsession(
-                hass=hass,
-                raise_for_status=False,
-                cookie_jar=aiohttp.CookieJar(unsafe=is_private_ip(url)),
-            ),
-            opts={"verify_ssl": verify_ssl},
-            name=entry.title,
-        )
+        client = _create_client(hass, entry, name=entry.title)
         try:
             await client.validate()
         except OPNsenseBelowMinFirmware, OPNsenseUnknownFirmware:
@@ -431,12 +416,15 @@ async def _migrate_1_to_2(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
     return True
 
 
-def _create_migration_client(hass: HomeAssistant, config_entry: ConfigEntry) -> OPNsenseClient:
-    """Create the OPNsense client shared by API-backed migration steps.
+def _create_client(
+    hass: HomeAssistant, config_entry: ConfigEntry, *, name: str | None = None
+) -> OPNsenseClient:
+    """Create an OPNsense client from the current config entry data.
 
     Args:
         hass: Home Assistant instance.
-        config_entry: Config entry being migrated.
+        config_entry: Config entry providing connection credentials and options.
+        name: Optional client name used for logging and diagnostics.
 
     Returns:
         OPNsenseClient: Client configured from the current config entry data.
@@ -456,6 +444,7 @@ def _create_migration_client(hass: HomeAssistant, config_entry: ConfigEntry) -> 
             cookie_jar=aiohttp.CookieJar(unsafe=is_private_ip(url)),
         ),
         opts={"verify_ssl": verify_ssl},
+        name=name,
     )
 
 
@@ -731,12 +720,10 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
     migration_client: OPNsenseClient | None = None
     try:
         if version in (2, 3):
-            migration_client = _create_migration_client(hass, config_entry)
+            migration_client = _create_client(hass, config_entry)
 
         # 2 -> 3: Change unique device id to use lowest MAC address
         if version == 2:
-            if migration_client is None:
-                migration_client = _create_migration_client(hass, config_entry)
             v2to3: bool = await _migrate_2_to_3(hass, config_entry, migration_client)
             if not v2to3:
                 return False
@@ -744,8 +731,6 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
 
         # 3 -> 4: Moving interfaces, gateways and openvpn out of telemetry
         if version == 3:
-            if migration_client is None:
-                migration_client = _create_migration_client(hass, config_entry)
             v3to4: bool = await _migrate_3_to_4(hass, config_entry, migration_client)
             if not v3to4:
                 return False
