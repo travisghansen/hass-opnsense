@@ -16,8 +16,7 @@
       "url_redirect": "Incorrect URL (redirect)",
       "missing_device_unique_id": "Unable to get MAC addresses from OPNsense to use as Device Unique ID",
       "below_min_firmware": "OPNsense Firmware of {firmware} is below the minimum supported version of {min_firmware}",
-      "unknown_firmware": "Unable to get OPNsense Firmware version",
-      "missing_external_aiopnsense": "OPNsense requires the external aiopnsense package"
+      "unknown_firmware": "Unable to get OPNsense Firmware version"
     },
     "step": {
       "user": {
@@ -65,8 +64,7 @@
   "options": {
     "error": {
       "cannot_connect": "Failed to connect",
-      "unknown": "Unexpected error",
-      "missing_external_aiopnsense": "OPNsense requires the external aiopnsense package"
+      "unknown": "Unexpected error"
     },
     "step": {
       "init": {
@@ -126,10 +124,6 @@
     "device_id_mismatched": {
       "title": "OPNsense Hardware Has Changed",
       "description": "OPNsense Device ID has changed which indicates new or changed hardware. In order to accommodate this, hass-opnsense needs to be removed and reinstalled for this router. hass-opnsense is shutting down."
-    },
-    "missing_external_aiopnsense": {
-      "title": "Missing aiopnsense Dependency",
-      "description": "This OPNsense firmware requires the external aiopnsense package. Update/reinstall hass-opnsense so aiopnsense is available, then reload the integration."
     }
   },
   "selector": {

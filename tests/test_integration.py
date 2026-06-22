@@ -34,7 +34,7 @@ from custom_components.opnsense.const import (
     CONF_GRANULAR_SYNC_OPTIONS,
     CONF_MANUAL_DEVICES,
 )
-from tests.utilities import patch_client_factory
+from tests.utilities import patch_opnsense_client
 
 homeassistant = pytest.importorskip("homeassistant")
 
@@ -273,7 +273,7 @@ async def test_e2e_basic_config_flow_and_setup(
 ) -> None:
     """E2E: basic config flow (single step) followed by entry setup."""
     # Patch client for config flow
-    patch_client_factory(monkeypatch, cf_mod, lambda **k: _FakeFlowClient(device_id="dev-basic"))
+    patch_opnsense_client(monkeypatch, cf_mod, lambda **k: _FakeFlowClient(device_id="dev-basic"))
     monkeypatch.setattr(
         cf_mod, "async_create_clientsession", lambda **k: MagicMock(), raising=False
     )
@@ -304,7 +304,7 @@ async def test_e2e_basic_config_flow_and_setup(
     assert data[CONF_NAME] == "MyRouter"
 
     # Now patch runtime client & coordinator and call async_setup_entry
-    patch_client_factory(
+    patch_opnsense_client(
         monkeypatch, init_mod, lambda **k: _FakeRuntimeClient(device_id="dev-basic")
     )
     monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", _FakeCoordinator)
@@ -348,7 +348,7 @@ async def test_e2e_granular_sync_and_options_device_tracker(
           instantiates two coordinators.
     """
     # Patch flow client
-    patch_client_factory(monkeypatch, cf_mod, lambda **k: _FakeFlowClient(device_id="dev-gran"))
+    patch_opnsense_client(monkeypatch, cf_mod, lambda **k: _FakeFlowClient(device_id="dev-gran"))
     monkeypatch.setattr(
         cf_mod, "async_create_clientsession", lambda **k: MagicMock(), raising=False
     )
@@ -442,7 +442,7 @@ async def test_e2e_granular_sync_and_options_device_tracker(
     assert entry.options.get(cf_mod.CONF_DEVICE_TRACKER_ENABLED) is True
 
     # Patch runtime setup components (client + coordinator) to count device tracker coordinator instantiation
-    patch_client_factory(
+    patch_opnsense_client(
         monkeypatch, init_mod, lambda **k: _FakeRuntimeClient(device_id="dev-gran")
     )
     monkeypatch.setattr(
@@ -470,7 +470,7 @@ async def test_e2e_reload_and_unload(
           removed.
     """
     # Patch config flow client
-    patch_client_factory(monkeypatch, cf_mod, lambda **k: _FakeFlowClient(device_id="dev-rel"))
+    patch_opnsense_client(monkeypatch, cf_mod, lambda **k: _FakeFlowClient(device_id="dev-rel"))
     monkeypatch.setattr(
         cf_mod, "async_create_clientsession", lambda **k: MagicMock(), raising=False
     )
@@ -496,7 +496,7 @@ async def test_e2e_reload_and_unload(
 
     # Runtime path patches
     runtime_client = _FakeRuntimeClient(device_id="dev-rel")
-    patch_client_factory(monkeypatch, init_mod, lambda **k: runtime_client)
+    patch_opnsense_client(monkeypatch, init_mod, lambda **k: runtime_client)
     monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", _FakeCoordinator)
 
     # Provide unload platforms async method
@@ -678,14 +678,21 @@ async def test_e2e_full_migration_chain(
     )
 
     # Patch client used during migrations (v2->3 get_device_unique_id, v3->4 get_telemetry)
+    migration_clients: list[Any] = []
+
     class _MigClient:
+        def __init__(self) -> None:
+            """Track migration client instances created during the migration chain."""
+            self.close_calls = 0
+            migration_clients.append(self)
+
         async def get_device_unique_id(self) -> str:
             """Return the migrated device identifier used by the migration test."""
             return "newmacid"
 
         async def async_close(self) -> None:
             """Satisfy migration helper cleanup calls in the fake migration client."""
-            return
+            self.close_calls += 1
 
         async def get_host_firmware_version(self) -> str:  # not used in migration chain here
             """Return a placeholder firmware version for migration compatibility."""
@@ -695,7 +702,7 @@ async def test_e2e_full_migration_chain(
             """Return minimal telemetry so migration code can inspect filesystems."""
             return {"filesystems": []}  # keep simple to avoid extra branches
 
-    patch_client_factory(monkeypatch, init_mod, lambda **k: _MigClient())
+    patch_opnsense_client(monkeypatch, init_mod, lambda **k: _MigClient())
     monkeypatch.setattr(
         init_mod, "async_create_clientsession", lambda **k: MagicMock(), raising=False
     )
@@ -720,6 +727,8 @@ async def test_e2e_full_migration_chain(
     ok = await init_mod.async_migrate_entry(hass, entry)
     assert ok is True
     assert entry.version == 5
+    assert len(migration_clients) == 1
+    assert migration_clients[0].close_calls == 1
     # v1->2: tls_insecure removed, verify_ssl added (inverse of True -> False)
     assert init_mod.CONF_TLS_INSECURE not in entry.data
     assert entry.data.get(CONF_VERIFY_SSL) is False
