@@ -6,7 +6,7 @@ from collections.abc import Callable, Iterable
 from typing import Any, Never, cast
 from unittest.mock import MagicMock
 
-from homeassistant.components.sensor import SensorStateClass
+from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -2200,6 +2200,217 @@ async def test_async_setup_entry_creates_speedtest_sensors(
     latency_attrs = entities_by_key["speedtest.average.latency"].extra_state_attributes
     assert latency_attrs is not None
     assert latency_attrs["samples"] == 10717
+
+
+@pytest.mark.asyncio
+async def test_generated_sensor_entity_contract(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Representative generated sensors should keep their entity-description contract."""
+
+    def assert_entity_description_fields(
+        key: str,
+        expected: dict[str, Any],
+    ) -> None:
+        """Assert a representative generated entity description contract."""
+        description = entities_by_key[key].entity_description
+        for field_name, expected_value in expected.items():
+            assert getattr(description, field_name) == expected_value
+
+    state = {
+        "telemetry": {
+            "filesystems": [{"mountpoint": "/", "used_pct": 5}],
+            "temps": {"cpu": {"name": "CPU", "temperature": 55}},
+        },
+        "interfaces": {
+            "wan": {"name": "WAN", "device": "igc0", "interface": "wan", "status": "up"},
+        },
+        "vnstat": {
+            "interfaces": {
+                "igc0": {
+                    "metrics": {
+                        "vnstat_today": {"total_bytes": 1000, "rx_bytes": 700, "tx_bytes": 300},
+                        "vnstat_this_month": {
+                            "total_bytes": 2000,
+                            "rx_bytes": 1200,
+                            "tx_bytes": 800,
+                        },
+                        "vnstat_yesterday": {"total_bytes": 900, "rx_bytes": 600, "tx_bytes": 300},
+                        "vnstat_last_month": {
+                            "total_bytes": 1500,
+                            "rx_bytes": 800,
+                            "tx_bytes": 700,
+                        },
+                        "vnstat_last_hour": {"total_bytes": 50, "rx_bytes": 30, "tx_bytes": 20},
+                    }
+                }
+            }
+        },
+        "speedtest": {
+            "available": True,
+            "last": {
+                "download": {"value": 836.05},
+                "upload": {"value": 832.97},
+                "latency": {"value": 4.0},
+            },
+            "average": {
+                "download": {"value": 723.83},
+                "upload": {"value": 706.7},
+                "latency": {"value": 13.42},
+            },
+        },
+        "smart": [{"device": "nvme0"}],
+        "smart_info": {"nvme0": {"temperature": {"current": 37}}},
+        "gateways": {"gw1": {"name": "gw1", "status": "online", "address": "203.0.113.1"}},
+        "openvpn": {"servers": {"s1": {"name": "ovpn1", "status": "up", "connected_clients": 2}}},
+        "wireguard": {
+            "clients": {"c1": {"name": "wg-client-1", "connected_servers": 1}},
+            "servers": {"wg1": {"name": "wg-server-1", "status": "up", "connected_clients": 1}},
+        },
+        "dhcp_leases": {"leases": {"lan": []}, "lease_interfaces": {"lan": "LAN"}},
+        "certificates": {"cert1": 1},
+        "carp": {"interfaces": []},
+    }
+    entry, _coord = _setup_entry_with_all_syncs(state, make_config_entry)
+    created: list[Any] = []
+
+    def add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Collect entities created during setup."""
+        created.extend(entities)
+
+    await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
+    entities_by_key = {entity.entity_description.key: entity for entity in created}
+    expected_contracts: dict[str, dict[str, Any]] = {
+        "telemetry.filesystems.root": {
+            "name": "Filesystem Used Percentage root",
+            "native_unit_of_measurement": sensor_module.PERCENTAGE,
+            "device_class": None,
+            "state_class": SensorStateClass.MEASUREMENT,
+            "entity_registry_enabled_default": True,
+        },
+        "vnstat.igc0.vnstat_today": {
+            "name": "vnStat: WAN: Today",
+            "device_class": SensorDeviceClass.DATA_SIZE,
+            "state_class": SensorStateClass.TOTAL_INCREASING,
+            "suggested_unit_of_measurement": sensor_module.UnitOfInformation.GIBIBYTES,
+            "suggested_display_precision": 1,
+            "entity_registry_enabled_default": False,
+        },
+        "speedtest.last.download": {
+            "name": "Speedtest Last Download",
+            "native_unit_of_measurement": sensor_module.UnitOfDataRate.MEGABITS_PER_SECOND,
+            "device_class": SensorDeviceClass.DATA_RATE,
+            "state_class": SensorStateClass.MEASUREMENT,
+            "entity_registry_enabled_default": False,
+        },
+        "smart.nvme0.temperature": {
+            "name": "SMART nvme0 Temperature",
+            "native_unit_of_measurement": sensor_module.UnitOfTemperature.CELSIUS,
+            "device_class": SensorDeviceClass.TEMPERATURE,
+            "state_class": SensorStateClass.MEASUREMENT,
+            "suggested_unit_of_measurement": sensor_module.UnitOfTemperature.CELSIUS,
+            "suggested_display_precision": 1,
+            "entity_registry_enabled_default": False,
+        },
+        "interface.wan.inbytes": {
+            "name": "Interface WAN inbytes",
+            "native_unit_of_measurement": sensor_module.UnitOfInformation.BYTES,
+            "device_class": SensorDeviceClass.DATA_SIZE,
+            "state_class": SensorStateClass.TOTAL_INCREASING,
+            "suggested_unit_of_measurement": sensor_module.UnitOfInformation.GIGABYTES,
+            "suggested_display_precision": 1,
+            "entity_registry_enabled_default": False,
+        },
+        "gateway.gw1.address": {
+            "name": "Gateway gw1 address",
+            "native_unit_of_measurement": None,
+            "device_class": None,
+            "state_class": None,
+            "entity_registry_enabled_default": False,
+        },
+        "openvpn.servers.s1.status": {
+            "name": "OpenVPN Server ovpn1 status",
+            "native_unit_of_measurement": None,
+            "device_class": None,
+            "state_class": None,
+            "entity_registry_enabled_default": True,
+        },
+        "wireguard.clients.c1.connected_servers": {
+            "name": "Wireguard Client wg-client-1 connected_servers",
+            "native_unit_of_measurement": None,
+            "device_class": None,
+            "state_class": SensorStateClass.MEASUREMENT,
+            "entity_registry_enabled_default": False,
+        },
+        "dhcp_leases.all": {
+            "name": "DHCP Leases All",
+            "native_unit_of_measurement": "leases",
+            "device_class": None,
+            "state_class": SensorStateClass.MEASUREMENT,
+            "entity_registry_enabled_default": True,
+        },
+    }
+
+    for key, expected in expected_contracts.items():
+        assert_entity_description_fields(key, expected)
+
+    interface_keys = {key for key in entities_by_key if key.startswith("interface.wan.")}
+    assert interface_keys == {
+        "interface.wan.status",
+        "interface.wan.inerrs",
+        "interface.wan.outerrs",
+        "interface.wan.collisions",
+        "interface.wan.inbytes",
+        "interface.wan.inbytes_kilobytes_per_second",
+        "interface.wan.outbytes",
+        "interface.wan.outbytes_kilobytes_per_second",
+        "interface.wan.inpkts",
+        "interface.wan.inpkts_packets_per_second",
+        "interface.wan.outpkts",
+        "interface.wan.outpkts_packets_per_second",
+    }
+
+    gateway_keys = {key for key in entities_by_key if key.startswith("gateway.gw1.")}
+    assert gateway_keys == {
+        "gateway.gw1.status",
+        "gateway.gw1.delay",
+        "gateway.gw1.stddev",
+        "gateway.gw1.loss",
+        "gateway.gw1.address",
+    }
+
+    openvpn_server_keys = {key for key in entities_by_key if key.startswith("openvpn.servers.s1.")}
+    assert openvpn_server_keys == {
+        "openvpn.servers.s1.total_bytes_recv",
+        "openvpn.servers.s1.total_bytes_sent",
+        "openvpn.servers.s1.total_bytes_recv_kilobytes_per_second",
+        "openvpn.servers.s1.total_bytes_sent_kilobytes_per_second",
+        "openvpn.servers.s1.status",
+        "openvpn.servers.s1.connected_clients",
+    }
+
+    wireguard_server_keys = {
+        key for key in entities_by_key if key.startswith("wireguard.servers.wg1.")
+    }
+    assert wireguard_server_keys == {
+        "wireguard.servers.wg1.total_bytes_recv",
+        "wireguard.servers.wg1.total_bytes_sent",
+        "wireguard.servers.wg1.total_bytes_recv_kilobytes_per_second",
+        "wireguard.servers.wg1.total_bytes_sent_kilobytes_per_second",
+        "wireguard.servers.wg1.status",
+        "wireguard.servers.wg1.connected_clients",
+    }
+
+    wireguard_client_keys = {
+        key for key in entities_by_key if key.startswith("wireguard.clients.c1.")
+    }
+    assert wireguard_client_keys == {
+        "wireguard.clients.c1.total_bytes_recv",
+        "wireguard.clients.c1.total_bytes_sent",
+        "wireguard.clients.c1.total_bytes_recv_kilobytes_per_second",
+        "wireguard.clients.c1.total_bytes_sent_kilobytes_per_second",
+        "wireguard.clients.c1.connected_servers",
+    }
 
 
 def _prepare_smart_sensor(entity: OPNsenseSmartSensor, entity_id: str | None = None) -> None:
