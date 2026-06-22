@@ -582,23 +582,23 @@ async def _migrate_3_to_4(
                             mountpoint = mpoint.replace("/", "_").strip("_")
                         new_unique_id = ent.unique_id.replace(device_name, mountpoint)
                         break
-                if not new_unique_id or ent.unique_id == new_unique_id:
-                    continue
             else:
+                continue
+            if new_unique_id is None:
+                continue
+            migrated_unique_id = new_unique_id
+            if ent.unique_id == migrated_unique_id:
                 continue
             _LOGGER.debug(
                 "[migrate_3_to_4] ent: %s, platform: %s, unique_id: %s, new_unique_id: %s",
                 ent.entity_id,
                 platform,
                 ent.unique_id,
-                new_unique_id,
+                migrated_unique_id,
             )
-            if not new_unique_id:
-                _LOGGER.error("Error migrating entity: %s", ent.entity_id)
-                continue
             try:
                 updated_ent = entity_registry.async_update_entity(
-                    ent.entity_id, new_unique_id=new_unique_id
+                    ent.entity_id, new_unique_id=migrated_unique_id
                 )
                 _LOGGER.debug(
                     "[migrate_3_to_4] updated_entity_id: %s, updated_unique_id: %s",

@@ -129,6 +129,10 @@ async def test_clean_and_parse_url_success_and_failure() -> None:
     with pytest.raises(cf_mod.OPNsenseInvalidURL):
         await cf_mod._clean_and_parse_url({cf_mod.CONF_URL: ""})
 
+    missing_host_ui = {cf_mod.CONF_URL: "https://:8443"}
+    with pytest.raises(cf_mod.OPNsenseInvalidURL):
+        await cf_mod._clean_and_parse_url(missing_host_ui)
+
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
@@ -188,6 +192,33 @@ async def test_validate_input_exception_mapping(
     errors: dict[str, str] = {}
     res = await cf_mod.validate_input(hass=MagicMock(), user_input={}, errors=errors)
     assert res.get("base") == expected
+
+
+@pytest.mark.asyncio
+async def test_validate_input_reraises_unmapped_opnsense_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """validate_input should re-raise OPNsense errors without form mappings."""
+    exc = cf_mod.OPNsenseError("unmapped")
+
+    async def _raiser(*args: object, **kwargs: object) -> Never:
+        """Raise an unmapped OPNsense error.
+
+        Args:
+            *args: Positional validation arguments ignored by this stub.
+            **kwargs: Keyword validation arguments ignored by this stub.
+
+        Raises:
+            OPNsenseError: Always raised to exercise the re-raise path.
+        """
+        raise exc
+
+    monkeypatch.setattr(cf_mod, "_validate_client_details", _raiser)
+
+    with pytest.raises(cf_mod.OPNsenseError) as err:
+        await cf_mod.validate_input(hass=MagicMock(), user_input={}, errors={})
+
+    assert err.value is exc
 
 
 def test_record_validation_error_sets_base(caplog: pytest.LogCaptureFixture) -> None:
@@ -372,6 +403,56 @@ async def test_validate_client_details_closes_client(monkeypatch: pytest.MonkeyP
     )
     assert _Client.last_instance is not None
     _Client.last_instance.validate.assert_awaited_once()
+    _Client.last_instance.async_close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_validate_client_details_raises_when_device_id_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_validate_client_details should reject clients that return no device id."""
+
+    class _Client:
+        last_instance = None
+
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            """Capture the created client instance.
+
+            Args:
+                *args: Positional constructor arguments ignored by this stub.
+                **kwargs: Keyword constructor arguments ignored by this stub.
+            """
+            type(self).last_instance = self
+            self.validate = AsyncMock()
+            self.async_close = AsyncMock()
+
+        async def get_host_firmware_version(self) -> str:
+            """Return firmware that passes minimum-version validation."""
+            return "26.1.1"
+
+        async def get_system_info(self) -> dict[str, str]:
+            """Return minimal system metadata for validation."""
+            return {"name": "OPNsense"}
+
+        async def get_device_unique_id(self, expected_id: str | None = None) -> str:
+            """Return an empty device identifier.
+
+            Args:
+                expected_id: Expected device ID supplied by validation and ignored.
+            """
+            return ""
+
+    patch_opnsense_client(monkeypatch, cf_mod, _Client)
+
+    user_input = {
+        cf_mod.CONF_URL: "https://router.example",
+        cf_mod.CONF_USERNAME: "u",
+        cf_mod.CONF_PASSWORD: "p",
+    }
+    with pytest.raises(cf_mod.OPNsenseMissingDeviceUniqueID):
+        await cf_mod._validate_client_details(hass=MagicMock(), user_input=user_input)
+
+    assert _Client.last_instance is not None
     _Client.last_instance.async_close.assert_awaited_once()
 
 

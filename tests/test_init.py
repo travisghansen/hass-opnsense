@@ -279,6 +279,44 @@ async def test_async_setup_entry_closes_client_when_validation_fails(
 
 
 @pytest.mark.asyncio
+async def test_async_setup_entry_closes_client_when_validation_times_out(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """async_setup_entry should close and re-raise when validation times out."""
+    client = MagicMock()
+    client.validate = AsyncMock(side_effect=TimeoutError)
+    client.async_close = AsyncMock(return_value=True)
+
+    def _create_client(**kwargs: Any) -> Any:
+        """Return the timeout-raising client for this setup-entry test."""
+        return client
+
+    monkeypatch.setattr(init_mod, "create_opnsense_client", _create_client)
+
+    entry = make_config_entry(
+        data={
+            init_mod.CONF_URL: "http://1.2.3.4",
+            init_mod.CONF_USERNAME: "u",
+            init_mod.CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+        },
+        options={},
+    )
+
+    hass = ph_hass
+    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+    hass.config_entries.async_reload = AsyncMock()
+    hass.data = {}
+
+    with pytest.raises(TimeoutError):
+        await init_mod.async_setup_entry(hass, entry)
+
+    client.async_close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_async_setup_entry_continues_after_firmware_validation_error(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
@@ -1243,6 +1281,102 @@ async def test_migrate_3_to_4_filesystem_and_remove(
 
 
 @pytest.mark.asyncio
+async def test_migrate_3_to_4_filesystem_skips_and_non_root_mountpoint(
+    monkeypatch: pytest.MonkeyPatch, fake_client: Any
+) -> None:
+    """_migrate_3_to_4 skips unmapped entities and maps non-root filesystem mountpoints."""
+    client = fake_client(
+        telemetry={
+            "filesystems": [
+                {"device": "/dev/other", "mountpoint": "/unused"},
+                {"device": "/dev/sdb1", "mountpoint": "/mnt/data"},
+                {"device": "data", "mountpoint": "/data"},
+            ]
+        }
+    )()
+
+    matched = MagicMock()
+    matched.entity_id = "sensor.fs_data"
+    matched.unique_id = "abc_telemetry_filesystems_slash_dev_slash_sdb1"
+    unmatched_filesystem = MagicMock()
+    unmatched_filesystem.entity_id = "sensor.fs_missing"
+    unmatched_filesystem.unique_id = "abc_telemetry_filesystems_slash_dev_slash_missing"
+    unchanged_filesystem = MagicMock()
+    unchanged_filesystem.entity_id = "sensor.fs_unchanged"
+    unchanged_filesystem.unique_id = "abc_telemetry_filesystems_data"
+    unknown_sensor = MagicMock()
+    unknown_sensor.entity_id = "sensor.unmapped"
+    unknown_sensor.unique_id = "abc_unmapped"
+
+    er_reg = MagicMock()
+    er_reg.async_update_entity = MagicMock(
+        return_value=MagicMock(entity_id=matched.entity_id, unique_id="updated")
+    )
+    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: er_reg)
+    monkeypatch.setattr(
+        init_mod.er,
+        "async_entries_for_config_entry",
+        lambda registry, config_entry_id: [
+            matched,
+            unmatched_filesystem,
+            unchanged_filesystem,
+            unknown_sensor,
+        ],
+    )
+
+    cfg = MagicMock()
+    cfg.data = {
+        init_mod.CONF_URL: "http://1.2.3.4",
+        init_mod.CONF_USERNAME: "u",
+        init_mod.CONF_PASSWORD: "p",
+    }
+    cfg.version = 3
+    cfg.entry_id = "e3"
+
+    hass = MagicMock(spec=HomeAssistant)
+    hass.data = {}
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_update_entry = MagicMock(return_value=True)
+
+    res = await init_mod._migrate_3_to_4(hass, cfg, client)
+
+    assert res is True
+    er_reg.async_update_entity.assert_called_once_with(
+        matched.entity_id, new_unique_id="abc_telemetry_filesystems_mnt_data"
+    )
+
+
+@pytest.mark.asyncio
+async def test_migrate_3_to_4_returns_false_when_update_entry_fails(
+    monkeypatch: pytest.MonkeyPatch, fake_client: Any
+) -> None:
+    """_migrate_3_to_4 should fail when config entry update returns False."""
+    client = fake_client(telemetry={})()
+    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: MagicMock())
+    monkeypatch.setattr(
+        init_mod.er, "async_entries_for_config_entry", lambda registry, config_entry_id: []
+    )
+
+    cfg = MagicMock()
+    cfg.data = {
+        init_mod.CONF_URL: "http://1.2.3.4",
+        init_mod.CONF_USERNAME: "u",
+        init_mod.CONF_PASSWORD: "p",
+    }
+    cfg.version = 3
+    cfg.entry_id = "e3"
+
+    hass = MagicMock(spec=HomeAssistant)
+    hass.data = {}
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_update_entry = MagicMock(return_value=False)
+
+    res = await init_mod._migrate_3_to_4(hass, cfg, client)
+
+    assert res is False
+
+
+@pytest.mark.asyncio
 async def test_migrate_2_to_3_handles_entity_update_value_error(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
@@ -1393,6 +1527,28 @@ async def test_async_migrate_entry_returns_false_when_submigration_fails(
 
     # call with a real hass fixture
     res = await init_mod.async_migrate_entry(ph_hass, cfg)
+    assert res is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("version", [2, 3])
+async def test_async_migrate_entry_returns_false_when_migration_client_missing(
+    monkeypatch: pytest.MonkeyPatch, ph_hass: Any, version: int
+) -> None:
+    """async_migrate_entry should fail version 2/3 migrations without a client."""
+    monkeypatch.setattr(init_mod, "create_opnsense_client", lambda **_kwargs: None)
+
+    cfg = MagicMock()
+    cfg.version = version
+    cfg.data = {
+        init_mod.CONF_URL: "http://1.2.3.4",
+        init_mod.CONF_USERNAME: "u",
+        init_mod.CONF_PASSWORD: "p",
+    }
+    cfg.title = "router"
+
+    res = await init_mod.async_migrate_entry(ph_hass, cfg)
+
     assert res is False
 
 
