@@ -1175,8 +1175,8 @@ def test_normalize_filesystem_mountpoint(input_value: Any, expected: str) -> Non
 @pytest.mark.parametrize(
     ("cpu_map", "previous", "expected_available", "expected_value"),
     [
-        ({"usage_total": 0}, None, False, None),  # zero => unavailable
-        ({"usage_total": 0, "usage_1": 1}, 7, True, 7),  # zero but previous retained
+        ({"usage_total": 0}, None, False, None),
+        ({"usage_total": 0, "usage_1": 1}, 7, True, 7),
     ],
 )
 def test_static_cpu_zero_variants(
