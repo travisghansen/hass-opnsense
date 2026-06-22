@@ -66,9 +66,11 @@ def test_create_opnsense_client_builds_client_with_expected_options(
     """Create OPNsense clients with the caller-specific session and client options."""
     created: dict[str, Any] = {}
     session = MagicMock(spec=aiohttp.ClientSession)
+    hass = MagicMock()
 
-    def _async_create_clientsession(**kwargs: Any) -> aiohttp.ClientSession:
+    def _async_create_clientsession(hass: Any, **kwargs: Any) -> aiohttp.ClientSession:
         """Capture session construction options and return a fake session."""
+        created["hass"] = hass
         created["session_kwargs"] = kwargs
         return session
 
@@ -88,7 +90,7 @@ def test_create_opnsense_client_builds_client_with_expected_options(
 
     password = "pass"
     client = create_opnsense_client(
-        hass=MagicMock(),
+        hass=hass,
         url="http://10.0.0.1",
         username="user",
         password=password,
@@ -98,6 +100,7 @@ def test_create_opnsense_client_builds_client_with_expected_options(
     )
 
     assert isinstance(client, MagicMock)
+    assert created["hass"] is hass
     assert created["session_kwargs"]["raise_for_status"] is False
     assert created["session_kwargs"]["cookie_jar"]._unsafe is True
     expected_client_kwargs = {

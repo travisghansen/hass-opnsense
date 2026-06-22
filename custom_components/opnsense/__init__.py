@@ -191,6 +191,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         try:
             await client.validate()
+        except TimeoutError:
+            await client.async_close()
+            raise
         except OPNsenseBelowMinFirmware, OPNsenseUnknownFirmware:
             _LOGGER.debug(
                 "Client validation reported firmware issues; continuing to firmware probes"

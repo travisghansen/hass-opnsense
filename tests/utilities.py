@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import MutableMapping
 from typing import Any
 
-import aiohttp
 import pytest
 
 
@@ -29,14 +27,12 @@ def patch_opnsense_client(monkeypatch: pytest.MonkeyPatch, module: Any, client_c
 
     def _create_opnsense_client(
         *,
-        hass: Any | None = None,
+        hass: Any,
         url: str,
         username: str,
         password: str,
-        session: aiohttp.ClientSession | None = None,
-        verify_ssl: bool | None = None,
+        verify_ssl: bool | None,
         throw_errors: bool = False,
-        opts: MutableMapping[str, Any] | None = None,
         name: str | None = None,
     ) -> Any:
         """Create a fake OPNsense client using the provided constructor.
@@ -46,25 +42,21 @@ def patch_opnsense_client(monkeypatch: pytest.MonkeyPatch, module: Any, client_c
             url: OPNsense base URL from caller input.
             username: Username from caller input.
             password: Password from caller input.
-            session: Optional aiohttp session forwarded to the fake client.
             verify_ssl: Optional TLS verification value passed by shared helper callers.
             throw_errors: Error propagation behavior passed by shared helper callers.
-            opts: Optional connection options passed by caller.
             name: Optional client display name passed by caller.
 
         Returns:
             Any: Fake client instance returned by `client_ctor`.
         """
         del hass
-        resolved_opts = opts if opts is not None else {"verify_ssl": verify_ssl}
         return client_ctor(
             url=url,
             username=username,
             password=password,
-            session=session,
-            opts=resolved_opts,
+            verify_ssl=verify_ssl,
             throw_errors=throw_errors,
             name=name,
         )
 
-    monkeypatch.setattr(module, "create_opnsense_client", _create_opnsense_client, raising=False)
+    monkeypatch.setattr(module, "create_opnsense_client", _create_opnsense_client)
