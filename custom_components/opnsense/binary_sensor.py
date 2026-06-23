@@ -29,7 +29,14 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 def _smart_device_slug(device_name: str) -> str:
-    """Return the entity key slug for a SMART device name."""
+    """Return the entity key slug for a SMART device name.
+
+    Args:
+        device_name: SMART device name to normalize.
+
+    Returns:
+        The slugified device name, or ``unknown`` when slugification fails.
+    """
     return slugify(device_name) or "unknown"
 
 
@@ -37,7 +44,15 @@ def _build_interface_enabled_binary_sensor_description(
     interface_name: str,
     interface: Mapping[str, Any],
 ) -> BinarySensorEntityDescription:
-    """Build an interface enabled-state binary sensor description."""
+    """Build an interface enabled-state binary sensor description.
+
+    Args:
+        interface_name: Interface identifier from the OPNsense state.
+        interface: Interface data used to derive the display name.
+
+    Returns:
+        A binary sensor description for the interface enabled state.
+    """
     return BinarySensorEntityDescription(
         key=f"interface.{interface_name}.enabled",
         name=f"Interface {interface.get('name', interface_name)} Enabled",
@@ -49,7 +64,14 @@ def _build_interface_enabled_binary_sensor_description(
 def _build_smart_status_binary_sensor_description(
     device_name: str,
 ) -> BinarySensorEntityDescription:
-    """Build a SMART status binary sensor description."""
+    """Build a SMART status binary sensor description.
+
+    Args:
+        device_name: SMART device name used for the entity key and label.
+
+    Returns:
+        A binary sensor description for SMART health state.
+    """
     return BinarySensorEntityDescription(
         key=f"smart.{_smart_device_slug(device_name)}.status",
         name=f"SMART {device_name} Status",
@@ -60,7 +82,11 @@ def _build_smart_status_binary_sensor_description(
 
 
 def _build_pending_notices_present_binary_sensor_description() -> BinarySensorEntityDescription:
-    """Build the pending notices presence binary sensor description."""
+    """Build the pending notices presence binary sensor description.
+
+    Returns:
+        A binary sensor description for the pending notices indicator.
+    """
     return BinarySensorEntityDescription(
         key="notices.pending_notices_present",
         name="Pending Notices Present",
@@ -154,7 +180,13 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the OPNsense binary sensors."""
+    """Set up the OPNsense binary sensors.
+
+    Args:
+        hass: Home Assistant instance.
+        config_entry: Config entry being set up.
+        async_add_entities: Callback used to register new entities.
+    """
     coordinator: OPNsenseDataUpdateCoordinator = getattr(config_entry.runtime_data, COORDINATOR)
     config: Mapping[str, Any] = config_entry.data
 
@@ -183,7 +215,13 @@ class OPNsenseBinarySensor(OPNsenseEntity, BinarySensorEntity):
         coordinator: OPNsenseDataUpdateCoordinator,
         entity_description: BinarySensorEntityDescription,
     ) -> None:
-        """Initialize OPNsense Binary Sensor entity."""
+        """Initialize OPNsense Binary Sensor entity.
+
+        Args:
+            config_entry: Config entry owning the entity.
+            coordinator: Shared OPNsense data coordinator.
+            entity_description: Description that defines the entity identity.
+        """
         name_suffix: str | None = (
             entity_description.name if isinstance(entity_description.name, str) else None
         )

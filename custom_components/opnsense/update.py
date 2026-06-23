@@ -23,7 +23,11 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 def _build_firmware_update_entity_description() -> UpdateEntityDescription:
-    """Build the firmware update entity description."""
+    """Build the firmware update entity description.
+
+    Returns:
+        An update entity description for firmware availability.
+    """
     return UpdateEntityDescription(
         key="firmware.update_available",
         name="Firmware Updates Available",
@@ -34,17 +38,38 @@ def _build_firmware_update_entity_description() -> UpdateEntityDescription:
 
 
 def _mapping_or_empty(value: Any) -> Mapping[str, Any]:
-    """Return a mapping value or an empty mapping."""
+    """Return a mapping value or an empty mapping.
+
+    Args:
+        value: Candidate mapping value.
+
+    Returns:
+        The mapping when provided, otherwise an empty dict.
+    """
     return value if isinstance(value, Mapping) else {}
 
 
 def _list_or_empty(value: Any) -> list[Any]:
-    """Return a list value or an empty list."""
+    """Return a list value or an empty list.
+
+    Args:
+        value: Candidate list value.
+
+    Returns:
+        The list when provided, otherwise an empty list.
+    """
     return value if isinstance(value, list) else []
 
 
 def _affected_package_count(value: Any) -> int:
-    """Return the count of affected firmware packages."""
+    """Return the count of affected firmware packages.
+
+    Args:
+        value: Candidate package collection from firmware status data.
+
+    Returns:
+        The number of packages represented by ``value``.
+    """
     if isinstance(value, Mapping):
         return len(value)
     if isinstance(value, list):
@@ -57,7 +82,13 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the OPNsense update entities."""
+    """Set up the OPNsense update entities.
+
+    Args:
+        hass: Home Assistant instance.
+        config_entry: Config entry being set up.
+        async_add_entities: Callback used to register new entities.
+    """
     coordinator: OPNsenseDataUpdateCoordinator = getattr(config_entry.runtime_data, COORDINATOR)
     entities: list[OPNsenseFirmwareUpdatesAvailableUpdate] = []
     config: Mapping[str, Any] = config_entry.data
@@ -83,7 +114,13 @@ class OPNsenseUpdate(OPNsenseEntity, UpdateEntity):
         coordinator: OPNsenseDataUpdateCoordinator,
         entity_description: UpdateEntityDescription,
     ) -> None:
-        """Initialize update entity."""
+        """Initialize update entity.
+
+        Args:
+            config_entry: Config entry owning the entity.
+            coordinator: Shared OPNsense data coordinator.
+            entity_description: Description that defines the entity identity.
+        """
         name_suffix: str | None = (
             entity_description.name if isinstance(entity_description.name, str) else None
         )
@@ -158,10 +195,13 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
         self.async_write_ha_state()
 
     def _is_update_available(self, state: MutableMapping[str, Any]) -> bool:
-        """Return whether update available.
+        """Return whether an update is available.
+
+        Args:
+            state: Current OPNsense state payload.
 
         Returns:
-            bool: True if update available; otherwise, False.
+            ``True`` when firmware update data reports an actionable status.
         """
         if not isinstance(state, Mapping):
             return False
@@ -172,14 +212,28 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
         return isinstance(status, str) and status not in {"", "error"}
 
     def _get_installed_version(self, state: MutableMapping[str, Any]) -> str | None:
-        """Return installed version."""
+        """Return the installed firmware version.
+
+        Args:
+            state: Current OPNsense state payload.
+
+        Returns:
+            The installed firmware version, or ``None`` when unavailable.
+        """
         product_version = dict_get(state, "firmware_update_info.product.product_version")
         return product_version if isinstance(product_version, str) else None
 
     def _get_versions(
         self, state: MutableMapping[str, Any]
     ) -> tuple[str | None, str | None, str | None]:
-        """Return versions."""
+        """Return installed, latest, and series versions.
+
+        Args:
+            state: Current OPNsense state payload.
+
+        Returns:
+            A tuple of installed version, latest version, and series version.
+        """
         product_version = dict_get(state, "firmware_update_info.product.product_version")
         product_latest = dict_get(state, "firmware_update_info.product.product_latest")
         product_series = dict_get(state, "firmware_update_info.product.product_series")
@@ -227,7 +281,14 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
         return product_version, product_latest, product_series
 
     def _get_product_class(self, product_series: str | None) -> str | None:
-        """Return product class."""
+        """Return product class.
+
+        Args:
+            product_series: Firmware product series string.
+
+        Returns:
+            The OPNsense product class, or ``None`` when the series is unknown.
+        """
         if product_series:
             try:
                 series_minor: str | None = str(product_series).split(".")[1]
@@ -245,7 +306,16 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
         product_latest: str | None,
         product_version: str | None,
     ) -> str | None:
-        """Return release notes."""
+        """Return firmware release notes.
+
+        Args:
+            state: Current OPNsense state payload.
+            product_latest: Latest available firmware version.
+            product_version: Installed firmware version.
+
+        Returns:
+            A formatted release-notes summary, status message, or ``None``.
+        """
         firmware_update_info = state.get("firmware_update_info")
         if not isinstance(firmware_update_info, Mapping):
             return None
@@ -295,13 +365,23 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
         return status_msg if isinstance(status_msg, str) else None
 
     async def async_release_notes(self) -> str | None:
-        """Return the release notes of the latest version."""
+        """Return the release notes of the latest version.
+
+        Returns:
+            Cached release notes for the currently available update.
+        """
         return self._release_notes
 
     async def async_install(
         self, version: str | None = None, backup: bool = False, **kwargs: Any
     ) -> None:
-        """Install an update."""
+        """Install the available firmware update.
+
+        Args:
+            version: Requested firmware version, if provided by Home Assistant.
+            backup: Whether Home Assistant requested a backup before install.
+            **kwargs: Additional keyword arguments from Home Assistant.
+        """
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             _LOGGER.error("Cannot update firmware, state data is missing")

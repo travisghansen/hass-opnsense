@@ -33,7 +33,17 @@ def _create_switch[EntityT: OPNsenseSwitch](
     coordinator: OPNsenseDataUpdateCoordinator,
     entity_description: SwitchEntityDescription,
 ) -> EntityT:
-    """Create a switch entity from a description."""
+    """Create a switch entity from a description.
+
+    Args:
+        entity_cls: Switch entity class to instantiate.
+        config_entry: Config entry owning the entity.
+        coordinator: Shared OPNsense data coordinator.
+        entity_description: Description that defines the entity identity.
+
+    Returns:
+        A configured switch entity instance.
+    """
     return entity_cls(
         config_entry=config_entry,
         coordinator=coordinator,
@@ -42,7 +52,14 @@ def _create_switch[EntityT: OPNsenseSwitch](
 
 
 def _build_service_switch_description(service: Mapping[str, Any]) -> SwitchEntityDescription:
-    """Build the service switch description."""
+    """Build the service switch description.
+
+    Args:
+        service: Service record from the OPNsense state payload.
+
+    Returns:
+        A switch entity description for the service status toggle.
+    """
     prop_name = "status"
     service_id = service.get("id", service.get("name", "unknown"))
     service_name = service.get("description", service.get("name", "Unknown"))
@@ -61,7 +78,17 @@ def _build_vpn_switch_description(
     uuid: str,
     instance: Mapping[str, Any],
 ) -> SwitchEntityDescription:
-    """Build the VPN switch description."""
+    """Build the VPN switch description.
+
+    Args:
+        vpn_type: VPN family name, such as ``openvpn`` or ``wireguard``.
+        clients_servers: Section name identifying clients or servers.
+        uuid: Unique instance identifier from OPNsense.
+        instance: Instance metadata used to build the display name.
+
+    Returns:
+        A switch entity description for the VPN instance.
+    """
     return SwitchEntityDescription(
         key=f"{vpn_type}.{clients_servers}.{uuid}",
         name=(
@@ -75,7 +102,11 @@ def _build_vpn_switch_description(
 
 
 def _build_carp_maintenance_switch_description() -> SwitchEntityDescription:
-    """Build the CARP maintenance switch description."""
+    """Build the CARP maintenance switch description.
+
+    Returns:
+        A switch entity description for CARP persistent maintenance mode.
+    """
     return SwitchEntityDescription(
         key="carp.maintenance_mode",
         name="CARP Persistent Maintenance Mode",
@@ -86,7 +117,11 @@ def _build_carp_maintenance_switch_description() -> SwitchEntityDescription:
 
 
 def _build_unbound_legacy_switch_description() -> SwitchEntityDescription:
-    """Build the legacy Unbound blocklist switch description."""
+    """Build the legacy Unbound blocklist switch description.
+
+    Returns:
+        A switch entity description for the legacy Unbound blocklist toggle.
+    """
     return SwitchEntityDescription(
         key="unbound_blocklist.switch",
         name="Unbound Blocklist Switch",
@@ -98,7 +133,15 @@ def _build_unbound_legacy_switch_description() -> SwitchEntityDescription:
 def _build_unbound_switch_description(
     uuid: str, dnsbl: Mapping[str, Any]
 ) -> SwitchEntityDescription:
-    """Build an extended Unbound blocklist switch description."""
+    """Build an extended Unbound blocklist switch description.
+
+    Args:
+        uuid: DNSBL identifier from OPNsense.
+        dnsbl: DNSBL rule data used for naming.
+
+    Returns:
+        A switch entity description for the DNSBL rule.
+    """
     return SwitchEntityDescription(
         key=f"unbound_blocklist.switch.{uuid}",
         name=f"Unbound Blocklist {dnsbl.get('description', 'Unknown')}",
@@ -109,7 +152,14 @@ def _build_unbound_switch_description(
 
 
 def _build_firewall_rule_switch_description(rule: Mapping[str, Any]) -> SwitchEntityDescription:
-    """Build the firewall rule switch description."""
+    """Build the firewall rule switch description.
+
+    Args:
+        rule: Firewall rule data from the OPNsense payload.
+
+    Returns:
+        A switch entity description for the firewall rule toggle.
+    """
     interface = rule.get("%interface", rule.get("interface", ""))
     if not isinstance(interface, str):
         interface = ""
@@ -129,7 +179,16 @@ def _build_nat_rule_switch_description(
     name_prefix: str,
     rule: Mapping[str, Any],
 ) -> SwitchEntityDescription:
-    """Build a NAT rule switch description."""
+    """Build a NAT rule switch description.
+
+    Args:
+        nat_rule_type: NAT section name such as ``source_nat`` or ``d_nat``.
+        name_prefix: Human-readable prefix for the entity name.
+        rule: NAT rule data from the OPNsense payload.
+
+    Returns:
+        A switch entity description for the NAT rule toggle.
+    """
     return SwitchEntityDescription(
         key=f"firewall.nat.{nat_rule_type}.{rule.get('uuid', 'unknown')}",
         name=f"{name_prefix}: {rule.get('%interface', '')}: {rule.get('description', 'unknown')}",
@@ -336,7 +395,18 @@ async def _compile_nat_rule_switches(
     nat_rule_type: str,
     name_prefix: str,
 ) -> list:
-    """Compile NAT rule switches from OPNsense state."""
+    """Compile NAT rule switches from OPNsense state.
+
+    Args:
+        config_entry: Config entry owning the entities.
+        coordinator: Shared OPNsense data coordinator.
+        state: Current OPNsense state payload.
+        nat_rule_type: NAT section name such as ``source_nat`` or ``d_nat``.
+        name_prefix: Human-readable prefix for the generated entities.
+
+    Returns:
+        A list of NAT rule switch entities.
+    """
     rules = dict_get(state, f"firewall.nat.{nat_rule_type}")
     if not isinstance(rules, MutableMapping):
         return []
@@ -543,7 +613,11 @@ class OPNsenseSwitch(OPNsenseEntity, SwitchEntity):
             self._delay_update_remove()
 
         def _clear(_: Any) -> None:
-            """Clear."""
+            """Clear the update delay after the timer fires.
+
+            Args:
+                _: Timer callback timestamp, unused.
+            """
             self._delay_update = False
             self._delay_update_remove = None
 
@@ -561,7 +635,13 @@ class OPNsenseCarpMaintenanceSwitch(OPNsenseSwitch):
         coordinator: OPNsenseDataUpdateCoordinator,
         entity_description: SwitchEntityDescription,
     ) -> None:
-        """Initialize CARP maintenance switch state."""
+        """Initialize CARP maintenance switch state.
+
+        Args:
+            config_entry: Config entry owning the entity.
+            coordinator: Shared OPNsense data coordinator.
+            entity_description: Description that defines the entity identity.
+        """
         super().__init__(
             config_entry=config_entry,
             coordinator=coordinator,
@@ -629,7 +709,11 @@ class OPNsenseCarpMaintenanceSwitch(OPNsenseSwitch):
         self._handle_coordinator_update()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn CARP persistent maintenance mode on."""
+        """Turn CARP persistent maintenance mode on.
+
+        Args:
+            **kwargs: Additional keyword arguments from Home Assistant.
+        """
         if self._toggle_in_flight:
             return
         if self.delay_update:
@@ -653,7 +737,11 @@ class OPNsenseCarpMaintenanceSwitch(OPNsenseSwitch):
             self._toggle_in_flight = False
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn CARP persistent maintenance mode off."""
+        """Turn CARP persistent maintenance mode off.
+
+        Args:
+            **kwargs: Additional keyword arguments from Home Assistant.
+        """
         if self._toggle_in_flight:
             return
         if self.delay_update:
@@ -678,7 +766,11 @@ class OPNsenseCarpMaintenanceSwitch(OPNsenseSwitch):
 
     @property
     def icon(self) -> str | None:
-        """Return the icon for the entity."""
+        """Return the icon for the entity.
+
+        Returns:
+            Icon name for the entity, or the base icon when inactive.
+        """
         if self.available and self.is_on:
             return "mdi:server-network-off"
         return super().icon
@@ -767,7 +859,11 @@ class OPNsenseFirewallRuleSwitch(OPNsenseSwitch):
         self.async_write_ha_state()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn the entity on."""
+        """Turn the entity on.
+
+        Args:
+            **kwargs: Additional keyword arguments from Home Assistant.
+        """
         if self._rule_id is None or not self._client:
             return
         result = await self._client.toggle_firewall_rule(self._rule_id, "on")
@@ -780,7 +876,11 @@ class OPNsenseFirewallRuleSwitch(OPNsenseSwitch):
             _LOGGER.error("Failed to turn on firewall rule: %s", self.name)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn the entity off."""
+        """Turn the entity off.
+
+        Args:
+            **kwargs: Additional keyword arguments from Home Assistant.
+        """
         if self._rule_id is None or not self._client:
             return
         result = await self._client.toggle_firewall_rule(self._rule_id, "off")
@@ -794,7 +894,11 @@ class OPNsenseFirewallRuleSwitch(OPNsenseSwitch):
 
     @property
     def icon(self) -> str | None:
-        """Return the icon for the entity."""
+        """Return the icon for the entity.
+
+        Returns:
+            Icon name for the entity, or the base icon when inactive.
+        """
         if self.available and self.is_on:
             return "mdi:play-network"
         return super().icon
@@ -930,7 +1034,11 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
         self.async_write_ha_state()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn the entity on."""
+        """Turn the entity on.
+
+        Args:
+            **kwargs: Additional keyword arguments from Home Assistant.
+        """
         if self._rule_id is None or not self._client:
             return
         result = await self._client.toggle_nat_rule(self._nat_rule_type, self._rule_id, "on")
@@ -943,7 +1051,11 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
             _LOGGER.error("Failed to turn on NAT rule: %s", self.name)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn the entity off."""
+        """Turn the entity off.
+
+        Args:
+            **kwargs: Additional keyword arguments from Home Assistant.
+        """
         if self._rule_id is None or not self._client:
             return
         result = await self._client.toggle_nat_rule(self._nat_rule_type, self._rule_id, "off")
@@ -957,7 +1069,11 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
 
     @property
     def icon(self) -> str | None:
-        """Return the icon for the entity."""
+        """Return the icon for the entity.
+
+        Returns:
+            Icon name for the entity, or the base icon when inactive.
+        """
         if self.available and self.is_on:
             return "mdi:network"
         return super().icon
@@ -1042,7 +1158,11 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         self.async_write_ha_state()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn the entity on."""
+        """Turn the entity on.
+
+        Args:
+            **kwargs: Additional keyword arguments from Home Assistant.
+        """
         if not isinstance(self._service, MutableMapping) or not self._client:
             return
 
@@ -1058,7 +1178,11 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
             _LOGGER.error("Failed to turn on service: %s", self.name)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn the entity off."""
+        """Turn the entity off.
+
+        Args:
+            **kwargs: Additional keyword arguments from Home Assistant.
+        """
         if not isinstance(self._service, MutableMapping) or not self._client:
             return
 
@@ -1075,7 +1199,11 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
 
     @property
     def icon(self) -> str | None:
-        """Return the icon for the entity."""
+        """Return the icon for the entity.
+
+        Returns:
+            Icon name for the entity, or the base icon when inactive.
+        """
         if self.available and self.is_on:
             return "mdi:application-cog"
         return super().icon
@@ -1113,7 +1241,11 @@ class OPNsenseUnboundBlocklistSwitchLegacy(OPNsenseSwitch):
         self.async_write_ha_state()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn the entity on."""
+        """Turn the entity on.
+
+        Args:
+            **kwargs: Additional keyword arguments from Home Assistant.
+        """
         if not self._client:
             return
         result: bool = await self._client.enable_unbound_blocklist()
@@ -1126,7 +1258,11 @@ class OPNsenseUnboundBlocklistSwitchLegacy(OPNsenseSwitch):
             _LOGGER.error("Failed to turn on Unbound Blocklist: %s", self.name)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn the entity off."""
+        """Turn the entity off.
+
+        Args:
+            **kwargs: Additional keyword arguments from Home Assistant.
+        """
         if not self._client:
             return
         result: bool = await self._client.disable_unbound_blocklist()
@@ -1198,7 +1334,11 @@ class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
         self.async_write_ha_state()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn the entity on."""
+        """Turn the entity on.
+
+        Args:
+            **kwargs: Additional keyword arguments from Home Assistant.
+        """
         if not self._client:
             return
         result: bool = await self._client.enable_unbound_blocklist(self._uuid)
@@ -1211,7 +1351,11 @@ class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
             _LOGGER.error("Failed to turn on Unbound Blocklist: %s", self.name)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn the entity off."""
+        """Turn the entity off.
+
+        Args:
+            **kwargs: Additional keyword arguments from Home Assistant.
+        """
         if not self._client:
             return
         result: bool = await self._client.disable_unbound_blocklist(self._uuid)
@@ -1352,7 +1496,11 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
 
     @property
     def icon(self) -> str | None:
-        """Return the icon for the entity."""
+        """Return the icon for the entity.
+
+        Returns:
+            Icon name for the entity, or the base icon when inactive.
+        """
         if self.available and self.is_on:
             return "mdi:folder-key-network"
         return super().icon

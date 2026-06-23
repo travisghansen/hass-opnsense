@@ -571,6 +571,8 @@ async def test_async_install_reboots_when_needed(
     object.__setattr__(ent, "async_write_ha_state", lambda: None)
 
     class FakeClient:
+        """Fake firmware client for a successful install flow."""
+
         def __init__(self) -> None:
             # planned sequence: first 'running', then 'done'
             """Initialize a fake client that simulates a successful update flow."""
@@ -585,15 +587,26 @@ async def test_async_install_reboots_when_needed(
 
             Args:
                 _upgrade_type: Upgrade mode requested by the entity and ignored by this fake client.
+
+            Returns:
+                dict[str, Any]: Payload indicating that the upgrade request started.
             """
             return {"started": True}
 
         async def upgrade_status(self) -> dict[str, str]:
-            """Return the next queued upgrade status payload."""
+            """Return the next queued upgrade status payload.
+
+            Returns:
+                dict[str, str]: The next queued upgrade status response.
+            """
             return self._status_calls.pop(0)
 
         async def get_firmware_update_info(self) -> dict[str, Any]:
-            """Return update metadata indicating that a reboot is required."""
+            """Return update metadata indicating that a reboot is required.
+
+            Returns:
+                dict[str, Any]: Firmware update metadata that requires a reboot.
+            """
             return {"needs_reboot": "1", "upgrade_needs_reboot": None}
 
         async def system_reboot(self) -> None:
@@ -731,6 +744,8 @@ async def test_async_install_exceptions_loop(
     )
 
     class BadClient:
+        """Fake firmware client that raises retryable polling errors."""
+
         def __init__(self) -> None:
             """Initialize a fake client that fails during upgrade polling."""
             self.rebooted = False
@@ -740,6 +755,9 @@ async def test_async_install_exceptions_loop(
 
             Args:
                 _upgrade_type: Upgrade mode requested by the entity and ignored by this fake client.
+
+            Returns:
+                dict[str, Any]: Payload indicating that the upgrade request started.
             """
             return {"started": True}
 
@@ -749,11 +767,18 @@ async def test_async_install_exceptions_loop(
             Raises:
                 TimeoutError: Always raised to exercise the entity's exception
                     handling path.
+
+            Returns:
+                dict[str, Any]: This method never returns normally.
             """
             raise TimeoutError("fail")
 
         async def get_firmware_update_info(self) -> dict[str, Any]:
-            """Return update metadata showing that no reboot is required."""
+            """Return update metadata showing that no reboot is required.
+
+            Returns:
+                dict[str, Any]: Firmware update metadata that does not require a reboot.
+            """
             return {"needs_reboot": None, "upgrade_needs_reboot": None}
 
         async def system_reboot(self) -> None:
@@ -786,8 +811,17 @@ async def test_async_install_unexpected_polling_error_raises(
     )
 
     class BadClient:
+        """Fake firmware client that raises an unexpected polling error."""
+
         async def upgrade_firmware(self, _upgrade_type: Any) -> dict[str, Any]:
-            """Simulate accepting an upgrade request before polling fails."""
+            """Simulate accepting an upgrade request before polling fails.
+
+            Args:
+                _upgrade_type: Upgrade mode requested by the entity and ignored by this fake client.
+
+            Returns:
+                dict[str, Any]: Payload indicating that the upgrade request started.
+            """
             return {"started": True}
 
         async def upgrade_status(self) -> dict[str, Any]:
@@ -796,6 +830,9 @@ async def test_async_install_unexpected_polling_error_raises(
             Raises:
                 RuntimeError: Always raised to verify unexpected errors are not
                     handled as retryable polling errors.
+
+            Returns:
+                dict[str, Any]: This method never returns normally.
             """
             raise RuntimeError("unexpected")
 
