@@ -367,7 +367,6 @@ def test_get_versions_scenarios(
     dummy_coordinator: MagicMock,
 ) -> None:
     """Parameterize _get_versions behaviors across upgrade package presence and missing fields."""
-    # Use the shared fixture for a config entry
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,
@@ -423,7 +422,6 @@ def test_handle_coordinator_update_sets_attributes(
             key="firmware.update_available", name="Firmware"
         ),
     )
-    # prepare state with many firmware fields
     state = {
         "firmware_update_info": {
             "status": "update",
@@ -452,7 +450,6 @@ def test_handle_coordinator_update_sets_attributes(
     assert ent.installed_version == "1_0_0"
     assert ent.latest_version == "1.0.2"
     assert ent.release_summary == "ok"
-    # extra state attributes are created from firmware_update_info keys (top-level ones)
     attrs = ent.extra_state_attributes
     assert attrs is not None
     assert "opnsense_download_size" in attrs
@@ -554,17 +551,11 @@ async def test_handle_coordinator_update_update_normalizes_product_latest(
     object.__setattr__(ent, "async_write_ha_state", lambda: None)
     ent._handle_coordinator_update()
 
-    # product_latest should be normalized into latest_version
     assert ent.latest_version == expected_latest_normalized
 
-    # release notes are currently generated from the raw product_latest value
-    # (the entity stores a normalized latest_version separately), so verify
-    # the original input appears in the notes and the normalized value is
-    # available on the entity
     notes = await ent.async_release_notes()
     assert notes is not None
     assert product_latest_input in notes
-    # series '2.1' -> community mapping reflected in path
     assert ent.release_url is not None
     assert "community/2.1" in ent.release_url
 
@@ -575,7 +566,6 @@ def test_handle_coordinator_update_release_url_fallback_when_product_class_none(
     dummy_coordinator: MagicMock,
 ) -> None:
     """When _get_product_class returns None, release_url should fall back to the OPNsense UI changelog."""
-    # ensure config entry has a base url for the fallback and a device id
     entry = make_config_entry(
         {
             CONF_DEVICE_UNIQUE_ID: "test-device-123",
@@ -591,7 +581,6 @@ def test_handle_coordinator_update_release_url_fallback_when_product_class_none(
         ),
     )
 
-    # arrange state where product_series and product_latest exist but product class will be None
     state = {
         "firmware_update_info": {
             "status": "upgrade",
@@ -606,7 +595,6 @@ def test_handle_coordinator_update_release_url_fallback_when_product_class_none(
     ent.coordinator.data = state
     object.__setattr__(ent, "async_write_ha_state", lambda: None)
 
-    # Patch the instance method to return None to force the fallback branch
     monkeypatch.setattr(ent, "_get_product_class", lambda series: None)
 
     ent._handle_coordinator_update()
@@ -963,8 +951,6 @@ async def test_async_release_notes_returns_value(
             key="firmware.update_available", name="Firmware"
         ),
     )
-    # Provide coordinator state that would generate release notes via the
-    # entity's normal update handling instead of setting the private attr.
     state = {
         "firmware_update_info": {
             "status": "update",
@@ -987,7 +973,6 @@ async def test_async_release_notes_returns_value(
     }
     ent.coordinator.data = state
     object.__setattr__(ent, "async_write_ha_state", lambda: None)
-    # Populate internal fields as Home Assistant would via coordinator update
     ent._handle_coordinator_update()
 
     val = await ent.async_release_notes()
