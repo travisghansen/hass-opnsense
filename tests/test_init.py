@@ -317,6 +317,38 @@ async def test_async_setup_entry_closes_client_when_validation_times_out(
 
 
 @pytest.mark.asyncio
+async def test_async_setup_entry_reraises_client_creation_error(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """async_setup_entry should re-raise client creation errors before close handling."""
+
+    def _create_client(**kwargs: Any) -> Any:
+        """Raise a backend error before a client instance exists."""
+        raise init_mod.OPNsenseError("boom")
+
+    monkeypatch.setattr(init_mod, "create_opnsense_client", _create_client)
+    entry = make_config_entry(
+        data={
+            init_mod.CONF_URL: "http://1.2.3.4",
+            init_mod.CONF_USERNAME: "u",
+            init_mod.CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+        },
+        options={},
+    )
+
+    hass = ph_hass
+    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+    hass.config_entries.async_reload = AsyncMock()
+    hass.data = {}
+
+    with pytest.raises(init_mod.OPNsenseError):
+        await init_mod.async_setup_entry(hass, entry)
+
+
+@pytest.mark.asyncio
 async def test_async_setup_entry_continues_after_firmware_validation_error(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
@@ -1277,6 +1309,51 @@ async def test_migrate_3_to_4_filesystem_and_remove(
     expected_new_unique_id = "abc_telemetry_filesystems_root"
     er_reg.async_update_entity.assert_called_once_with(
         e1.entity_id, new_unique_id=expected_new_unique_id
+    )
+
+
+@pytest.mark.asyncio
+async def test_migrate_3_to_4_filesystem_preserves_unique_id_prefix(
+    monkeypatch: pytest.MonkeyPatch, fake_client: Any
+) -> None:
+    """Filesystem remap should only replace the suffix after telemetry_filesystems_."""
+    client = fake_client(telemetry={"filesystems": [{"device": "/dev/sda1", "mountpoint": "/"}]})()
+
+    e1 = MagicMock()
+    e1.entity_id = "sensor.fs"
+    e1.unique_id = "slash_dev_slash_sda1_telemetry_filesystems_slash_dev_slash_sda1"
+
+    er_reg = MagicMock()
+    er_reg.async_update_entity = MagicMock(
+        return_value=MagicMock(entity_id=e1.entity_id, unique_id="updated")
+    )
+    er_reg.async_remove = MagicMock()
+    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: er_reg)
+    monkeypatch.setattr(
+        init_mod.er,
+        "async_entries_for_config_entry",
+        lambda registry, config_entry_id: [e1],
+    )
+
+    cfg = MagicMock()
+    cfg.data = {
+        init_mod.CONF_URL: "http://1.2.3.4",
+        init_mod.CONF_USERNAME: "u",
+        init_mod.CONF_PASSWORD: "p",
+    }
+    cfg.version = 3
+    cfg.entry_id = "e3"
+
+    hass = MagicMock(spec=HomeAssistant)
+    hass.data = {}
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_update_entry = MagicMock(return_value=True)
+
+    res = await init_mod._migrate_3_to_4(hass, cfg, client)
+    assert res is True
+    er_reg.async_update_entity.assert_called_once_with(
+        e1.entity_id,
+        new_unique_id="slash_dev_slash_sda1_telemetry_filesystems_root",
     )
 
 

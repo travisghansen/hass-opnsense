@@ -464,11 +464,10 @@ async def _migrate_2_to_3(
                 )
                 _LOGGER.debug("[migrate_2_to_3] new_main_dev: %s", new_dev)
             except dr.DeviceIdentifierCollisionError as e:
-                _LOGGER.error(
-                    "Error migrating device: %s. %s: %s",
+                _LOGGER.exception(
+                    "Error migrating device: %s. %s",
                     dev.identifiers,
                     type(e).__name__,
-                    e,
                 )
 
     for ent in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
@@ -497,11 +496,10 @@ async def _migrate_2_to_3(
                 new_ent.unique_id,
             )
         except ValueError as e:
-            _LOGGER.error(
-                "Error migrating entity: %s. %s: %s",
+            _LOGGER.exception(
+                "Error migrating entity: %s. %s",
                 ent.entity_id,
                 type(e).__name__,
-                e,
             )
 
     new_data: dict[str, Any] = dict(config_entry.data)
@@ -556,23 +554,23 @@ async def _migrate_3_to_4(
                     entity_registry.async_remove(ent.entity_id)
                     _LOGGER.debug("[migrate_3_to_4] removed_entity_id: %s", ent.entity_id)
                 except (KeyError, ValueError) as e:
-                    _LOGGER.error(
-                        "Error removing entity: %s. %s: %s",
+                    _LOGGER.exception(
+                        "Error removing entity: %s. %s",
                         ent.entity_id,
                         type(e).__name__,
-                        e,
                     )
                 continue
             elif "_telemetry_openvpn_" in ent.unique_id:
                 new_unique_id = ent.unique_id.replace("_telemetry_openvpn_", "_openvpn_")
             elif "_telemetry_filesystems_" in ent.unique_id:
+                telemetry_filesystem_prefix, unique_id_device_name = ent.unique_id.split(
+                    "_telemetry_filesystems_", 1
+                )
+                unique_id_device_name = unique_id_device_name.lower()
                 new_unique_id = None
                 for filesystem in telemetry.get("filesystems", []):
                     device_name: str = (
                         filesystem.get("device", "").replace("/", "_slash_").strip("_")
-                    ).lower()
-                    unique_id_device_name: str = (
-                        ent.unique_id.split("_telemetry_filesystems_")[1]
                     ).lower()
                     if device_name == unique_id_device_name:
                         mpoint: str = filesystem.get("mountpoint", "")
@@ -580,7 +578,9 @@ async def _migrate_3_to_4(
                             mountpoint = "root"
                         else:
                             mountpoint = mpoint.replace("/", "_").strip("_")
-                        new_unique_id = ent.unique_id.replace(device_name, mountpoint)
+                        new_unique_id = (
+                            f"{telemetry_filesystem_prefix}_telemetry_filesystems_{mountpoint}"
+                        )
                         break
             else:
                 continue
@@ -606,11 +606,10 @@ async def _migrate_3_to_4(
                     updated_ent.unique_id,
                 )
             except ValueError as e:
-                _LOGGER.error(
-                    "Error migrating entity: %s. %s: %s",
+                _LOGGER.exception(
+                    "Error migrating entity: %s. %s",
                     ent.entity_id,
                     type(e).__name__,
-                    e,
                 )
     new_entry_bool = hass.config_entries.async_update_entry(config_entry, version=4)
     if new_entry_bool:
@@ -643,11 +642,10 @@ async def _migrate_4_to_5(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
                 entity_registry.async_remove(ent.entity_id)
                 _LOGGER.debug("[migrate_4_to_5] removed entity_id: %s", ent.entity_id)
             except (KeyError, ValueError) as e:
-                _LOGGER.error(
-                    "Error removing entity: %s. %s: %s",
+                _LOGGER.exception(
+                    "Error removing entity: %s. %s",
                     ent.entity_id,
                     type(e).__name__,
-                    e,
                 )
 
     migration_ok: bool = hass.config_entries.async_update_entry(config_entry, version=5)
