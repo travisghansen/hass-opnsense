@@ -292,6 +292,16 @@ def test_affected_package_count_counts_lists() -> None:
         ),
         (
             _firmware_update_state(
+                product_version="1_0_0",
+                product_latest="1_0_0",
+                product_series="1.0",
+                upgrade_packages=[{"name": "opnsense", "new_version": ""}],
+            ),
+            "1_0_0+",
+            "1.0",
+        ),
+        (
+            _firmware_update_state(
                 product_version="1.0.0",
                 product_latest="1.0.0",
                 product_series="1.0",

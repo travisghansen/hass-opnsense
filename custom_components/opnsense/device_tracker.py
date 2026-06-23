@@ -482,7 +482,11 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             with contextlib.suppress(ValueError):
                 parsed_last_known_connected_time = datetime.fromisoformat(lkct)
 
-        if parsed_last_known_connected_time is not None:
+        if (
+            parsed_last_known_connected_time is not None
+            and parsed_last_known_connected_time.tzinfo is not None
+            and parsed_last_known_connected_time.utcoffset() is not None
+        ):
             self._last_known_connected_time = parsed_last_known_connected_time
             self._attr_extra_state_attributes["last_known_connected_time"] = (
                 parsed_last_known_connected_time

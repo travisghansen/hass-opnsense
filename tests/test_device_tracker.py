@@ -515,6 +515,52 @@ async def test_restore_last_state_uses_datetime_and_skips_empty_attributes(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "connected_time",
+    [
+        datetime(2026, 6, 22, 12, 30, 5, tzinfo=UTC),
+        datetime(2026, 6, 22, 12, 30, 5, tzinfo=UTC).isoformat(),
+    ],
+)
+async def test_restore_last_state_restores_tz_aware_connected_time(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    connected_time: datetime | str,
+) -> None:
+    """Aware datetime values should restore into tracker state."""
+    ent = _make_scanner_entity(coordinator, make_config_entry)
+    last_state = MagicMock()
+    last_state.attributes = {"last_known_connected_time": connected_time}
+    object.__setattr__(ent, "async_get_last_state", AsyncMock(return_value=last_state))
+
+    await ent._restore_last_state()
+
+    assert ent._last_known_connected_time == datetime(2026, 6, 22, 12, 30, 5, tzinfo=UTC)
+    attrs = ent.extra_state_attributes
+    assert attrs is not None
+    assert "last_known_connected_time" in attrs
+
+
+@pytest.mark.asyncio
+async def test_restore_last_state_ignores_naive_iso_connected_time(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Naive ISO timestamps should be ignored during state restore."""
+    ent = _make_scanner_entity(coordinator, make_config_entry)
+    last_state = MagicMock()
+    last_state.attributes = {"last_known_connected_time": "2026-06-22T12:30:05"}
+    object.__setattr__(ent, "async_get_last_state", AsyncMock(return_value=last_state))
+
+    await ent._restore_last_state()
+
+    assert ent._last_known_connected_time is None
+    attrs = ent.extra_state_attributes
+    assert attrs is not None
+    assert "last_known_connected_time" not in attrs
+
+
+@pytest.mark.asyncio
 async def test_restore_last_state_ignores_unparseable_connected_time(
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],

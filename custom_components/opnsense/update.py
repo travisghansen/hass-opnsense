@@ -89,7 +89,7 @@ def _opnsense_package_version(packages: list[Any]) -> str | None:
         if not isinstance(package, Mapping):
             continue
         new_version = package.get("new_version")
-        if package.get("name") == "opnsense" and isinstance(new_version, str):
+        if package.get("name") == "opnsense" and isinstance(new_version, str) and new_version != "":
             return new_version
     return None
 
