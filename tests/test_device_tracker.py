@@ -14,6 +14,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.opnsense.device_tracker import OPNsenseScannerEntity
+
 # import the module under test and package constants
 dt_mod = importlib.import_module("custom_components.opnsense.device_tracker")
 pkg = importlib.import_module("custom_components.opnsense")
@@ -23,8 +25,8 @@ def _make_scanner_entity(
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
     *,
-    coordinator_data: Any | None = None,
-) -> Any:
+    coordinator_data: object | None = None,
+) -> OPNsenseScannerEntity:
     """Create a scanner entity with coordinator runtime data wired in.
 
     Args:
@@ -279,6 +281,30 @@ def test_handle_coordinator_update_entry_present(
     assert ent.extra_state_attributes.get("interface") == "lan0"
     assert ent.extra_state_attributes.get("type") == "arp"
     assert ent.icon == "mdi:lan-connect"
+    assert ent.source_type == dt_mod.SourceType.ROUTER
+
+
+def test_device_data_from_arp_entry_normalizes_hostname_and_filters_manufacturer() -> None:
+    """ARP setup data should normalize hostnames and ignore non-string manufacturer."""
+    device = dt_mod._device_data_from_arp_entry(
+        "aa:bb:cc", {"hostname": "host?", "manufacturer": ""}
+    )
+    assert device == {"mac": "aa:bb:cc", "hostname": "host"}
+
+    device = dt_mod._device_data_from_arp_entry(
+        "dd:ee:ff", {"hostname": "host", "manufacturer": None}
+    )
+    assert device == {"mac": "dd:ee:ff", "hostname": "host"}
+
+
+def test_device_from_arp_entry_matches_mac_case_insensitively_and_rejects_non_string_macs() -> None:
+    """Device lookup should match MAC addresses case-insensitively and skip bad MAC types."""
+    device = dt_mod._device_from_arp_entry(
+        "aa:bb:cc",
+        [{"mac": 12345}, {"mac": "AA:BB:CC", "hostname": "TrackedHost", "manufacturer": "m"}],
+    )
+
+    assert device == {"mac": "aa:bb:cc", "hostname": "TrackedHost", "manufacturer": "m"}
 
 
 def test_handle_coordinator_update_skips_malformed_arp_entries(
@@ -296,6 +322,47 @@ def test_handle_coordinator_update_skips_malformed_arp_entries(
 
     assert ent.is_connected is False
     assert ent.available is True
+
+
+def test_handle_coordinator_update_matches_mac_case_insensitively(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Coordinator matching should include uppercase/lowercase MAC variations."""
+    coordinator.data = {
+        "arp_table": [{"mac": "AA:BB:CC", "ip": "1.2.3.4", "intf_description": "lan"}],
+        "update_time": 0,
+    }
+    ent = _make_scanner_entity(
+        coordinator=coordinator,
+        make_config_entry=make_config_entry,
+        coordinator_data=coordinator.data,
+    )
+    object.__setattr__(ent, "async_write_ha_state", MagicMock())
+
+    ent._handle_coordinator_update()
+
+    assert ent.ip_address == "1.2.3.4"
+    attrs = ent.extra_state_attributes
+    assert attrs is not None
+    assert attrs.get("interface") == "lan"
+    assert ent.available is True
+
+
+def test_update_arp_extra_state_attributes_clears_stale_values() -> None:
+    """Stale ARP extra state attributes are removed when absent in current entry."""
+    attributes: dict[str, Any] = {
+        "interface": "old",
+        "expires": "Never",
+        "type": "old",
+        "last_known_ip": "9.9.9.9",
+    }
+
+    dt_mod._update_arp_extra_state_attributes(attributes, {})
+
+    assert "interface" not in attributes
+    assert "expires" not in attributes
+    assert "type" not in attributes
+    assert attributes == {"last_known_ip": "9.9.9.9"}
 
 
 def test_handle_coordinator_update_missing_entry_consider_home(
@@ -324,6 +391,20 @@ def test_handle_coordinator_update_missing_entry_consider_home(
     ent._handle_coordinator_update()
     # elapsed < consider_home so device considered connected
     assert ent.is_connected is True
+
+
+@pytest.mark.asyncio
+async def test_restore_last_state_returns_when_no_snapshot(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Restoring state should return when Home Assistant has no saved snapshot."""
+    ent = _make_scanner_entity(coordinator, make_config_entry)
+    object.__setattr__(ent, "async_get_last_state", AsyncMock(return_value=None))
+
+    await ent._restore_last_state()
+
+    assert ent.extra_state_attributes == {}
 
 
 @pytest.mark.asyncio
@@ -360,7 +441,7 @@ async def test_restore_last_state_and_device_info(
             "last_known_connected_time": last_known_connected_time.isoformat(),
         },
     )
-    ent.async_get_last_state = AsyncMock(return_value=last_state)
+    object.__setattr__(ent, "async_get_last_state", AsyncMock(return_value=last_state))
 
     await ent._restore_last_state()
     # restored attributes should be present
@@ -403,7 +484,7 @@ async def test_restore_last_state_uses_datetime_and_skips_empty_attributes(
         "type": "",
         "last_known_connected_time": last_known_connected_time,
     }
-    ent.async_get_last_state = AsyncMock(return_value=last_state)
+    object.__setattr__(ent, "async_get_last_state", AsyncMock(return_value=last_state))
 
     await ent._restore_last_state()
 
@@ -420,12 +501,14 @@ async def test_restore_last_state_ignores_unparseable_connected_time(
     ent = _make_scanner_entity(coordinator, make_config_entry)
     last_state = MagicMock()
     last_state.attributes = {"last_known_connected_time": "not-a-date"}
-    ent.async_get_last_state = AsyncMock(return_value=last_state)
+    object.__setattr__(ent, "async_get_last_state", AsyncMock(return_value=last_state))
 
     await ent._restore_last_state()
 
     assert ent._last_known_connected_time is None
-    assert "last_known_connected_time" not in ent.extra_state_attributes
+    attrs = ent.extra_state_attributes
+    assert attrs is not None
+    assert "last_known_connected_time" not in attrs
 
 
 @pytest.mark.asyncio
@@ -437,7 +520,7 @@ async def test_restore_last_state_ignores_non_mapping_attributes(
     ent = _make_scanner_entity(coordinator, make_config_entry)
     last_state = MagicMock()
     last_state.attributes = ["not", "a", "mapping"]
-    ent.async_get_last_state = AsyncMock(return_value=last_state)
+    object.__setattr__(ent, "async_get_last_state", AsyncMock(return_value=last_state))
 
     await ent._restore_last_state()
 

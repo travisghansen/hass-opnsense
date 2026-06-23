@@ -581,7 +581,7 @@ def test_handle_coordinator_update_release_url_fallback_when_product_class_none(
             "1_2_0",
             "1.2.0",
             False,
-            "1.2.0",
+            "1_2_0",
         ),
         (
             {"firmware_update_info": {"status": "none", "status_msg": "nothing"}},
@@ -621,6 +621,38 @@ def test_get_release_notes_variants(
     else:
         assert notes is not None
         assert expected in notes
+
+
+def test_get_release_notes_upgrade_uses_target_version_in_header(
+    make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
+) -> None:
+    """Upgrade release notes should use product_latest as the target version."""
+    entry = make_config_entry()
+    coord = dummy_coordinator
+    ent = OPNsenseFirmwareUpdatesAvailableUpdate(
+        config_entry=entry,
+        coordinator=coord,
+        entity_description=UpdateEntityDescription(
+            key="firmware.update_available", name="Firmware"
+        ),
+    )
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
+
+    notes = ent._get_release_notes(
+        state={
+            "firmware_update_info": {
+                "status": "upgrade",
+                "product": {"product_name": "OPN"},
+                "status_msg": "up",
+                "upgrade_needs_reboot": "1",
+            }
+        },
+        product_latest="2_1_0",
+        product_version="2.0.0",
+    )
+    assert notes is not None
+    assert "## OPN version 2_1_0" in notes
+    assert "2.0.0" not in notes
 
 
 @pytest.mark.asyncio
@@ -778,7 +810,9 @@ def test_get_versions_malformed_state_returns_empty_versions(
     )
 
     pv, pl, ps = ent._get_versions({"firmware_update_info": []})
-    assert pv is None and pl is None and ps is None
+    assert pv is None
+    assert pl is None
+    assert ps is None
 
 
 def test_get_release_notes_malformed_state_returns_none(

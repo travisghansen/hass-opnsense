@@ -5,6 +5,7 @@ from collections.abc import Mapping, MutableMapping
 import logging
 from typing import Any
 
+from aiohttp import ClientError
 from aiopnsense.exceptions import OPNsenseError
 from homeassistant.components.update import UpdateDeviceClass, UpdateEntity, UpdateEntityDescription
 from homeassistant.components.update.const import UpdateEntityFeature
@@ -356,7 +357,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
             upgrade_needs_reboot = firmware_update_info.get("upgrade_needs_reboot") == "1"
 
             return f"""
-## {product_name} version {product_version}
+## {product_name} version {product_latest or product_version}
 
 {status_msg}
 
@@ -406,7 +407,14 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
                 _LOGGER.debug("[async_install] upgrade_status: %s", response)
                 # after finished status is "done"
                 running = response["status"] == "running"
-            except (OPNsenseError, TimeoutError, KeyError, TypeError) as e:
+            except (
+                OPNsenseError,
+                TimeoutError,
+                KeyError,
+                TypeError,
+                ClientError,
+                OSError,
+            ) as e:
                 exceptions += 1
                 _LOGGER.warning(
                     "Error #%s while getting upgrade_status. %s: %s",

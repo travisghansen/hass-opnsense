@@ -50,11 +50,21 @@ def _device_data_from_arp_entry(
         A device dictionary populated with the MAC address and metadata.
     """
     device: dict[str, Any] = {"mac": mac_address}
-    for attr in ("hostname", "manufacturer"):
-        value = arp_entry.get(attr)
-        if value:
-            device[attr] = value
+
+    hostname = _hostname_from_arp_entry(arp_entry)
+    if hostname is not None:
+        device["hostname"] = hostname
+
+    manufacturer = _non_empty_string(arp_entry.get("manufacturer"))
+    if manufacturer is not None:
+        device["manufacturer"] = manufacturer
+
     return device
+
+
+def _mac_matches(mac_a: object, mac_b: object) -> bool:
+    """Compare MAC addresses case-insensitively when both values are strings."""
+    return isinstance(mac_a, str) and isinstance(mac_b, str) and mac_a.lower() == mac_b.lower()
 
 
 def _device_from_arp_entry(mac_address: str, arp_entries: list[Any]) -> dict[str, Any]:
@@ -71,7 +81,7 @@ def _device_from_arp_entry(mac_address: str, arp_entries: list[Any]) -> dict[str
     for arp_entry in arp_entries:
         if not isinstance(arp_entry, MutableMapping):
             continue
-        if mac_address != arp_entry.get("mac", ""):
+        if not _mac_matches(mac_address, arp_entry.get("mac")):
             continue
         device.update(_device_data_from_arp_entry(mac_address, arp_entry))
         break
@@ -102,7 +112,7 @@ def _devices_from_arp_entries(arp_entries: list[Any]) -> tuple[list[dict[str, An
     return devices, mac_addresses
 
 
-def _non_empty_string(value: Any) -> str | None:
+def _non_empty_string(value: object) -> str | None:
     """Return a non-empty string value, if available.
 
     Args:
@@ -130,7 +140,7 @@ def _hostname_from_arp_entry(entry: MutableMapping[str, Any]) -> str | None:
     return hostname or None
 
 
-def _arp_expires_attribute(value: Any) -> str | datetime | None:
+def _arp_expires_attribute(value: object) -> str | datetime | None:
     """Return the Home Assistant attribute value for an ARP expiry.
 
     Args:
@@ -156,6 +166,9 @@ def _update_arp_extra_state_attributes(
         attributes: Entity attributes to mutate in place.
         entry: ARP entry providing optional metadata.
     """
+    for attr in ("interface", "expires", "type"):
+        attributes.pop(attr, None)
+
     interface = entry.get("intf_description")
     if interface:
         attributes["interface"] = interface
@@ -372,7 +385,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         for arp_entry in arp_table:
             if not isinstance(arp_entry, MutableMapping):
                 continue
-            if arp_entry.get("mac", "").lower() == self._attr_mac_address:
+            if _mac_matches(self._attr_mac_address, arp_entry.get("mac")):
                 entry = arp_entry
                 break
         if not entry:
