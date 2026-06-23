@@ -833,12 +833,20 @@ def test_get_release_notes_malformed_state_returns_none(
 
 
 @pytest.mark.asyncio
-async def test_async_install_exceptions_loop(
+@pytest.mark.parametrize(
+    "upgrade_status_response",
+    [
+        pytest.param(None, id="none-response"),
+        pytest.param({}, id="missing-status"),
+    ],
+)
+async def test_async_install_handles_masked_polling_response(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
+    upgrade_status_response: Any,
 ) -> None:
-    """async_install should handle exceptions and exit the install loop gracefully."""
+    """async_install should handle masked aiopnsense polling failures."""
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,
@@ -849,10 +857,10 @@ async def test_async_install_exceptions_loop(
     )
 
     class BadClient:
-        """Fake firmware client that raises retryable polling errors."""
+        """Fake firmware client that returns unusable polling payloads."""
 
         def __init__(self) -> None:
-            """Initialize a fake client that fails during upgrade polling."""
+            """Initialize a fake client that returns masked polling failures."""
             self.rebooted = False
 
         async def upgrade_firmware(self, _upgrade_type: Any) -> dict[str, Any]:
@@ -866,17 +874,13 @@ async def test_async_install_exceptions_loop(
             """
             return {"started": True}
 
-        async def upgrade_status(self) -> dict[str, Any]:
-            """Raise a timeout error while the entity polls upgrade status.
-
-            Raises:
-                TimeoutError: Always raised to exercise the entity's exception
-                    handling path.
+        async def upgrade_status(self) -> dict[str, Any] | None:
+            """Return an unusable polling response from aiopnsense.
 
             Returns:
-                dict[str, Any]: This method never returns normally.
+                dict[str, Any] | None: Masked polling failure payload.
             """
-            raise TimeoutError("fail")
+            return upgrade_status_response
 
         async def get_firmware_update_info(self) -> dict[str, Any]:
             """Return update metadata showing that no reboot is required.
@@ -897,6 +901,57 @@ async def test_async_install_exceptions_loop(
 
     await ent.async_install()
     assert bad.rebooted is False
+
+
+@pytest.mark.asyncio
+async def test_async_install_transport_polling_error_raises(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    dummy_coordinator: MagicMock,
+) -> None:
+    """async_install should not hide transport errors raised by aiopnsense."""
+    entry = make_config_entry()
+    ent = OPNsenseFirmwareUpdatesAvailableUpdate(
+        config_entry=entry,
+        coordinator=dummy_coordinator,
+        entity_description=UpdateEntityDescription(
+            key="firmware.update_available", name="Firmware"
+        ),
+    )
+
+    class BadClient:
+        """Fake firmware client that raises a transport polling error."""
+
+        async def upgrade_firmware(self, _upgrade_type: Any) -> dict[str, Any]:
+            """Simulate accepting an upgrade request before polling fails.
+
+            Args:
+                _upgrade_type: Upgrade mode requested by the entity and ignored by this fake client.
+
+            Returns:
+                dict[str, Any]: Payload indicating that the upgrade request started.
+            """
+            return {"started": True}
+
+        async def upgrade_status(self) -> dict[str, Any]:
+            """Raise a transport polling error.
+
+            Raises:
+                TimeoutError: Always raised to verify transport errors are not
+                    handled after aiopnsense masking.
+
+            Returns:
+                dict[str, Any]: This method never returns normally.
+            """
+            raise TimeoutError("fail")
+
+    bad: Any = BadClient()
+    object.__setattr__(ent, "_client", bad)
+    ent.coordinator.data = {"firmware_update_info": {"status": "update"}}
+    monkeypatch.setattr(asyncio, "sleep", AsyncMock(return_value=None))
+
+    with pytest.raises(TimeoutError, match="fail"):
+        await ent.async_install()
 
 
 @pytest.mark.asyncio
