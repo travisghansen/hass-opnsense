@@ -76,6 +76,24 @@ def _affected_package_count(value: Any) -> int:
     return 0
 
 
+def _opnsense_package_version(packages: list[Any]) -> str | None:
+    """Return the OPNsense package version from firmware package rows.
+
+    Args:
+        packages: Firmware package rows from OPNsense.
+
+    Returns:
+        The OPNsense package version, or ``None`` when unavailable.
+    """
+    for package in packages:
+        if not isinstance(package, Mapping):
+            continue
+        new_version = package.get("new_version")
+        if package.get("name") == "opnsense" and isinstance(new_version, str):
+            return new_version
+    return None
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -247,26 +265,11 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
             packages = _list_or_empty(
                 dict_get(state, "firmware_update_info.product.product_check.upgrade_packages")
             )
-            if product_version == product_latest:
-                package_found: bool = False
-                for package in packages:
-                    if not isinstance(package, Mapping):
-                        continue
-                    new_version = package.get("new_version")
-                    if package.get("name") == "opnsense" and isinstance(new_version, str):
-                        package_found = True
-                        product_latest = new_version
-                        break
-                if not package_found:
-                    product_latest = f"{product_latest}+"
-            else:
-                for package in packages:
-                    if not isinstance(package, Mapping):
-                        continue
-                    new_version = package.get("new_version")
-                    if package.get("name") == "opnsense" and isinstance(new_version, str):
-                        product_latest = new_version
-                        break
+            package_version = _opnsense_package_version(packages)
+            if package_version is not None:
+                product_latest = package_version
+            elif product_version == product_latest:
+                product_latest = f"{product_latest}+"
 
         if status == "upgrade":
             upgrade_major_version = dict_get(state, "firmware_update_info.upgrade_major_version")

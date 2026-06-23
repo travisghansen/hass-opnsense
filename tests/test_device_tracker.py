@@ -5,7 +5,7 @@ and device info formatting for the integration's device tracker entities.
 """
 
 from collections.abc import Callable, Iterable, MutableMapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import importlib
 from types import MappingProxyType
 from typing import Any
@@ -324,6 +324,23 @@ def test_handle_coordinator_update_skips_malformed_arp_entries(
     assert ent.available is True
 
 
+def test_handle_coordinator_update_skips_nonmatching_mapping_arp_entries(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Nonmatching ARP mapping entries should be skipped while searching."""
+    ent = _make_scanner_entity(
+        coordinator=coordinator,
+        make_config_entry=make_config_entry,
+        coordinator_data={"arp_table": [{"mac": "dd:ee:ff"}]},
+    )
+    object.__setattr__(ent, "async_write_ha_state", MagicMock())
+
+    ent._handle_coordinator_update()
+
+    assert ent.is_connected is False
+    assert ent.available is True
+
+
 def test_handle_coordinator_update_matches_mac_case_insensitively(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
@@ -391,6 +408,32 @@ def test_handle_coordinator_update_missing_entry_consider_home(
     ent._handle_coordinator_update()
     # elapsed < consider_home so device considered connected
     assert ent.is_connected is True
+
+
+def test_handle_coordinator_update_expired_entry_outside_consider_home(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Expired ARP entries outside consider_home should stay disconnected."""
+    entry = make_config_entry(
+        data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"},
+        options={dt_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME: 1},
+    )
+    setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
+    coordinator.data = {"arp_table": [{"mac": "aa:bb:cc", "expired": True}]}
+    ent = dt_mod.OPNsenseScannerEntity(
+        config_entry=entry,
+        coordinator=coordinator,
+        enabled_default=False,
+        mac="aa:bb:cc",
+        mac_vendor=None,
+        hostname=None,
+    )
+    ent._last_known_connected_time = datetime.now(UTC).astimezone() - timedelta(seconds=5)
+    object.__setattr__(ent, "async_write_ha_state", MagicMock())
+
+    ent._handle_coordinator_update()
+
+    assert ent.is_connected is False
 
 
 @pytest.mark.asyncio
@@ -501,6 +544,25 @@ async def test_restore_last_state_ignores_unparseable_connected_time(
     ent = _make_scanner_entity(coordinator, make_config_entry)
     last_state = MagicMock()
     last_state.attributes = {"last_known_connected_time": "not-a-date"}
+    object.__setattr__(ent, "async_get_last_state", AsyncMock(return_value=last_state))
+
+    await ent._restore_last_state()
+
+    assert ent._last_known_connected_time is None
+    attrs = ent.extra_state_attributes
+    assert attrs is not None
+    assert "last_known_connected_time" not in attrs
+
+
+@pytest.mark.asyncio
+async def test_restore_last_state_ignores_non_datetime_connected_time(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Restoring state should ignore non-string and non-datetime timestamps."""
+    ent = _make_scanner_entity(coordinator, make_config_entry)
+    last_state = MagicMock()
+    last_state.attributes = {"last_known_connected_time": 1}
     object.__setattr__(ent, "async_get_last_state", AsyncMock(return_value=last_state))
 
     await ent._restore_last_state()

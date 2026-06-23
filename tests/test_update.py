@@ -55,6 +55,74 @@ def _firmware_update_state(
     return {"firmware_update_info": firmware_update_info}
 
 
+class _FirmwareInstallClient:
+    """Fake firmware client for update install flow tests."""
+
+    def __init__(
+        self,
+        *,
+        status_responses: list[Any] | None = None,
+        status_response: Any = None,
+        status_error: BaseException | None = None,
+        firmware_info: dict[str, Any] | None = None,
+    ) -> None:
+        """Initialize a fake firmware install client.
+
+        Args:
+            status_responses: Queued responses returned by ``upgrade_status``.
+            status_response: Repeated response returned by ``upgrade_status``.
+            status_error: Error raised by ``upgrade_status``.
+            firmware_info: Payload returned by ``get_firmware_update_info``.
+        """
+        self.status_responses = list(status_responses or [])
+        self.status_response = status_response
+        self.status_error = status_error
+        self.firmware_info = firmware_info or {
+            "needs_reboot": None,
+            "upgrade_needs_reboot": None,
+        }
+        self.rebooted = False
+
+    async def upgrade_firmware(self, _upgrade_type: Any) -> dict[str, Any]:
+        """Simulate accepting an upgrade request before polling.
+
+        Args:
+            _upgrade_type: Upgrade mode requested by the entity and ignored by
+                this fake client.
+
+        Returns:
+            Payload indicating that the upgrade request started.
+        """
+        return {"started": True}
+
+    async def upgrade_status(self) -> Any:
+        """Return or raise the configured polling result.
+
+        Raises:
+            BaseException: The configured ``status_error``, when provided.
+
+        Returns:
+            The next queued status response, or the configured repeated response.
+        """
+        if self.status_error is not None:
+            raise self.status_error
+        if self.status_responses:
+            return self.status_responses.pop(0)
+        return self.status_response
+
+    async def get_firmware_update_info(self) -> dict[str, Any]:
+        """Return configured firmware metadata.
+
+        Returns:
+            Firmware update metadata.
+        """
+        return self.firmware_info
+
+    async def system_reboot(self) -> None:
+        """Record that the update entity requested a system reboot."""
+        self.rebooted = True
+
+
 @pytest.mark.asyncio
 async def test_async_setup_entry_adds_firmware_update_entity_contract(
     hass: HomeAssistant,
@@ -673,66 +741,22 @@ async def test_async_install_reboots_when_needed(
     )
     object.__setattr__(ent, "async_write_ha_state", lambda: None)
 
-    class FakeClient:
-        """Fake firmware client for a successful install flow."""
-
-        def __init__(self) -> None:
-            # planned sequence: first 'running', then 'done'
-            """Initialize a fake client that simulates a successful update flow."""
-            self._status_calls = [
-                {"status": "running"},
-                {"status": "done"},
-            ]
-            self.rebooted = False
-
-        async def upgrade_firmware(self, _upgrade_type: Any) -> dict[str, Any]:
-            """Simulate starting a firmware upgrade request.
-
-            Args:
-                _upgrade_type: Upgrade mode requested by the entity and ignored by this fake client.
-
-            Returns:
-                dict[str, Any]: Payload indicating that the upgrade request started.
-            """
-            return {"started": True}
-
-        async def upgrade_status(self) -> dict[str, str]:
-            """Return the next queued upgrade status payload.
-
-            Returns:
-                dict[str, str]: The next queued upgrade status response.
-            """
-            return self._status_calls.pop(0)
-
-        async def get_firmware_update_info(self) -> dict[str, Any]:
-            """Return update metadata indicating that a reboot is required.
-
-            Returns:
-                dict[str, Any]: Firmware update metadata that requires a reboot.
-            """
-            return {"needs_reboot": "1", "upgrade_needs_reboot": None}
-
-        async def system_reboot(self) -> None:
-            """Record that the update entity requested a system reboot."""
-            self.rebooted = True
-
-    fake: Any = FakeClient()
-    # replace upgrade_status with an AsyncMock to track await calls and sequence
-    object.__setattr__(fake, "upgrade_status", AsyncMock(side_effect=fake._status_calls.copy()))
-    # wrap upgrade_firmware to assert it was awaited exactly once
+    status_responses = [{"status": "running"}, {"status": "done"}]
+    fake: Any = _FirmwareInstallClient(
+        status_responses=status_responses,
+        firmware_info={"needs_reboot": "1", "upgrade_needs_reboot": None},
+    )
+    object.__setattr__(fake, "upgrade_status", AsyncMock(side_effect=status_responses))
     object.__setattr__(fake, "upgrade_firmware", AsyncMock(wraps=fake.upgrade_firmware))
     object.__setattr__(ent, "_client", fake)
 
-    # provide coordinator state with firmware info and upgrade in progress
     ent.coordinator.data = {"firmware_update_info": {"status": "update"}}
 
-    # speed up sleep and capture await count
     sleep_spy = AsyncMock(return_value=None)
     monkeypatch.setattr(asyncio, "sleep", sleep_spy)
 
     await ent.async_install()
     assert fake.rebooted is True
-    # ensure polling occurred: upgrade_status should have been awaited twice (running -> done)
     assert fake.upgrade_status.await_count == 2
     fake.upgrade_firmware.assert_awaited_once_with("update")
     assert 1 <= sleep_spy.await_count <= 5
@@ -754,10 +778,8 @@ async def test_async_install_does_nothing_on_non_update_status(
     )
     object.__setattr__(ent, "async_write_ha_state", lambda: None)
 
-    # non-update status
     ent.coordinator.data = {"firmware_update_info": {"status": "none"}}
 
-    # attach a mock client and ensure upgrade_firmware is not called
     client = MagicMock()
     object.__setattr__(client, "upgrade_firmware", AsyncMock())
     ent._client = client
@@ -785,11 +807,9 @@ async def test_async_install_early_returns_and_no_client(
     )
     object.__setattr__(ent, "async_write_ha_state", lambda: None)
 
-    # state not mapping
     ent.coordinator.data = cast("dict[str, Any]", None)
     await ent.async_install()
 
-    # state present but no client
     ent.coordinator.data = {"firmware_update_info": {"status": "update"}}
     object.__setattr__(ent, "_client", None)
     await ent.async_install()
@@ -856,45 +876,7 @@ async def test_async_install_handles_masked_polling_response(
         ),
     )
 
-    class BadClient:
-        """Fake firmware client that returns unusable polling payloads."""
-
-        def __init__(self) -> None:
-            """Initialize a fake client that returns masked polling failures."""
-            self.rebooted = False
-
-        async def upgrade_firmware(self, _upgrade_type: Any) -> dict[str, Any]:
-            """Simulate accepting an upgrade request before polling fails.
-
-            Args:
-                _upgrade_type: Upgrade mode requested by the entity and ignored by this fake client.
-
-            Returns:
-                dict[str, Any]: Payload indicating that the upgrade request started.
-            """
-            return {"started": True}
-
-        async def upgrade_status(self) -> dict[str, Any] | None:
-            """Return an unusable polling response from aiopnsense.
-
-            Returns:
-                dict[str, Any] | None: Masked polling failure payload.
-            """
-            return upgrade_status_response
-
-        async def get_firmware_update_info(self) -> dict[str, Any]:
-            """Return update metadata showing that no reboot is required.
-
-            Returns:
-                dict[str, Any]: Firmware update metadata that does not require a reboot.
-            """
-            return {"needs_reboot": None, "upgrade_needs_reboot": None}
-
-        async def system_reboot(self) -> None:
-            """Record whether a reboot was incorrectly requested after failure."""
-            self.rebooted = True
-
-    bad: Any = BadClient()
+    bad: Any = _FirmwareInstallClient(status_response=upgrade_status_response)
     object.__setattr__(ent, "_client", bad)
     ent.coordinator.data = {"firmware_update_info": {"status": "update"}}
     monkeypatch.setattr(asyncio, "sleep", AsyncMock(return_value=None))
@@ -919,33 +901,7 @@ async def test_async_install_transport_polling_error_raises(
         ),
     )
 
-    class BadClient:
-        """Fake firmware client that raises a transport polling error."""
-
-        async def upgrade_firmware(self, _upgrade_type: Any) -> dict[str, Any]:
-            """Simulate accepting an upgrade request before polling fails.
-
-            Args:
-                _upgrade_type: Upgrade mode requested by the entity and ignored by this fake client.
-
-            Returns:
-                dict[str, Any]: Payload indicating that the upgrade request started.
-            """
-            return {"started": True}
-
-        async def upgrade_status(self) -> dict[str, Any]:
-            """Raise a transport polling error.
-
-            Raises:
-                TimeoutError: Always raised to verify transport errors are not
-                    handled after aiopnsense masking.
-
-            Returns:
-                dict[str, Any]: This method never returns normally.
-            """
-            raise TimeoutError("fail")
-
-    bad: Any = BadClient()
+    bad: Any = _FirmwareInstallClient(status_error=TimeoutError("fail"))
     object.__setattr__(ent, "_client", bad)
     ent.coordinator.data = {"firmware_update_info": {"status": "update"}}
     monkeypatch.setattr(asyncio, "sleep", AsyncMock(return_value=None))
@@ -970,33 +926,7 @@ async def test_async_install_unexpected_polling_error_raises(
         ),
     )
 
-    class BadClient:
-        """Fake firmware client that raises an unexpected polling error."""
-
-        async def upgrade_firmware(self, _upgrade_type: Any) -> dict[str, Any]:
-            """Simulate accepting an upgrade request before polling fails.
-
-            Args:
-                _upgrade_type: Upgrade mode requested by the entity and ignored by this fake client.
-
-            Returns:
-                dict[str, Any]: Payload indicating that the upgrade request started.
-            """
-            return {"started": True}
-
-        async def upgrade_status(self) -> dict[str, Any]:
-            """Raise an unexpected polling error.
-
-            Raises:
-                RuntimeError: Always raised to verify unexpected errors are not
-                    handled as retryable polling errors.
-
-            Returns:
-                dict[str, Any]: This method never returns normally.
-            """
-            raise RuntimeError("unexpected")
-
-    bad: Any = BadClient()
+    bad: Any = _FirmwareInstallClient(status_error=RuntimeError("unexpected"))
     object.__setattr__(ent, "_client", bad)
     ent.coordinator.data = {"firmware_update_info": {"status": "update"}}
     monkeypatch.setattr(asyncio, "sleep", AsyncMock(return_value=None))
