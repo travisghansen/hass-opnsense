@@ -58,10 +58,41 @@ async def test_async_setup_entry_adds_firmware_update_entity_contract(
     )
 
 
+@pytest.mark.asyncio
+async def test_async_setup_entry_skips_disabled_firmware_update_sync(
+    hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    dummy_coordinator: MagicMock,
+) -> None:
+    """async_setup_entry should not add firmware entities when sync is disabled."""
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "test-device-123",
+            CONF_SYNC_FIRMWARE_UPDATES: False,
+        }
+    )
+    setattr(entry.runtime_data, update_module.COORDINATOR, dummy_coordinator)
+    added_entities: list[OPNsenseFirmwareUpdatesAvailableUpdate] = []
+
+    def async_add_entities(
+        entities: list[OPNsenseFirmwareUpdatesAvailableUpdate],
+        _update_before_add: bool = False,
+    ) -> None:
+        """Capture entities added by the platform setup callback."""
+        added_entities.extend(entities)
+
+    await update_module.async_setup_entry(
+        hass, entry, cast("AddEntitiesCallback", async_add_entities)
+    )
+
+    assert added_entities == []
+
+
 @pytest.mark.parametrize(
     "coordinator_data",
     [
         pytest.param(None, id="missing"),
+        pytest.param({"firmware_update_info": []}, id="non-mapping-info"),
         pytest.param({"firmware_update_info": {"status": "error"}}, id="error-status"),
         pytest.param({"firmware_update_info": {}}, id="missing-status"),
         pytest.param({"firmware_update_info": {"status": 1}}, id="non-string-status"),
@@ -126,6 +157,11 @@ def test_is_update_available_true_for_valid_status(
     assert ent.available is True
 
 
+def test_affected_package_count_counts_lists() -> None:
+    """Affected package count should count list-shaped package collections."""
+    assert update_module._affected_package_count(["base", "kernel"]) == 2
+
+
 @pytest.mark.parametrize(
     ("state_builder", "expect_latest", "expect_series", "expect_latest_condition"),
     [
@@ -165,6 +201,49 @@ def test_is_update_available_true_for_valid_status(
             "1_0_1",
             "1.0",
             lambda latest: latest == "1_0_1",
+        ),
+        (
+            lambda: {
+                "firmware_update_info": {
+                    "product": {
+                        "product_version": "1.0.0",
+                        "product_latest": "1.0.0",
+                        "product_series": "1.0",
+                        "product_check": {
+                            "upgrade_packages": [
+                                object(),
+                                {"name": "opnsense", "new_version": "1.0.1"},
+                            ]
+                        },
+                    },
+                    "status": "update",
+                }
+            },
+            "1.0.1",
+            "1.0",
+            lambda latest: latest == "1.0.1",
+        ),
+        (
+            lambda: {
+                "firmware_update_info": {
+                    "product": {
+                        "product_version": "1.0.0",
+                        "product_latest": "1.0.1",
+                        "product_series": "1.0",
+                        "product_check": {
+                            "upgrade_packages": [
+                                object(),
+                                {"name": "kernel", "new_version": "1.0.2"},
+                                {"name": "opnsense", "new_version": "1.0.2"},
+                            ]
+                        },
+                    },
+                    "status": "update",
+                }
+            },
+            "1.0.2",
+            "1.0",
+            lambda latest: latest == "1.0.2",
         ),
         (
             lambda: {
@@ -213,6 +292,22 @@ def test_is_update_available_true_for_valid_status(
             "2.1.3",
             "2.1",
             lambda latest: latest == "2.1.3",
+        ),
+        (
+            lambda: {
+                "firmware_update_info": {
+                    "status": "upgrade",
+                    "product": {
+                        "product_version": "2.0.0",
+                        "product_latest": "2.0.0",
+                        "product_series": "2.0",
+                    },
+                    "upgrade_major_version": "",
+                }
+            },
+            "2.0.0",
+            "2.0",
+            lambda latest: latest == "2.0.0",
         ),
     ],
 )

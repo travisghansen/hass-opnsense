@@ -19,6 +19,41 @@ dt_mod = importlib.import_module("custom_components.opnsense.device_tracker")
 pkg = importlib.import_module("custom_components.opnsense")
 
 
+def test_device_from_arp_entry_skips_malformed_and_nonmatching_entries() -> None:
+    """Device lookup should ignore malformed and nonmatching ARP entries."""
+    device = dt_mod._device_from_arp_entry(
+        "aa:bb:cc",
+        [
+            object(),
+            {"mac": "dd:ee:ff", "hostname": "other"},
+            {"mac": "aa:bb:cc", "hostname": "tracked", "manufacturer": "maker"},
+        ],
+    )
+
+    assert device == {"mac": "aa:bb:cc", "hostname": "tracked", "manufacturer": "maker"}
+
+
+def test_device_from_arp_entry_returns_mac_fallback_without_entries() -> None:
+    """Device lookup should return a MAC-only fallback when no ARP entries exist."""
+    assert dt_mod._device_from_arp_entry("aa:bb:cc", []) == {"mac": "aa:bb:cc"}
+
+
+def test_devices_from_arp_entries_skips_malformed_invalid_and_duplicate_macs() -> None:
+    """ARP conversion should only return devices for unique valid MAC strings."""
+    devices, mac_addresses = dt_mod._devices_from_arp_entries(
+        [
+            object(),
+            {"mac": None},
+            {"mac": ""},
+            {"mac": "aa:bb:cc", "hostname": "tracked"},
+            {"mac": "aa:bb:cc", "hostname": "duplicate"},
+        ],
+    )
+
+    assert mac_addresses == ["aa:bb:cc"]
+    assert devices == [{"mac": "aa:bb:cc", "hostname": "tracked"}]
+
+
 @pytest.mark.asyncio
 async def test_async_setup_entry_configured_devices(
     monkeypatch: pytest.MonkeyPatch,
@@ -217,6 +252,30 @@ def test_handle_coordinator_update_entry_present(
     assert ent.icon == "mdi:lan-connect"
 
 
+def test_handle_coordinator_update_skips_malformed_arp_entries(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Malformed ARP entries should be skipped while searching for the tracked MAC."""
+    coordinator.data = {"arp_table": [object()]}
+    entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
+
+    ent = dt_mod.OPNsenseScannerEntity(
+        config_entry=entry,
+        coordinator=coordinator,
+        enabled_default=False,
+        mac="aa:bb:cc",
+        mac_vendor=None,
+        hostname=None,
+    )
+    object.__setattr__(ent, "async_write_ha_state", MagicMock())
+
+    ent._handle_coordinator_update()
+
+    assert ent.is_connected is False
+    assert ent.available is True
+
+
 def test_handle_coordinator_update_missing_entry_consider_home(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
@@ -303,6 +362,97 @@ async def test_restore_last_state_and_device_info(
     assert via is not None
     assert via[0] == dt_mod.DOMAIN
     assert via[1] == entry.data[pkg.CONF_DEVICE_UNIQUE_ID]
+
+
+@pytest.mark.asyncio
+async def test_restore_last_state_uses_datetime_and_skips_empty_attributes(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Restoring state should preserve datetime values and ignore empty saved attributes."""
+    coordinator.data = {"arp_table": []}
+    entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
+    last_known_connected_time = datetime.now(UTC)
+
+    ent = dt_mod.OPNsenseScannerEntity(
+        config_entry=entry,
+        coordinator=coordinator,
+        enabled_default=False,
+        mac="aa:bb:cc",
+        mac_vendor=None,
+        hostname=None,
+    )
+    last_state = MagicMock()
+    last_state.attributes = {
+        "last_known_hostname": None,
+        "last_known_ip": None,
+        "interface": "",
+        "expires": None,
+        "type": "",
+        "last_known_connected_time": last_known_connected_time,
+    }
+    ent.async_get_last_state = AsyncMock(return_value=last_state)
+
+    await ent._restore_last_state()
+
+    assert ent._last_known_connected_time == last_known_connected_time
+    assert ent.extra_state_attributes == {"last_known_connected_time": last_known_connected_time}
+
+
+@pytest.mark.asyncio
+async def test_restore_last_state_ignores_unparseable_connected_time(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Restoring state should ignore invalid saved connection timestamps."""
+    coordinator.data = {"arp_table": []}
+    entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
+
+    ent = dt_mod.OPNsenseScannerEntity(
+        config_entry=entry,
+        coordinator=coordinator,
+        enabled_default=False,
+        mac="aa:bb:cc",
+        mac_vendor=None,
+        hostname=None,
+    )
+    last_state = MagicMock()
+    last_state.attributes = {"last_known_connected_time": "not-a-date"}
+    ent.async_get_last_state = AsyncMock(return_value=last_state)
+
+    await ent._restore_last_state()
+
+    assert ent._last_known_connected_time is None
+    assert "last_known_connected_time" not in ent.extra_state_attributes
+
+
+@pytest.mark.asyncio
+async def test_restore_last_state_ignores_non_mapping_attributes(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Restoring state should ignore snapshots with malformed attributes."""
+    coordinator.data = {"arp_table": []}
+    entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
+
+    ent = dt_mod.OPNsenseScannerEntity(
+        config_entry=entry,
+        coordinator=coordinator,
+        enabled_default=False,
+        mac="aa:bb:cc",
+        mac_vendor=None,
+        hostname=None,
+    )
+    last_state = MagicMock()
+    last_state.attributes = ["not", "a", "mapping"]
+    ent.async_get_last_state = AsyncMock(return_value=last_state)
+
+    await ent._restore_last_state()
+
+    assert ent.extra_state_attributes == {}
 
 
 @pytest.mark.asyncio
