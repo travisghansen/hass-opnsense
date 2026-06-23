@@ -168,7 +168,8 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
         firmware_update_info = state.get("firmware_update_info")
         if not isinstance(firmware_update_info, Mapping):
             return False
-        return firmware_update_info.get("status") != "error"
+        status = firmware_update_info.get("status")
+        return isinstance(status, str) and status not in {"", "error"}
 
     def _get_installed_version(self, state: MutableMapping[str, Any]) -> str | None:
         """Return installed version."""

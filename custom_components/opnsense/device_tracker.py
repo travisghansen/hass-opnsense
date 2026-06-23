@@ -1,6 +1,6 @@
 """Support for tracking for OPNsense devices."""
 
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
 import contextlib
 from datetime import datetime, timedelta, timezone
 import logging
@@ -346,7 +346,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             return
 
         state = last_state.attributes
-        if not isinstance(state, MutableMapping):
+        if not isinstance(state, Mapping):
             return
 
         self._last_known_hostname = state.get("last_known_hostname", None)
@@ -358,13 +358,18 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
                 self._attr_extra_state_attributes[attr] = value
 
         lkct = state.get("last_known_connected_time", None)
+        parsed_last_known_connected_time: datetime | None = None
         if isinstance(lkct, datetime):
-            self._attr_extra_state_attributes["last_known_connected_time"] = lkct
+            parsed_last_known_connected_time = lkct
         elif isinstance(lkct, str):
             with contextlib.suppress(ValueError):
-                self._attr_extra_state_attributes["last_known_connected_time"] = (
-                    datetime.fromisoformat(lkct)
-                )
+                parsed_last_known_connected_time = datetime.fromisoformat(lkct)
+
+        if parsed_last_known_connected_time is not None:
+            self._last_known_connected_time = parsed_last_known_connected_time
+            self._attr_extra_state_attributes["last_known_connected_time"] = (
+                parsed_last_known_connected_time
+            )
 
     async def async_added_to_hass(self) -> None:
         """Commands to run after entity is created."""

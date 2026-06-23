@@ -63,6 +63,9 @@ async def test_async_setup_entry_adds_firmware_update_entity_contract(
     [
         pytest.param(None, id="missing"),
         pytest.param({"firmware_update_info": {"status": "error"}}, id="error-status"),
+        pytest.param({"firmware_update_info": {}}, id="missing-status"),
+        pytest.param({"firmware_update_info": {"status": 1}}, id="non-string-status"),
+        pytest.param({"firmware_update_info": {"status": ""}}, id="empty-status"),
     ],
 )
 def test_is_update_available_false_for_missing_or_error_state(
@@ -71,7 +74,12 @@ def test_is_update_available_false_for_missing_or_error_state(
     dummy_coordinator: MagicMock,
 ) -> None:
     """Update entity should be unavailable when firmware update state is unusable."""
-    entry = make_config_entry()
+    entry = make_config_entry(
+        {
+            "url": "https://opnsense.example",
+            CONF_DEVICE_UNIQUE_ID: "test-device-123",
+        }
+    )
     coord = dummy_coordinator
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,
@@ -85,6 +93,37 @@ def test_is_update_available_false_for_missing_or_error_state(
     coord.data = coordinator_data
     ent._handle_coordinator_update()
     assert ent.available is False
+
+
+@pytest.mark.parametrize(
+    "status",
+    ["none", "update", "upgrade"],
+)
+def test_is_update_available_true_for_valid_status(
+    status: str,
+    make_config_entry: Callable[..., MockConfigEntry],
+    dummy_coordinator: MagicMock,
+) -> None:
+    """Valid firmware statuses should keep the update entity available."""
+    entry = make_config_entry(
+        {
+            "url": "https://opnsense.example",
+            CONF_DEVICE_UNIQUE_ID: "test-device-123",
+        }
+    )
+    coord = dummy_coordinator
+    ent = OPNsenseFirmwareUpdatesAvailableUpdate(
+        config_entry=entry,
+        coordinator=coord,
+        entity_description=UpdateEntityDescription(
+            key="firmware.update_available", name="Firmware"
+        ),
+    )
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
+
+    coord.data = {"firmware_update_info": {"status": status}}
+    ent._handle_coordinator_update()
+    assert ent.available is True
 
 
 @pytest.mark.parametrize(

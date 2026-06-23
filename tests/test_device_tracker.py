@@ -7,6 +7,7 @@ and device info formatting for the integration's device tracker entities.
 from collections.abc import Callable, Iterable, MutableMapping
 from datetime import UTC, datetime
 import importlib
+from types import MappingProxyType
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -264,23 +265,27 @@ async def test_restore_last_state_and_device_info(
         hostname="dev",
     )
     ent._attr_extra_state_attributes = {}
+    last_known_connected_time = datetime.now(UTC)
 
     # fake last state with attributes including isoformat time
     last_state = MagicMock()
-    last_state.attributes = {
-        "last_known_hostname": "oldhost",
-        "last_known_ip": "9.9.9.9",
-        "interface": "lan0",
-        "expires": 10,
-        "type": "arp",
-        "last_known_connected_time": datetime.now(UTC).isoformat(),
-    }
+    last_state.attributes = MappingProxyType(
+        {
+            "last_known_hostname": "oldhost",
+            "last_known_ip": "9.9.9.9",
+            "interface": "lan0",
+            "expires": 10,
+            "type": "arp",
+            "last_known_connected_time": last_known_connected_time.isoformat(),
+        },
+    )
     ent.async_get_last_state = AsyncMock(return_value=last_state)
 
     await ent._restore_last_state()
     # restored attributes should be present
     assert ent._last_known_hostname == "oldhost"
     assert ent._last_known_ip == "9.9.9.9"
+    assert ent._last_known_connected_time == last_known_connected_time
     assert ent.extra_state_attributes.get("interface") == "lan0"
     assert "last_known_connected_time" in ent.extra_state_attributes
 
