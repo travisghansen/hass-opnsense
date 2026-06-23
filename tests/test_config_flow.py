@@ -228,6 +228,32 @@ async def test_validate_input_reraises_unmapped_opnsense_error(
     assert err.value is exc
 
 
+@pytest.mark.asyncio
+async def test_validate_input_builtin_timeout_uses_connect_timeout_error(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Builtin TimeoutError should map to connect_timeout and redact credentials in logs."""
+    username = "admin"
+    password = "supersecret"
+
+    async def _raiser(*args: object, **kwargs: object) -> Never:
+        """Raise a built-in TimeoutError that includes secrets in the message."""
+        raise TimeoutError(f"timed out for user={username} pass={password}")
+
+    monkeypatch.setattr(cf_mod, "_validate_client_details", _raiser)
+    with caplog.at_level("ERROR"):
+        result = await cf_mod.validate_input(
+            hass=MagicMock(),
+            user_input={cf_mod.CONF_USERNAME: username, cf_mod.CONF_PASSWORD: password},
+            errors={},
+        )
+
+    assert result.get("base") == "connect_timeout"
+    assert "[redacted]" in caplog.text
+    assert username not in caplog.text
+    assert password not in caplog.text
+
+
 def test_record_validation_error_sets_base(caplog: pytest.LogCaptureFixture) -> None:
     """_record_validation_error should log the message and set errors['base']."""
     errors: dict[str, str] = {}

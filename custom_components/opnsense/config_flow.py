@@ -311,6 +311,15 @@ async def validate_input(
             raise
         error_key, log_message = validation_error
         _record_validation_error(errors=errors, key=error_key, message=log_message)
+    except TimeoutError as err:
+        _record_validation_error(
+            errors=errors,
+            key="connect_timeout",
+            message=cleanse_sensitive_data(
+                f"Connection TimeoutError. {type(err).__name__}: {err}",
+                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
+            ),
+        )
     return errors
 
 

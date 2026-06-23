@@ -232,6 +232,9 @@ def test_sensors_unavailable_on_non_mapping_state(
         ("delay", "15ms", True, 15.0, False),
         ("stddev", "1ms", True, 1.0, False),
         ("loss", "0%", True, 0.0, False),
+        ("delay", "not_a_float", False, None, True),
+        ("loss", "oops", False, None, True),
+        ("loss", "", False, None, True),
         ("delay", 12, True, 12, False),
         ("address", "203.0.113.1", True, "203.0.113.1", False),
     ],
@@ -267,6 +270,8 @@ def test_gateway_sensor_value_parsing(
         if isinstance(expected_value, float):
             assert isinstance(s.native_value, str | int | float)
             assert float(s.native_value) == pytest.approx(expected_value)
+        else:
+            assert s.native_value == expected_value
     else:
         assert s.native_value == expected_value
         if prop_name == "status":
@@ -301,6 +306,65 @@ def test_gateway_sensor_resolves_display_name_when_mapping_key_differs(
     assert s.available is True
     assert s.native_value == "online"
     assert s.icon != "mdi:close-network-outline"
+
+
+@pytest.mark.parametrize(
+    "instance",
+    [
+        {"enabled": True},
+        {"enabled": True, "name": ""},
+        {"enabled": True, "name": None},
+        {"enabled": True, "name": 7},
+    ],
+    ids=["missing-name", "blank-name", "non-string-none", "non-string-number"],
+)
+@pytest.mark.asyncio
+async def test_compile_vpn_sensors_falls_back_to_uuid_when_name_is_unusable(
+    make_config_entry: Callable[..., MockConfigEntry],
+    instance: dict[str, Any],
+) -> None:
+    """VPN sensor compilation should use uuid for display name when `name` is unusable."""
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {
+        "wireguard": {
+            "clients": {},
+            "servers": {"wg-uuid": instance},
+        }
+    }
+    entry = make_config_entry()
+
+    entities = await sensor_module._compile_vpn_sensors(entry, coordinator, coordinator.data)
+    status_sensor = next(
+        entity
+        for entity in entities
+        if entity.entity_description.key == "wireguard.servers.wg-uuid.status"
+    )
+
+    assert isinstance(status_sensor, OPNsenseVPNSensor)
+    assert status_sensor.entity_description.name == "Wireguard Server wg-uuid status"
+
+
+def test_vpn_sensor_key_malformed_key_marked_unavailable(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Malformed VPN sensor keys should fail closed to unavailable instead of raising."""
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {"openvpn": {"servers": {"uuid1": {"name": "ovpn", "status": "up"}}}}
+    entry = make_config_entry()
+
+    desc = MagicMock()
+    desc.key = "openvpn.servers.uuid1"
+    desc.name = "Malformed VPN Key"
+    desc.icon = "mdi:custom-icon"
+
+    sensor = OPNsenseVPNSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.vpn_malformed_key"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
+    assert sensor.icon == "mdi:custom-icon"
 
 
 def test_gateway_sensor_missing_and_missing_prop(
@@ -950,7 +1014,11 @@ def test_compiled_sensor_variants(
             (),
         ),
         (
-            {"openvpn": {"servers": {"uuid1": {"name": "ovpn1", "enabled": False}}}},
+            {
+                "openvpn": {
+                    "servers": {"uuid1": {"uuid": "uuid1", "name": "ovpn1", "enabled": False}}
+                }
+            },
             "openvpn.servers.uuid1.status",
             True,
             "disabled",
@@ -962,8 +1030,11 @@ def test_compiled_sensor_variants(
                 "openvpn": {
                     "servers": {
                         "uuid1": {
+                            "uuid": "uuid1",
                             "name": "ovpn1",
                             "status": "up",
+                            "enabled": True,
+                            "connected_clients": 1,
                             "clients": [{"name": "c1", "status": "up", "bytes_sent": 10}],
                         }
                     }
@@ -1012,8 +1083,7 @@ def test_vpn_sensor_variants(
             assert isinstance(attrs["clients"], list)
             assert attrs["clients"][0]["name"] == "c1"
         for key in expect_extra_keys:
-            if key in attrs:
-                assert key in attrs
+            assert key in attrs
 
 
 @pytest.mark.parametrize("exc_type", [TypeError, KeyError, ZeroDivisionError])

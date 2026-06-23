@@ -1313,6 +1313,51 @@ async def test_migrate_3_to_4_filesystem_and_remove(
 
 
 @pytest.mark.asyncio
+async def test_migrate_3_to_4_filesystem_preserves_unique_id_prefix(
+    monkeypatch: pytest.MonkeyPatch, fake_client: Any
+) -> None:
+    """Filesystem remap should only replace the suffix after telemetry_filesystems_."""
+    client = fake_client(telemetry={"filesystems": [{"device": "/dev/sda1", "mountpoint": "/"}]})()
+
+    e1 = MagicMock()
+    e1.entity_id = "sensor.fs"
+    e1.unique_id = "slash_dev_slash_sda1_telemetry_filesystems_slash_dev_slash_sda1"
+
+    er_reg = MagicMock()
+    er_reg.async_update_entity = MagicMock(
+        return_value=MagicMock(entity_id=e1.entity_id, unique_id="updated")
+    )
+    er_reg.async_remove = MagicMock()
+    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: er_reg)
+    monkeypatch.setattr(
+        init_mod.er,
+        "async_entries_for_config_entry",
+        lambda registry, config_entry_id: [e1],
+    )
+
+    cfg = MagicMock()
+    cfg.data = {
+        init_mod.CONF_URL: "http://1.2.3.4",
+        init_mod.CONF_USERNAME: "u",
+        init_mod.CONF_PASSWORD: "p",
+    }
+    cfg.version = 3
+    cfg.entry_id = "e3"
+
+    hass = MagicMock(spec=HomeAssistant)
+    hass.data = {}
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_update_entry = MagicMock(return_value=True)
+
+    res = await init_mod._migrate_3_to_4(hass, cfg, client)
+    assert res is True
+    er_reg.async_update_entity.assert_called_once_with(
+        e1.entity_id,
+        new_unique_id="slash_dev_slash_sda1_telemetry_filesystems_root",
+    )
+
+
+@pytest.mark.asyncio
 async def test_migrate_3_to_4_filesystem_skips_and_non_root_mountpoint(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:

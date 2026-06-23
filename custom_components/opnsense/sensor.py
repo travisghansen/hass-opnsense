@@ -1196,6 +1196,9 @@ async def _compile_vpn_sensors(
             ).items():
                 if not isinstance(instance, MutableMapping) or len(instance) == 0:
                     continue
+                instance_name = instance.get("name")
+                if not isinstance(instance_name, str) or not instance_name.strip():
+                    instance_name = uuid
                 properties = list(_VPN_TRAFFIC_PROPERTIES)
                 if clients_servers == "servers":
                     properties.extend(_VPN_SERVER_PROPERTIES)
@@ -1210,7 +1213,7 @@ async def _compile_vpn_sensors(
                             vpn_type,
                             clients_servers,
                             uuid,
-                            instance["name"],
+                            instance_name,
                             prop_name,
                         ),
                     )
@@ -1891,14 +1894,20 @@ class OPNsenseVPNSensor(OPNsenseSensor):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update."""
-        vpn_type: str = self.entity_description.key.split(".")[0]
-        clients_servers: str = self.entity_description.key.split(".")[1]
+        key_parts = self.entity_description.key.split(".")
+        if len(key_parts) != 4:
+            self._available = False
+            self.async_write_ha_state()
+            return
+        vpn_type = key_parts[0]
+        clients_servers = key_parts[1]
+        uuid = key_parts[2]
+        prop_name = key_parts[3]
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             self._available = False
             self.async_write_ha_state()
             return
-        uuid: str = self.entity_description.key.split(".")[2]
         instance: dict[str, Any] = {}
         for instance_uuid, ins in (
             dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
@@ -1906,7 +1915,6 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             if uuid == instance_uuid:
                 instance = ins
                 break
-        prop_name: str = self.entity_description.key.split(".")[3]
         if not instance or (
             prop_name != "status"
             and instance.get("enabled", None) is not None
@@ -2004,7 +2012,10 @@ class OPNsenseVPNSensor(OPNsenseSensor):
     @property
     def icon(self) -> str | None:
         """Return the icon for the sensor."""
-        prop_name: str = self.entity_description.key.split(".")[3]
+        key_parts = self.entity_description.key.split(".")
+        if len(key_parts) != 4:
+            return super().icon
+        prop_name = key_parts[3]
         if prop_name == "status" and self.native_value != "up":
             return "mdi:close-network-outline"
         return super().icon
