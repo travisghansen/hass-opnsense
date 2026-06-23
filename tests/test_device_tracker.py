@@ -19,6 +19,35 @@ dt_mod = importlib.import_module("custom_components.opnsense.device_tracker")
 pkg = importlib.import_module("custom_components.opnsense")
 
 
+def _make_scanner_entity(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    *,
+    coordinator_data: Any | None = None,
+) -> Any:
+    """Create a scanner entity with coordinator runtime data wired in.
+
+    Args:
+        coordinator: Device tracker coordinator used by the entity.
+        make_config_entry: Fixture that creates a mock config entry.
+        coordinator_data: Optional coordinator data to install before creating the entity.
+
+    Returns:
+        A scanner entity for the standard tracked MAC used in these tests.
+    """
+    coordinator.data = {"arp_table": []} if coordinator_data is None else coordinator_data
+    entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
+    return dt_mod.OPNsenseScannerEntity(
+        config_entry=entry,
+        coordinator=coordinator,
+        enabled_default=False,
+        mac="aa:bb:cc",
+        mac_vendor=None,
+        hostname=None,
+    )
+
+
 def test_device_from_arp_entry_skips_malformed_and_nonmatching_entries() -> None:
     """Device lookup should ignore malformed and nonmatching ARP entries."""
     device = dt_mod._device_from_arp_entry(
@@ -256,17 +285,10 @@ def test_handle_coordinator_update_skips_malformed_arp_entries(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
     """Malformed ARP entries should be skipped while searching for the tracked MAC."""
-    coordinator.data = {"arp_table": [object()]}
-    entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
-
-    ent = dt_mod.OPNsenseScannerEntity(
-        config_entry=entry,
+    ent = _make_scanner_entity(
         coordinator=coordinator,
-        enabled_default=False,
-        mac="aa:bb:cc",
-        mac_vendor=None,
-        hostname=None,
+        make_config_entry=make_config_entry,
+        coordinator_data={"arp_table": [object()]},
     )
     object.__setattr__(ent, "async_write_ha_state", MagicMock())
 
@@ -370,19 +392,8 @@ async def test_restore_last_state_uses_datetime_and_skips_empty_attributes(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """Restoring state should preserve datetime values and ignore empty saved attributes."""
-    coordinator.data = {"arp_table": []}
-    entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
     last_known_connected_time = datetime.now(UTC)
-
-    ent = dt_mod.OPNsenseScannerEntity(
-        config_entry=entry,
-        coordinator=coordinator,
-        enabled_default=False,
-        mac="aa:bb:cc",
-        mac_vendor=None,
-        hostname=None,
-    )
+    ent = _make_scanner_entity(coordinator, make_config_entry)
     last_state = MagicMock()
     last_state.attributes = {
         "last_known_hostname": None,
@@ -406,18 +417,7 @@ async def test_restore_last_state_ignores_unparseable_connected_time(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """Restoring state should ignore invalid saved connection timestamps."""
-    coordinator.data = {"arp_table": []}
-    entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
-
-    ent = dt_mod.OPNsenseScannerEntity(
-        config_entry=entry,
-        coordinator=coordinator,
-        enabled_default=False,
-        mac="aa:bb:cc",
-        mac_vendor=None,
-        hostname=None,
-    )
+    ent = _make_scanner_entity(coordinator, make_config_entry)
     last_state = MagicMock()
     last_state.attributes = {"last_known_connected_time": "not-a-date"}
     ent.async_get_last_state = AsyncMock(return_value=last_state)
@@ -434,18 +434,7 @@ async def test_restore_last_state_ignores_non_mapping_attributes(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """Restoring state should ignore snapshots with malformed attributes."""
-    coordinator.data = {"arp_table": []}
-    entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
-
-    ent = dt_mod.OPNsenseScannerEntity(
-        config_entry=entry,
-        coordinator=coordinator,
-        enabled_default=False,
-        mac="aa:bb:cc",
-        mac_vendor=None,
-        hostname=None,
-    )
+    ent = _make_scanner_entity(coordinator, make_config_entry)
     last_state = MagicMock()
     last_state.attributes = ["not", "a", "mapping"]
     ent.async_get_last_state = AsyncMock(return_value=last_state)

@@ -18,6 +18,43 @@ from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID, CONF_SYNC_FI
 from custom_components.opnsense.update import OPNsenseFirmwareUpdatesAvailableUpdate
 
 
+def _firmware_update_state(
+    *,
+    product_version: Any,
+    product_latest: Any,
+    product_series: Any,
+    status: str = "update",
+    upgrade_packages: Any = None,
+    upgrade_major_version: Any = None,
+) -> dict[str, Any]:
+    """Build firmware update state for version parsing tests.
+
+    Args:
+        product_version: Installed product version value.
+        product_latest: Latest product version value.
+        product_series: Product series value.
+        status: Firmware status value.
+        upgrade_packages: Optional package check payload.
+        upgrade_major_version: Optional major upgrade version.
+
+    Returns:
+        Firmware update state with the requested product and status payload.
+    """
+    firmware_update_info: dict[str, Any] = {
+        "product": {
+            "product_version": product_version,
+            "product_latest": product_latest,
+            "product_series": product_series,
+        },
+        "status": status,
+    }
+    if upgrade_packages is not None:
+        firmware_update_info["product"]["product_check"] = {"upgrade_packages": upgrade_packages}
+    if upgrade_major_version is not None:
+        firmware_update_info["upgrade_major_version"] = upgrade_major_version
+    return {"firmware_update_info": firmware_update_info}
+
+
 @pytest.mark.asyncio
 async def test_async_setup_entry_adds_firmware_update_entity_contract(
     hass: HomeAssistant,
@@ -163,159 +200,101 @@ def test_affected_package_count_counts_lists() -> None:
 
 
 @pytest.mark.parametrize(
-    ("state_builder", "expect_latest", "expect_series", "expect_latest_condition"),
+    ("state", "expected_latest", "expected_series"),
     [
-        # product_version == product_latest and packages is list without opnsense -> append '+'
         (
-            lambda: {
-                "firmware_update_info": {
-                    "product": {
-                        "product_version": "1_0_0",
-                        "product_latest": "1_0_0",
-                        "product_series": "1.0",
-                        "product_check": {"upgrade_packages": [{"name": "not-opnsense"}]},
-                    },
-                    "status": "update",
-                }
-            },
-            None,
+            _firmware_update_state(
+                product_version="1_0_0",
+                product_latest="1_0_0",
+                product_series="1.0",
+                upgrade_packages=[{"name": "not-opnsense"}],
+            ),
+            "1_0_0+",
             "1.0",
-            lambda latest: latest == "1_0_0+",
         ),
         (
-            lambda: {
-                "firmware_update_info": {
-                    "product": {
-                        "product_version": "1.0.0",
-                        "product_latest": "1_0_0",
-                        "product_series": "1.0",
-                        "product_check": {
-                            "upgrade_packages": [
-                                {"name": "opnsense", "new_version": "1_0_1"},
-                            ]
-                        },
-                    },
-                    "status": "update",
-                }
-            },
+            _firmware_update_state(
+                product_version="1.0.0",
+                product_latest="1_0_0",
+                product_series="1.0",
+                upgrade_packages=[{"name": "opnsense", "new_version": "1_0_1"}],
+            ),
             "1_0_1",
             "1.0",
-            lambda latest: latest == "1_0_1",
         ),
         (
-            lambda: {
-                "firmware_update_info": {
-                    "product": {
-                        "product_version": "1.0.0",
-                        "product_latest": "1.0.0",
-                        "product_series": "1.0",
-                        "product_check": {
-                            "upgrade_packages": [
-                                object(),
-                                {"name": "opnsense", "new_version": "1.0.1"},
-                            ]
-                        },
-                    },
-                    "status": "update",
-                }
-            },
+            _firmware_update_state(
+                product_version="1.0.0",
+                product_latest="1.0.0",
+                product_series="1.0",
+                upgrade_packages=[
+                    object(),
+                    {"name": "opnsense", "new_version": "1.0.1"},
+                ],
+            ),
             "1.0.1",
             "1.0",
-            lambda latest: latest == "1.0.1",
         ),
         (
-            lambda: {
-                "firmware_update_info": {
-                    "product": {
-                        "product_version": "1.0.0",
-                        "product_latest": "1.0.1",
-                        "product_series": "1.0",
-                        "product_check": {
-                            "upgrade_packages": [
-                                object(),
-                                {"name": "kernel", "new_version": "1.0.2"},
-                                {"name": "opnsense", "new_version": "1.0.2"},
-                            ]
-                        },
-                    },
-                    "status": "update",
-                }
-            },
+            _firmware_update_state(
+                product_version="1.0.0",
+                product_latest="1.0.1",
+                product_series="1.0",
+                upgrade_packages=[
+                    object(),
+                    {"name": "kernel", "new_version": "1.0.2"},
+                    {"name": "opnsense", "new_version": "1.0.2"},
+                ],
+            ),
             "1.0.2",
             "1.0",
-            lambda latest: latest == "1.0.2",
         ),
         (
-            lambda: {
-                "firmware_update_info": {
-                    "product": {
-                        "product_version": "1_0_0",
-                        "product_latest": "1_0_0",
-                        "product_series": "1.0",
-                        "product_check": {"upgrade_packages": None},
-                    },
-                    "status": "update",
-                }
-            },
-            None,  # expect_latest unknown until post-processing; condition will check exact string
+            _firmware_update_state(
+                product_version="1_0_0",
+                product_latest="1_0_0",
+                product_series="1.0",
+            ),
+            "1_0_0+",
             "1.0",
-            lambda latest, pv="1_0_0": latest == pv + "+",
         ),
         (
-            lambda: {
-                "firmware_update_info": {
-                    "product": {
-                        "product_version": "v1",
-                        "product_latest": None,
-                        "product_series": "s1",
-                    },
-                    "status": "update",
-                }
-            },
+            _firmware_update_state(
+                product_version="v1",
+                product_latest=None,
+                product_series="s1",
+            ),
             None,
             "s1",
-            lambda latest: latest is None,
         ),
-        # exercise the 'upgrade' branch: upgrade_major_version should become product_latest
         (
-            lambda: {
-                "firmware_update_info": {
-                    "status": "upgrade",
-                    "product": {
-                        "product_version": "2_0_0",
-                        "product_latest": "2_0_0",
-                        "product_series": "2.0",
-                    },
-                    "upgrade_major_version": "2.1.3",
-                }
-            },
+            _firmware_update_state(
+                product_version="2_0_0",
+                product_latest="2_0_0",
+                product_series="2.0",
+                status="upgrade",
+                upgrade_major_version="2.1.3",
+            ),
             "2.1.3",
             "2.1",
-            lambda latest: latest == "2.1.3",
         ),
         (
-            lambda: {
-                "firmware_update_info": {
-                    "status": "upgrade",
-                    "product": {
-                        "product_version": "2.0.0",
-                        "product_latest": "2.0.0",
-                        "product_series": "2.0",
-                    },
-                    "upgrade_major_version": "",
-                }
-            },
+            _firmware_update_state(
+                product_version="2.0.0",
+                product_latest="2.0.0",
+                product_series="2.0",
+                status="upgrade",
+                upgrade_major_version="",
+            ),
             "2.0.0",
             "2.0",
-            lambda latest: latest == "2.0.0",
         ),
     ],
 )
 def test_get_versions_scenarios(
-    state_builder: Any,
-    expect_latest: Any,
-    expect_series: Any,
-    expect_latest_condition: Any,
+    state: dict[str, Any],
+    expected_latest: str | None,
+    expected_series: str | None,
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
 ) -> None:
@@ -329,12 +308,9 @@ def test_get_versions_scenarios(
             key="firmware.update_available", name="Firmware"
         ),
     )
-    state = state_builder()
     _pv, pl, ps = ent._get_versions(state)
-    assert ps == expect_series
-    if expect_latest is not None:
-        assert pl == expect_latest
-    assert expect_latest_condition(pl)
+    assert ps == expected_series
+    assert pl == expected_latest
 
 
 @pytest.mark.parametrize(
