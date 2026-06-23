@@ -1938,7 +1938,7 @@ def test_entity_icons(make_config_entry: Callable[..., MockConfigEntry]) -> None
 
 
 @pytest.mark.parametrize(
-    ("state", "select_suffix", "expect_name", "toggle_return", "expect_on"),
+    ("state", "entity_key", "expect_name", "toggle_return", "expect_on"),
     [
         (
             {
@@ -1989,7 +1989,7 @@ def test_entity_icons(make_config_entry: Callable[..., MockConfigEntry]) -> None
                 },
                 "wireguard": {"clients": {}, "servers": {}},
             },
-            "cfail",
+            "openvpn.clients.cfail",
             "Cfail",
             False,
             False,
@@ -2001,7 +2001,7 @@ async def test_vpn_toggle_parametrized(
     coordinator: MagicMock,
     ph_hass: Any,
     state: MutableMapping[str, Any],
-    select_suffix: Any,
+    entity_key: str,
     expect_name: Any,
     toggle_return: Any,
     expect_on: Any,
@@ -2013,16 +2013,7 @@ async def test_vpn_toggle_parametrized(
     coordinator.data = state
     ents = await _compile_vpn_switches(config_entry, coordinator, state)
 
-    # pick matching entity: prefer exact key match, then full dotted-suffix,
-    # then fallback to last-segment match
-    ent = next((e for e in ents if e.entity_description.key == select_suffix), None)
-    if ent is None:
-        ent = next((e for e in ents if e.entity_description.key.endswith(select_suffix)), None)
-    if ent is None:
-        ent = next(
-            (e for e in ents if e.entity_description.key.endswith(select_suffix.split(".")[-1])),
-            None,
-        )
+    ent = next((e for e in ents if e.entity_description.key == entity_key), None)
     assert ent is not None
     hass = ph_hass
     ent.hass = hass

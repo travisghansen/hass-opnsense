@@ -8,16 +8,12 @@ background tasks, and simplify Home Assistant testing.
 import asyncio
 from collections.abc import AsyncIterator
 import contextlib
-import inspect
-import logging
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
-import homeassistant.core as ha_core
 from homeassistant.core import HomeAssistant
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
-from pytest_homeassistant_custom_component.plugins import get_scheduled_timer_handles
 
 import custom_components.opnsense as _init_mod
 from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID
@@ -191,41 +187,6 @@ def fake_stream_response_factory() -> Any:
         return _Resp()
 
     return _make
-
-
-# Module logger for test diagnostics
-logger = logging.getLogger(__name__)
-
-
-@pytest.fixture(autouse=True)
-def _patch_homeassistant_stop(monkeypatch: pytest.MonkeyPatch) -> Any:
-    """Wrap HomeAssistant.stop to ignore 'Event loop is closed' runtime errors. Some tests or integrations can close the event loop unexpectedly. During test teardown the pytest-homeassistant-custom-component plugin attempts to stop HomeAssistant instances which may call into a closed loop; this wrapper silently swallows that specific RuntimeError to allow teardown to continue in a best-effort manner."""
-    original_stop = getattr(ha_core.HomeAssistant, "stop", None)
-
-    if original_stop is None:
-        return
-
-    def _safe_stop(self: Any, *args, **kwargs) -> Any:
-        """Safe stop.
-
-        Args:
-            self: Home Assistant instance being stopped.
-            *args: Additional positional arguments forwarded by the function.
-            **kwargs: Additional keyword arguments forwarded by the function.
-        """
-        try:
-            return original_stop(self, *args, **kwargs)
-        except RuntimeError as err:
-            if "Event loop is closed" in str(err):
-                # Log for diagnostics then swallow this specific error during tests.
-                logger.exception(
-                    "HomeAssistant.stop suppressed during test teardown: Event loop is closed",
-                    exc_info=err,
-                )
-                return None
-            raise
-
-    monkeypatch.setattr(ha_core.HomeAssistant, "stop", _safe_stop, raising=False)
 
 
 @pytest.fixture
@@ -580,8 +541,8 @@ def make_config_entry() -> Any:
 
 
 @pytest.fixture
-def ph_hass(request: Any, hass: HomeAssistant | None = None) -> Any:
-    """Safe hass-like fixture: prefer real PHCC `hass` when available. Prefer the pytest-injected `hass` fixture when the pytest-homeassistant- custom-component plugin is present. To support environments where the plugin is absent (or where fixture injection order yields an async generator), fall back to using `request.getfixturevalue("hass")` only as a last resort; if that still isn't available, return a MagicMock that provides the minimal attributes tests expect."""
+def ph_hass(hass: HomeAssistant) -> HomeAssistant:
+    """Return the PHCC Home Assistant fixture with task creation observable by tests."""
 
     # Helper used to schedule coroutines on the running loop when possible.
     def _schedule_or_return(coro: Any) -> Any:
@@ -598,141 +559,11 @@ def ph_hass(request: Any, hass: HomeAssistant | None = None) -> Any:
             # back to returning the coroutine so callers can decide.
             return coro
 
-    # helper _ensure_async_create_task_mock moved to module top-level
-
-    # If pytest injected a `hass` fixture, prefer it (but avoid advancing
-    # async-generator fixtures here). This lets pytest supply the real
-    # PHCC hass instance when available without calling getfixturevalue.
-    real = hass
-    if real is not None:
-        # If the injected fixture is an async-generator object, we must not
-        # advance it here because its lifecycle is managed by the plugin
-        # (treat as unavailable and fall back below).
-        if inspect.isasyncgen(real):
-            real = None
-        else:
-            # Reuse helper to ensure async_create_task is a MagicMock so tests
-            # can assert `.called` etc.
-            _ensure_async_create_task_mock(real, _schedule_or_return)
-            return real
-
-    # No injected hass or injected hass unusable; try the legacy fallback
-    # of requesting the fixture by name. Only call getfixturevalue as a
-    # safety net when injection did not occur.
-    try:
-        real = request.getfixturevalue("hass")
-        if inspect.isasyncgen(real):
-            real = None
-        if real is not None:
-            # Mirror the same robust assignment logic for the plugin-provided
-            # hass fixture path using the helper.
-            _ensure_async_create_task_mock(real, _schedule_or_return)
-            return real
-    except pytest.FixtureLookupError:
-        # No PHCC hass available; will return MagicMock fallback below.
-        pass
-
-    # No real hass fixture available; return a MagicMock fallback.
-    m = MagicMock()
-    m.config_entries = MagicMock()
-    m.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
-    m.config_entries.async_reload = AsyncMock(return_value=None)
-    m.data = {}
-    # Mirror HomeAssistant API used by the integration/tests.
-    m.async_create_task = MagicMock(side_effect=_schedule_or_return)
-    # provide a loop wrapper that cancels scheduled timer handles immediately
-    # so the pytest-homeassistant-custom-component plugin does not report
-    # lingering timers during test teardown.
-    try:
-        real_loop = asyncio.get_running_loop()
-    except RuntimeError:
-        real_loop = asyncio.new_event_loop()
-
-    class FakeLoop:
-        def __init__(self, loop: Any) -> None:
-            """Initialize FakeLoop.
-
-            Args:
-                loop: Loop provided by pytest or the test case.
-            """
-            self._loop = loop
-
-        def call_later(self, delay: Any, callback: Any, *args) -> Any:
-            """Call later.
-
-            Args:
-                delay: Delay provided by pytest or the test case.
-                callback: Callback provided by pytest or the test case.
-                *args: Additional positional arguments forwarded by the function.
-            """
-            handle = self._loop.call_later(delay, callback, *args)
-            with contextlib.suppress(Exception):
-                handle.cancel()
-            return handle
-
-        def __getattr__(self, name: str) -> Any:
-            """Getattr.
-
-            Args:
-                name: Name provided by pytest or the test case.
-            """
-            return getattr(self._loop, name)
-
-    m.loop = FakeLoop(real_loop)
-    return m
+    _ensure_async_create_task_mock(hass, _schedule_or_return)
+    return hass
 
 
 @pytest.fixture
 def expected_lingering_timers() -> bool:
-    """Tell the PHCC verify_cleanup fixture to allow lingering timers. Tests in this suite intentionally create short-lived timers; during the incremental migration we accept plugin warnings instead of hard failures."""
+    """Allow switch delay timers that tests intentionally leave scheduled."""
     return True
-
-
-def pytest_runtest_teardown(item: Any, nextitem: Any) -> None:
-    """Pytest hook: cancel any scheduled timer handles after each test. Prevent the pytest-homeassistant-custom-component plugin from failing tests due to lingering timer handles created by the integration (for example via hass.loop.call_later / async_call_later)."""
-    try:
-        # Prefer the running loop when called from a running async context.
-        event_loop = asyncio.get_running_loop()
-    except RuntimeError:
-        # No running loop; create a new event loop as a safe fallback.
-        # This avoids using the deprecated `get_event_loop` path and mirrors
-        # the recommended pattern for synchronous code needing a loop.
-        event_loop = asyncio.new_event_loop()
-    # If some integration code created and closed the global loop, we may
-    # need to replace it with a fresh loop to allow the PHCC plugin to
-    # perform teardown. However, this repository opts in to that behavior
-    # via the `expected_lingering_timers` fixture. Only perform loop
-    # replacement when the current test requested it; otherwise skip the
-    # surgery but still attempt to cancel any scheduled timer handles in a
-    # best-effort manner.
-    if getattr(event_loop, "is_closed", lambda: False)():
-        replace_loop = False
-        try:
-            # Prefer the fixture value for the current test if present.
-            replace_loop = bool(item.funcargs.get("expected_lingering_timers", False))
-        except AttributeError, KeyError:
-            replace_loop = False
-
-        if replace_loop:
-            try:
-                new_loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(new_loop)
-                event_loop = new_loop
-            except OSError, RuntimeError:
-                # Best-effort: if we cannot recreate the loop, continue and
-                # let teardown attempt to proceed (it may still error).
-                pass
-
-    # Collect scheduled timer handles from the (possibly replaced) loop;
-    # if the loop is closed and handle collection fails, skip cancellation
-    # gracefully.
-    try:
-        handles = get_scheduled_timer_handles(event_loop)
-    except RuntimeError, OSError:
-        handles = []
-
-    for handle in handles:
-        # Best-effort cancellation; don't raise from teardown hook.
-        with contextlib.suppress(Exception):
-            if not handle.cancelled():
-                handle.cancel()
