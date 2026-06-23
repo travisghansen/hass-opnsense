@@ -794,11 +794,6 @@ async def test_async_update_listener_reload_and_remove(
 
     # config option already provided via factory; no mutation needed
 
-    # Ensure hass.async_create_task exists (ph_hass MagicMock fallback may not
-    # provide it). Tests expect this to exist so they can assert it was called.
-    if not hasattr(hass, "async_create_task"):
-        hass.async_create_task = MagicMock()
-
     await init_mod._async_update_listener(hass, entry)
 
     # async_create_task should have been used to schedule reload
@@ -857,9 +852,6 @@ async def test_async_update_listener_removes_native_firewall_entities(
         lambda registry, config_entry_id: [],
     )
 
-    if not hasattr(hass, "async_create_task"):
-        hass.async_create_task = MagicMock()
-
     await init_mod._async_update_listener(hass, entry)
 
     entity_registry.async_remove.assert_called_once_with(ent.entity_id)
@@ -906,9 +898,6 @@ async def test_async_update_listener_uses_shared_default_for_smart_entity_prunin
         lambda registry, config_entry_id: [],
     )
 
-    if not hasattr(hass, "async_create_task"):
-        hass.async_create_task = MagicMock()
-
     await init_mod._async_update_listener(hass, entry)
 
     entity_registry.async_remove.assert_not_called()
@@ -942,10 +931,6 @@ async def test_async_update_listener_device_removal_param(
     hass = ph_hass
     hass.config_entries.async_reload = AsyncMock()
     hass.data = {}
-
-    # ensure hass.async_create_task exists for scheduling reload
-    if not hasattr(hass, "async_create_task"):
-        hass.async_create_task = MagicMock()
 
     # prepare a single device entry returned by the device registry
     device = MagicMock()
