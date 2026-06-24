@@ -1938,7 +1938,7 @@ def test_entity_icons(make_config_entry: Callable[..., MockConfigEntry]) -> None
 
 
 @pytest.mark.parametrize(
-    ("state", "select_suffix", "expect_name", "toggle_return", "expect_on"),
+    ("state", "entity_key", "expect_name", "toggle_return", "expect_on"),
     [
         (
             {
@@ -1989,7 +1989,7 @@ def test_entity_icons(make_config_entry: Callable[..., MockConfigEntry]) -> None
                 },
                 "wireguard": {"clients": {}, "servers": {}},
             },
-            "cfail",
+            "openvpn.clients.cfail",
             "Cfail",
             False,
             False,
@@ -2001,7 +2001,7 @@ async def test_vpn_toggle_parametrized(
     coordinator: MagicMock,
     ph_hass: Any,
     state: MutableMapping[str, Any],
-    select_suffix: Any,
+    entity_key: str,
     expect_name: Any,
     toggle_return: Any,
     expect_on: Any,
@@ -2013,16 +2013,7 @@ async def test_vpn_toggle_parametrized(
     coordinator.data = state
     ents = await _compile_vpn_switches(config_entry, coordinator, state)
 
-    # pick matching entity: prefer exact key match, then full dotted-suffix,
-    # then fallback to last-segment match
-    ent = next((e for e in ents if e.entity_description.key == select_suffix), None)
-    if ent is None:
-        ent = next((e for e in ents if e.entity_description.key.endswith(select_suffix)), None)
-    if ent is None:
-        ent = next(
-            (e for e in ents if e.entity_description.key.endswith(select_suffix.split(".")[-1])),
-            None,
-        )
+    ent = next((e for e in ents if e.entity_description.key == entity_key), None)
     assert ent is not None
     hass = ph_hass
     ent.hass = hass
@@ -2094,11 +2085,12 @@ def test_reset_delay_calls_existing_remover(
 async def test_compile_service_skips_locked(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Service compilation skips locked services."""
+    """Service compilation skips locked and malformed services."""
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     state = {
         "services": [
+            object(),
             {"id": "s1", "name": "one", "locked": 1, "status": True},
             {"id": "s2", "name": "two", "locked": 0, "status": False},
         ]
@@ -2109,6 +2101,15 @@ async def test_compile_service_skips_locked(
     assert "service.s2.status" in keys
     assert "service.s1.status" not in keys
     assert len(ents) == 1
+
+
+def test_firewall_rule_description_normalizes_non_string_interface() -> None:
+    """Firewall rule descriptions should normalize non-string interfaces to Floating."""
+    description = switch_mod._build_firewall_rule_switch_description(
+        {"uuid": "r1", "description": "Test", "%interface": ["lan", "wan"]}
+    )
+
+    assert description.name == "Firewall: Floating: Test"
 
 
 @pytest.mark.asyncio

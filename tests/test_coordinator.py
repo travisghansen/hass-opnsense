@@ -1089,9 +1089,8 @@ async def test_build_categories_keeps_firewall_polling_for_legacy_firmware(
 
     assert "firewall" in keys
     assert "get_firewall" in functions
-    removed_backend = "plug" + "in"
-    assert f"is_{removed_backend}_installed" not in functions
-    assert f"is_{removed_backend}_deprecated" not in functions
+    assert "is_plugin_installed" not in functions
+    assert "is_plugin_deprecated" not in functions
 
 
 @pytest.mark.asyncio
