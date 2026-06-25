@@ -333,7 +333,11 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         Returns:
             ``True`` when the entity should be enabled by default.
         """
-        return self._attr_entity_registry_enabled_default
+        return self._attr_entity_registry_enabled_default or (
+            self.mac_address is not None
+            and getattr(self, "hass", None) is not None
+            and self.find_device_entry() is not None
+        )
 
     @callback
     def _handle_coordinator_update(self) -> None:

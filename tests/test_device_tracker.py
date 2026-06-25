@@ -289,6 +289,26 @@ def test_scanner_entity_uses_attr_backed_home_assistant_properties() -> None:
     }.isdisjoint(locally_defined_properties)
 
 
+def test_entity_registry_enabled_default_uses_existing_mac_device(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_reg_factory: Any,
+) -> None:
+    """Auto-discovered trackers should be enabled when HA can link a MAC device."""
+    ent = _make_scanner_entity(
+        coordinator=coordinator,
+        make_config_entry=make_config_entry,
+        coordinator_data={"arp_table": []},
+    )
+    ent.hass = ph_hass
+    device_reg = fake_reg_factory(device_exists=True, device_id="existing-device")
+    monkeypatch.setattr(ha_dt_entity_mod.dr, "async_get", lambda hass: device_reg)
+
+    assert ent.entity_registry_enabled_default is True
+
+
 def test_device_data_from_arp_entry_normalizes_hostname_and_filters_manufacturer() -> None:
     """ARP setup data should normalize hostnames and ignore non-string manufacturer."""
     device = dt_mod._device_data_from_arp_entry(
