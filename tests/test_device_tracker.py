@@ -335,6 +335,7 @@ def test_entity_registry_enabled_default_falls_back_for_disabled_mac_device(
     ph_hass: Any,
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
+    fake_reg_factory: Any,
 ) -> None:
     """Disabled matching MAC devices should keep fallback device_info-based linking."""
     ent = _make_scanner_entity(
@@ -344,17 +345,12 @@ def test_entity_registry_enabled_default_falls_back_for_disabled_mac_device(
     )
     ent.hass = ph_hass
 
-    class _DisabledDevice:
-        def __init__(self) -> None:
-            self.id: str = "existing-disabled-device"
-            self.disabled_by: str = "user"
-            self.config_entries: set[str] = set()
-
-    class _RegMock:
-        def async_get_device(self, *args: Any, **kwargs: Any) -> Any:
-            return _DisabledDevice()
-
-    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: _RegMock())
+    device_reg = fake_reg_factory(
+        device_exists=True,
+        device_id="existing-disabled-device",
+        disabled_by="user",
+    )
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: device_reg)
     assert ent.entity_registry_enabled_default is False
 
     device_info = ent.device_info

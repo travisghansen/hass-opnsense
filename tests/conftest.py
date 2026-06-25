@@ -354,6 +354,7 @@ def fake_reg_factory() -> Any:
         device_id: str = "dev",
         remove_result: Any | None = None,
         config_entries: set[str] | None = None,
+        disabled_by: str | None = None,
     ) -> Any:
         """Create a fake device registry with configurable lookup and removal behavior.
 
@@ -362,6 +363,7 @@ def fake_reg_factory() -> Any:
             device_id: Device identifier returned when ``device_exists`` is true.
             remove_result: Value returned by ``async_remove_device``.
             config_entries: Config entries already linked to the fake device.
+            disabled_by: Disable source reported by the fake device entry.
         """
 
         class _FakeReg:
@@ -373,6 +375,7 @@ def fake_reg_factory() -> Any:
                 self._device_id = device_id
                 self._remove_result = remove_result
                 self._config_entries = config_entries or set()
+                self._disabled_by = disabled_by
 
             def async_get_device(self, *args, **kwargs) -> Any:
                 """Return a fake device entry when the fixture is configured to find one.
@@ -386,6 +389,7 @@ def fake_reg_factory() -> Any:
                     class _D:
                         id = self._device_id
                         config_entries = self._config_entries
+                        disabled_by = self._disabled_by
 
                     return _D()
                 return None
