@@ -17,6 +17,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.opnsense.device_tracker import OPNsenseScannerEntity
 
 dt_mod = importlib.import_module("custom_components.opnsense.device_tracker")
+ha_dt_entity_mod = importlib.import_module("homeassistant.components.device_tracker.entity")
 pkg = importlib.import_module("custom_components.opnsense")
 
 
@@ -25,6 +26,8 @@ def _make_scanner_entity(
     make_config_entry: Callable[..., MockConfigEntry],
     *,
     coordinator_data: object | None = None,
+    enabled_default: bool = False,
+    mac: str | None = "aa:bb:cc",
 ) -> OPNsenseScannerEntity:
     """Create a scanner entity with coordinator runtime data wired in.
 
@@ -32,9 +35,11 @@ def _make_scanner_entity(
         coordinator: Device tracker coordinator used by the entity.
         make_config_entry: Fixture that creates a mock config entry.
         coordinator_data: Optional coordinator data to install before creating the entity.
+        enabled_default: Whether the entity should be enabled by default.
+        mac: MAC address tracked by the entity.
 
     Returns:
-        A scanner entity for the standard tracked MAC used in these tests.
+        A scanner entity for the requested MAC address.
     """
     coordinator.data = {"arp_table": []} if coordinator_data is None else coordinator_data
     entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -42,8 +47,8 @@ def _make_scanner_entity(
     return dt_mod.OPNsenseScannerEntity(
         config_entry=entry,
         coordinator=coordinator,
-        enabled_default=False,
-        mac="aa:bb:cc",
+        enabled_default=enabled_default,
+        mac=mac,
         mac_vendor=None,
         hostname=None,
     )
@@ -106,8 +111,8 @@ async def test_async_setup_entry_configured_devices(
         entry_id="eid",
     )
     setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
-    entry.add_update_listener = lambda f: lambda: None
-    entry.async_on_unload = lambda x: None
+    entry.add_update_listener = lambda _listener: lambda: None
+    entry.async_on_unload = lambda _unload: None
     hass = ph_hass
     hass.config_entries.async_update_entry = MagicMock()
     hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
@@ -115,7 +120,7 @@ async def test_async_setup_entry_configured_devices(
     hass.data = {}
 
     fake = fake_reg_factory(device_exists=False)
-    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: fake, raising=False)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: fake, raising=False)
 
     added: list[Any] = []
 
@@ -202,8 +207,8 @@ async def test_async_setup_entry_removes_nonmatching_tracked_macs(
         entry_id="eid_remove",
     )
     setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
-    entry.add_update_listener = lambda f: lambda: None
-    entry.async_on_unload = lambda x: None
+    entry.add_update_listener = lambda _listener: lambda: None
+    entry.async_on_unload = lambda _unload: None
 
     hass = ph_hass
     hass.config_entries.async_update_entry = MagicMock()
@@ -212,7 +217,7 @@ async def test_async_setup_entry_removes_nonmatching_tracked_macs(
     hass.data = {}
 
     fake = fake_reg_factory(device_exists=True, device_id="removed-device-id")
-    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: fake, raising=False)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: fake, raising=False)
 
     added: list[Any] = []
 
@@ -302,6 +307,184 @@ def test_handle_coordinator_update_entry_present(
     assert ent.extra_state_attributes.get("type") == "arp"
     assert ent.icon == "mdi:lan-connect"
     assert ent.source_type == dt_mod.SourceType.ROUTER
+
+
+def test_scanner_entity_uses_attr_backed_home_assistant_properties() -> None:
+    """Scanner entity should rely on Home Assistant attr-backed properties."""
+    locally_defined_properties = {
+        name
+        for name, value in vars(dt_mod.OPNsenseScannerEntity).items()
+        if isinstance(value, property)
+    }
+
+    assert "unique_id" in locally_defined_properties
+    assert "device_info" in locally_defined_properties
+    assert "entity_registry_enabled_default" in locally_defined_properties
+    assert "is_connected" in locally_defined_properties
+    assert {
+        "hostname",
+        "ip_address",
+        "mac_address",
+        "source_type",
+    }.isdisjoint(locally_defined_properties)
+
+
+def test_entity_registry_enabled_default_uses_existing_mac_device(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_reg_factory: Any,
+) -> None:
+    """Auto-discovered trackers should be enabled when HA can link a MAC device."""
+    ent = _make_scanner_entity(
+        coordinator=coordinator,
+        make_config_entry=make_config_entry,
+        coordinator_data={"arp_table": []},
+    )
+    ent.hass = ph_hass
+    device_reg = fake_reg_factory(device_exists=True, device_id="existing-device")
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: device_reg)
+
+    assert ent.entity_registry_enabled_default is True
+    assert ent.device_info is None
+
+
+def test_entity_registry_enabled_default_respects_configured_enabled_default(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Configured trackers should keep their requested enabled-by-default state."""
+    ent = _make_scanner_entity(
+        coordinator=coordinator,
+        make_config_entry=make_config_entry,
+        coordinator_data={"arp_table": []},
+        enabled_default=True,
+    )
+
+    assert ent.entity_registry_enabled_default is True
+
+
+def test_entity_registry_enabled_default_without_mac_stays_disabled(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Trackers without a MAC cannot link to an enabled MAC device."""
+    ent = _make_scanner_entity(
+        coordinator=coordinator,
+        make_config_entry=make_config_entry,
+        coordinator_data={"arp_table": []},
+        mac=None,
+    )
+
+    assert ent.entity_registry_enabled_default is False
+    device_info = ent.device_info
+    assert device_info is not None
+    if isinstance(device_info, MutableMapping):
+        connections = device_info.get("connections", [])
+    else:
+        connections = getattr(device_info, "connections", [])
+    assert all(connection[1] != "" for connection in connections)
+
+
+def test_entity_registry_enabled_default_pref_disable_new_entities_keeps_device_link(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_reg_factory: Any,
+) -> None:
+    """Existing MAC matches should still link while the new-entity preference is enabled."""
+    ent = _make_scanner_entity(
+        coordinator=coordinator,
+        make_config_entry=make_config_entry,
+        coordinator_data={"arp_table": []},
+    )
+    ent.hass = ph_hass
+    object.__setattr__(ent.config_entry, "pref_disable_new_entities", True)
+    device_reg = fake_reg_factory(device_exists=True, device_id="existing-device")
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: device_reg)
+
+    assert ent.entity_registry_enabled_default is True
+    device_info = ent.device_info
+    assert device_info is not None
+
+    if isinstance(device_info, MutableMapping):
+        connections = device_info.get("connections", [])
+    else:
+        connections = getattr(device_info, "connections", [])
+    assert any(conn[1] == "aa:bb:cc" for conn in connections)
+
+
+def test_entity_registry_enabled_default_fallback_when_no_matching_device(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Auto-discovered trackers should stay disabled when no matching device exists."""
+    ent = _make_scanner_entity(
+        coordinator=coordinator,
+        make_config_entry=make_config_entry,
+        coordinator_data={"arp_table": []},
+    )
+    ent.hass = ph_hass
+    matched_state = {"has_device": False}
+
+    class _FallbackDevice:
+        """Simple stand-in for a registry entry."""
+
+        id = "fallback-device-id"
+        disabled_by = None
+
+    class _TrackingRegistry:
+        """Mock device registry that can emulate fallback device appearance."""
+
+        def __init__(self) -> None:
+            """Initialize the tracking registry."""
+            self._device = _FallbackDevice()
+
+        def async_get_device(self, *_args: Any, **_kwargs: Any) -> Any:
+            """Return the fallback device only after it is marked as present."""
+            return self._device if matched_state["has_device"] else None
+
+    registry = _TrackingRegistry()
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: registry)
+
+    fallback_device_info = ent.device_info
+    assert fallback_device_info is not None
+    matched_state["has_device"] = True
+    assert ent.entity_registry_enabled_default is False
+
+
+def test_entity_registry_enabled_default_falls_back_for_disabled_mac_device(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_reg_factory: Any,
+) -> None:
+    """Disabled matching MAC devices should keep fallback device_info-based linking."""
+    ent = _make_scanner_entity(
+        coordinator=coordinator,
+        make_config_entry=make_config_entry,
+        coordinator_data={"arp_table": []},
+    )
+    ent.hass = ph_hass
+
+    device_reg = fake_reg_factory(
+        device_exists=True,
+        device_id="existing-disabled-device",
+        disabled_by="user",
+    )
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: device_reg)
+    assert ent.entity_registry_enabled_default is False
+
+    device_info = ent.device_info
+    assert device_info is not None
+    assert isinstance(device_info, MutableMapping)
+    connections = device_info.get("connections", [])
+    assert any(conn[1] == "aa:bb:cc" for conn in connections)
 
 
 def test_device_data_from_arp_entry_normalizes_hostname_and_filters_manufacturer() -> None:
@@ -716,6 +899,91 @@ async def test_async_added_to_hass_calls_restore(
 
 
 @pytest.mark.asyncio
+async def test_async_internal_added_to_hass_links_existing_mac_device(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_reg_factory: Any,
+) -> None:
+    """Scanner entity should link to an existing registry device with the same MAC."""
+    coordinator.data = {"arp_table": []}
+    entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"}, entry_id="entry-1")
+    setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
+    ent = dt_mod.OPNsenseScannerEntity(
+        config_entry=entry,
+        coordinator=coordinator,
+        enabled_default=False,
+        mac="aa:bb:cc",
+        mac_vendor=None,
+        hostname=None,
+    )
+    ent.hass = ph_hass
+    ent.platform = MagicMock(config_entry=entry, platform_name=dt_mod.DOMAIN)
+    ent.registry_entry = MagicMock()
+    ent.registry_entry.device_id = None
+    ent.registry_entry.disabled_by = None
+    ent.entity_id = "device_tracker.opnsense_existing"
+
+    device_reg = fake_reg_factory(device_exists=True, device_id="existing-device")
+    entity_reg = MagicMock()
+    updated_registry_entry = MagicMock()
+    updated_registry_entry.device_id = "existing-device"
+    updated_registry_entry.disabled_by = None
+    entity_reg.async_update_entity.return_value = updated_registry_entry
+    monkeypatch.setattr(ha_dt_entity_mod.dr, "async_get", lambda _hass: device_reg)
+    monkeypatch.setattr(ha_dt_entity_mod.er, "async_get", lambda _hass: entity_reg)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: device_reg)
+
+    await ent.async_internal_added_to_hass()
+
+    entity_reg.async_update_entity.assert_called_once_with(
+        "device_tracker.opnsense_existing", device_id="existing-device"
+    )
+    assert ent.registry_entry is updated_registry_entry
+    assert device_reg.updated_devices == [("existing-device", {"add_config_entry_id": "entry-1"})]
+
+
+@pytest.mark.asyncio
+async def test_async_internal_added_to_hass_keeps_fallback_device_info_without_match(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_reg_factory: Any,
+) -> None:
+    """Scanner entity should keep its fallback device info when no MAC device exists."""
+    coordinator.data = {"arp_table": []}
+    entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"}, entry_id="entry-1")
+    setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
+    ent = dt_mod.OPNsenseScannerEntity(
+        config_entry=entry,
+        coordinator=coordinator,
+        enabled_default=False,
+        mac="aa:bb:cc",
+        mac_vendor=None,
+        hostname=None,
+    )
+    ent.hass = ph_hass
+    ent.platform = MagicMock(config_entry=entry, platform_name=dt_mod.DOMAIN)
+    ent.registry_entry = MagicMock()
+    ent.registry_entry.device_id = None
+    ent.registry_entry.disabled_by = None
+    ent.entity_id = "device_tracker.opnsense_fallback"
+
+    device_reg = fake_reg_factory(device_exists=False)
+    entity_reg = MagicMock()
+    monkeypatch.setattr(ha_dt_entity_mod.dr, "async_get", lambda _hass: device_reg)
+    monkeypatch.setattr(ha_dt_entity_mod.er, "async_get", lambda _hass: entity_reg)
+
+    await ent.async_internal_added_to_hass()
+
+    entity_reg.async_update_entity.assert_not_called()
+    assert device_reg.updated_devices == []
+    assert ent.device_info is not None
+
+
+@pytest.mark.asyncio
 async def test_async_setup_entry_state_not_mapping(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
@@ -733,7 +1001,7 @@ async def test_async_setup_entry_state_not_mapping(
     hass.data = {}
     hass.config_entries.async_update_entry = MagicMock()
     fake = fake_reg_factory(device_exists=False)
-    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: fake, raising=False)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: fake, raising=False)
 
     await dt_mod.async_setup_entry(hass, entry, added.extend)
     assert len(added) == 0
@@ -759,11 +1027,11 @@ async def test_async_setup_entry_removes_previous_mac(
     hass.data = {}
 
     fake = fake_reg_factory(device_exists=True, device_id="dev_to_remove")
-    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: fake, raising=False)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: fake, raising=False)
 
     hass.config_entries.async_update_entry = MagicMock()
 
-    await dt_mod.async_setup_entry(hass, entry, lambda x: None)
+    await dt_mod.async_setup_entry(hass, entry, lambda _x: None)
     assert fake.removed is True
     assert hass.config_entries.async_update_entry.called
 
@@ -908,7 +1176,7 @@ async def test_async_setup_entry_from_arp_entries(
     hass.data = {}
     hass.config_entries.async_update_entry = MagicMock()
     fake = fake_reg_factory(device_exists=False)
-    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: fake, raising=False)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: fake, raising=False)
 
     added: list[Any] = []
 
