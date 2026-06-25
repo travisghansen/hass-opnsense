@@ -26,6 +26,8 @@ def _make_scanner_entity(
     make_config_entry: Callable[..., MockConfigEntry],
     *,
     coordinator_data: object | None = None,
+    enabled_default: bool = False,
+    mac: str | None = "aa:bb:cc",
 ) -> OPNsenseScannerEntity:
     """Create a scanner entity with coordinator runtime data wired in.
 
@@ -33,9 +35,11 @@ def _make_scanner_entity(
         coordinator: Device tracker coordinator used by the entity.
         make_config_entry: Fixture that creates a mock config entry.
         coordinator_data: Optional coordinator data to install before creating the entity.
+        enabled_default: Whether the entity should be enabled by default.
+        mac: MAC address tracked by the entity.
 
     Returns:
-        A scanner entity for the standard tracked MAC used in these tests.
+        A scanner entity for the requested MAC address.
     """
     coordinator.data = {"arp_table": []} if coordinator_data is None else coordinator_data
     entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -43,8 +47,8 @@ def _make_scanner_entity(
     return dt_mod.OPNsenseScannerEntity(
         config_entry=entry,
         coordinator=coordinator,
-        enabled_default=False,
-        mac="aa:bb:cc",
+        enabled_default=enabled_default,
+        mac=mac,
         mac_vendor=None,
         hostname=None,
     )
@@ -308,6 +312,36 @@ def test_entity_registry_enabled_default_uses_existing_mac_device(
 
     assert ent.entity_registry_enabled_default is True
     assert ent.device_info is None
+
+
+def test_entity_registry_enabled_default_respects_configured_enabled_default(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Configured trackers should keep their requested enabled-by-default state."""
+    ent = _make_scanner_entity(
+        coordinator=coordinator,
+        make_config_entry=make_config_entry,
+        coordinator_data={"arp_table": []},
+        enabled_default=True,
+    )
+
+    assert ent.entity_registry_enabled_default is True
+
+
+def test_entity_registry_enabled_default_without_mac_stays_disabled(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Trackers without a MAC cannot link to an enabled MAC device."""
+    ent = _make_scanner_entity(
+        coordinator=coordinator,
+        make_config_entry=make_config_entry,
+        coordinator_data={"arp_table": []},
+        mac=None,
+    )
+
+    assert ent.entity_registry_enabled_default is False
 
 
 def test_entity_registry_enabled_default_pref_disable_new_entities_keeps_device_link(
