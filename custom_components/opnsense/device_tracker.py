@@ -408,11 +408,32 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
 
     @property  # type: ignore[misc] # overriding final from ScannerEntity
     def device_info(self) -> DeviceInfo | None:
-        """Return the device info.
+        """Return device registry metadata for the tracker.
+
+        Home Assistant's ``ScannerEntity`` can automatically attach a scanner
+        entity to an existing device when the device registry already has a
+        matching network MAC connection. That auto-link path only runs when
+        the scanner entity does not provide its own device info.
+
+        When a matching device exists, return ``None`` so the base scanner
+        implementation links this tracker to that device. When no matching
+        device exists, return the historical hass-opnsense device info so Home
+        Assistant still creates the manually associated tracker device.
 
         Returns:
-            Device registry metadata for the tracked MAC address.
+            ``None`` for an existing MAC-matched device, otherwise fallback
+            device registry metadata for the tracked MAC address.
         """
+        # Returning None here opts into ScannerEntity's existing-device linking
+        # path. Returning DeviceInfo below preserves the previous fallback
+        # behavior for trackers whose MAC is not already in the device registry.
+        if (
+            self.mac_address is not None
+            and getattr(self, "hass", None) is not None
+            and self.find_device_entry() is not None
+        ):
+            return None
+
         return DeviceInfo(
             connections={(CONNECTION_NETWORK_MAC, self.mac_address or "")},
             default_manufacturer=self._mac_vendor or "",

@@ -350,7 +350,10 @@ def fake_reg_factory() -> Any:
     """
 
     def _make(
-        device_exists: bool = False, device_id: str = "dev", remove_result: Any | None = None
+        device_exists: bool = False,
+        device_id: str = "dev",
+        remove_result: Any | None = None,
+        config_entries: set[str] | None = None,
     ) -> Any:
         """Create a fake device registry with configurable lookup and removal behavior.
 
@@ -358,15 +361,18 @@ def fake_reg_factory() -> Any:
             device_exists: Whether ``async_get_device`` should return a device record.
             device_id: Device identifier returned when ``device_exists`` is true.
             remove_result: Value returned by ``async_remove_device``.
+            config_entries: Config entries already linked to the fake device.
         """
 
         class _FakeReg:
             def __init__(self) -> None:
                 """Initialize _FakeReg."""
                 self.removed = False
+                self.updated_devices: list[tuple[str, dict[str, Any]]] = []
                 self._device_exists = device_exists
                 self._device_id = device_id
                 self._remove_result = remove_result
+                self._config_entries = config_entries or set()
 
             def async_get_device(self, *args, **kwargs) -> Any:
                 """Return a fake device entry when the fixture is configured to find one.
@@ -379,9 +385,19 @@ def fake_reg_factory() -> Any:
 
                     class _D:
                         id = self._device_id
+                        config_entries = self._config_entries
 
                     return _D()
                 return None
+
+            def async_update_device(self, device_id: str, **kwargs: Any) -> None:
+                """Record device updates for assertions.
+
+                Args:
+                    device_id: Device identifier being updated.
+                    **kwargs: Device update keyword arguments.
+                """
+                self.updated_devices.append((device_id, kwargs))
 
             def async_remove_device(self, *args, **kwargs) -> Any:
                 # mirror previous tests which sometimes inspect a `removed` flag
