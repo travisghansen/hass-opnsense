@@ -439,22 +439,31 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         the scanner entity does not provide its own device info.
 
         When a matching enabled device exists, return ``None`` so the base
-        scanner implementation links this tracker to that device. When no
-        matching enabled device exists, return the historical hass-opnsense
-        device info so Home Assistant still creates the manually associated
-        tracker device or preserves disabled-device behavior.
+        scanner implementation links this tracker to that device, unless
+        ``pref_disable_new_entities`` is enabled on the config entry.
+        In that preference-enabled case, return device info so the entity is
+        linked to an existing device during registry creation while the entity
+        remains disabled by preference.
+
+        When no matching enabled device exists, return the historical
+        hass-opnsense device info so Home Assistant still creates the manually
+        associated tracker device or preserves disabled-device behavior.
 
         Returns:
-            ``None`` for an existing enabled MAC-matched device, otherwise
-            fallback device registry metadata for the tracked MAC address.
+            ``None`` for an existing enabled MAC-matched device, except when
+            ``pref_disable_new_entities`` is enabled, otherwise fallback
+            device registry metadata for the tracked MAC address.
         """
         # Returning None here opts into ScannerEntity's existing-device linking
         # path. Returning DeviceInfo below preserves the previous fallback
         # behavior for trackers whose MAC is not already in the device registry.
-        if self._has_matching_enabled_mac_device():
+        has_matching_enabled_mac_device = self._has_matching_enabled_mac_device()
+        if has_matching_enabled_mac_device and not self.config_entry.pref_disable_new_entities:
             return None
 
-        self._fallback_device_info_consumed = True
+        if not has_matching_enabled_mac_device:
+            self._fallback_device_info_consumed = True
+
         return DeviceInfo(
             connections={(CONNECTION_NETWORK_MAC, self.mac_address or "")},
             default_manufacturer=self._mac_vendor or "",

@@ -307,6 +307,36 @@ def test_entity_registry_enabled_default_uses_existing_mac_device(
     monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: device_reg)
 
     assert ent.entity_registry_enabled_default is True
+    assert ent.device_info is None
+
+
+def test_entity_registry_enabled_default_pref_disable_new_entities_keeps_device_link(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_reg_factory: Any,
+) -> None:
+    """Existing MAC matches should still link while the new-entity preference is enabled."""
+    ent = _make_scanner_entity(
+        coordinator=coordinator,
+        make_config_entry=make_config_entry,
+        coordinator_data={"arp_table": []},
+    )
+    ent.hass = ph_hass
+    object.__setattr__(ent.config_entry, "pref_disable_new_entities", True)
+    device_reg = fake_reg_factory(device_exists=True, device_id="existing-device")
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: device_reg)
+
+    assert ent.entity_registry_enabled_default is True
+    device_info = ent.device_info
+    assert device_info is not None
+
+    if isinstance(device_info, MutableMapping):
+        connections = device_info.get("connections", [])
+    else:
+        connections = getattr(device_info, "connections", [])
+    assert any(conn[1] == "aa:bb:cc" for conn in connections)
 
 
 def test_entity_registry_enabled_default_fallback_when_no_matching_device(
@@ -347,7 +377,6 @@ def test_entity_registry_enabled_default_fallback_when_no_matching_device(
     fallback_device_info = ent.device_info
     assert fallback_device_info is not None
     matched_state["has_device"] = True
-    assert ent.device_info is None
     assert ent.entity_registry_enabled_default is False
 
 
