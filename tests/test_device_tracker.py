@@ -108,8 +108,8 @@ async def test_async_setup_entry_configured_devices(
         entry_id="eid",
     )
     setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
-    entry.add_update_listener = lambda f: lambda: None
-    entry.async_on_unload = lambda x: None
+    entry.add_update_listener = lambda _listener: lambda: None
+    entry.async_on_unload = lambda _unload: None
     hass = ph_hass
     hass.config_entries.async_update_entry = MagicMock()
     hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
@@ -117,7 +117,7 @@ async def test_async_setup_entry_configured_devices(
     hass.data = {}
 
     fake = fake_reg_factory(device_exists=False)
-    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: fake, raising=False)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: fake, raising=False)
 
     added: list[Any] = []
 
@@ -171,8 +171,8 @@ async def test_async_setup_entry_removes_nonmatching_tracked_macs(
         entry_id="eid_remove",
     )
     setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
-    entry.add_update_listener = lambda f: lambda: None
-    entry.async_on_unload = lambda x: None
+    entry.add_update_listener = lambda _listener: lambda: None
+    entry.async_on_unload = lambda _unload: None
 
     hass = ph_hass
     hass.config_entries.async_update_entry = MagicMock()
@@ -181,7 +181,7 @@ async def test_async_setup_entry_removes_nonmatching_tracked_macs(
     hass.data = {}
 
     fake = fake_reg_factory(device_exists=True, device_id="removed-device-id")
-    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: fake, raising=False)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: fake, raising=False)
 
     added: list[Any] = []
 
@@ -308,7 +308,7 @@ def test_entity_registry_enabled_default_uses_existing_mac_device(
     )
     ent.hass = ph_hass
     device_reg = fake_reg_factory(device_exists=True, device_id="existing-device")
-    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: device_reg)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: device_reg)
 
     assert ent.entity_registry_enabled_default is True
     assert ent.device_info is None
@@ -342,6 +342,13 @@ def test_entity_registry_enabled_default_without_mac_stays_disabled(
     )
 
     assert ent.entity_registry_enabled_default is False
+    device_info = ent.device_info
+    assert device_info is not None
+    if isinstance(device_info, MutableMapping):
+        connections = device_info.get("connections", [])
+    else:
+        connections = getattr(device_info, "connections", [])
+    assert all(connection[1] != "" for connection in connections)
 
 
 def test_entity_registry_enabled_default_pref_disable_new_entities_keeps_device_link(
@@ -360,7 +367,7 @@ def test_entity_registry_enabled_default_pref_disable_new_entities_keeps_device_
     ent.hass = ph_hass
     object.__setattr__(ent.config_entry, "pref_disable_new_entities", True)
     device_reg = fake_reg_factory(device_exists=True, device_id="existing-device")
-    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: device_reg)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: device_reg)
 
     assert ent.entity_registry_enabled_default is True
     device_info = ent.device_info
@@ -406,7 +413,7 @@ def test_entity_registry_enabled_default_fallback_when_no_matching_device(
             return self._device if matched_state["has_device"] else None
 
     registry = _TrackingRegistry()
-    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: registry)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: registry)
 
     fallback_device_info = ent.device_info
     assert fallback_device_info is not None
@@ -434,7 +441,7 @@ def test_entity_registry_enabled_default_falls_back_for_disabled_mac_device(
         device_id="existing-disabled-device",
         disabled_by="user",
     )
-    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: device_reg)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: device_reg)
     assert ent.entity_registry_enabled_default is False
 
     device_info = ent.device_info
@@ -851,9 +858,9 @@ async def test_async_internal_added_to_hass_links_existing_mac_device(
     updated_registry_entry.device_id = "existing-device"
     updated_registry_entry.disabled_by = None
     entity_reg.async_update_entity.return_value = updated_registry_entry
-    monkeypatch.setattr(ha_dt_entity_mod.dr, "async_get", lambda hass: device_reg)
-    monkeypatch.setattr(ha_dt_entity_mod.er, "async_get", lambda hass: entity_reg)
-    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: device_reg)
+    monkeypatch.setattr(ha_dt_entity_mod.dr, "async_get", lambda _hass: device_reg)
+    monkeypatch.setattr(ha_dt_entity_mod.er, "async_get", lambda _hass: entity_reg)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: device_reg)
 
     await ent.async_internal_added_to_hass()
 
@@ -893,8 +900,8 @@ async def test_async_internal_added_to_hass_keeps_fallback_device_info_without_m
 
     device_reg = fake_reg_factory(device_exists=False)
     entity_reg = MagicMock()
-    monkeypatch.setattr(ha_dt_entity_mod.dr, "async_get", lambda hass: device_reg)
-    monkeypatch.setattr(ha_dt_entity_mod.er, "async_get", lambda hass: entity_reg)
+    monkeypatch.setattr(ha_dt_entity_mod.dr, "async_get", lambda _hass: device_reg)
+    monkeypatch.setattr(ha_dt_entity_mod.er, "async_get", lambda _hass: entity_reg)
 
     await ent.async_internal_added_to_hass()
 
@@ -921,7 +928,7 @@ async def test_async_setup_entry_state_not_mapping(
     hass.data = {}
     hass.config_entries.async_update_entry = MagicMock()
     fake = fake_reg_factory(device_exists=False)
-    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: fake, raising=False)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: fake, raising=False)
 
     await dt_mod.async_setup_entry(hass, entry, added.extend)
     assert len(added) == 0
@@ -947,11 +954,11 @@ async def test_async_setup_entry_removes_previous_mac(
     hass.data = {}
 
     fake = fake_reg_factory(device_exists=True, device_id="dev_to_remove")
-    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: fake, raising=False)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: fake, raising=False)
 
     hass.config_entries.async_update_entry = MagicMock()
 
-    await dt_mod.async_setup_entry(hass, entry, lambda x: None)
+    await dt_mod.async_setup_entry(hass, entry, lambda _x: None)
     assert fake.removed is True
     assert hass.config_entries.async_update_entry.called
 
@@ -1096,7 +1103,7 @@ async def test_async_setup_entry_from_arp_entries(
     hass.data = {}
     hass.config_entries.async_update_entry = MagicMock()
     fake = fake_reg_factory(device_exists=False)
-    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: fake, raising=False)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: fake, raising=False)
 
     added: list[Any] = []
 

@@ -464,8 +464,12 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         if not has_matching_enabled_mac_device:
             self._fallback_device_info_consumed = True
 
+        connections: set[tuple[str, str]] = set()
+        if self.mac_address is not None:
+            connections.add((CONNECTION_NETWORK_MAC, self.mac_address))
+
         return DeviceInfo(
-            connections={(CONNECTION_NETWORK_MAC, self.mac_address or "")},
+            connections=connections,
             default_manufacturer=self._mac_vendor or "",
             default_name=self.name if isinstance(self.name, str) else "",
             via_device=(DOMAIN, self._device_unique_id),
