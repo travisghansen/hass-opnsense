@@ -304,9 +304,64 @@ def test_entity_registry_enabled_default_uses_existing_mac_device(
     )
     ent.hass = ph_hass
     device_reg = fake_reg_factory(device_exists=True, device_id="existing-device")
-    monkeypatch.setattr(ha_dt_entity_mod.dr, "async_get", lambda hass: device_reg)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: device_reg)
 
     assert ent.entity_registry_enabled_default is True
+
+
+def test_entity_registry_enabled_default_fallback_when_no_matching_device(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_reg_factory: Any,
+) -> None:
+    """Auto-discovered trackers should stay disabled when no matching device exists."""
+    ent = _make_scanner_entity(
+        coordinator=coordinator,
+        make_config_entry=make_config_entry,
+        coordinator_data={"arp_table": []},
+    )
+    ent.hass = ph_hass
+    device_reg = fake_reg_factory(device_exists=False)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: device_reg)
+
+    assert ent.entity_registry_enabled_default is False
+    assert ent.device_info is not None
+
+
+def test_entity_registry_enabled_default_falls_back_for_disabled_mac_device(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Disabled matching MAC devices should keep fallback device_info-based linking."""
+    ent = _make_scanner_entity(
+        coordinator=coordinator,
+        make_config_entry=make_config_entry,
+        coordinator_data={"arp_table": []},
+    )
+    ent.hass = ph_hass
+
+    class _DisabledDevice:
+        def __init__(self) -> None:
+            self.id: str = "existing-disabled-device"
+            self.disabled_by: str = "user"
+            self.config_entries: set[str] = set()
+
+    class _RegMock:
+        def async_get_device(self, *args: Any, **kwargs: Any) -> Any:
+            return _DisabledDevice()
+
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: _RegMock())
+    assert ent.entity_registry_enabled_default is False
+
+    device_info = ent.device_info
+    assert device_info is not None
+    assert isinstance(device_info, MutableMapping)
+    connections = device_info.get("connections", [])
+    assert any(conn[1] == "aa:bb:cc" for conn in connections)
 
 
 def test_device_data_from_arp_entry_normalizes_hostname_and_filters_manufacturer() -> None:
@@ -718,6 +773,7 @@ async def test_async_internal_added_to_hass_links_existing_mac_device(
     entity_reg.async_update_entity.return_value = updated_registry_entry
     monkeypatch.setattr(ha_dt_entity_mod.dr, "async_get", lambda hass: device_reg)
     monkeypatch.setattr(ha_dt_entity_mod.er, "async_get", lambda hass: entity_reg)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: device_reg)
 
     await ent.async_internal_added_to_hass()
 

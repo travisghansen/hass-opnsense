@@ -308,6 +308,24 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         self._attr_source_type: SourceType = SourceType.ROUTER
         self._attr_icon: str | None = None
 
+    def _has_matching_enabled_mac_device(self) -> bool:
+        """Return whether a matching MAC device exists and is not disabled."""
+        if self.mac_address is None:
+            return False
+
+        hass = getattr(self, "hass", None)
+        if hass is None:
+            return False
+
+        device_registry = async_get_dev_reg(hass)
+        existing_device = device_registry.async_get_device(
+            connections={(CONNECTION_NETWORK_MAC, self.mac_address)}
+        )
+        if existing_device is None:
+            return False
+
+        return getattr(existing_device, "disabled_by", None) is None
+
     @property
     def is_connected(self) -> bool:
         """Return if the tracker is connected.
@@ -336,7 +354,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         return self._attr_entity_registry_enabled_default or (
             self.mac_address is not None
             and getattr(self, "hass", None) is not None
-            and self.find_device_entry() is not None
+            and self._has_matching_enabled_mac_device()
         )
 
     @callback
@@ -434,7 +452,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         if (
             self.mac_address is not None
             and getattr(self, "hass", None) is not None
-            and self.find_device_entry() is not None
+            and self._has_matching_enabled_mac_device()
         ):
             return None
 
