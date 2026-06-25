@@ -314,7 +314,6 @@ def test_entity_registry_enabled_default_fallback_when_no_matching_device(
     ph_hass: Any,
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
-    fake_reg_factory: Any,
 ) -> None:
     """Auto-discovered trackers should stay disabled when no matching device exists."""
     ent = _make_scanner_entity(
@@ -323,11 +322,33 @@ def test_entity_registry_enabled_default_fallback_when_no_matching_device(
         coordinator_data={"arp_table": []},
     )
     ent.hass = ph_hass
-    device_reg = fake_reg_factory(device_exists=False)
-    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: device_reg)
+    matched_state = {"has_device": False}
 
+    class _FallbackDevice:
+        """Simple stand-in for a registry entry."""
+
+        id = "fallback-device-id"
+        disabled_by = None
+
+    class _TrackingRegistry:
+        """Mock device registry that can emulate fallback device appearance."""
+
+        def __init__(self) -> None:
+            """Initialize the tracking registry."""
+            self._device = _FallbackDevice()
+
+        def async_get_device(self, *_args: Any, **_kwargs: Any) -> Any:
+            """Return the fallback device only after it is marked as present."""
+            return self._device if matched_state["has_device"] else None
+
+    registry = _TrackingRegistry()
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: registry)
+
+    fallback_device_info = ent.device_info
+    assert fallback_device_info is not None
+    matched_state["has_device"] = True
+    assert ent.device_info is None
     assert ent.entity_registry_enabled_default is False
-    assert ent.device_info is not None
 
 
 def test_entity_registry_enabled_default_falls_back_for_disabled_mac_device(

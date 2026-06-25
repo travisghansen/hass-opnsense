@@ -307,6 +307,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         self._attr_mac_address: str | None = mac
         self._attr_source_type: SourceType = SourceType.ROUTER
         self._attr_icon: str | None = None
+        self._fallback_device_info_consumed: bool = False
 
     def _has_matching_enabled_mac_device(self) -> bool:
         """Return whether a matching MAC device exists and is not disabled."""
@@ -351,7 +352,11 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         Returns:
             ``True`` when the entity should be enabled by default.
         """
-        return self._attr_entity_registry_enabled_default or self._has_matching_enabled_mac_device()
+        if self._attr_entity_registry_enabled_default:
+            return True
+        if self._fallback_device_info_consumed:
+            return False
+        return self._has_matching_enabled_mac_device()
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -449,6 +454,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         if self._has_matching_enabled_mac_device():
             return None
 
+        self._fallback_device_info_consumed = True
         return DeviceInfo(
             connections={(CONNECTION_NETWORK_MAC, self.mac_address or "")},
             default_manufacturer=self._mac_vendor or "",
