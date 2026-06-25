@@ -351,11 +351,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         Returns:
             ``True`` when the entity should be enabled by default.
         """
-        return self._attr_entity_registry_enabled_default or (
-            self.mac_address is not None
-            and getattr(self, "hass", None) is not None
-            and self._has_matching_enabled_mac_device()
-        )
+        return self._attr_entity_registry_enabled_default or self._has_matching_enabled_mac_device()
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -437,23 +433,20 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         matching network MAC connection. That auto-link path only runs when
         the scanner entity does not provide its own device info.
 
-        When a matching device exists, return ``None`` so the base scanner
-        implementation links this tracker to that device. When no matching
-        device exists, return the historical hass-opnsense device info so Home
-        Assistant still creates the manually associated tracker device.
+        When a matching enabled device exists, return ``None`` so the base
+        scanner implementation links this tracker to that device. When no
+        matching enabled device exists, return the historical hass-opnsense
+        device info so Home Assistant still creates the manually associated
+        tracker device or preserves disabled-device behavior.
 
         Returns:
-            ``None`` for an existing MAC-matched device, otherwise fallback
-            device registry metadata for the tracked MAC address.
+            ``None`` for an existing enabled MAC-matched device, otherwise
+            fallback device registry metadata for the tracked MAC address.
         """
         # Returning None here opts into ScannerEntity's existing-device linking
         # path. Returning DeviceInfo below preserves the previous fallback
         # behavior for trackers whose MAC is not already in the device registry.
-        if (
-            self.mac_address is not None
-            and getattr(self, "hass", None) is not None
-            and self._has_matching_enabled_mac_device()
-        ):
+        if self._has_matching_enabled_mac_device():
             return None
 
         return DeviceInfo(
