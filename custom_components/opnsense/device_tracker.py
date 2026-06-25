@@ -307,15 +307,25 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         self._attr_mac_address: str | None = mac
         self._attr_source_type: SourceType = SourceType.ROUTER
         self._attr_icon: str | None = None
+        self._fallback_device_info_consumed: bool = False
 
-    @property
-    def source_type(self) -> SourceType:
-        """Return the tracker source type.
+    def _has_matching_enabled_mac_device(self) -> bool:
+        """Return whether a matching MAC device exists and is not disabled."""
+        if self.mac_address is None:
+            return False
 
-        Returns:
-            The source type reported to Home Assistant.
-        """
-        return self._attr_source_type
+        hass = getattr(self, "hass", None)
+        if hass is None:
+            return False
+
+        device_registry = async_get_dev_reg(hass)
+        existing_device = device_registry.async_get_device(
+            connections={(CONNECTION_NETWORK_MAC, self.mac_address)}
+        )
+        if existing_device is None:
+            return False
+
+        return getattr(existing_device, "disabled_by", None) is None
 
     @property
     def is_connected(self) -> bool:
@@ -325,33 +335,6 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             ``True`` when the device is currently considered connected.
         """
         return self._is_connected
-
-    @property
-    def ip_address(self) -> str | None:
-        """Return the IP address.
-
-        Returns:
-            The current IP address, or ``None`` when unavailable.
-        """
-        return self._attr_ip_address
-
-    @property
-    def mac_address(self) -> str | None:
-        """Return the MAC address.
-
-        Returns:
-            The tracked MAC address, or ``None`` when unavailable.
-        """
-        return self._attr_mac_address
-
-    @property
-    def hostname(self) -> str | None:
-        """Return the hostname.
-
-        Returns:
-            The current hostname, or ``None`` when unavailable.
-        """
-        return self._attr_hostname
 
     @property
     def unique_id(self) -> str | None:
@@ -369,7 +352,11 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         Returns:
             ``True`` when the entity should be enabled by default.
         """
-        return self._attr_entity_registry_enabled_default
+        if self._attr_entity_registry_enabled_default:
+            return True
+        if self._fallback_device_info_consumed:
+            return False
+        return self._has_matching_enabled_mac_device()
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -444,13 +431,45 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
 
     @property  # type: ignore[misc] # overriding final from ScannerEntity
     def device_info(self) -> DeviceInfo | None:
-        """Return the device info.
+        """Return device registry metadata for the tracker.
+
+        Home Assistant's ``ScannerEntity`` can automatically attach a scanner
+        entity to an existing device when the device registry already has a
+        matching network MAC connection. That auto-link path only runs when
+        the scanner entity does not provide its own device info.
+
+        When a matching enabled device exists, return ``None`` so the base
+        scanner implementation links this tracker to that device, unless
+        ``pref_disable_new_entities`` is enabled on the config entry.
+        In that preference-enabled case, return device info so the entity is
+        linked to an existing device during registry creation while the entity
+        remains disabled by preference.
+
+        When no matching enabled device exists, return the historical
+        hass-opnsense device info so Home Assistant still creates the manually
+        associated tracker device or preserves disabled-device behavior.
 
         Returns:
-            Device registry metadata for the tracked MAC address.
+            ``None`` for an existing enabled MAC-matched device, except when
+            ``pref_disable_new_entities`` is enabled, otherwise fallback
+            device registry metadata for the tracked MAC address.
         """
+        # Returning None here opts into ScannerEntity's existing-device linking
+        # path. Returning DeviceInfo below preserves the previous fallback
+        # behavior for trackers whose MAC is not already in the device registry.
+        has_matching_enabled_mac_device = self._has_matching_enabled_mac_device()
+        if has_matching_enabled_mac_device and not self.config_entry.pref_disable_new_entities:
+            return None
+
+        if not has_matching_enabled_mac_device:
+            self._fallback_device_info_consumed = True
+
+        connections: set[tuple[str, str]] = set()
+        if self.mac_address is not None:
+            connections.add((CONNECTION_NETWORK_MAC, self.mac_address))
+
         return DeviceInfo(
-            connections={(CONNECTION_NETWORK_MAC, self.mac_address or "")},
+            connections=connections,
             default_manufacturer=self._mac_vendor or "",
             default_name=self.name if isinstance(self.name, str) else "",
             via_device=(DOMAIN, self._device_unique_id),
