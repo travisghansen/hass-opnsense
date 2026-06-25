@@ -309,15 +309,6 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         self._attr_icon: str | None = None
 
     @property
-    def source_type(self) -> SourceType:
-        """Return the tracker source type.
-
-        Returns:
-            The source type reported to Home Assistant.
-        """
-        return self._attr_source_type
-
-    @property
     def is_connected(self) -> bool:
         """Return if the tracker is connected.
 
@@ -325,33 +316,6 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             ``True`` when the device is currently considered connected.
         """
         return self._is_connected
-
-    @property
-    def ip_address(self) -> str | None:
-        """Return the IP address.
-
-        Returns:
-            The current IP address, or ``None`` when unavailable.
-        """
-        return self._attr_ip_address
-
-    @property
-    def mac_address(self) -> str | None:
-        """Return the MAC address.
-
-        Returns:
-            The tracked MAC address, or ``None`` when unavailable.
-        """
-        return self._attr_mac_address
-
-    @property
-    def hostname(self) -> str | None:
-        """Return the hostname.
-
-        Returns:
-            The current hostname, or ``None`` when unavailable.
-        """
-        return self._attr_hostname
 
     @property
     def unique_id(self) -> str | None:
