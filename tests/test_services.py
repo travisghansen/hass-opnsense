@@ -484,6 +484,75 @@ async def test_generate_vouchers_success_and_server_error(
 
 
 @pytest.mark.asyncio
+async def test_generate_vouchers_no_clients_raises(
+    ph_hass: Any,
+    fake_get_empty: Any,
+) -> None:
+    """Generating vouchers requires at least one selected OPNsense client."""
+    call = MagicMock()
+    call.data = {"validity": "1", "expirytime": "2", "count": "2", "vouchergroup": "g1"}
+
+    with pytest.raises(ServiceValidationError):
+        await services_mod._service_generate_vouchers(ph_hass, call)
+
+
+@pytest.mark.asyncio
+async def test_generate_vouchers_empty_selected_client_response_returns_empty(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+) -> None:
+    """A selected client returning no vouchers is a valid empty voucher response."""
+    client = MagicMock()
+    client.name = "svc1"
+    client.generate_vouchers = AsyncMock(return_value=[])
+    call = MagicMock()
+    call.data = {"validity": "1", "expirytime": "2", "count": "2", "vouchergroup": "g1"}
+
+    async def fake_get(*args, **kwargs) -> Any:
+        """Return the selected voucher client for an empty response.
+
+        Args:
+            *args: Additional positional arguments forwarded by the function.
+            **kwargs: Additional keyword arguments forwarded by the function.
+        """
+        return [client]
+
+    monkeypatch.setattr(services_mod, "_get_clients", fake_get)
+
+    assert await services_mod._service_generate_vouchers(ph_hass, call) == {"vouchers": []}
+
+
+@pytest.mark.asyncio
+async def test_generate_vouchers_does_not_mutate_client_voucher_response(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+) -> None:
+    """Client voucher mappings are copied before adding Home Assistant metadata."""
+    voucher = {"code": "A1"}
+    client = MagicMock()
+    client.name = "svc1"
+    client.generate_vouchers = AsyncMock(return_value=[voucher])
+    call = MagicMock()
+    call.data = {"validity": "1", "expirytime": "2", "count": "2", "vouchergroup": "g1"}
+
+    async def fake_get(*args, **kwargs) -> Any:
+        """Return the selected voucher client for mutation checks.
+
+        Args:
+            *args: Additional positional arguments forwarded by the function.
+            **kwargs: Additional keyword arguments forwarded by the function.
+        """
+        return [client]
+
+    monkeypatch.setattr(services_mod, "_get_clients", fake_get)
+
+    response = await services_mod._service_generate_vouchers(ph_hass, call)
+
+    assert voucher == {"code": "A1"}
+    assert response == {"vouchers": [{"client": "svc1", "code": "A1"}]}
+
+
+@pytest.mark.asyncio
 async def test_kill_states_success_and_failure(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any
 ) -> None:

@@ -494,6 +494,48 @@ async def _collect_kill_state_results(
     return response_list
 
 
+async def _collect_voucher_results(
+    clients: list[OPNsenseServiceClient],
+    call_data: dict[str, Any],
+) -> list[Any]:
+    """Collect generated vouchers from selected clients.
+
+    Args:
+        clients: OPNsense clients selected for the service call.
+        call_data: Validated Home Assistant voucher-generation service payload.
+
+    Returns:
+        list[Any]: Voucher response items with client names added to mapping entries.
+
+    Raises:
+        ServiceValidationError: If no OPNsense clients are selected or the voucher server fails.
+    """
+    if not clients:
+        raise ServiceValidationError("Generate Vouchers Failed. No selected OPNsense clients")
+
+    voucher_list: list[Any] = []
+    for client in clients:
+        try:
+            vouchers: list[Any] = await client.generate_vouchers(call_data)
+        except OPNsenseVoucherServerError as e:
+            _LOGGER.error("Error getting vouchers from %s. %s", client.name, e)
+            raise ServiceValidationError(f"Error getting vouchers from {client.name}. {e}") from e
+        _LOGGER.debug(
+            "[service_generate_vouchers] client: %s, data: %s, vouchers: %s",
+            client.name,
+            call_data,
+            vouchers,
+        )
+        if not isinstance(vouchers, list):
+            continue
+        for voucher in vouchers:
+            if isinstance(voucher, MutableMapping):
+                voucher_list.append({"client": client.name, **voucher})
+            else:
+                voucher_list.append(voucher)
+    return voucher_list
+
+
 async def _service_close_notice(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle the close notice service call.
 
@@ -683,25 +725,7 @@ async def _service_generate_vouchers(hass: HomeAssistant, call: ServiceCall) -> 
         required value.
     """
     clients = await _get_target_clients(hass, call)
-    voucher_list: list = []
-    for client in clients:
-        try:
-            vouchers: list = await client.generate_vouchers(call.data)
-        except OPNsenseVoucherServerError as e:
-            _LOGGER.error("Error getting vouchers from %s. %s", client.name, e)
-            raise ServiceValidationError(f"Error getting vouchers from {client.name}. {e}") from e
-        _LOGGER.debug(
-            "[service_generate_vouchers] client: %s, data: %s, vouchers: %s",
-            client.name,
-            call.data,
-            vouchers,
-        )
-        if isinstance(vouchers, list):
-            for voucher in vouchers:
-                if isinstance(voucher, MutableMapping):
-                    voucher_list.append({"client": client.name, **voucher})
-                else:
-                    voucher_list.append(voucher)
+    voucher_list = await _collect_voucher_results(clients, dict(call.data))
     final_vouchers: dict[str, Any] = {"vouchers": voucher_list}
     _LOGGER.debug("[service_generate_vouchers] vouchers: %s", final_vouchers)
     return final_vouchers
