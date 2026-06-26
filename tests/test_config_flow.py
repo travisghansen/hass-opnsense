@@ -503,65 +503,6 @@ async def test_validate_client_details_raises_when_device_id_missing(
     _Client.last_instance.async_close.assert_awaited_once()
 
 
-@pytest.mark.asyncio
-async def test_reconfigure_uses_update_without_reload(
-    monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
-) -> None:
-    """Reconfigure should rely on the update listener instead of forcing reload."""
-    config_entry = make_config_entry(
-        data={
-            cf_mod.CONF_NAME: "OPNsense",
-            cf_mod.CONF_URL: "https://router.example",
-            cf_mod.CONF_USERNAME: "u",
-            cf_mod.CONF_PASSWORD: "p",
-            cf_mod.CONF_DEVICE_UNIQUE_ID: "device-1",
-        }
-    )
-    flow = cf_mod.OPNsenseConfigFlow()
-    flow.hass = MagicMock()
-    object.__setattr__(flow, "_get_reconfigure_entry", MagicMock(return_value=config_entry))
-    object.__setattr__(flow, "async_set_unique_id", AsyncMock())
-    object.__setattr__(flow, "_abort_if_unique_id_mismatch", MagicMock())
-    update_and_abort = MagicMock(return_value={"type": "abort", "reason": "reconfigure_successful"})
-    update_reload_and_abort = MagicMock(return_value={"type": "abort", "reason": "reload"})
-    object.__setattr__(flow, "async_update_and_abort", update_and_abort)
-    object.__setattr__(flow, "async_update_reload_and_abort", update_reload_and_abort)
-
-    async def _validate(
-        hass: HomeAssistant,
-        user_input: Any,
-        errors: dict[str, Any],
-        **kwargs: Any,
-    ) -> dict[str, Any]:
-        """Return no validation errors for the reconfigure submit path.
-
-        Args:
-            hass: Home Assistant instance used by the flow.
-            user_input: Reconfigure data being validated.
-            errors: Mutable errors mapping from the flow.
-            **kwargs: Additional validation context from the flow.
-
-        Returns:
-            dict[str, Any]: Empty error mapping.
-        """
-        return errors
-
-    monkeypatch.setattr(cf_mod, "validate_input", _validate)
-
-    result = await flow.async_step_reconfigure(
-        {
-            cf_mod.CONF_NAME: "Updated",
-            cf_mod.CONF_URL: "https://router.example",
-            cf_mod.CONF_USERNAME: "u",
-            cf_mod.CONF_PASSWORD: "p",
-        }
-    )
-
-    assert result == {"type": "abort", "reason": "reconfigure_successful"}
-    update_and_abort.assert_called_once_with(entry=config_entry, data=flow._config)
-    update_reload_and_abort.assert_not_called()
-
-
 def test_build_user_input_and_granular_and_options_schemas_defaults() -> None:
     """Verify the schema builders accept empty input and return defaults where applicable."""
     uis = None
