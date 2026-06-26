@@ -6,6 +6,7 @@ and various other OPNsense features through the Home Assistant interface.
 """
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import timedelta
 import logging
 from typing import Any
@@ -54,7 +55,6 @@ from .const import (
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .helpers import create_opnsense_client
-from .models import OPNsenseData
 from .services import async_setup_services
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -68,6 +68,18 @@ NATIVE_RULE_ENTITY_TOKENS: tuple[str, ...] = (
     "_firewall_rule_",
     "_firewall_nat_",
 )
+
+
+@dataclass
+class OPNsenseData:
+    """Runtime data for the OPNsense integration."""
+
+    coordinator: OPNsenseDataUpdateCoordinator
+    device_tracker_coordinator: OPNsenseDataUpdateCoordinator | None
+    opnsense_client: OPNsenseClient
+    loaded_platforms: list[Platform]
+    device_unique_id: str | None
+    should_reload: bool = True
 
 
 def _get_telemetry_filesystems(telemetry: object) -> list[Mapping[str, Any]] | None:
