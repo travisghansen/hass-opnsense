@@ -601,22 +601,14 @@ async def _migrate_3_to_4(
                 )
                 unique_id_device_name = unique_id_device_name.lower()
                 new_unique_id = None
-                matched_filesystem = False
                 if filesystems is None:
                     filesystem_migration_deferred = True
                     continue
                 for filesystem in filesystems:
-                    device = filesystem.get("device", "")
-                    if not isinstance(device, str):
-                        filesystem_migration_deferred = True
-                        continue
+                    device: str = filesystem.get("device", "")
                     device_name: str = device.replace("/", "_slash_").strip("_").lower()
                     if device_name == unique_id_device_name:
-                        matched_filesystem = True
-                        mpoint = filesystem.get("mountpoint", "")
-                        if not isinstance(mpoint, str):
-                            filesystem_migration_deferred = True
-                            break
+                        mpoint: str = filesystem.get("mountpoint", "")
                         if mpoint == "/":
                             mountpoint = "root"
                         else:
@@ -625,8 +617,6 @@ async def _migrate_3_to_4(
                             f"{telemetry_filesystem_prefix}_telemetry_filesystems_{mountpoint}"
                         )
                         break
-                if filesystem_migration_deferred and matched_filesystem:
-                    continue
             else:
                 continue
             if new_unique_id is None:
