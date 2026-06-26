@@ -1487,6 +1487,8 @@ async def test_migrate_3_to_4_skips_filesystems_when_telemetry_is_not_mapping(
                 {"device": "/dev/sda1", "mountpoint": None},
             ]
         },
+        {"filesystems": [{"mountpoint": "/"}]},
+        {"filesystems": [{"device": "/dev/sda1"}]},
         {"filesystems": [{"device": 7, "mountpoint": "/"}]},
         {},
     ],
@@ -2154,7 +2156,7 @@ async def test_migrate_3_to_4_defers_without_updating_entities_when_later_filesy
     hass.config_entries.async_update_entry = MagicMock(return_value=True)
 
     entity_registry = MagicMock()
-    entity_registry.async_entries_for_config_entry = lambda registry, config_entry_id: [
+    entity_registry.async_entries_for_config_entry = lambda _registry, _config_entry_id: [
         first_filesystem_entity,
         second_filesystem_entity,
     ]
