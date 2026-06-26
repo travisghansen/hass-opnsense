@@ -11,8 +11,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 from aiopnsense import exceptions as aiopnsense_exceptions
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import selector
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+import voluptuous as vol
 
 from custom_components.opnsense.const import (
     CONF_SYNC_FIREWALL_AND_NAT,
@@ -515,6 +517,54 @@ def test_build_user_input_and_granular_and_options_schemas_defaults() -> None:
     assert cf_mod.CONF_DEVICE_TRACKING_MODE in out
 
 
+def test_options_schema_uses_native_number_selectors() -> None:
+    """Options schema should expose HA native number selectors for numeric fields."""
+    schema = cf_mod._build_options_init_schema(user_input=None)
+    validators = {
+        key.schema: validator
+        for key, validator in schema.schema.items()
+        if isinstance(key, vol.Marker)
+    }
+
+    expected_configs = {
+        cf_mod.CONF_SCAN_INTERVAL: {"min": 10, "max": 300},
+        cf_mod.CONF_DEVICE_TRACKER_SCAN_INTERVAL: {"min": 30, "max": 300},
+        cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME: {"min": 0, "max": 3600},
+    }
+
+    for field, expected_config in expected_configs.items():
+        field_selector = validators[field]
+        assert isinstance(field_selector, selector.NumberSelector)
+        assert field_selector.config["mode"] == selector.NumberSelectorMode.BOX
+        assert field_selector.config["min"] == expected_config["min"]
+        assert field_selector.config["max"] == expected_config["max"]
+
+
+def test_device_tracker_schema_uses_native_multi_select_selector() -> None:
+    """Device tracker schema should expose HA native multi-select selector."""
+    schema = cf_mod._build_device_tracker_schema(
+        selected_devices=["aa:bb:cc:dd:ee:ff"],
+        dt_entries={
+            "aa:bb:cc:dd:ee:ff": "Laptop [aa:bb:cc:dd:ee:ff]",
+            "11:22:33:44:55:66": "Phone [11:22:33:44:55:66]",
+        },
+    )
+    validators = {
+        key.schema: validator
+        for key, validator in schema.schema.items()
+        if isinstance(key, vol.Marker)
+    }
+
+    devices_selector = validators[cf_mod.CONF_DEVICES]
+    assert isinstance(devices_selector, selector.SelectSelector)
+    assert devices_selector.config["multiple"] is True
+    assert devices_selector.config["mode"] == selector.SelectSelectorMode.LIST
+    assert devices_selector.config["options"] == [
+        {"value": "aa:bb:cc:dd:ee:ff", "label": "Laptop [aa:bb:cc:dd:ee:ff]"},
+        {"value": "11:22:33:44:55:66", "label": "Phone [11:22:33:44:55:66]"},
+    ]
+
+
 def test_schema_builders_preserve_submitted_values_before_stored_values() -> None:
     """Schema defaults should prefer submitted values, then stored values, then constants."""
     user_schema = cf_mod._build_user_input_schema(
@@ -560,35 +610,55 @@ def test_schema_builders_preserve_submitted_values_before_stored_values() -> Non
 @pytest.mark.parametrize(
     ("input_value", "expected"),
     [
-        (5, 10),  # below minimum -> clamped to 10
         (150, 150),  # within range -> unchanged
-        (1000, 300),  # above maximum -> clamped to 300
     ],
 )
-def test_options_scan_interval_clamp(input_value: Any, expected: Any) -> None:
-    """_build_options_init_schema should clamp CONF_SCAN_INTERVAL to min/max values."""
+def test_options_scan_interval_accepts_native_selector_range(
+    input_value: Any, expected: Any
+) -> None:
+    """_build_options_init_schema should accept CONF_SCAN_INTERVAL values in range."""
     oschema = cf_mod._build_options_init_schema(user_input=None)
     # pass a dict with the scan interval set to the test value
     validated = oschema({cf_mod.CONF_SCAN_INTERVAL: input_value})
     assert validated.get(cf_mod.CONF_SCAN_INTERVAL) == expected
 
 
+@pytest.mark.parametrize("input_value", [5, 1000])
+def test_options_scan_interval_rejects_values_outside_selector_range(input_value: Any) -> None:
+    """_build_options_init_schema should reject CONF_SCAN_INTERVAL values outside range."""
+    oschema = cf_mod._build_options_init_schema(user_input=None)
+
+    with pytest.raises(vol.Invalid):
+        oschema({cf_mod.CONF_SCAN_INTERVAL: input_value})
+
+
 @pytest.mark.parametrize(
     ("input_value", "expected"),
     [
-        (-10, 0),  # below minimum -> clamped to 0
         (300, 300),  # within range -> unchanged
         (1200, 1200),  # within new range (20 minutes) -> unchanged
         (3600, 3600),  # at maximum (1 hour) -> unchanged
-        (5000, 3600),  # above maximum -> clamped to 3600
     ],
 )
-def test_options_device_tracker_consider_home_clamp(input_value: Any, expected: Any) -> None:
-    """_build_options_init_schema should clamp CONF_DEVICE_TRACKER_CONSIDER_HOME to min/max values."""
+def test_options_device_tracker_consider_home_accepts_native_selector_range(
+    input_value: Any, expected: Any
+) -> None:
+    """_build_options_init_schema should accept consider_home values in range."""
     oschema = cf_mod._build_options_init_schema(user_input=None)
     # pass a dict with the consider_home value set to the test value
     validated = oschema({cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME: input_value})
     assert validated.get(cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME) == expected
+
+
+@pytest.mark.parametrize("input_value", [-10, 5000])
+def test_options_device_tracker_consider_home_rejects_values_outside_selector_range(
+    input_value: Any,
+) -> None:
+    """_build_options_init_schema should reject consider_home values outside range."""
+    oschema = cf_mod._build_options_init_schema(user_input=None)
+
+    with pytest.raises(vol.Invalid):
+        oschema({cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME: input_value})
 
 
 def test_async_get_options_flow_returns_options_flow() -> None:

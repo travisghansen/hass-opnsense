@@ -33,7 +33,6 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
-import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 
 from .const import (
@@ -583,7 +582,13 @@ def _build_options_init_schema(
             vol.Optional(
                 CONF_SCAN_INTERVAL,
                 default=defaults[CONF_SCAN_INTERVAL],
-            ): vol.All(vol.Coerce(int), vol.Clamp(min=10, max=300)),
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=10,
+                    max=300,
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
             vol.Required(
                 CONF_DEVICE_TRACKING_MODE,
                 default=str(defaults[CONF_DEVICE_TRACKING_MODE]),
@@ -601,11 +606,23 @@ def _build_options_init_schema(
             vol.Optional(
                 CONF_DEVICE_TRACKER_SCAN_INTERVAL,
                 default=defaults[CONF_DEVICE_TRACKER_SCAN_INTERVAL],
-            ): vol.All(vol.Coerce(int), vol.Clamp(min=30, max=300)),
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=30,
+                    max=300,
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
             vol.Optional(
                 CONF_DEVICE_TRACKER_CONSIDER_HOME,
                 default=defaults[CONF_DEVICE_TRACKER_CONSIDER_HOME],
-            ): vol.All(vol.Coerce(int), vol.Clamp(min=0, max=3600)),
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0,
+                    max=3600,
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
             vol.Optional(
                 CONF_GRANULAR_SYNC_OPTIONS,
                 default=defaults[CONF_GRANULAR_SYNC_OPTIONS],
@@ -626,9 +643,18 @@ def _build_device_tracker_schema(
     Returns:
         vol.Schema: Device tracker form schema.
     """
+    device_options: list[selector.SelectOptionDict] = [
+        {"value": str(value), "label": str(label)} for value, label in dt_entries.items()
+    ]
     return vol.Schema(
         {
-            vol.Optional(CONF_DEVICES, default=selected_devices): cv.multi_select(dict(dt_entries)),
+            vol.Optional(CONF_DEVICES, default=selected_devices): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=device_options,
+                    multiple=True,
+                    mode=selector.SelectSelectorMode.LIST,
+                )
+            ),
             vol.Optional(CONF_MANUAL_DEVICES): selector.TextSelector(selector.TextSelectorConfig()),
         }
     )
