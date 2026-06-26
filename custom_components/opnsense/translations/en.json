@@ -250,8 +250,8 @@
       "description": "Starts an OPNsense service",
       "fields": {
         "service_id": {
-          "name": "Service ID or Name",
-          "description": "The ID or name of the service. Like: udpbroadcastrelay/3, haproxy, dhcp, etc."
+          "name": "Service ID",
+          "description": "The ID of the service. Like: udpbroadcastrelay/3"
         },
         "service_name": {
           "name": "Service Name",
@@ -277,8 +277,8 @@
       "description": "Stops an OPNsense service",
       "fields": {
         "service_id": {
-          "name": "Service ID or Name",
-          "description": "The ID or name of the service. Like: udpbroadcastrelay/3, haproxy, dhcp, etc."
+          "name": "Service ID",
+          "description": "The ID of the service. Like: udpbroadcastrelay/3"
         },
         "service_name": {
           "name": "Service Name",
@@ -304,8 +304,8 @@
       "description": "Restarts an OPNsense service",
       "fields": {
         "service_id": {
-          "name": "Service ID or Name",
-          "description": "The ID or name of the service. Like: udpbroadcastrelay/3, haproxy, dhcp, etc."
+          "name": "Service ID",
+          "description": "The ID of the service. Like: udpbroadcastrelay/3"
         },
         "service_name": {
           "name": "Service Name",

@@ -242,6 +242,14 @@ async def test_async_setup_services_registers_expected_service_contracts() -> No
     registrations[SERVICE_START_SERVICE]["schema"]({"service_id": "svc"})
     registrations[SERVICE_STOP_SERVICE]["schema"]({"service_name": "svc"})
     registrations[SERVICE_RESTART_SERVICE]["schema"]({"service_id": "svc", "only_if_running": True})
+    with pytest.raises(vol.Invalid):
+        registrations[SERVICE_START_SERVICE]["schema"]({"service_id": "svc", "service_name": "svc"})
+    with pytest.raises(vol.Invalid):
+        registrations[SERVICE_STOP_SERVICE]["schema"]({"service_id": "svc", "service_name": "svc"})
+    with pytest.raises(vol.Invalid):
+        registrations[SERVICE_RESTART_SERVICE]["schema"](
+            {"service_id": "svc", "service_name": "svc", "only_if_running": True}
+        )
     assert registrations[SERVICE_START_SERVICE]["schema"]({}) == {}
 
 
@@ -366,6 +374,23 @@ async def test_get_clients_registry_entries_without_config_entry_raise(
 
     with pytest.raises(ServiceValidationError):
         await services_mod._get_clients(hass_local, opnentity_id="ent123")
+
+
+@pytest.mark.asyncio
+async def test_get_clients_unloaded_registry_entry_id_raises_no_target_clients(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Explicit targets resolving to unloaded config entries should fail with no_target_clients."""
+    hass_local = MagicMock(spec=HomeAssistant)
+    c1, c2 = MagicMock(name="c1"), MagicMock(name="c2")
+    hass_local.data = {DOMAIN: {"e1": c1, "e2": c2}}
+
+    _patch_device_registry_entry(monkeypatch, "missing")
+
+    with pytest.raises(ServiceValidationError) as exc_info:
+        await services_mod._get_clients(hass_local, opndevice_id="dev123")
+
+    assert exc_info.value.translation_key == "no_target_clients"
 
 
 @pytest.mark.asyncio
