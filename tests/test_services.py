@@ -57,6 +57,20 @@ def _voucher_call_data() -> dict[str, str]:
     return {"validity": "1", "expirytime": "2", "count": "2", "vouchergroup": "g1"}
 
 
+def _service_call(data: dict[str, Any]) -> MagicMock:
+    """Return a fake Home Assistant service call with data.
+
+    Args:
+        data: Service call data exposed through the fake call.
+
+    Returns:
+        MagicMock: Fake Home Assistant service call.
+    """
+    call = MagicMock()
+    call.data = data
+    return call
+
+
 @pytest.mark.asyncio
 async def test_async_setup_services_registers_get_vnstat_metrics_case_insensitive_period() -> None:
     """Service setup should register get_vnstat_metrics with normalized period schema."""
@@ -308,8 +322,7 @@ async def test_service_start_stop_restart_success_and_failure(
     c2.restart_service_if_running = AsyncMock(return_value=True)
     hass.data[DOMAIN] = {"e1": c1, "e2": c2}
 
-    call = MagicMock()
-    call.data = {"service_id": "svc"}
+    call = _service_call({"service_id": "svc"})
 
     _patch_clients(monkeypatch, [c1, c2])
     # start should succeed because c2 returns True
@@ -329,8 +342,7 @@ async def test_service_start_stop_restart_success_and_failure(
     c2.restart_service_if_running.assert_not_awaited()
 
     # Also verify the service_name identifier path works
-    call2 = MagicMock()
-    call2.data = {"service_name": "svc"}
+    call2 = _service_call({"service_name": "svc"})
     await services_mod._service_start_service(hass, call2)
     await services_mod._service_stop_service(hass, call2)
     await services_mod._service_restart_service(hass, call2)
@@ -363,8 +375,7 @@ async def test_service_restart_only_if_running_and_reload_interface(
     hass = ph_hass
     hass.data = {}
     hass.data[DOMAIN] = {"e1": c1}
-    call = MagicMock()
-    call.data = {"service_id": "svc", "only_if_running": True}
+    call = _service_call({"service_id": "svc", "only_if_running": True})
 
     _patch_clients(monkeypatch, [c1])
     # should not raise
@@ -383,8 +394,7 @@ async def test_service_restart_only_if_running_and_reload_interface(
         await services_mod._service_restart_service(hass, call)
 
     # reload_interface success
-    call_iface = MagicMock()
-    call_iface.data = {"interface": "igb0"}
+    call_iface = _service_call({"interface": "igb0"})
     await services_mod._service_reload_interface(hass, call_iface)
     c1.reload_interface.assert_awaited_once_with("igb0")
 
@@ -419,8 +429,7 @@ async def test_service_start_stop_restart_failure_variants(
     setattr(bad_client, method_attr, AsyncMock(return_value=False))
 
     _patch_clients(monkeypatch, [ok_client, bad_client])
-    call = MagicMock()
-    call.data = {"service_id": "svc"}
+    call = _service_call({"service_id": "svc"})
 
     handler = getattr(services_mod, method_name)
     with pytest.raises(ServiceValidationError):
@@ -449,8 +458,7 @@ async def test_service_start_stop_restart_require_service_identifier(
     client.restart_service = AsyncMock(return_value=True)
 
     _patch_clients(monkeypatch, [client])
-    call = MagicMock()
-    call.data = {}
+    call = _service_call({})
 
     handler = getattr(services_mod, method_name)
     with pytest.raises(ServiceValidationError):
@@ -474,8 +482,7 @@ async def test_generate_vouchers_success_and_server_error(
     c1.name = "svc1"
     c1.generate_vouchers = AsyncMock(return_value=vouchers)
     hass.data[DOMAIN] = {"e1": c1}
-    call = MagicMock()
-    call.data = _voucher_call_data()
+    call = _service_call(_voucher_call_data())
 
     _patch_clients(monkeypatch, [c1])
     resp = await services_mod._service_generate_vouchers(hass, call)
@@ -497,8 +504,7 @@ async def test_generate_vouchers_no_clients_raises(
     fake_get_empty: None,
 ) -> None:
     """Generating vouchers requires at least one selected OPNsense client."""
-    call = MagicMock()
-    call.data = _voucher_call_data()
+    call = _service_call(_voucher_call_data())
 
     with pytest.raises(ServiceValidationError):
         await services_mod._service_generate_vouchers(ph_hass, call)
@@ -513,8 +519,7 @@ async def test_generate_vouchers_empty_selected_client_response_returns_empty(
     client = MagicMock()
     client.name = "svc1"
     client.generate_vouchers = AsyncMock(return_value=[])
-    call = MagicMock()
-    call.data = _voucher_call_data()
+    call = _service_call(_voucher_call_data())
 
     _patch_clients(monkeypatch, [client])
 
@@ -531,8 +536,7 @@ async def test_generate_vouchers_does_not_mutate_client_voucher_response(
     client = MagicMock()
     client.name = "svc1"
     client.generate_vouchers = AsyncMock(return_value=[voucher])
-    call = MagicMock()
-    call.data = _voucher_call_data()
+    call = _service_call(_voucher_call_data())
 
     _patch_clients(monkeypatch, [client])
 
@@ -553,8 +557,7 @@ async def test_kill_states_success_and_failure(
     c1.name = "c1"
     c1.kill_states = AsyncMock(return_value={"success": True, "dropped_states": 5})
     hass.data[DOMAIN] = {"e1": c1}
-    call = MagicMock()
-    call.data = {"ip_addr": "1.2.3.4"}
+    call = _service_call({"ip_addr": "1.2.3.4"})
 
     _patch_clients(monkeypatch, [c1])
     resp = await services_mod._service_kill_states(hass, call)
@@ -585,8 +588,7 @@ async def test_run_speedtest_success_and_unavailable(
     c2.run_speedtest = AsyncMock(return_value={})
 
     _patch_clients(monkeypatch, [c1, c2])
-    call = MagicMock()
-    call.data = {}
+    call = _service_call({})
 
     response = await services_mod._service_run_speedtest(hass, call)
     assert response is not None
@@ -627,8 +629,7 @@ async def test_get_vnstat_metrics_success_and_unavailable(
     c2.get_vnstat_metrics = AsyncMock(return_value={})
 
     _patch_clients(monkeypatch, [c1, c2])
-    call = MagicMock()
-    call.data = {"period": "yearly"}
+    call = _service_call({"period": "yearly"})
 
     response = await services_mod._service_get_vnstat_metrics(hass, call)
     assert response is not None
@@ -670,8 +671,7 @@ async def test_restart_service_no_clients_raises(ph_hass: Any, fake_get_empty: N
     hass = ph_hass
     hass.data = {}
 
-    call = MagicMock()
-    call.data = {"service_id": "svc"}
+    call = _service_call({"service_id": "svc"})
 
     with pytest.raises(ServiceValidationError):
         await services_mod._service_restart_service(hass, call)
@@ -683,8 +683,7 @@ async def test_start_service_no_clients_raises(ph_hass: Any, fake_get_empty: Non
     hass = ph_hass
     hass.data = {}
 
-    call = MagicMock()
-    call.data = {"service_id": "svc"}
+    call = _service_call({"service_id": "svc"})
 
     with pytest.raises(ServiceValidationError):
         await services_mod._service_start_service(hass, call)
@@ -696,8 +695,7 @@ async def test_stop_service_no_clients_raises(ph_hass: Any, fake_get_empty: None
     hass = ph_hass
     hass.data = {}
 
-    call = MagicMock()
-    call.data = {"service_id": "svc"}
+    call = _service_call({"service_id": "svc"})
 
     with pytest.raises(ServiceValidationError):
         await services_mod._service_stop_service(hass, call)
@@ -720,20 +718,17 @@ async def test_close_send_wol_and_system_calls(monkeypatch: pytest.MonkeyPatch) 
     hass.data = {DOMAIN: {"e1": c}}
 
     # close notice
-    call = MagicMock()
-    call.data = {"id": "all"}
+    call = _service_call({"id": "all"})
     await services_mod._service_close_notice(hass, call)
     c.close_notice.assert_awaited_once_with("all")
 
     # send wol
-    call_wol = MagicMock()
-    call_wol.data = {"interface": "lan", "mac": "aa:bb:cc:dd:ee:ff"}
+    call_wol = _service_call({"interface": "lan", "mac": "aa:bb:cc:dd:ee:ff"})
     await services_mod._service_send_wol(hass, call_wol)
     c.send_wol.assert_awaited_once_with("lan", "aa:bb:cc:dd:ee:ff")
 
     # system halt and reboot
-    call_sys = MagicMock()
-    call_sys.data = {}
+    call_sys = _service_call({})
     await services_mod._service_system_halt(hass, call_sys)
     c.system_halt.assert_awaited_once()
     await services_mod._service_system_reboot(hass, call_sys)
@@ -751,8 +746,7 @@ async def test_toggle_alias_success_and_failure(monkeypatch: pytest.MonkeyPatch)
     _patch_clients(monkeypatch, [c1])
     hass = MagicMock(spec=HomeAssistant)
     hass.data = {DOMAIN: {"e1": c1}}
-    call = MagicMock()
-    call.data = {"alias": "a1", "toggle_on_off": "on"}
+    call = _service_call({"alias": "a1", "toggle_on_off": "on"})
     # should not raise
     await services_mod._service_toggle_alias(hass, call)
 
