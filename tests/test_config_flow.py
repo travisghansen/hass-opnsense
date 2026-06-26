@@ -630,6 +630,18 @@ def test_options_schema_clamps_legacy_stored_defaults(
 
 
 @pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(None, id="none"),
+        pytest.param("invalid", id="invalid-string"),
+    ],
+)
+def test_normalize_int_option_invalid_values_fall_back_to_minimum(value: Any) -> None:
+    """Invalid persisted numeric options should fall back to the selector minimum."""
+    assert cf_mod._normalize_int_option(value, 5, 3600) == 5
+
+
+@pytest.mark.parametrize(
     ("input_value", "expected"),
     [
         (300, 300),  # within range -> unchanged
@@ -917,6 +929,58 @@ async def test_options_flow_init_selected_mode_shows_picker_step(
     )
     assert result["type"] == "form"
     assert result["step_id"] == "device_tracker"
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_updates_entry_when_validation_succeeds(
+    monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Successful reconfigure submissions should update and abort the flow."""
+    config_entry = make_config_entry(
+        data={
+            cf_mod.CONF_URL: "https://x",
+            cf_mod.CONF_USERNAME: "u",
+            cf_mod.CONF_PASSWORD: "p",
+            cf_mod.CONF_DEVICE_UNIQUE_ID: "device-1",
+        },
+        options={},
+        unique_id="device-1",
+    )
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+    validate = AsyncMock(return_value={})
+    set_unique_id = AsyncMock()
+    update_and_abort = MagicMock(return_value={"type": "abort", "reason": "reconfigure_successful"})
+
+    monkeypatch.setattr(cf_mod, "validate_input", validate)
+    object.__setattr__(flow, "_get_reconfigure_entry", lambda: config_entry)
+    object.__setattr__(flow, "async_set_unique_id", set_unique_id)
+    object.__setattr__(flow, "_abort_if_unique_id_mismatch", lambda: None)
+    object.__setattr__(flow, "async_update_and_abort", update_and_abort)
+
+    result = await flow.async_step_reconfigure(
+        user_input={
+            cf_mod.CONF_URL: "https://router.example",
+            cf_mod.CONF_USERNAME: "u",
+            cf_mod.CONF_PASSWORD: "p",
+        }
+    )
+
+    assert result == {"type": "abort", "reason": "reconfigure_successful"}
+    validate.assert_awaited_once()
+    validate_call = validate.await_args
+    assert validate_call is not None
+    assert validate_call.kwargs["expected_id"] == "device-1"
+    set_unique_id.assert_awaited_once_with("device-1")
+    update_and_abort.assert_called_once_with(
+        entry=config_entry,
+        data={
+            cf_mod.CONF_URL: "https://router.example",
+            cf_mod.CONF_USERNAME: "u",
+            cf_mod.CONF_PASSWORD: "p",
+            cf_mod.CONF_DEVICE_UNIQUE_ID: "device-1",
+        },
+    )
 
 
 @pytest.mark.asyncio
