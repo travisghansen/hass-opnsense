@@ -396,24 +396,19 @@ async def test_e2e_granular_sync_and_options_device_tracker(
     hass.data.setdefault(init_mod.DOMAIN, {})
     # Provide async_get_known_entry for options flow compatibility
     if not hasattr(hass.config_entries, "async_get_known_entry"):
-        hass.config_entries.async_get_known_entry = lambda entry_id: entry
+        hass.config_entries._entries = {entry.entry_id: entry}
+
+        def _get_known_entry(entry_id: str) -> MockConfigEntry | None:
+            return hass.config_entries._entries.get(entry_id)
+
+        hass.config_entries.async_get_known_entry = _get_known_entry
 
     # Options flow path
     opt_flow = cf_mod.OPNsenseConfigFlow.async_get_options_flow(
         entry
     )  # returns OPNsenseOptionsFlow
     opt_flow.hass = hass
-    # Avoid Home Assistant usage reporting side-effects in this lightweight
-    # test harness (the real HA runtime sets up frame helpers). Stub the
-    # usage reporter so assigning the config_entry property on the flow
-    # doesn't fail during tests. Use raising=False to allow older HA versions
-    # that don't expose report_usage.
-    monkeypatch.setattr(
-        homeassistant.config_entries, "report_usage", lambda *a, **k: None, raising=False
-    )
-    # Provide the config entry to the options flow in this test environment
-    # so it can access entry.data/options without relying on HA internals.
-    opt_flow.config_entry = entry
+    opt_flow.handler = entry.entry_id
     # initial options step: enable device tracker & granular sync
     opt_init = await opt_flow.async_step_init(
         user_input={

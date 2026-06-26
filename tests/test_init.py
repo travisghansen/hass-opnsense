@@ -7,11 +7,10 @@ and removal/unload behaviors for the hass-opnsense integration.
 from collections.abc import Callable
 import importlib
 import logging
-from typing import Any, Never, Self
+from typing import Any, Never
 from unittest.mock import ANY, AsyncMock, MagicMock, call
 
 from homeassistant.core import HomeAssistant
-import homeassistant.helpers.aiohttp_client as _hc
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -19,61 +18,6 @@ from tests.utilities import patch_opnsense_client
 
 # import the package module object so we can access its functions/attrs
 init_mod = importlib.import_module("custom_components.opnsense")
-helpers_mod = importlib.import_module("custom_components.opnsense.helpers")
-
-
-@pytest.fixture(autouse=True)
-def _patch_hass_async_create_clientsession(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Autouse fixture to stub Home Assistant's async_create_clientsession. Some tests use a minimal `hass` object (SimpleNamespace) which does not provide the full helper; patch the helper to return a lightweight session-like object to avoid opening real network resources."""
-
-    class _FakeSession:
-        async def __aenter__(self) -> Self:
-            """Yield the fake client session to the async context manager."""
-            return self
-
-        async def __aexit__(
-            self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: object
-        ) -> bool:
-            """Close the fake session and return False so exceptions propagate."""
-            await self.close()
-            return False
-
-        async def close(self) -> None:
-            """Simulate closing the fake session."""
-            return
-
-    def _fake_create_clientsession(*args: object, **kwargs: object) -> _FakeSession:
-        """Return a lightweight fake client session for Home Assistant tests.
-
-        Args:
-            *args: Positional arguments forwarded from the patched helper and ignored.
-            **kwargs: Keyword arguments forwarded from the patched helper and ignored.
-        """
-        return _FakeSession()
-
-    # Patch both the imported module object and the import-path string so
-    # tests are resilient in different environments. Use raising=False so
-    # missing targets don't cause the fixture to fail.
-    monkeypatch.setattr(
-        _hc, "async_create_clientsession", _fake_create_clientsession, raising=False
-    )
-    monkeypatch.setattr(
-        "homeassistant.helpers.aiohttp_client.async_create_clientsession",
-        _fake_create_clientsession,
-        raising=False,
-    )
-
-    # Also patch the integration helper's local import so shared client construction
-    # does not create a real session.
-    monkeypatch.setattr(
-        helpers_mod, "async_create_clientsession", _fake_create_clientsession, raising=False
-    )
-    # Stub CookieJar used by migrations so aiohttp isn't required in the test env
-    monkeypatch.setattr(
-        "custom_components.opnsense.helpers.aiohttp.CookieJar",
-        lambda *a, **k: object(),
-        raising=False,
-    )
 
 
 def test_align_aiopnsense_log_level_mirrors_opnsense_when_unset() -> None:
@@ -1577,7 +1521,8 @@ async def test_async_migrate_entry_returns_false_when_submigration_fails(
     monkeypatch.setattr(init_mod, failing_fn, AsyncMock(return_value=False))
     client = MagicMock()
     client.async_close = AsyncMock()
-    monkeypatch.setattr(init_mod, "create_opnsense_client", lambda **_kwargs: client)
+    create_client = MagicMock(return_value=client)
+    monkeypatch.setattr(init_mod, "create_opnsense_client", create_client)
 
     cfg = MagicMock()
     cfg.version = version
@@ -1590,6 +1535,12 @@ async def test_async_migrate_entry_returns_false_when_submigration_fails(
     # call with a real hass fixture
     res = await init_mod.async_migrate_entry(ph_hass, cfg)
     assert res is False
+    if version == 1:
+        create_client.assert_not_called()
+        client.async_close.assert_not_awaited()
+    else:
+        create_client.assert_called_once()
+        client.async_close.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -13,6 +13,7 @@ from aiopnsense import exceptions as aiopnsense_exceptions
 from homeassistant.core import HomeAssistant
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+import voluptuous as vol
 
 from custom_components.opnsense.const import (
     CONF_SYNC_FIREWALL_AND_NAT,
@@ -22,6 +23,19 @@ from custom_components.opnsense.const import (
 from tests.utilities import patch_opnsense_client
 
 cf_mod = importlib.import_module("custom_components.opnsense.config_flow")
+
+
+def _make_options_flow(config_entry: Any) -> Any:
+    """Create an options flow using Home Assistant's built-in config entry lookup."""
+    if not isinstance(getattr(config_entry, "entry_id", None), str):
+        config_entry.entry_id = "test-entry"
+    flow = cf_mod.OPNsenseOptionsFlow()
+    flow.hass = MagicMock()
+    flow.hass.config_entries = MagicMock()
+    flow.hass.config_entries.async_update_entry = MagicMock()
+    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
+    flow.handler = config_entry.entry_id
+    return flow
 
 
 def test_mac_and_ip_and_cleanse() -> None:
@@ -132,13 +146,6 @@ async def test_clean_and_parse_url_success_and_failure() -> None:
     missing_host_ui = {cf_mod.CONF_URL: "https://:8443"}
     with pytest.raises(cf_mod.OPNsenseInvalidURL):
         await cf_mod._clean_and_parse_url(missing_host_ui)
-
-
-@pytest.mark.asyncio
-async def test_clean_and_parse_url_rejects_missing_host() -> None:
-    """_clean_and_parse_url should reject URLs with a netloc but no host."""
-    with pytest.raises(cf_mod.OPNsenseInvalidURL):
-        await cf_mod._clean_and_parse_url({cf_mod.CONF_URL: "https://:443"})
 
 
 @pytest.mark.asyncio
@@ -515,38 +522,145 @@ def test_build_user_input_and_granular_and_options_schemas_defaults() -> None:
     assert cf_mod.CONF_DEVICE_TRACKING_MODE in out
 
 
+def test_schema_builders_preserve_submitted_values_before_stored_values() -> None:
+    """Schema defaults should prefer submitted values, then stored values, then constants."""
+    user_schema = cf_mod._build_user_input_schema(
+        user_input={
+            cf_mod.CONF_URL: "https://submitted.example",
+            cf_mod.CONF_GRANULAR_SYNC_OPTIONS: False,
+        },
+        stored_values={
+            cf_mod.CONF_URL: "https://stored.example",
+            cf_mod.CONF_GRANULAR_SYNC_OPTIONS: True,
+        },
+    )
+    user_values = user_schema({})
+    assert user_values[cf_mod.CONF_URL] == "https://submitted.example"
+    assert user_values[cf_mod.CONF_GRANULAR_SYNC_OPTIONS] is False
+
+    granular_schema = cf_mod._build_granular_sync_schema(
+        user_input={CONF_SYNC_SMART: False},
+        stored_values={CONF_SYNC_SMART: True, CONF_SYNC_TELEMETRY: False},
+    )
+    granular_values = granular_schema({})
+    assert granular_values[CONF_SYNC_SMART] is False
+    assert granular_values[CONF_SYNC_TELEMETRY] is False
+
+    options_schema = cf_mod._build_options_init_schema(
+        user_input={
+            cf_mod.CONF_SCAN_INTERVAL: 45,
+            cf_mod.CONF_DEVICE_TRACKING_MODE: cf_mod.DEVICE_TRACKING_MODE_SELECTED,
+        },
+        stored_config={cf_mod.CONF_GRANULAR_SYNC_OPTIONS: True},
+        stored_options={
+            cf_mod.CONF_SCAN_INTERVAL: 120,
+            cf_mod.CONF_DEVICE_TRACKER_ENABLED: True,
+            cf_mod.CONF_DEVICES: [],
+        },
+    )
+    options_values = options_schema({})
+    assert options_values[cf_mod.CONF_SCAN_INTERVAL] == 45
+    assert options_values[cf_mod.CONF_DEVICE_TRACKING_MODE] == cf_mod.DEVICE_TRACKING_MODE_SELECTED
+    assert options_values[cf_mod.CONF_GRANULAR_SYNC_OPTIONS] is True
+
+
 @pytest.mark.parametrize(
     ("input_value", "expected"),
     [
-        (5, 10),  # below minimum -> clamped to 10
         (150, 150),  # within range -> unchanged
-        (1000, 300),  # above maximum -> clamped to 300
     ],
 )
-def test_options_scan_interval_clamp(input_value: Any, expected: Any) -> None:
-    """_build_options_init_schema should clamp CONF_SCAN_INTERVAL to min/max values."""
+def test_options_scan_interval_accepts_native_selector_range(
+    input_value: Any, expected: Any
+) -> None:
+    """_build_options_init_schema should accept CONF_SCAN_INTERVAL values in range."""
     oschema = cf_mod._build_options_init_schema(user_input=None)
     # pass a dict with the scan interval set to the test value
     validated = oschema({cf_mod.CONF_SCAN_INTERVAL: input_value})
     assert validated.get(cf_mod.CONF_SCAN_INTERVAL) == expected
 
 
+@pytest.mark.parametrize("input_value", [5, 1000])
+def test_options_scan_interval_rejects_values_outside_selector_range(input_value: Any) -> None:
+    """_build_options_init_schema should reject CONF_SCAN_INTERVAL values outside range."""
+    oschema = cf_mod._build_options_init_schema(user_input=None)
+
+    with pytest.raises(vol.Invalid):
+        oschema({cf_mod.CONF_SCAN_INTERVAL: input_value})
+
+
+@pytest.mark.parametrize(
+    ("stored_options", "field", "expected"),
+    [
+        (
+            {cf_mod.CONF_SCAN_INTERVAL: 1000},
+            cf_mod.CONF_SCAN_INTERVAL,
+            300,
+        ),
+        (
+            {cf_mod.CONF_DEVICE_TRACKER_SCAN_INTERVAL: 5},
+            cf_mod.CONF_DEVICE_TRACKER_SCAN_INTERVAL,
+            30,
+        ),
+        (
+            {cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME: 5000},
+            cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME,
+            3600,
+        ),
+    ],
+)
+def test_options_schema_clamps_legacy_stored_defaults(
+    stored_options: dict[str, Any], field: str, expected: int
+) -> None:
+    """_build_options_init_schema should clamp legacy stored defaults into range."""
+    oschema = cf_mod._build_options_init_schema(
+        user_input=None,
+        stored_options=stored_options,
+    )
+
+    validated = oschema({})
+    assert validated[field] == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(None, id="none"),
+        pytest.param("invalid", id="invalid-string"),
+    ],
+)
+def test_normalize_int_option_invalid_values_fall_back_to_minimum(value: Any) -> None:
+    """Invalid persisted numeric options should fall back to the selector minimum."""
+    assert cf_mod._normalize_int_option(value, 5, 3600) == 5
+
+
 @pytest.mark.parametrize(
     ("input_value", "expected"),
     [
-        (-10, 0),  # below minimum -> clamped to 0
         (300, 300),  # within range -> unchanged
         (1200, 1200),  # within new range (20 minutes) -> unchanged
         (3600, 3600),  # at maximum (1 hour) -> unchanged
-        (5000, 3600),  # above maximum -> clamped to 3600
     ],
 )
-def test_options_device_tracker_consider_home_clamp(input_value: Any, expected: Any) -> None:
-    """_build_options_init_schema should clamp CONF_DEVICE_TRACKER_CONSIDER_HOME to min/max values."""
+def test_options_device_tracker_consider_home_accepts_native_selector_range(
+    input_value: Any, expected: Any
+) -> None:
+    """_build_options_init_schema should accept consider_home values in range."""
     oschema = cf_mod._build_options_init_schema(user_input=None)
     # pass a dict with the consider_home value set to the test value
     validated = oschema({cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME: input_value})
     assert validated.get(cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME) == expected
+
+
+@pytest.mark.parametrize("input_value", [-10, 5000])
+def test_options_device_tracker_consider_home_rejects_values_outside_selector_range(
+    input_value: Any,
+) -> None:
+    """_build_options_init_schema should reject consider_home values outside range."""
+    oschema = cf_mod._build_options_init_schema(user_input=None)
+
+    with pytest.raises(vol.Invalid):
+        oschema({cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME: input_value})
 
 
 def test_async_get_options_flow_returns_options_flow() -> None:
@@ -554,6 +668,7 @@ def test_async_get_options_flow_returns_options_flow() -> None:
     cfg = MagicMock()
     res = cf_mod.OPNsenseConfigFlow.async_get_options_flow(cfg)
     assert isinstance(res, cf_mod.OPNsenseOptionsFlow)
+    assert isinstance(cf_mod.OPNsenseOptionsFlow(), cf_mod.OPNsenseOptionsFlow)
 
 
 @pytest.mark.asyncio
@@ -563,14 +678,7 @@ async def test_options_flow_init_with_user_triggers_update() -> None:
     cfg.data = {cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"}
     cfg.options = {cf_mod.CONF_DEVICE_TRACKER_ENABLED: False}
 
-    flow = cf_mod.OPNsenseOptionsFlow(cfg)
-    flow.hass = MagicMock()
-    flow.hass.config_entries = MagicMock()
-    flow.hass.config_entries.async_update_entry = MagicMock()
-    # set a handler so flow._config_entry_id property is available during the test
-    flow.handler = "opnsense"
-    # ensure async_get_known_entry returns our cfg when accessed
-    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=cfg)
+    flow = _make_options_flow(cfg)
 
     # populate internals to avoid Home Assistant property lookups in this unit test
     flow._config = dict(cfg.data)
@@ -583,6 +691,34 @@ async def test_options_flow_init_with_user_triggers_update() -> None:
     flow.hass.config_entries.async_update_entry.assert_called()
     assert res["type"] == "create_entry"
     assert flow._options.get(cf_mod.CONF_SCAN_INTERVAL) == 30
+    assert isinstance(flow._options.get(cf_mod.CONF_SCAN_INTERVAL), int)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        (cf_mod.CONF_SCAN_INTERVAL, 30.0),
+        (cf_mod.CONF_DEVICE_TRACKER_SCAN_INTERVAL, 150.0),
+        (cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME, 120.0),
+    ],
+)
+async def test_options_flow_init_normalizes_numeric_values(field: str, value: float) -> None:
+    """Submitting numeric options should persist integer values."""
+    cfg = MagicMock()
+    cfg.data = {cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"}
+    cfg.options = {cf_mod.CONF_DEVICE_TRACKER_ENABLED: False}
+
+    flow = _make_options_flow(cfg)
+    flow._config = dict(cfg.data)
+    flow._options = dict(cfg.options)
+
+    res = await flow.async_step_init(user_input={field: value})
+
+    flow.hass.config_entries.async_update_entry.assert_called()
+    assert res["type"] == "create_entry"
+    assert flow._options[field] == int(value)
+    assert isinstance(flow._options[field], int)
 
 
 @pytest.mark.asyncio
@@ -594,10 +730,7 @@ async def test_options_flow_granular_sync_calls_validate_and_updates(
     cfg.data = {cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"}
     cfg.options = {cf_mod.CONF_DEVICE_TRACKER_ENABLED: False}
 
-    flow = cf_mod.OPNsenseOptionsFlow(cfg)
-    flow.hass = MagicMock()
-    flow.hass.config_entries = MagicMock()
-    flow.hass.config_entries.async_update_entry = MagicMock()
+    flow = _make_options_flow(cfg)
 
     # monkeypatch validate_input to return no errors
     async def fake_validate(hass: HomeAssistant, user_input: Any, errors: Any, **kwargs) -> Any:
@@ -619,10 +752,6 @@ async def test_options_flow_granular_sync_calls_validate_and_updates(
     flow._config = dict(cfg.data)
     flow._options = dict(cfg.options)
     user_input = {gkey: True}
-    # set a handler and make async_get_known_entry return our cfg so the flow can access
-    # config_entry and options during unit tests without Home Assistant internals.
-    flow.handler = "opnsense"
-    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=cfg)
     res = await flow.async_step_granular_sync(user_input=user_input)
     flow.hass.config_entries.async_update_entry.assert_called()
     assert res["type"] == "create_entry"
@@ -638,8 +767,7 @@ async def test_device_tracker_shows_form_when_no_user_input(
         options={cf_mod.CONF_DEVICES: ["11:22:33:44:55:66"]},
     )
 
-    flow = cf_mod.OPNsenseOptionsFlow(cfg)
-    flow.hass = MagicMock()
+    flow = _make_options_flow(cfg)
 
     # monkeypatch _get_dt_entries to return an ordered dict-like mapping
     async def fake_get_dt_entries(hass: HomeAssistant, config: Any, selected_devices: Any) -> Any:
@@ -657,11 +785,6 @@ async def test_device_tracker_shows_form_when_no_user_input(
     # ensure internals are present so we don't trigger config_entry property lookup
     flow._config = dict(cfg.data)
     flow._options = dict(cfg.options)
-    # set a handler and make async_get_known_entry return our cfg so the flow can access
-    # config_entry and options during unit tests without Home Assistant internals.
-    flow.handler = "opnsense"
-    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=cfg)
-
     res = await flow.async_step_device_tracker(user_input=None)
     assert res["type"] == "form"
     assert "data_schema" in res
@@ -680,12 +803,9 @@ async def test_device_tracker_handles_arp_lookup_failure(
         data={cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"},
         options={cf_mod.CONF_DEVICES: ["AA-BB-CC-DD-EE-FF"]},
     )
-    flow = cf_mod.OPNsenseOptionsFlow(cfg)
-    flow.hass = MagicMock()
+    flow = _make_options_flow(cfg)
     flow._config = dict(cfg.data)
     flow._options = dict(cfg.options)
-    flow.handler = "opnsense"
-    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=cfg)
 
     async def _raise(*args, **kwargs) -> Never:
         """Raise the parametrized exception so device-tracker lookup failures can be tested.
@@ -723,14 +843,7 @@ async def test_options_flow_device_tracker_user_input(
         options={cf_mod.CONF_DEVICE_TRACKER_ENABLED: True, cf_mod.CONF_DEVICES: []},
     )
 
-    flow = cf_mod.OPNsenseOptionsFlow(config_entry)
-    # attach hass with config_entries.update stub
-    flow.hass = MagicMock()
-    flow.hass.config_entries = MagicMock()
-    flow.hass.config_entries.async_update_entry = MagicMock()
-    # make the flow aware of its handler so config_entry property works during tests
-    flow.handler = "opnsense"
-    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
+    flow = _make_options_flow(config_entry)
 
     # emulate what async_step_init would do: populate _config and _options from entry
     flow._config = dict(config_entry.data)
@@ -770,12 +883,7 @@ async def test_options_flow_device_tracker_track_all_clears_device_list(
         },
     )
 
-    flow = cf_mod.OPNsenseOptionsFlow(config_entry)
-    flow.hass = MagicMock()
-    flow.hass.config_entries = MagicMock()
-    flow.hass.config_entries.async_update_entry = MagicMock()
-    flow.handler = "opnsense"
-    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
+    flow = _make_options_flow(config_entry)
     flow._config = dict(config_entry.data)
     flow._options = dict(config_entry.options)
 
@@ -803,12 +911,7 @@ async def test_options_flow_init_selected_mode_shows_picker_step(
         },
         options={cf_mod.CONF_DEVICE_TRACKER_ENABLED: False, cf_mod.CONF_DEVICES: []},
     )
-    flow = cf_mod.OPNsenseOptionsFlow(config_entry)
-    flow.hass = MagicMock()
-    flow.hass.config_entries = MagicMock()
-    flow.hass.config_entries.async_update_entry = MagicMock()
-    flow.handler = "opnsense"
-    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
+    flow = _make_options_flow(config_entry)
     monkeypatch.setattr(cf_mod, "_get_dt_entries", AsyncMock(return_value={}))
 
     result = await flow.async_step_init(
@@ -819,6 +922,58 @@ async def test_options_flow_init_selected_mode_shows_picker_step(
     )
     assert result["type"] == "form"
     assert result["step_id"] == "device_tracker"
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_updates_entry_when_validation_succeeds(
+    monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Successful reconfigure submissions should update and abort the flow."""
+    config_entry = make_config_entry(
+        data={
+            cf_mod.CONF_URL: "https://x",
+            cf_mod.CONF_USERNAME: "u",
+            cf_mod.CONF_PASSWORD: "p",
+            cf_mod.CONF_DEVICE_UNIQUE_ID: "device-1",
+        },
+        options={},
+        unique_id="device-1",
+    )
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+    validate = AsyncMock(return_value={})
+    set_unique_id = AsyncMock()
+    update_and_abort = MagicMock(return_value={"type": "abort", "reason": "reconfigure_successful"})
+
+    monkeypatch.setattr(cf_mod, "validate_input", validate)
+    object.__setattr__(flow, "_get_reconfigure_entry", lambda: config_entry)
+    object.__setattr__(flow, "async_set_unique_id", set_unique_id)
+    object.__setattr__(flow, "_abort_if_unique_id_mismatch", lambda: None)
+    object.__setattr__(flow, "async_update_and_abort", update_and_abort)
+
+    result = await flow.async_step_reconfigure(
+        user_input={
+            cf_mod.CONF_URL: "https://router.example",
+            cf_mod.CONF_USERNAME: "u",
+            cf_mod.CONF_PASSWORD: "p",
+        }
+    )
+
+    assert result == {"type": "abort", "reason": "reconfigure_successful"}
+    validate.assert_awaited_once()
+    validate_call = validate.await_args
+    assert validate_call is not None
+    assert validate_call.kwargs["expected_id"] == "device-1"
+    set_unique_id.assert_awaited_once_with("device-1")
+    update_and_abort.assert_called_once_with(
+        entry=config_entry,
+        data={
+            cf_mod.CONF_URL: "https://router.example",
+            cf_mod.CONF_USERNAME: "u",
+            cf_mod.CONF_PASSWORD: "p",
+            cf_mod.CONF_DEVICE_UNIQUE_ID: "device-1",
+        },
+    )
 
 
 @pytest.mark.asyncio

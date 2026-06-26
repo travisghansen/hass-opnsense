@@ -69,10 +69,10 @@
     "step": {
       "init": {
         "data": {
-          "scan_interval": "Scan Interval (seconds)",
+          "scan_interval": "Scan Interval",
           "device_tracking_mode": "Device Tracker Mode",
-          "device_tracker_scan_interval": "Device Tracker Scan Interval (seconds)",
-          "device_tracker_consider_home": "Device Tracker Consider Home (seconds)",
+          "device_tracker_scan_interval": "Device Tracker Scan Interval",
+          "device_tracker_consider_home": "Device Tracker Consider Home",
           "granular_sync_options": "Enable Granular Sync Options"
         },
         "data_description": {

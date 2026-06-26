@@ -33,7 +33,6 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
-import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 
 from .const import (
@@ -61,6 +60,8 @@ from .helpers import create_opnsense_client
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
+DeviceEntries = dict[str, str]
+
 CONF_DEVICE_TRACKING_MODE = "device_tracking_mode"
 DEVICE_TRACKING_MODE_DISABLED = "disabled"
 DEVICE_TRACKING_MODE_ALL = "all_detected"
@@ -72,6 +73,11 @@ CONNECTION_ERROR_KEYS: tuple[tuple[type[OPNsenseError], str], ...] = (
     (OPNsensePrivilegeMissing, "privilege_missing"),
     (OPNsenseTimeoutError, "connect_timeout"),
     (OPNsenseConnectionError, "cannot_connect"),
+)
+OPTIONS_INIT_NUMBER_BOUNDS: tuple[tuple[str, int, int], ...] = (
+    (CONF_SCAN_INTERVAL, 10, 300),
+    (CONF_DEVICE_TRACKER_SCAN_INTERVAL, 30, 300),
+    (CONF_DEVICE_TRACKER_CONSIDER_HOME, 0, 3600),
 )
 
 
@@ -93,7 +99,7 @@ def normalize_mac_address(mac: str) -> str | None:
 
 
 def _get_device_tracking_mode(
-    device_tracker_enabled: bool, selected_devices: list[str] | None
+    device_tracker_enabled: bool, selected_devices: Iterable[str] | None
 ) -> str:
     """Return the UI tracking mode for the current options.
 
@@ -107,6 +113,28 @@ def _get_device_tracking_mode(
     if not device_tracker_enabled:
         return DEVICE_TRACKING_MODE_DISABLED
     return DEVICE_TRACKING_MODE_SELECTED if selected_devices else DEVICE_TRACKING_MODE_ALL
+
+
+def _resolve_device_tracking_mode(
+    options: Mapping[str, Any], user_input: Mapping[str, Any] | None = None
+) -> str:
+    """Resolve the UI tracking mode from submitted or stored options.
+
+    Args:
+        options: Persisted or in-progress options mapping.
+        user_input: Optional submitted form values that may include the transient UI mode.
+
+    Returns:
+        str: Selected UI tracking mode.
+    """
+    if user_input and CONF_DEVICE_TRACKING_MODE in user_input:
+        return str(user_input[CONF_DEVICE_TRACKING_MODE])
+    if CONF_DEVICE_TRACKING_MODE in options:
+        return str(options[CONF_DEVICE_TRACKING_MODE])
+    return _get_device_tracking_mode(
+        bool(options.get(CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED)),
+        _merge_selected_devices(options.get(CONF_DEVICES, [])),
+    )
 
 
 def _parse_manual_devices(manual_devices: str | None) -> list[str]:
@@ -123,8 +151,6 @@ def _parse_manual_devices(manual_devices: str | None) -> list[str]:
 
     macs: list[str] = []
     for item in re.split(r"[\n,]+", manual_devices):
-        if not isinstance(item, str):
-            continue
         normalized = normalize_mac_address(item)
         if normalized:
             macs.append(normalized)
@@ -164,16 +190,34 @@ def _apply_device_tracking_mode(options: MutableMapping[str, Any], tracking_mode
         options[CONF_DEVICES] = []
 
 
-def _build_selected_device_entries(selected_devices: list[str]) -> dict[str, Any]:
+def _normalize_int_option(value: Any, minimum: int, maximum: int) -> int:
+    """Convert an option value to an integer within a bounded range.
+
+    Args:
+        value: Raw option value from storage or form submission.
+        minimum: Inclusive lower bound.
+        maximum: Inclusive upper bound.
+
+    Returns:
+        int: Value coerced to ``int`` and clamped to the requested bounds.
+    """
+    try:
+        coerced = int(value)
+    except TypeError, ValueError:
+        coerced = minimum
+    return max(minimum, min(maximum, coerced))
+
+
+def _build_selected_device_entries(selected_devices: Iterable[str]) -> DeviceEntries:
     """Build selector entries from currently configured devices.
 
     Args:
         selected_devices: Persisted tracked MAC addresses from the options entry.
 
     Returns:
-        dict[str, Any]: Mapping of normalized MAC addresses to fallback labels.
+        DeviceEntries: Mapping of normalized MAC addresses to fallback labels.
     """
-    entries: dict[str, Any] = {}
+    entries: DeviceEntries = {}
     for device in selected_devices:
         normalized = normalize_mac_address(str(device))
         if not normalized:
@@ -470,146 +514,140 @@ def _record_validation_error(errors: MutableMapping[str, Any], key: str, message
 
 
 def _build_user_input_schema(
-    user_input: MutableMapping[str, Any] | None,
-    fallback: MutableMapping[str, Any] | None = None,
+    user_input: Mapping[str, Any] | None,
+    stored_values: Mapping[str, Any] | None = None,
     reconf: bool = False,
 ) -> vol.Schema:
     """Build user input schema.
 
     Args:
         user_input: Values submitted for the current configuration or options flow step.
-        fallback: Fallback values used when the current form input does not include a field.
+        stored_values: Stored config-entry values used to prefill the form.
         reconf: Whether the schema is being built for the reconfigure flow instead of initial setup.
 
     Returns:
         vol.Schema: Form schema for the base connection step.
     """
-    if user_input is None:
-        user_input = {}
-    if fallback is None:
-        fallback = {}
+    defaults = {
+        CONF_URL: "https://",
+        CONF_VERIFY_SSL: DEFAULT_VERIFY_SSL,
+        CONF_USERNAME: "",
+        CONF_PASSWORD: "",
+        CONF_NAME: "",
+        CONF_GRANULAR_SYNC_OPTIONS: DEFAULT_GRANULAR_SYNC_OPTIONS,
+        **(stored_values or {}),
+        **(user_input or {}),
+    }
 
-    schema = vol.Schema(
-        {
-            vol.Required(
-                CONF_URL, default=user_input.get(CONF_URL, fallback.get(CONF_URL, "https://"))
-            ): str,
-            vol.Optional(
-                CONF_VERIFY_SSL,
-                default=user_input.get(
-                    CONF_VERIFY_SSL, fallback.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
-                ),
-            ): bool,
-            vol.Required(
-                CONF_USERNAME,
-                default=user_input.get(CONF_USERNAME, fallback.get(CONF_USERNAME, "")),
-            ): str,
-            vol.Required(
-                CONF_PASSWORD,
-                default=user_input.get(CONF_PASSWORD, fallback.get(CONF_PASSWORD, "")),
-            ): str,
-        }
-    )
+    schema_fields: dict[Any, Any] = {
+        vol.Required(CONF_URL, default=defaults[CONF_URL]): selector.TextSelector(
+            selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+        ),
+        vol.Optional(CONF_VERIFY_SSL, default=defaults[CONF_VERIFY_SSL]): bool,
+        vol.Required(CONF_USERNAME, default=defaults[CONF_USERNAME]): selector.TextSelector(
+            selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+        ),
+        vol.Required(CONF_PASSWORD, default=defaults[CONF_PASSWORD]): selector.TextSelector(
+            selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+        ),
+    }
     if not reconf:
-        schema = schema.extend(
+        schema_fields.update(
             {
-                vol.Optional(
-                    CONF_NAME, default=user_input.get(CONF_NAME, fallback.get(CONF_NAME, ""))
-                ): str,
+                vol.Optional(CONF_NAME, default=defaults[CONF_NAME]): selector.TextSelector(
+                    selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+                ),
                 vol.Required(
                     CONF_GRANULAR_SYNC_OPTIONS,
-                    default=user_input.get(
-                        CONF_GRANULAR_SYNC_OPTIONS,
-                        fallback.get(CONF_GRANULAR_SYNC_OPTIONS, DEFAULT_GRANULAR_SYNC_OPTIONS),
-                    ),
+                    default=defaults[CONF_GRANULAR_SYNC_OPTIONS],
                 ): selector.BooleanSelector(selector.BooleanSelectorConfig()),
             }
         )
-    return schema
+    return vol.Schema(schema_fields)
 
 
 def _build_granular_sync_schema(
-    user_input: MutableMapping[str, Any] | None,
-    fallback: MutableMapping[str, Any] | None = None,
+    user_input: Mapping[str, Any] | None,
+    stored_values: Mapping[str, Any] | None = None,
 ) -> vol.Schema:
     """Build granular sync schema.
 
     Args:
         user_input: Values submitted for the current configuration or options flow step.
-        fallback: Stored sync option values used to prefill the granular sync form.
+        stored_values: Stored sync option values used to prefill the granular sync form.
 
     Returns:
         vol.Schema: Form schema containing all granular sync toggles.
     """
-    if user_input is None:
-        user_input = {}
-    if fallback is None:
-        fallback = {}
+    defaults = dict.fromkeys(GRANULAR_SYNC_ITEMS, DEFAULT_SYNC_OPTION_VALUE) | {
+        **(stored_values or {}),
+        **(user_input or {}),
+    }
 
-    schema_dict: dict[Any, Any] = {}
-
-    for conf in GRANULAR_SYNC_ITEMS:
-        schema_dict[
+    return vol.Schema(
+        {
             vol.Optional(
                 conf,
-                default=user_input.get(
-                    conf,
-                    fallback.get(conf, DEFAULT_SYNC_OPTION_VALUE),
-                ),
-            )
-        ] = selector.BooleanSelector(selector.BooleanSelectorConfig())
-
-    return vol.Schema(schema_dict)
+                default=defaults[conf],
+            ): selector.BooleanSelector(selector.BooleanSelectorConfig())
+            for conf in GRANULAR_SYNC_ITEMS
+        }
+    )
 
 
 def _build_options_init_schema(
-    user_input: MutableMapping[str, Any] | None,
-    fallback_config: MutableMapping[str, Any] | None = None,
-    fallback_options: MutableMapping[str, Any] | None = None,
+    user_input: Mapping[str, Any] | None,
+    stored_config: Mapping[str, Any] | None = None,
+    stored_options: Mapping[str, Any] | None = None,
 ) -> vol.Schema:
     """Build options init schema.
 
     Args:
         user_input: Values submitted for the current configuration or options flow step.
-        fallback_config: Config-entry data used when an option has not been overridden yet.
-        fallback_options: Existing options used to populate the initial options-flow form.
+        stored_config: Config-entry data used when an option has not been overridden yet.
+        stored_options: Existing options used to populate the initial options-flow form.
 
     Returns:
         vol.Schema: Form schema for the options-flow initial step.
     """
-    if user_input is None:
-        user_input = {}
-    if fallback_config is None:
-        fallback_config = {}
-    if fallback_options is None:
-        fallback_options = {}
-
-    tracking_mode = str(
-        user_input.get(
-            CONF_DEVICE_TRACKING_MODE,
-            _get_device_tracking_mode(
-                bool(
-                    fallback_options.get(
-                        CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED
-                    )
-                ),
-                fallback_options.get(CONF_DEVICES, []),
-            ),
-        )
+    option_values = stored_options or {}
+    tracking_mode = _get_device_tracking_mode(
+        bool(option_values.get(CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED)),
+        option_values.get(CONF_DEVICES, []),
     )
+
+    config_values = stored_config or {}
+    granular_sync_options = config_values.get(
+        CONF_GRANULAR_SYNC_OPTIONS, DEFAULT_GRANULAR_SYNC_OPTIONS
+    )
+    defaults = {
+        CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
+        CONF_DEVICE_TRACKER_SCAN_INTERVAL: DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
+        CONF_DEVICE_TRACKER_CONSIDER_HOME: DEFAULT_DEVICE_TRACKER_CONSIDER_HOME,
+        **option_values,
+        CONF_DEVICE_TRACKING_MODE: tracking_mode,
+        CONF_GRANULAR_SYNC_OPTIONS: granular_sync_options,
+        **(user_input or {}),
+    }
+    for key, minimum, maximum in OPTIONS_INIT_NUMBER_BOUNDS:
+        defaults[key] = _normalize_int_option(defaults[key], minimum, maximum)
 
     return vol.Schema(
         {
             vol.Optional(
                 CONF_SCAN_INTERVAL,
-                default=user_input.get(
-                    CONF_SCAN_INTERVAL,
-                    fallback_options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
-                ),
-            ): vol.All(vol.Coerce(int), vol.Clamp(min=10, max=300)),
+                default=defaults[CONF_SCAN_INTERVAL],
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=10,
+                    max=300,
+                    step=1,
+                    unit_of_measurement="seconds",
+                )
+            ),
             vol.Required(
                 CONF_DEVICE_TRACKING_MODE,
-                default=tracking_mode,
+                default=str(defaults[CONF_DEVICE_TRACKING_MODE]),
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=[
@@ -623,35 +661,36 @@ def _build_options_init_schema(
             ),
             vol.Optional(
                 CONF_DEVICE_TRACKER_SCAN_INTERVAL,
-                default=user_input.get(
-                    CONF_DEVICE_TRACKER_SCAN_INTERVAL,
-                    fallback_options.get(
-                        CONF_DEVICE_TRACKER_SCAN_INTERVAL, DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL
-                    ),
-                ),
-            ): vol.All(vol.Coerce(int), vol.Clamp(min=30, max=300)),
+                default=defaults[CONF_DEVICE_TRACKER_SCAN_INTERVAL],
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=30,
+                    max=300,
+                    step=1,
+                    unit_of_measurement="seconds",
+                )
+            ),
             vol.Optional(
                 CONF_DEVICE_TRACKER_CONSIDER_HOME,
-                default=user_input.get(
-                    CONF_DEVICE_TRACKER_CONSIDER_HOME,
-                    fallback_options.get(
-                        CONF_DEVICE_TRACKER_CONSIDER_HOME, DEFAULT_DEVICE_TRACKER_CONSIDER_HOME
-                    ),
-                ),
-            ): vol.All(vol.Coerce(int), vol.Clamp(min=0, max=3600)),
+                default=defaults[CONF_DEVICE_TRACKER_CONSIDER_HOME],
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0,
+                    max=3600,
+                    step=1,
+                    unit_of_measurement="seconds",
+                )
+            ),
             vol.Optional(
                 CONF_GRANULAR_SYNC_OPTIONS,
-                default=user_input.get(
-                    CONF_GRANULAR_SYNC_OPTIONS,
-                    fallback_config.get(CONF_GRANULAR_SYNC_OPTIONS, DEFAULT_GRANULAR_SYNC_OPTIONS),
-                ),
+                default=defaults[CONF_GRANULAR_SYNC_OPTIONS],
             ): selector.BooleanSelector(selector.BooleanSelectorConfig()),
         }
     )
 
 
 def _build_device_tracker_schema(
-    selected_devices: list[str], dt_entries: Mapping[str, Any]
+    selected_devices: list[str], dt_entries: DeviceEntries
 ) -> vol.Schema:
     """Build the device tracker options schema.
 
@@ -662,17 +701,26 @@ def _build_device_tracker_schema(
     Returns:
         vol.Schema: Device tracker form schema.
     """
+    device_options: list[selector.SelectOptionDict] = [
+        {"value": str(value), "label": str(label)} for value, label in dt_entries.items()
+    ]
     return vol.Schema(
         {
-            vol.Optional(CONF_DEVICES, default=selected_devices): cv.multi_select(dict(dt_entries)),
+            vol.Optional(CONF_DEVICES, default=selected_devices): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=device_options,
+                    multiple=True,
+                    mode=selector.SelectSelectorMode.LIST,
+                )
+            ),
             vol.Optional(CONF_MANUAL_DEVICES): selector.TextSelector(selector.TextSelectorConfig()),
         }
     )
 
 
 async def _get_dt_entries(
-    hass: HomeAssistant, config: Mapping[str, Any], selected_devices: list
-) -> dict[str, Any]:
+    hass: HomeAssistant, config: Mapping[str, Any], selected_devices: Iterable[str]
+) -> DeviceEntries:
     """Return device-tracker selector entries.
 
     Args:
@@ -682,7 +730,7 @@ async def _get_dt_entries(
         not currently present in the ARP table.
 
     Returns:
-        dict[str, Any]: Mapping of MAC addresses to user-facing labels.
+        DeviceEntries: Mapping of MAC addresses to user-facing labels.
     """
     url = config[CONF_URL].strip()
     username: str = config[CONF_USERNAME]
@@ -697,7 +745,7 @@ async def _get_dt_entries(
     )
     try:
         # dicts are ordered so put all previously selected items at the top
-        entries: dict[str, Any] = _build_selected_device_entries(selected_devices)
+        entries: DeviceEntries = _build_selected_device_entries(selected_devices)
         arp_table: list = await client.get_arp_table(resolve_hostnames=True)
         if arp_table:
             ip_by_mac: dict[str, str] = {}
@@ -712,7 +760,7 @@ async def _get_dt_entries(
                 entries[mac] = label
 
             # Sort entries: fallback labels first, then by IP address (ascending)
-            sorted_entries: dict[str, Any] = dict(
+            sorted_entries: DeviceEntries = dict(
                 sorted(
                     entries.items(),
                     key=lambda item: _device_entry_sort_key(item[0], item[1], ip_by_mac),
@@ -842,7 +890,11 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(self._config.get(CONF_DEVICE_UNIQUE_ID))
                 self._abort_if_unique_id_mismatch()
 
-                return self.async_update_reload_and_abort(
+                # Keep this non-reloading helper paired with the config-entry
+                # update listener registered in async_setup_entry.
+                # async_update_reload_and_abort is deprecated for entries that
+                # also use add_update_listener.
+                return self.async_update_and_abort(
                     entry=reconfigure_entry,
                     data=self._config,
                 )
@@ -854,7 +906,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=_build_user_input_schema(
-                user_input=user_input, fallback=self._config, reconf=True
+                user_input=user_input, stored_values=self._config, reconf=True
             ),
             errors=errors,
             description_placeholders={
@@ -885,43 +937,28 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         Returns:
             OPNsenseOptionsFlow: Options flow instance bound to the entry.
         """
-        return OPNsenseOptionsFlow(config_entry)
+        return OPNsenseOptionsFlow()
 
 
 class OPNsenseOptionsFlow(OptionsFlow):
     """Handle option flow for OPNsense."""
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialize options flow state.
-
-        Args:
-            config_entry: Config entry whose options are being edited.
-        """
-        # Store the config entry passed by the ConfigFlow helper so tests and
-        # runtime code can access it. Some test harnesses assign directly to
-        # `config_entry` on the flow; provide a backing attribute and a
-        # property with a setter to maintain compatibility.
-        self._config_entry: ConfigEntry = config_entry
+    def __init__(self) -> None:
+        """Initialize options flow state."""
         self._config: dict[str, Any] = {}
         self._options: dict[str, Any] = {}
 
-    @property
-    def config_entry(self) -> ConfigEntry:
-        """Return the config entry associated with this options flow.
+    def _create_options_entry(self) -> ConfigFlowResult:
+        """Persist the in-progress config/options state and create the options entry.
 
         Returns:
-            ConfigEntry: Backing config entry for this options flow instance.
+            ConfigFlowResult: Saved options-flow result.
         """
-        return self._config_entry
-
-    @config_entry.setter
-    def config_entry(self, entry: ConfigEntry) -> None:
-        """Set the config entry backing this options flow.
-
-        Args:
-            entry: Config entry to associate with the flow.
-        """
-        self._config_entry = entry
+        self._options.pop(CONF_DEVICE_TRACKING_MODE, None)
+        self.hass.config_entries.async_update_entry(
+            entry=self.config_entry, data=self._config, options=self._options
+        )
+        return self.async_create_entry(data=self._options)
 
     async def async_step_init(
         self, user_input: MutableMapping[str, Any] | None = None
@@ -938,15 +975,7 @@ class OPNsenseOptionsFlow(OptionsFlow):
         self._config = dict(self.config_entry.data)
         self._options = dict(self.config_entry.options)
         if user_input is not None:
-            tracking_mode = str(
-                user_input.get(
-                    CONF_DEVICE_TRACKING_MODE,
-                    _get_device_tracking_mode(
-                        bool(self._options.get(CONF_DEVICE_TRACKER_ENABLED, False)),
-                        self._options.get(CONF_DEVICES, []),
-                    ),
-                )
-            )
+            tracking_mode = _resolve_device_tracking_mode(self._options, user_input)
             self._options.update(
                 {
                     key: value
@@ -954,6 +983,9 @@ class OPNsenseOptionsFlow(OptionsFlow):
                     if key != CONF_DEVICE_TRACKING_MODE
                 }
             )
+            for key, minimum, maximum in OPTIONS_INIT_NUMBER_BOUNDS:
+                if key in self._options:
+                    self._options[key] = _normalize_int_option(self._options[key], minimum, maximum)
             _apply_device_tracking_mode(self._options, tracking_mode)
             # Keep the chosen mode in-flow so multi-step options paths can branch
             # consistently before final save.
@@ -968,17 +1000,12 @@ class OPNsenseOptionsFlow(OptionsFlow):
             if tracking_mode == DEVICE_TRACKING_MODE_SELECTED:
                 return await self.async_step_device_tracker()
 
-            if not errors:
-                self._options.pop(CONF_DEVICE_TRACKING_MODE, None)
-                self.hass.config_entries.async_update_entry(
-                    entry=self.config_entry, data=self._config, options=self._options
-                )
-                return self.async_create_entry(data=self._options)
+            return self._create_options_entry()
 
         return self.async_show_form(
             step_id="init",
             data_schema=_build_options_init_schema(
-                user_input=user_input, fallback_config=self._config, fallback_options=self._options
+                user_input=user_input, stored_config=self._config, stored_options=self._options
             ),
             errors=errors,
         )
@@ -1004,24 +1031,12 @@ class OPNsenseOptionsFlow(OptionsFlow):
                 expected_id=self._config.get(CONF_DEVICE_UNIQUE_ID),
             )
             if not errors:
-                tracking_mode = str(
-                    self._options.get(
-                        CONF_DEVICE_TRACKING_MODE,
-                        _get_device_tracking_mode(
-                            bool(self._options.get(CONF_DEVICE_TRACKER_ENABLED, False)),
-                            self._options.get(CONF_DEVICES, []),
-                        ),
-                    )
-                )
+                tracking_mode = _resolve_device_tracking_mode(self._options)
                 if tracking_mode == DEVICE_TRACKING_MODE_SELECTED:
                     return await self.async_step_device_tracker()
                 _LOGGER.debug("Updating options from granular sync. user_input: %s", self._config)
 
-                self._options.pop(CONF_DEVICE_TRACKING_MODE, None)
-                self.hass.config_entries.async_update_entry(
-                    entry=self.config_entry, data=self._config, options=self._options
-                )
-                return self.async_create_entry(data=self._options)
+                return self._create_options_entry()
 
         if not user_input:
             user_input = {}
@@ -1030,7 +1045,7 @@ class OPNsenseOptionsFlow(OptionsFlow):
             step_id="granular_sync",
             data_schema=_build_granular_sync_schema(
                 user_input=user_input,
-                fallback=self._config,
+                stored_values=self._config,
             ),
             errors=errors,
         )
@@ -1065,15 +1080,10 @@ class OPNsenseOptionsFlow(OptionsFlow):
                 self._options.pop(CONF_DEVICES, None)
                 self._config.pop(TRACKED_MACS, None)
 
-            if not errors:
-                self._options.pop(CONF_DEVICE_TRACKING_MODE, None)
-                self.hass.config_entries.async_update_entry(
-                    entry=self.config_entry, data=self._config, options=self._options
-                )
-                return self.async_create_entry(data=self._options)
+            return self._create_options_entry()
 
         try:
-            dt_entries: dict[str, Any] = await _get_dt_entries(
+            dt_entries: DeviceEntries = await _get_dt_entries(
                 hass=self.hass, config=self.config_entry.data, selected_devices=selected_devices
             )
         except OPNsenseConnectionError as err:
