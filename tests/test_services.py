@@ -246,6 +246,47 @@ async def test_get_clients_unresolved_explicit_target_raises(
 
 
 @pytest.mark.asyncio
+async def test_get_clients_registry_entries_without_config_entry_raise(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Explicit registry targets without config entries must not broaden to all clients."""
+    hass_local = MagicMock(spec=HomeAssistant)
+    c1, c2 = MagicMock(name="c1"), MagicMock(name="c2")
+    hass_local.data = {DOMAIN: {"e1": c1, "e2": c2}}
+
+    class DevReg:
+        def async_get(self, device_id: Any) -> Any:
+            """Return a device registry entry without an owning config entry.
+
+            Args:
+                device_id: Device identifier used to target a config entry.
+            """
+            device_entry = MagicMock()
+            device_entry.primary_config_entry = None
+            return device_entry
+
+    class EntReg:
+        def async_get(self, entity_id: Any) -> Any:
+            """Return an entity registry entry without an owning config entry.
+
+            Args:
+                entity_id: Entity identifier used to target a config entry.
+            """
+            entity_entry = MagicMock()
+            entity_entry.config_entry_id = None
+            return entity_entry
+
+    monkeypatch.setattr(services_mod.dr, "async_get", lambda hass_in: DevReg())
+    monkeypatch.setattr(services_mod.er, "async_get", lambda hass_in: EntReg())
+
+    with pytest.raises(ServiceValidationError):
+        await services_mod._get_clients(hass_local, opndevice_id="dev123")
+
+    with pytest.raises(ServiceValidationError):
+        await services_mod._get_clients(hass_local, opnentity_id="ent123")
+
+
+@pytest.mark.asyncio
 async def test_service_start_stop_restart_success_and_failure(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any
 ) -> None:

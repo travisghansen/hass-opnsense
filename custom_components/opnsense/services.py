@@ -272,7 +272,7 @@ async def _get_clients(
     hass: HomeAssistant,
     opndevice_id: str | None = None,
     opnentity_id: str | None = None,
-) -> list:
+) -> list[OPNsenseServiceClient]:
     """Resolve the OPNsense clients targeted by the current request.
 
     Args:
@@ -292,36 +292,32 @@ async def _get_clients(
         return []
     first_entry_id = next(iter(hass.data[DOMAIN]))
     if len(hass.data[DOMAIN]) == 1 and not opndevice_id and not opnentity_id:
-        # _LOGGER.debug(f"[get_clients] Only 1 entry. entry_id: {first_entry_id}")
         return [hass.data[DOMAIN][first_entry_id]]
 
-    entry_ids: list = []
+    entry_ids: list[str] = []
     if opndevice_id:
         try:
             device_entry = dr.async_get(hass).async_get(opndevice_id)
         except TypeError, AttributeError, HomeAssistantError:
             pass
         else:
-            # _LOGGER.debug(f"[get_clients] device_id: {opndevice_id}, device_entry:
-            # {device_entry}")
-            if device_entry and device_entry.primary_config_entry not in entry_ids:
-                entry_ids.append(device_entry.primary_config_entry)
+            primary_config_entry = device_entry.primary_config_entry if device_entry else None
+            if primary_config_entry and primary_config_entry not in entry_ids:
+                entry_ids.append(primary_config_entry)
     if opnentity_id:
         try:
             entity_entry = er.async_get(hass).async_get(opnentity_id)
         except TypeError, AttributeError, HomeAssistantError:
             pass
         else:
-            # _LOGGER.debug(f"[get_clients] entity_id: {opnentity_id}, entity_entry:
-            # {entity_entry}")
-            if entity_entry and entity_entry.config_entry_id not in entry_ids:
-                entry_ids.append(entity_entry.config_entry_id)
+            config_entry_id = entity_entry.config_entry_id if entity_entry else None
+            if config_entry_id and config_entry_id not in entry_ids:
+                entry_ids.append(config_entry_id)
 
     if (opndevice_id or opnentity_id) and not entry_ids:
         raise ServiceValidationError("No OPNsense clients match the selected target")
 
-    clients: list = []
-    # _LOGGER.debug(f"[get_clients] entry_ids: {entry_ids}")
+    clients: list[OPNsenseServiceClient] = []
     for entry_id, opnsense_client in hass.data[DOMAIN].items():
         if len(entry_ids) == 0 or entry_id in entry_ids:
             clients.append(opnsense_client)
