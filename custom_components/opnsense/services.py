@@ -747,9 +747,7 @@ async def _service_kill_states(hass: HomeAssistant, call: ServiceCall) -> Servic
     response_list = await _collect_kill_state_results(clients, call.data["ip_addr"])
     return_response: dict[str, Any] = {"dropped_states": response_list}
     _LOGGER.debug("[service_kill_states] return_response: %s", return_response)
-    if return_response:
-        return return_response
-    return None
+    return return_response
 
 
 async def _service_run_speedtest(hass: HomeAssistant, call: ServiceCall) -> ServiceResponse:
