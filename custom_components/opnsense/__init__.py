@@ -70,6 +70,25 @@ NATIVE_RULE_ENTITY_TOKENS: tuple[str, ...] = (
 )
 
 
+def _get_telemetry_filesystems(telemetry: object) -> list[Mapping[str, Any]]:
+    """Return valid telemetry filesystem mappings from a migration payload.
+
+    Args:
+        telemetry: Raw telemetry payload returned by the OPNsense client.
+
+    Returns:
+        list[Mapping[str, Any]]: Filesystem mappings usable for entity ID remaps.
+    """
+    if not isinstance(telemetry, Mapping):
+        return []
+
+    filesystems = telemetry.get("filesystems", [])
+    if not isinstance(filesystems, list):
+        return []
+
+    return [filesystem for filesystem in filesystems if isinstance(filesystem, Mapping)]
+
+
 def _align_aiopnsense_log_level() -> None:
     """Mirror the integration log level onto aiopnsense when it is unset."""
     aiopnsense_logger = logging.getLogger("aiopnsense")
@@ -537,6 +556,7 @@ async def _migrate_3_to_4(
     entity_registry = er.async_get(hass)
 
     telemetry = await client.get_telemetry()
+    filesystems = _get_telemetry_filesystems(telemetry)
 
     for ent in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
         platform = ent.entity_id.split(".")[0]
@@ -566,7 +586,7 @@ async def _migrate_3_to_4(
                 )
                 unique_id_device_name = unique_id_device_name.lower()
                 new_unique_id = None
-                for filesystem in telemetry.get("filesystems", []):
+                for filesystem in filesystems:
                     device_name: str = (
                         filesystem.get("device", "").replace("/", "_slash_").strip("_")
                     ).lower()
