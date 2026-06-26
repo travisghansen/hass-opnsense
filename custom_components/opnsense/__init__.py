@@ -237,7 +237,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     device_tracker_coordinator: OPNsenseDataUpdateCoordinator | None = None
 
     setup_succeeded: bool = False
-    remove_listener: Any | None = None
     try:
         # Trigger repair task and shutdown if device id has changed
         router_device_id: str | None = await client.get_device_unique_id(
@@ -363,8 +362,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return True
     finally:
         if not setup_succeeded:
-            if remove_listener is not None:
-                remove_listener()
             if device_tracker_coordinator is not None:
                 await device_tracker_coordinator.async_shutdown()
             await coordinator.async_shutdown()
@@ -599,6 +596,7 @@ async def _migrate_3_to_4(
                 for filesystem in filesystems:
                     device = filesystem.get("device", "")
                     if not isinstance(device, str):
+                        filesystem_migration_deferred = True
                         continue
                     device_name: str = device.replace("/", "_slash_").strip("_").lower()
                     if device_name == unique_id_device_name:

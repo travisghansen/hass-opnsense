@@ -2072,7 +2072,7 @@ async def test_async_setup_entry_cleans_up_when_platform_forwarding_fails(
     client.async_close.assert_awaited_once()
     entry.add_update_listener.assert_called_once()
     entry.async_on_unload.assert_called_once_with(remove_listener)
-    remove_listener.assert_called_once()
+    remove_listener.assert_not_called()
     assert entry.entry_id not in hass.data.get(init_mod.DOMAIN, {})
 
 
@@ -2183,3 +2183,51 @@ async def test_migrate_2_to_3_handles_identifier_collision(
 
     res = await init_mod._migrate_2_to_3(hass, cfg, client)
     assert res is True
+
+
+@pytest.mark.asyncio
+async def test_migrate_3_to_4_defers_when_filesystem_device_is_not_string(
+    monkeypatch: pytest.MonkeyPatch, ph_hass: Any
+) -> None:
+    """_migrate_3_to_4 should defer when filesystem device values are malformed."""
+    client = MagicMock()
+    client.get_telemetry = AsyncMock(return_value={"filesystems": [{"device": 7}]})
+
+    migration_entry = MagicMock()
+    migration_entry.entry_id = "entry"
+    migration_entry.version = 3
+
+    hass = ph_hass
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_update_entry = MagicMock(return_value=True)
+
+    class EntityRegistry:
+        def async_entries_for_config_entry(
+            self, registry: Any, config_entry_id: str
+        ) -> list[MagicMock]:
+            """Expose one stale filesystem telemetry entity for migration."""
+            return [
+                MagicMock(
+                    entity_id="sensor.router_telemetry_filesystems_root",
+                    unique_id="router_telemetry_filesystems_root",
+                )
+            ]
+
+        def async_update_entity(self, entity_id: str, new_unique_id: str) -> Any:
+            """Surface unsupported update attempts as a test failure."""
+            raise AssertionError(
+                "Entity updates should not occur when filesystem migration is deferred"
+            )
+
+    entity_registry = EntityRegistry()
+    monkeypatch.setattr(init_mod.er, "async_get", lambda _hass: entity_registry)
+    monkeypatch.setattr(
+        init_mod.er,
+        "async_entries_for_config_entry",
+        entity_registry.async_entries_for_config_entry,
+    )
+
+    res = await init_mod._migrate_3_to_4(hass, migration_entry, client)
+
+    assert res is False
+    hass.config_entries.async_update_entry.assert_not_called()
