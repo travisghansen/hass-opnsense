@@ -586,7 +586,7 @@ def _build_options_init_schema(
                 selector.NumberSelectorConfig(
                     min=10,
                     max=300,
-                    mode=selector.NumberSelectorMode.BOX,
+                    unit_of_measurement="seconds",
                 )
             ),
             vol.Required(
@@ -610,7 +610,7 @@ def _build_options_init_schema(
                 selector.NumberSelectorConfig(
                     min=30,
                     max=300,
-                    mode=selector.NumberSelectorMode.BOX,
+                    unit_of_measurement="seconds",
                 )
             ),
             vol.Optional(
@@ -620,7 +620,7 @@ def _build_options_init_schema(
                 selector.NumberSelectorConfig(
                     min=0,
                     max=3600,
-                    mode=selector.NumberSelectorMode.BOX,
+                    unit_of_measurement="seconds",
                 )
             ),
             vol.Optional(
