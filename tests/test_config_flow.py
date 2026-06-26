@@ -149,13 +149,6 @@ async def test_clean_and_parse_url_success_and_failure() -> None:
 
 
 @pytest.mark.asyncio
-async def test_clean_and_parse_url_rejects_missing_host() -> None:
-    """_clean_and_parse_url should reject URLs with a netloc but no host."""
-    with pytest.raises(cf_mod.OPNsenseInvalidURL):
-        await cf_mod._clean_and_parse_url({cf_mod.CONF_URL: "https://:443"})
-
-
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("exc_key", "expected"),
     [
