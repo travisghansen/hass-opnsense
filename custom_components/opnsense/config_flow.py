@@ -890,6 +890,10 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(self._config.get(CONF_DEVICE_UNIQUE_ID))
                 self._abort_if_unique_id_mismatch()
 
+                # Keep this non-reloading helper paired with the config-entry
+                # update listener registered in async_setup_entry.
+                # async_update_reload_and_abort is deprecated for entries that
+                # also use add_update_listener.
                 return self.async_update_and_abort(
                     entry=reconfigure_entry,
                     data=self._config,
