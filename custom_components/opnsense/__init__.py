@@ -70,6 +70,38 @@ NATIVE_RULE_ENTITY_TOKENS: tuple[str, ...] = (
 )
 
 
+def _get_telemetry_filesystems(telemetry: object) -> list[Mapping[str, Any]] | None:
+    """Return valid telemetry filesystem mappings from a migration payload.
+
+    Args:
+        telemetry: Raw telemetry payload returned by the OPNsense client.
+
+    Returns:
+        list[Mapping[str, Any]] | None: Filesystem mappings usable for entity
+            ID remaps, or `None` when the telemetry payload cannot be trusted.
+    """
+    if not isinstance(telemetry, Mapping):
+        return None
+
+    filesystems = telemetry.get("filesystems")
+    if not isinstance(filesystems, list):
+        return None
+
+    valid_filesystems: list[Mapping[str, Any]] = []
+    for filesystem in filesystems:
+        if not isinstance(filesystem, Mapping):
+            return None
+        device = filesystem.get("device")
+        if not isinstance(device, str):
+            return None
+        mountpoint = filesystem.get("mountpoint")
+        if not isinstance(mountpoint, str):
+            return None
+        valid_filesystems.append(filesystem)
+
+    return valid_filesystems
+
+
 def _align_aiopnsense_log_level() -> None:
     """Mirror the integration log level onto aiopnsense when it is unset."""
     aiopnsense_logger = logging.getLogger("aiopnsense")
@@ -319,8 +351,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 device_tracker_coordinator=True,
             )
 
-        entry.async_on_unload(entry.add_update_listener(_async_update_listener))
-
         hass.data.setdefault(DOMAIN, {})
         hass.data[DOMAIN][entry.entry_id] = client
 
@@ -331,7 +361,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             device_unique_id=config_device_id,
             loaded_platforms=platforms,
         )
-        setup_succeeded = True
+        remove_listener = entry.add_update_listener(_async_update_listener)
+        entry.async_on_unload(remove_listener)
 
         if device_tracker_enabled and device_tracker_coordinator:
             # Fetch initial data so we have data when entities subscribe
@@ -339,6 +370,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         await hass.config_entries.async_forward_entry_setups(entry, platforms)
 
+        setup_succeeded = True
         return True
     finally:
         if not setup_succeeded:
@@ -389,9 +421,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     client: OPNsenseClient = getattr(entry.runtime_data, OPNSENSE_CLIENT)
     unload_ok: bool = await hass.config_entries.async_unload_platforms(entry, platforms)
 
-    await client.async_close()
-
     if unload_ok:
+        await client.async_close()
         hass.data[DOMAIN].pop(entry.entry_id, None)
 
     return unload_ok
@@ -539,6 +570,8 @@ async def _migrate_3_to_4(
     entity_registry = er.async_get(hass)
 
     telemetry = await client.get_telemetry()
+    filesystems = _get_telemetry_filesystems(telemetry)
+    filesystem_migration_deferred = False
 
     for ent in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
         platform = ent.entity_id.split(".")[0]
@@ -568,10 +601,12 @@ async def _migrate_3_to_4(
                 )
                 unique_id_device_name = unique_id_device_name.lower()
                 new_unique_id = None
-                for filesystem in telemetry.get("filesystems", []):
-                    device_name: str = (
-                        filesystem.get("device", "").replace("/", "_slash_").strip("_")
-                    ).lower()
+                if filesystems is None:
+                    filesystem_migration_deferred = True
+                    continue
+                for filesystem in filesystems:
+                    device: str = filesystem.get("device", "")
+                    device_name: str = device.replace("/", "_slash_").strip("_").lower()
                     if device_name == unique_id_device_name:
                         mpoint: str = filesystem.get("mountpoint", "")
                         if mpoint == "/":
@@ -611,6 +646,9 @@ async def _migrate_3_to_4(
                     ent.entity_id,
                     type(e).__name__,
                 )
+    if filesystem_migration_deferred:
+        _LOGGER.error("Migration to version 4 deferred because filesystem telemetry is unavailable")
+        return False
     new_entry_bool = hass.config_entries.async_update_entry(config_entry, version=4)
     if new_entry_bool:
         _LOGGER.debug("[migrate_3_to_4] config_entry update successful")
