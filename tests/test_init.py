@@ -1577,7 +1577,8 @@ async def test_async_migrate_entry_returns_false_when_submigration_fails(
     monkeypatch.setattr(init_mod, failing_fn, AsyncMock(return_value=False))
     client = MagicMock()
     client.async_close = AsyncMock()
-    monkeypatch.setattr(init_mod, "create_opnsense_client", lambda **_kwargs: client)
+    create_client = MagicMock(return_value=client)
+    monkeypatch.setattr(init_mod, "create_opnsense_client", create_client)
 
     cfg = MagicMock()
     cfg.version = version
@@ -1590,6 +1591,12 @@ async def test_async_migrate_entry_returns_false_when_submigration_fails(
     # call with a real hass fixture
     res = await init_mod.async_migrate_entry(ph_hass, cfg)
     assert res is False
+    if version == 1:
+        create_client.assert_not_called()
+        client.async_close.assert_not_awaited()
+    else:
+        create_client.assert_called_once()
+        client.async_close.assert_awaited_once()
 
 
 @pytest.mark.asyncio
