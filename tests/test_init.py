@@ -20,6 +20,24 @@ from tests.utilities import patch_opnsense_client
 init_mod = importlib.import_module("custom_components.opnsense")
 
 
+def _make_valid_setup_client() -> MagicMock:
+    """Create a valid OPNsense client mock for setup-entry lifecycle tests."""
+    client = MagicMock()
+    client.validate = AsyncMock(return_value=True)
+    client.get_device_unique_id = AsyncMock(return_value="dev1")
+    client.get_host_firmware_version = AsyncMock(return_value="99.0")
+    client.async_close = AsyncMock(return_value=True)
+    return client
+
+
+def _make_setup_coordinator() -> MagicMock:
+    """Create a coordinator mock that succeeds initial setup and supports shutdown."""
+    coordinator = MagicMock()
+    coordinator.async_config_entry_first_refresh = AsyncMock(return_value=True)
+    coordinator.async_shutdown = AsyncMock(return_value=True)
+    return coordinator
+
+
 def test_align_aiopnsense_log_level_mirrors_opnsense_when_unset() -> None:
     """Aiopnsense should inherit the integration debug level when not configured."""
     opnsense_logger = logging.getLogger("custom_components.opnsense")
@@ -1171,7 +1189,7 @@ async def test_async_setup_entry_awesomeversion_exception(
 async def test_async_unload_entry_unload_fails(
     ph_hass: Any, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """async_unload_entry returns False and retains hass.data when platform unload fails."""
+    """async_unload_entry returns False and keeps runtime resources when unload fails."""
     entry = make_config_entry(entry_id="e_unload_fail")
     entry.as_dict = lambda: {"id": "x"}
     setattr(entry.runtime_data, init_mod.LOADED_PLATFORMS, ["p1"])
@@ -1187,7 +1205,7 @@ async def test_async_unload_entry_unload_fails(
     assert res is False
     # hass.data should still have the entry
     assert entry.entry_id in hass.data[init_mod.DOMAIN]
-    fake_client.async_close.assert_awaited_once()
+    fake_client.async_close.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -1350,6 +1368,109 @@ async def test_migrate_3_to_4_filesystem_skips_and_non_root_mountpoint(
     er_reg.async_update_entity.assert_called_once_with(
         matched.entity_id, new_unique_id="abc_telemetry_filesystems_mnt_data"
     )
+
+
+@pytest.mark.asyncio
+async def test_migrate_3_to_4_skips_filesystems_when_telemetry_is_not_mapping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_migrate_3_to_4 should defer filesystem remaps when telemetry is invalid."""
+
+    class Client:
+        async def get_telemetry(self) -> None:
+            """Return an invalid telemetry payload for migration hardening."""
+            return
+
+    client = Client()
+
+    interface_entity = MagicMock()
+    interface_entity.entity_id = "sensor.interface"
+    interface_entity.unique_id = "abc_telemetry_interface_lan"
+    filesystem_entity = MagicMock()
+    filesystem_entity.entity_id = "sensor.fs"
+    filesystem_entity.unique_id = "abc_telemetry_filesystems_slash_dev_slash_sda1"
+
+    entity_registry = MagicMock()
+    entity_registry.async_update_entity = MagicMock(
+        return_value=MagicMock(entity_id=interface_entity.entity_id, unique_id="updated")
+    )
+    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(
+        init_mod.er,
+        "async_entries_for_config_entry",
+        lambda registry, config_entry_id: [interface_entity, filesystem_entity],
+    )
+
+    config_entry = MagicMock()
+    config_entry.version = 3
+    config_entry.entry_id = "e3"
+
+    hass = MagicMock(spec=HomeAssistant)
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_update_entry = MagicMock(return_value=True)
+
+    result = await init_mod._migrate_3_to_4(hass, config_entry, client)
+
+    assert result is False
+    entity_registry.async_update_entity.assert_called_once_with(
+        interface_entity.entity_id,
+        new_unique_id="abc_interface_lan",
+    )
+    hass.config_entries.async_update_entry.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "telemetry",
+    [
+        {"filesystems": None},
+        {"filesystems": [None]},
+        {
+            "filesystems": [
+                {"device": None, "mountpoint": "/"},
+                {"device": "/dev/sda1", "mountpoint": None},
+            ]
+        },
+        {"filesystems": [{"mountpoint": "/"}]},
+        {"filesystems": [{"device": "/dev/sda1"}]},
+        {"filesystems": [{"device": 7, "mountpoint": "/"}]},
+        {},
+    ],
+)
+async def test_migrate_3_to_4_defers_filesystems_when_payload_is_invalid(
+    monkeypatch: pytest.MonkeyPatch, fake_client: Any, telemetry: dict[str, Any]
+) -> None:
+    """_migrate_3_to_4 should defer filesystem remaps when telemetry is invalid."""
+    client = fake_client(telemetry=telemetry)()
+
+    filesystem_entity = MagicMock()
+    filesystem_entity.entity_id = "sensor.fs"
+    filesystem_entity.unique_id = "abc_telemetry_filesystems_slash_dev_slash_sda1"
+
+    entity_registry = MagicMock()
+    entity_registry.async_update_entity = MagicMock(
+        return_value=MagicMock(entity_id=filesystem_entity.entity_id, unique_id="updated")
+    )
+    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(
+        init_mod.er,
+        "async_entries_for_config_entry",
+        lambda registry, config_entry_id: [filesystem_entity],
+    )
+
+    config_entry = MagicMock()
+    config_entry.version = 3
+    config_entry.entry_id = "e3"
+
+    hass = MagicMock(spec=HomeAssistant)
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_update_entry = MagicMock(return_value=True)
+
+    result = await init_mod._migrate_3_to_4(hass, config_entry, client)
+
+    assert result is False
+    entity_registry.async_update_entity.assert_not_called()
+    hass.config_entries.async_update_entry.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1759,6 +1880,152 @@ async def test_async_setup_entry_with_device_tracker_enabled(
 
 
 @pytest.mark.asyncio
+async def test_async_setup_entry_cleans_up_when_device_tracker_refresh_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """async_setup_entry should clean up when device-tracker setup fails."""
+    client = _make_valid_setup_client()
+    monkeypatch.setattr(init_mod, "create_opnsense_client", lambda **_kwargs: client)
+
+    main_coordinator = _make_setup_coordinator()
+    device_tracker_coordinator = _make_setup_coordinator()
+    device_tracker_coordinator.async_config_entry_first_refresh = AsyncMock(
+        side_effect=RuntimeError("device tracker refresh failed")
+    )
+
+    coordinators = [main_coordinator, device_tracker_coordinator]
+
+    def _coordinator_factory(**_kwargs: Any) -> Any:
+        """Return setup coordinators in creation order."""
+        return coordinators.pop(0)
+
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", _coordinator_factory)
+
+    entry = make_config_entry(
+        data={
+            init_mod.CONF_URL: "http://1.2.3.4",
+            init_mod.CONF_USERNAME: "u",
+            init_mod.CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+        },
+        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: True},
+    )
+
+    hass = ph_hass
+    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+    hass.config_entries.async_reload = MagicMock()
+    hass.data = {}
+
+    with pytest.raises(RuntimeError, match="device tracker refresh failed"):
+        await init_mod.async_setup_entry(hass, entry)
+
+    main_coordinator.async_shutdown.assert_awaited_once()
+    device_tracker_coordinator.async_shutdown.assert_awaited_once()
+    client.async_close.assert_awaited_once()
+    assert entry.entry_id not in hass.data.get(init_mod.DOMAIN, {})
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_cleans_up_when_platform_forwarding_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """async_setup_entry should clean up when platform forwarding fails."""
+    client = _make_valid_setup_client()
+    monkeypatch.setattr(init_mod, "create_opnsense_client", lambda **_kwargs: client)
+
+    coordinator = _make_setup_coordinator()
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+
+    entry = make_config_entry(
+        data={
+            init_mod.CONF_URL: "http://1.2.3.4",
+            init_mod.CONF_USERNAME: "u",
+            init_mod.CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+        },
+        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+    )
+    remove_listener = MagicMock()
+    entry.add_update_listener = MagicMock(return_value=remove_listener)
+    entry.async_on_unload = MagicMock(return_value=None)
+
+    hass = ph_hass
+    hass.config_entries.async_forward_entry_setups = AsyncMock(
+        side_effect=RuntimeError("platform forwarding failed")
+    )
+    hass.config_entries.async_reload = MagicMock()
+    hass.data = {}
+
+    with pytest.raises(RuntimeError, match="platform forwarding failed"):
+        await init_mod.async_setup_entry(hass, entry)
+
+    coordinator.async_shutdown.assert_awaited_once()
+    client.async_close.assert_awaited_once()
+    entry.add_update_listener.assert_called_once()
+    entry.async_on_unload.assert_called_once_with(remove_listener)
+    remove_listener.assert_not_called()
+    assert entry.entry_id not in hass.data.get(init_mod.DOMAIN, {})
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_registers_update_listener_before_forwarding(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Update listener registration should happen before platform forwarding."""
+    call_order: list[str] = []
+
+    client = _make_valid_setup_client()
+    monkeypatch.setattr(init_mod, "create_opnsense_client", lambda **_kwargs: client)
+
+    coordinator = _make_setup_coordinator()
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+
+    entry = make_config_entry(
+        data={
+            init_mod.CONF_URL: "http://1.2.3.4",
+            init_mod.CONF_USERNAME: "u",
+            init_mod.CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+        },
+        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+    )
+    remove_listener = MagicMock()
+
+    def _add_update_listener(listener: Any) -> MagicMock:
+        call_order.append("add_listener")
+        return remove_listener
+
+    def _async_on_unload(unregister: MagicMock) -> None:
+        call_order.append("async_on_unload")
+
+    entry.add_update_listener = MagicMock(side_effect=_add_update_listener)
+    entry.async_on_unload = MagicMock(side_effect=_async_on_unload)
+
+    async def _forward_entry_setups(*_args: Any, **_kwargs: Any) -> bool:
+        call_order.append("forward")
+        return True
+
+    hass = ph_hass
+    hass.config_entries.async_forward_entry_setups = AsyncMock(side_effect=_forward_entry_setups)
+    hass.config_entries.async_reload = MagicMock()
+    hass.data = {}
+
+    res = await init_mod.async_setup_entry(hass, entry)
+
+    assert res is True
+    assert call_order.index("add_listener") < call_order.index("forward")
+    entry.add_update_listener.assert_called_once_with(init_mod._async_update_listener)
+    entry.async_on_unload.assert_called_once_with(remove_listener)
+    remove_listener.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_migrate_2_to_3_handles_identifier_collision(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
@@ -1805,3 +2072,55 @@ async def test_migrate_2_to_3_handles_identifier_collision(
 
     res = await init_mod._migrate_2_to_3(hass, cfg, client)
     assert res is True
+
+
+@pytest.mark.asyncio
+async def test_migrate_3_to_4_defers_without_updating_entities_when_later_filesystem_invalid(
+    monkeypatch: pytest.MonkeyPatch, ph_hass: Any
+) -> None:
+    """A valid filesystem before a malformed filesystem should not partially migrate or bump version."""
+    client = MagicMock()
+    client.get_telemetry = AsyncMock(
+        return_value={
+            "filesystems": [
+                {"device": "/dev/sda1", "mountpoint": "/"},
+                {"device": 7, "mountpoint": "/data"},
+            ]
+        }
+    )
+
+    migration_entry = MagicMock()
+    migration_entry.entry_id = "entry"
+    migration_entry.version = 3
+
+    first_filesystem_entity = MagicMock(
+        entity_id="sensor.router_telemetry_filesystems_slash_dev_slash_sda1",
+        unique_id="router_telemetry_filesystems_slash_dev_slash_sda1",
+    )
+    second_filesystem_entity = MagicMock(
+        entity_id="sensor.router_telemetry_filesystems_slash_dev_slash_sdb1",
+        unique_id="router_telemetry_filesystems_slash_dev_slash_sdb1",
+    )
+
+    hass = ph_hass
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_update_entry = MagicMock(return_value=True)
+
+    entity_registry = MagicMock()
+    entity_registry.async_entries_for_config_entry = lambda _registry, _config_entry_id: [
+        first_filesystem_entity,
+        second_filesystem_entity,
+    ]
+    entity_registry.async_update_entity = MagicMock()
+    monkeypatch.setattr(init_mod.er, "async_get", lambda _hass: entity_registry)
+    monkeypatch.setattr(
+        init_mod.er,
+        "async_entries_for_config_entry",
+        entity_registry.async_entries_for_config_entry,
+    )
+
+    res = await init_mod._migrate_3_to_4(hass, migration_entry, client)
+
+    assert res is False
+    entity_registry.async_update_entity.assert_not_called()
+    hass.config_entries.async_update_entry.assert_not_called()
