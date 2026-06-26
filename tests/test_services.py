@@ -14,7 +14,22 @@ import pytest
 import voluptuous as vol
 
 from custom_components.opnsense import services as services_mod
-from custom_components.opnsense.const import DOMAIN, SERVICE_GET_VNSTAT_METRICS
+from custom_components.opnsense.const import (
+    DOMAIN,
+    SERVICE_CLOSE_NOTICE,
+    SERVICE_GENERATE_VOUCHERS,
+    SERVICE_GET_VNSTAT_METRICS,
+    SERVICE_KILL_STATES,
+    SERVICE_RELOAD_INTERFACE,
+    SERVICE_RESTART_SERVICE,
+    SERVICE_RUN_SPEEDTEST,
+    SERVICE_SEND_WOL,
+    SERVICE_START_SERVICE,
+    SERVICE_STOP_SERVICE,
+    SERVICE_SYSTEM_HALT,
+    SERVICE_SYSTEM_REBOOT,
+    SERVICE_TOGGLE_ALIAS,
+)
 
 
 @pytest.mark.asyncio
@@ -42,6 +57,58 @@ async def test_async_setup_services_registers_get_vnstat_metrics_case_insensitiv
     assert validated["period"] == "yearly"
     with pytest.raises(vol.Invalid):
         schema({"period": "weekly"})
+
+
+@pytest.mark.asyncio
+async def test_async_setup_services_registers_expected_service_contracts() -> None:
+    """Service setup registers every OPNsense action with expected response behavior."""
+    hass = MagicMock(spec=HomeAssistant)
+    hass.services = MagicMock()
+    hass.services.async_register = MagicMock()
+
+    await services_mod.async_setup_services(hass)
+
+    registrations = {
+        call.kwargs["service"]: call.kwargs for call in hass.services.async_register.call_args_list
+    }
+
+    assert list(registrations) == [
+        SERVICE_CLOSE_NOTICE,
+        SERVICE_START_SERVICE,
+        SERVICE_STOP_SERVICE,
+        SERVICE_RESTART_SERVICE,
+        SERVICE_SYSTEM_HALT,
+        SERVICE_SYSTEM_REBOOT,
+        SERVICE_SEND_WOL,
+        SERVICE_RELOAD_INTERFACE,
+        SERVICE_GENERATE_VOUCHERS,
+        SERVICE_KILL_STATES,
+        SERVICE_RUN_SPEEDTEST,
+        SERVICE_GET_VNSTAT_METRICS,
+        SERVICE_TOGGLE_ALIAS,
+    ]
+    assert registrations[SERVICE_GENERATE_VOUCHERS]["supports_response"] == SupportsResponse.ONLY
+    assert registrations[SERVICE_KILL_STATES]["supports_response"] == SupportsResponse.OPTIONAL
+    assert registrations[SERVICE_RUN_SPEEDTEST]["supports_response"] == SupportsResponse.ONLY
+    assert registrations[SERVICE_GET_VNSTAT_METRICS]["supports_response"] == SupportsResponse.ONLY
+    for service in (
+        SERVICE_CLOSE_NOTICE,
+        SERVICE_START_SERVICE,
+        SERVICE_STOP_SERVICE,
+        SERVICE_RESTART_SERVICE,
+        SERVICE_SYSTEM_HALT,
+        SERVICE_SYSTEM_REBOOT,
+        SERVICE_SEND_WOL,
+        SERVICE_RELOAD_INTERFACE,
+        SERVICE_TOGGLE_ALIAS,
+    ):
+        assert "supports_response" not in registrations[service]
+
+    registrations[SERVICE_START_SERVICE]["schema"]({"service_id": "svc"})
+    registrations[SERVICE_STOP_SERVICE]["schema"]({"service_name": "svc"})
+    registrations[SERVICE_RESTART_SERVICE]["schema"]({"service_id": "svc", "only_if_running": True})
+    with pytest.raises(vol.Invalid):
+        registrations[SERVICE_START_SERVICE]["schema"]({})
 
 
 @pytest.mark.asyncio
@@ -229,7 +296,7 @@ async def test_service_start_stop_restart_success_and_failure(
 
 @pytest.mark.asyncio
 async def test_service_restart_only_if_running_and_reload_interface(
-    monkeypatch: pytest.MonkeyPatch, ph_hass: Any
+    monkeypatch: pytest.MonkeyPatch, ph_hass: Any, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Restart service honors only_if_running and reload_interface behavior."""
     c1 = MagicMock()
@@ -254,8 +321,11 @@ async def test_service_restart_only_if_running_and_reload_interface(
 
     monkeypatch.setattr(services_mod, "_get_clients", fake_get)
     # should not raise
+    caplog.set_level("DEBUG", logger=services_mod.__name__)
     await services_mod._service_restart_service(hass, call)
     c1.restart_service_if_running.assert_awaited_once_with("svc")
+    assert "[service_restart_service] restart_service_if_running, client: c1" in caplog.text
+    assert "[service_restart_service] restart_service_if_running] client: c1" not in caplog.text
     # Ensure the non-conditional restart path was not used
     c1.restart_service.assert_not_awaited()
 

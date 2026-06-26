@@ -331,6 +331,26 @@ async def _get_clients(
     return clients
 
 
+async def _get_target_clients(
+    hass: HomeAssistant,
+    call: ServiceCall,
+) -> list[OPNsenseServiceClient]:
+    """Return OPNsense clients targeted by a Home Assistant service call.
+
+    Args:
+        hass: Home Assistant instance.
+        call: Service call payload received from Home Assistant.
+
+    Returns:
+        list[OPNsenseServiceClient]: Selected OPNsense clients.
+    """
+    return await _get_clients(
+        hass=hass,
+        opndevice_id=call.data.get("device_id"),
+        opnentity_id=call.data.get("entity_id"),
+    )
+
+
 def _get_service_identifier(call: ServiceCall) -> str:
     """Return the OPNsense service identifier from a service call.
 
@@ -352,6 +372,7 @@ def _get_service_identifier(call: ServiceCall) -> str:
 async def _run_boolean_client_action(
     clients: list[OPNsenseServiceClient],
     log_prefix: str,
+    action_name: str | None,
     target_name: str,
     target_value: Any,
     failure_message: str,
@@ -362,6 +383,7 @@ async def _run_boolean_client_action(
     Args:
         clients: OPNsense clients selected for the service call.
         log_prefix: Prefix used in the debug log message.
+        action_name: Optional action variant to include after the log prefix.
         target_name: Human-readable target field name for logs.
         target_value: Target value passed to the client action.
         failure_message: Error message to raise if no clients or any client action fails.
@@ -373,9 +395,11 @@ async def _run_boolean_client_action(
     success: bool | None = None
     for client in clients:
         response = await action(client)
+        log_action = f"{action_name}, " if action_name else ""
         _LOGGER.debug(
-            "[%s] client: %s, %s: %s, response: %s",
+            "[%s] %sclient: %s, %s: %s, response: %s",
             log_prefix,
+            log_action,
             client.name,
             target_name,
             target_value,
@@ -387,6 +411,49 @@ async def _run_boolean_client_action(
         raise ServiceValidationError(failure_message)
 
 
+async def _collect_mapping_results(
+    clients: list[OPNsenseServiceClient],
+    log_prefix: str,
+    failure_message: str,
+    action: Callable[[OPNsenseServiceClient], Awaitable[Any]],
+    action_context: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Collect non-empty mapping responses from selected clients.
+
+    Args:
+        clients: OPNsense clients selected for the service call.
+        log_prefix: Prefix used in the debug log message.
+        failure_message: Error message to raise if no clients return data.
+        action: Awaitable client action returning a mapping payload.
+        action_context: Optional values to include in debug logs.
+
+    Returns:
+        list[dict[str, Any]]: Per-client mapping results with ``client_name`` included.
+
+    Raises:
+        ServiceValidationError: If no selected client returns a non-empty mapping.
+    """
+    response_list: list[dict[str, Any]] = []
+    for client in clients:
+        response = await action(client)
+        _LOGGER.debug(
+            "[%s] client: %s, context: %s, response: %s",
+            log_prefix,
+            client.name,
+            action_context or {},
+            response,
+        )
+        if not isinstance(response, MutableMapping) or len(response) == 0:
+            continue
+        result: dict[str, Any] = {"client_name": client.name}
+        result.update(dict(response))
+        response_list.append(result)
+
+    if len(response_list) == 0:
+        raise ServiceValidationError(failure_message)
+    return response_list
+
+
 async def _service_close_notice(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle the close notice service call.
 
@@ -395,11 +462,7 @@ async def _service_close_notice(hass: HomeAssistant, call: ServiceCall) -> None:
         services.
         call: Service call payload received from Home Assistant.
     """
-    clients: list = await _get_clients(
-        hass=hass,
-        opndevice_id=call.data.get("device_id", []),
-        opnentity_id=call.data.get("entity_id", []),
-    )
+    clients = await _get_target_clients(hass, call)
     for client in clients:
         _LOGGER.debug(
             "[service_close_notice] client: %s, service: %s",
@@ -422,14 +485,11 @@ async def _service_start_service(hass: HomeAssistant, call: ServiceCall) -> None
         required value.
     """
     service_identifier = _get_service_identifier(call)
-    clients: list = await _get_clients(
-        hass=hass,
-        opndevice_id=call.data.get("device_id", []),
-        opnentity_id=call.data.get("entity_id", []),
-    )
+    clients = await _get_target_clients(hass, call)
     await _run_boolean_client_action(
         clients=clients,
         log_prefix="service_start_service",
+        action_name=None,
         target_name="service",
         target_value=service_identifier,
         failure_message=f"Start Service Failed. service: {service_identifier}",
@@ -450,14 +510,11 @@ async def _service_stop_service(hass: HomeAssistant, call: ServiceCall) -> None:
         required value.
     """
     service_identifier = _get_service_identifier(call)
-    clients: list = await _get_clients(
-        hass=hass,
-        opndevice_id=call.data.get("device_id", []),
-        opnentity_id=call.data.get("entity_id", []),
-    )
+    clients = await _get_target_clients(hass, call)
     await _run_boolean_client_action(
         clients=clients,
         log_prefix="service_stop_service",
+        action_name=None,
         target_name="service",
         target_value=service_identifier,
         failure_message=f"Stop Service Failed. service: {service_identifier}",
@@ -478,15 +535,12 @@ async def _service_restart_service(hass: HomeAssistant, call: ServiceCall) -> No
         required value.
     """
     service_identifier = _get_service_identifier(call)
-    clients: list = await _get_clients(
-        hass=hass,
-        opndevice_id=call.data.get("device_id", []),
-        opnentity_id=call.data.get("entity_id", []),
-    )
+    clients = await _get_target_clients(hass, call)
     if call.data.get("only_if_running"):
         await _run_boolean_client_action(
             clients=clients,
-            log_prefix="service_restart_service] restart_service_if_running",
+            log_prefix="service_restart_service",
+            action_name="restart_service_if_running",
             target_name="service",
             target_value=service_identifier,
             failure_message=f"Restart Service Failed. service: {service_identifier}",
@@ -495,7 +549,8 @@ async def _service_restart_service(hass: HomeAssistant, call: ServiceCall) -> No
     else:
         await _run_boolean_client_action(
             clients=clients,
-            log_prefix="service_restart_service] restart_service",
+            log_prefix="service_restart_service",
+            action_name="restart_service",
             target_name="service",
             target_value=service_identifier,
             failure_message=f"Restart Service Failed. service: {service_identifier}",
@@ -511,11 +566,7 @@ async def _service_system_halt(hass: HomeAssistant, call: ServiceCall) -> None:
         services.
         call: Service call payload received from Home Assistant.
     """
-    clients: list = await _get_clients(
-        hass=hass,
-        opndevice_id=call.data.get("device_id", []),
-        opnentity_id=call.data.get("entity_id", []),
-    )
+    clients = await _get_target_clients(hass, call)
     for client in clients:
         _LOGGER.debug("[service_system_halt] client: %s", client.name)
         await client.system_halt()
@@ -529,11 +580,7 @@ async def _service_system_reboot(hass: HomeAssistant, call: ServiceCall) -> None
         services.
         call: Service call payload received from Home Assistant.
     """
-    clients: list = await _get_clients(
-        hass=hass,
-        opndevice_id=call.data.get("device_id", []),
-        opnentity_id=call.data.get("entity_id", []),
-    )
+    clients = await _get_target_clients(hass, call)
     for client in clients:
         _LOGGER.debug("[service_system_reboot] client: %s", client.name)
         await client.system_reboot()
@@ -547,11 +594,7 @@ async def _service_send_wol(hass: HomeAssistant, call: ServiceCall) -> None:
         services.
         call: Service call payload received from Home Assistant.
     """
-    clients: list = await _get_clients(
-        hass=hass,
-        opndevice_id=call.data.get("device_id", []),
-        opnentity_id=call.data.get("entity_id", []),
-    )
+    clients = await _get_target_clients(hass, call)
     for client in clients:
         _LOGGER.debug(
             "[service_send_wol] client: %s, interface: %s, mac: %s",
@@ -574,15 +617,12 @@ async def _service_reload_interface(hass: HomeAssistant, call: ServiceCall) -> N
         ServiceValidationError: If the service call payload is missing a valid target or
         required value.
     """
-    clients: list = await _get_clients(
-        hass=hass,
-        opndevice_id=call.data.get("device_id", []),
-        opnentity_id=call.data.get("entity_id", []),
-    )
+    clients = await _get_target_clients(hass, call)
     interface = call.data.get("interface")
     await _run_boolean_client_action(
         clients=clients,
         log_prefix="service_reload_interface",
+        action_name=None,
         target_name="interface",
         target_value=interface,
         failure_message=f"Reload Interface Failed: {interface}",
@@ -602,11 +642,7 @@ async def _service_generate_vouchers(hass: HomeAssistant, call: ServiceCall) -> 
         ServiceValidationError: If the service call payload is missing a valid target or
         required value.
     """
-    clients: list = await _get_clients(
-        hass=hass,
-        opndevice_id=call.data.get("device_id", []),
-        opnentity_id=call.data.get("entity_id", []),
-    )
+    clients = await _get_target_clients(hass, call)
     voucher_list: list = []
     for client in clients:
         try:
@@ -643,11 +679,7 @@ async def _service_kill_states(hass: HomeAssistant, call: ServiceCall) -> Servic
         ServiceValidationError: If the service call payload is missing a valid target or
         required value.
     """
-    clients: list = await _get_clients(
-        hass=hass,
-        opndevice_id=call.data.get("device_id", []),
-        opnentity_id=call.data.get("entity_id", []),
-    )
+    clients = await _get_target_clients(hass, call)
     success: bool | None = None
     response_list: list = []
     for client in clients:
@@ -686,25 +718,15 @@ async def _service_run_speedtest(hass: HomeAssistant, call: ServiceCall) -> Serv
     Returns:
         ServiceResponse: Response payload containing per-client speedtest results.
     """
-    clients: list = await _get_clients(
-        hass=hass,
-        opndevice_id=call.data.get("device_id", []),
-        opnentity_id=call.data.get("entity_id", []),
-    )
-    response_list: list[dict[str, Any]] = []
-    for client in clients:
-        response = await client.run_speedtest()
-        _LOGGER.debug("[service_run_speedtest] client: %s, response: %s", client.name, response)
-        if not isinstance(response, MutableMapping) or len(response) == 0:
-            continue
-        run_result: dict[str, Any] = {"client_name": client.name}
-        run_result.update(dict(response))
-        response_list.append(run_result)
-
-    if len(response_list) == 0:
-        raise ServiceValidationError(
+    clients = await _get_target_clients(hass, call)
+    response_list = await _collect_mapping_results(
+        clients=clients,
+        log_prefix="service_run_speedtest",
+        failure_message=(
             "Run Speedtest Failed. No selected OPNsense clients have Speedtest installed"
-        )
+        ),
+        action=lambda client: client.run_speedtest(),
+    )
     return_response: dict[str, Any] = {"results": response_list}
     _LOGGER.debug("[service_run_speedtest] return_response: %s", return_response)
     return return_response
@@ -721,31 +743,15 @@ async def _service_get_vnstat_metrics(hass: HomeAssistant, call: ServiceCall) ->
     Returns:
         ServiceResponse: Parsed per-client vnStat payloads from the requested endpoint.
     """
-    clients: list = await _get_clients(
-        hass=hass,
-        opndevice_id=call.data.get("device_id", []),
-        opnentity_id=call.data.get("entity_id", []),
-    )
+    clients = await _get_target_clients(hass, call)
     requested_period: str = call.data["period"]
-    response_list: list[dict[str, Any]] = []
-    for client in clients:
-        response = await client.get_vnstat_metrics(requested_period)
-        _LOGGER.debug(
-            "[service_get_vnstat_metrics] client: %s, period: %s, response: %s",
-            client.name,
-            requested_period,
-            response,
-        )
-        if not isinstance(response, MutableMapping) or len(response) == 0:
-            continue
-        metric_result: dict[str, Any] = {"client_name": client.name}
-        metric_result.update(dict(response))
-        response_list.append(metric_result)
-
-    if len(response_list) == 0:
-        raise ServiceValidationError(
-            "Get vnStat Metrics Failed. No selected OPNsense clients vnStat installed"
-        )
+    response_list = await _collect_mapping_results(
+        clients=clients,
+        log_prefix="service_get_vnstat_metrics",
+        failure_message="Get vnStat Metrics Failed. No selected OPNsense clients vnStat installed",
+        action=lambda client: client.get_vnstat_metrics(requested_period),
+        action_context={"period": requested_period},
+    )
     return_response: dict[str, Any] = {"results": response_list}
     _LOGGER.debug("[service_get_vnstat_metrics] return_response: %s", return_response)
     return return_response
@@ -763,16 +769,13 @@ async def _service_toggle_alias(hass: HomeAssistant, call: ServiceCall) -> None:
         ServiceValidationError: If the service call payload is missing a valid target or
         required value.
     """
-    clients: list = await _get_clients(
-        hass=hass,
-        opndevice_id=call.data.get("device_id", []),
-        opnentity_id=call.data.get("entity_id", []),
-    )
+    clients = await _get_target_clients(hass, call)
     alias = call.data.get("alias")
     toggle_on_off = call.data.get("toggle_on_off")
     await _run_boolean_client_action(
         clients=clients,
         log_prefix="service_toggle_alias",
+        action_name=None,
         target_name="alias",
         target_value=alias,
         failure_message=f"Toggle Alias Failed. alias: {alias}, action: {toggle_on_off}",
