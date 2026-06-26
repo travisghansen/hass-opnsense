@@ -203,7 +203,7 @@ def _normalize_int_option(value: Any, minimum: int, maximum: int) -> int:
     """
     try:
         coerced = int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         coerced = minimum
     return max(minimum, min(maximum, coerced))
 
