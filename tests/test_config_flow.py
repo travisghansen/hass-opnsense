@@ -515,6 +515,48 @@ def test_build_user_input_and_granular_and_options_schemas_defaults() -> None:
     assert cf_mod.CONF_DEVICE_TRACKING_MODE in out
 
 
+def test_schema_builders_preserve_submitted_values_before_fallbacks() -> None:
+    """Schema defaults should prefer submitted values, then stored fallbacks, then constants."""
+    user_schema = cf_mod._build_user_input_schema(
+        user_input={
+            cf_mod.CONF_URL: "https://submitted.example",
+            cf_mod.CONF_GRANULAR_SYNC_OPTIONS: False,
+        },
+        stored_values={
+            cf_mod.CONF_URL: "https://stored.example",
+            cf_mod.CONF_GRANULAR_SYNC_OPTIONS: True,
+        },
+    )
+    user_values = user_schema({})
+    assert user_values[cf_mod.CONF_URL] == "https://submitted.example"
+    assert user_values[cf_mod.CONF_GRANULAR_SYNC_OPTIONS] is False
+
+    granular_schema = cf_mod._build_granular_sync_schema(
+        user_input={CONF_SYNC_SMART: False},
+        stored_values={CONF_SYNC_SMART: True, CONF_SYNC_TELEMETRY: False},
+    )
+    granular_values = granular_schema({})
+    assert granular_values[CONF_SYNC_SMART] is False
+    assert granular_values[CONF_SYNC_TELEMETRY] is False
+
+    options_schema = cf_mod._build_options_init_schema(
+        user_input={
+            cf_mod.CONF_SCAN_INTERVAL: 45,
+            cf_mod.CONF_DEVICE_TRACKING_MODE: cf_mod.DEVICE_TRACKING_MODE_SELECTED,
+        },
+        stored_config={cf_mod.CONF_GRANULAR_SYNC_OPTIONS: True},
+        stored_options={
+            cf_mod.CONF_SCAN_INTERVAL: 120,
+            cf_mod.CONF_DEVICE_TRACKER_ENABLED: True,
+            cf_mod.CONF_DEVICES: [],
+        },
+    )
+    options_values = options_schema({})
+    assert options_values[cf_mod.CONF_SCAN_INTERVAL] == 45
+    assert options_values[cf_mod.CONF_DEVICE_TRACKING_MODE] == cf_mod.DEVICE_TRACKING_MODE_SELECTED
+    assert options_values[cf_mod.CONF_GRANULAR_SYNC_OPTIONS] is True
+
+
 @pytest.mark.parametrize(
     ("input_value", "expected"),
     [

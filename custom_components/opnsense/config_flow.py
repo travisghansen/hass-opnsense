@@ -470,146 +470,123 @@ def _record_validation_error(errors: MutableMapping[str, Any], key: str, message
 
 
 def _build_user_input_schema(
-    user_input: MutableMapping[str, Any] | None,
-    fallback: MutableMapping[str, Any] | None = None,
+    user_input: Mapping[str, Any] | None,
+    stored_values: Mapping[str, Any] | None = None,
     reconf: bool = False,
 ) -> vol.Schema:
     """Build user input schema.
 
     Args:
         user_input: Values submitted for the current configuration or options flow step.
-        fallback: Fallback values used when the current form input does not include a field.
+        stored_values: Stored config-entry values used to prefill the form.
         reconf: Whether the schema is being built for the reconfigure flow instead of initial setup.
 
     Returns:
         vol.Schema: Form schema for the base connection step.
     """
-    if user_input is None:
-        user_input = {}
-    if fallback is None:
-        fallback = {}
+    defaults = {
+        CONF_URL: "https://",
+        CONF_VERIFY_SSL: DEFAULT_VERIFY_SSL,
+        CONF_USERNAME: "",
+        CONF_PASSWORD: "",
+        CONF_NAME: "",
+        CONF_GRANULAR_SYNC_OPTIONS: DEFAULT_GRANULAR_SYNC_OPTIONS,
+        **(stored_values or {}),
+        **(user_input or {}),
+    }
 
-    schema = vol.Schema(
-        {
-            vol.Required(
-                CONF_URL, default=user_input.get(CONF_URL, fallback.get(CONF_URL, "https://"))
-            ): str,
-            vol.Optional(
-                CONF_VERIFY_SSL,
-                default=user_input.get(
-                    CONF_VERIFY_SSL, fallback.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
-                ),
-            ): bool,
-            vol.Required(
-                CONF_USERNAME,
-                default=user_input.get(CONF_USERNAME, fallback.get(CONF_USERNAME, "")),
-            ): str,
-            vol.Required(
-                CONF_PASSWORD,
-                default=user_input.get(CONF_PASSWORD, fallback.get(CONF_PASSWORD, "")),
-            ): str,
-        }
-    )
+    schema_fields: dict[Any, Any] = {
+        vol.Required(CONF_URL, default=defaults[CONF_URL]): str,
+        vol.Optional(CONF_VERIFY_SSL, default=defaults[CONF_VERIFY_SSL]): bool,
+        vol.Required(CONF_USERNAME, default=defaults[CONF_USERNAME]): str,
+        vol.Required(CONF_PASSWORD, default=defaults[CONF_PASSWORD]): str,
+    }
     if not reconf:
-        schema = schema.extend(
+        schema_fields.update(
             {
-                vol.Optional(
-                    CONF_NAME, default=user_input.get(CONF_NAME, fallback.get(CONF_NAME, ""))
-                ): str,
+                vol.Optional(CONF_NAME, default=defaults[CONF_NAME]): str,
                 vol.Required(
                     CONF_GRANULAR_SYNC_OPTIONS,
-                    default=user_input.get(
-                        CONF_GRANULAR_SYNC_OPTIONS,
-                        fallback.get(CONF_GRANULAR_SYNC_OPTIONS, DEFAULT_GRANULAR_SYNC_OPTIONS),
-                    ),
+                    default=defaults[CONF_GRANULAR_SYNC_OPTIONS],
                 ): selector.BooleanSelector(selector.BooleanSelectorConfig()),
             }
         )
-    return schema
+    return vol.Schema(schema_fields)
 
 
 def _build_granular_sync_schema(
-    user_input: MutableMapping[str, Any] | None,
-    fallback: MutableMapping[str, Any] | None = None,
+    user_input: Mapping[str, Any] | None,
+    stored_values: Mapping[str, Any] | None = None,
 ) -> vol.Schema:
     """Build granular sync schema.
 
     Args:
         user_input: Values submitted for the current configuration or options flow step.
-        fallback: Stored sync option values used to prefill the granular sync form.
+        stored_values: Stored sync option values used to prefill the granular sync form.
 
     Returns:
         vol.Schema: Form schema containing all granular sync toggles.
     """
-    if user_input is None:
-        user_input = {}
-    if fallback is None:
-        fallback = {}
+    defaults = dict.fromkeys(GRANULAR_SYNC_ITEMS, DEFAULT_SYNC_OPTION_VALUE) | {
+        **(stored_values or {}),
+        **(user_input or {}),
+    }
 
-    schema_dict: dict[Any, Any] = {}
-
-    for conf in GRANULAR_SYNC_ITEMS:
-        schema_dict[
+    return vol.Schema(
+        {
             vol.Optional(
                 conf,
-                default=user_input.get(
-                    conf,
-                    fallback.get(conf, DEFAULT_SYNC_OPTION_VALUE),
-                ),
-            )
-        ] = selector.BooleanSelector(selector.BooleanSelectorConfig())
-
-    return vol.Schema(schema_dict)
+                default=defaults[conf],
+            ): selector.BooleanSelector(selector.BooleanSelectorConfig())
+            for conf in GRANULAR_SYNC_ITEMS
+        }
+    )
 
 
 def _build_options_init_schema(
-    user_input: MutableMapping[str, Any] | None,
-    fallback_config: MutableMapping[str, Any] | None = None,
-    fallback_options: MutableMapping[str, Any] | None = None,
+    user_input: Mapping[str, Any] | None,
+    stored_config: Mapping[str, Any] | None = None,
+    stored_options: Mapping[str, Any] | None = None,
 ) -> vol.Schema:
     """Build options init schema.
 
     Args:
         user_input: Values submitted for the current configuration or options flow step.
-        fallback_config: Config-entry data used when an option has not been overridden yet.
-        fallback_options: Existing options used to populate the initial options-flow form.
+        stored_config: Config-entry data used when an option has not been overridden yet.
+        stored_options: Existing options used to populate the initial options-flow form.
 
     Returns:
         vol.Schema: Form schema for the options-flow initial step.
     """
-    if user_input is None:
-        user_input = {}
-    if fallback_config is None:
-        fallback_config = {}
-    if fallback_options is None:
-        fallback_options = {}
-
-    tracking_mode = str(
-        user_input.get(
-            CONF_DEVICE_TRACKING_MODE,
-            _get_device_tracking_mode(
-                bool(
-                    fallback_options.get(
-                        CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED
-                    )
-                ),
-                fallback_options.get(CONF_DEVICES, []),
-            ),
-        )
+    stored_options = stored_options or {}
+    tracking_mode = _get_device_tracking_mode(
+        bool(stored_options.get(CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED)),
+        stored_options.get(CONF_DEVICES, []),
     )
+
+    config_values = stored_config or {}
+    granular_sync_options = config_values.get(
+        CONF_GRANULAR_SYNC_OPTIONS, DEFAULT_GRANULAR_SYNC_OPTIONS
+    )
+    defaults = {
+        CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
+        CONF_DEVICE_TRACKER_SCAN_INTERVAL: DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
+        CONF_DEVICE_TRACKER_CONSIDER_HOME: DEFAULT_DEVICE_TRACKER_CONSIDER_HOME,
+        **stored_options,
+        CONF_DEVICE_TRACKING_MODE: tracking_mode,
+        CONF_GRANULAR_SYNC_OPTIONS: granular_sync_options,
+        **(user_input or {}),
+    }
 
     return vol.Schema(
         {
             vol.Optional(
                 CONF_SCAN_INTERVAL,
-                default=user_input.get(
-                    CONF_SCAN_INTERVAL,
-                    fallback_options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
-                ),
+                default=defaults[CONF_SCAN_INTERVAL],
             ): vol.All(vol.Coerce(int), vol.Clamp(min=10, max=300)),
             vol.Required(
                 CONF_DEVICE_TRACKING_MODE,
-                default=tracking_mode,
+                default=str(defaults[CONF_DEVICE_TRACKING_MODE]),
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=[
@@ -623,28 +600,15 @@ def _build_options_init_schema(
             ),
             vol.Optional(
                 CONF_DEVICE_TRACKER_SCAN_INTERVAL,
-                default=user_input.get(
-                    CONF_DEVICE_TRACKER_SCAN_INTERVAL,
-                    fallback_options.get(
-                        CONF_DEVICE_TRACKER_SCAN_INTERVAL, DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL
-                    ),
-                ),
+                default=defaults[CONF_DEVICE_TRACKER_SCAN_INTERVAL],
             ): vol.All(vol.Coerce(int), vol.Clamp(min=30, max=300)),
             vol.Optional(
                 CONF_DEVICE_TRACKER_CONSIDER_HOME,
-                default=user_input.get(
-                    CONF_DEVICE_TRACKER_CONSIDER_HOME,
-                    fallback_options.get(
-                        CONF_DEVICE_TRACKER_CONSIDER_HOME, DEFAULT_DEVICE_TRACKER_CONSIDER_HOME
-                    ),
-                ),
+                default=defaults[CONF_DEVICE_TRACKER_CONSIDER_HOME],
             ): vol.All(vol.Coerce(int), vol.Clamp(min=0, max=3600)),
             vol.Optional(
                 CONF_GRANULAR_SYNC_OPTIONS,
-                default=user_input.get(
-                    CONF_GRANULAR_SYNC_OPTIONS,
-                    fallback_config.get(CONF_GRANULAR_SYNC_OPTIONS, DEFAULT_GRANULAR_SYNC_OPTIONS),
-                ),
+                default=defaults[CONF_GRANULAR_SYNC_OPTIONS],
             ): selector.BooleanSelector(selector.BooleanSelectorConfig()),
         }
     )
@@ -854,7 +818,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=_build_user_input_schema(
-                user_input=user_input, fallback=self._config, reconf=True
+                user_input=user_input, stored_values=self._config, reconf=True
             ),
             errors=errors,
             description_placeholders={
@@ -968,17 +932,16 @@ class OPNsenseOptionsFlow(OptionsFlow):
             if tracking_mode == DEVICE_TRACKING_MODE_SELECTED:
                 return await self.async_step_device_tracker()
 
-            if not errors:
-                self._options.pop(CONF_DEVICE_TRACKING_MODE, None)
-                self.hass.config_entries.async_update_entry(
-                    entry=self.config_entry, data=self._config, options=self._options
-                )
-                return self.async_create_entry(data=self._options)
+            self._options.pop(CONF_DEVICE_TRACKING_MODE, None)
+            self.hass.config_entries.async_update_entry(
+                entry=self.config_entry, data=self._config, options=self._options
+            )
+            return self.async_create_entry(data=self._options)
 
         return self.async_show_form(
             step_id="init",
             data_schema=_build_options_init_schema(
-                user_input=user_input, fallback_config=self._config, fallback_options=self._options
+                user_input=user_input, stored_config=self._config, stored_options=self._options
             ),
             errors=errors,
         )
@@ -1030,7 +993,7 @@ class OPNsenseOptionsFlow(OptionsFlow):
             step_id="granular_sync",
             data_schema=_build_granular_sync_schema(
                 user_input=user_input,
-                fallback=self._config,
+                stored_values=self._config,
             ),
             errors=errors,
         )
@@ -1065,12 +1028,11 @@ class OPNsenseOptionsFlow(OptionsFlow):
                 self._options.pop(CONF_DEVICES, None)
                 self._config.pop(TRACKED_MACS, None)
 
-            if not errors:
-                self._options.pop(CONF_DEVICE_TRACKING_MODE, None)
-                self.hass.config_entries.async_update_entry(
-                    entry=self.config_entry, data=self._config, options=self._options
-                )
-                return self.async_create_entry(data=self._options)
+            self._options.pop(CONF_DEVICE_TRACKING_MODE, None)
+            self.hass.config_entries.async_update_entry(
+                entry=self.config_entry, data=self._config, options=self._options
+            )
+            return self.async_create_entry(data=self._options)
 
         try:
             dt_entries: dict[str, Any] = await _get_dt_entries(
