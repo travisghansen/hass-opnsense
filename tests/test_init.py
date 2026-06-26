@@ -1227,7 +1227,7 @@ async def test_async_setup_entry_awesomeversion_exception(
 async def test_async_unload_entry_unload_fails(
     ph_hass: Any, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """async_unload_entry returns False and retains hass.data when platform unload fails."""
+    """async_unload_entry returns False and keeps runtime resources when unload fails."""
     entry = make_config_entry(entry_id="e_unload_fail")
     entry.as_dict = lambda: {"id": "x"}
     setattr(entry.runtime_data, init_mod.LOADED_PLATFORMS, ["p1"])
@@ -1243,7 +1243,7 @@ async def test_async_unload_entry_unload_fails(
     assert res is False
     # hass.data should still have the entry
     assert entry.entry_id in hass.data[init_mod.DOMAIN]
-    fake_client.async_close.assert_awaited_once()
+    fake_client.async_close.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -1805,6 +1805,105 @@ async def test_async_setup_entry_with_device_tracker_enabled(
     # ensure a device-tracker coordinator was created and its initial refresh ran
     assert any(getattr(inst, "_is_device_tracker", False) for inst in coordinator_capture.instances)
     assert any(getattr(inst, "refreshed", False) for inst in coordinator_capture.instances)
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_cleans_up_when_device_tracker_refresh_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """async_setup_entry should clean up when device-tracker setup fails."""
+    client = MagicMock()
+    client.validate = AsyncMock(return_value=True)
+    client.get_device_unique_id = AsyncMock(return_value="dev1")
+    client.get_host_firmware_version = AsyncMock(return_value="99.0")
+    client.async_close = AsyncMock(return_value=True)
+    monkeypatch.setattr(init_mod, "create_opnsense_client", lambda **_kwargs: client)
+
+    main_coordinator = MagicMock()
+    main_coordinator.async_config_entry_first_refresh = AsyncMock(return_value=True)
+    main_coordinator.async_shutdown = AsyncMock(return_value=True)
+    device_tracker_coordinator = MagicMock()
+    device_tracker_coordinator.async_config_entry_first_refresh = AsyncMock(
+        side_effect=RuntimeError("device tracker refresh failed")
+    )
+    device_tracker_coordinator.async_shutdown = AsyncMock(return_value=True)
+
+    coordinators = [main_coordinator, device_tracker_coordinator]
+
+    def _coordinator_factory(**_kwargs: Any) -> Any:
+        """Return setup coordinators in creation order."""
+        return coordinators.pop(0)
+
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", _coordinator_factory)
+
+    entry = make_config_entry(
+        data={
+            init_mod.CONF_URL: "http://1.2.3.4",
+            init_mod.CONF_USERNAME: "u",
+            init_mod.CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+        },
+        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: True},
+    )
+
+    hass = ph_hass
+    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+    hass.config_entries.async_reload = MagicMock()
+    hass.data = {}
+
+    with pytest.raises(RuntimeError, match="device tracker refresh failed"):
+        await init_mod.async_setup_entry(hass, entry)
+
+    main_coordinator.async_shutdown.assert_awaited_once()
+    device_tracker_coordinator.async_shutdown.assert_awaited_once()
+    client.async_close.assert_awaited_once()
+    assert entry.entry_id not in hass.data.get(init_mod.DOMAIN, {})
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_cleans_up_when_platform_forwarding_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """async_setup_entry should clean up when platform forwarding fails."""
+    client = MagicMock()
+    client.validate = AsyncMock(return_value=True)
+    client.get_device_unique_id = AsyncMock(return_value="dev1")
+    client.get_host_firmware_version = AsyncMock(return_value="99.0")
+    client.async_close = AsyncMock(return_value=True)
+    monkeypatch.setattr(init_mod, "create_opnsense_client", lambda **_kwargs: client)
+
+    coordinator = MagicMock()
+    coordinator.async_config_entry_first_refresh = AsyncMock(return_value=True)
+    coordinator.async_shutdown = AsyncMock(return_value=True)
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+
+    entry = make_config_entry(
+        data={
+            init_mod.CONF_URL: "http://1.2.3.4",
+            init_mod.CONF_USERNAME: "u",
+            init_mod.CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+        },
+        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+    )
+
+    hass = ph_hass
+    hass.config_entries.async_forward_entry_setups = AsyncMock(
+        side_effect=RuntimeError("platform forwarding failed")
+    )
+    hass.config_entries.async_reload = MagicMock()
+    hass.data = {}
+
+    with pytest.raises(RuntimeError, match="platform forwarding failed"):
+        await init_mod.async_setup_entry(hass, entry)
+
+    coordinator.async_shutdown.assert_awaited_once()
+    client.async_close.assert_awaited_once()
+    assert entry.entry_id not in hass.data.get(init_mod.DOMAIN, {})
 
 
 @pytest.mark.asyncio

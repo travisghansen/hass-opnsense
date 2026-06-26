@@ -331,14 +331,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             device_unique_id=config_device_id,
             loaded_platforms=platforms,
         )
-        setup_succeeded = True
-
         if device_tracker_enabled and device_tracker_coordinator:
             # Fetch initial data so we have data when entities subscribe
             await device_tracker_coordinator.async_config_entry_first_refresh()
 
         await hass.config_entries.async_forward_entry_setups(entry, platforms)
 
+        setup_succeeded = True
         return True
     finally:
         if not setup_succeeded:
@@ -389,9 +388,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     client: OPNsenseClient = getattr(entry.runtime_data, OPNSENSE_CLIENT)
     unload_ok: bool = await hass.config_entries.async_unload_platforms(entry, platforms)
 
-    await client.async_close()
-
     if unload_ok:
+        await client.async_close()
         hass.data[DOMAIN].pop(entry.entry_id, None)
 
     return unload_ok
