@@ -74,6 +74,11 @@ CONNECTION_ERROR_KEYS: tuple[tuple[type[OPNsenseError], str], ...] = (
     (OPNsenseTimeoutError, "connect_timeout"),
     (OPNsenseConnectionError, "cannot_connect"),
 )
+OPTIONS_INIT_NUMBER_BOUNDS: tuple[tuple[str, int, int], ...] = (
+    (CONF_SCAN_INTERVAL, 10, 300),
+    (CONF_DEVICE_TRACKER_SCAN_INTERVAL, 30, 300),
+    (CONF_DEVICE_TRACKER_CONSIDER_HOME, 0, 3600),
+)
 
 
 def normalize_mac_address(mac: str) -> str | None:
@@ -183,6 +188,24 @@ def _apply_device_tracking_mode(options: MutableMapping[str, Any], tracking_mode
     options[CONF_DEVICE_TRACKER_ENABLED] = tracking_mode != DEVICE_TRACKING_MODE_DISABLED
     if tracking_mode == DEVICE_TRACKING_MODE_ALL:
         options[CONF_DEVICES] = []
+
+
+def _normalize_int_option(value: Any, minimum: int, maximum: int) -> int:
+    """Convert an option value to an integer within a bounded range.
+
+    Args:
+        value: Raw option value from storage or form submission.
+        minimum: Inclusive lower bound.
+        maximum: Inclusive upper bound.
+
+    Returns:
+        int: Value coerced to ``int`` and clamped to the requested bounds.
+    """
+    try:
+        coerced = int(value)
+    except (TypeError, ValueError):
+        coerced = minimum
+    return max(minimum, min(maximum, coerced))
 
 
 def _build_selected_device_entries(selected_devices: Iterable[str]) -> DeviceEntries:
@@ -606,6 +629,8 @@ def _build_options_init_schema(
         CONF_GRANULAR_SYNC_OPTIONS: granular_sync_options,
         **(user_input or {}),
     }
+    for key, minimum, maximum in OPTIONS_INIT_NUMBER_BOUNDS:
+        defaults[key] = _normalize_int_option(defaults[key], minimum, maximum)
 
     return vol.Schema(
         {
@@ -616,6 +641,7 @@ def _build_options_init_schema(
                 selector.NumberSelectorConfig(
                     min=10,
                     max=300,
+                    step=1,
                     unit_of_measurement="seconds",
                 )
             ),
@@ -640,6 +666,7 @@ def _build_options_init_schema(
                 selector.NumberSelectorConfig(
                     min=30,
                     max=300,
+                    step=1,
                     unit_of_measurement="seconds",
                 )
             ),
@@ -650,6 +677,7 @@ def _build_options_init_schema(
                 selector.NumberSelectorConfig(
                     min=0,
                     max=3600,
+                    step=1,
                     unit_of_measurement="seconds",
                 )
             ),
@@ -951,6 +979,9 @@ class OPNsenseOptionsFlow(OptionsFlow):
                     if key != CONF_DEVICE_TRACKING_MODE
                 }
             )
+            for key, minimum, maximum in OPTIONS_INIT_NUMBER_BOUNDS:
+                if key in self._options:
+                    self._options[key] = _normalize_int_option(self._options[key], minimum, maximum)
             _apply_device_tracking_mode(self._options, tracking_mode)
             # Keep the chosen mode in-flow so multi-step options paths can branch
             # consistently before final save.

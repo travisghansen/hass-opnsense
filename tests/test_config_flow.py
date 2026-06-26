@@ -597,6 +597,39 @@ def test_options_scan_interval_rejects_values_outside_selector_range(input_value
 
 
 @pytest.mark.parametrize(
+    ("stored_options", "field", "expected"),
+    [
+        (
+            {cf_mod.CONF_SCAN_INTERVAL: 1000},
+            cf_mod.CONF_SCAN_INTERVAL,
+            300,
+        ),
+        (
+            {cf_mod.CONF_DEVICE_TRACKER_SCAN_INTERVAL: 5},
+            cf_mod.CONF_DEVICE_TRACKER_SCAN_INTERVAL,
+            30,
+        ),
+        (
+            {cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME: 5000},
+            cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME,
+            3600,
+        ),
+    ],
+)
+def test_options_schema_clamps_legacy_stored_defaults(
+    stored_options: dict[str, Any], field: str, expected: int
+) -> None:
+    """_build_options_init_schema should clamp legacy stored defaults into range."""
+    oschema = cf_mod._build_options_init_schema(
+        user_input=None,
+        stored_options=stored_options,
+    )
+
+    validated = oschema({})
+    assert validated[field] == expected
+
+
+@pytest.mark.parametrize(
     ("input_value", "expected"),
     [
         (300, 300),  # within range -> unchanged
@@ -653,6 +686,34 @@ async def test_options_flow_init_with_user_triggers_update() -> None:
     flow.hass.config_entries.async_update_entry.assert_called()
     assert res["type"] == "create_entry"
     assert flow._options.get(cf_mod.CONF_SCAN_INTERVAL) == 30
+    assert isinstance(flow._options.get(cf_mod.CONF_SCAN_INTERVAL), int)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        (cf_mod.CONF_SCAN_INTERVAL, 30.0),
+        (cf_mod.CONF_DEVICE_TRACKER_SCAN_INTERVAL, 150.0),
+        (cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME, 120.0),
+    ],
+)
+async def test_options_flow_init_normalizes_numeric_values(field: str, value: float) -> None:
+    """Submitting numeric options should persist integer values."""
+    cfg = MagicMock()
+    cfg.data = {cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"}
+    cfg.options = {cf_mod.CONF_DEVICE_TRACKER_ENABLED: False}
+
+    flow = _make_options_flow(cfg)
+    flow._config = dict(cfg.data)
+    flow._options = dict(cfg.options)
+
+    res = await flow.async_step_init(user_input={field: value})
+
+    flow.hass.config_entries.async_update_entry.assert_called()
+    assert res["type"] == "create_entry"
+    assert flow._options[field] == int(value)
+    assert isinstance(flow._options[field], int)
 
 
 @pytest.mark.asyncio
