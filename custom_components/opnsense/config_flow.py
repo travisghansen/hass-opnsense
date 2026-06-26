@@ -495,15 +495,23 @@ def _build_user_input_schema(
     }
 
     schema_fields: dict[Any, Any] = {
-        vol.Required(CONF_URL, default=defaults[CONF_URL]): str,
+        vol.Required(CONF_URL, default=defaults[CONF_URL]): selector.TextSelector(
+            selector.TextSelectorConfig(type=selector.TextSelectorType.URL)
+        ),
         vol.Optional(CONF_VERIFY_SSL, default=defaults[CONF_VERIFY_SSL]): bool,
-        vol.Required(CONF_USERNAME, default=defaults[CONF_USERNAME]): str,
-        vol.Required(CONF_PASSWORD, default=defaults[CONF_PASSWORD]): str,
+        vol.Required(CONF_USERNAME, default=defaults[CONF_USERNAME]): selector.TextSelector(
+            selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+        ),
+        vol.Required(CONF_PASSWORD, default=defaults[CONF_PASSWORD]): selector.TextSelector(
+            selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+        ),
     }
     if not reconf:
         schema_fields.update(
             {
-                vol.Optional(CONF_NAME, default=defaults[CONF_NAME]): str,
+                vol.Optional(CONF_NAME, default=defaults[CONF_NAME]): selector.TextSelector(
+                    selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+                ),
                 vol.Required(
                     CONF_GRANULAR_SYNC_OPTIONS,
                     default=defaults[CONF_GRANULAR_SYNC_OPTIONS],

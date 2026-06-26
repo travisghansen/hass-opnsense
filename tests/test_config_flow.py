@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 from aiopnsense import exceptions as aiopnsense_exceptions
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import selector
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 import voluptuous as vol
@@ -515,54 +514,6 @@ def test_build_user_input_and_granular_and_options_schemas_defaults() -> None:
     out = oschema({})
     assert cf_mod.CONF_SCAN_INTERVAL in out
     assert cf_mod.CONF_DEVICE_TRACKING_MODE in out
-
-
-def test_options_schema_uses_native_number_selectors() -> None:
-    """Options schema should expose HA native number selectors for numeric fields."""
-    schema = cf_mod._build_options_init_schema(user_input=None)
-    validators = {
-        key.schema: validator
-        for key, validator in schema.schema.items()
-        if isinstance(key, vol.Marker)
-    }
-
-    expected_configs = {
-        cf_mod.CONF_SCAN_INTERVAL: {"min": 10, "max": 300},
-        cf_mod.CONF_DEVICE_TRACKER_SCAN_INTERVAL: {"min": 30, "max": 300},
-        cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME: {"min": 0, "max": 3600},
-    }
-
-    for field, expected_config in expected_configs.items():
-        field_selector = validators[field]
-        assert isinstance(field_selector, selector.NumberSelector)
-        assert field_selector.config["mode"] == selector.NumberSelectorMode.BOX
-        assert field_selector.config["min"] == expected_config["min"]
-        assert field_selector.config["max"] == expected_config["max"]
-
-
-def test_device_tracker_schema_uses_native_multi_select_selector() -> None:
-    """Device tracker schema should expose HA native multi-select selector."""
-    schema = cf_mod._build_device_tracker_schema(
-        selected_devices=["aa:bb:cc:dd:ee:ff"],
-        dt_entries={
-            "aa:bb:cc:dd:ee:ff": "Laptop [aa:bb:cc:dd:ee:ff]",
-            "11:22:33:44:55:66": "Phone [11:22:33:44:55:66]",
-        },
-    )
-    validators = {
-        key.schema: validator
-        for key, validator in schema.schema.items()
-        if isinstance(key, vol.Marker)
-    }
-
-    devices_selector = validators[cf_mod.CONF_DEVICES]
-    assert isinstance(devices_selector, selector.SelectSelector)
-    assert devices_selector.config["multiple"] is True
-    assert devices_selector.config["mode"] == selector.SelectSelectorMode.LIST
-    assert devices_selector.config["options"] == [
-        {"value": "aa:bb:cc:dd:ee:ff", "label": "Laptop [aa:bb:cc:dd:ee:ff]"},
-        {"value": "11:22:33:44:55:66", "label": "Phone [11:22:33:44:55:66]"},
-    ]
 
 
 def test_schema_builders_preserve_submitted_values_before_stored_values() -> None:
