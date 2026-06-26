@@ -515,8 +515,8 @@ def test_build_user_input_and_granular_and_options_schemas_defaults() -> None:
     assert cf_mod.CONF_DEVICE_TRACKING_MODE in out
 
 
-def test_schema_builders_preserve_submitted_values_before_fallbacks() -> None:
-    """Schema defaults should prefer submitted values, then stored fallbacks, then constants."""
+def test_schema_builders_preserve_submitted_values_before_stored_values() -> None:
+    """Schema defaults should prefer submitted values, then stored values, then constants."""
     user_schema = cf_mod._build_user_input_schema(
         user_input={
             cf_mod.CONF_URL: "https://submitted.example",

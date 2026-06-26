@@ -558,10 +558,10 @@ def _build_options_init_schema(
     Returns:
         vol.Schema: Form schema for the options-flow initial step.
     """
-    stored_options = stored_options or {}
+    option_values = stored_options or {}
     tracking_mode = _get_device_tracking_mode(
-        bool(stored_options.get(CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED)),
-        stored_options.get(CONF_DEVICES, []),
+        bool(option_values.get(CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED)),
+        option_values.get(CONF_DEVICES, []),
     )
 
     config_values = stored_config or {}
@@ -572,7 +572,7 @@ def _build_options_init_schema(
         CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
         CONF_DEVICE_TRACKER_SCAN_INTERVAL: DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
         CONF_DEVICE_TRACKER_CONSIDER_HOME: DEFAULT_DEVICE_TRACKER_CONSIDER_HOME,
-        **stored_options,
+        **option_values,
         CONF_DEVICE_TRACKING_MODE: tracking_mode,
         CONF_GRANULAR_SYNC_OPTIONS: granular_sync_options,
         **(user_input or {}),
