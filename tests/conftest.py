@@ -12,10 +12,12 @@ from typing import Any
 from unittest.mock import MagicMock
 
 from homeassistant.core import HomeAssistant
+import homeassistant.helpers.aiohttp_client as _ha_aiohttp_client
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 import custom_components.opnsense as _init_mod
+from custom_components.opnsense import helpers as _helpers_mod
 from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID
 
 
@@ -77,11 +79,39 @@ def _ensure_async_create_task_mock(real: Any, side_effect: Any) -> None:
 
 @pytest.fixture(autouse=True)
 def _patch_async_create_clientsession(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Ensure the integration's async_create_clientsession does not create real sessions. This prevents tests from opening real network resources and leaking connectors."""
+    """Patch shared client-session construction so tests never open network resources."""
+
+    def create_clientsession(*args: Any, **kwargs: Any) -> FakeClientSession:
+        """Return a fake client session for all patched session helper surfaces."""
+        return FakeClientSession()
+
+    monkeypatch.setattr(
+        _ha_aiohttp_client,
+        "async_create_clientsession",
+        create_clientsession,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "homeassistant.helpers.aiohttp_client.async_create_clientsession",
+        create_clientsession,
+        raising=False,
+    )
     monkeypatch.setattr(
         _init_mod,
         "async_create_clientsession",
-        lambda *a, **k: FakeClientSession(),
+        create_clientsession,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        _helpers_mod,
+        "async_create_clientsession",
+        create_clientsession,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        _helpers_mod.aiohttp,
+        "CookieJar",
+        lambda *a, **k: object(),
         raising=False,
     )
 
