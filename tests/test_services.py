@@ -32,6 +32,31 @@ from custom_components.opnsense.const import (
 )
 
 
+def _patch_clients(monkeypatch: pytest.MonkeyPatch, clients: list[Any]) -> None:
+    """Patch service client resolution to return selected fake clients.
+
+    Args:
+        monkeypatch: Pytest monkeypatch fixture used to patch the services module.
+        clients: Fake OPNsense clients returned by ``_get_clients``.
+    """
+
+    async def fake_get(*_args: Any, **_kwargs: Any) -> list[Any]:
+        """Return the selected fake clients for a service handler test.
+
+        Args:
+            *_args: Positional arguments forwarded to ``_get_clients`` and ignored.
+            **_kwargs: Keyword arguments forwarded to ``_get_clients`` and ignored.
+        """
+        return clients
+
+    monkeypatch.setattr(services_mod, "_get_clients", fake_get)
+
+
+def _voucher_call_data() -> dict[str, str]:
+    """Return a valid voucher service payload."""
+    return {"validity": "1", "expirytime": "2", "count": "2", "vouchergroup": "g1"}
+
+
 @pytest.mark.asyncio
 async def test_async_setup_services_registers_get_vnstat_metrics_case_insensitive_period() -> None:
     """Service setup should register get_vnstat_metrics with normalized period schema."""
@@ -245,17 +270,7 @@ async def test_service_start_stop_restart_success_and_failure(
     call = MagicMock()
     call.data = {"service_id": "svc"}
 
-    # monkeypatch _get_clients to return our clients
-    async def fake_get(*args, **kwargs) -> Any:
-        """Return both fake clients for the service start/stop/restart tests.
-
-        Args:
-            *args: Positional arguments forwarded to ``_get_clients`` and ignored.
-            **kwargs: Keyword arguments forwarded to ``_get_clients`` and ignored.
-        """
-        return [c1, c2]
-
-    monkeypatch.setattr(services_mod, "_get_clients", fake_get)
+    _patch_clients(monkeypatch, [c1, c2])
     # start should succeed because c2 returns True
     await services_mod._service_start_service(hass, call)
     # stop should succeed
@@ -310,16 +325,7 @@ async def test_service_restart_only_if_running_and_reload_interface(
     call = MagicMock()
     call.data = {"service_id": "svc", "only_if_running": True}
 
-    async def fake_get(*args, **kwargs) -> Any:
-        """Return the single fake client for restart-if-running tests.
-
-        Args:
-            *args: Additional positional arguments forwarded by the function.
-            **kwargs: Additional keyword arguments forwarded by the function.
-        """
-        return [c1]
-
-    monkeypatch.setattr(services_mod, "_get_clients", fake_get)
+    _patch_clients(monkeypatch, [c1])
     # should not raise
     caplog.set_level("DEBUG", logger=services_mod.__name__)
     await services_mod._service_restart_service(hass, call)
@@ -331,18 +337,6 @@ async def test_service_restart_only_if_running_and_reload_interface(
 
     # Failure path: client reports not running -> should raise ServiceValidationError
     c1.restart_service_if_running = AsyncMock(return_value=False)
-
-    # ensure _get_clients still returns our single client
-    async def fake_get_single(*args, **kwargs) -> Any:
-        """Return the same fake client for the restart failure branch.
-
-        Args:
-            *args: Additional positional arguments forwarded by the function.
-            **kwargs: Additional keyword arguments forwarded by the function.
-        """
-        return [c1]
-
-    monkeypatch.setattr(services_mod, "_get_clients", fake_get_single)
 
     with pytest.raises(ServiceValidationError):
         await services_mod._service_restart_service(hass, call)
@@ -383,16 +377,7 @@ async def test_service_start_stop_restart_failure_variants(
     setattr(ok_client, method_attr, AsyncMock(return_value=True))
     setattr(bad_client, method_attr, AsyncMock(return_value=False))
 
-    async def fake_get(*args, **kwargs) -> Any:
-        """Return both clients so the service handler sees one success and one failure.
-
-        Args:
-            *args: Additional positional arguments forwarded by the function.
-            **kwargs: Additional keyword arguments forwarded by the function.
-        """
-        return [ok_client, bad_client]
-
-    monkeypatch.setattr(services_mod, "_get_clients", fake_get)
+    _patch_clients(monkeypatch, [ok_client, bad_client])
     call = MagicMock()
     call.data = {"service_id": "svc"}
 
@@ -422,16 +407,7 @@ async def test_service_start_stop_restart_require_service_identifier(
     client.stop_service = AsyncMock(return_value=True)
     client.restart_service = AsyncMock(return_value=True)
 
-    async def fake_get(*args, **kwargs) -> Any:
-        """Return the fake client for service identifier validation.
-
-        Args:
-            *args: Additional positional arguments forwarded by the function.
-            **kwargs: Additional keyword arguments forwarded by the function.
-        """
-        return [client]
-
-    monkeypatch.setattr(services_mod, "_get_clients", fake_get)
+    _patch_clients(monkeypatch, [client])
     call = MagicMock()
     call.data = {}
 
@@ -458,18 +434,9 @@ async def test_generate_vouchers_success_and_server_error(
     c1.generate_vouchers = AsyncMock(return_value=vouchers)
     hass.data[DOMAIN] = {"e1": c1}
     call = MagicMock()
-    call.data = {"validity": "1", "expirytime": "2", "count": "2", "vouchergroup": "g1"}
+    call.data = _voucher_call_data()
 
-    async def fake_get(*args, **kwargs) -> Any:
-        """Return the voucher-generating fake client for this service call.
-
-        Args:
-            *args: Additional positional arguments forwarded by the function.
-            **kwargs: Additional keyword arguments forwarded by the function.
-        """
-        return [c1]
-
-    monkeypatch.setattr(services_mod, "_get_clients", fake_get)
+    _patch_clients(monkeypatch, [c1])
     resp = await services_mod._service_generate_vouchers(hass, call)
     assert resp is not None
     assert "vouchers" in resp and isinstance(resp["vouchers"], list)
@@ -486,11 +453,11 @@ async def test_generate_vouchers_success_and_server_error(
 @pytest.mark.asyncio
 async def test_generate_vouchers_no_clients_raises(
     ph_hass: Any,
-    fake_get_empty: Any,
+    fake_get_empty: None,
 ) -> None:
     """Generating vouchers requires at least one selected OPNsense client."""
     call = MagicMock()
-    call.data = {"validity": "1", "expirytime": "2", "count": "2", "vouchergroup": "g1"}
+    call.data = _voucher_call_data()
 
     with pytest.raises(ServiceValidationError):
         await services_mod._service_generate_vouchers(ph_hass, call)
@@ -506,18 +473,9 @@ async def test_generate_vouchers_empty_selected_client_response_returns_empty(
     client.name = "svc1"
     client.generate_vouchers = AsyncMock(return_value=[])
     call = MagicMock()
-    call.data = {"validity": "1", "expirytime": "2", "count": "2", "vouchergroup": "g1"}
+    call.data = _voucher_call_data()
 
-    async def fake_get(*args, **kwargs) -> Any:
-        """Return the selected voucher client for an empty response.
-
-        Args:
-            *args: Additional positional arguments forwarded by the function.
-            **kwargs: Additional keyword arguments forwarded by the function.
-        """
-        return [client]
-
-    monkeypatch.setattr(services_mod, "_get_clients", fake_get)
+    _patch_clients(monkeypatch, [client])
 
     assert await services_mod._service_generate_vouchers(ph_hass, call) == {"vouchers": []}
 
@@ -533,18 +491,9 @@ async def test_generate_vouchers_does_not_mutate_client_voucher_response(
     client.name = "svc1"
     client.generate_vouchers = AsyncMock(return_value=[voucher])
     call = MagicMock()
-    call.data = {"validity": "1", "expirytime": "2", "count": "2", "vouchergroup": "g1"}
+    call.data = _voucher_call_data()
 
-    async def fake_get(*args, **kwargs) -> Any:
-        """Return the selected voucher client for mutation checks.
-
-        Args:
-            *args: Additional positional arguments forwarded by the function.
-            **kwargs: Additional keyword arguments forwarded by the function.
-        """
-        return [client]
-
-    monkeypatch.setattr(services_mod, "_get_clients", fake_get)
+    _patch_clients(monkeypatch, [client])
 
     response = await services_mod._service_generate_vouchers(ph_hass, call)
 
@@ -566,16 +515,7 @@ async def test_kill_states_success_and_failure(
     call = MagicMock()
     call.data = {"ip_addr": "1.2.3.4"}
 
-    async def fake_get(*args, **kwargs) -> Any:
-        """Return the fake client used by the kill-states service test.
-
-        Args:
-            *args: Additional positional arguments forwarded by the function.
-            **kwargs: Additional keyword arguments forwarded by the function.
-        """
-        return [c1]
-
-    monkeypatch.setattr(services_mod, "_get_clients", fake_get)
+    _patch_clients(monkeypatch, [c1])
     resp = await services_mod._service_kill_states(hass, call)
     # Expect a payload containing the client name and dropped_states value
     expected = {"dropped_states": [{"client_name": "c1", "dropped_states": 5}]}
@@ -603,16 +543,7 @@ async def test_run_speedtest_success_and_unavailable(
     c2.name = "c2"
     c2.run_speedtest = AsyncMock(return_value={})
 
-    async def fake_get(*args, **kwargs) -> Any:
-        """Return both vnStat clients so the service can aggregate their results.
-
-        Args:
-            *args: Additional positional arguments forwarded by the function.
-            **kwargs: Additional keyword arguments forwarded by the function.
-        """
-        return [c1, c2]
-
-    monkeypatch.setattr(services_mod, "_get_clients", fake_get)
+    _patch_clients(monkeypatch, [c1, c2])
     call = MagicMock()
     call.data = {}
 
@@ -654,16 +585,7 @@ async def test_get_vnstat_metrics_success_and_unavailable(
     c2.name = "c2"
     c2.get_vnstat_metrics = AsyncMock(return_value={})
 
-    async def fake_get(*args, **kwargs) -> Any:
-        """Return both vnStat clients so the service can aggregate their results.
-
-        Args:
-            *args: Additional positional arguments forwarded by the function.
-            **kwargs: Additional keyword arguments forwarded by the function.
-        """
-        return [c1, c2]
-
-    monkeypatch.setattr(services_mod, "_get_clients", fake_get)
+    _patch_clients(monkeypatch, [c1, c2])
     call = MagicMock()
     call.data = {"period": "yearly"}
 
@@ -696,24 +618,13 @@ async def test_get_clients_no_data_returns_empty() -> None:
 
 
 @pytest.fixture
-def fake_get_empty(monkeypatch: pytest.MonkeyPatch) -> Any:
+def fake_get_empty(monkeypatch: pytest.MonkeyPatch) -> None:
     """Fixture that monkeypatches services_mod._get_clients to return an empty list."""
-
-    async def _fake_get_empty(*args, **kwargs) -> Any:
-        """Return no clients so service handlers exercise their validation errors.
-
-        Args:
-            *args: Additional positional arguments forwarded by the function.
-            **kwargs: Additional keyword arguments forwarded by the function.
-        """
-        return []
-
-    monkeypatch.setattr(services_mod, "_get_clients", _fake_get_empty)
-    return _fake_get_empty
+    _patch_clients(monkeypatch, [])
 
 
 @pytest.mark.asyncio
-async def test_restart_service_no_clients_raises(ph_hass: Any, fake_get_empty: Any) -> None:
+async def test_restart_service_no_clients_raises(ph_hass: Any, fake_get_empty: None) -> None:
     """If no clients are found, restarting a service should raise ServiceValidationError."""
     hass = ph_hass
     hass.data = {}
@@ -726,7 +637,7 @@ async def test_restart_service_no_clients_raises(ph_hass: Any, fake_get_empty: A
 
 
 @pytest.mark.asyncio
-async def test_start_service_no_clients_raises(ph_hass: Any, fake_get_empty: Any) -> None:
+async def test_start_service_no_clients_raises(ph_hass: Any, fake_get_empty: None) -> None:
     """If no clients are found, starting a service should raise ServiceValidationError."""
     hass = ph_hass
     hass.data = {}
@@ -739,7 +650,7 @@ async def test_start_service_no_clients_raises(ph_hass: Any, fake_get_empty: Any
 
 
 @pytest.mark.asyncio
-async def test_stop_service_no_clients_raises(ph_hass: Any, fake_get_empty: Any) -> None:
+async def test_stop_service_no_clients_raises(ph_hass: Any, fake_get_empty: None) -> None:
     """If no clients are found, stopping a service should raise ServiceValidationError."""
     hass = ph_hass
     hass.data = {}
@@ -762,16 +673,7 @@ async def test_close_send_wol_and_system_calls(monkeypatch: pytest.MonkeyPatch) 
     c.system_halt = AsyncMock(return_value=None)
     c.system_reboot = AsyncMock(return_value=None)
 
-    async def fake_get(*args, **kwargs) -> Any:
-        """Return the single client used for notice, WOL, and system action tests.
-
-        Args:
-            *args: Additional positional arguments forwarded by the function.
-            **kwargs: Additional keyword arguments forwarded by the function.
-        """
-        return [c]
-
-    monkeypatch.setattr(services_mod, "_get_clients", fake_get)
+    _patch_clients(monkeypatch, [c])
 
     hass = MagicMock(spec=HomeAssistant)
     hass.data = {DOMAIN: {"e1": c}}
@@ -805,16 +707,7 @@ async def test_toggle_alias_success_and_failure(monkeypatch: pytest.MonkeyPatch)
     c1.name = "c1"
     c1.toggle_alias = AsyncMock(return_value=True)
 
-    async def fake_get_ok(*args, **kwargs) -> Any:
-        """Return the client that reports alias toggling success.
-
-        Args:
-            *args: Positional arguments forwarded to ``_get_clients`` and ignored.
-            **kwargs: Keyword arguments forwarded to ``_get_clients`` and ignored.
-        """
-        return [c1]
-
-    monkeypatch.setattr(services_mod, "_get_clients", fake_get_ok)
+    _patch_clients(monkeypatch, [c1])
     hass = MagicMock(spec=HomeAssistant)
     hass.data = {DOMAIN: {"e1": c1}}
     call = MagicMock()
@@ -827,16 +720,7 @@ async def test_toggle_alias_success_and_failure(monkeypatch: pytest.MonkeyPatch)
     c2.name = "c2"
     c2.toggle_alias = AsyncMock(return_value=False)
 
-    async def fake_get_fail(*args, **kwargs) -> Any:
-        """Return the client that reports alias toggling failure.
-
-        Args:
-            *args: Positional arguments forwarded to ``_get_clients`` and ignored.
-            **kwargs: Keyword arguments forwarded to ``_get_clients`` and ignored.
-        """
-        return [c2]
-
-    monkeypatch.setattr(services_mod, "_get_clients", fake_get_fail)
+    _patch_clients(monkeypatch, [c2])
     hass.data = {DOMAIN: {"e2": c2}}
     with pytest.raises(ServiceValidationError):
         await services_mod._service_toggle_alias(hass, call)
