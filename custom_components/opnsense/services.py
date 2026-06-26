@@ -287,13 +287,43 @@ async def _get_clients(
     if (
         DOMAIN not in hass.data
         or not isinstance(hass.data[DOMAIN], MutableMapping)
-        or len(hass.data[DOMAIN]) == 0
+        or not hass.data[DOMAIN]
     ):
         return []
     first_entry_id = next(iter(hass.data[DOMAIN]))
     if len(hass.data[DOMAIN]) == 1 and not opndevice_id and not opnentity_id:
         return [hass.data[DOMAIN][first_entry_id]]
 
+    entry_ids = _resolve_target_entry_ids(hass, opndevice_id, opnentity_id)
+
+    if (opndevice_id or opnentity_id) and not entry_ids:
+        raise ServiceValidationError("No OPNsense clients match the selected target")
+
+    clients: list[OPNsenseServiceClient] = []
+    for entry_id, opnsense_client in hass.data[DOMAIN].items():
+        if not entry_ids or entry_id in entry_ids:
+            clients.append(opnsense_client)
+    if (opndevice_id or opnentity_id) and not clients:
+        raise ServiceValidationError("No OPNsense clients match the selected target")
+    _LOGGER.debug("[get_clients] clients: %s", clients)
+    return clients
+
+
+def _resolve_target_entry_ids(
+    hass: HomeAssistant,
+    opndevice_id: str | None,
+    opnentity_id: str | None,
+) -> list[str]:
+    """Resolve selected device/entity registry targets to config entry IDs.
+
+    Args:
+        hass: Home Assistant instance that owns the registries.
+        opndevice_id: Optional device registry target.
+        opnentity_id: Optional entity registry target.
+
+    Returns:
+        list[str]: Unique config entry IDs resolved from selected targets.
+    """
     entry_ids: list[str] = []
     if opndevice_id:
         try:
@@ -301,30 +331,26 @@ async def _get_clients(
         except TypeError, AttributeError, HomeAssistantError:
             pass
         else:
-            primary_config_entry = device_entry.primary_config_entry if device_entry else None
-            if primary_config_entry and primary_config_entry not in entry_ids:
-                entry_ids.append(primary_config_entry)
+            _append_entry_id(entry_ids, device_entry.primary_config_entry if device_entry else None)
     if opnentity_id:
         try:
             entity_entry = er.async_get(hass).async_get(opnentity_id)
         except TypeError, AttributeError, HomeAssistantError:
             pass
         else:
-            config_entry_id = entity_entry.config_entry_id if entity_entry else None
-            if config_entry_id and config_entry_id not in entry_ids:
-                entry_ids.append(config_entry_id)
+            _append_entry_id(entry_ids, entity_entry.config_entry_id if entity_entry else None)
+    return entry_ids
 
-    if (opndevice_id or opnentity_id) and not entry_ids:
-        raise ServiceValidationError("No OPNsense clients match the selected target")
 
-    clients: list[OPNsenseServiceClient] = []
-    for entry_id, opnsense_client in hass.data[DOMAIN].items():
-        if len(entry_ids) == 0 or entry_id in entry_ids:
-            clients.append(opnsense_client)
-    if (opndevice_id or opnentity_id) and not clients:
-        raise ServiceValidationError("No OPNsense clients match the selected target")
-    _LOGGER.debug("[get_clients] clients: %s", clients)
-    return clients
+def _append_entry_id(entry_ids: list[str], entry_id: str | None) -> None:
+    """Append a resolved config entry ID once.
+
+    Args:
+        entry_ids: Existing config entry IDs.
+        entry_id: Config entry ID resolved from a registry target.
+    """
+    if entry_id and entry_id not in entry_ids:
+        entry_ids.append(entry_id)
 
 
 async def _get_target_clients(
@@ -439,13 +465,13 @@ async def _collect_mapping_results(
             action_context or {},
             response,
         )
-        if not isinstance(response, MutableMapping) or len(response) == 0:
+        if not isinstance(response, MutableMapping) or not response:
             continue
         result: dict[str, Any] = {"client_name": client.name}
         result.update(dict(response))
         response_list.append(result)
 
-    if len(response_list) == 0:
+    if not response_list:
         raise ServiceValidationError(failure_message)
     return response_list
 

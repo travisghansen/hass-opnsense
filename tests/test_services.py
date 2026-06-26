@@ -328,14 +328,14 @@ async def test_service_start_stop_restart_success_and_failure(
     c1.restart_service_if_running.assert_not_awaited()
     c2.restart_service_if_running.assert_not_awaited()
 
-    # Also verify fallback via service_name works
+    # Also verify the service_name identifier path works
     call2 = MagicMock()
     call2.data = {"service_name": "svc"}
     await services_mod._service_start_service(hass, call2)
     await services_mod._service_stop_service(hass, call2)
     await services_mod._service_restart_service(hass, call2)
 
-    # Confirm fallback path invoked client methods again with same arg
+    # Confirm service_name invoked client methods again with same arg
     c1.start_service.assert_awaited_with("svc")
     c2.start_service.assert_awaited_with("svc")
     assert c1.start_service.await_count == 2
