@@ -2266,3 +2266,55 @@ async def test_migrate_3_to_4_defers_when_filesystem_device_is_not_string(
 
     assert res is False
     hass.config_entries.async_update_entry.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_migrate_3_to_4_defers_without_updating_entities_when_later_filesystem_invalid(
+    monkeypatch: pytest.MonkeyPatch, ph_hass: Any
+) -> None:
+    """A valid filesystem before a malformed filesystem should not partially migrate or bump version."""
+    client = MagicMock()
+    client.get_telemetry = AsyncMock(
+        return_value={
+            "filesystems": [
+                {"device": "/dev/sda1", "mountpoint": "/"},
+                {"device": 7, "mountpoint": "/data"},
+            ]
+        }
+    )
+
+    migration_entry = MagicMock()
+    migration_entry.entry_id = "entry"
+    migration_entry.version = 3
+
+    first_filesystem_entity = MagicMock(
+        entity_id="sensor.router_telemetry_filesystems_slash_dev_slash_sda1",
+        unique_id="router_telemetry_filesystems_slash_dev_slash_sda1",
+    )
+    second_filesystem_entity = MagicMock(
+        entity_id="sensor.router_telemetry_filesystems_slash_dev_slash_sdb1",
+        unique_id="router_telemetry_filesystems_slash_dev_slash_sdb1",
+    )
+
+    hass = ph_hass
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_update_entry = MagicMock(return_value=True)
+
+    entity_registry = MagicMock()
+    entity_registry.async_entries_for_config_entry = lambda registry, config_entry_id: [
+        first_filesystem_entity,
+        second_filesystem_entity,
+    ]
+    entity_registry.async_update_entity = MagicMock()
+    monkeypatch.setattr(init_mod.er, "async_get", lambda _hass: entity_registry)
+    monkeypatch.setattr(
+        init_mod.er,
+        "async_entries_for_config_entry",
+        entity_registry.async_entries_for_config_entry,
+    )
+
+    res = await init_mod._migrate_3_to_4(hass, migration_entry, client)
+
+    assert res is False
+    entity_registry.async_update_entity.assert_not_called()
+    hass.config_entries.async_update_entry.assert_not_called()

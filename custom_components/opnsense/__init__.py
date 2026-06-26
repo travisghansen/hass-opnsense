@@ -91,6 +91,12 @@ def _get_telemetry_filesystems(telemetry: object) -> list[Mapping[str, Any]] | N
     for filesystem in filesystems:
         if not isinstance(filesystem, Mapping):
             return None
+        device = filesystem.get("device", "")
+        if not isinstance(device, str):
+            return None
+        mountpoint = filesystem.get("mountpoint", "")
+        if not isinstance(mountpoint, str):
+            return None
         valid_filesystems.append(filesystem)
 
     return valid_filesystems
