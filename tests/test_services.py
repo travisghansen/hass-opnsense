@@ -4,12 +4,15 @@ These tests exercise service helpers, validation paths, and error handling
 for operations such as starting/stopping services and generating vouchers.
 """
 
+import json
+from pathlib import Path
 from typing import Any, Never
 from unittest.mock import AsyncMock, MagicMock
 
 from aiopnsense.exceptions import OPNsenseVoucherServerError
 from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
+from homeassistant.util.yaml import load_yaml_dict
 import pytest
 import voluptuous as vol
 
@@ -30,6 +33,8 @@ from custom_components.opnsense.const import (
     SERVICE_SYSTEM_REBOOT,
     SERVICE_TOGGLE_ALIAS,
 )
+
+_INTEGRATION_ROOT = Path(__file__).parents[1] / "custom_components" / "opnsense"
 
 
 def _patch_clients(monkeypatch: pytest.MonkeyPatch, clients: list[Any]) -> None:
@@ -69,6 +74,25 @@ def _service_call(data: dict[str, Any]) -> MagicMock:
     call = MagicMock()
     call.data = data
     return call
+
+
+def _iter_service_field_names(service_definition: dict[str, Any]) -> set[str]:
+    """Return all top-level and section service field names.
+
+    Args:
+        service_definition: Service definition loaded from ``services.yaml``.
+
+    Returns:
+        set[str]: Field names that should have service translations.
+    """
+    fields = service_definition.get("fields", {})
+    field_names = set()
+    for field_name, field_definition in fields.items():
+        if "fields" not in field_definition:
+            field_names.add(field_name)
+            continue
+        field_names.update(field_definition["fields"])
+    return field_names
 
 
 def _patch_device_registry_entry(
@@ -217,6 +241,28 @@ async def test_async_setup_services_registers_expected_service_contracts() -> No
     registrations[SERVICE_RESTART_SERVICE]["schema"]({"service_id": "svc", "only_if_running": True})
     with pytest.raises(vol.Invalid):
         registrations[SERVICE_START_SERVICE]["schema"]({})
+
+
+def test_service_metadata_fields_have_translations() -> None:
+    """Every service field exposed in services.yaml has an English translation."""
+    services_yaml = load_yaml_dict(_INTEGRATION_ROOT / "services.yaml")
+    translations = json.loads((_INTEGRATION_ROOT / "translations" / "en.json").read_text())
+
+    translated_services = translations["services"]
+    for service_name, service_definition in services_yaml.items():
+        assert service_name in translated_services
+        translated_fields = translated_services[service_name].get("fields", {})
+        for field_name in _iter_service_field_names(service_definition):
+            assert field_name in translated_fields, f"{service_name}.{field_name}"
+
+
+def test_service_validation_error_uses_translation_metadata() -> None:
+    """Service validation errors should be localizable by Home Assistant."""
+    error = services_mod._service_validation_error("start_service_failed", {"service": "svc"})
+
+    assert error.translation_domain == DOMAIN
+    assert error.translation_key == "start_service_failed"
+    assert error.translation_placeholders == {"service": "svc"}
 
 
 @pytest.mark.asyncio

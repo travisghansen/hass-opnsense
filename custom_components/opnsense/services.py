@@ -36,9 +36,43 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 _VNSTAT_PERIODS: tuple[str, ...] = ("hourly", "daily", "monthly", "yearly")
 _SERVICE_IDENTIFIER_ERROR = "Must use service_id or service_name"
 _SERVICE_IDENTIFIER_CONFLICT_ERROR = "Must use service_id or service_name but not both"
+_TRANSLATION_KEY_GENERATE_VOUCHERS_FAILED = "generate_vouchers_failed"
+_TRANSLATION_KEY_GET_VNSTAT_METRICS_FAILED = "get_vnstat_metrics_failed"
+_TRANSLATION_KEY_KILL_STATES_FAILED = "kill_states_failed"
+_TRANSLATION_KEY_NO_TARGET_CLIENTS = "no_target_clients"
+_TRANSLATION_KEY_RELOAD_INTERFACE_FAILED = "reload_interface_failed"
+_TRANSLATION_KEY_RESTART_SERVICE_FAILED = "restart_service_failed"
+_TRANSLATION_KEY_RUN_SPEEDTEST_FAILED = "run_speedtest_failed"
+_TRANSLATION_KEY_SERVICE_IDENTIFIER_REQUIRED = "service_identifier_required"
+_TRANSLATION_KEY_START_SERVICE_FAILED = "start_service_failed"
+_TRANSLATION_KEY_STOP_SERVICE_FAILED = "stop_service_failed"
+_TRANSLATION_KEY_TOGGLE_ALIAS_FAILED = "toggle_alias_failed"
+_TRANSLATION_KEY_VOUCHER_SERVER_ERROR = "voucher_server_error"
 type OPNsenseServiceClient = Any
 type ServiceHandler = Callable[[HomeAssistant, ServiceCall], Awaitable[Any]]
 type BooleanClientAction = Callable[[OPNsenseServiceClient], Awaitable[bool]]
+
+
+def _service_validation_error(
+    translation_key: str,
+    translation_placeholders: dict[str, Any] | None = None,
+) -> ServiceValidationError:
+    """Return a localized service validation error.
+
+    Args:
+        translation_key: Translation key from the integration ``exceptions`` section.
+        translation_placeholders: Values to interpolate into the translated message.
+
+    Returns:
+        ServiceValidationError: Home Assistant service validation error with translation metadata.
+    """
+    return ServiceValidationError(
+        translation_domain=DOMAIN,
+        translation_key=translation_key,
+        translation_placeholders={
+            key: str(value) for key, value in (translation_placeholders or {}).items()
+        },
+    )
 
 
 def _validate_service_identifier(data: dict[str, Any]) -> dict[str, Any]:
@@ -256,13 +290,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         _targeted_schema(
             {
                 vol.Required("alias"): vol.Any(cv.string),
-                vol.Required("toggle_on_off", default="toggle"): vol.In(
-                    {
-                        "toggle": "Toggle",
-                        "on": "On",
-                        "off": "Off",
-                    }
-                ),
+                vol.Required("toggle_on_off", default="toggle"): vol.In(("toggle", "on", "off")),
             }
         ),
     )
@@ -297,14 +325,14 @@ async def _get_clients(
     entry_ids = _resolve_target_entry_ids(hass, opndevice_id, opnentity_id)
 
     if (opndevice_id or opnentity_id) and not entry_ids:
-        raise ServiceValidationError("No OPNsense clients match the selected target")
+        raise _service_validation_error(_TRANSLATION_KEY_NO_TARGET_CLIENTS)
 
     clients: list[OPNsenseServiceClient] = []
     for entry_id, opnsense_client in hass.data[DOMAIN].items():
         if not entry_ids or entry_id in entry_ids:
             clients.append(opnsense_client)
     if (opndevice_id or opnentity_id) and not clients:
-        raise ServiceValidationError("No OPNsense clients match the selected target")
+        raise _service_validation_error(_TRANSLATION_KEY_NO_TARGET_CLIENTS)
     _LOGGER.debug("[get_clients] clients: %s", clients)
     return clients
 
@@ -387,7 +415,7 @@ def _get_service_identifier(call: ServiceCall) -> str:
     """
     service_identifier = call.data.get("service_id", call.data.get("service_name"))
     if not service_identifier:
-        raise ServiceValidationError(_SERVICE_IDENTIFIER_ERROR)
+        raise _service_validation_error(_TRANSLATION_KEY_SERVICE_IDENTIFIER_REQUIRED)
     return service_identifier
 
 
@@ -397,7 +425,8 @@ async def _run_boolean_client_action(
     action_name: str | None,
     target_name: str,
     target_value: Any,
-    failure_message: str,
+    failure_translation_key: str,
+    failure_translation_placeholders: dict[str, Any],
     action: BooleanClientAction,
 ) -> None:
     """Run a boolean-returning action across all selected clients.
@@ -408,7 +437,8 @@ async def _run_boolean_client_action(
         action_name: Optional action variant to include after the log prefix.
         target_name: Human-readable target field name for logs.
         target_value: Target value passed to the client action.
-        failure_message: Error message to raise if no clients or any client action fails.
+        failure_translation_key: Translation key to raise if no clients or any action fails.
+        failure_translation_placeholders: Values to interpolate into the translated error.
         action: Awaitable client action returning success state.
 
     Raises:
@@ -430,13 +460,14 @@ async def _run_boolean_client_action(
         if success is None or success:
             success = response
     if success is None or not success:
-        raise ServiceValidationError(failure_message)
+        raise _service_validation_error(failure_translation_key, failure_translation_placeholders)
 
 
 async def _collect_mapping_results(
     clients: list[OPNsenseServiceClient],
     log_prefix: str,
-    failure_message: str,
+    failure_translation_key: str,
+    failure_translation_placeholders: dict[str, Any] | None,
     action: Callable[[OPNsenseServiceClient], Awaitable[Any]],
     action_context: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
@@ -445,7 +476,8 @@ async def _collect_mapping_results(
     Args:
         clients: OPNsense clients selected for the service call.
         log_prefix: Prefix used in the debug log message.
-        failure_message: Error message to raise if no clients return data.
+        failure_translation_key: Translation key to raise if no clients return data.
+        failure_translation_placeholders: Values to interpolate into the translated error.
         action: Awaitable client action returning a mapping payload.
         action_context: Optional values to include in debug logs.
 
@@ -472,7 +504,10 @@ async def _collect_mapping_results(
         response_list.append(result)
 
     if not response_list:
-        raise ServiceValidationError(failure_message)
+        raise _service_validation_error(
+            failure_translation_key,
+            failure_translation_placeholders,
+        )
     return response_list
 
 
@@ -512,7 +547,10 @@ async def _collect_kill_state_results(
         if success is None or success:
             success = response.get("success", False)
     if success is None or not success:
-        raise ServiceValidationError(f"Kill States Failed: {ip_addr}")
+        raise _service_validation_error(
+            _TRANSLATION_KEY_KILL_STATES_FAILED,
+            {"ip_addr": ip_addr},
+        )
     return response_list
 
 
@@ -533,7 +571,7 @@ async def _collect_voucher_results(
         ServiceValidationError: If no OPNsense clients are selected or the voucher server fails.
     """
     if not clients:
-        raise ServiceValidationError("Generate Vouchers Failed. No selected OPNsense clients")
+        raise _service_validation_error(_TRANSLATION_KEY_GENERATE_VOUCHERS_FAILED)
 
     voucher_list: list[Any] = []
     for client in clients:
@@ -541,7 +579,10 @@ async def _collect_voucher_results(
             vouchers: list[Any] = await client.generate_vouchers(call_data)
         except OPNsenseVoucherServerError as e:
             _LOGGER.error("Error getting vouchers from %s. %s", client.name, e)
-            raise ServiceValidationError(f"Error getting vouchers from {client.name}. {e}") from e
+            raise _service_validation_error(
+                _TRANSLATION_KEY_VOUCHER_SERVER_ERROR,
+                {"client": client.name, "error": e},
+            ) from e
         _LOGGER.debug(
             "[service_generate_vouchers] client: %s, data: %s, vouchers: %s",
             client.name,
@@ -596,7 +637,8 @@ async def _service_start_service(hass: HomeAssistant, call: ServiceCall) -> None
         action_name=None,
         target_name="service",
         target_value=service_identifier,
-        failure_message=f"Start Service Failed. service: {service_identifier}",
+        failure_translation_key=_TRANSLATION_KEY_START_SERVICE_FAILED,
+        failure_translation_placeholders={"service": service_identifier},
         action=lambda client: client.start_service(service_identifier),
     )
 
@@ -621,7 +663,8 @@ async def _service_stop_service(hass: HomeAssistant, call: ServiceCall) -> None:
         action_name=None,
         target_name="service",
         target_value=service_identifier,
-        failure_message=f"Stop Service Failed. service: {service_identifier}",
+        failure_translation_key=_TRANSLATION_KEY_STOP_SERVICE_FAILED,
+        failure_translation_placeholders={"service": service_identifier},
         action=lambda client: client.stop_service(service_identifier),
     )
 
@@ -647,7 +690,8 @@ async def _service_restart_service(hass: HomeAssistant, call: ServiceCall) -> No
             action_name="restart_service_if_running",
             target_name="service",
             target_value=service_identifier,
-            failure_message=f"Restart Service Failed. service: {service_identifier}",
+            failure_translation_key=_TRANSLATION_KEY_RESTART_SERVICE_FAILED,
+            failure_translation_placeholders={"service": service_identifier},
             action=lambda client: client.restart_service_if_running(service_identifier),
         )
     else:
@@ -657,7 +701,8 @@ async def _service_restart_service(hass: HomeAssistant, call: ServiceCall) -> No
             action_name="restart_service",
             target_name="service",
             target_value=service_identifier,
-            failure_message=f"Restart Service Failed. service: {service_identifier}",
+            failure_translation_key=_TRANSLATION_KEY_RESTART_SERVICE_FAILED,
+            failure_translation_placeholders={"service": service_identifier},
             action=lambda client: client.restart_service(service_identifier),
         )
 
@@ -729,7 +774,8 @@ async def _service_reload_interface(hass: HomeAssistant, call: ServiceCall) -> N
         action_name=None,
         target_name="interface",
         target_value=interface,
-        failure_message=f"Reload Interface Failed: {interface}",
+        failure_translation_key=_TRANSLATION_KEY_RELOAD_INTERFACE_FAILED,
+        failure_translation_placeholders={"interface": interface},
         action=lambda client: client.reload_interface(interface),
     )
 
@@ -786,9 +832,8 @@ async def _service_run_speedtest(hass: HomeAssistant, call: ServiceCall) -> Serv
     response_list = await _collect_mapping_results(
         clients=clients,
         log_prefix="service_run_speedtest",
-        failure_message=(
-            "Run Speedtest Failed. No selected OPNsense clients have Speedtest installed"
-        ),
+        failure_translation_key=_TRANSLATION_KEY_RUN_SPEEDTEST_FAILED,
+        failure_translation_placeholders=None,
         action=lambda client: client.run_speedtest(),
     )
     return_response: dict[str, Any] = {"results": response_list}
@@ -812,7 +857,8 @@ async def _service_get_vnstat_metrics(hass: HomeAssistant, call: ServiceCall) ->
     response_list = await _collect_mapping_results(
         clients=clients,
         log_prefix="service_get_vnstat_metrics",
-        failure_message="Get vnStat Metrics Failed. No selected OPNsense clients vnStat installed",
+        failure_translation_key=_TRANSLATION_KEY_GET_VNSTAT_METRICS_FAILED,
+        failure_translation_placeholders=None,
         action=lambda client: client.get_vnstat_metrics(requested_period),
         action_context={"period": requested_period},
     )
@@ -842,6 +888,7 @@ async def _service_toggle_alias(hass: HomeAssistant, call: ServiceCall) -> None:
         action_name=None,
         target_name="alias",
         target_value=alias,
-        failure_message=f"Toggle Alias Failed. alias: {alias}, action: {toggle_on_off}",
+        failure_translation_key=_TRANSLATION_KEY_TOGGLE_ALIAS_FAILED,
+        failure_translation_placeholders={"alias": alias, "action": toggle_on_off},
         action=lambda client: client.toggle_alias(alias, toggle_on_off),
     )

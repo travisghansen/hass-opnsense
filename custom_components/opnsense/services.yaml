@@ -34,6 +34,10 @@ start_service:
       required: false
       selector:
         text:
+    service_name:
+      required: false
+      selector:
+        text:
     multiple_opnsense:
       collapsed: true
       fields:
@@ -62,6 +66,10 @@ stop_service:
       required: false
       selector:
         text:
+    service_name:
+      required: false
+      selector:
+        text:
     multiple_opnsense:
       collapsed: true
       fields:
@@ -87,6 +95,10 @@ stop_service:
 restart_service:
   fields:
     service_id:
+      required: false
+      selector:
+        text:
+    service_name:
       required: false
       selector:
         text:
