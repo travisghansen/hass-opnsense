@@ -1099,7 +1099,7 @@ async def test_async_update_data_strips_nested_previous_state(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """Ensure nested 'previous_state' key is removed from the copied previous_state. The coordinator copies its current _state into previous_state, then removes any nested 'previous_state' key from that copy before assigning it back. This test verifies that behavior."""
+    """Nested previous-state snapshots should not recurse indefinitely."""
     entry = make_config_entry({"device_unique_id": "id", CONF_SYNC_INTERFACES: True})
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -1111,14 +1111,12 @@ async def test_async_update_data_strips_nested_previous_state(
         config_entry=entry,
     )
 
-    # Prepare a state that contains a nested 'previous_state' key which should be stripped
     coord._state = {
         "previous_state": {"inner": 1},
         "device_unique_id": "id",
         "extra": "keep",
     }
 
-    # Make device id check pass and skip heavy calculations
     async def true_check() -> bool:
         """Force device-ID validation to pass for previous-state assertions."""
         return True
@@ -1130,18 +1128,15 @@ async def test_async_update_data_strips_nested_previous_state(
     monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
     monkeypatch.setattr(coord, "_calculate_entity_speeds", noop_calc)
 
-    # Spy on reset_query_counts to ensure update flow runs
     object.__setattr__(
         client, "reset_query_counts", AsyncMock(wraps=getattr(client, "reset_query_counts", None))
     )
 
     out = await coord._async_update_data()
 
-    # previous_state assigned on the coordinator should not contain the nested key
     assert isinstance(out, MutableMapping)
     assert "previous_state" in out
     assert "previous_state" not in out["previous_state"]
-    # other top-level keys from the original state should be preserved in the copy
     assert out["previous_state"].get("device_unique_id") == "id"
     assert out["previous_state"].get("extra") == "keep"
 
