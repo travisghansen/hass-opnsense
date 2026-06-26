@@ -76,6 +76,24 @@ def _patch_hass_async_create_clientsession(monkeypatch: pytest.MonkeyPatch) -> N
     )
 
 
+def _make_valid_setup_client() -> MagicMock:
+    """Create a valid OPNsense client mock for setup-entry lifecycle tests."""
+    client = MagicMock()
+    client.validate = AsyncMock(return_value=True)
+    client.get_device_unique_id = AsyncMock(return_value="dev1")
+    client.get_host_firmware_version = AsyncMock(return_value="99.0")
+    client.async_close = AsyncMock(return_value=True)
+    return client
+
+
+def _make_setup_coordinator() -> MagicMock:
+    """Create a coordinator mock that succeeds initial setup and supports shutdown."""
+    coordinator = MagicMock()
+    coordinator.async_config_entry_first_refresh = AsyncMock(return_value=True)
+    coordinator.async_shutdown = AsyncMock(return_value=True)
+    return coordinator
+
+
 def test_align_aiopnsense_log_level_mirrors_opnsense_when_unset() -> None:
     """Aiopnsense should inherit the integration debug level when not configured."""
     opnsense_logger = logging.getLogger("custom_components.opnsense")
@@ -1914,21 +1932,14 @@ async def test_async_setup_entry_cleans_up_when_device_tracker_refresh_fails(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """async_setup_entry should clean up when device-tracker setup fails."""
-    client = MagicMock()
-    client.validate = AsyncMock(return_value=True)
-    client.get_device_unique_id = AsyncMock(return_value="dev1")
-    client.get_host_firmware_version = AsyncMock(return_value="99.0")
-    client.async_close = AsyncMock(return_value=True)
+    client = _make_valid_setup_client()
     monkeypatch.setattr(init_mod, "create_opnsense_client", lambda **_kwargs: client)
 
-    main_coordinator = MagicMock()
-    main_coordinator.async_config_entry_first_refresh = AsyncMock(return_value=True)
-    main_coordinator.async_shutdown = AsyncMock(return_value=True)
-    device_tracker_coordinator = MagicMock()
+    main_coordinator = _make_setup_coordinator()
+    device_tracker_coordinator = _make_setup_coordinator()
     device_tracker_coordinator.async_config_entry_first_refresh = AsyncMock(
         side_effect=RuntimeError("device tracker refresh failed")
     )
-    device_tracker_coordinator.async_shutdown = AsyncMock(return_value=True)
 
     coordinators = [main_coordinator, device_tracker_coordinator]
 
@@ -1969,16 +1980,10 @@ async def test_async_setup_entry_cleans_up_when_platform_forwarding_fails(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """async_setup_entry should clean up when platform forwarding fails."""
-    client = MagicMock()
-    client.validate = AsyncMock(return_value=True)
-    client.get_device_unique_id = AsyncMock(return_value="dev1")
-    client.get_host_firmware_version = AsyncMock(return_value="99.0")
-    client.async_close = AsyncMock(return_value=True)
+    client = _make_valid_setup_client()
     monkeypatch.setattr(init_mod, "create_opnsense_client", lambda **_kwargs: client)
 
-    coordinator = MagicMock()
-    coordinator.async_config_entry_first_refresh = AsyncMock(return_value=True)
-    coordinator.async_shutdown = AsyncMock(return_value=True)
+    coordinator = _make_setup_coordinator()
     monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
 
     entry = make_config_entry(
@@ -2021,16 +2026,10 @@ async def test_async_setup_entry_registers_update_listener_before_forwarding(
     """Update listener registration should happen before platform forwarding."""
     call_order: list[str] = []
 
-    client = MagicMock()
-    client.validate = AsyncMock(return_value=True)
-    client.get_device_unique_id = AsyncMock(return_value="dev1")
-    client.get_host_firmware_version = AsyncMock(return_value="99.0")
-    client.async_close = AsyncMock(return_value=True)
+    client = _make_valid_setup_client()
     monkeypatch.setattr(init_mod, "create_opnsense_client", lambda **_kwargs: client)
 
-    coordinator = MagicMock()
-    coordinator.async_config_entry_first_refresh = AsyncMock(return_value=True)
-    coordinator.async_shutdown = AsyncMock(return_value=True)
+    coordinator = _make_setup_coordinator()
     monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
 
     entry = make_config_entry(
