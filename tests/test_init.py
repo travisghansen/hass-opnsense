@@ -1493,10 +1493,10 @@ async def test_migrate_3_to_4_skips_filesystems_when_filesystems_payload_is_inva
 
 
 @pytest.mark.asyncio
-async def test_migrate_3_to_4_skips_invalid_filesystem_members(
+async def test_migrate_3_to_4_defers_filesystem_migration_when_mountpoint_invalid(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
-    """_migrate_3_to_4 should ignore malformed filesystem members."""
+    """A matched filesystem with an invalid mountpoint should defer the migration."""
     client = fake_client(
         telemetry={
             "filesystems": [
@@ -1509,7 +1509,7 @@ async def test_migrate_3_to_4_skips_invalid_filesystem_members(
 
     filesystem_entity = MagicMock()
     filesystem_entity.entity_id = "sensor.fs"
-    filesystem_entity.unique_id = "abc_telemetry_filesystems_slash_dev_slash_sdb1"
+    filesystem_entity.unique_id = "abc_telemetry_filesystems_slash_dev_slash_sda1"
 
     entity_registry = MagicMock()
     entity_registry.async_update_entity = MagicMock(
@@ -1532,12 +1532,44 @@ async def test_migrate_3_to_4_skips_invalid_filesystem_members(
 
     result = await init_mod._migrate_3_to_4(hass, config_entry, client)
 
-    assert result is True
-    entity_registry.async_update_entity.assert_called_once_with(
-        filesystem_entity.entity_id,
-        new_unique_id="abc_telemetry_filesystems_mnt_data",
+    assert result is False
+    entity_registry.async_update_entity.assert_not_called()
+    hass.config_entries.async_update_entry.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_migrate_3_to_4_skips_filesystems_when_filesystems_key_is_missing(
+    monkeypatch: pytest.MonkeyPatch, fake_client: Any
+) -> None:
+    """_migrate_3_to_4 should defer when telemetry lacks filesystems metadata."""
+    client = fake_client(telemetry={})()
+
+    filesystem_entity = MagicMock()
+    filesystem_entity.entity_id = "sensor.fs"
+    filesystem_entity.unique_id = "abc_telemetry_filesystems_slash_dev_slash_sda1"
+
+    entity_registry = MagicMock()
+    entity_registry.async_update_entity = MagicMock()
+    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(
+        init_mod.er,
+        "async_entries_for_config_entry",
+        lambda registry, config_entry_id: [filesystem_entity],
     )
-    hass.config_entries.async_update_entry.assert_called_once_with(config_entry, version=4)
+
+    config_entry = MagicMock()
+    config_entry.version = 3
+    config_entry.entry_id = "e3"
+
+    hass = MagicMock(spec=HomeAssistant)
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_update_entry = MagicMock(return_value=True)
+
+    result = await init_mod._migrate_3_to_4(hass, config_entry, client)
+
+    assert result is False
+    entity_registry.async_update_entity.assert_not_called()
+    hass.config_entries.async_update_entry.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -2022,8 +2054,9 @@ async def test_async_setup_entry_cleans_up_when_platform_forwarding_fails(
         },
         options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
     )
-    entry.add_update_listener = MagicMock(return_value=MagicMock())
-    entry.async_on_unload = MagicMock()
+    remove_listener = MagicMock()
+    entry.add_update_listener = MagicMock(return_value=remove_listener)
+    entry.async_on_unload = MagicMock(return_value=None)
 
     hass = ph_hass
     hass.config_entries.async_forward_entry_setups = AsyncMock(
@@ -2037,9 +2070,70 @@ async def test_async_setup_entry_cleans_up_when_platform_forwarding_fails(
 
     coordinator.async_shutdown.assert_awaited_once()
     client.async_close.assert_awaited_once()
-    entry.add_update_listener.assert_not_called()
-    entry.async_on_unload.assert_not_called()
+    entry.add_update_listener.assert_called_once()
+    entry.async_on_unload.assert_called_once_with(remove_listener)
+    remove_listener.assert_called_once()
     assert entry.entry_id not in hass.data.get(init_mod.DOMAIN, {})
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_registers_update_listener_before_forwarding(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Update listener registration should happen before platform forwarding."""
+    call_order: list[str] = []
+
+    client = MagicMock()
+    client.validate = AsyncMock(return_value=True)
+    client.get_device_unique_id = AsyncMock(return_value="dev1")
+    client.get_host_firmware_version = AsyncMock(return_value="99.0")
+    client.async_close = AsyncMock(return_value=True)
+    monkeypatch.setattr(init_mod, "create_opnsense_client", lambda **_kwargs: client)
+
+    coordinator = MagicMock()
+    coordinator.async_config_entry_first_refresh = AsyncMock(return_value=True)
+    coordinator.async_shutdown = AsyncMock(return_value=True)
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+
+    entry = make_config_entry(
+        data={
+            init_mod.CONF_URL: "http://1.2.3.4",
+            init_mod.CONF_USERNAME: "u",
+            init_mod.CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+        },
+        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+    )
+    remove_listener = MagicMock()
+
+    def _add_update_listener(listener: Any) -> MagicMock:
+        call_order.append("add_listener")
+        return remove_listener
+
+    def _async_on_unload(unregister: MagicMock) -> None:
+        call_order.append("async_on_unload")
+
+    entry.add_update_listener = MagicMock(side_effect=_add_update_listener)
+    entry.async_on_unload = MagicMock(side_effect=_async_on_unload)
+
+    async def _forward_entry_setups(*_args: Any, **_kwargs: Any) -> bool:
+        call_order.append("forward")
+        return True
+
+    hass = ph_hass
+    hass.config_entries.async_forward_entry_setups = AsyncMock(side_effect=_forward_entry_setups)
+    hass.config_entries.async_reload = MagicMock()
+    hass.data = {}
+
+    res = await init_mod.async_setup_entry(hass, entry)
+
+    assert res is True
+    assert call_order.index("add_listener") < call_order.index("forward")
+    entry.add_update_listener.assert_called_once_with(init_mod._async_update_listener)
+    entry.async_on_unload.assert_called_once_with(remove_listener)
+    remove_listener.assert_not_called()
 
 
 @pytest.mark.asyncio

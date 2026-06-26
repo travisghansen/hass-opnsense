@@ -83,7 +83,7 @@ def _get_telemetry_filesystems(telemetry: object) -> list[Mapping[str, Any]] | N
     if not isinstance(telemetry, Mapping):
         return None
 
-    filesystems = telemetry.get("filesystems", [])
+    filesystems = telemetry.get("filesystems")
     if not isinstance(filesystems, list):
         return None
 
@@ -237,6 +237,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     device_tracker_coordinator: OPNsenseDataUpdateCoordinator | None = None
 
     setup_succeeded: bool = False
+    remove_listener: Any | None = None
     try:
         # Trigger repair task and shutdown if device id has changed
         router_device_id: str | None = await client.get_device_unique_id(
@@ -349,18 +350,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             device_unique_id=config_device_id,
             loaded_platforms=platforms,
         )
+        remove_listener = entry.add_update_listener(_async_update_listener)
+        entry.async_on_unload(remove_listener)
+
         if device_tracker_enabled and device_tracker_coordinator:
             # Fetch initial data so we have data when entities subscribe
             await device_tracker_coordinator.async_config_entry_first_refresh()
 
         await hass.config_entries.async_forward_entry_setups(entry, platforms)
 
-        entry.async_on_unload(entry.add_update_listener(_async_update_listener))
-
         setup_succeeded = True
         return True
     finally:
         if not setup_succeeded:
+            if remove_listener is not None:
+                remove_listener()
             if device_tracker_coordinator is not None:
                 await device_tracker_coordinator.async_shutdown()
             await coordinator.async_shutdown()
@@ -588,6 +592,7 @@ async def _migrate_3_to_4(
                 )
                 unique_id_device_name = unique_id_device_name.lower()
                 new_unique_id = None
+                matched_filesystem = False
                 if filesystems is None:
                     filesystem_migration_deferred = True
                     continue
@@ -597,9 +602,11 @@ async def _migrate_3_to_4(
                         continue
                     device_name: str = device.replace("/", "_slash_").strip("_").lower()
                     if device_name == unique_id_device_name:
+                        matched_filesystem = True
                         mpoint = filesystem.get("mountpoint", "")
                         if not isinstance(mpoint, str):
-                            continue
+                            filesystem_migration_deferred = True
+                            break
                         if mpoint == "/":
                             mountpoint = "root"
                         else:
@@ -608,6 +615,8 @@ async def _migrate_3_to_4(
                             f"{telemetry_filesystem_prefix}_telemetry_filesystems_{mountpoint}"
                         )
                         break
+                if filesystem_migration_deferred and matched_filesystem:
+                    continue
             else:
                 continue
             if new_unique_id is None:
