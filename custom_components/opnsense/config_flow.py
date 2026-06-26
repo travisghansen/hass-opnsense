@@ -862,7 +862,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(self._config.get(CONF_DEVICE_UNIQUE_ID))
                 self._abort_if_unique_id_mismatch()
 
-                return self.async_update_reload_and_abort(
+                return self.async_update_and_abort(
                     entry=reconfigure_entry,
                     data=self._config,
                 )
