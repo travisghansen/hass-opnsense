@@ -454,6 +454,46 @@ async def _collect_mapping_results(
     return response_list
 
 
+async def _collect_kill_state_results(
+    clients: list[OPNsenseServiceClient],
+    ip_addr: str,
+) -> list[dict[str, Any]]:
+    """Collect dropped state counts from selected clients.
+
+    Args:
+        clients: OPNsense clients selected for the service call.
+        ip_addr: IP address whose firewall states should be killed.
+
+    Returns:
+        list[dict[str, Any]]: Successful per-client dropped state counts.
+
+    Raises:
+        ServiceValidationError: If no selected clients report success or any selected client fails.
+    """
+    success: bool | None = None
+    response_list: list[dict[str, Any]] = []
+    for client in clients:
+        response: dict[str, Any] = await client.kill_states(ip_addr)
+        _LOGGER.debug(
+            "[service_kill_states] client: %s, ip_addr: %s, response: %s",
+            client.name,
+            ip_addr,
+            response,
+        )
+        if response.get("success", False):
+            response_list.append(
+                {
+                    "client_name": client.name,
+                    "dropped_states": response.get("dropped_states", 0),
+                }
+            )
+        if success is None or success:
+            success = response.get("success", False)
+    if success is None or not success:
+        raise ServiceValidationError(f"Kill States Failed: {ip_addr}")
+    return response_list
+
+
 async def _service_close_notice(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle the close notice service call.
 
@@ -680,27 +720,7 @@ async def _service_kill_states(hass: HomeAssistant, call: ServiceCall) -> Servic
         required value.
     """
     clients = await _get_target_clients(hass, call)
-    success: bool | None = None
-    response_list: list = []
-    for client in clients:
-        response: dict[str, Any] = await client.kill_states(call.data.get("ip_addr"))
-        _LOGGER.debug(
-            "[service_kill_states] client: %s, ip_addr: %s, response: %s",
-            client.name,
-            call.data.get("ip_addr"),
-            response,
-        )
-        if response.get("success", False):
-            response_list.append(
-                {
-                    "client_name": client.name,
-                    "dropped_states": response.get("dropped_states", 0),
-                }
-            )
-        if success is None or success:
-            success = response.get("success", False)
-    if success is None or not success:
-        raise ServiceValidationError(f"Kill States Failed: {call.data.get('ip_addr')}")
+    response_list = await _collect_kill_state_results(clients, call.data["ip_addr"])
     return_response: dict[str, Any] = {"dropped_states": response_list}
     _LOGGER.debug("[service_kill_states] return_response: %s", return_response)
     if return_response:
