@@ -87,7 +87,13 @@ def _get_telemetry_filesystems(telemetry: object) -> list[Mapping[str, Any]] | N
     if not isinstance(filesystems, list):
         return None
 
-    return [filesystem for filesystem in filesystems if isinstance(filesystem, Mapping)]
+    valid_filesystems: list[Mapping[str, Any]] = []
+    for filesystem in filesystems:
+        if not isinstance(filesystem, Mapping):
+            return None
+        valid_filesystems.append(filesystem)
+
+    return valid_filesystems
 
 
 def _align_aiopnsense_log_level() -> None:
