@@ -1412,7 +1412,7 @@ async def test_migrate_3_to_4_filesystem_skips_and_non_root_mountpoint(
 async def test_migrate_3_to_4_skips_filesystems_when_telemetry_is_not_mapping(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """_migrate_3_to_4 should skip filesystem remaps when telemetry is invalid."""
+    """_migrate_3_to_4 should defer filesystem remaps when telemetry is invalid."""
 
     class Client:
         async def get_telemetry(self) -> None:
@@ -1449,19 +1449,19 @@ async def test_migrate_3_to_4_skips_filesystems_when_telemetry_is_not_mapping(
 
     result = await init_mod._migrate_3_to_4(hass, config_entry, client)
 
-    assert result is True
+    assert result is False
     entity_registry.async_update_entity.assert_called_once_with(
         interface_entity.entity_id,
         new_unique_id="abc_interface_lan",
     )
-    hass.config_entries.async_update_entry.assert_called_once_with(config_entry, version=4)
+    hass.config_entries.async_update_entry.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_migrate_3_to_4_skips_filesystems_when_filesystems_payload_is_invalid(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
-    """_migrate_3_to_4 should skip filesystem remaps when filesystems is invalid."""
+    """_migrate_3_to_4 should defer filesystem remaps when filesystems is invalid."""
     client = fake_client(telemetry={"filesystems": None})()
 
     filesystem_entity = MagicMock()
@@ -1487,8 +1487,56 @@ async def test_migrate_3_to_4_skips_filesystems_when_filesystems_payload_is_inva
 
     result = await init_mod._migrate_3_to_4(hass, config_entry, client)
 
-    assert result is True
+    assert result is False
     entity_registry.async_update_entity.assert_not_called()
+    hass.config_entries.async_update_entry.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_migrate_3_to_4_skips_invalid_filesystem_members(
+    monkeypatch: pytest.MonkeyPatch, fake_client: Any
+) -> None:
+    """_migrate_3_to_4 should ignore malformed filesystem members."""
+    client = fake_client(
+        telemetry={
+            "filesystems": [
+                {"device": None, "mountpoint": "/"},
+                {"device": "/dev/sda1", "mountpoint": None},
+                {"device": "/dev/sdb1", "mountpoint": "/mnt/data"},
+            ]
+        }
+    )()
+
+    filesystem_entity = MagicMock()
+    filesystem_entity.entity_id = "sensor.fs"
+    filesystem_entity.unique_id = "abc_telemetry_filesystems_slash_dev_slash_sdb1"
+
+    entity_registry = MagicMock()
+    entity_registry.async_update_entity = MagicMock(
+        return_value=MagicMock(entity_id=filesystem_entity.entity_id, unique_id="updated")
+    )
+    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(
+        init_mod.er,
+        "async_entries_for_config_entry",
+        lambda registry, config_entry_id: [filesystem_entity],
+    )
+
+    config_entry = MagicMock()
+    config_entry.version = 3
+    config_entry.entry_id = "e3"
+
+    hass = MagicMock(spec=HomeAssistant)
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_update_entry = MagicMock(return_value=True)
+
+    result = await init_mod._migrate_3_to_4(hass, config_entry, client)
+
+    assert result is True
+    entity_registry.async_update_entity.assert_called_once_with(
+        filesystem_entity.entity_id,
+        new_unique_id="abc_telemetry_filesystems_mnt_data",
+    )
     hass.config_entries.async_update_entry.assert_called_once_with(config_entry, version=4)
 
 

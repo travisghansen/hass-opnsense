@@ -70,21 +70,22 @@ NATIVE_RULE_ENTITY_TOKENS: tuple[str, ...] = (
 )
 
 
-def _get_telemetry_filesystems(telemetry: object) -> list[Mapping[str, Any]]:
+def _get_telemetry_filesystems(telemetry: object) -> list[Mapping[str, Any]] | None:
     """Return valid telemetry filesystem mappings from a migration payload.
 
     Args:
         telemetry: Raw telemetry payload returned by the OPNsense client.
 
     Returns:
-        list[Mapping[str, Any]]: Filesystem mappings usable for entity ID remaps.
+        list[Mapping[str, Any]] | None: Filesystem mappings usable for entity
+            ID remaps, or `None` when the telemetry payload cannot be trusted.
     """
     if not isinstance(telemetry, Mapping):
-        return []
+        return None
 
     filesystems = telemetry.get("filesystems", [])
     if not isinstance(filesystems, list):
-        return []
+        return None
 
     return [filesystem for filesystem in filesystems if isinstance(filesystem, Mapping)]
 
@@ -557,6 +558,7 @@ async def _migrate_3_to_4(
 
     telemetry = await client.get_telemetry()
     filesystems = _get_telemetry_filesystems(telemetry)
+    filesystem_migration_deferred = False
 
     for ent in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
         platform = ent.entity_id.split(".")[0]
@@ -586,12 +588,18 @@ async def _migrate_3_to_4(
                 )
                 unique_id_device_name = unique_id_device_name.lower()
                 new_unique_id = None
+                if filesystems is None:
+                    filesystem_migration_deferred = True
+                    continue
                 for filesystem in filesystems:
-                    device_name: str = (
-                        filesystem.get("device", "").replace("/", "_slash_").strip("_")
-                    ).lower()
+                    device = filesystem.get("device", "")
+                    if not isinstance(device, str):
+                        continue
+                    device_name: str = device.replace("/", "_slash_").strip("_").lower()
                     if device_name == unique_id_device_name:
-                        mpoint: str = filesystem.get("mountpoint", "")
+                        mpoint = filesystem.get("mountpoint", "")
+                        if not isinstance(mpoint, str):
+                            continue
                         if mpoint == "/":
                             mountpoint = "root"
                         else:
@@ -629,6 +637,9 @@ async def _migrate_3_to_4(
                     ent.entity_id,
                     type(e).__name__,
                 )
+    if filesystem_migration_deferred:
+        _LOGGER.error("Migration to version 4 deferred because filesystem telemetry is unavailable")
+        return False
     new_entry_bool = hass.config_entries.async_update_entry(config_entry, version=4)
     if new_entry_bool:
         _LOGGER.debug("[migrate_3_to_4] config_entry update successful")
