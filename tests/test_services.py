@@ -98,12 +98,14 @@ def _iter_service_field_names(service_definition: dict[str, Any]) -> set[str]:
 def _patch_device_registry_entry(
     monkeypatch: pytest.MonkeyPatch,
     primary_config_entry: str | None,
+    config_entries: set[str] | None = None,
 ) -> None:
     """Patch device registry lookup to return a fake device entry.
 
     Args:
         monkeypatch: Pytest monkeypatch fixture used to patch the services module.
         primary_config_entry: Config entry ID exposed by the fake device entry.
+        config_entries: Config entry IDs exposed by the fake device entry.
     """
 
     class DevReg:
@@ -115,6 +117,7 @@ def _patch_device_registry_entry(
             """
             device_entry = MagicMock()
             device_entry.primary_config_entry = primary_config_entry
+            device_entry.config_entries = config_entries or set()
             return device_entry
 
     monkeypatch.setattr(services_mod.dr, "async_get", lambda _hass: DevReg())
@@ -239,8 +242,7 @@ async def test_async_setup_services_registers_expected_service_contracts() -> No
     registrations[SERVICE_START_SERVICE]["schema"]({"service_id": "svc"})
     registrations[SERVICE_STOP_SERVICE]["schema"]({"service_name": "svc"})
     registrations[SERVICE_RESTART_SERVICE]["schema"]({"service_id": "svc", "only_if_running": True})
-    with pytest.raises(vol.Invalid):
-        registrations[SERVICE_START_SERVICE]["schema"]({})
+    assert registrations[SERVICE_START_SERVICE]["schema"]({}) == {}
 
 
 def test_service_metadata_fields_have_translations() -> None:
@@ -288,6 +290,10 @@ async def test_get_clients_single_and_multiple(monkeypatch: pytest.MonkeyPatch) 
     # filter by entity_id
     _patch_entity_registry_entry(monkeypatch, "e1")
     res = await services_mod._get_clients(hass_local, opnentity_id="ent123")
+    assert res == [client]
+
+    _patch_device_registry_entry(monkeypatch, None, {"e1"})
+    res = await services_mod._get_clients(hass_local, opndevice_id="dev123")
     assert res == [client]
 
 
@@ -360,6 +366,18 @@ async def test_get_clients_registry_entries_without_config_entry_raise(
 
     with pytest.raises(ServiceValidationError):
         await services_mod._get_clients(hass_local, opnentity_id="ent123")
+
+
+@pytest.mark.asyncio
+async def test_get_clients_empty_data_raises_for_explicit_target() -> None:
+    """Explicit target selectors fail clearly when no clients are loaded."""
+    hass_local = MagicMock(spec=HomeAssistant)
+    hass_local.data = {DOMAIN: {}}
+
+    with pytest.raises(ServiceValidationError) as exc_info:
+        await services_mod._get_clients(hass_local, opndevice_id="dev123")
+
+    assert exc_info.value.translation_key == "no_target_clients"
 
 
 @pytest.mark.asyncio
@@ -523,9 +541,10 @@ async def test_service_start_stop_restart_require_service_identifier(
     call = _service_call({})
 
     handler = getattr(services_mod, method_name)
-    with pytest.raises(ServiceValidationError):
+    with pytest.raises(ServiceValidationError) as exc_info:
         await handler(ph_hass, call)
 
+    assert exc_info.value.translation_key == "service_identifier_required"
     client.start_service.assert_not_awaited()
     client.stop_service.assert_not_awaited()
     client.restart_service.assert_not_awaited()

@@ -34,7 +34,6 @@ from .const import (
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 _VNSTAT_PERIODS: tuple[str, ...] = ("hourly", "daily", "monthly", "yearly")
-_SERVICE_IDENTIFIER_ERROR = "Must use service_id or service_name"
 _SERVICE_IDENTIFIER_CONFLICT_ERROR = "Must use service_id or service_name but not both"
 _TRANSLATION_KEY_GENERATE_VOUCHERS_FAILED = "generate_vouchers_failed"
 _TRANSLATION_KEY_GET_VNSTAT_METRICS_FAILED = "get_vnstat_metrics_failed"
@@ -73,23 +72,6 @@ def _service_validation_error(
             key: str(value) for key, value in (translation_placeholders or {}).items()
         },
     )
-
-
-def _validate_service_identifier(data: dict[str, Any]) -> dict[str, Any]:
-    """Validate that a service control call includes a service identifier.
-
-    Args:
-        data: Validated service call payload.
-
-    Returns:
-        dict[str, Any]: Original service call payload.
-
-    Raises:
-        vol.Invalid: If neither ``service_id`` nor ``service_name`` was supplied.
-    """
-    if data.get("service_id") or data.get("service_name"):
-        return data
-    raise vol.Invalid(_SERVICE_IDENTIFIER_ERROR)
 
 
 def _target_fields() -> dict[Any, Any]:
@@ -134,7 +116,7 @@ def _service_control_schema(extra_fields: dict[Any, Any] | None = None) -> vol.S
         vol.Schema: Service control schema with identifier validation.
     """
     fields = _service_identifier_fields() | (extra_fields or {}) | _target_fields()
-    return vol.Schema(vol.All(fields, _validate_service_identifier))
+    return vol.Schema(fields)
 
 
 def _targeted_schema(fields: dict[Any, Any] | None = None) -> vol.Schema:
@@ -317,6 +299,8 @@ async def _get_clients(
         or not isinstance(hass.data[DOMAIN], MutableMapping)
         or not hass.data[DOMAIN]
     ):
+        if opndevice_id or opnentity_id:
+            raise _service_validation_error(_TRANSLATION_KEY_NO_TARGET_CLIENTS)
         return []
     first_entry_id = next(iter(hass.data[DOMAIN]))
     if len(hass.data[DOMAIN]) == 1 and not opndevice_id and not opnentity_id:
@@ -359,7 +343,7 @@ def _resolve_target_entry_ids(
         except TypeError, AttributeError, HomeAssistantError:
             pass
         else:
-            _append_entry_id(entry_ids, device_entry.primary_config_entry if device_entry else None)
+            _append_device_entry_ids(entry_ids, device_entry)
     if opnentity_id:
         try:
             entity_entry = er.async_get(hass).async_get(opnentity_id)
@@ -379,6 +363,20 @@ def _append_entry_id(entry_ids: list[str], entry_id: str | None) -> None:
     """
     if entry_id and entry_id not in entry_ids:
         entry_ids.append(entry_id)
+
+
+def _append_device_entry_ids(entry_ids: list[str], device_entry: Any | None) -> None:
+    """Append config entry IDs resolved from a device registry entry.
+
+    Args:
+        entry_ids: Existing config entry IDs.
+        device_entry: Device registry entry resolved from an explicit device target.
+    """
+    if device_entry is None:
+        return
+    _append_entry_id(entry_ids, getattr(device_entry, "primary_config_entry", None))
+    for entry_id in getattr(device_entry, "config_entries", ()):
+        _append_entry_id(entry_ids, entry_id)
 
 
 async def _get_target_clients(
