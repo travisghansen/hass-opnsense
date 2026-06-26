@@ -93,8 +93,10 @@ async def test_get_clients_single_and_multiple(monkeypatch: pytest.MonkeyPatch) 
 
 
 @pytest.mark.asyncio
-async def test_get_clients_registry_errors_are_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Verify that _get_clients returns all configured clients even when registry lookups raise exceptions. Device or entity registry lookups may raise exceptions; ensure these are ignored."""
+async def test_get_clients_registry_errors_raise_for_explicit_targets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Registry lookup errors must not broaden explicit targets to all clients."""
     hass_local = MagicMock(spec=HomeAssistant)
     c1, c2 = MagicMock(name="c1"), MagicMock(name="c2")
     hass_local.data = {DOMAIN: {"e1": c1, "e2": c2}}
@@ -123,8 +125,32 @@ async def test_get_clients_registry_errors_are_ignored(monkeypatch: pytest.Monke
 
     monkeypatch.setattr(services_mod.dr, "async_get", _raises(TypeError()))
     monkeypatch.setattr(services_mod.er, "async_get", _raises(AttributeError()))
-    res = await services_mod._get_clients(hass_local, opndevice_id="d", opnentity_id="e")
-    assert res == [c1, c2]
+    with pytest.raises(ServiceValidationError):
+        await services_mod._get_clients(hass_local, opndevice_id="d", opnentity_id="e")
+
+
+@pytest.mark.asyncio
+async def test_get_clients_unresolved_explicit_target_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Explicit target selectors must not broaden to all configured clients."""
+    hass_local = MagicMock(spec=HomeAssistant)
+    c1, c2 = MagicMock(name="c1"), MagicMock(name="c2")
+    hass_local.data = {DOMAIN: {"e1": c1, "e2": c2}}
+
+    class DevReg:
+        def async_get(self, device_id: Any) -> Any:
+            """Return no matching device for the requested selector.
+
+            Args:
+                device_id: Device identifier used to target a config entry.
+            """
+            return None
+
+    monkeypatch.setattr(services_mod.dr, "async_get", lambda hass_in: DevReg())
+
+    with pytest.raises(ServiceValidationError):
+        await services_mod._get_clients(hass_local, opndevice_id="missing-device")
 
 
 @pytest.mark.asyncio
@@ -303,6 +329,49 @@ async def test_service_start_stop_restart_failure_variants(
     handler = getattr(services_mod, method_name)
     with pytest.raises(ServiceValidationError):
         await handler(hass, call)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "method_name",
+    [
+        "_service_start_service",
+        "_service_stop_service",
+        "_service_restart_service",
+    ],
+)
+async def test_service_start_stop_restart_require_service_identifier(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    method_name: str,
+) -> None:
+    """Service control handlers require either service_id or service_name."""
+    client = MagicMock()
+    client.name = "c1"
+    client.start_service = AsyncMock(return_value=True)
+    client.stop_service = AsyncMock(return_value=True)
+    client.restart_service = AsyncMock(return_value=True)
+
+    async def fake_get(*args, **kwargs) -> Any:
+        """Return the fake client for service identifier validation.
+
+        Args:
+            *args: Additional positional arguments forwarded by the function.
+            **kwargs: Additional keyword arguments forwarded by the function.
+        """
+        return [client]
+
+    monkeypatch.setattr(services_mod, "_get_clients", fake_get)
+    call = MagicMock()
+    call.data = {}
+
+    handler = getattr(services_mod, method_name)
+    with pytest.raises(ServiceValidationError):
+        await handler(ph_hass, call)
+
+    client.start_service.assert_not_awaited()
+    client.stop_service.assert_not_awaited()
+    client.restart_service.assert_not_awaited()
 
 
 @pytest.mark.asyncio

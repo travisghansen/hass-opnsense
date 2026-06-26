@@ -34,6 +34,24 @@ from .const import (
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 _VNSTAT_PERIODS: tuple[str, ...] = ("hourly", "daily", "monthly", "yearly")
+_SERVICE_IDENTIFIER_ERROR = "Must use service_id or service_name"
+
+
+def _validate_service_identifier(data: dict[str, Any]) -> dict[str, Any]:
+    """Validate that a service control call includes a service identifier.
+
+    Args:
+        data: Validated service call payload.
+
+    Returns:
+        dict[str, Any]: Original service call payload.
+
+    Raises:
+        vol.Invalid: If neither ``service_id`` nor ``service_name`` was supplied.
+    """
+    if data.get("service_id") or data.get("service_name"):
+        return data
+    raise vol.Invalid(_SERVICE_IDENTIFIER_ERROR)
 
 
 async def async_setup_services(hass: HomeAssistant) -> None:
@@ -55,20 +73,23 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         domain=DOMAIN,
         service=SERVICE_START_SERVICE,
         schema=vol.Schema(
-            {
-                vol.Exclusive(
-                    "service_id",
-                    "service_type",
-                    msg="Must use service_id or service_name but not both",
-                ): cv.string,
-                vol.Exclusive(
-                    "service_name",
-                    "service_type",
-                    msg="Must use service_id or service_name but not both",
-                ): cv.string,
-                vol.Optional("device_id"): vol.Any(cv.string),
-                vol.Optional("entity_id"): vol.Any(cv.string),
-            }
+            vol.All(
+                {
+                    vol.Exclusive(
+                        "service_id",
+                        "service_type",
+                        msg="Must use service_id or service_name but not both",
+                    ): cv.string,
+                    vol.Exclusive(
+                        "service_name",
+                        "service_type",
+                        msg="Must use service_id or service_name but not both",
+                    ): cv.string,
+                    vol.Optional("device_id"): vol.Any(cv.string),
+                    vol.Optional("entity_id"): vol.Any(cv.string),
+                },
+                _validate_service_identifier,
+            )
         ),
         service_func=functools.partial(_service_start_service, hass),
     )
@@ -77,20 +98,23 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         domain=DOMAIN,
         service=SERVICE_STOP_SERVICE,
         schema=vol.Schema(
-            {
-                vol.Exclusive(
-                    "service_id",
-                    "service_type",
-                    msg="Must use service_id or service_name but not both",
-                ): cv.string,
-                vol.Exclusive(
-                    "service_name",
-                    "service_type",
-                    msg="Must use service_id or service_name but not both",
-                ): cv.string,
-                vol.Optional("device_id"): vol.Any(cv.string),
-                vol.Optional("entity_id"): vol.Any(cv.string),
-            }
+            vol.All(
+                {
+                    vol.Exclusive(
+                        "service_id",
+                        "service_type",
+                        msg="Must use service_id or service_name but not both",
+                    ): cv.string,
+                    vol.Exclusive(
+                        "service_name",
+                        "service_type",
+                        msg="Must use service_id or service_name but not both",
+                    ): cv.string,
+                    vol.Optional("device_id"): vol.Any(cv.string),
+                    vol.Optional("entity_id"): vol.Any(cv.string),
+                },
+                _validate_service_identifier,
+            )
         ),
         service_func=functools.partial(_service_stop_service, hass),
     )
@@ -99,21 +123,24 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         domain=DOMAIN,
         service=SERVICE_RESTART_SERVICE,
         schema=vol.Schema(
-            {
-                vol.Exclusive(
-                    "service_id",
-                    "service_type",
-                    msg="Must use service_id or service_name but not both",
-                ): cv.string,
-                vol.Exclusive(
-                    "service_name",
-                    "service_type",
-                    msg="Must use service_id or service_name but not both",
-                ): cv.string,
-                vol.Optional("only_if_running"): cv.boolean,
-                vol.Optional("device_id"): vol.Any(cv.string),
-                vol.Optional("entity_id"): vol.Any(cv.string),
-            }
+            vol.All(
+                {
+                    vol.Exclusive(
+                        "service_id",
+                        "service_type",
+                        msg="Must use service_id or service_name but not both",
+                    ): cv.string,
+                    vol.Exclusive(
+                        "service_name",
+                        "service_type",
+                        msg="Must use service_id or service_name but not both",
+                    ): cv.string,
+                    vol.Optional("only_if_running"): cv.boolean,
+                    vol.Optional("device_id"): vol.Any(cv.string),
+                    vol.Optional("entity_id"): vol.Any(cv.string),
+                },
+                _validate_service_identifier,
+            )
         ),
         service_func=functools.partial(_service_restart_service, hass),
     )
@@ -261,6 +288,9 @@ async def _get_clients(
         services.
         opndevice_id: Device identifier used to target the correct OPNsense device or config entry.
         opnentity_id: Entity identifier used to resolve the matching OPNsense entity.
+
+    Raises:
+        ServiceValidationError: If explicit target selectors do not resolve to configured clients.
     """
     if (
         DOMAIN not in hass.data
@@ -269,7 +299,7 @@ async def _get_clients(
     ):
         return []
     first_entry_id = next(iter(hass.data[DOMAIN]))
-    if len(hass.data[DOMAIN]) == 1:
+    if len(hass.data[DOMAIN]) == 1 and not opndevice_id and not opnentity_id:
         # _LOGGER.debug(f"[get_clients] Only 1 entry. entry_id: {first_entry_id}")
         return [hass.data[DOMAIN][first_entry_id]]
 
@@ -294,13 +324,37 @@ async def _get_clients(
             # {entity_entry}")
             if entity_entry and entity_entry.config_entry_id not in entry_ids:
                 entry_ids.append(entity_entry.config_entry_id)
+
+    if (opndevice_id or opnentity_id) and not entry_ids:
+        raise ServiceValidationError("No OPNsense clients match the selected target")
+
     clients: list = []
     # _LOGGER.debug(f"[get_clients] entry_ids: {entry_ids}")
     for entry_id, opnsense_client in hass.data[DOMAIN].items():
         if len(entry_ids) == 0 or entry_id in entry_ids:
             clients.append(opnsense_client)
+    if (opndevice_id or opnentity_id) and not clients:
+        raise ServiceValidationError("No OPNsense clients match the selected target")
     _LOGGER.debug("[get_clients] clients: %s", clients)
     return clients
+
+
+def _get_service_identifier(call: ServiceCall) -> str:
+    """Return the OPNsense service identifier from a service call.
+
+    Args:
+        call: Service call payload received from Home Assistant.
+
+    Returns:
+        str: OPNsense service identifier.
+
+    Raises:
+        ServiceValidationError: If no service identifier is present.
+    """
+    service_identifier = call.data.get("service_id", call.data.get("service_name"))
+    if not service_identifier:
+        raise ServiceValidationError(_SERVICE_IDENTIFIER_ERROR)
+    return service_identifier
 
 
 async def _service_close_notice(hass: HomeAssistant, call: ServiceCall) -> None:
@@ -337,6 +391,7 @@ async def _service_start_service(hass: HomeAssistant, call: ServiceCall) -> None
         ServiceValidationError: If the service call payload is missing a valid target or
         required value.
     """
+    service_identifier = _get_service_identifier(call)
     clients: list = await _get_clients(
         hass=hass,
         opndevice_id=call.data.get("device_id", []),
@@ -344,20 +399,17 @@ async def _service_start_service(hass: HomeAssistant, call: ServiceCall) -> None
     )
     success: bool | None = None
     for client in clients:
-        response = await client.start_service(
-            call.data.get("service_id", call.data.get("service_name"))
-        )
+        response = await client.start_service(service_identifier)
         _LOGGER.debug(
             "[service_start_service] client: %s, service: %s, response: %s",
             client.name,
-            call.data.get("service_id", call.data.get("service_name")),
+            service_identifier,
             response,
         )
         if success is None or success:
             success = response
     if success is None or not success:
-        service_name = call.data.get("service_id", call.data.get("service_name"))
-        raise ServiceValidationError(f"Start Service Failed. service: {service_name}")
+        raise ServiceValidationError(f"Start Service Failed. service: {service_identifier}")
 
 
 async def _service_stop_service(hass: HomeAssistant, call: ServiceCall) -> None:
@@ -372,6 +424,7 @@ async def _service_stop_service(hass: HomeAssistant, call: ServiceCall) -> None:
         ServiceValidationError: If the service call payload is missing a valid target or
         required value.
     """
+    service_identifier = _get_service_identifier(call)
     clients: list = await _get_clients(
         hass=hass,
         opndevice_id=call.data.get("device_id", []),
@@ -379,20 +432,17 @@ async def _service_stop_service(hass: HomeAssistant, call: ServiceCall) -> None:
     )
     success: bool | None = None
     for client in clients:
-        response = await client.stop_service(
-            call.data.get("service_id", call.data.get("service_name"))
-        )
+        response = await client.stop_service(service_identifier)
         _LOGGER.debug(
             "[service_stop_service] client: %s, service: %s, response: %s",
             client.name,
-            call.data.get("service_id", call.data.get("service_name")),
+            service_identifier,
             response,
         )
         if success is None or success:
             success = response
     if success is None or not success:
-        service_name = call.data.get("service_id", call.data.get("service_name"))
-        raise ServiceValidationError(f"Stop Service Failed. service: {service_name}")
+        raise ServiceValidationError(f"Stop Service Failed. service: {service_identifier}")
 
 
 async def _service_restart_service(hass: HomeAssistant, call: ServiceCall) -> None:
@@ -407,6 +457,7 @@ async def _service_restart_service(hass: HomeAssistant, call: ServiceCall) -> No
         ServiceValidationError: If the service call payload is missing a valid target or
         required value.
     """
+    service_identifier = _get_service_identifier(call)
     clients: list = await _get_clients(
         hass=hass,
         opndevice_id=call.data.get("device_id", []),
@@ -415,40 +466,29 @@ async def _service_restart_service(hass: HomeAssistant, call: ServiceCall) -> No
     success: bool | None = None
     if call.data.get("only_if_running"):
         for client in clients:
-            response = await client.restart_service_if_running(
-                call.data.get(
-                    "service_id",
-                    call.data.get("service_name"),
-                )
-            )
+            response = await client.restart_service_if_running(service_identifier)
             _LOGGER.debug(
                 "[service_restart_service] restart_service_if_running, client: %s, service: %s, "
                 "response: %s",
                 client.name,
-                call.data.get("service_id", call.data.get("service_name")),
+                service_identifier,
                 response,
             )
             if success is None or success:
                 success = response
     else:
         for client in clients:
-            response = await client.restart_service(
-                call.data.get(
-                    "service_id",
-                    call.data.get("service_name"),
-                )
-            )
+            response = await client.restart_service(service_identifier)
             _LOGGER.debug(
                 "[service_restart_service] restart_service, client: %s, service: %s, response: %s",
                 client.name,
-                call.data.get("service_id", call.data.get("service_name")),
+                service_identifier,
                 response,
             )
             if success is None or success:
                 success = response
     if success is None or not success:
-        service = call.data.get("service_id", call.data.get("service_name"))
-        raise ServiceValidationError(f"Restart Service Failed. service: {service}")
+        raise ServiceValidationError(f"Restart Service Failed. service: {service_identifier}")
 
 
 async def _service_system_halt(hass: HomeAssistant, call: ServiceCall) -> None:
