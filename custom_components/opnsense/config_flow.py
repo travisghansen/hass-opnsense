@@ -60,6 +60,8 @@ from .helpers import create_opnsense_client
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
+DeviceEntries = dict[str, str]
+
 CONF_DEVICE_TRACKING_MODE = "device_tracking_mode"
 DEVICE_TRACKING_MODE_DISABLED = "disabled"
 DEVICE_TRACKING_MODE_ALL = "all_detected"
@@ -92,7 +94,7 @@ def normalize_mac_address(mac: str) -> str | None:
 
 
 def _get_device_tracking_mode(
-    device_tracker_enabled: bool, selected_devices: list[str] | None
+    device_tracker_enabled: bool, selected_devices: Iterable[str] | None
 ) -> str:
     """Return the UI tracking mode for the current options.
 
@@ -106,6 +108,28 @@ def _get_device_tracking_mode(
     if not device_tracker_enabled:
         return DEVICE_TRACKING_MODE_DISABLED
     return DEVICE_TRACKING_MODE_SELECTED if selected_devices else DEVICE_TRACKING_MODE_ALL
+
+
+def _resolve_device_tracking_mode(
+    options: Mapping[str, Any], user_input: Mapping[str, Any] | None = None
+) -> str:
+    """Resolve the UI tracking mode from submitted or stored options.
+
+    Args:
+        options: Persisted or in-progress options mapping.
+        user_input: Optional submitted form values that may include the transient UI mode.
+
+    Returns:
+        str: Selected UI tracking mode.
+    """
+    if user_input and CONF_DEVICE_TRACKING_MODE in user_input:
+        return str(user_input[CONF_DEVICE_TRACKING_MODE])
+    if CONF_DEVICE_TRACKING_MODE in options:
+        return str(options[CONF_DEVICE_TRACKING_MODE])
+    return _get_device_tracking_mode(
+        bool(options.get(CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED)),
+        _merge_selected_devices(options.get(CONF_DEVICES, [])),
+    )
 
 
 def _parse_manual_devices(manual_devices: str | None) -> list[str]:
@@ -122,8 +146,6 @@ def _parse_manual_devices(manual_devices: str | None) -> list[str]:
 
     macs: list[str] = []
     for item in re.split(r"[\n,]+", manual_devices):
-        if not isinstance(item, str):
-            continue
         normalized = normalize_mac_address(item)
         if normalized:
             macs.append(normalized)
@@ -163,16 +185,16 @@ def _apply_device_tracking_mode(options: MutableMapping[str, Any], tracking_mode
         options[CONF_DEVICES] = []
 
 
-def _build_selected_device_entries(selected_devices: list[str]) -> dict[str, Any]:
+def _build_selected_device_entries(selected_devices: Iterable[str]) -> DeviceEntries:
     """Build selector entries from currently configured devices.
 
     Args:
         selected_devices: Persisted tracked MAC addresses from the options entry.
 
     Returns:
-        dict[str, Any]: Mapping of normalized MAC addresses to fallback labels.
+        DeviceEntries: Mapping of normalized MAC addresses to fallback labels.
     """
-    entries: dict[str, Any] = {}
+    entries: DeviceEntries = {}
     for device in selected_devices:
         normalized = normalize_mac_address(str(device))
         if not normalized:
@@ -640,7 +662,7 @@ def _build_options_init_schema(
 
 
 def _build_device_tracker_schema(
-    selected_devices: list[str], dt_entries: Mapping[str, Any]
+    selected_devices: list[str], dt_entries: DeviceEntries
 ) -> vol.Schema:
     """Build the device tracker options schema.
 
@@ -669,8 +691,8 @@ def _build_device_tracker_schema(
 
 
 async def _get_dt_entries(
-    hass: HomeAssistant, config: Mapping[str, Any], selected_devices: list
-) -> dict[str, Any]:
+    hass: HomeAssistant, config: Mapping[str, Any], selected_devices: Iterable[str]
+) -> DeviceEntries:
     """Return device-tracker selector entries.
 
     Args:
@@ -680,7 +702,7 @@ async def _get_dt_entries(
         not currently present in the ARP table.
 
     Returns:
-        dict[str, Any]: Mapping of MAC addresses to user-facing labels.
+        DeviceEntries: Mapping of MAC addresses to user-facing labels.
     """
     url = config[CONF_URL].strip()
     username: str = config[CONF_USERNAME]
@@ -695,7 +717,7 @@ async def _get_dt_entries(
     )
     try:
         # dicts are ordered so put all previously selected items at the top
-        entries: dict[str, Any] = _build_selected_device_entries(selected_devices)
+        entries: DeviceEntries = _build_selected_device_entries(selected_devices)
         arp_table: list = await client.get_arp_table(resolve_hostnames=True)
         if arp_table:
             ip_by_mac: dict[str, str] = {}
@@ -710,7 +732,7 @@ async def _get_dt_entries(
                 entries[mac] = label
 
             # Sort entries: fallback labels first, then by IP address (ascending)
-            sorted_entries: dict[str, Any] = dict(
+            sorted_entries: DeviceEntries = dict(
                 sorted(
                     entries.items(),
                     key=lambda item: _device_entry_sort_key(item[0], item[1], ip_by_mac),
@@ -894,6 +916,18 @@ class OPNsenseOptionsFlow(OptionsFlow):
         self._config: dict[str, Any] = {}
         self._options: dict[str, Any] = {}
 
+    def _create_options_entry(self) -> ConfigFlowResult:
+        """Persist the in-progress config/options state and create the options entry.
+
+        Returns:
+            ConfigFlowResult: Saved options-flow result.
+        """
+        self._options.pop(CONF_DEVICE_TRACKING_MODE, None)
+        self.hass.config_entries.async_update_entry(
+            entry=self.config_entry, data=self._config, options=self._options
+        )
+        return self.async_create_entry(data=self._options)
+
     async def async_step_init(
         self, user_input: MutableMapping[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -909,15 +943,7 @@ class OPNsenseOptionsFlow(OptionsFlow):
         self._config = dict(self.config_entry.data)
         self._options = dict(self.config_entry.options)
         if user_input is not None:
-            tracking_mode = str(
-                user_input.get(
-                    CONF_DEVICE_TRACKING_MODE,
-                    _get_device_tracking_mode(
-                        bool(self._options.get(CONF_DEVICE_TRACKER_ENABLED, False)),
-                        self._options.get(CONF_DEVICES, []),
-                    ),
-                )
-            )
+            tracking_mode = _resolve_device_tracking_mode(self._options, user_input)
             self._options.update(
                 {
                     key: value
@@ -939,11 +965,7 @@ class OPNsenseOptionsFlow(OptionsFlow):
             if tracking_mode == DEVICE_TRACKING_MODE_SELECTED:
                 return await self.async_step_device_tracker()
 
-            self._options.pop(CONF_DEVICE_TRACKING_MODE, None)
-            self.hass.config_entries.async_update_entry(
-                entry=self.config_entry, data=self._config, options=self._options
-            )
-            return self.async_create_entry(data=self._options)
+            return self._create_options_entry()
 
         return self.async_show_form(
             step_id="init",
@@ -974,24 +996,12 @@ class OPNsenseOptionsFlow(OptionsFlow):
                 expected_id=self._config.get(CONF_DEVICE_UNIQUE_ID),
             )
             if not errors:
-                tracking_mode = str(
-                    self._options.get(
-                        CONF_DEVICE_TRACKING_MODE,
-                        _get_device_tracking_mode(
-                            bool(self._options.get(CONF_DEVICE_TRACKER_ENABLED, False)),
-                            self._options.get(CONF_DEVICES, []),
-                        ),
-                    )
-                )
+                tracking_mode = _resolve_device_tracking_mode(self._options)
                 if tracking_mode == DEVICE_TRACKING_MODE_SELECTED:
                     return await self.async_step_device_tracker()
                 _LOGGER.debug("Updating options from granular sync. user_input: %s", self._config)
 
-                self._options.pop(CONF_DEVICE_TRACKING_MODE, None)
-                self.hass.config_entries.async_update_entry(
-                    entry=self.config_entry, data=self._config, options=self._options
-                )
-                return self.async_create_entry(data=self._options)
+                return self._create_options_entry()
 
         if not user_input:
             user_input = {}
@@ -1035,14 +1045,10 @@ class OPNsenseOptionsFlow(OptionsFlow):
                 self._options.pop(CONF_DEVICES, None)
                 self._config.pop(TRACKED_MACS, None)
 
-            self._options.pop(CONF_DEVICE_TRACKING_MODE, None)
-            self.hass.config_entries.async_update_entry(
-                entry=self.config_entry, data=self._config, options=self._options
-            )
-            return self.async_create_entry(data=self._options)
+            return self._create_options_entry()
 
         try:
-            dt_entries: dict[str, Any] = await _get_dt_entries(
+            dt_entries: DeviceEntries = await _get_dt_entries(
                 hass=self.hass, config=self.config_entry.data, selected_devices=selected_devices
             )
         except OPNsenseConnectionError as err:
