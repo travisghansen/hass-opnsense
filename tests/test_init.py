@@ -1890,6 +1890,8 @@ async def test_async_setup_entry_cleans_up_when_platform_forwarding_fails(
         },
         options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
     )
+    entry.add_update_listener = MagicMock(return_value=MagicMock())
+    entry.async_on_unload = MagicMock()
 
     hass = ph_hass
     hass.config_entries.async_forward_entry_setups = AsyncMock(
@@ -1903,6 +1905,8 @@ async def test_async_setup_entry_cleans_up_when_platform_forwarding_fails(
 
     coordinator.async_shutdown.assert_awaited_once()
     client.async_close.assert_awaited_once()
+    entry.add_update_listener.assert_not_called()
+    entry.async_on_unload.assert_not_called()
     assert entry.entry_id not in hass.data.get(init_mod.DOMAIN, {})
 
 

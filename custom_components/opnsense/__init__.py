@@ -319,8 +319,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 device_tracker_coordinator=True,
             )
 
-        entry.async_on_unload(entry.add_update_listener(_async_update_listener))
-
         hass.data.setdefault(DOMAIN, {})
         hass.data[DOMAIN][entry.entry_id] = client
 
@@ -336,6 +334,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await device_tracker_coordinator.async_config_entry_first_refresh()
 
         await hass.config_entries.async_forward_entry_setups(entry, platforms)
+
+        entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
         setup_succeeded = True
         return True
