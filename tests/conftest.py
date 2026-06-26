@@ -89,12 +89,10 @@ def _patch_async_create_clientsession(monkeypatch: pytest.MonkeyPatch) -> None:
         _ha_aiohttp_client,
         "async_create_clientsession",
         create_clientsession,
-        raising=False,
     )
     monkeypatch.setattr(
         "homeassistant.helpers.aiohttp_client.async_create_clientsession",
         create_clientsession,
-        raising=False,
     )
     monkeypatch.setattr(
         _init_mod,
@@ -106,14 +104,15 @@ def _patch_async_create_clientsession(monkeypatch: pytest.MonkeyPatch) -> None:
         _helpers_mod,
         "async_create_clientsession",
         create_clientsession,
-        raising=False,
     )
-    monkeypatch.setattr(
-        _helpers_mod.aiohttp,
-        "CookieJar",
-        lambda *a, **k: object(),
-        raising=False,
-    )
+
+    class _FakeCookieJar:
+        """Test cookie jar replacement with a no-op initializer."""
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            """Ignore args and return a usable object for patch coverage."""
+
+    monkeypatch.setattr(_helpers_mod.aiohttp, "CookieJar", _FakeCookieJar, raising=True)
 
 
 @pytest.fixture

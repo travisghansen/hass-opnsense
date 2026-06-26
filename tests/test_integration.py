@@ -396,7 +396,12 @@ async def test_e2e_granular_sync_and_options_device_tracker(
     hass.data.setdefault(init_mod.DOMAIN, {})
     # Provide async_get_known_entry for options flow compatibility
     if not hasattr(hass.config_entries, "async_get_known_entry"):
-        hass.config_entries.async_get_known_entry = lambda entry_id: entry
+        hass.config_entries._entries = {entry.entry_id: entry}
+
+        def _get_known_entry(entry_id: str) -> MockConfigEntry | None:
+            return hass.config_entries._entries.get(entry_id)
+
+        hass.config_entries.async_get_known_entry = _get_known_entry
 
     # Options flow path
     opt_flow = cf_mod.OPNsenseConfigFlow.async_get_options_flow(

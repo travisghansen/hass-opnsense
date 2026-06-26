@@ -541,7 +541,7 @@ def _build_user_input_schema(
 
     schema_fields: dict[Any, Any] = {
         vol.Required(CONF_URL, default=defaults[CONF_URL]): selector.TextSelector(
-            selector.TextSelectorConfig(type=selector.TextSelectorType.URL)
+            selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
         ),
         vol.Optional(CONF_VERIFY_SSL, default=defaults[CONF_VERIFY_SSL]): bool,
         vol.Required(CONF_USERNAME, default=defaults[CONF_USERNAME]): selector.TextSelector(
