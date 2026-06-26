@@ -883,43 +883,16 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         Returns:
             OPNsenseOptionsFlow: Options flow instance bound to the entry.
         """
-        return OPNsenseOptionsFlow(config_entry)
+        return OPNsenseOptionsFlow()
 
 
 class OPNsenseOptionsFlow(OptionsFlow):
     """Handle option flow for OPNsense."""
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialize options flow state.
-
-        Args:
-            config_entry: Config entry whose options are being edited.
-        """
-        # Store the config entry passed by the ConfigFlow helper so tests and
-        # runtime code can access it. Some test harnesses assign directly to
-        # `config_entry` on the flow; provide a backing attribute and a
-        # property with a setter to maintain compatibility.
-        self._config_entry: ConfigEntry = config_entry
+    def __init__(self) -> None:
+        """Initialize options flow state."""
         self._config: dict[str, Any] = {}
         self._options: dict[str, Any] = {}
-
-    @property
-    def config_entry(self) -> ConfigEntry:
-        """Return the config entry associated with this options flow.
-
-        Returns:
-            ConfigEntry: Backing config entry for this options flow instance.
-        """
-        return self._config_entry
-
-    @config_entry.setter
-    def config_entry(self, entry: ConfigEntry) -> None:
-        """Set the config entry backing this options flow.
-
-        Args:
-            entry: Config entry to associate with the flow.
-        """
-        self._config_entry = entry
 
     async def async_step_init(
         self, user_input: MutableMapping[str, Any] | None = None

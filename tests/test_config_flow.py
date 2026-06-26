@@ -25,6 +25,19 @@ from tests.utilities import patch_opnsense_client
 cf_mod = importlib.import_module("custom_components.opnsense.config_flow")
 
 
+def _make_options_flow(config_entry: Any) -> Any:
+    """Create an options flow using Home Assistant's built-in config entry lookup."""
+    if not isinstance(getattr(config_entry, "entry_id", None), str):
+        config_entry.entry_id = "test-entry"
+    flow = cf_mod.OPNsenseOptionsFlow()
+    flow.hass = MagicMock()
+    flow.hass.config_entries = MagicMock()
+    flow.hass.config_entries.async_update_entry = MagicMock()
+    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
+    flow.handler = config_entry.entry_id
+    return flow
+
+
 def test_mac_and_ip_and_cleanse() -> None:
     """Validate MAC/IP helpers and cleanse sensitive data."""
     assert cf_mod.normalize_mac_address("aa:bb:cc:dd:ee:ff") == "aa:bb:cc:dd:ee:ff"
@@ -617,6 +630,7 @@ def test_async_get_options_flow_returns_options_flow() -> None:
     cfg = MagicMock()
     res = cf_mod.OPNsenseConfigFlow.async_get_options_flow(cfg)
     assert isinstance(res, cf_mod.OPNsenseOptionsFlow)
+    assert isinstance(cf_mod.OPNsenseOptionsFlow(), cf_mod.OPNsenseOptionsFlow)
 
 
 @pytest.mark.asyncio
@@ -626,14 +640,7 @@ async def test_options_flow_init_with_user_triggers_update() -> None:
     cfg.data = {cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"}
     cfg.options = {cf_mod.CONF_DEVICE_TRACKER_ENABLED: False}
 
-    flow = cf_mod.OPNsenseOptionsFlow(cfg)
-    flow.hass = MagicMock()
-    flow.hass.config_entries = MagicMock()
-    flow.hass.config_entries.async_update_entry = MagicMock()
-    # set a handler so flow._config_entry_id property is available during the test
-    flow.handler = "opnsense"
-    # ensure async_get_known_entry returns our cfg when accessed
-    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=cfg)
+    flow = _make_options_flow(cfg)
 
     # populate internals to avoid Home Assistant property lookups in this unit test
     flow._config = dict(cfg.data)
@@ -657,10 +664,7 @@ async def test_options_flow_granular_sync_calls_validate_and_updates(
     cfg.data = {cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"}
     cfg.options = {cf_mod.CONF_DEVICE_TRACKER_ENABLED: False}
 
-    flow = cf_mod.OPNsenseOptionsFlow(cfg)
-    flow.hass = MagicMock()
-    flow.hass.config_entries = MagicMock()
-    flow.hass.config_entries.async_update_entry = MagicMock()
+    flow = _make_options_flow(cfg)
 
     # monkeypatch validate_input to return no errors
     async def fake_validate(hass: HomeAssistant, user_input: Any, errors: Any, **kwargs) -> Any:
@@ -682,10 +686,6 @@ async def test_options_flow_granular_sync_calls_validate_and_updates(
     flow._config = dict(cfg.data)
     flow._options = dict(cfg.options)
     user_input = {gkey: True}
-    # set a handler and make async_get_known_entry return our cfg so the flow can access
-    # config_entry and options during unit tests without Home Assistant internals.
-    flow.handler = "opnsense"
-    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=cfg)
     res = await flow.async_step_granular_sync(user_input=user_input)
     flow.hass.config_entries.async_update_entry.assert_called()
     assert res["type"] == "create_entry"
@@ -701,8 +701,7 @@ async def test_device_tracker_shows_form_when_no_user_input(
         options={cf_mod.CONF_DEVICES: ["11:22:33:44:55:66"]},
     )
 
-    flow = cf_mod.OPNsenseOptionsFlow(cfg)
-    flow.hass = MagicMock()
+    flow = _make_options_flow(cfg)
 
     # monkeypatch _get_dt_entries to return an ordered dict-like mapping
     async def fake_get_dt_entries(hass: HomeAssistant, config: Any, selected_devices: Any) -> Any:
@@ -720,11 +719,6 @@ async def test_device_tracker_shows_form_when_no_user_input(
     # ensure internals are present so we don't trigger config_entry property lookup
     flow._config = dict(cfg.data)
     flow._options = dict(cfg.options)
-    # set a handler and make async_get_known_entry return our cfg so the flow can access
-    # config_entry and options during unit tests without Home Assistant internals.
-    flow.handler = "opnsense"
-    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=cfg)
-
     res = await flow.async_step_device_tracker(user_input=None)
     assert res["type"] == "form"
     assert "data_schema" in res
@@ -743,12 +737,9 @@ async def test_device_tracker_handles_arp_lookup_failure(
         data={cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"},
         options={cf_mod.CONF_DEVICES: ["AA-BB-CC-DD-EE-FF"]},
     )
-    flow = cf_mod.OPNsenseOptionsFlow(cfg)
-    flow.hass = MagicMock()
+    flow = _make_options_flow(cfg)
     flow._config = dict(cfg.data)
     flow._options = dict(cfg.options)
-    flow.handler = "opnsense"
-    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=cfg)
 
     async def _raise(*args, **kwargs) -> Never:
         """Raise the parametrized exception so device-tracker lookup failures can be tested.
@@ -786,14 +777,7 @@ async def test_options_flow_device_tracker_user_input(
         options={cf_mod.CONF_DEVICE_TRACKER_ENABLED: True, cf_mod.CONF_DEVICES: []},
     )
 
-    flow = cf_mod.OPNsenseOptionsFlow(config_entry)
-    # attach hass with config_entries.update stub
-    flow.hass = MagicMock()
-    flow.hass.config_entries = MagicMock()
-    flow.hass.config_entries.async_update_entry = MagicMock()
-    # make the flow aware of its handler so config_entry property works during tests
-    flow.handler = "opnsense"
-    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
+    flow = _make_options_flow(config_entry)
 
     # emulate what async_step_init would do: populate _config and _options from entry
     flow._config = dict(config_entry.data)
@@ -833,12 +817,7 @@ async def test_options_flow_device_tracker_track_all_clears_device_list(
         },
     )
 
-    flow = cf_mod.OPNsenseOptionsFlow(config_entry)
-    flow.hass = MagicMock()
-    flow.hass.config_entries = MagicMock()
-    flow.hass.config_entries.async_update_entry = MagicMock()
-    flow.handler = "opnsense"
-    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
+    flow = _make_options_flow(config_entry)
     flow._config = dict(config_entry.data)
     flow._options = dict(config_entry.options)
 
@@ -866,12 +845,7 @@ async def test_options_flow_init_selected_mode_shows_picker_step(
         },
         options={cf_mod.CONF_DEVICE_TRACKER_ENABLED: False, cf_mod.CONF_DEVICES: []},
     )
-    flow = cf_mod.OPNsenseOptionsFlow(config_entry)
-    flow.hass = MagicMock()
-    flow.hass.config_entries = MagicMock()
-    flow.hass.config_entries.async_update_entry = MagicMock()
-    flow.handler = "opnsense"
-    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
+    flow = _make_options_flow(config_entry)
     monkeypatch.setattr(cf_mod, "_get_dt_entries", AsyncMock(return_value={}))
 
     result = await flow.async_step_init(
