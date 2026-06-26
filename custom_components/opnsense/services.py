@@ -1,6 +1,6 @@
 """The OPNsense HA Services/Actions."""
 
-from collections.abc import MutableMapping
+from collections.abc import Awaitable, Callable, MutableMapping
 import functools
 import logging
 from typing import Any
@@ -35,6 +35,10 @@ from .const import (
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 _VNSTAT_PERIODS: tuple[str, ...] = ("hourly", "daily", "monthly", "yearly")
 _SERVICE_IDENTIFIER_ERROR = "Must use service_id or service_name"
+_SERVICE_IDENTIFIER_CONFLICT_ERROR = "Must use service_id or service_name but not both"
+type OPNsenseServiceClient = Any
+type ServiceHandler = Callable[[HomeAssistant, ServiceCall], Awaitable[Any]]
+type BooleanClientAction = Callable[[OPNsenseServiceClient], Awaitable[bool]]
 
 
 def _validate_service_identifier(data: dict[str, Any]) -> dict[str, Any]:
@@ -54,211 +58,202 @@ def _validate_service_identifier(data: dict[str, Any]) -> dict[str, Any]:
     raise vol.Invalid(_SERVICE_IDENTIFIER_ERROR)
 
 
+def _target_fields() -> dict[Any, Any]:
+    """Return the common optional OPNsense target selector fields.
+
+    Returns:
+        dict[Any, Any]: Voluptuous field definitions for OPNsense device/entity selectors.
+    """
+    return {
+        vol.Optional("device_id"): vol.Any(cv.string),
+        vol.Optional("entity_id"): vol.Any(cv.string),
+    }
+
+
+def _service_identifier_fields() -> dict[Any, Any]:
+    """Return fields that identify an OPNsense service.
+
+    Returns:
+        dict[Any, Any]: Voluptuous field definitions for service identifiers.
+    """
+    return {
+        vol.Exclusive(
+            "service_id",
+            "service_type",
+            msg=_SERVICE_IDENTIFIER_CONFLICT_ERROR,
+        ): cv.string,
+        vol.Exclusive(
+            "service_name",
+            "service_type",
+            msg=_SERVICE_IDENTIFIER_CONFLICT_ERROR,
+        ): cv.string,
+    }
+
+
+def _service_control_schema(extra_fields: dict[Any, Any] | None = None) -> vol.Schema:
+    """Build a schema for service start, stop, and restart actions.
+
+    Args:
+        extra_fields: Additional fields to include in the schema.
+
+    Returns:
+        vol.Schema: Service control schema with identifier validation.
+    """
+    fields = _service_identifier_fields() | (extra_fields or {}) | _target_fields()
+    return vol.Schema(vol.All(fields, _validate_service_identifier))
+
+
+def _targeted_schema(fields: dict[Any, Any] | None = None) -> vol.Schema:
+    """Build a schema that includes optional OPNsense target selectors.
+
+    Args:
+        fields: Service-specific fields to include before target selectors.
+
+    Returns:
+        vol.Schema: Service schema with common target selector fields.
+    """
+    return vol.Schema((fields or {}) | _target_fields())
+
+
+def _register_service(
+    hass: HomeAssistant,
+    service: str,
+    service_func: ServiceHandler,
+    schema: vol.Schema,
+    supports_response: SupportsResponse | None = None,
+) -> None:
+    """Register an OPNsense service with Home Assistant.
+
+    Args:
+        hass: Home Assistant instance.
+        service: OPNsense service/action name.
+        service_func: Handler for the service call.
+        schema: Voluptuous schema for validating service data.
+        supports_response: Response support declaration for action response data.
+    """
+    kwargs: dict[str, Any] = {
+        "domain": DOMAIN,
+        "service": service,
+        "schema": schema,
+        "service_func": functools.partial(service_func, hass),
+    }
+    if supports_response is not None:
+        kwargs["supports_response"] = supports_response
+    hass.services.async_register(**kwargs)
+
+
 async def async_setup_services(hass: HomeAssistant) -> None:
     """Create the OPNsense HA Services/Actions."""
-    hass.services.async_register(
-        domain=DOMAIN,
-        service=SERVICE_CLOSE_NOTICE,
-        schema=vol.Schema(
-            {
-                vol.Required("id", default="all"): vol.Any(cv.positive_int, cv.string),
-                vol.Optional("device_id"): vol.Any(cv.string),
-                vol.Optional("entity_id"): vol.Any(cv.string),
-            }
-        ),
-        service_func=functools.partial(_service_close_notice, hass),
+    _register_service(
+        hass,
+        SERVICE_CLOSE_NOTICE,
+        _service_close_notice,
+        _targeted_schema({vol.Required("id", default="all"): vol.Any(cv.positive_int, cv.string)}),
     )
 
-    hass.services.async_register(
-        domain=DOMAIN,
-        service=SERVICE_START_SERVICE,
-        schema=vol.Schema(
-            vol.All(
-                {
-                    vol.Exclusive(
-                        "service_id",
-                        "service_type",
-                        msg="Must use service_id or service_name but not both",
-                    ): cv.string,
-                    vol.Exclusive(
-                        "service_name",
-                        "service_type",
-                        msg="Must use service_id or service_name but not both",
-                    ): cv.string,
-                    vol.Optional("device_id"): vol.Any(cv.string),
-                    vol.Optional("entity_id"): vol.Any(cv.string),
-                },
-                _validate_service_identifier,
-            )
-        ),
-        service_func=functools.partial(_service_start_service, hass),
+    _register_service(
+        hass,
+        SERVICE_START_SERVICE,
+        _service_start_service,
+        _service_control_schema(),
     )
 
-    hass.services.async_register(
-        domain=DOMAIN,
-        service=SERVICE_STOP_SERVICE,
-        schema=vol.Schema(
-            vol.All(
-                {
-                    vol.Exclusive(
-                        "service_id",
-                        "service_type",
-                        msg="Must use service_id or service_name but not both",
-                    ): cv.string,
-                    vol.Exclusive(
-                        "service_name",
-                        "service_type",
-                        msg="Must use service_id or service_name but not both",
-                    ): cv.string,
-                    vol.Optional("device_id"): vol.Any(cv.string),
-                    vol.Optional("entity_id"): vol.Any(cv.string),
-                },
-                _validate_service_identifier,
-            )
-        ),
-        service_func=functools.partial(_service_stop_service, hass),
+    _register_service(
+        hass,
+        SERVICE_STOP_SERVICE,
+        _service_stop_service,
+        _service_control_schema(),
     )
 
-    hass.services.async_register(
-        domain=DOMAIN,
-        service=SERVICE_RESTART_SERVICE,
-        schema=vol.Schema(
-            vol.All(
-                {
-                    vol.Exclusive(
-                        "service_id",
-                        "service_type",
-                        msg="Must use service_id or service_name but not both",
-                    ): cv.string,
-                    vol.Exclusive(
-                        "service_name",
-                        "service_type",
-                        msg="Must use service_id or service_name but not both",
-                    ): cv.string,
-                    vol.Optional("only_if_running"): cv.boolean,
-                    vol.Optional("device_id"): vol.Any(cv.string),
-                    vol.Optional("entity_id"): vol.Any(cv.string),
-                },
-                _validate_service_identifier,
-            )
-        ),
-        service_func=functools.partial(_service_restart_service, hass),
+    _register_service(
+        hass,
+        SERVICE_RESTART_SERVICE,
+        _service_restart_service,
+        _service_control_schema({vol.Optional("only_if_running"): cv.boolean}),
     )
 
-    hass.services.async_register(
-        domain=DOMAIN,
-        service=SERVICE_SYSTEM_HALT,
-        schema=vol.Schema(
-            {
-                vol.Optional("device_id"): vol.Any(cv.string),
-                vol.Optional("entity_id"): vol.Any(cv.string),
-            }
-        ),
-        service_func=functools.partial(_service_system_halt, hass),
+    _register_service(
+        hass,
+        SERVICE_SYSTEM_HALT,
+        _service_system_halt,
+        _targeted_schema(),
     )
 
-    hass.services.async_register(
-        domain=DOMAIN,
-        service=SERVICE_SYSTEM_REBOOT,
-        schema=vol.Schema(
-            {
-                vol.Optional("device_id"): vol.Any(cv.string),
-                vol.Optional("entity_id"): vol.Any(cv.string),
-            }
-        ),
-        service_func=functools.partial(_service_system_reboot, hass),
+    _register_service(
+        hass,
+        SERVICE_SYSTEM_REBOOT,
+        _service_system_reboot,
+        _targeted_schema(),
     )
 
-    hass.services.async_register(
-        domain=DOMAIN,
-        service=SERVICE_SEND_WOL,
-        schema=vol.Schema(
+    _register_service(
+        hass,
+        SERVICE_SEND_WOL,
+        _service_send_wol,
+        _targeted_schema(
             {
                 vol.Required("interface"): vol.Any(cv.string),
                 vol.Required("mac"): vol.Any(cv.string),
-                vol.Optional("device_id"): vol.Any(cv.string),
-                vol.Optional("entity_id"): vol.Any(cv.string),
             }
         ),
-        service_func=functools.partial(_service_send_wol, hass),
     )
 
-    hass.services.async_register(
-        domain=DOMAIN,
-        service=SERVICE_RELOAD_INTERFACE,
-        schema=vol.Schema(
-            {
-                vol.Required("interface"): vol.Any(cv.string),
-                vol.Optional("device_id"): vol.Any(cv.string),
-                vol.Optional("entity_id"): vol.Any(cv.string),
-            }
-        ),
-        service_func=functools.partial(_service_reload_interface, hass),
+    _register_service(
+        hass,
+        SERVICE_RELOAD_INTERFACE,
+        _service_reload_interface,
+        _targeted_schema({vol.Required("interface"): vol.Any(cv.string)}),
     )
 
-    hass.services.async_register(
-        domain=DOMAIN,
-        service=SERVICE_GENERATE_VOUCHERS,
-        schema=vol.Schema(
+    _register_service(
+        hass,
+        SERVICE_GENERATE_VOUCHERS,
+        _service_generate_vouchers,
+        _targeted_schema(
             {
                 vol.Required("validity"): vol.Any(cv.string),
                 vol.Required("expirytime"): vol.Any(cv.string),
                 vol.Required("count"): vol.Any(cv.string),
                 vol.Required("vouchergroup"): vol.Any(cv.string),
                 vol.Optional("voucher_server"): vol.Any(cv.string),
-                vol.Optional("device_id"): vol.Any(cv.string),
-                vol.Optional("entity_id"): vol.Any(cv.string),
             }
         ),
-        service_func=functools.partial(_service_generate_vouchers, hass),
-        supports_response=SupportsResponse.ONLY,
+        SupportsResponse.ONLY,
     )
 
-    hass.services.async_register(
-        domain=DOMAIN,
-        service=SERVICE_KILL_STATES,
-        schema=vol.Schema(
-            {
-                vol.Required("ip_addr"): vol.Any(cv.string),
-                vol.Optional("device_id"): vol.Any(cv.string),
-                vol.Optional("entity_id"): vol.Any(cv.string),
-            }
-        ),
-        service_func=functools.partial(_service_kill_states, hass),
-        supports_response=SupportsResponse.OPTIONAL,
+    _register_service(
+        hass,
+        SERVICE_KILL_STATES,
+        _service_kill_states,
+        _targeted_schema({vol.Required("ip_addr"): vol.Any(cv.string)}),
+        SupportsResponse.OPTIONAL,
     )
 
-    hass.services.async_register(
-        domain=DOMAIN,
-        service=SERVICE_RUN_SPEEDTEST,
-        schema=vol.Schema(
-            {
-                vol.Optional("device_id"): vol.Any(cv.string),
-                vol.Optional("entity_id"): vol.Any(cv.string),
-            }
-        ),
-        service_func=functools.partial(_service_run_speedtest, hass),
-        supports_response=SupportsResponse.ONLY,
+    _register_service(
+        hass,
+        SERVICE_RUN_SPEEDTEST,
+        _service_run_speedtest,
+        _targeted_schema(),
+        SupportsResponse.ONLY,
     )
 
-    hass.services.async_register(
-        domain=DOMAIN,
-        service=SERVICE_GET_VNSTAT_METRICS,
-        schema=vol.Schema(
+    _register_service(
+        hass,
+        SERVICE_GET_VNSTAT_METRICS,
+        _service_get_vnstat_metrics,
+        _targeted_schema(
             {
                 vol.Required("period"): vol.All(cv.string, vol.Lower, vol.In(_VNSTAT_PERIODS)),
-                vol.Optional("device_id"): vol.Any(cv.string),
-                vol.Optional("entity_id"): vol.Any(cv.string),
             }
         ),
-        service_func=functools.partial(_service_get_vnstat_metrics, hass),
-        supports_response=SupportsResponse.ONLY,
+        SupportsResponse.ONLY,
     )
 
-    hass.services.async_register(
-        domain=DOMAIN,
-        service=SERVICE_TOGGLE_ALIAS,
-        schema=vol.Schema(
+    _register_service(
+        hass,
+        SERVICE_TOGGLE_ALIAS,
+        _service_toggle_alias,
+        _targeted_schema(
             {
                 vol.Required("alias"): vol.Any(cv.string),
                 vol.Required("toggle_on_off", default="toggle"): vol.In(
@@ -268,11 +263,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                         "off": "Off",
                     }
                 ),
-                vol.Optional("device_id"): vol.Any(cv.string),
-                vol.Optional("entity_id"): vol.Any(cv.string),
             }
         ),
-        service_func=functools.partial(_service_toggle_alias, hass),
     )
 
 
@@ -357,6 +349,44 @@ def _get_service_identifier(call: ServiceCall) -> str:
     return service_identifier
 
 
+async def _run_boolean_client_action(
+    clients: list[OPNsenseServiceClient],
+    log_prefix: str,
+    target_name: str,
+    target_value: Any,
+    failure_message: str,
+    action: BooleanClientAction,
+) -> None:
+    """Run a boolean-returning action across all selected clients.
+
+    Args:
+        clients: OPNsense clients selected for the service call.
+        log_prefix: Prefix used in the debug log message.
+        target_name: Human-readable target field name for logs.
+        target_value: Target value passed to the client action.
+        failure_message: Error message to raise if no clients or any client action fails.
+        action: Awaitable client action returning success state.
+
+    Raises:
+        ServiceValidationError: If no selected clients report success or any selected client fails.
+    """
+    success: bool | None = None
+    for client in clients:
+        response = await action(client)
+        _LOGGER.debug(
+            "[%s] client: %s, %s: %s, response: %s",
+            log_prefix,
+            client.name,
+            target_name,
+            target_value,
+            response,
+        )
+        if success is None or success:
+            success = response
+    if success is None or not success:
+        raise ServiceValidationError(failure_message)
+
+
 async def _service_close_notice(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle the close notice service call.
 
@@ -397,19 +427,14 @@ async def _service_start_service(hass: HomeAssistant, call: ServiceCall) -> None
         opndevice_id=call.data.get("device_id", []),
         opnentity_id=call.data.get("entity_id", []),
     )
-    success: bool | None = None
-    for client in clients:
-        response = await client.start_service(service_identifier)
-        _LOGGER.debug(
-            "[service_start_service] client: %s, service: %s, response: %s",
-            client.name,
-            service_identifier,
-            response,
-        )
-        if success is None or success:
-            success = response
-    if success is None or not success:
-        raise ServiceValidationError(f"Start Service Failed. service: {service_identifier}")
+    await _run_boolean_client_action(
+        clients=clients,
+        log_prefix="service_start_service",
+        target_name="service",
+        target_value=service_identifier,
+        failure_message=f"Start Service Failed. service: {service_identifier}",
+        action=lambda client: client.start_service(service_identifier),
+    )
 
 
 async def _service_stop_service(hass: HomeAssistant, call: ServiceCall) -> None:
@@ -430,19 +455,14 @@ async def _service_stop_service(hass: HomeAssistant, call: ServiceCall) -> None:
         opndevice_id=call.data.get("device_id", []),
         opnentity_id=call.data.get("entity_id", []),
     )
-    success: bool | None = None
-    for client in clients:
-        response = await client.stop_service(service_identifier)
-        _LOGGER.debug(
-            "[service_stop_service] client: %s, service: %s, response: %s",
-            client.name,
-            service_identifier,
-            response,
-        )
-        if success is None or success:
-            success = response
-    if success is None or not success:
-        raise ServiceValidationError(f"Stop Service Failed. service: {service_identifier}")
+    await _run_boolean_client_action(
+        clients=clients,
+        log_prefix="service_stop_service",
+        target_name="service",
+        target_value=service_identifier,
+        failure_message=f"Stop Service Failed. service: {service_identifier}",
+        action=lambda client: client.stop_service(service_identifier),
+    )
 
 
 async def _service_restart_service(hass: HomeAssistant, call: ServiceCall) -> None:
@@ -463,32 +483,24 @@ async def _service_restart_service(hass: HomeAssistant, call: ServiceCall) -> No
         opndevice_id=call.data.get("device_id", []),
         opnentity_id=call.data.get("entity_id", []),
     )
-    success: bool | None = None
     if call.data.get("only_if_running"):
-        for client in clients:
-            response = await client.restart_service_if_running(service_identifier)
-            _LOGGER.debug(
-                "[service_restart_service] restart_service_if_running, client: %s, service: %s, "
-                "response: %s",
-                client.name,
-                service_identifier,
-                response,
-            )
-            if success is None or success:
-                success = response
+        await _run_boolean_client_action(
+            clients=clients,
+            log_prefix="service_restart_service] restart_service_if_running",
+            target_name="service",
+            target_value=service_identifier,
+            failure_message=f"Restart Service Failed. service: {service_identifier}",
+            action=lambda client: client.restart_service_if_running(service_identifier),
+        )
     else:
-        for client in clients:
-            response = await client.restart_service(service_identifier)
-            _LOGGER.debug(
-                "[service_restart_service] restart_service, client: %s, service: %s, response: %s",
-                client.name,
-                service_identifier,
-                response,
-            )
-            if success is None or success:
-                success = response
-    if success is None or not success:
-        raise ServiceValidationError(f"Restart Service Failed. service: {service_identifier}")
+        await _run_boolean_client_action(
+            clients=clients,
+            log_prefix="service_restart_service] restart_service",
+            target_name="service",
+            target_value=service_identifier,
+            failure_message=f"Restart Service Failed. service: {service_identifier}",
+            action=lambda client: client.restart_service(service_identifier),
+        )
 
 
 async def _service_system_halt(hass: HomeAssistant, call: ServiceCall) -> None:
@@ -567,19 +579,15 @@ async def _service_reload_interface(hass: HomeAssistant, call: ServiceCall) -> N
         opndevice_id=call.data.get("device_id", []),
         opnentity_id=call.data.get("entity_id", []),
     )
-    success: bool | None = None
-    for client in clients:
-        response = await client.reload_interface(call.data.get("interface"))
-        _LOGGER.debug(
-            "[service_reload_interface] client: %s, interface: %s, response: %s",
-            client.name,
-            call.data.get("interface"),
-            response,
-        )
-        if success is None or success:
-            success = response
-    if success is None or not success:
-        raise ServiceValidationError(f"Reload Interface Failed: {call.data.get('interface')}")
+    interface = call.data.get("interface")
+    await _run_boolean_client_action(
+        clients=clients,
+        log_prefix="service_reload_interface",
+        target_name="interface",
+        target_value=interface,
+        failure_message=f"Reload Interface Failed: {interface}",
+        action=lambda client: client.reload_interface(interface),
+    )
 
 
 async def _service_generate_vouchers(hass: HomeAssistant, call: ServiceCall) -> ServiceResponse:
@@ -615,11 +623,9 @@ async def _service_generate_vouchers(hass: HomeAssistant, call: ServiceCall) -> 
         if isinstance(vouchers, list):
             for voucher in vouchers:
                 if isinstance(voucher, MutableMapping):
-                    new_voucher = {"client": client.name}
-                    new_voucher.update(voucher)
-                    voucher.clear()
-                    voucher.update(new_voucher)
-            voucher_list.extend(vouchers)
+                    voucher_list.append({"client": client.name, **voucher})
+                else:
+                    voucher_list.append(voucher)
     final_vouchers: dict[str, Any] = {"vouchers": voucher_list}
     _LOGGER.debug("[service_generate_vouchers] vouchers: %s", final_vouchers)
     return final_vouchers
@@ -762,19 +768,13 @@ async def _service_toggle_alias(hass: HomeAssistant, call: ServiceCall) -> None:
         opndevice_id=call.data.get("device_id", []),
         opnentity_id=call.data.get("entity_id", []),
     )
-    success: bool | None = None
-    for client in clients:
-        response = await client.toggle_alias(call.data.get("alias"), call.data.get("toggle_on_off"))
-        _LOGGER.debug(
-            "[service_toggle_alias] client: %s, alias: %s, response: %s",
-            client.name,
-            call.data.get("alias"),
-            response,
-        )
-        if success is None or success:
-            success = response
-    if success is None or not success:
-        raise ServiceValidationError(
-            f"Toggle Alias Failed. alias: {call.data.get('alias')}, action: "
-            f"{call.data.get('toggle_on_off')}"
-        )
+    alias = call.data.get("alias")
+    toggle_on_off = call.data.get("toggle_on_off")
+    await _run_boolean_client_action(
+        clients=clients,
+        log_prefix="service_toggle_alias",
+        target_name="alias",
+        target_value=alias,
+        failure_message=f"Toggle Alias Failed. alias: {alias}, action: {toggle_on_off}",
+        action=lambda client: client.toggle_alias(alias, toggle_on_off),
+    )
