@@ -1895,6 +1895,90 @@ async def test_switch_handle_error_sets_unavailable(
             loop.close()
 
 
+def test_service_switch_missing_service_marks_unavailable(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Service switch should clear stale availability when the service disappears."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    ent = OPNsenseServiceSwitch(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=SwitchEntityDescription(key="service.svc1.status", name="Svc"),
+    )
+    coordinator.data = {"services": []}
+    ent.entity_id = "switch.svc"
+    writes = 0
+
+    def collect_write() -> None:
+        """Count Home Assistant state writes."""
+        nonlocal writes
+        writes += 1
+
+    object.__setattr__(ent, "async_write_ha_state", collect_write)
+    ent._available = True
+
+    ent._handle_coordinator_update()
+
+    assert ent.available is False
+    assert writes == 1
+
+
+@pytest.mark.parametrize(
+    ("entity", "state"),
+    [
+        (
+            OPNsenseFirewallRuleSwitch,
+            {"firewall": "not-a-mapping"},
+        ),
+        (
+            OPNsenseNATRuleSwitch,
+            {"firewall": {"nat": "not-a-mapping"}},
+        ),
+        (
+            OPNsenseUnboundBlocklistSwitchLegacy,
+            {"unbound_blocklist": "not-a-mapping"},
+        ),
+        (
+            OPNsenseVPNSwitch,
+            {"openvpn": "not-a-mapping"},
+        ),
+    ],
+)
+def test_switch_handlers_fail_closed_for_malformed_nested_payloads(
+    entity: type[
+        OPNsenseFirewallRuleSwitch
+        | OPNsenseNATRuleSwitch
+        | OPNsenseUnboundBlocklistSwitchLegacy
+        | OPNsenseVPNSwitch
+    ],
+    state: dict[str, Any],
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Switch handlers should mark unavailable instead of raising on malformed payloads."""
+    keys = {
+        OPNsenseFirewallRuleSwitch: "firewall.rule.r1",
+        OPNsenseNATRuleSwitch: "firewall.nat.source_nat.n1",
+        OPNsenseUnboundBlocklistSwitchLegacy: "unbound.dnsbl.legacy",
+        OPNsenseVPNSwitch: "openvpn.clients.c1",
+    }
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    coordinator.data = state
+    ent = entity(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=SwitchEntityDescription(key=keys[entity], name="Malformed"),
+    )
+    ent.entity_id = "switch.malformed"
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
+
+    ent._handle_coordinator_update()
+
+    assert ent.available is False
+
+
 def test_entity_icons(make_config_entry: Callable[..., MockConfigEntry]) -> None:
     """Switch entities expose the correct platform icons based on type."""
     # firewall icon

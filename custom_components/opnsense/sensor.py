@@ -1559,12 +1559,19 @@ class OPNsenseFilesystemSensor(OPNsenseSensor):
             self._available = False
             self.async_write_ha_state()
             return
-        for fsystem in state.get("telemetry", {}).get("filesystems", []):
+        filesystems = self._list_at("telemetry.filesystems")
+        if filesystems is None:
+            self._available = False
+            self.async_write_ha_state()
+            return
+        for fsystem in filesystems:
+            if not isinstance(fsystem, MutableMapping):
+                continue
             if (
                 self.entity_description.key == "telemetry.filesystems."
                 f"{slugify_filesystem_mountpoint(fsystem.get('mountpoint', None))}"
             ):
-                filesystem = fsystem
+                filesystem = dict(fsystem)
         if not filesystem:
             self._available = False
             self.async_write_ha_state()
@@ -1908,10 +1915,13 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             self._available = False
             self.async_write_ha_state()
             return
+        instances = self._mapping_at(f"{vpn_type}.{clients_servers}")
+        if instances is None:
+            self._available = False
+            self.async_write_ha_state()
+            return
         instance: dict[str, Any] = {}
-        for instance_uuid, ins in (
-            dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
-        ).items():
+        for instance_uuid, ins in instances.items():
             if uuid == instance_uuid:
                 instance = ins
                 break
@@ -2033,8 +2043,13 @@ class OPNsenseTempSensor(OPNsenseSensor):
             self.async_write_ha_state()
             return
         sensor_temp_device: str = self.entity_description.key.split(".")[2]
+        temps = self._mapping_at("telemetry.temps")
+        if temps is None:
+            self._available = False
+            self.async_write_ha_state()
+            return
         temp: dict[str, Any] = {}
-        for temp_device, temp_temp in state.get("telemetry", {}).get("temps", {}).items():
+        for temp_device, temp_temp in temps.items():
             if temp_device == sensor_temp_device:
                 temp = temp_temp
                 break

@@ -28,6 +28,7 @@ from custom_components.opnsense.sensor import (
     OPNsenseCarpInterfaceSensor,
     OPNsenseCarpStatusSensor,
     OPNsenseDHCPLeasesSensor,
+    OPNsenseFilesystemSensor,
     OPNsenseGatewaySensor,
     OPNsenseInterfaceSensor,
     OPNsenseSmartSensor,
@@ -1136,6 +1137,27 @@ def test_vpn_sensor_handles_exceptions_from_instance_get(
     assert s.available is False
 
 
+def test_vpn_sensor_fails_closed_for_malformed_instance_collection(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """VPN sensor should mark unavailable when the instance collection is malformed."""
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {"openvpn": {"servers": "not-a-mapping"}}
+    desc = MagicMock()
+    desc.key = "openvpn.servers.uuid1.status"
+    desc.name = "VPN Malformed"
+
+    s = OPNsenseVPNSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    s.hass = MagicMock()
+    s.entity_id = "sensor.vpn_malformed"
+    object.__setattr__(s, "async_write_ha_state", lambda: None)
+
+    s._handle_coordinator_update()
+
+    assert s.available is False
+
+
 @pytest.mark.parametrize(
     ("coord_data", "expected_available", "expected_value", "expect_device"),
     [
@@ -1225,6 +1247,48 @@ def test_temp_sensor_handles_index_exceptions(
     s.hass = MagicMock()
     s.entity_id = "sensor.temp_broken"
     object.__setattr__(s, "async_write_ha_state", lambda: None)
+    s._handle_coordinator_update()
+
+    assert s.available is False
+
+
+def test_temp_sensor_fails_closed_for_malformed_telemetry_payload(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Temp sensor should mark unavailable when telemetry is not a mapping."""
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {"telemetry": "not-a-mapping"}
+    desc = MagicMock()
+    desc.key = "telemetry.temps.sensor1"
+    desc.name = "Temp Malformed"
+
+    s = OPNsenseTempSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    s.hass = MagicMock()
+    s.entity_id = "sensor.temp_malformed"
+    object.__setattr__(s, "async_write_ha_state", lambda: None)
+
+    s._handle_coordinator_update()
+
+    assert s.available is False
+
+
+def test_filesystem_sensor_fails_closed_for_malformed_telemetry_payload(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Filesystem sensor should mark unavailable when telemetry is not a mapping."""
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {"telemetry": "not-a-mapping"}
+    desc = MagicMock()
+    desc.key = "telemetry.filesystems.root"
+    desc.name = "Filesystem Malformed"
+
+    s = OPNsenseFilesystemSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    s.hass = MagicMock()
+    s.entity_id = "sensor.filesystem_malformed"
+    object.__setattr__(s, "async_write_ha_state", lambda: None)
+
     s._handle_coordinator_update()
 
     assert s.available is False

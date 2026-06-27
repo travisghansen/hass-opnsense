@@ -813,10 +813,11 @@ class OPNsenseFirewallRuleSwitch(OPNsenseSwitch):
         Returns:
             MutableMapping[str, Any] | None: The rule data if available, None otherwise.
         """
-        state: dict[str, Any] = self.coordinator.data
-        if not isinstance(state, MutableMapping):
+        rules = self._mapping_at("firewall.rules")
+        if rules is None:
             return None
-        return state.get("firewall", {}).get("rules", {}).get(self._rule_id, None)
+        rule = rules.get(self._rule_id)
+        return rule if isinstance(rule, MutableMapping) else None
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -950,15 +951,11 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
         Returns:
             MutableMapping[str, Any] | None: The rule data if available, None otherwise.
         """
-        state: dict[str, Any] = self.coordinator.data
-        if not isinstance(state, MutableMapping):
+        rules = self._mapping_at(f"firewall.nat.{self._nat_rule_type}")
+        if rules is None:
             return None
-        return (
-            state.get("firewall", {})
-            .get("nat", {})
-            .get(self._nat_rule_type, {})
-            .get(self._rule_id, None)
-        )
+        rule = rules.get(self._rule_id)
+        return rule if isinstance(rule, MutableMapping) else None
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -1125,11 +1122,16 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         Returns:
             MutableMapping[str, Any] | None: The service data if available, None otherwise.
         """
-        state: dict[str, Any] = self.coordinator.data
-        if not isinstance(state, MutableMapping):
+        state = self._coordinator_mapping()
+        if state is None:
             return None
         service_id: str = self._opnsense_get_service_id()
-        for service in state.get("services", []):
+        services = state.get("services", [])
+        if not isinstance(services, list):
+            return None
+        for service in services:
+            if not isinstance(service, MutableMapping):
+                continue
             if service.get("id", None) == service_id:
                 return service
         return None
@@ -1144,6 +1146,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
             return
         self._service = self._opnsense_get_service()
         if not isinstance(self._service, MutableMapping):
+            self._mark_unavailable()
             return
         try:
             self._attr_is_on = self._service[self._prop_name]
@@ -1221,7 +1224,7 @@ class OPNsenseUnboundBlocklistSwitchLegacy(OPNsenseSwitch):
                 self.name,
             )
             return
-        dnsbl = self.coordinator.data.get(ATTR_UNBOUND_BLOCKLIST, {}).get("legacy", {})
+        dnsbl = self._mapping_at(f"{ATTR_UNBOUND_BLOCKLIST}.legacy")
         if not isinstance(dnsbl, MutableMapping) or len(dnsbl) == 0:
             self._available = False
             self.async_write_ha_state()
@@ -1313,7 +1316,7 @@ class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
             self._available = False
             self.async_write_ha_state()
             return
-        dnsbl = self.coordinator.data.get(ATTR_UNBOUND_BLOCKLIST, {}).get(self._uuid, {})
+        dnsbl = self._mapping_at(f"{ATTR_UNBOUND_BLOCKLIST}.{self._uuid}")
         if not isinstance(dnsbl, MutableMapping) or len(dnsbl) == 0:
             self._available = False
             self.async_write_ha_state()
@@ -1399,14 +1402,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
         if self.delay_update:
             _LOGGER.debug("Skipping coordinator update for VPN switch %s due to delay", self.name)
             return
-        state: dict[str, Any] = self.coordinator.data
-        if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
-            return
-        instance: dict[str, Any] = (
-            state.get(self._vpn_type, {}).get(self._clients_servers, {}).get(self._uuid, {})
-        )
+        instance = self._mapping_at(f"{self._vpn_type}.{self._clients_servers}.{self._uuid}")
         if not isinstance(instance, MutableMapping):
             self._available = False
             self.async_write_ha_state()
