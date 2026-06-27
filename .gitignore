@@ -16,6 +16,7 @@ __pycache__
 pyvenv.cfg
 $RECYCLE.BIN/
 coverage.xml
+coverage.json
 env.bak/
 env/
 ENV/

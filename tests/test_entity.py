@@ -12,6 +12,11 @@ from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 from custom_components.opnsense.entity import OPNsenseBaseEntity, OPNsenseEntity
 
 
+def test_payload_display_name_uses_scalar_fallback() -> None:
+    """Display names use scalar payload values when no string field is available."""
+    assert OPNsenseEntity.payload_display_name({"name": 42}, "fallback", "name") == "42"
+
+
 def test_init_sets_unique_and_name_suffixes(
     make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
 ) -> None:
