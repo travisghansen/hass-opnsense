@@ -278,7 +278,6 @@ def test_service_validation_error_uses_translation_metadata() -> None:
 @pytest.mark.asyncio
 async def test_get_clients_single_and_multiple(monkeypatch: pytest.MonkeyPatch) -> None:
     """_get_clients returns clients from hass.data and supports filtering."""
-    # use a plain hass-like object so .data is a real dict
     hass_local = MagicMock(spec=HomeAssistant)
     client = MagicMock()
     client.name = "one"
@@ -286,7 +285,6 @@ async def test_get_clients_single_and_multiple(monkeypatch: pytest.MonkeyPatch) 
     res = await services_mod._get_clients(hass_local)
     assert res == [client]
 
-    # multiple entries and filter by device_id
     client2 = MagicMock()
     client2.name = "two"
     hass_local.data[DOMAIN] = {"e1": client, "e2": client2}
@@ -295,7 +293,6 @@ async def test_get_clients_single_and_multiple(monkeypatch: pytest.MonkeyPatch) 
     res = await services_mod._get_clients(hass_local, opndevice_id="dev123")
     assert res == [client2]
 
-    # filter by entity_id
     _patch_entity_registry_entry(monkeypatch, "e1")
     res = await services_mod._get_clients(hass_local, opnentity_id="ent123")
     assert res == [client]
@@ -412,7 +409,6 @@ async def test_service_start_stop_restart_success_and_failure(
     """Start/stop/restart service handlers call client methods correctly."""
     hass = ph_hass
     hass.data = {}
-    # make both clients return True initially so the service calls succeed
     c1 = MagicMock()
     c1.name = "c1"
     c1.start_service = AsyncMock(return_value=True)
@@ -430,12 +426,9 @@ async def test_service_start_stop_restart_success_and_failure(
     call = _service_call({"service_id": "svc"})
 
     _patch_clients(monkeypatch, [c1, c2])
-    # start should succeed because c2 returns True
     await services_mod._service_start_service(hass, call)
-    # stop should succeed
     await services_mod._service_stop_service(hass, call)
 
-    # restart without only_if_running uses restart_service
     await services_mod._service_restart_service(hass, call)
     c1.start_service.assert_awaited_once_with("svc")
     c2.start_service.assert_awaited_once_with("svc")
@@ -446,13 +439,11 @@ async def test_service_start_stop_restart_success_and_failure(
     c1.restart_service_if_running.assert_not_awaited()
     c2.restart_service_if_running.assert_not_awaited()
 
-    # Also verify the service_name identifier path works
     call2 = _service_call({"service_name": "svc"})
     await services_mod._service_start_service(hass, call2)
     await services_mod._service_stop_service(hass, call2)
     await services_mod._service_restart_service(hass, call2)
 
-    # Confirm service_name invoked client methods again with same arg
     c1.start_service.assert_awaited_with("svc")
     c2.start_service.assert_awaited_with("svc")
     assert c1.start_service.await_count == 2
@@ -483,27 +474,22 @@ async def test_service_restart_only_if_running_and_reload_interface(
     call = _service_call({"service_id": "svc", "only_if_running": True})
 
     _patch_clients(monkeypatch, [c1])
-    # should not raise
     caplog.set_level("DEBUG", logger=services_mod.__name__)
     await services_mod._service_restart_service(hass, call)
     c1.restart_service_if_running.assert_awaited_once_with("svc")
     assert "[service_restart_service] restart_service_if_running, client: c1" in caplog.text
     assert "[service_restart_service] restart_service_if_running] client: c1" not in caplog.text
-    # Ensure the non-conditional restart path was not used
     c1.restart_service.assert_not_awaited()
 
-    # Failure path: client reports not running -> should raise ServiceValidationError
     c1.restart_service_if_running = AsyncMock(return_value=False)
 
     with pytest.raises(ServiceValidationError):
         await services_mod._service_restart_service(hass, call)
 
-    # reload_interface success
     call_iface = _service_call({"interface": "igb0"})
     await services_mod._service_reload_interface(hass, call_iface)
     c1.reload_interface.assert_awaited_once_with("igb0")
 
-    # reload_interface failure should raise
     c1.reload_interface = AsyncMock(return_value=False)
     with pytest.raises(ServiceValidationError):
         await services_mod._service_reload_interface(hass, call_iface)
@@ -524,7 +510,6 @@ async def test_service_start_stop_restart_failure_variants(
     """Parameterized failure tests for start/stop/restart service handlers. For each handler, ensure that if any client returns False the handler raises ServiceValidationError."""
     hass = ph_hass
     hass.data = {}
-    # ok client returns True, bad client returns False for the method under test
     ok_client = MagicMock()
     ok_client.name = "ok"
     bad_client = MagicMock()
@@ -582,7 +567,6 @@ async def test_generate_vouchers_success_and_server_error(
     """Generating vouchers returns assembled list and handles server errors."""
     hass = ph_hass
     hass.data = {}
-    # client returns a list of mapping vouchers
     vouchers = [{"code": "A1"}, {"code": "B2"}]
     c1 = MagicMock()
     c1.name = "svc1"
@@ -595,10 +579,8 @@ async def test_generate_vouchers_success_and_server_error(
     assert resp is not None
     assert "vouchers" in resp and isinstance(resp["vouchers"], list)
     response_vouchers: list[Any] = resp["vouchers"]
-    # confirm client name was injected into voucher entries
     assert all(isinstance(v, dict) and v.get("client") == "svc1" for v in response_vouchers)
 
-    # server error should raise ServiceValidationError
     c1.generate_vouchers = AsyncMock(side_effect=OPNsenseVoucherServerError("boom"))
     with pytest.raises(ServiceValidationError):
         await services_mod._service_generate_vouchers(hass, call)
@@ -630,6 +612,33 @@ async def test_generate_vouchers_empty_selected_client_response_returns_empty(
     _patch_clients(monkeypatch, [client])
 
     assert await services_mod._service_generate_vouchers(ph_hass, call) == {"vouchers": []}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("client_response", "expected_vouchers"),
+    [
+        ("unexpected", []),
+        (["raw-voucher"], ["raw-voucher"]),
+    ],
+)
+async def test_generate_vouchers_preserves_existing_edge_response_behavior(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    client_response: Any,
+    expected_vouchers: list[Any],
+) -> None:
+    """Voucher generation preserves non-list skip and non-mapping passthrough behavior."""
+    client = MagicMock()
+    client.name = "svc1"
+    client.generate_vouchers = AsyncMock(return_value=client_response)
+    call = _service_call(_voucher_call_data())
+
+    _patch_clients(monkeypatch, [client])
+
+    assert await services_mod._service_generate_vouchers(ph_hass, call) == {
+        "vouchers": expected_vouchers
+    }
 
 
 @pytest.mark.asyncio
@@ -667,11 +676,9 @@ async def test_kill_states_success_and_failure(
 
     _patch_clients(monkeypatch, [c1])
     resp = await services_mod._service_kill_states(hass, call)
-    # Expect a payload containing the client name and dropped_states value
     expected = {"dropped_states": [{"client_name": "c1", "dropped_states": 5}]}
     assert resp == expected
 
-    # failure -> raise
     c1.kill_states = AsyncMock(return_value={"success": False})
     with pytest.raises(ServiceValidationError):
         await services_mod._service_kill_states(hass, call)
@@ -810,7 +817,6 @@ async def test_stop_service_no_clients_raises(ph_hass: Any, fake_get_empty: None
 @pytest.mark.asyncio
 async def test_close_send_wol_and_system_calls(monkeypatch: pytest.MonkeyPatch) -> None:
     """Close/send_wol/system calls are forwarded to clients."""
-    # single client that should receive calls
     c = MagicMock()
     c.name = "one"
     c.close_notice = AsyncMock(return_value=None)
@@ -823,17 +829,14 @@ async def test_close_send_wol_and_system_calls(monkeypatch: pytest.MonkeyPatch) 
     hass = MagicMock(spec=HomeAssistant)
     hass.data = {DOMAIN: {"e1": c}}
 
-    # close notice
     call = _service_call({"id": "all"})
     await services_mod._service_close_notice(hass, call)
     c.close_notice.assert_awaited_once_with("all")
 
-    # send wol
     call_wol = _service_call({"interface": "lan", "mac": "aa:bb:cc:dd:ee:ff"})
     await services_mod._service_send_wol(hass, call_wol)
     c.send_wol.assert_awaited_once_with("lan", "aa:bb:cc:dd:ee:ff")
 
-    # system halt and reboot
     call_sys = _service_call({})
     await services_mod._service_system_halt(hass, call_sys)
     c.system_halt.assert_awaited_once()
@@ -844,7 +847,6 @@ async def test_close_send_wol_and_system_calls(monkeypatch: pytest.MonkeyPatch) 
 @pytest.mark.asyncio
 async def test_toggle_alias_success_and_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     """Toggle alias success and failure paths raise or not appropriately."""
-    # success path
     c1 = MagicMock()
     c1.name = "c1"
     c1.toggle_alias = AsyncMock(return_value=True)
@@ -853,10 +855,8 @@ async def test_toggle_alias_success_and_failure(monkeypatch: pytest.MonkeyPatch)
     hass = MagicMock(spec=HomeAssistant)
     hass.data = {DOMAIN: {"e1": c1}}
     call = _service_call({"alias": "a1", "toggle_on_off": "on"})
-    # should not raise
     await services_mod._service_toggle_alias(hass, call)
 
-    # failure path
     c2 = MagicMock()
     c2.name = "c2"
     c2.toggle_alias = AsyncMock(return_value=False)
