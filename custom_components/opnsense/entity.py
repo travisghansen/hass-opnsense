@@ -1,5 +1,6 @@
 """Define the base entities for OPNsense."""
 
+from collections.abc import Mapping
 import logging
 from typing import Any
 
@@ -18,6 +19,30 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
     """Base entity for OPNsense."""
+
+    @staticmethod
+    def payload_display_name(
+        payload: Mapping[str, Any],
+        fallback: str,
+        *fields: str,
+    ) -> str:
+        """Return a stable display label from a dynamic state payload.
+
+        Args:
+            payload: Mapping payload that may contain one of the display fields.
+            fallback: Value to use when none of the fields contain a displayable value.
+            *fields: Ordered field names to prefer for the display label.
+
+        Returns:
+            String display label from the first usable field, otherwise the fallback.
+        """
+        for field in fields:
+            value = payload.get(field)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+            if value is not None and not isinstance(value, Mapping | list | tuple | set):
+                return str(value)
+        return fallback
 
     def __init__(
         self,

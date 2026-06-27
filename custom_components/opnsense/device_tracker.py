@@ -75,6 +75,8 @@ async def async_setup_entry(
         for mac_address in mac_addresses:
             device: dict[str, Any] = {"mac": mac_address}
             for arp_entry in arp_entries:
+                if not isinstance(arp_entry, MutableMapping):
+                    continue
                 if mac_address == arp_entry.get("mac", ""):
                     try:
                         for attr in ("hostname", "manufacturer"):
@@ -87,6 +89,8 @@ async def async_setup_entry(
             devices.append(device)
     elif config_entry.options.get(CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED):
         for arp_entry in arp_entries:
+            if not isinstance(arp_entry, MutableMapping):
+                continue
             mac_address = arp_entry.get("mac", None)
             if mac_address and mac_address not in mac_addresses:
                 device = {"mac": mac_address}
@@ -207,30 +211,27 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             self.async_write_ha_state()
             return
         self._available = True
-        entry: dict[str, Any] | None = None
+        entry: MutableMapping[str, object] | None = None
         for arp_entry in arp_table:
-            if arp_entry.get("mac", "").lower() == self._attr_mac_address:
-                entry = arp_entry
+            if not isinstance(arp_entry, MutableMapping):
+                continue
+            arp_row: MutableMapping[str, object] = arp_entry
+            mac = arp_row.get("mac")
+            if isinstance(mac, str) and mac.lower() == self._attr_mac_address:
+                entry = arp_row
                 break
         if not entry:
             entry = {}
         # _LOGGER.debug(f"[OPNsenseScannerEntity handle_coordinator_update] entry: {entry}")
-        try:
-            self._attr_ip_address = entry.get("ip") if len(entry.get("ip", 0)) > 0 else None
-        except TypeError, KeyError, AttributeError:
-            self._attr_ip_address = None
+        ip_address = entry.get("ip")
+        self._attr_ip_address = ip_address if isinstance(ip_address, str) and ip_address else None
 
         if self._attr_ip_address:
             self._last_known_ip = self._attr_ip_address
 
-        try:
-            self._attr_hostname = (
-                entry.get("hostname", "").strip("?")
-                if len(entry.get("hostname", "").strip("?")) > 0
-                else None
-            )
-        except TypeError, KeyError, AttributeError:
-            self._attr_hostname = None
+        hostname = entry.get("hostname")
+        stripped_hostname = hostname.strip("?") if isinstance(hostname, str) else ""
+        self._attr_hostname = stripped_hostname or None
 
         if self._attr_hostname:
             self._last_known_hostname = self._attr_hostname
@@ -274,7 +275,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
                     if prop_name == "expires":
                         if prop == -1:
                             self._attr_extra_state_attributes[prop_name] = "Never"
-                        else:
+                        elif isinstance(prop, int | float):
                             self._attr_extra_state_attributes[prop_name] = (
                                 datetime.now().astimezone() + timedelta(seconds=prop)
                             )

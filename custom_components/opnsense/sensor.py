@@ -401,7 +401,13 @@ async def _compile_filesystem_sensors(
         return []
     entities: list = []
 
-    for filesystem in dict_get(state, "telemetry.filesystems", []) or []:
+    filesystems = dict_get(state, "telemetry.filesystems", []) or []
+    if not isinstance(filesystems, list):
+        return entities
+
+    for filesystem in filesystems:
+        if not isinstance(filesystem, MutableMapping):
+            continue
         filesystem_slug: str = slugify_filesystem_mountpoint(filesystem.get("mountpoint", None))
         enabled_default = False
         if filesystem_slug == "root":
@@ -572,7 +578,13 @@ async def _compile_interface_sensors(
     entities: list = []
 
     # interfaces
-    for interface_name, interface in (dict_get(state, "interfaces", {}) or {}).items():
+    interfaces = dict_get(state, "interfaces", {}) or {}
+    if not isinstance(interfaces, MutableMapping):
+        return entities
+
+    for interface_name, interface in interfaces.items():
+        if not isinstance(interface, MutableMapping):
+            continue
         for prop_name in (
             "status",
             "inerrs",
@@ -670,7 +682,14 @@ async def _compile_gateway_sensors(
         return []
     entities: list = []
 
-    for gateway in (dict_get(state, "gateways", {}) or {}).values():
+    gateways = dict_get(state, "gateways", {}) or {}
+    if not isinstance(gateways, MutableMapping):
+        return entities
+
+    for gateway_id, gateway in gateways.items():
+        if not isinstance(gateway, MutableMapping):
+            continue
+        gateway_name = OPNsenseEntity.payload_display_name(gateway, str(gateway_id), "name")
         for prop_name in ("status", "delay", "stddev", "loss", "address"):
             native_unit_of_measurement = None
             device_class: SensorDeviceClass | None = None
@@ -698,8 +717,8 @@ async def _compile_gateway_sensors(
                 config_entry=config_entry,
                 coordinator=coordinator,
                 entity_description=SensorEntityDescription(
-                    key=f"gateway.{gateway['name']}.{prop_name}",
-                    name=f"Gateway {gateway['name']} {prop_name}",
+                    key=f"gateway.{gateway_name}.{prop_name}",
+                    name=f"Gateway {gateway_name} {prop_name}",
                     native_unit_of_measurement=native_unit_of_measurement,
                     device_class=device_class,
                     icon=icon,
@@ -730,7 +749,13 @@ async def _compile_temperature_sensors(
     entities: list = []
 
     # temperatures
-    for temp_device, temp in state.get("telemetry", {}).get("temps", {}).items():
+    temps = dict_get(state, "telemetry.temps", {}) or {}
+    if not isinstance(temps, MutableMapping):
+        return entities
+
+    for temp_device, temp in temps.items():
+        if not isinstance(temp, MutableMapping):
+            continue
         entity = OPNsenseTempSensor(
             config_entry=config_entry,
             coordinator=coordinator,
@@ -768,9 +793,11 @@ async def _compile_dhcp_leases_sensors(
     entities: list = []
 
     # interfaces
-    for interface, interface_name in (
-        dict_get(state, "dhcp_leases.lease_interfaces", {}) or {}
-    ).items():
+    lease_interfaces = dict_get(state, "dhcp_leases.lease_interfaces", {}) or {}
+    if not isinstance(lease_interfaces, MutableMapping):
+        lease_interfaces = {}
+
+    for interface, interface_name in lease_interfaces.items():
         entity = OPNsenseDHCPLeasesSensor(
             config_entry=config_entry,
             coordinator=coordinator,
@@ -827,11 +854,18 @@ async def _compile_vpn_sensors(
         if vpn_type == "wireguard":
             cs = ["clients", "servers"]
         for clients_servers in cs:
-            for uuid, instance in (
-                dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
-            ).items():
+            vpn_instances = dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
+            if not isinstance(vpn_instances, MutableMapping):
+                continue
+            for uuid, instance in vpn_instances.items():
                 if not isinstance(instance, MutableMapping) or len(instance) == 0:
                     continue
+                instance_name = OPNsenseEntity.payload_display_name(
+                    instance,
+                    str(uuid),
+                    "name",
+                    "description",
+                )
                 properties: list[str] = [
                     "total_bytes_recv",
                     "total_bytes_sent",
@@ -884,7 +918,7 @@ async def _compile_vpn_sensors(
                         entity_description=SensorEntityDescription(
                             key=f"{vpn_type}.{clients_servers}.{uuid}.{prop_name}",
                             name=f"{'OpenVPN' if vpn_type == 'openvpn' else vpn_type.title()} "
-                            f"{clients_servers.title().rstrip('s')} {instance['name']} "
+                            f"{clients_servers.title().rstrip('s')} {instance_name} "
                             f"{prop_name}",
                             native_unit_of_measurement=native_unit_of_measurement,
                             device_class=device_class,
@@ -1233,18 +1267,33 @@ class OPNsenseFilesystemSensor(OPNsenseSensor):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update."""
-        filesystem: dict[str, Any] = {}
+        filesystem: Mapping[str, object] = {}
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             self._available = False
             self.async_write_ha_state()
             return
-        for fsystem in state.get("telemetry", {}).get("filesystems", []):
+        telemetry = state.get("telemetry")
+        if not isinstance(telemetry, Mapping):
+            self._available = False
+            self.async_write_ha_state()
+            return
+        filesystems = telemetry.get("filesystems")
+        if not isinstance(filesystems, list):
+            self._available = False
+            self.async_write_ha_state()
+            return
+        for fsystem in filesystems:
+            if not isinstance(fsystem, Mapping):
+                continue
+            filesystem_row: Mapping[str, object] = fsystem
+            mountpoint = filesystem_row.get("mountpoint")
             if (
-                self.entity_description.key == "telemetry.filesystems."
-                f"{slugify_filesystem_mountpoint(fsystem.get('mountpoint', None))}"
+                isinstance(mountpoint, str)
+                and self.entity_description.key
+                == f"telemetry.filesystems.{slugify_filesystem_mountpoint(mountpoint)}"
             ):
-                filesystem = fsystem
+                filesystem = filesystem_row
         if not filesystem:
             self._available = False
             self.async_write_ha_state()
@@ -1552,12 +1601,18 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             self.async_write_ha_state()
             return
         uuid: str = self.entity_description.key.split(".")[2]
-        instance: dict[str, Any] = {}
-        for instance_uuid, ins in (
-            dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
-        ).items():
+        instance: Mapping[str, object] = {}
+        vpn_instances = dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
+        if not isinstance(vpn_instances, Mapping):
+            self._available = False
+            self.async_write_ha_state()
+            return
+        for instance_uuid, ins in vpn_instances.items():
+            if not isinstance(ins, Mapping):
+                continue
+            instance_row: Mapping[str, object] = ins
             if uuid == instance_uuid:
-                instance = ins
+                instance = instance_row
                 break
         prop_name: str = self._get_property_name()
         if not instance or (
@@ -1632,13 +1687,21 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             if instance.get(attr, None) is not None:
                 self._attr_extra_state_attributes[attr] = instance.get(attr)
 
+        clients = instance.get("clients")
         if (
-            isinstance(instance.get("clients", None), list)
+            isinstance(clients, list)
             and clients_servers == "servers"
-            and prop_name in {"connected_clients", "status"}
+            and prop_name
+            in {
+                "connected_clients",
+                "status",
+            }
         ):
             self._attr_extra_state_attributes["clients"] = []
-            for clnt in instance.get("clients", {}):
+            for clnt in clients:
+                if not isinstance(clnt, Mapping):
+                    continue
+                client_row: Mapping[str, object] = clnt
                 client: dict[str, Any] = {}
                 for client_attr in (
                     "name",
@@ -1649,8 +1712,8 @@ class OPNsenseVPNSensor(OPNsenseSensor):
                     "bytes_sent",
                     "bytes_recv",
                 ):
-                    if clnt.get(client_attr, None) is not None:
-                        client[client_attr] = clnt.get(client_attr)
+                    if client_row.get(client_attr, None) is not None:
+                        client[client_attr] = client_row.get(client_attr)
                 self._attr_extra_state_attributes["clients"].append(client)
         self.async_write_ha_state()
 
