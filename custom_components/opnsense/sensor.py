@@ -690,6 +690,7 @@ async def _compile_gateway_sensors(
         if not isinstance(gateway, MutableMapping):
             continue
         gateway_name = OPNsenseEntity.payload_display_name(gateway, str(gateway_id), "name")
+        gateway_key = str(gateway_id)
         for prop_name in ("status", "delay", "stddev", "loss", "address"):
             native_unit_of_measurement = None
             device_class: SensorDeviceClass | None = None
@@ -717,7 +718,7 @@ async def _compile_gateway_sensors(
                 config_entry=config_entry,
                 coordinator=coordinator,
                 entity_description=SensorEntityDescription(
-                    key=f"gateway.{gateway_name}.{prop_name}",
+                    key=f"gateway.{gateway_key}.{prop_name}",
                     name=f"Gateway {gateway_name} {prop_name}",
                     native_unit_of_measurement=native_unit_of_measurement,
                     device_class=device_class,
@@ -1309,7 +1310,8 @@ class OPNsenseFilesystemSensor(OPNsenseSensor):
 
         self._attr_extra_state_attributes = {}
         for attr in ("mountpoint", "device", "type", "blocks", "used", "available"):
-            self._attr_extra_state_attributes[attr] = filesystem[attr]
+            if attr in filesystem:
+                self._attr_extra_state_attributes[attr] = filesystem[attr]
         self.async_write_ha_state()
 
 

@@ -139,6 +139,30 @@ async def test_compile_gateway_sensors_creates_disabled_address_sensor(
     assert address_sensor.entity_description.entity_registry_enabled_default is False
 
 
+async def test_compile_gateway_sensors_keeps_gateway_id_in_entity_key(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Gateway display name should not be used as the entity key."""
+    entry = make_config_entry()
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {
+        "gateways": {
+            "wan": {
+                "name": "WAN_GW",
+                "address": "203.0.113.1",
+                "delay": "15ms",
+                "stddev": "1ms",
+                "loss": "0%",
+                "status": "online",
+            }
+        }
+    }
+
+    entities = await sensor_module._compile_gateway_sensors(entry, coordinator, coordinator.data)
+    assert any(entity.entity_description.key == "gateway.wan.address" for entity in entities)
+    assert any(entity.entity_description.name == "Gateway WAN_GW address" for entity in entities)
+
+
 @pytest.mark.parametrize(
     ("coord_data", "desc_subnet"),
     [
@@ -2223,6 +2247,45 @@ def test_filesystem_sensor_skips_malformed_rows(
     attrs = sensor.extra_state_attributes
     assert attrs is not None
     assert attrs.get("mountpoint") == "/"
+
+
+def test_filesystem_sensor_handles_partial_telemetry_row(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Filesystem sensor should tolerate partial telemetry rows and keep available state."""
+    state = {
+        "telemetry": {
+            "filesystems": [
+                {"mountpoint": "/", "used_pct": 12, "type": "ext4"},
+            ],
+            "temps": {},
+        },
+        "interfaces": {},
+    }
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = state
+    desc = MagicMock()
+    desc.key = f"telemetry.filesystems.{slugify_filesystem_mountpoint('/')}"
+    desc.name = "Filesystem Test"
+
+    sensor = OPNsenseFilesystemSensor(
+        config_entry=entry,
+        coordinator=coord,
+        entity_description=desc,
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.fs_root"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is True
+    assert sensor.native_value == 12
+    attrs = sensor.extra_state_attributes
+    assert attrs is not None
+    assert attrs.get("mountpoint") == "/"
+    assert attrs.get("type") == "ext4"
+    assert "device" not in attrs
 
 
 @pytest.mark.parametrize(
