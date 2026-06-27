@@ -446,13 +446,10 @@ async def test_async_remove_config_entry_device_branches(
     device.via_device_id = False
     device.id = "d2"
 
-    class EntityRegistry:
-        pass
-
     # fake registry that returns one entity with matching device_id
     ent = MagicMock()
     ent.device_id = "d2"
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: EntityRegistry())
+    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: object())
     monkeypatch.setattr(
         init_mod.er, "async_entries_for_config_entry", lambda registry, config_entry_id: [ent]
     )

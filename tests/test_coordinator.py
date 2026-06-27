@@ -487,10 +487,10 @@ async def test_calculate_entity_speeds_applies_calculations(
 
 
 @pytest.mark.asyncio
-async def test_calculate_entity_speeds_handles_counter_rollover(
+async def test_calculate_entity_speeds_treats_counter_decrease_as_reset(
     make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
 ) -> None:
-    """Regression: ensure rates never go negative when counters decrease (device reset/rollback)."""
+    """Counter resets should not be reported as traffic spikes."""
     entry = make_config_entry(
         {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
     )
@@ -519,26 +519,142 @@ async def test_calculate_entity_speeds_handles_counter_rollover(
         },
     }
 
-    # run calculation; code should clamp or avoid negative rates
     await coord._calculate_entity_speeds()
 
-    # interfaces rates exist and are non-negative
     eth0 = coord._state["interfaces"]["eth0"]
-    assert "inbytes_kilobytes_per_second" in eth0
-    assert "outbytes_kilobytes_per_second" in eth0
-    assert "inpkts_packets_per_second" in eth0
-    assert "outpkts_packets_per_second" in eth0
-    assert eth0["inbytes_kilobytes_per_second"] >= 0
-    assert eth0["outbytes_kilobytes_per_second"] >= 0
-    assert eth0["inpkts_packets_per_second"] >= 0
-    assert eth0["outpkts_packets_per_second"] >= 0
+    assert eth0["inbytes_kilobytes_per_second"] == 0
+    assert eth0["outbytes_kilobytes_per_second"] == 0
+    assert eth0["inpkts_packets_per_second"] == 0
+    assert eth0["outpkts_packets_per_second"] == 0
 
-    # openvpn rates exist and are non-negative
     s1 = coord._state["openvpn"]["servers"]["s1"]
-    assert "total_bytes_recv_kilobytes_per_second" in s1
-    assert "total_bytes_sent_kilobytes_per_second" in s1
-    assert s1["total_bytes_recv_kilobytes_per_second"] >= 0
-    assert s1["total_bytes_sent_kilobytes_per_second"] >= 0
+    assert s1["total_bytes_recv_kilobytes_per_second"] == 0
+    assert s1["total_bytes_sent_kilobytes_per_second"] == 0
+
+
+@pytest.mark.asyncio
+async def test_calculate_entity_speeds_skips_missing_counter_values(
+    make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
+) -> None:
+    """Missing counter values should not abort a coordinator refresh."""
+    entry = make_config_entry(
+        {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
+    )
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    now = time.time()
+    coord._state = {
+        "update_time": now,
+        "interfaces": {"eth0": {"inbytes": 200, "inpkts": 300}},
+        "openvpn": {"servers": {"s1": {"total_bytes_recv": 1000}}},
+        "wireguard": {"clients": {"c1": {"total_bytes_sent": 2000}}},
+        "previous_state": {
+            "update_time": now - 2,
+            "interfaces": {"eth0": {"inbytes": 100}},
+            "openvpn": {"servers": {"s1": {}}},
+            "wireguard": {"clients": {"c1": {"total_bytes_sent": 1000}}},
+        },
+    }
+
+    await coord._calculate_entity_speeds()
+
+    eth0 = coord._state["interfaces"]["eth0"]
+    assert eth0["inbytes_kilobytes_per_second"] == 0
+    assert "outbytes_kilobytes_per_second" not in eth0
+    assert "inpkts_packets_per_second" not in eth0
+    assert "outpkts_packets_per_second" not in eth0
+    assert "total_bytes_recv_kilobytes_per_second" not in coord._state["openvpn"]["servers"]["s1"]
+    assert coord._state["wireguard"]["clients"]["c1"]["total_bytes_sent_kilobytes_per_second"] == 0
+
+
+@pytest.mark.asyncio
+async def test_calculate_vpn_speeds_skips_malformed_payloads(
+    make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
+) -> None:
+    """Malformed VPN counter payloads should be ignored without mutating valid rows."""
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_VPN: True})
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    coord._state = {
+        "openvpn": {
+            "servers": ["malformed"],
+        },
+        "wireguard": {
+            "clients": {
+                "bad_current": [],
+                "bad_previous_parent": {"total_bytes_recv": 200},
+            },
+            "servers": {
+                "bad_previous_instance": {"total_bytes_recv": 200},
+            },
+        },
+        "previous_state": {
+            "wireguard": {
+                "clients": ["malformed"],
+                "servers": {"bad_previous_instance": []},
+            },
+        },
+    }
+
+    await coord._calculate_vpn_speeds(elapsed_time=2)
+
+    assert coord._state["wireguard"]["clients"]["bad_previous_parent"] == {"total_bytes_recv": 200}
+    assert coord._state["wireguard"]["servers"]["bad_previous_instance"] == {
+        "total_bytes_recv": 200
+    }
+
+
+@pytest.mark.asyncio
+async def test_calculate_interface_speeds_skips_malformed_payloads(
+    make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
+) -> None:
+    """Malformed interface counter payloads should be ignored without mutating valid rows."""
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True})
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    coord._state = {"interfaces": ["malformed"]}
+    await coord._calculate_interface_speeds(elapsed_time=2)
+    assert coord._state["interfaces"] == ["malformed"]
+
+    coord._state = {
+        "interfaces": {
+            "bad_current": [],
+            "bad_previous": {"inbytes": 200},
+        },
+        "previous_state": {
+            "interfaces": {
+                "bad_previous": [],
+            },
+        },
+    }
+
+    await coord._calculate_interface_speeds(elapsed_time=2)
+
+    assert coord._state["interfaces"]["bad_previous"] == {"inbytes": 200}
 
 
 @pytest.mark.asyncio
@@ -1094,12 +1210,12 @@ async def test_build_categories_keeps_firewall_polling_for_legacy_firmware(
 
 
 @pytest.mark.asyncio
-async def test_async_update_data_strips_nested_previous_state(
+async def test_async_update_data_preserves_only_counter_snapshot(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """Nested previous-state snapshots should not recurse indefinitely."""
+    """Previous state should keep only fields needed for counter rates."""
     entry = make_config_entry({"device_unique_id": "id", CONF_SYNC_INTERFACES: True})
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -1111,9 +1227,14 @@ async def test_async_update_data_strips_nested_previous_state(
         config_entry=entry,
     )
 
+    now = time.time()
     coord._state = {
+        "update_time": now,
         "previous_state": {"inner": 1},
         "device_unique_id": "id",
+        "interfaces": {"eth0": {"inbytes": 100}},
+        "openvpn": {"servers": {"s1": {"total_bytes_recv": 1000}}},
+        "firewall": {"rules": {"r1": {"description": "large payload"}}},
         "extra": "keep",
     }
 
@@ -1137,8 +1258,11 @@ async def test_async_update_data_strips_nested_previous_state(
     assert isinstance(out, MutableMapping)
     assert "previous_state" in out
     assert "previous_state" not in out["previous_state"]
-    assert out["previous_state"].get("device_unique_id") == "id"
-    assert out["previous_state"].get("extra") == "keep"
+    assert out["previous_state"] == {
+        "update_time": now,
+        "interfaces": {"eth0": {"inbytes": 100}},
+        "openvpn": {"servers": {"s1": {"total_bytes_recv": 1000}}},
+    }
 
 
 @pytest.mark.asyncio
@@ -1325,3 +1449,55 @@ async def test_async_update_dt_data_device_id_branches(
         # Should return empty dict and not call get_query_counts
         assert res == {}
         assert client.get_query_counts.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_async_update_dt_data_uses_shared_device_id_mismatch_policy(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
+    """Device-tracker refreshes should use the shared device-ID mismatch policy."""
+    entry = make_config_entry({"device_unique_id": "id"})
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+        device_tracker_coordinator=True,
+    )
+
+    async def fake_get_states(categories: list[dict[str, str]]) -> dict[str, Any]:
+        """Return a mismatched device ID for the device-tracker refresh."""
+        return {
+            "device_unique_id": "other",
+            "host_firmware_version": "fv",
+            "system_info": {"name": "opn"},
+            "arp_table": [],
+        }
+
+    called: dict[str, Any] = {"issue": 0, "shutdown": 0}
+
+    async def fake_shutdown() -> None:
+        """Record coordinator shutdown requests."""
+        called["shutdown"] += 1
+
+    def fake_async_create_issue(**kwargs: Any) -> None:
+        """Record repair issue creation requests."""
+        called["issue"] += 1
+
+    monkeypatch.setattr(coord, "_get_states", fake_get_states)
+    monkeypatch.setattr(coordinator_module.ir, "async_create_issue", fake_async_create_issue)
+    object.__setattr__(coord, "async_shutdown", fake_shutdown)
+    object.__setattr__(client, "get_query_counts", AsyncMock(return_value=3))
+
+    assert await coord._async_update_dt_data() == {}
+    assert await coord._async_update_dt_data() == {}
+    assert await coord._async_update_dt_data() == {}
+
+    assert coord._mismatched_count == 3
+    assert called == {"issue": 1, "shutdown": 1}
+    client.get_query_counts.assert_not_awaited()
