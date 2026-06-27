@@ -1159,6 +1159,39 @@ def test_vpn_sensor_fails_closed_for_malformed_instance_collection(
 
 
 @pytest.mark.parametrize(
+    ("coord_data", "key"),
+    [
+        ({"openvpn": {"servers": {"uuid1": "not-a-mapping"}}}, "openvpn.servers.uuid1.status"),
+        (
+            {"openvpn": {"servers": {"uuid1": {"clients": ["not-a-mapping"], "status": "up"}}}},
+            "openvpn.servers.uuid1.status",
+        ),
+    ],
+)
+def test_vpn_sensor_fails_closed_for_malformed_instance_members(
+    coord_data: dict[str, Any],
+    key: str,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """VPN sensor should mark unavailable when matched instance members are malformed."""
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = coord_data
+    desc = MagicMock()
+    desc.key = key
+    desc.name = "VPN Malformed Member"
+
+    s = OPNsenseVPNSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    s.hass = MagicMock()
+    s.entity_id = "sensor.vpn_malformed_member"
+    object.__setattr__(s, "async_write_ha_state", lambda: None)
+
+    s._handle_coordinator_update()
+
+    assert s.available is False
+
+
+@pytest.mark.parametrize(
     ("coord_data", "expected_available", "expected_value", "expect_device"),
     [
         ([], False, None, False),
@@ -1820,6 +1853,57 @@ def test_dhcp_leases_interface_sensor_handles_non_mapping_leases(
         writes.append(bool(getattr(s, "_available", None)))
 
     object.__setattr__(s, "async_write_ha_state", collector)
+    s._handle_coordinator_update()
+
+    assert s.available is False
+    assert writes == [False]
+
+
+@pytest.mark.parametrize(
+    ("key", "coord_data"),
+    [
+        (
+            "dhcp_leases.all",
+            {
+                "dhcp_leases": {
+                    "leases": {"lan": ["not-a-mapping"]},
+                    "lease_interfaces": {"lan": "LAN"},
+                }
+            },
+        ),
+        (
+            "dhcp_leases.lan",
+            {"dhcp_leases": {"leases": {"lan": ["not-a-mapping"]}}},
+        ),
+    ],
+)
+def test_dhcp_leases_sensor_fails_closed_for_scalar_lease_rows(
+    key: str,
+    coord_data: dict[str, Any],
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """DHCP leases sensors should mark unavailable when a lease row is malformed."""
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = coord_data
+
+    desc = MagicMock()
+    desc.key = key
+    desc.name = "DHCP Scalar Lease"
+
+    s = OPNsenseDHCPLeasesSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    s.hass = MagicMock()
+    s.entity_id = "sensor.dhcp_scalar_lease"
+
+    writes: list[bool] = []
+
+    def collector() -> None:
+        """Collect availability when the entity state is written."""
+        writes.append(bool(getattr(s, "_available", None)))
+
+    object.__setattr__(s, "async_write_ha_state", collector)
+    s._available = True
+
     s._handle_coordinator_update()
 
     assert s.available is False

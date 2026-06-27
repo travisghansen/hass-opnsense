@@ -1873,15 +1873,19 @@ class OPNsenseVPNSensor(OPNsenseSensor):
         if instances is None:
             self._mark_unavailable()
             return
-        instance: dict[str, Any] = {}
+        instance: MutableMapping[str, Any] = {}
         for instance_uuid, ins in instances.items():
             if uuid == instance_uuid:
                 instance = ins
                 break
-        if not instance or (
-            prop_name != "status"
-            and instance.get("enabled", None) is not None
-            and not instance.get("enabled")
+        if (
+            not isinstance(instance, MutableMapping)
+            or not instance
+            or (
+                prop_name != "status"
+                and instance.get("enabled", None) is not None
+                and not instance.get("enabled")
+            )
         ):
             self._mark_unavailable()
             return
@@ -1955,6 +1959,9 @@ class OPNsenseVPNSensor(OPNsenseSensor):
         ):
             self._attr_extra_state_attributes["clients"] = []
             for clnt in instance.get("clients", {}):
+                if not isinstance(clnt, MutableMapping):
+                    self._mark_unavailable()
+                    return
                 client: dict[str, Any] = {}
                 for client_attr in (
                     "name",
@@ -2049,9 +2056,13 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
             lease_counts: dict[str, Any] = {}
             try:
                 for ifn, if_descr in lease_interfaces.items():
-                    if_count: int = sum(
-                        1 for d in leases.get(ifn, []) if d.get("address") not in {None, ""}
-                    )
+                    if_count: int = 0
+                    for lease in leases.get(ifn, []):
+                        if not isinstance(lease, MutableMapping):
+                            self._mark_unavailable()
+                            return
+                        if lease.get("address") not in {None, ""}:
+                            if_count += 1
                     lease_counts[if_descr] = f"{if_count} leases"
                     total_lease_count += if_count
                     _LOGGER.debug(
@@ -2078,9 +2089,14 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
                 self._mark_unavailable()
                 return
             try:
-                self._attr_native_value = sum(
-                    1 for d in interface if d.get("address") not in {None, ""}
-                )
+                lease_count = 0
+                for lease in interface:
+                    if not isinstance(lease, MutableMapping):
+                        self._mark_unavailable()
+                        return
+                    if lease.get("address") not in {None, ""}:
+                        lease_count += 1
+                self._attr_native_value = lease_count
             except TypeError, KeyError, ZeroDivisionError:
                 self._mark_unavailable()
                 return

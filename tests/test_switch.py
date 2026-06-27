@@ -1972,11 +1972,20 @@ def test_switch_handlers_fail_closed_for_malformed_nested_payloads(
         entity_description=SwitchEntityDescription(key=keys[entity], name="Malformed"),
     )
     ent.entity_id = "switch.malformed"
-    object.__setattr__(ent, "async_write_ha_state", lambda: None)
+    writes = 0
+
+    def collect_write() -> None:
+        """Count Home Assistant state writes."""
+        nonlocal writes
+        writes += 1
+
+    object.__setattr__(ent, "async_write_ha_state", collect_write)
+    ent._available = True
 
     ent._handle_coordinator_update()
 
     assert ent.available is False
+    assert writes == 1
 
 
 def test_entity_icons(make_config_entry: Callable[..., MockConfigEntry]) -> None:
