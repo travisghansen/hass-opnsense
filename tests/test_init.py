@@ -241,12 +241,12 @@ async def test_async_setup_entry_closes_client_when_validation_fails(
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_closes_client_when_validation_times_out(
+async def test_async_setup_entry_does_not_catch_raw_validation_timeout(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """async_setup_entry should close and re-raise when validation times out."""
+    """Validation timeout mapping belongs to aiopnsense, not setup-entry cleanup."""
     client = MagicMock()
     client.validate = AsyncMock(side_effect=TimeoutError)
     client.async_close = AsyncMock(return_value=True)
@@ -275,7 +275,7 @@ async def test_async_setup_entry_closes_client_when_validation_times_out(
     with pytest.raises(TimeoutError):
         await init_mod.async_setup_entry(hass, entry)
 
-    client.async_close.assert_awaited_once()
+    client.async_close.assert_not_awaited()
 
 
 @pytest.mark.asyncio

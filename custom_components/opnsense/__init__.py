@@ -211,8 +211,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     Raises:
         OPNsenseError: Raised when validation cannot complete because of
             authentication, privilege, firmware, or transport failures.
-        TimeoutError: Raised when an initial OPNsense request times out during
-            setup or the first coordinator refresh.
     """
     config: Mapping[str, Any] = entry.data
     options: Mapping[str, Any] = entry.options
@@ -235,9 +233,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         try:
             await client.validate()
-        except TimeoutError:
-            await client.async_close()
-            raise
         except OPNsenseBelowMinFirmware, OPNsenseUnknownFirmware:
             _LOGGER.debug(
                 "Client validation reported firmware issues; continuing to firmware probes"

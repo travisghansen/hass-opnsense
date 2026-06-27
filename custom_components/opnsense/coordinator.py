@@ -7,7 +7,6 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
-import aiohttp
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
@@ -146,23 +145,10 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                             if not isinstance(device_name, str) or not device_name.strip():
                                 continue
                             normalized_device_name = device_name.strip()
-                            try:
-                                smart_info[normalized_device_name] = await method(
-                                    device=normalized_device_name,
-                                    info_type=cat.get("info_type", "A"),
-                                )
-                            except (
-                                aiohttp.ClientError,
-                                OSError,
-                                TimeoutError,
-                                TypeError,
-                                ValueError,
-                            ):
-                                _LOGGER.exception(
-                                    "Failed to fetch SMART info for device %s",
-                                    normalized_device_name,
-                                )
-                                continue
+                            smart_info[normalized_device_name] = await method(
+                                device=normalized_device_name,
+                                info_type=cat.get("info_type", "A"),
+                            )
                     state[cat.get("state_key")] = smart_info
                 else:
                     state[cat.get("state_key")] = await method()
