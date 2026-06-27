@@ -1128,12 +1128,12 @@ async def test_build_categories_keeps_firewall_polling_for_legacy_firmware(
 
 
 @pytest.mark.asyncio
-async def test_async_update_data_strips_nested_previous_state(
+async def test_async_update_data_preserves_only_counter_snapshot(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """Nested previous-state snapshots should not recurse indefinitely."""
+    """Previous state should keep only fields needed for counter rates."""
     entry = make_config_entry({"device_unique_id": "id", CONF_SYNC_INTERFACES: True})
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -1145,9 +1145,14 @@ async def test_async_update_data_strips_nested_previous_state(
         config_entry=entry,
     )
 
+    now = time.time()
     coord._state = {
+        "update_time": now,
         "previous_state": {"inner": 1},
         "device_unique_id": "id",
+        "interfaces": {"eth0": {"inbytes": 100}},
+        "openvpn": {"servers": {"s1": {"total_bytes_recv": 1000}}},
+        "firewall": {"rules": {"r1": {"description": "large payload"}}},
         "extra": "keep",
     }
 
@@ -1171,8 +1176,11 @@ async def test_async_update_data_strips_nested_previous_state(
     assert isinstance(out, MutableMapping)
     assert "previous_state" in out
     assert "previous_state" not in out["previous_state"]
-    assert out["previous_state"].get("device_unique_id") == "id"
-    assert out["previous_state"].get("extra") == "keep"
+    assert out["previous_state"] == {
+        "update_time": now,
+        "interfaces": {"eth0": {"inbytes": 100}},
+        "openvpn": {"servers": {"s1": {"total_bytes_recv": 1000}}},
+    }
 
 
 @pytest.mark.asyncio

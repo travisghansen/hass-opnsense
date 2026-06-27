@@ -40,6 +40,13 @@ if TYPE_CHECKING:
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
+_PREVIOUS_STATE_KEYS: tuple[str, ...] = (
+    "update_time",
+    "interfaces",
+    "openvpn",
+    "wireguard",
+)
+
 
 class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
     """Coordinator class for OPNsense."""
@@ -97,6 +104,18 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         )
         # await self._client.get_host_firmware_version() # Already triggered in
         # __init__.py async_setup_entry
+
+    def _build_previous_state_snapshot(self) -> dict[str, Any]:
+        """Build the previous-state subset used by derived counter rates.
+
+        Returns:
+            dict[str, Any]: Deep-copied counter source fields from the current state.
+        """
+        return {
+            key: copy.deepcopy(self._state[key])
+            for key in _PREVIOUS_STATE_KEYS
+            if key in self._state
+        }
 
     async def _get_states(self, categories: list) -> dict[str, Any]:
         """Fetch state payloads for the requested category call definitions.
@@ -453,8 +472,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             )
             await self._client.reset_query_counts()
 
-            previous_state: dict[str, Any] = copy.deepcopy(self._state)
-            previous_state.pop("previous_state", None)
+            previous_state: dict[str, Any] = self._build_previous_state_snapshot()
 
             # ensure clean state each interval
             self._state = {}
