@@ -812,6 +812,67 @@ async def test_try_external_client_after_probe_timeout_closes_external_on_cancel
 
 
 @pytest.mark.asyncio
+async def test_try_external_client_after_probe_timeout_preserves_firmware_on_unsupported_old_firmware(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unsupported aiopnsense firmware should seed legacy fallback firmware cache."""
+    created: dict[str, Any] = {"external_closed": False}
+    legacy_client: dict[str, Any] = {}
+    firmware_requests: list[str] = []
+
+    class _ExternalClient:
+        async def get_host_firmware_version(self) -> str:
+            """Return legacy firmware to force legacy fallback."""
+            return "25.7"
+
+        async def async_close(self) -> None:
+            """Record external client cleanup after unsupported firmware detection."""
+            created["external_closed"] = True
+
+    class _LegacyClient:
+        def __init__(self, **kwargs: Any) -> None:
+            """Capture kwargs and initialize firmware cache."""
+            self.kwargs = kwargs
+            self._firmware_version: str | None = None
+            legacy_client["instance"] = self
+
+        async def get_host_firmware_version(self) -> str:
+            """Return cached firmware when factory pre-populates it."""
+            if self._firmware_version is not None:
+                return self._firmware_version
+            firmware_requests.append("request")
+            return "unknown"
+
+    monkeypatch.setattr(
+        factory_mod,
+        "_create_external_client",
+        AsyncMock(return_value=_ExternalClient()),
+    )
+    monkeypatch.setattr(factory_mod, "LegacyOPNsenseClient", _LegacyClient)
+
+    client = await factory_mod._try_external_client_after_probe_timeout(
+        kwargs={
+            "url": "https://router",
+            "username": "u",
+            "password": TEST_PASSWORD,
+            "session": cast("aiohttp.ClientSession", SimpleNamespace()),
+            "opts": {"verify_ssl": True},
+            "initial": False,
+        },
+        probe_error=TimeoutError("legacy firmware status timed out"),
+        initial=False,
+    )
+
+    assert created["external_closed"] is True
+    assert isinstance(client, _LegacyClient)
+    assert client.kwargs["initial"] is False
+    assert getattr(client, "_firmware_version", None) == "25.7"
+    assert await client.get_host_firmware_version() == "25.7"
+    assert firmware_requests == []
+    assert legacy_client["instance"] is client
+
+
+@pytest.mark.asyncio
 async def test_create_client_uses_external_after_initial_legacy_probe_timeout_without_version_log(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:

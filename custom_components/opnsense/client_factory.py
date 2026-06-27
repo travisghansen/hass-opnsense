@@ -568,7 +568,9 @@ async def _try_external_client_after_probe_timeout(
     await _close_client(client)
     if initial:
         raise probe_error
-    return LegacyOPNsenseClient(**kwargs)
+    legacy_client = LegacyOPNsenseClient(**kwargs)
+    object.__setattr__(legacy_client, "_firmware_version", firmware)
+    return legacy_client
 
 
 async def create_opnsense_client(
