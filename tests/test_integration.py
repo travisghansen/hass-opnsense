@@ -148,8 +148,7 @@ class _FakeRuntimeClient:
 class _FakeCoordinator:
     """Minimal coordinator stand‑in used for async_setup_entry tests."""
 
-    def __init__(self, **kwargs: Any) -> None:  # pragma: no cover - simple init
-        # capture flags we care about for assertions if needed
+    def __init__(self, **kwargs: Any) -> None:
         """Capture the flags needed by async setup tests.
 
         Args:
@@ -168,7 +167,7 @@ class _FakeCoordinator:
         self._refreshed = True
         return True
 
-    async def async_shutdown(self) -> bool:  # pragma: no cover - not used in happy path
+    async def async_shutdown(self) -> bool:
         """Return a successful shutdown result for setup failure branches.
 
         Returns:
@@ -232,7 +231,7 @@ def _build_mock_hass() -> Any:
 
         async def async_forward_entry_setups(
             self, entry: MockConfigEntry, platforms: Iterable[str]
-        ) -> bool:  # pragma: no cover
+        ) -> bool:
             """Async forward entry setups.
 
             Args:
@@ -243,7 +242,7 @@ def _build_mock_hass() -> Any:
 
         async def async_unload_platforms(
             self, entry: MockConfigEntry, platforms: Iterable[str]
-        ) -> bool:  # pragma: no cover
+        ) -> bool:
             """Async unload platforms.
 
             Args:
@@ -252,9 +251,7 @@ def _build_mock_hass() -> Any:
             """
             return True
 
-        async def async_reload(
-            self, entry_id: str
-        ) -> None:  # pragma: no cover - reload path not asserted
+        async def async_reload(self, entry_id: str) -> None:
             """Async reload.
 
             Args:
