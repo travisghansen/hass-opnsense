@@ -486,7 +486,7 @@ async def test_service_restart_only_if_running_and_reload_interface(
 )
 async def test_service_start_stop_restart_failure_variants(
     monkeypatch: pytest.MonkeyPatch,
-    ph_hass: Any,
+    ph_hass: HomeAssistant,
     method_name: str,
     method_attr: str,
     client_order: str,
@@ -611,8 +611,8 @@ async def test_generate_vouchers_empty_selected_client_response_returns_empty(
 )
 async def test_generate_vouchers_preserves_existing_edge_response_behavior(
     monkeypatch: pytest.MonkeyPatch,
-    ph_hass: Any,
-    client_response: Any,
+    ph_hass: HomeAssistant,
+    client_response: object,
     expected_vouchers: list[Any],
 ) -> None:
     """Voucher generation preserves non-list skip and non-mapping passthrough behavior."""
@@ -631,7 +631,7 @@ async def test_generate_vouchers_preserves_existing_edge_response_behavior(
 @pytest.mark.asyncio
 async def test_generate_vouchers_does_not_mutate_client_voucher_response(
     monkeypatch: pytest.MonkeyPatch,
-    ph_hass: Any,
+    ph_hass: HomeAssistant,
 ) -> None:
     """Client voucher mappings are copied before adding Home Assistant metadata."""
     voucher = {"code": "A1", "client": "upstream"}
