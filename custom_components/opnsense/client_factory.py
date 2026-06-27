@@ -437,6 +437,20 @@ def _add_core_compat(client: OPNsenseClientProtocol) -> OPNsenseClientProtocol:
     return client
 
 
+async def _close_client(client: OPNsenseClientProtocol) -> None:
+    """Close a backend client when it exposes an async close hook.
+
+    Args:
+        client: Backend client instance to close.
+
+    Returns:
+        None: Closes the client if supported.
+    """
+    close_method: Callable[[], Any] | None = getattr(client, "async_close", None)
+    if close_method is not None:
+        await close_method()
+
+
 async def _create_external_client(**kwargs: Any) -> OPNsenseClientProtocol:
     """Create an external `aiopnsense` client instance.
 
@@ -471,6 +485,77 @@ async def _create_external_client(**kwargs: Any) -> OPNsenseClientProtocol:
             ) from err
 
     return _add_core_compat(_add_plugin_compat(_add_query_count_compat(client)))
+
+
+async def _try_external_client_after_probe_timeout(
+    *,
+    kwargs: dict[str, Any],
+    probe_error: TimeoutError | aiohttp.ServerTimeoutError,
+) -> OPNsenseClientProtocol:
+    """Try external aiopnsense when the initial legacy firmware probe times out.
+
+    Args:
+        kwargs: Normalized constructor arguments for the external client.
+        probe_error: Timeout raised by the bundled legacy firmware probe.
+
+    Returns:
+        OPNsenseClientProtocol: External client when it confirms firmware supported by
+            the external backend.
+
+    Raises:
+        TimeoutError | aiohttp.ServerTimeoutError: Original timeout when external
+            fallback is unavailable or cannot confirm new firmware.
+    """
+    _LOGGER.warning(
+        "Legacy firmware probe timed out during initial setup; trying aiopnsense fallback "
+        "for OPNsense firmware >= %s",
+        AIOPNSENSE_MIN_FIRMWARE,
+    )
+    try:
+        client = await _create_external_client(**kwargs)
+    except MissingExternalAiopnsenseDependency as err:
+        _LOGGER.debug(
+            "aiopnsense fallback unavailable after legacy firmware probe timeout",
+            exc_info=True,
+        )
+        raise probe_error from err
+
+    try:
+        firmware = await client.get_host_firmware_version()
+        if awesomeversion.AwesomeVersion(firmware) >= awesomeversion.AwesomeVersion(
+            AIOPNSENSE_MIN_FIRMWARE
+        ):
+            aiopnsense_version: str | None = await _get_external_aiopnsense_version()
+            if aiopnsense_version:
+                _LOGGER.info(
+                    "Using aiopnsense %s after legacy firmware probe timeout for firmware %s",
+                    aiopnsense_version,
+                    firmware,
+                )
+            else:
+                _LOGGER.info(
+                    "Using aiopnsense after legacy firmware probe timeout for firmware %s",
+                    firmware,
+                )
+            return client
+    except (
+        awesomeversion.exceptions.AwesomeVersionCompareException,
+        TypeError,
+        ValueError,
+    ):
+        _LOGGER.debug(
+            "aiopnsense fallback could not compare firmware after legacy probe timeout",
+            exc_info=True,
+        )
+    except TimeoutError, aiohttp.ServerTimeoutError:
+        _LOGGER.debug(
+            "aiopnsense fallback also timed out after legacy firmware probe timeout",
+            exc_info=True,
+        )
+        raise
+
+    await _close_client(client)
+    raise probe_error
 
 
 async def create_opnsense_client(
@@ -513,9 +598,17 @@ async def create_opnsense_client(
     probe_client: OPNsenseClientProtocol = LegacyOPNsenseClient(**kwargs)
     try:
         firmware = await probe_client.get_host_firmware_version()
+    except (TimeoutError, aiohttp.ServerTimeoutError) as err:
+        await _close_client(probe_client)
+        if initial:
+            return await _try_external_client_after_probe_timeout(
+                kwargs=kwargs,
+                probe_error=err,
+            )
+        raise
     except Exception:  # noqa: BLE001
         try:
-            await probe_client.async_close()
+            await _close_client(probe_client)
         finally:
             raise
     # _LOGGER.debug("Client factory detected firmware: %s", firmware)
