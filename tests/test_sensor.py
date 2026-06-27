@@ -929,6 +929,31 @@ def test_vpn_sensor_variants(
                 assert key in attrs
 
 
+def test_vpn_sensor_unavailable_when_instance_container_is_not_mapping(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Malformed VPN instance container should mark VPNSensor unavailable."""
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {
+        "openvpn": {
+            "servers": "bad-servers",
+        }
+    }
+
+    desc = MagicMock()
+    desc.key = "openvpn.servers.uuid1.status"
+    desc.name = "VPN Test"
+
+    s = OPNsenseVPNSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    s.hass = MagicMock()
+    s.entity_id = "sensor.vpn_test"
+    object.__setattr__(s, "async_write_ha_state", lambda: None)
+    s._handle_coordinator_update()
+
+    assert s.available is False
+
+
 def test_vpn_sensor_skips_malformed_client_rows(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
@@ -2120,6 +2145,42 @@ async def test_dynamic_sensor_compile_helpers_skip_malformed_containers(
     assert await compile_helper(entry, coordinator, state) == []
 
 
+@pytest.mark.asyncio
+async def test_compile_vpn_sensors_skips_malformed_containers(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Malformed VPN setup containers should not produce any VPN sensors."""
+    state: dict[str, Any] = {
+        "openvpn": {"servers": "bad-servers"},
+        "wireguard": {"clients": "bad-clients", "servers": "bad-servers"},
+    }
+    entry = make_config_entry()
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+
+    entities = await sensor_module._compile_vpn_sensors(entry, coordinator, state)
+
+    assert entities == []
+
+
+@pytest.mark.asyncio
+async def test_compile_vpn_sensors_skips_empty_instances(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Empty VPN instances should be skipped during VPN sensor setup."""
+    state: dict[str, Any] = {
+        "openvpn": {"servers": {"server-uuid": {}}},
+        "wireguard": {"clients": {}, "servers": {}},
+    }
+    entry = make_config_entry()
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+
+    entities = await sensor_module._compile_vpn_sensors(entry, coordinator, state)
+
+    assert entities == []
+
+
 async def test_dhcp_leases_compile_helper_uses_all_sensor_for_malformed_interfaces(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
@@ -2178,6 +2239,58 @@ def test_filesystem_sensor_skips_malformed_rows(
     attrs = sensor.extra_state_attributes
     assert attrs is not None
     assert attrs.get("mountpoint") == "/"
+
+
+def test_filesystem_sensor_unavailable_with_malformed_filesystems_container(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Malformed filesystem container should mark filesystem sensor as unavailable."""
+    state = {
+        "telemetry": {"filesystems": "bad-filesystems"},
+    }
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = state
+    desc = MagicMock()
+    desc.key = f"telemetry.filesystems.{slugify_filesystem_mountpoint('/')}"
+    desc.name = "Filesystem Test"
+
+    sensor = OPNsenseFilesystemSensor(
+        config_entry=entry,
+        coordinator=coord,
+        entity_description=desc,
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.fs_root"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
+
+
+def test_filesystem_sensor_unavailable_with_malformed_telemetry_container(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Malformed telemetry container should mark filesystem sensor as unavailable."""
+    state = {"telemetry": "bad-telemetry"}
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = state
+    desc = MagicMock()
+    desc.key = f"telemetry.filesystems.{slugify_filesystem_mountpoint('/')}"
+    desc.name = "Filesystem Test"
+
+    sensor = OPNsenseFilesystemSensor(
+        config_entry=entry,
+        coordinator=coord,
+        entity_description=desc,
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.fs_root"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
 
 
 @pytest.mark.asyncio

@@ -854,9 +854,10 @@ async def _compile_vpn_sensors(
         if vpn_type == "wireguard":
             cs = ["clients", "servers"]
         for clients_servers in cs:
-            for uuid, instance in (
-                dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
-            ).items():
+            vpn_instances = dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
+            if not isinstance(vpn_instances, MutableMapping):
+                continue
+            for uuid, instance in vpn_instances.items():
                 if not isinstance(instance, MutableMapping) or len(instance) == 0:
                     continue
                 instance_name = OPNsenseEntity.payload_display_name(
@@ -1272,7 +1273,17 @@ class OPNsenseFilesystemSensor(OPNsenseSensor):
             self._available = False
             self.async_write_ha_state()
             return
-        for fsystem in state.get("telemetry", {}).get("filesystems", []):
+        telemetry = state.get("telemetry")
+        if not isinstance(telemetry, Mapping):
+            self._available = False
+            self.async_write_ha_state()
+            return
+        filesystems = telemetry.get("filesystems")
+        if not isinstance(filesystems, list):
+            self._available = False
+            self.async_write_ha_state()
+            return
+        for fsystem in filesystems:
             if not isinstance(fsystem, Mapping):
                 continue
             filesystem_row: Mapping[str, object] = fsystem
@@ -1591,9 +1602,12 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             return
         uuid: str = self.entity_description.key.split(".")[2]
         instance: Mapping[str, object] = {}
-        for instance_uuid, ins in (
-            dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
-        ).items():
+        vpn_instances = dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
+        if not isinstance(vpn_instances, Mapping):
+            self._available = False
+            self.async_write_ha_state()
+            return
+        for instance_uuid, ins in vpn_instances.items():
             if not isinstance(ins, Mapping):
                 continue
             instance_row: Mapping[str, object] = ins
