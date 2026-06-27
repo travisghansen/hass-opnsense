@@ -1936,7 +1936,15 @@ def test_service_switch_missing_service_marks_unavailable(
             {"firewall": {"nat": "not-a-mapping"}},
         ),
         (
+            OPNsenseServiceSwitch,
+            {"services": "not-a-list"},
+        ),
+        (
             OPNsenseUnboundBlocklistSwitchLegacy,
+            {"unbound_blocklist": "not-a-mapping"},
+        ),
+        (
+            OPNsenseUnboundBlocklistSwitch,
             {"unbound_blocklist": "not-a-mapping"},
         ),
         (
@@ -1949,7 +1957,9 @@ def test_switch_handlers_fail_closed_for_malformed_nested_payloads(
     entity: type[
         OPNsenseFirewallRuleSwitch
         | OPNsenseNATRuleSwitch
+        | OPNsenseServiceSwitch
         | OPNsenseUnboundBlocklistSwitchLegacy
+        | OPNsenseUnboundBlocklistSwitch
         | OPNsenseVPNSwitch
     ],
     state: dict[str, Any],
@@ -1960,7 +1970,9 @@ def test_switch_handlers_fail_closed_for_malformed_nested_payloads(
     keys = {
         OPNsenseFirewallRuleSwitch: "firewall.rule.r1",
         OPNsenseNATRuleSwitch: "firewall.nat.source_nat.n1",
+        OPNsenseServiceSwitch: "service.svc1.status",
         OPNsenseUnboundBlocklistSwitchLegacy: "unbound.dnsbl.legacy",
+        OPNsenseUnboundBlocklistSwitch: "unbound_blocklist.switch.u1",
         OPNsenseVPNSwitch: "openvpn.clients.c1",
     }
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})

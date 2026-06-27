@@ -1999,7 +1999,11 @@ class OPNsenseTempSensor(OPNsenseSensor):
         if not isinstance(state, MutableMapping):
             self._mark_unavailable()
             return
-        sensor_temp_device: str = self.entity_description.key.split(".")[2]
+        key_parts = self.entity_description.key.split(".")
+        if len(key_parts) != 3:
+            self._mark_unavailable()
+            return
+        sensor_temp_device: str = key_parts[2]
         temps = self._mapping_at("telemetry.temps")
         if temps is None:
             self._mark_unavailable()
