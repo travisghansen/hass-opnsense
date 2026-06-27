@@ -2578,6 +2578,25 @@ async def test_dhcp_leases_compile_helper_uses_all_sensor_for_malformed_interfac
     assert [entity.entity_description.key for entity in entities] == ["dhcp_leases.all"]
 
 
+async def test_filesystem_compile_helper_skips_rows_without_mountpoint(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Filesystem rows without a usable mountpoint should not create entities."""
+    state: dict[str, Any] = {
+        "telemetry": {
+            "filesystems": [
+                {"used_pct": 42},
+                {"mountpoint": "", "used_pct": 12},
+            ]
+        }
+    }
+    entry = make_config_entry()
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+
+    assert await sensor_module._compile_filesystem_sensors(entry, coordinator, state) == []
+
+
 def test_filesystem_sensor_skips_malformed_rows(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
@@ -2622,6 +2641,43 @@ def test_filesystem_sensor_skips_malformed_rows(
     attrs = sensor.extra_state_attributes
     assert attrs is not None
     assert attrs.get("mountpoint") == "/"
+
+
+def test_filesystem_sensor_handles_partial_matching_row(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Partial matching filesystem rows should not raise while updating state."""
+    state = {
+        "telemetry": {
+            "filesystems": [
+                {
+                    "mountpoint": "/",
+                    "used_pct": 42,
+                },
+            ],
+            "temps": {},
+        },
+    }
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = state
+    desc = MagicMock()
+    desc.key = f"telemetry.filesystems.{slugify_filesystem_mountpoint('/')}"
+    desc.name = "Filesystem Test"
+
+    sensor = OPNsenseFilesystemSensor(
+        config_entry=entry,
+        coordinator=coord,
+        entity_description=desc,
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.fs_root"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is True
+    assert sensor.native_value == 42
+    assert sensor.extra_state_attributes == {"mountpoint": "/"}
 
 
 @pytest.mark.parametrize(

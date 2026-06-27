@@ -463,14 +463,12 @@ def _build_smart_sensor_description(device_name: str) -> SensorEntityDescription
 
 def _build_filesystem_sensor_description(filesystem: Mapping[str, Any]) -> SensorEntityDescription:
     """Build a filesystem usage sensor description."""
-    filesystem_slug = slugify_filesystem_mountpoint(filesystem.get("mountpoint", None))
+    mountpoint = filesystem["mountpoint"]
+    filesystem_slug = slugify_filesystem_mountpoint(mountpoint)
     enabled_default = filesystem_slug == "root"
     return SensorEntityDescription(
         key=f"telemetry.filesystems.{filesystem_slug}",
-        name=(
-            "Filesystem Used Percentage "
-            f"{normalize_filesystem_mountpoint(filesystem.get('mountpoint', None))}"
-        ),
+        name=(f"Filesystem Used Percentage {normalize_filesystem_mountpoint(mountpoint)}"),
         native_unit_of_measurement=PERCENTAGE,
         device_class=None,
         icon="mdi:harddisk",
@@ -912,6 +910,8 @@ async def _compile_filesystem_sensors(
             _build_filesystem_sensor_description(filesystem)
             for filesystem in filesystems
             if isinstance(filesystem, Mapping)
+            and isinstance(filesystem.get("mountpoint"), str)
+            and filesystem["mountpoint"].strip()
         ],
     )
 
@@ -1590,7 +1590,8 @@ class OPNsenseFilesystemSensor(OPNsenseSensor):
 
         self._attr_extra_state_attributes = {}
         for attr in ("mountpoint", "device", "type", "blocks", "used", "available"):
-            self._attr_extra_state_attributes[attr] = filesystem[attr]
+            if attr in filesystem:
+                self._attr_extra_state_attributes[attr] = filesystem[attr]
         self.async_write_ha_state()
 
 
