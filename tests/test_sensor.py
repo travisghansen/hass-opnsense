@@ -28,6 +28,7 @@ from custom_components.opnsense.sensor import (
     OPNsenseCarpInterfaceSensor,
     OPNsenseCarpStatusSensor,
     OPNsenseDHCPLeasesSensor,
+    OPNsenseFilesystemSensor,
     OPNsenseGatewaySensor,
     OPNsenseInterfaceSensor,
     OPNsenseSmartSensor,
@@ -222,6 +223,50 @@ def test_sensors_unavailable_on_non_mapping_state(
     object.__setattr__(s, "async_write_ha_state", lambda: None)
     s._handle_coordinator_update()
     assert s.available is False
+
+
+@pytest.mark.parametrize(
+    ("coord_data", "desc_key"),
+    [
+        ([], "vnstat.igc0.vnstat_today"),
+        ({"vnstat": {"interfaces": {"igc0": {"metrics": {}}}}}, "vnstat.igc0"),
+        (
+            {"vnstat": {"interfaces": {"igc0": {"metrics": {"vnstat_today": []}}}}},
+            "vnstat.igc0.vnstat_today",
+        ),
+        (
+            {
+                "vnstat": {
+                    "interfaces": {"igc0": {"metrics": {"vnstat_today": {"total_bytes": "100"}}}}
+                }
+            },
+            "vnstat.igc0.vnstat_today",
+        ),
+    ],
+    ids=["state-not-mapping", "invalid-key", "metric-not-mapping", "total-not-int"],
+)
+def test_vnstat_sensor_fails_closed_for_malformed_payloads(
+    coord_data: Any,
+    desc_key: str,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Vnstat sensors should become unavailable for malformed payload shapes."""
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = coord_data
+
+    desc = MagicMock()
+    desc.key = desc_key
+    desc.name = "Vnstat Malformed"
+
+    sensor = OPNsenseVnstatSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.vnstat_malformed"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
 
 
 @pytest.mark.parametrize(
@@ -736,6 +781,34 @@ def test_carp_status_sensor_normalizes_state_spacing_and_icon(
     assert sensor.icon == "mdi:backup-restore"
 
 
+@pytest.mark.parametrize("summary_state", [None, ""])
+def test_carp_status_sensor_fails_closed_for_missing_state(
+    summary_state: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP status sensor should be unavailable when summary state is missing."""
+    entry = make_config_entry()
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {"carp": {"status_summary": {"state": summary_state}}}
+
+    desc = MagicMock()
+    desc.key = "carp.status_summary"
+    desc.name = "CARP Status"
+
+    sensor = OPNsenseCarpStatusSensor(
+        config_entry=entry,
+        coordinator=coordinator,
+        entity_description=desc,
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.carp_status_missing"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
+
+
 @pytest.mark.parametrize(
     ("interface_name", "subnet", "expected_key"),
     [
@@ -1096,13 +1169,14 @@ def test_vpn_sensor_handles_exceptions_from_instance_get(
     requested exception so the handler exercises its defensive exception path.
     """
 
-    class BrokenInstance:
+    class BrokenInstance(dict):
         def __init__(self, exc: type[Exception]) -> None:
             """Initialize BrokenInstance.
 
             Args:
                 exc: Exc provided by pytest or the test case.
             """
+            super().__init__({"enabled": True})
             self._exc = exc
 
         def get(self, *args, **kwargs) -> Never:
@@ -1136,11 +1210,66 @@ def test_vpn_sensor_handles_exceptions_from_instance_get(
     assert s.available is False
 
 
+def test_vpn_sensor_fails_closed_for_malformed_instance_collection(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """VPN sensor should mark unavailable when the instance collection is malformed."""
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {"openvpn": {"servers": "not-a-mapping"}}
+    desc = MagicMock()
+    desc.key = "openvpn.servers.uuid1.status"
+    desc.name = "VPN Malformed"
+
+    s = OPNsenseVPNSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    s.hass = MagicMock()
+    s.entity_id = "sensor.vpn_malformed"
+    object.__setattr__(s, "async_write_ha_state", lambda: None)
+
+    s._handle_coordinator_update()
+
+    assert s.available is False
+
+
+@pytest.mark.parametrize(
+    ("coord_data", "key"),
+    [
+        ({"openvpn": {"servers": {"uuid1": "not-a-mapping"}}}, "openvpn.servers.uuid1.status"),
+        (
+            {"openvpn": {"servers": {"uuid1": {"clients": ["not-a-mapping"], "status": "up"}}}},
+            "openvpn.servers.uuid1.status",
+        ),
+    ],
+)
+def test_vpn_sensor_fails_closed_for_malformed_instance_members(
+    coord_data: dict[str, Any],
+    key: str,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """VPN sensor should mark unavailable when matched instance members are malformed."""
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = coord_data
+    desc = MagicMock()
+    desc.key = key
+    desc.name = "VPN Malformed Member"
+
+    s = OPNsenseVPNSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    s.hass = MagicMock()
+    s.entity_id = "sensor.vpn_malformed_member"
+    object.__setattr__(s, "async_write_ha_state", lambda: None)
+
+    s._handle_coordinator_update()
+
+    assert s.available is False
+
+
 @pytest.mark.parametrize(
     ("coord_data", "expected_available", "expected_value", "expect_device"),
     [
         ([], False, None, False),
         ({"telemetry": {}}, False, None, False),
+        ({"telemetry": {"temps": {"other": {"temperature": 55}}}}, False, None, False),
         (
             {"telemetry": {"temps": {"sensor1": {"temperature": 55, "device_id": "dev0"}}}},
             True,
@@ -1179,6 +1308,27 @@ def test_temp_sensor_basic_variants(
             attrs = s.extra_state_attributes
             assert attrs is not None
             assert attrs.get("device_id") == "dev0"
+
+
+def test_temp_sensor_key_malformed_key_marked_unavailable(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Malformed temp sensor keys should fail closed to unavailable instead of raising."""
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {"telemetry": {"temps": {"sensor1": {"temperature": 55, "device_id": "dev0"}}}}
+    entry = make_config_entry()
+
+    desc = MagicMock()
+    desc.key = "telemetry.temps"
+    desc.name = "Malformed Temp Key"
+
+    s = OPNsenseTempSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    s.hass = MagicMock()
+    s.entity_id = "sensor.temp_malformed_key"
+    object.__setattr__(s, "async_write_ha_state", lambda: None)
+    s._handle_coordinator_update()
+
+    assert s.available is False
 
 
 @pytest.mark.parametrize("exc_type", [TypeError, KeyError, ZeroDivisionError])
@@ -1228,6 +1378,91 @@ def test_temp_sensor_handles_index_exceptions(
     s._handle_coordinator_update()
 
     assert s.available is False
+
+
+def test_temp_sensor_fails_closed_for_malformed_telemetry_payload(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Temp sensor should mark unavailable when telemetry is not a mapping."""
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {"telemetry": "not-a-mapping"}
+    desc = MagicMock()
+    desc.key = "telemetry.temps.sensor1"
+    desc.name = "Temp Malformed"
+
+    s = OPNsenseTempSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    s.hass = MagicMock()
+    s.entity_id = "sensor.temp_malformed"
+    object.__setattr__(s, "async_write_ha_state", lambda: None)
+
+    s._handle_coordinator_update()
+
+    assert s.available is False
+
+
+def test_filesystem_sensor_fails_closed_for_malformed_telemetry_payload(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Filesystem sensor should mark unavailable when telemetry is not a mapping."""
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {"telemetry": "not-a-mapping"}
+    desc = MagicMock()
+    desc.key = "telemetry.filesystems.root"
+    desc.name = "Filesystem Malformed"
+
+    s = OPNsenseFilesystemSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    s.hass = MagicMock()
+    s.entity_id = "sensor.filesystem_malformed"
+    object.__setattr__(s, "async_write_ha_state", lambda: None)
+
+    s._handle_coordinator_update()
+
+    assert s.available is False
+
+
+@pytest.mark.parametrize(
+    "coord_data",
+    [
+        [],
+        {"telemetry": {"filesystems": "not-a-list"}},
+        {"telemetry": {"filesystems": ["not-a-mapping"]}},
+        {"telemetry": {"filesystems": [{"mountpoint": "/var", "used_pct": 5}]}},
+        {"telemetry": {"filesystems": [{"mountpoint": "/", "device": "/dev/gpt/rootfs"}]}},
+    ],
+    ids=[
+        "state-not-mapping",
+        "filesystems-not-list",
+        "entry-not-mapping",
+        "filesystem-not-found",
+        "missing-used-pct",
+    ],
+)
+def test_filesystem_sensor_fails_closed_for_malformed_filesystems(
+    coord_data: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Filesystem sensor should become unavailable for malformed filesystem payloads."""
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = coord_data
+    desc = MagicMock()
+    desc.key = "telemetry.filesystems.root"
+    desc.name = "Filesystem Root"
+
+    sensor = OPNsenseFilesystemSensor(
+        config_entry=entry,
+        coordinator=coord,
+        entity_description=desc,
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.filesystem_root"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
 
 
 @pytest.mark.parametrize(
@@ -1336,6 +1571,7 @@ def test_normalize_filesystem_mountpoint(input_value: Any, expected: str) -> Non
     ("cpu_map", "previous", "expected_available", "expected_value"),
     [
         ({"usage_total": 0}, None, False, None),
+        ({"usage_total": 0}, 0, False, None),
         ({"usage_total": 0, "usage_1": 1}, 7, True, 7),
     ],
 )
@@ -1670,6 +1906,36 @@ def test_interface_sensor_enabled_state_handling(
 
 
 @pytest.mark.parametrize(
+    "coord_data",
+    [
+        {"interfaces": "not-a-mapping"},
+        {"interfaces": {"lan": {"name": "LAN", "status": "up"}}},
+    ],
+    ids=["interfaces-not-mapping", "interface-not-found"],
+)
+def test_interface_sensor_fails_closed_for_missing_interface_payloads(
+    coord_data: dict[str, Any],
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Interface sensor should be unavailable when interface state cannot be found."""
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = coord_data
+    desc = MagicMock()
+    desc.key = "interface.wan.status"
+    desc.name = "WAN Status"
+
+    sensor = OPNsenseInterfaceSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.wan_status"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
+
+
+@pytest.mark.parametrize(
     ("leases_val", "lease_interfaces_val"),
     [
         ([], {"lan": "LAN"}),
@@ -1762,7 +2028,85 @@ def test_dhcp_leases_interface_sensor_handles_non_mapping_leases(
     assert writes == [False]
 
 
-@pytest.mark.parametrize("exc_type", [TypeError, KeyError, ZeroDivisionError])
+def test_dhcp_leases_interface_sensor_handles_non_list_interface(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """DHCP interface lease sensor should be unavailable when interface leases are not a list."""
+    entry = make_config_entry()
+
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {"dhcp_leases": {"leases": {"lan": "not-a-list"}}}
+
+    desc = MagicMock()
+    desc.key = "dhcp_leases.lan"
+    desc.name = "DHCP LAN"
+
+    sensor = OPNsenseDHCPLeasesSensor(
+        config_entry=entry,
+        coordinator=coord,
+        entity_description=desc,
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.dhcp_lan"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
+
+
+@pytest.mark.parametrize(
+    ("key", "coord_data"),
+    [
+        (
+            "dhcp_leases.all",
+            {
+                "dhcp_leases": {
+                    "leases": {"lan": ["not-a-mapping"]},
+                    "lease_interfaces": {"lan": "LAN"},
+                }
+            },
+        ),
+        (
+            "dhcp_leases.lan",
+            {"dhcp_leases": {"leases": {"lan": ["not-a-mapping"]}}},
+        ),
+    ],
+)
+def test_dhcp_leases_sensor_fails_closed_for_scalar_lease_rows(
+    key: str,
+    coord_data: dict[str, Any],
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """DHCP leases sensors should mark unavailable when a lease row is malformed."""
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = coord_data
+
+    desc = MagicMock()
+    desc.key = key
+    desc.name = "DHCP Scalar Lease"
+
+    s = OPNsenseDHCPLeasesSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    s.hass = MagicMock()
+    s.entity_id = "sensor.dhcp_scalar_lease"
+
+    writes: list[bool] = []
+
+    def collector() -> None:
+        """Collect availability when the entity state is written."""
+        writes.append(bool(getattr(s, "_available", None)))
+
+    object.__setattr__(s, "async_write_ha_state", collector)
+    s._available = True
+
+    s._handle_coordinator_update()
+
+    assert s.available is False
+    assert writes == [False]
+
+
+@pytest.mark.parametrize("exc_type", [TypeError, KeyError, AttributeError, ZeroDivisionError])
 def test_dhcp_leases_handles_exceptions(
     exc_type: type[Exception], make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
@@ -1815,7 +2159,7 @@ def test_dhcp_leases_handles_exceptions(
     assert s.available is False
 
 
-@pytest.mark.parametrize("exc_type", [TypeError, KeyError, ZeroDivisionError])
+@pytest.mark.parametrize("exc_type", [TypeError, KeyError, AttributeError, ZeroDivisionError])
 def test_dhcp_lease_interfaces_items_raises(
     exc_type: type[Exception], make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
@@ -1852,7 +2196,7 @@ def test_dhcp_lease_interfaces_items_raises(
     assert s.available is False
 
 
-@pytest.mark.parametrize("exc_type", [TypeError, KeyError, ZeroDivisionError])
+@pytest.mark.parametrize("exc_type", [TypeError, KeyError, AttributeError, ZeroDivisionError])
 def test_dhcp_leases_iterable_raises_on_iter(
     exc_type: type[Exception], make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
@@ -1985,7 +2329,7 @@ def test_dhcp_leases_items_except_writes_unavailable(
     assert any(w is False for w in writes), f"expected a False write captured, got {writes}"
 
 
-@pytest.mark.parametrize("exc_type", [TypeError, KeyError, ZeroDivisionError])
+@pytest.mark.parametrize("exc_type", [TypeError, KeyError, AttributeError, ZeroDivisionError])
 def test_dhcp_leases_per_interface_handles_exceptions(
     exc_type: type[Exception], make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
@@ -1995,13 +2339,14 @@ def test_dhcp_leases_per_interface_handles_exceptions(
     lease object raises inside the surrounding exception handler.
     """
 
-    class BrokenLease:
+    class BrokenLease(dict):
         def __init__(self, exc: type[Exception]) -> None:
             """Initialize BrokenLease.
 
             Args:
                 exc: Exc provided by pytest or the test case.
             """
+            super().__init__({"address": "192.168.1.2"})
             self._exc = exc
 
         def get(self, *args, **kwargs) -> Never:
@@ -2027,52 +2372,6 @@ def test_dhcp_leases_per_interface_handles_exceptions(
     s = OPNsenseDHCPLeasesSensor(config_entry=entry, coordinator=coord, entity_description=desc)
     s.hass = MagicMock()
     s.entity_id = "sensor.dhcp_per_if_broken"
-
-    writes: list[bool] = []
-
-    def collector() -> None:
-        """Collector."""
-        writes.append(bool(getattr(s, "_available", None)))
-
-    object.__setattr__(s, "async_write_ha_state", collector)
-    s._handle_coordinator_update()
-
-    assert writes, "async_write_ha_state was not called"
-    assert any(w is False for w in writes), f"expected a False write captured, got {writes}"
-
-
-def test_dhcp_leases_coverage_tracer(make_config_entry: Callable[..., MockConfigEntry]) -> None:
-    """Exercise the BrokenLease path and verify the observable failure behavior.
-
-    Instead of inspecting source lines directly, the test triggers the same
-    lease-access failure and asserts that the sensor becomes unavailable and
-    writes state.
-    """
-
-    class BrokenLease:
-        def get(self, *args, **kwargs) -> Never:
-            """Raise ``TypeError`` when the sensor reads the tracer lease mapping.
-
-            Args:
-                *args: Additional positional arguments forwarded by the function.
-                **kwargs: Additional keyword arguments forwarded by the function.
-
-            Raises:
-                TypeError: If a supplied argument has an unsupported type.
-            """
-            raise TypeError("simulated")
-
-    entry = make_config_entry()
-    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = {"dhcp_leases": {"leases": {"lan": [BrokenLease()]}}}
-
-    desc = MagicMock()
-    desc.key = "dhcp_leases.lan"
-    desc.name = "DHCP Per-Interface Collector"
-
-    s = OPNsenseDHCPLeasesSensor(config_entry=entry, coordinator=coord, entity_description=desc)
-    s.hass = MagicMock()
-    s.entity_id = "sensor.dhcp_per_if_collector"
 
     writes: list[bool] = []
 

@@ -171,8 +171,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
         """Handle coordinator update."""
         state: dict[str, Any] = self.coordinator.data
         if not self._is_update_available(state):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         self._available = True
 

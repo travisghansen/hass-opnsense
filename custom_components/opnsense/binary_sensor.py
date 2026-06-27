@@ -246,27 +246,23 @@ class OPNsenseInterfaceEnabledBinarySensor(OPNsenseBinarySensor):
         """Handle coordinator update."""
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         key_parts = self.entity_description.key.split(".")
         if len(key_parts) != 3 or key_parts[0] != "interface" or key_parts[2] != "enabled":
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         interface_name = key_parts[1]
         interface = dict_get(state, f"interfaces.{interface_name}", {})
         if not isinstance(interface, Mapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         enabled = coerce_bool(interface.get("enabled"))
         if enabled is None:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         self._available = True
@@ -286,21 +282,18 @@ class OPNsenseSmartStatusBinarySensor(OPNsenseBinarySensor):
         """Handle coordinator update."""
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         key_parts = self.entity_description.key.split(".")
         if len(key_parts) != 3 or key_parts[0] != "smart" or key_parts[2] != "status":
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         expected_device_slug = key_parts[1]
 
         smart_devices = state.get("smart")
         if not isinstance(smart_devices, list):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         smart_device: Mapping[str, Any] | None = None
@@ -315,8 +308,7 @@ class OPNsenseSmartStatusBinarySensor(OPNsenseBinarySensor):
                 break
 
         if smart_device is None:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         device_name = smart_device.get("device")
@@ -350,8 +342,7 @@ class OPNsenseSmartStatusBinarySensor(OPNsenseBinarySensor):
             status_passed = smart_status.strip().upper() == "PASSED"
 
         if status_passed is None:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         self._available = True
@@ -380,14 +371,12 @@ class OPNsensePendingNoticesPresentBinarySensor(OPNsenseBinarySensor):
         """Handle coordinator update."""
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         try:
             self._attr_is_on = state["notices"]["pending_notices_present"]
         except TypeError, KeyError, ZeroDivisionError:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         self._available = True
