@@ -491,12 +491,15 @@ async def _try_external_client_after_probe_timeout(
     *,
     kwargs: dict[str, Any],
     probe_error: TimeoutError | aiohttp.ServerTimeoutError,
+    initial: bool,
 ) -> OPNsenseClientProtocol:
     """Try external aiopnsense when the initial legacy firmware probe times out.
 
     Args:
         kwargs: Normalized constructor arguments for the external client.
         probe_error: Timeout raised by the bundled legacy firmware probe.
+        initial: Whether failed fallback validation should preserve strict initial
+            setup behavior.
 
     Returns:
         OPNsenseClientProtocol: External client when it confirms firmware supported by
@@ -518,13 +521,18 @@ async def _try_external_client_after_probe_timeout(
             "aiopnsense fallback unavailable after legacy firmware probe timeout",
             exc_info=True,
         )
-        raise probe_error from err
+        if initial:
+            raise probe_error from err
+        return LegacyOPNsenseClient(**kwargs)
 
     try:
         firmware = await client.get_host_firmware_version()
         supported_firmware = awesomeversion.AwesomeVersion(
             firmware
         ) >= awesomeversion.AwesomeVersion(AIOPNSENSE_MIN_FIRMWARE)
+    except asyncio.CancelledError:
+        await _close_client(client)
+        raise
     except (
         TimeoutError,
         aiohttp.ServerTimeoutError,
@@ -538,7 +546,9 @@ async def _try_external_client_after_probe_timeout(
             "aiopnsense fallback could not confirm supported firmware after legacy probe timeout",
             exc_info=True,
         )
-        raise probe_error from err
+        if initial:
+            raise probe_error from err
+        return LegacyOPNsenseClient(**kwargs)
 
     if supported_firmware:
         aiopnsense_version: str | None = await _get_external_aiopnsense_version()
@@ -556,7 +566,9 @@ async def _try_external_client_after_probe_timeout(
         return client
 
     await _close_client(client)
-    raise probe_error
+    if initial:
+        raise probe_error
+    return LegacyOPNsenseClient(**kwargs)
 
 
 async def create_opnsense_client(
@@ -612,6 +624,7 @@ async def create_opnsense_client(
             return await _try_external_client_after_probe_timeout(
                 kwargs=kwargs,
                 probe_error=err,
+                initial=initial,
             )
         raise
     except asyncio.CancelledError:

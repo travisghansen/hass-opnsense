@@ -689,8 +689,130 @@ async def test_create_client_uses_external_probe_fallback_without_initial_client
     assert external_kwargs[0]["initial"] is False
 
 
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        "dependency_missing",
+        "unsupported_firmware",
+        "fallback_timeout",
+        "non_comparable",
+    ],
+)
 @pytest.mark.asyncio
-async def test_create_client_uses_external_after_initial_timeout_without_version_log(
+async def test_create_client_falls_back_to_legacy_after_probe_timeout_when_fallback_cannot_validate(
+    monkeypatch: pytest.MonkeyPatch,
+    scenario: str,
+) -> None:
+    """Non-initial fallback should return legacy when aiopnsense validation fails."""
+    legacy_kwargs: list[dict[str, Any]] = []
+    flags: dict[str, bool] = {"strict_closed": False, "fallback_closed": False}
+
+    class _LegacyClient:
+        def __init__(self, **kwargs: Any) -> None:
+            """Track legacy construction for fallback assertions."""
+            legacy_kwargs.append(kwargs)
+
+        async def get_host_firmware_version(self) -> str:
+            """Simulate strict probe timeout."""
+            raise TimeoutError("legacy firmware status timed out")
+
+        async def async_close(self) -> None:
+            """Track when strict probe client is closed."""
+            flags["strict_closed"] = True
+
+    class _ExternalClient:
+        async def get_host_firmware_version(self) -> Any:
+            """Return or raise firmware values according to the failure scenario."""
+            if scenario == "fallback_timeout":
+                raise TimeoutError("fallback firmware status timed out")
+            if scenario == "non_comparable":
+                return {"version": "26.1.6"}
+            return "25.7"
+
+        async def async_close(self) -> None:
+            """Track that failed external fallback client is closed."""
+            flags["fallback_closed"] = True
+
+    async def _create_external_client(**kwargs: Any) -> _ExternalClient:
+        """Provide fallback external client or missing-dependency failures."""
+        if scenario == "dependency_missing":
+            raise factory_mod.MissingExternalAiopnsenseDependency("not found")
+        return _ExternalClient()
+
+    monkeypatch.setattr(factory_mod, "LegacyOPNsenseClient", _LegacyClient)
+    monkeypatch.setattr(factory_mod, "_create_external_client", _create_external_client)
+
+    if scenario == "non_comparable":
+
+        class _BrokenAwesomeVersion:
+            def __init__(self, value: Any) -> None:
+                """Mirror version wrapper for non-comparable fallback tests."""
+                self._value = value
+
+            def __ge__(self, other: Any) -> bool:
+                """Raise during comparison to force legacy fallback."""
+                raise ValueError("cannot compare")
+
+        monkeypatch.setattr(factory_mod.awesomeversion, "AwesomeVersion", _BrokenAwesomeVersion)
+
+    client = await factory_mod.create_opnsense_client(
+        url="https://router",
+        username="u",
+        password=TEST_PASSWORD,
+        session=cast("aiohttp.ClientSession", SimpleNamespace()),
+        opts={"verify_ssl": True},
+        probe_timeout_fallback=True,
+    )
+
+    assert isinstance(client, _LegacyClient)
+    assert legacy_kwargs[0]["initial"] is True
+    assert legacy_kwargs[1]["initial"] is False
+    assert flags["strict_closed"] is True
+    if scenario != "dependency_missing":
+        assert flags["fallback_closed"] is True
+
+
+@pytest.mark.asyncio
+async def test_try_external_client_after_probe_timeout_closes_external_on_cancel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cancel during external firmware validation should close the external fallback client."""
+    closed = {"external": False}
+
+    class _ExternalClient:
+        async def get_host_firmware_version(self) -> str:
+            """Raise cancellation while validating firmware."""
+            raise asyncio.CancelledError("fallback cancelled")
+
+        async def async_close(self) -> None:
+            """Record cleanup on cancellation."""
+            closed["external"] = True
+
+    async def _create_external_client(**kwargs: Any) -> _ExternalClient:
+        """Return a fallback client that cancels during firmware validation."""
+        return _ExternalClient()
+
+    monkeypatch.setattr(factory_mod, "_create_external_client", _create_external_client)
+
+    with pytest.raises(asyncio.CancelledError, match="fallback cancelled"):
+        await factory_mod._try_external_client_after_probe_timeout(
+            kwargs={
+                "url": "https://router",
+                "username": "u",
+                "password": TEST_PASSWORD,
+                "session": cast("aiohttp.ClientSession", SimpleNamespace()),
+                "opts": {"verify_ssl": True},
+                "initial": False,
+            },
+            probe_error=TimeoutError("legacy firmware status timed out"),
+            initial=False,
+        )
+
+    assert closed["external"] is True
+
+
+@pytest.mark.asyncio
+async def test_create_client_uses_external_after_initial_legacy_probe_timeout_without_version_log(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Initial timeout fallback should work when aiopnsense package version is unknown."""
