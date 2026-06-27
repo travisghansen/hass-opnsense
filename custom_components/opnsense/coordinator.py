@@ -358,10 +358,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                         f"previous_state.{vpn_type}.{clients_servers}",
                         {},
                     )
-                    if (
-                        not isinstance(previous_clients_servers, MutableMapping)
-                        or instance_name not in previous_clients_servers
-                    ):
+                    if not isinstance(previous_clients_servers, MutableMapping):
                         continue
 
                     previous_instance = previous_clients_servers.get(instance_name)
@@ -510,7 +507,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             change: float = current_parent_value - previous_parent_value
             rate: float = max(change, 0) / elapsed_time
-        except TypeError, KeyError, ZeroDivisionError:
+        except TypeError, ZeroDivisionError:
             rate = 0
 
         value: float = 0
@@ -519,11 +516,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             value = rate
         elif "bytes" in prop_name:
             label = "kilobytes_per_second"
-            # 1 Byte = 8 bits
-            # 1 byte is equal to 0.001 kilobytes
-            kbs: float = rate / 1000
-            # Kbs = kbs * 8
-            value = kbs
+            value = rate / 1000
         new_property: str = f"{prop_name}_{label}"
         value = round(value)
         return new_property, value
