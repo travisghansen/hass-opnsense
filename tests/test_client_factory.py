@@ -812,6 +812,54 @@ async def test_try_external_client_after_probe_timeout_closes_external_on_cancel
 
 
 @pytest.mark.asyncio
+async def test_try_external_client_after_probe_timeout_closes_external_on_version_cancel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cancel during external version resolution should close the fallback client."""
+    closed = {"external": False}
+
+    class _ExternalClient:
+        async def get_host_firmware_version(self) -> str:
+            """Return supported firmware for the post-timeout branch."""
+            return "26.1.6_2"
+
+        async def async_close(self) -> None:
+            """Record close calls when cancellation occurs."""
+            closed["external"] = True
+
+    async def _create_external_client(**kwargs: Any) -> _ExternalClient:
+        """Return an external client that will be cancelled during version check."""
+        return _ExternalClient()
+
+    async def _get_external_aiopnsense_version() -> str | None:
+        """Cancel when reading package version metadata."""
+        raise asyncio.CancelledError("version cancelled")
+
+    monkeypatch.setattr(factory_mod, "_create_external_client", _create_external_client)
+    monkeypatch.setattr(
+        factory_mod,
+        "_get_external_aiopnsense_version",
+        _get_external_aiopnsense_version,
+    )
+
+    with pytest.raises(asyncio.CancelledError, match="version cancelled"):
+        await factory_mod._try_external_client_after_probe_timeout(
+            kwargs={
+                "url": "https://router",
+                "username": "u",
+                "password": TEST_PASSWORD,
+                "session": cast("aiohttp.ClientSession", SimpleNamespace()),
+                "opts": {"verify_ssl": True},
+                "initial": False,
+            },
+            probe_error=TimeoutError("legacy firmware status timed out"),
+            initial=False,
+        )
+
+    assert closed["external"] is True
+
+
+@pytest.mark.asyncio
 async def test_try_external_client_after_probe_timeout_preserves_firmware_on_unsupported_old_firmware(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -925,6 +973,56 @@ async def test_create_client_uses_external_after_initial_legacy_probe_timeout_wi
     assert (
         "Using aiopnsense after legacy firmware probe timeout for firmware 26.1.6_2" in caplog.text
     )
+
+
+@pytest.mark.asyncio
+async def test_create_client_closes_external_on_version_cancel_after_supported_firmware(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cancel while resolving aiopnsense version should close both clients and re-raise."""
+    closed: dict[str, bool] = {"probe": False, "external": False}
+
+    class _LegacyClient:
+        async def get_host_firmware_version(self) -> str:
+            """Return supported firmware to force external path."""
+            return "26.1.6_2"
+
+        async def async_close(self) -> None:
+            """Track closure of the strict probe client."""
+            closed["probe"] = True
+
+    class _ExternalClient:
+        async def async_close(self) -> None:
+            """Track closure of external aiopnsense client."""
+            closed["external"] = True
+
+    async def _get_external_aiopnsense_version() -> str | None:
+        """Cancel while looking up package version."""
+        raise asyncio.CancelledError("version cancelled")
+
+    monkeypatch.setattr(factory_mod, "LegacyOPNsenseClient", lambda **kwargs: _LegacyClient())
+    monkeypatch.setattr(
+        factory_mod,
+        "_create_external_client",
+        AsyncMock(return_value=_ExternalClient()),
+    )
+    monkeypatch.setattr(
+        factory_mod,
+        "_get_external_aiopnsense_version",
+        _get_external_aiopnsense_version,
+    )
+
+    with pytest.raises(asyncio.CancelledError, match="version cancelled"):
+        await factory_mod.create_opnsense_client(
+            url="https://router",
+            username="u",
+            password=TEST_PASSWORD,
+            session=cast("aiohttp.ClientSession", SimpleNamespace()),
+            opts={"verify_ssl": True},
+        )
+
+    assert closed["probe"] is True
+    assert closed["external"] is True
 
 
 @pytest.mark.asyncio

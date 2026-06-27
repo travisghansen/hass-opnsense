@@ -551,7 +551,11 @@ async def _try_external_client_after_probe_timeout(
         return LegacyOPNsenseClient(**kwargs)
 
     if supported_firmware:
-        aiopnsense_version: str | None = await _get_external_aiopnsense_version()
+        try:
+            aiopnsense_version: str | None = await _get_external_aiopnsense_version()
+        except asyncio.CancelledError:
+            await _close_client(client)
+            raise
         if aiopnsense_version:
             _LOGGER.info(
                 "Using aiopnsense %s after legacy firmware probe timeout for firmware %s",
@@ -645,7 +649,11 @@ async def create_opnsense_client(
         ):
             await _close_client(probe_client)
             client = await _create_external_client(**kwargs)
-            aiopnsense_version: str | None = await _get_external_aiopnsense_version()
+            try:
+                aiopnsense_version: str | None = await _get_external_aiopnsense_version()
+            except asyncio.CancelledError:
+                await _close_client(client)
+                raise
             if aiopnsense_version:
                 _LOGGER.info(
                     "Using aiopnsense %s for firmware >= %s",
