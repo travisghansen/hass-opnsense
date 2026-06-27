@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect as _inspect
 from types import SimpleNamespace
 from typing import Any, cast
@@ -924,6 +925,125 @@ async def test_create_client_recreates_legacy_after_strict_probe_for_old_firmwar
     assert legacy_kwargs[1]["initial"] is False
     assert client.kwargs["initial"] is False
     assert closed == [True]
+
+
+@pytest.mark.asyncio
+async def test_create_client_closes_probe_on_cancelled_probe_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cancellation during legacy probe should close probe client and re-raise."""
+    closed = {"value": False}
+
+    class _LegacyClient:
+        async def get_host_firmware_version(self) -> str:
+            """Raise cancellation to verify cleanup and cancellation propagation."""
+            raise asyncio.CancelledError("probe cancelled")
+
+        async def async_close(self) -> None:
+            """Record that probe cancellation cleanup ran."""
+            closed["value"] = True
+
+    monkeypatch.setattr(factory_mod, "LegacyOPNsenseClient", lambda **kwargs: _LegacyClient())
+
+    with pytest.raises(asyncio.CancelledError, match="probe cancelled"):
+        await factory_mod.create_opnsense_client(
+            url="https://router",
+            username="u",
+            password=TEST_PASSWORD,
+            session=cast("aiohttp.ClientSession", SimpleNamespace()),
+            opts={"verify_ssl": True},
+        )
+    assert closed["value"] is True
+
+
+@pytest.mark.asyncio
+async def test_create_client_falls_back_to_legacy_on_non_timeout_probe_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Non-timeout probe failures with timeout fallback should continue with legacy."""
+    legacy_kwargs: list[dict[str, Any]] = []
+    closed: list[bool] = []
+
+    class _LegacyClient:
+        def __init__(self, **kwargs: Any) -> None:
+            """Capture legacy constructor kwargs for strict and fallback clients."""
+            legacy_kwargs.append(kwargs)
+
+        async def get_host_firmware_version(self) -> str:
+            """Simulate non-timeout probe failure."""
+            raise aiohttp.ClientError("strict legacy probe failed")
+
+        async def async_close(self) -> None:
+            """Track cleanup call on failed strict probe."""
+            closed.append(True)
+
+    monkeypatch.setattr(factory_mod, "LegacyOPNsenseClient", _LegacyClient)
+
+    client = await factory_mod.create_opnsense_client(
+        url="https://router",
+        username="u",
+        password=TEST_PASSWORD,
+        session=cast("aiohttp.ClientSession", SimpleNamespace()),
+        opts={"verify_ssl": True},
+        probe_timeout_fallback=True,
+    )
+
+    assert isinstance(client, _LegacyClient)
+    assert len(legacy_kwargs) == 2
+    assert legacy_kwargs[0]["initial"] is True
+    assert legacy_kwargs[1]["initial"] is False
+    assert closed == [True]
+
+
+@pytest.mark.asyncio
+async def test_create_client_preserves_old_firmware_on_recreated_legacy_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Recreated legacy client should reuse probed firmware cache.
+
+    This avoids a second firmware request during setup initialization.
+    """
+    legacy_kwargs: list[dict[str, Any]] = []
+    firmware_requests: list[str] = []
+    closed: list[bool] = []
+
+    class _LegacyClient:
+        def __init__(self, **kwargs: Any) -> None:
+            """Capture construction args and initialize lazy firmware cache."""
+            self._firmware_version: str | None = None
+            self.initial = kwargs.get("initial")
+            legacy_kwargs.append(kwargs)
+
+        async def get_host_firmware_version(self) -> str:
+            """Return cached firmware when available, otherwise emulate network call."""
+            if self._firmware_version is not None:
+                return self._firmware_version
+            firmware_requests.append("request")
+            return "25.7"
+
+        async def async_close(self) -> None:
+            """Track strict probe close to ensure fallback path closes it."""
+            closed.append(bool(self.initial))
+
+    monkeypatch.setattr(factory_mod, "LegacyOPNsenseClient", _LegacyClient)
+
+    client = await factory_mod.create_opnsense_client(
+        url="https://router",
+        username="u",
+        password=TEST_PASSWORD,
+        session=cast("aiohttp.ClientSession", SimpleNamespace()),
+        opts={"verify_ssl": True},
+        probe_timeout_fallback=True,
+    )
+
+    assert isinstance(client, _LegacyClient)
+    assert len(legacy_kwargs) == 2
+    assert legacy_kwargs[0]["initial"] is True
+    assert legacy_kwargs[1]["initial"] is False
+    assert closed == [True]
+    assert firmware_requests == ["request"]
+    assert await client.get_host_firmware_version() == "25.7"
+    assert firmware_requests == ["request"]
 
 
 @pytest.mark.asyncio

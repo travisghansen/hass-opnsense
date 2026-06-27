@@ -614,11 +614,14 @@ async def create_opnsense_client(
                 probe_error=err,
             )
         raise
-    except Exception:  # noqa: BLE001
-        try:
-            await _close_client(probe_client)
-        finally:
-            raise
+    except asyncio.CancelledError:
+        await _close_client(probe_client)
+        raise
+    except Exception:
+        await _close_client(probe_client)
+        if probe_timeout_fallback and not initial:
+            return LegacyOPNsenseClient(**kwargs)
+        raise
     # _LOGGER.debug("Client factory detected firmware: %s", firmware)
 
     try:
@@ -649,5 +652,7 @@ async def create_opnsense_client(
     _LOGGER.debug("Using bundled legacy pyopnsense backend")
     if probe_kwargs["initial"] != kwargs["initial"]:
         await _close_client(probe_client)
-        return LegacyOPNsenseClient(**kwargs)
+        legacy_client = LegacyOPNsenseClient(**kwargs)
+        object.__setattr__(legacy_client, "_firmware_version", firmware)
+        return legacy_client
     return probe_client
