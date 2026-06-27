@@ -338,9 +338,12 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             if vpn_type == "wireguard":
                 cs = ["clients", "servers"]
             for clients_servers in cs:
-                for instance_name in (
-                    dict_get(self._state, f"{vpn_type}.{clients_servers}", {}) or {}
-                ):
+                instances = dict_get(self._state, f"{vpn_type}.{clients_servers}", {}) or {}
+                if not isinstance(instances, Mapping):
+                    continue
+                for instance_name, instance in instances.items():
+                    if not isinstance(instance, MutableMapping):
+                        continue
                     previous_clients_servers = dict_get(
                         self._state,
                         f"previous_state.{vpn_type}.{clients_servers}",
@@ -352,32 +355,25 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                     ):
                         continue
 
-                    instance: dict[str, Any] = (
-                        self._state.get(vpn_type, {})
-                        .get(clients_servers, {})
-                        .get(instance_name, {})
-                    )
-                    previous_instance: dict[str, Any] = (
-                        self._state.get("previous_state", {})
-                        .get(vpn_type, {})
-                        .get(clients_servers, {})
-                        .get(instance_name, {})
-                    )
+                    previous_instance = previous_clients_servers.get(instance_name)
+                    if not isinstance(previous_instance, Mapping):
+                        continue
 
                     for prop_name in (
                         "total_bytes_recv",
                         "total_bytes_sent",
                     ):
-                        if "pkts" in prop_name or "bytes" in prop_name:
-                            (
-                                new_property,
-                                value,
-                            ) = await OPNsenseDataUpdateCoordinator._calculate_speed(
-                                prop_name=prop_name,
-                                elapsed_time=elapsed_time,
-                                current_parent_value=instance[prop_name],
-                                previous_parent_value=previous_instance[prop_name],
-                            )
+                        if prop_name not in instance or prop_name not in previous_instance:
+                            continue
+                        (
+                            new_property,
+                            value,
+                        ) = await OPNsenseDataUpdateCoordinator._calculate_speed(
+                            prop_name=prop_name,
+                            elapsed_time=elapsed_time,
+                            current_parent_value=instance[prop_name],
+                            previous_parent_value=previous_instance[prop_name],
+                        )
 
                         instance[new_property] = value
 
@@ -387,12 +383,17 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         Args:
             elapsed_time: Seconds between current and previous coordinator updates.
         """
-        for interface_name, interface in (dict_get(self._state, "interfaces", {}) or {}).items():
+        interfaces = dict_get(self._state, "interfaces", {}) or {}
+        if not isinstance(interfaces, Mapping):
+            return
+        for interface_name, interface in interfaces.items():
+            if not isinstance(interface, MutableMapping):
+                continue
             previous_interface = dict_get(
                 self._state,
                 f"previous_state.interfaces.{interface_name}",
             )
-            if previous_interface is None:
+            if not isinstance(previous_interface, Mapping):
                 continue
 
             for prop_name in (
@@ -401,18 +402,19 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 "inpkts",
                 "outpkts",
             ):
-                if "pkts" in prop_name or "bytes" in prop_name:
-                    (
-                        new_property,
-                        value,
-                    ) = await OPNsenseDataUpdateCoordinator._calculate_speed(
-                        prop_name=prop_name,
-                        elapsed_time=elapsed_time,
-                        current_parent_value=interface[prop_name],
-                        previous_parent_value=previous_interface[prop_name],
-                    )
+                if prop_name not in interface or prop_name not in previous_interface:
+                    continue
+                (
+                    new_property,
+                    value,
+                ) = await OPNsenseDataUpdateCoordinator._calculate_speed(
+                    prop_name=prop_name,
+                    elapsed_time=elapsed_time,
+                    current_parent_value=interface[prop_name],
+                    previous_parent_value=previous_interface[prop_name],
+                )
 
-                    interface[new_property] = value
+                interface[new_property] = value
 
     async def _calculate_entity_speeds(self) -> None:
         """Populate derived speed metrics for enabled interface and VPN categories."""
@@ -498,8 +500,8 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             tuple[str, int]: Tuple of derived property name and rounded rate value.
         """
         try:
-            change: float = abs(current_parent_value - previous_parent_value)
-            rate: float = change / elapsed_time
+            change: float = current_parent_value - previous_parent_value
+            rate: float = max(change, 0) / elapsed_time
         except TypeError, KeyError, ZeroDivisionError:
             rate = 0
 

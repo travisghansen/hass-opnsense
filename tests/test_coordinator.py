@@ -487,10 +487,10 @@ async def test_calculate_entity_speeds_applies_calculations(
 
 
 @pytest.mark.asyncio
-async def test_calculate_entity_speeds_handles_counter_rollover(
+async def test_calculate_entity_speeds_treats_counter_decrease_as_reset(
     make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
 ) -> None:
-    """Regression: ensure rates never go negative when counters decrease (device reset/rollback)."""
+    """Counter resets should not be reported as traffic spikes."""
     entry = make_config_entry(
         {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
     )
@@ -519,26 +519,60 @@ async def test_calculate_entity_speeds_handles_counter_rollover(
         },
     }
 
-    # run calculation; code should clamp or avoid negative rates
     await coord._calculate_entity_speeds()
 
-    # interfaces rates exist and are non-negative
     eth0 = coord._state["interfaces"]["eth0"]
-    assert "inbytes_kilobytes_per_second" in eth0
-    assert "outbytes_kilobytes_per_second" in eth0
-    assert "inpkts_packets_per_second" in eth0
-    assert "outpkts_packets_per_second" in eth0
-    assert eth0["inbytes_kilobytes_per_second"] >= 0
-    assert eth0["outbytes_kilobytes_per_second"] >= 0
-    assert eth0["inpkts_packets_per_second"] >= 0
-    assert eth0["outpkts_packets_per_second"] >= 0
+    assert eth0["inbytes_kilobytes_per_second"] == 0
+    assert eth0["outbytes_kilobytes_per_second"] == 0
+    assert eth0["inpkts_packets_per_second"] == 0
+    assert eth0["outpkts_packets_per_second"] == 0
 
-    # openvpn rates exist and are non-negative
     s1 = coord._state["openvpn"]["servers"]["s1"]
-    assert "total_bytes_recv_kilobytes_per_second" in s1
-    assert "total_bytes_sent_kilobytes_per_second" in s1
-    assert s1["total_bytes_recv_kilobytes_per_second"] >= 0
-    assert s1["total_bytes_sent_kilobytes_per_second"] >= 0
+    assert s1["total_bytes_recv_kilobytes_per_second"] == 0
+    assert s1["total_bytes_sent_kilobytes_per_second"] == 0
+
+
+@pytest.mark.asyncio
+async def test_calculate_entity_speeds_skips_missing_counter_values(
+    make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
+) -> None:
+    """Missing counter values should not abort a coordinator refresh."""
+    entry = make_config_entry(
+        {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
+    )
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    now = time.time()
+    coord._state = {
+        "update_time": now,
+        "interfaces": {"eth0": {"inbytes": 200, "inpkts": 300}},
+        "openvpn": {"servers": {"s1": {"total_bytes_recv": 1000}}},
+        "wireguard": {"clients": {"c1": {"total_bytes_sent": 2000}}},
+        "previous_state": {
+            "update_time": now - 2,
+            "interfaces": {"eth0": {"inbytes": 100}},
+            "openvpn": {"servers": {"s1": {}}},
+            "wireguard": {"clients": {"c1": {"total_bytes_sent": 1000}}},
+        },
+    }
+
+    await coord._calculate_entity_speeds()
+
+    eth0 = coord._state["interfaces"]["eth0"]
+    assert eth0["inbytes_kilobytes_per_second"] == 0
+    assert "outbytes_kilobytes_per_second" not in eth0
+    assert "inpkts_packets_per_second" not in eth0
+    assert "outpkts_packets_per_second" not in eth0
+    assert "total_bytes_recv_kilobytes_per_second" not in coord._state["openvpn"]["servers"]["s1"]
+    assert coord._state["wireguard"]["clients"]["c1"]["total_bytes_sent_kilobytes_per_second"] == 0
 
 
 @pytest.mark.asyncio
