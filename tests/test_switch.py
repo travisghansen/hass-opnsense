@@ -2179,6 +2179,107 @@ async def test_async_setup_entry_respects_config_flags(
 
 
 @pytest.mark.asyncio
+async def test_async_setup_entry_creates_vpn_switch_when_name_is_missing(
+    coordinator: MagicMock,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Missing VPN instance names should not prevent switch setup."""
+    coordinator.data = {
+        "openvpn": {
+            "clients": {
+                "client-uuid": {
+                    "description": "Remote Access",
+                    "enabled": True,
+                }
+            },
+            "servers": {},
+        },
+        "wireguard": {"clients": {}, "servers": {}},
+    }
+    config_entry = make_config_entry(
+        data={
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_SYNC_FIREWALL_AND_NAT: False,
+            CONF_SYNC_SERVICES: False,
+            CONF_SYNC_VPN: True,
+            CONF_SYNC_UNBOUND: False,
+        }
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    created: list[Any] = []
+
+    def add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Capture switch entities emitted by setup.
+
+        Args:
+            entities: Switch entities emitted by setup.
+            _update_before_add: Whether HA should refresh entities before adding them.
+        """
+        created.extend(entities)
+
+    await switch_mod.async_setup_entry(
+        ph_hass,
+        config_entry,
+        cast("AddEntitiesCallback", add_entities),
+    )
+
+    vpn_switch = next(
+        entity
+        for entity in created
+        if entity.entity_description.key == "openvpn.clients.client-uuid"
+    )
+    assert vpn_switch.entity_description.name == "OpenVPN Client Remote Access"
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_skips_malformed_switch_rows(
+    coordinator: MagicMock,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Malformed switch rows should not prevent valid switches from being created."""
+    coordinator.data = {
+        "host_firmware_version": "25.7.8",
+        "services": [
+            "not-a-service",
+            {"id": "svc", "description": "Valid Service", "locked": 0, "status": True},
+        ],
+        "openvpn": "not-openvpn-data",
+        "wireguard": {"clients": "not-client-data", "servers": {"bad": "not-a-server"}},
+        "unbound_blocklist": "not-unbound-data",
+    }
+    config_entry = make_config_entry(
+        data={
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_SYNC_FIREWALL_AND_NAT: False,
+            CONF_SYNC_SERVICES: True,
+            CONF_SYNC_VPN: True,
+            CONF_SYNC_UNBOUND: True,
+        }
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    created: list[Any] = []
+
+    def add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Capture switch entities emitted by setup.
+
+        Args:
+            entities: Switch entities emitted by setup.
+            _update_before_add: Whether HA should refresh entities before adding them.
+        """
+        created.extend(entities)
+
+    await switch_mod.async_setup_entry(
+        ph_hass,
+        config_entry,
+        cast("AddEntitiesCallback", add_entities),
+    )
+
+    assert [entity.entity_description.key for entity in created] == ["service.svc.status"]
+
+
+@pytest.mark.asyncio
 async def test_vpn_servers_properties_and_toggle(
     coordinator: MagicMock, ph_hass: Any, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:

@@ -75,6 +75,8 @@ async def async_setup_entry(
         for mac_address in mac_addresses:
             device: dict[str, Any] = {"mac": mac_address}
             for arp_entry in arp_entries:
+                if not isinstance(arp_entry, MutableMapping):
+                    continue
                 if mac_address == arp_entry.get("mac", ""):
                     try:
                         for attr in ("hostname", "manufacturer"):
@@ -87,6 +89,8 @@ async def async_setup_entry(
             devices.append(device)
     elif config_entry.options.get(CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED):
         for arp_entry in arp_entries:
+            if not isinstance(arp_entry, MutableMapping):
+                continue
             mac_address = arp_entry.get("mac", None)
             if mac_address and mac_address not in mac_addresses:
                 device = {"mac": mac_address}

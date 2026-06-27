@@ -199,6 +199,8 @@ async def _compile_service_switches(
     entities: list = []
     # services
     for service in state.get("services", []):
+        if not isinstance(service, MutableMapping):
+            continue
         if service.get("locked", 1) == 1:
             continue
         for prop_name in ["status"]:
@@ -239,12 +241,21 @@ async def _compile_vpn_switches(
         for clients_servers in ("clients", "servers"):
             if not isinstance(state, MutableMapping):
                 return []
-            for uuid, instance in state.get(vpn_type, {}).get(clients_servers, {}).items():
+            vpn_instances = dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
+            if not isinstance(vpn_instances, MutableMapping):
+                continue
+            for uuid, instance in vpn_instances.items():
                 if (
                     not isinstance(instance, MutableMapping)
                     or instance.get("enabled", None) is None
                 ):
                     continue
+                instance_name = OPNsenseEntity.payload_display_name(
+                    instance,
+                    str(uuid),
+                    "name",
+                    "description",
+                )
 
                 entity = OPNsenseVPNSwitch(
                     config_entry=config_entry,
@@ -252,7 +263,7 @@ async def _compile_vpn_switches(
                     entity_description=SwitchEntityDescription(
                         key=f"{vpn_type}.{clients_servers}.{uuid}",
                         name=f"{'OpenVPN' if vpn_type == 'openvpn' else vpn_type.title()} "
-                        f"{clients_servers.title().rstrip('s')} {instance['name']}",
+                        f"{clients_servers.title().rstrip('s')} {instance_name}",
                         icon="mdi:folder-key-network-outline",
                         # entity_category=ENTITY_CATEGORY_CONFIG,
                         device_class=SwitchDeviceClass.SWITCH,
@@ -349,7 +360,10 @@ async def _compile_unbound_switches(
     if not isinstance(state, MutableMapping):
         return []
     entities: list = []
-    for uuid, dnsbl in state.get(ATTR_UNBOUND_BLOCKLIST, {}).items():
+    dnsbl_entries = state.get(ATTR_UNBOUND_BLOCKLIST, {})
+    if not isinstance(dnsbl_entries, MutableMapping):
+        return []
+    for uuid, dnsbl in dnsbl_entries.items():
         if not isinstance(dnsbl, MutableMapping):
             continue
 

@@ -689,7 +689,7 @@ async def _compile_gateway_sensors(
     for gateway_id, gateway in gateways.items():
         if not isinstance(gateway, MutableMapping):
             continue
-        gateway_name = str(gateway.get("name") or gateway_id)
+        gateway_name = OPNsenseEntity.payload_display_name(gateway, str(gateway_id), "name")
         for prop_name in ("status", "delay", "stddev", "loss", "address"):
             native_unit_of_measurement = None
             device_class: SensorDeviceClass | None = None
@@ -833,25 +833,6 @@ async def _compile_dhcp_leases_sensors(
     return entities
 
 
-def _get_vpn_instance_name(instance: MutableMapping[str, Any], uuid: str) -> str:
-    """Return a stable display name for a VPN instance.
-
-    Args:
-        instance: VPN instance payload from the coordinator state.
-        uuid: VPN instance UUID used as the last-resort display value.
-
-    Returns:
-        VPN display name from the preferred payload fields or the UUID.
-    """
-    for field in ("name", "description"):
-        value = instance.get(field)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-        if value is not None and not isinstance(value, MutableMapping | list | tuple | set):
-            return str(value)
-    return uuid
-
-
 async def _compile_vpn_sensors(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
@@ -878,7 +859,12 @@ async def _compile_vpn_sensors(
             ).items():
                 if not isinstance(instance, MutableMapping) or len(instance) == 0:
                     continue
-                instance_name = _get_vpn_instance_name(instance, uuid)
+                instance_name = OPNsenseEntity.payload_display_name(
+                    instance,
+                    str(uuid),
+                    "name",
+                    "description",
+                )
                 properties: list[str] = [
                     "total_bytes_recv",
                     "total_bytes_sent",

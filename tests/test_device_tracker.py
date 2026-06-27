@@ -91,6 +91,39 @@ async def test_async_setup_entry_configured_devices(
 
 
 @pytest.mark.asyncio
+async def test_async_setup_entry_skips_malformed_arp_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_reg_factory: Any,
+) -> None:
+    """Malformed ARP rows should not prevent valid device trackers from being created."""
+    coordinator.data = {
+        "arp_table": [
+            "not-an-arp-row",
+            {"mac": "aa:bb:cc", "ip": "1.2.3.4", "hostname": "dev", "manufacturer": "m"},
+        ]
+    }
+    entry = make_config_entry(
+        data={dt_mod.TRACKED_MACS: [], pkg.CONF_DEVICE_UNIQUE_ID: "dev1"},
+        options={dt_mod.CONF_DEVICE_TRACKER_ENABLED: True},
+        entry_id="eid",
+    )
+    setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
+    hass = ph_hass
+    hass.config_entries.async_update_entry = MagicMock()
+    fake = fake_reg_factory(device_exists=False)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: fake, raising=False)
+    added: list[Any] = []
+
+    await dt_mod.async_setup_entry(hass, entry, added.extend)
+
+    assert len(added) == 1
+    assert added[0].mac_address == "aa:bb:cc"
+
+
+@pytest.mark.asyncio
 async def test_async_setup_entry_removes_nonmatching_tracked_macs(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
