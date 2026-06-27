@@ -2974,6 +2974,30 @@ def test_service_handle_exceptions_sets_unavailable(
     assert ent.available is False
 
 
+def test_service_handle_malformed_payload_makes_switch_unavailable(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Service switches should become unavailable when service payload becomes malformed."""
+    desc = SwitchEntityDescription(key="service.svc1.status", name="Svc")
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    ent = OPNsenseServiceSwitch(
+        config_entry=config_entry, coordinator=coordinator, entity_description=desc
+    )
+    ent.hass = MagicMock(spec=HomeAssistant)
+    ent.entity_id = f"switch.{ent.entity_description.key}"
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
+
+    coordinator.data = {"services": [{"id": "svc1", "status": True}]}
+    ent._handle_coordinator_update()
+    assert ent.available is True
+    assert ent.is_on is True
+
+    coordinator.data = {}
+    ent._handle_coordinator_update()
+    assert ent.available is False
+
+
 @pytest.mark.asyncio
 async def test_unbound_legacy_switch_toggle_failures(
     coordinator: MagicMock, ph_hass: Any, make_config_entry: Callable[..., MockConfigEntry]

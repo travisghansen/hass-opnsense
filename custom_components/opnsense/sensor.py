@@ -727,6 +727,7 @@ async def _compile_gateway_sensors(
                     entity_registry_enabled_default=enabled_default,
                     # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
                 ),
+                unique_id_suffix=f"gateway.{gateway_name}.{prop_name}",
             )
             entities.append(entity)
 
@@ -1004,14 +1005,21 @@ class OPNsenseSensor(OPNsenseEntity, SensorEntity):
         config_entry: ConfigEntry,
         coordinator: OPNsenseDataUpdateCoordinator,
         entity_description: SensorEntityDescription,
+        unique_id_suffix: str | None = None,
     ) -> None:
-        """Initialize the sensor."""
+        """Initialize the sensor.
+
+        Args:
+            config_entry: Config entry that owns this sensor.
+            coordinator: Coordinator providing OPNsense state updates.
+            entity_description: Description containing the sensor lookup key and metadata.
+            unique_id_suffix: Optional unique ID suffix when it differs from the lookup key.
+        """
         name_suffix: str | None = (
             entity_description.name if isinstance(entity_description.name, str) else None
         )
-        unique_id_suffix: str | None = (
-            entity_description.key if isinstance(entity_description.key, str) else None
-        )
+        if unique_id_suffix is None and isinstance(entity_description.key, str):
+            unique_id_suffix = entity_description.key
         super().__init__(
             config_entry,
             coordinator,
@@ -1530,6 +1538,30 @@ class OPNsenseCarpStatusSensor(OPNsenseSensor):
 
 class OPNsenseGatewaySensor(OPNsenseSensor):
     """Class for OPNsense Gateway Sensors."""
+
+    def __init__(
+        self,
+        config_entry: ConfigEntry,
+        coordinator: OPNsenseDataUpdateCoordinator,
+        entity_description: SensorEntityDescription,
+        unique_id_suffix: str | None = None,
+    ) -> None:
+        """Initialize a gateway sensor with optional unique-id override.
+
+        Args:
+            config_entry: Config entry that owns this sensor.
+            coordinator: Coordinator providing OPNsense state updates.
+            entity_description: Description containing the raw gateway lookup key.
+            unique_id_suffix: Optional legacy/display-name-based unique ID suffix.
+        """
+        if unique_id_suffix is None:
+            unique_id_suffix = entity_description.key
+        super().__init__(
+            config_entry=config_entry,
+            coordinator=coordinator,
+            entity_description=entity_description,
+            unique_id_suffix=unique_id_suffix,
+        )
 
     def _opnsense_get_gateway_property_name(self) -> str:
         """Opnsense get gateway property name."""

@@ -1551,6 +1551,8 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
             return
         self._service = self._opnsense_get_service()
         if not isinstance(self._service, MutableMapping):
+            self._available = False
+            self.async_write_ha_state()
             return
         try:
             self._attr_is_on = self._service[self._prop_name]
