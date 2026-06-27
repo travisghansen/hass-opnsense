@@ -181,6 +181,59 @@ async def test_async_setup_entry_success(
 
 
 @pytest.mark.asyncio
+async def test_async_setup_entry_uses_probe_timeout_fallback_without_initial_client(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator_capture: Any,
+    fake_client: Any,
+    fake_coordinator: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """async_setup_entry should request probe fallback without initial client behavior."""
+    create_calls: list[dict[str, Any]] = []
+    client_ctor: Any = fake_client()
+
+    async def _create_opnsense_client(**kwargs: Any) -> Any:
+        """Record setup-time client constructor arguments for a focused regression check."""
+        create_calls.append(kwargs)
+        return client_ctor(
+            url=kwargs["url"],
+            username=kwargs["username"],
+            password=kwargs["password"],
+            session=kwargs["session"],
+            opts=kwargs["opts"],
+            initial=kwargs.get("initial", False),
+            name=kwargs["name"],
+        )
+
+    monkeypatch.setattr(init_mod, "create_opnsense_client", _create_opnsense_client)
+    monkeypatch.setattr(
+        init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
+    )
+
+    entry = make_config_entry(
+        data={
+            init_mod.CONF_URL: "http://1.2.3.4",
+            init_mod.CONF_USERNAME: "u",
+            init_mod.CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+        },
+        options={},
+    )
+
+    hass = ph_hass
+    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+    hass.config_entries.async_reload = AsyncMock()
+    hass.data = {}
+
+    res = await init_mod.async_setup_entry(hass, entry)
+    assert res is True
+    assert create_calls
+    assert create_calls[0].get("initial", False) is False
+    assert create_calls[0]["probe_timeout_fallback"] is True
+
+
+@pytest.mark.asyncio
 async def test_async_setup_entry_device_id_mismatch(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,

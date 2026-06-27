@@ -35,6 +35,7 @@ def patch_client_factory(monkeypatch: pytest.MonkeyPatch, module: Any, client_ct
         session: aiohttp.ClientSession,
         opts: MutableMapping[str, Any] | None = None,
         initial: bool = False,
+        probe_timeout_fallback: bool = False,
         name: str | None = None,
     ) -> Any:
         """Create a fake OPNsense client using the provided constructor.
@@ -46,11 +47,13 @@ def patch_client_factory(monkeypatch: pytest.MonkeyPatch, module: Any, client_ct
             session: aiohttp session passed by caller.
             opts: Optional connection options passed by caller.
             initial: Whether the caller marks this as initial setup.
+            probe_timeout_fallback: Whether caller requests factory-level fallback behavior.
             name: Optional client display name passed by caller.
 
         Returns:
             Any: Fake client instance returned by `client_ctor`.
         """
+        _ = probe_timeout_fallback
         return client_ctor(
             url=url,
             username=username,
