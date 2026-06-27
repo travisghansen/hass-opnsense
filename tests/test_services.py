@@ -6,6 +6,7 @@ for operations such as starting/stopping services and generating vouchers.
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Never
 from unittest.mock import AsyncMock, MagicMock
 
@@ -107,20 +108,13 @@ def _patch_device_registry_entry(
         primary_config_entry: Config entry ID exposed by the fake device entry.
         config_entries: Config entry IDs exposed by the fake device entry.
     """
-
-    class DevReg:
-        def async_get(self, device_id: Any) -> Any:
-            """Return a fake device registry entry.
-
-            Args:
-                device_id: Device identifier used to target a config entry.
-            """
-            device_entry = MagicMock()
-            device_entry.primary_config_entry = primary_config_entry
-            device_entry.config_entries = config_entries or set()
-            return device_entry
-
-    monkeypatch.setattr(services_mod.dr, "async_get", lambda _hass: DevReg())
+    device_entry = SimpleNamespace(
+        primary_config_entry=primary_config_entry,
+        config_entries=config_entries or set(),
+    )
+    device_registry = MagicMock()
+    device_registry.async_get.return_value = device_entry
+    monkeypatch.setattr(services_mod.dr, "async_get", lambda _hass: device_registry)
 
 
 def _patch_entity_registry_entry(
@@ -133,19 +127,10 @@ def _patch_entity_registry_entry(
         monkeypatch: Pytest monkeypatch fixture used to patch the services module.
         config_entry_id: Config entry ID exposed by the fake entity entry.
     """
-
-    class EntReg:
-        def async_get(self, entity_id: Any) -> Any:
-            """Return a fake entity registry entry.
-
-            Args:
-                entity_id: Entity identifier used to target a config entry.
-            """
-            entity_entry = MagicMock()
-            entity_entry.config_entry_id = config_entry_id
-            return entity_entry
-
-    monkeypatch.setattr(services_mod.er, "async_get", lambda _hass: EntReg())
+    entity_entry = SimpleNamespace(config_entry_id=config_entry_id)
+    entity_registry = MagicMock()
+    entity_registry.async_get.return_value = entity_entry
+    monkeypatch.setattr(services_mod.er, "async_get", lambda _hass: entity_registry)
 
 
 def _patch_missing_device_registry_entry(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -154,17 +139,9 @@ def _patch_missing_device_registry_entry(monkeypatch: pytest.MonkeyPatch) -> Non
     Args:
         monkeypatch: Pytest monkeypatch fixture used to patch the services module.
     """
-
-    class DevReg:
-        def async_get(self, device_id: Any) -> None:
-            """Return no device registry entry.
-
-            Args:
-                device_id: Device identifier used to target a config entry.
-            """
-            return
-
-    monkeypatch.setattr(services_mod.dr, "async_get", lambda _hass: DevReg())
+    device_registry = MagicMock()
+    device_registry.async_get.return_value = None
+    monkeypatch.setattr(services_mod.dr, "async_get", lambda _hass: device_registry)
 
 
 @pytest.mark.asyncio
