@@ -30,6 +30,7 @@ from custom_components.opnsense.sensor import (
     OPNsenseCarpInterfaceSensor,
     OPNsenseCarpStatusSensor,
     OPNsenseDHCPLeasesSensor,
+    OPNsenseFilesystemSensor,
     OPNsenseGatewaySensor,
     OPNsenseInterfaceSensor,
     OPNsenseSmartSensor,
@@ -1955,6 +1956,104 @@ async def test_async_setup_entry_creates_entities(
     # Ensure setup produced at least one created entity
     assert created, "no entities created"
     assert any(isinstance(e, OPNsenseStaticKeySensor) for e in created)
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_creates_entities_when_vpn_name_is_missing(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Missing VPN instance names should not prevent other sensors from being created."""
+    state: dict[str, Any] = {
+        "telemetry": {"filesystems": [], "temps": {}},
+        "interfaces": {},
+        "gateways": {},
+        "openvpn": {"servers": {"server-uuid": {"description": "Remote Access", "status": "up"}}},
+    }
+    entry, _coord = _setup_entry_with_all_syncs(state, make_config_entry)
+
+    created: list = []
+
+    def add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Add entities.
+
+        Args:
+            entities: Entities provided by pytest or the test case.
+        """
+        created.extend(entities)
+
+    await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
+
+    assert any(isinstance(entity, OPNsenseStaticKeySensor) for entity in created)
+    vpn_status = next(
+        entity
+        for entity in created
+        if entity.entity_description.key == "openvpn.servers.server-uuid.status"
+    )
+    assert vpn_status.entity_description.name == "OpenVPN Server Remote Access status"
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_creates_entities_when_gateway_name_is_missing(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Missing gateway names should not prevent other sensors from being created."""
+    state: dict[str, Any] = {
+        "telemetry": {"filesystems": [], "temps": {}},
+        "interfaces": {},
+        "gateways": {"wan": {"status": "online", "delay": "12ms", "loss": "0%"}},
+        "openvpn": {"servers": {}},
+    }
+    entry, _coord = _setup_entry_with_all_syncs(state, make_config_entry)
+
+    created: list = []
+
+    def add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Add entities.
+
+        Args:
+            entities: Entities provided by pytest or the test case.
+        """
+        created.extend(entities)
+
+    await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
+
+    assert any(isinstance(entity, OPNsenseStaticKeySensor) for entity in created)
+    gateway_status = next(
+        entity for entity in created if entity.entity_description.key == "gateway.wan.status"
+    )
+    assert gateway_status.entity_description.name == "Gateway wan status"
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_creates_entities_with_malformed_dynamic_sensor_rows(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Malformed dynamic sensor rows should not prevent other sensors from being created."""
+    state: dict[str, Any] = {
+        "telemetry": {"filesystems": ["not-a-filesystem"], "temps": {"cpu": "not-a-temp"}},
+        "interfaces": {"wan": "not-an-interface"},
+        "gateways": {"wan": "not-a-gateway"},
+        "openvpn": {"servers": {}},
+    }
+    entry, _coord = _setup_entry_with_all_syncs(state, make_config_entry)
+
+    created: list = []
+
+    def add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Add entities.
+
+        Args:
+            entities: Entities provided by pytest or the test case.
+        """
+        created.extend(entities)
+
+    await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
+
+    assert any(isinstance(entity, OPNsenseStaticKeySensor) for entity in created)
+    assert not any(isinstance(entity, OPNsenseFilesystemSensor) for entity in created)
+    assert not any(isinstance(entity, OPNsenseTempSensor) for entity in created)
+    assert not any(isinstance(entity, OPNsenseInterfaceSensor) for entity in created)
+    assert not any(isinstance(entity, OPNsenseGatewaySensor) for entity in created)
 
 
 @pytest.mark.asyncio

@@ -401,7 +401,13 @@ async def _compile_filesystem_sensors(
         return []
     entities: list = []
 
-    for filesystem in dict_get(state, "telemetry.filesystems", []) or []:
+    filesystems = dict_get(state, "telemetry.filesystems", []) or []
+    if not isinstance(filesystems, list):
+        return entities
+
+    for filesystem in filesystems:
+        if not isinstance(filesystem, MutableMapping):
+            continue
         filesystem_slug: str = slugify_filesystem_mountpoint(filesystem.get("mountpoint", None))
         enabled_default = False
         if filesystem_slug == "root":
@@ -572,7 +578,13 @@ async def _compile_interface_sensors(
     entities: list = []
 
     # interfaces
-    for interface_name, interface in (dict_get(state, "interfaces", {}) or {}).items():
+    interfaces = dict_get(state, "interfaces", {}) or {}
+    if not isinstance(interfaces, MutableMapping):
+        return entities
+
+    for interface_name, interface in interfaces.items():
+        if not isinstance(interface, MutableMapping):
+            continue
         for prop_name in (
             "status",
             "inerrs",
@@ -670,7 +682,14 @@ async def _compile_gateway_sensors(
         return []
     entities: list = []
 
-    for gateway in (dict_get(state, "gateways", {}) or {}).values():
+    gateways = dict_get(state, "gateways", {}) or {}
+    if not isinstance(gateways, MutableMapping):
+        return entities
+
+    for gateway_id, gateway in gateways.items():
+        if not isinstance(gateway, MutableMapping):
+            continue
+        gateway_name = str(gateway.get("name") or gateway_id)
         for prop_name in ("status", "delay", "stddev", "loss", "address"):
             native_unit_of_measurement = None
             device_class: SensorDeviceClass | None = None
@@ -698,8 +717,8 @@ async def _compile_gateway_sensors(
                 config_entry=config_entry,
                 coordinator=coordinator,
                 entity_description=SensorEntityDescription(
-                    key=f"gateway.{gateway['name']}.{prop_name}",
-                    name=f"Gateway {gateway['name']} {prop_name}",
+                    key=f"gateway.{gateway_name}.{prop_name}",
+                    name=f"Gateway {gateway_name} {prop_name}",
                     native_unit_of_measurement=native_unit_of_measurement,
                     device_class=device_class,
                     icon=icon,
@@ -730,7 +749,13 @@ async def _compile_temperature_sensors(
     entities: list = []
 
     # temperatures
-    for temp_device, temp in state.get("telemetry", {}).get("temps", {}).items():
+    temps = dict_get(state, "telemetry.temps", {}) or {}
+    if not isinstance(temps, MutableMapping):
+        return entities
+
+    for temp_device, temp in temps.items():
+        if not isinstance(temp, MutableMapping):
+            continue
         entity = OPNsenseTempSensor(
             config_entry=config_entry,
             coordinator=coordinator,
@@ -768,9 +793,11 @@ async def _compile_dhcp_leases_sensors(
     entities: list = []
 
     # interfaces
-    for interface, interface_name in (
-        dict_get(state, "dhcp_leases.lease_interfaces", {}) or {}
-    ).items():
+    lease_interfaces = dict_get(state, "dhcp_leases.lease_interfaces", {}) or {}
+    if not isinstance(lease_interfaces, MutableMapping):
+        lease_interfaces = {}
+
+    for interface, interface_name in lease_interfaces.items():
         entity = OPNsenseDHCPLeasesSensor(
             config_entry=config_entry,
             coordinator=coordinator,
@@ -806,6 +833,25 @@ async def _compile_dhcp_leases_sensors(
     return entities
 
 
+def _get_vpn_instance_name(instance: MutableMapping[str, Any], uuid: str) -> str:
+    """Return a stable display name for a VPN instance.
+
+    Args:
+        instance: VPN instance payload from the coordinator state.
+        uuid: VPN instance UUID used as the last-resort display value.
+
+    Returns:
+        VPN display name from the preferred payload fields or the UUID.
+    """
+    for field in ("name", "description"):
+        value = instance.get(field)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        if value is not None and not isinstance(value, MutableMapping | list | tuple | set):
+            return str(value)
+    return uuid
+
+
 async def _compile_vpn_sensors(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
@@ -832,6 +878,7 @@ async def _compile_vpn_sensors(
             ).items():
                 if not isinstance(instance, MutableMapping) or len(instance) == 0:
                     continue
+                instance_name = _get_vpn_instance_name(instance, uuid)
                 properties: list[str] = [
                     "total_bytes_recv",
                     "total_bytes_sent",
@@ -884,7 +931,7 @@ async def _compile_vpn_sensors(
                         entity_description=SensorEntityDescription(
                             key=f"{vpn_type}.{clients_servers}.{uuid}.{prop_name}",
                             name=f"{'OpenVPN' if vpn_type == 'openvpn' else vpn_type.title()} "
-                            f"{clients_servers.title().rstrip('s')} {instance['name']} "
+                            f"{clients_servers.title().rstrip('s')} {instance_name} "
                             f"{prop_name}",
                             native_unit_of_measurement=native_unit_of_measurement,
                             device_class=device_class,
