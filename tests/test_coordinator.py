@@ -576,6 +576,88 @@ async def test_calculate_entity_speeds_skips_missing_counter_values(
 
 
 @pytest.mark.asyncio
+async def test_calculate_vpn_speeds_skips_malformed_payloads(
+    make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
+) -> None:
+    """Malformed VPN counter payloads should be ignored without mutating valid rows."""
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_VPN: True})
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    coord._state = {
+        "openvpn": {
+            "servers": ["malformed"],
+        },
+        "wireguard": {
+            "clients": {
+                "bad_current": [],
+                "bad_previous_parent": {"total_bytes_recv": 200},
+            },
+            "servers": {
+                "bad_previous_instance": {"total_bytes_recv": 200},
+            },
+        },
+        "previous_state": {
+            "wireguard": {
+                "clients": ["malformed"],
+                "servers": {"bad_previous_instance": []},
+            },
+        },
+    }
+
+    await coord._calculate_vpn_speeds(elapsed_time=2)
+
+    assert coord._state["wireguard"]["clients"]["bad_previous_parent"] == {"total_bytes_recv": 200}
+    assert coord._state["wireguard"]["servers"]["bad_previous_instance"] == {
+        "total_bytes_recv": 200
+    }
+
+
+@pytest.mark.asyncio
+async def test_calculate_interface_speeds_skips_malformed_payloads(
+    make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
+) -> None:
+    """Malformed interface counter payloads should be ignored without mutating valid rows."""
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True})
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    coord._state = {"interfaces": ["malformed"]}
+    await coord._calculate_interface_speeds(elapsed_time=2)
+    assert coord._state["interfaces"] == ["malformed"]
+
+    coord._state = {
+        "interfaces": {
+            "bad_current": [],
+            "bad_previous": {"inbytes": 200},
+        },
+        "previous_state": {
+            "interfaces": {
+                "bad_previous": [],
+            },
+        },
+    }
+
+    await coord._calculate_interface_speeds(elapsed_time=2)
+
+    assert coord._state["interfaces"]["bad_previous"] == {"inbytes": 200}
+
+
+@pytest.mark.asyncio
 async def test_async_update_data_reentrancy_and_full_flow(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
