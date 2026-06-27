@@ -1318,8 +1318,7 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
         """Handle coordinator update."""
         value = self._get_opnsense_state_value(self.entity_description.key)
         if value is None:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         if (
@@ -1327,8 +1326,7 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
             and self._previous_value is None
             and self.entity_description.key == "telemetry.cpu.usage_total"
         ):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         if self.entity_description.key == "telemetry.system.boottime":
@@ -1339,8 +1337,7 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
                 value = self._previous_value
 
             if value == 0:
-                self._available = False
-                self.async_write_ha_state()
+                self._mark_unavailable()
                 return
         elif self.entity_description.key == "certificates":
             value = len(value)
@@ -1372,27 +1369,23 @@ class OPNsenseVnstatSensor(OPNsenseSensor):
         """Handle coordinator update."""
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         key_parts = self.entity_description.key.split(".")
         if len(key_parts) != 3:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         _, interface_name, metric_name = key_parts
 
         metric = dict_get(state, f"vnstat.interfaces.{interface_name}.metrics.{metric_name}", {})
         if not isinstance(metric, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         total = metric.get("total_bytes")
         if not isinstance(total, int):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         self._available = True
@@ -1417,27 +1410,23 @@ class OPNsenseSpeedtestSensor(OPNsenseSensor):
         """Handle coordinator updates for speedtest sensors."""
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         key_parts = self.entity_description.key.split(".")
         if len(key_parts) != 3:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         _, speedtest_section, metric_name = key_parts
 
         metric = dict_get(state, f"speedtest.{speedtest_section}.{metric_name}", {})
         if not isinstance(metric, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         value = metric.get("value")
         if not isinstance(value, (int, float)):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         self._available = True
@@ -1463,25 +1452,21 @@ class OPNsenseSmartSensor(OPNsenseSensor):
         """Handle coordinator updates for SMART disk sensors."""
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         key_parts = self.entity_description.key.split(".")
         if len(key_parts) != 3:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         _, expected_device_slug, prop_name = key_parts
         if prop_name != "temperature":
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         smart_devices = state.get("smart")
         if not isinstance(smart_devices, list):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         smart_device: Mapping[str, Any] | None = None
@@ -1496,8 +1481,7 @@ class OPNsenseSmartSensor(OPNsenseSensor):
                 break
 
         if smart_device is None:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         device_name = smart_device.get("device")
@@ -1507,19 +1491,16 @@ class OPNsenseSmartSensor(OPNsenseSensor):
             smart_info.get(normalized_device_name) if isinstance(smart_info, Mapping) else None
         )
         if not isinstance(device_info, Mapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         temperature_entry = device_info.get("temperature")
         if not isinstance(temperature_entry, (Mapping, int, float)):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         if isinstance(temperature_entry, bool):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         temperature: int | float | None = None
@@ -1533,8 +1514,7 @@ class OPNsenseSmartSensor(OPNsenseSensor):
                     temperature = None
 
         if temperature is None:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         self._available = True
@@ -1595,40 +1575,34 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
         """Handle coordinator update."""
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         key_parts = self.entity_description.key.split(".", 1)
         if len(key_parts) != 2:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         interface_and_prop = key_parts[1]
         interface_name_parts = interface_and_prop.rsplit(".", 1)
         if len(interface_name_parts) != 2:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         interface_name, prop_name = interface_name_parts
         interface: dict[str, Any] = {}
         interfaces = state.get("interfaces")
         if not isinstance(interfaces, Mapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         for i_interface_name, iface in interfaces.items():
             if i_interface_name == interface_name:
                 interface = iface
                 break
         if not interface:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         try:
             self._attr_native_value = interface[prop_name]
         except TypeError, KeyError, ZeroDivisionError:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         self._available = True
         self._attr_extra_state_attributes = {}
@@ -1652,8 +1626,7 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
                 self._attr_extra_state_attributes[attr] = interface[attr]
         if interface.get("enabled") is not None and not coerce_bool(interface.get("enabled")):
             self._attr_native_value = None
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         self.async_write_ha_state()
 
@@ -1678,13 +1651,11 @@ class OPNsenseCarpInterfaceSensor(OPNsenseSensor):
         carp_interface: dict[str, Any] = {}
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         key_data = _parse_carp_interface_sensor_key(self.entity_description.key)
         if key_data is None:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         expected_interface_slug, expected_subnet_slug = key_data
         carp_interfaces = dict_get(state, "carp.interfaces", []) or []
@@ -1713,15 +1684,13 @@ class OPNsenseCarpInterfaceSensor(OPNsenseSensor):
             carp_interface = dict(i_interface)
             break
         if not carp_interface:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         try:
             self._attr_native_value = carp_interface["status"]
         except TypeError, KeyError, ZeroDivisionError:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         self._available = True
         self._attr_extra_state_attributes = {}
@@ -1760,20 +1729,17 @@ class OPNsenseCarpStatusSensor(OPNsenseSensor):
         """Handle coordinator update."""
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         summary_raw = dict_get(state, "carp.status_summary")
         if not isinstance(summary_raw, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         summary = dict(summary_raw)
         raw_summary_state = summary.get("state")
         if not isinstance(raw_summary_state, str) or not raw_summary_state:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         self._available = True
@@ -1838,25 +1804,21 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
         """Handle coordinator update."""
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         key_parts = self.entity_description.key.split(".", 1)
         if len(key_parts) != 2:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         gateway_and_prop = key_parts[1]
         gateway_name_parts = gateway_and_prop.rsplit(".", 1)
         if len(gateway_name_parts) != 2:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         gateway_name, prop_name = gateway_name_parts
         gateway: dict[str, Any] = self._opnsense_get_gateway_entry(gateway_name)
         if not gateway:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         try:
             value = gateway[prop_name]
@@ -1866,14 +1828,12 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
                     value = float(value)
 
             if isinstance(value, str) and len(value) < 1:
-                self._available = False
-                self.async_write_ha_state()
+                self._mark_unavailable()
                 return
 
             self._attr_native_value = value
         except TypeError, KeyError, ZeroDivisionError:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         self._available = True
         self._attr_extra_state_attributes = {}
@@ -2069,14 +2029,12 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
         """Handle coordinator update."""
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         if_name: str = self.entity_description.key.split(".")[1].strip()
         dhcp_leases = state.get("dhcp_leases")
         if not isinstance(dhcp_leases, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         if if_name.lower() == "all":
             leases = dhcp_leases.get("leases", {})
@@ -2084,8 +2042,7 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
             if not isinstance(leases, MutableMapping) or not isinstance(
                 lease_interfaces, MutableMapping
             ):
-                self._available = False
-                self.async_write_ha_state()
+                self._mark_unavailable()
                 return
             self._available = True
             total_lease_count: int = 0
@@ -2103,8 +2060,7 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
                         if_count,
                     )
             except TypeError, KeyError, ZeroDivisionError:
-                self._available = False
-                self.async_write_ha_state()
+                self._mark_unavailable()
                 return
             sorted_lease_counts: dict[str, Any] = {
                 key: lease_counts[key] for key in sorted(lease_counts)
@@ -2115,21 +2071,18 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
         else:
             leases = dhcp_leases.get("leases", {})
             if not isinstance(leases, MutableMapping):
-                self._available = False
-                self.async_write_ha_state()
+                self._mark_unavailable()
                 return
             interface = leases.get(if_name, [])
             if not isinstance(interface, list):
-                self._available = False
-                self.async_write_ha_state()
+                self._mark_unavailable()
                 return
             try:
                 self._attr_native_value = sum(
                     1 for d in interface if d.get("address") not in {None, ""}
                 )
             except TypeError, KeyError, ZeroDivisionError:
-                self._available = False
-                self.async_write_ha_state()
+                self._mark_unavailable()
                 return
             self._available = True
             self._attr_extra_state_attributes = {"Leases": interface}
