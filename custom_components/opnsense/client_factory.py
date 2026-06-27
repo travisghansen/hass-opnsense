@@ -567,6 +567,7 @@ async def create_opnsense_client(
     session: aiohttp.ClientSession,
     opts: MutableMapping[str, Any] | None = None,
     initial: bool = False,
+    probe_timeout_fallback: bool = False,
     name: str | None = None,
 ) -> OPNsenseClientProtocol:
     """Create the backend client selected by detected firmware.
@@ -578,6 +579,9 @@ async def create_opnsense_client(
         session: Shared aiohttp session used by created clients.
         opts: Optional transport options, such as SSL verification flags.
         initial: Whether the client is being created for initial setup validation.
+        probe_timeout_fallback: Whether to use strict temporary probe behavior so
+            firmware probe timeouts can try the external backend without changing
+            the returned client's normal error handling.
         name: Optional display name for logs and diagnostics.
 
     Returns:
@@ -596,12 +600,15 @@ async def create_opnsense_client(
         initial=initial,
         name=name,
     )
-    probe_client: OPNsenseClientProtocol = LegacyOPNsenseClient(**kwargs)
+    probe_kwargs = dict(kwargs)
+    if probe_timeout_fallback:
+        probe_kwargs["initial"] = True
+    probe_client: OPNsenseClientProtocol = LegacyOPNsenseClient(**probe_kwargs)
     try:
         firmware = await probe_client.get_host_firmware_version()
     except (TimeoutError, aiohttp.ServerTimeoutError) as err:
         await _close_client(probe_client)
-        if initial:
+        if initial or probe_timeout_fallback:
             return await _try_external_client_after_probe_timeout(
                 kwargs=kwargs,
                 probe_error=err,
@@ -618,7 +625,7 @@ async def create_opnsense_client(
         if awesomeversion.AwesomeVersion(firmware) >= awesomeversion.AwesomeVersion(
             AIOPNSENSE_MIN_FIRMWARE
         ):
-            await probe_client.async_close()
+            await _close_client(probe_client)
             client = await _create_external_client(**kwargs)
             aiopnsense_version: str | None = await _get_external_aiopnsense_version()
             if aiopnsense_version:
@@ -640,4 +647,7 @@ async def create_opnsense_client(
         )
 
     _LOGGER.debug("Using bundled legacy pyopnsense backend")
+    if probe_kwargs["initial"] != kwargs["initial"]:
+        await _close_client(probe_client)
+        return LegacyOPNsenseClient(**kwargs)
     return probe_client

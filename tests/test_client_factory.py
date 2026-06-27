@@ -566,6 +566,8 @@ async def test_create_client_uses_external_when_initial_legacy_probe_times_out(
 ) -> None:
     """Initial setup should try aiopnsense when the legacy firmware probe times out."""
     created: dict[str, Any] = {"legacy_closed": False, "external_closed": False}
+    legacy_kwargs: list[dict[str, Any]] = []
+    external_kwargs: list[dict[str, Any]] = []
 
     class _LegacyClient:
         async def get_host_firmware_version(self) -> str:
@@ -589,10 +591,18 @@ async def test_create_client_uses_external_when_initial_legacy_probe_times_out(
             """Record close calls for unsupported-firmware fallback paths."""
             created["external_closed"] = True
 
-    monkeypatch.setattr(factory_mod, "LegacyOPNsenseClient", lambda **kwargs: _LegacyClient())
-    monkeypatch.setattr(
-        factory_mod, "_create_external_client", AsyncMock(return_value=_ExternalClient())
-    )
+    def _legacy_client(**kwargs: Any) -> _LegacyClient:
+        """Capture legacy constructor kwargs and return a timeout probe client."""
+        legacy_kwargs.append(kwargs)
+        return _LegacyClient()
+
+    async def _create_external_client(**kwargs: Any) -> _ExternalClient:
+        """Capture external constructor kwargs and return a supported fallback client."""
+        external_kwargs.append(kwargs)
+        return _ExternalClient()
+
+    monkeypatch.setattr(factory_mod, "LegacyOPNsenseClient", _legacy_client)
+    monkeypatch.setattr(factory_mod, "_create_external_client", _create_external_client)
     monkeypatch.setattr(
         factory_mod, "_get_external_aiopnsense_version", AsyncMock(return_value="1.0.14")
     )
@@ -608,6 +618,8 @@ async def test_create_client_uses_external_when_initial_legacy_probe_times_out(
     )
 
     assert isinstance(client, _ExternalClient)
+    assert legacy_kwargs[0]["initial"] is True
+    assert external_kwargs[0]["initial"] is True
     assert created["legacy_closed"] is True
     assert created["external_closed"] is False
     assert (
@@ -618,6 +630,62 @@ async def test_create_client_uses_external_when_initial_legacy_probe_times_out(
         "Using aiopnsense 1.0.14 after legacy firmware probe timeout for firmware 26.1.6_2"
         in caplog.text
     )
+
+
+@pytest.mark.asyncio
+async def test_create_client_uses_external_probe_fallback_without_initial_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Probe timeout fallback should not make the returned external client initial."""
+    legacy_kwargs: list[dict[str, Any]] = []
+    external_kwargs: list[dict[str, Any]] = []
+
+    class _LegacyClient:
+        async def get_host_firmware_version(self) -> str:
+            """Raise timeout to emulate a suppressed non-initial legacy probe path.
+
+            Raises:
+                TimeoutError: Always raised by this stub.
+            """
+            raise TimeoutError("firmware status timed out")
+
+        async def async_close(self) -> None:
+            """Provide cleanup hook expected by factory timeout handling."""
+            return
+
+    class _ExternalClient:
+        async def get_host_firmware_version(self) -> str:
+            """Return new firmware value so fallback can select external backend."""
+            return "26.1.6_2"
+
+    def _legacy_client(**kwargs: Any) -> _LegacyClient:
+        """Capture strict probe kwargs and return a timeout probe client."""
+        legacy_kwargs.append(kwargs)
+        return _LegacyClient()
+
+    async def _create_external_client(**kwargs: Any) -> _ExternalClient:
+        """Capture returned-client kwargs and return an external fallback client."""
+        external_kwargs.append(kwargs)
+        return _ExternalClient()
+
+    monkeypatch.setattr(factory_mod, "LegacyOPNsenseClient", _legacy_client)
+    monkeypatch.setattr(factory_mod, "_create_external_client", _create_external_client)
+    monkeypatch.setattr(
+        factory_mod, "_get_external_aiopnsense_version", AsyncMock(return_value=None)
+    )
+
+    client = await factory_mod.create_opnsense_client(
+        url="https://router",
+        username="u",
+        password=TEST_PASSWORD,
+        session=cast("aiohttp.ClientSession", SimpleNamespace()),
+        opts={"verify_ssl": True},
+        probe_timeout_fallback=True,
+    )
+
+    assert isinstance(client, _ExternalClient)
+    assert legacy_kwargs[0]["initial"] is True
+    assert external_kwargs[0]["initial"] is False
 
 
 @pytest.mark.asyncio
@@ -808,6 +876,54 @@ async def test_create_client_reraises_initial_legacy_probe_timeout_for_old_fallb
 
     assert created["legacy_closed"] is True
     assert created["external_closed"] is True
+
+
+@pytest.mark.asyncio
+async def test_create_client_recreates_legacy_after_strict_probe_for_old_firmware(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Probe fallback should not return a strict legacy probe for old firmware."""
+    legacy_kwargs: list[dict[str, Any]] = []
+    closed: list[bool] = []
+
+    class _LegacyClient:
+        def __init__(self, **kwargs: Any) -> None:
+            """Store constructor kwargs for returned-client assertions.
+
+            Args:
+                **kwargs: Constructor kwargs passed by the factory.
+            """
+            self.kwargs = kwargs
+
+        async def get_host_firmware_version(self) -> str:
+            """Return old firmware so the factory keeps the legacy backend."""
+            return "25.7"
+
+        async def async_close(self) -> None:
+            """Record that the strict probe client was closed before recreation."""
+            closed.append(True)
+
+    def _legacy_client(**kwargs: Any) -> _LegacyClient:
+        """Capture each legacy construction and return a fake client."""
+        legacy_kwargs.append(kwargs)
+        return _LegacyClient(**kwargs)
+
+    monkeypatch.setattr(factory_mod, "LegacyOPNsenseClient", _legacy_client)
+
+    client = await factory_mod.create_opnsense_client(
+        url="https://router",
+        username="u",
+        password=TEST_PASSWORD,
+        session=cast("aiohttp.ClientSession", SimpleNamespace()),
+        opts={"verify_ssl": True},
+        probe_timeout_fallback=True,
+    )
+
+    assert isinstance(client, _LegacyClient)
+    assert legacy_kwargs[0]["initial"] is True
+    assert legacy_kwargs[1]["initial"] is False
+    assert client.kwargs["initial"] is False
+    assert closed == [True]
 
 
 @pytest.mark.asyncio
