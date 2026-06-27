@@ -226,6 +226,50 @@ def test_sensors_unavailable_on_non_mapping_state(
 
 
 @pytest.mark.parametrize(
+    ("coord_data", "desc_key"),
+    [
+        ([], "vnstat.igc0.vnstat_today"),
+        ({"vnstat": {"interfaces": {"igc0": {"metrics": {}}}}}, "vnstat.igc0"),
+        (
+            {"vnstat": {"interfaces": {"igc0": {"metrics": {"vnstat_today": []}}}}},
+            "vnstat.igc0.vnstat_today",
+        ),
+        (
+            {
+                "vnstat": {
+                    "interfaces": {"igc0": {"metrics": {"vnstat_today": {"total_bytes": "100"}}}}
+                }
+            },
+            "vnstat.igc0.vnstat_today",
+        ),
+    ],
+    ids=["state-not-mapping", "invalid-key", "metric-not-mapping", "total-not-int"],
+)
+def test_vnstat_sensor_fails_closed_for_malformed_payloads(
+    coord_data: Any,
+    desc_key: str,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Vnstat sensors should become unavailable for malformed payload shapes."""
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = coord_data
+
+    desc = MagicMock()
+    desc.key = desc_key
+    desc.name = "Vnstat Malformed"
+
+    sensor = OPNsenseVnstatSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.vnstat_malformed"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
+
+
+@pytest.mark.parametrize(
     ("prop_name", "input_value", "expected_available", "expected_value", "expect_down_icon"),
     [
         ("status", "online", True, "online", False),
@@ -737,6 +781,34 @@ def test_carp_status_sensor_normalizes_state_spacing_and_icon(
     assert sensor.icon == "mdi:backup-restore"
 
 
+@pytest.mark.parametrize("summary_state", [None, ""])
+def test_carp_status_sensor_fails_closed_for_missing_state(
+    summary_state: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP status sensor should be unavailable when summary state is missing."""
+    entry = make_config_entry()
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {"carp": {"status_summary": {"state": summary_state}}}
+
+    desc = MagicMock()
+    desc.key = "carp.status_summary"
+    desc.name = "CARP Status"
+
+    sensor = OPNsenseCarpStatusSensor(
+        config_entry=entry,
+        coordinator=coordinator,
+        entity_description=desc,
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.carp_status_missing"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
+
+
 @pytest.mark.parametrize(
     ("interface_name", "subnet", "expected_key"),
     [
@@ -1097,13 +1169,14 @@ def test_vpn_sensor_handles_exceptions_from_instance_get(
     requested exception so the handler exercises its defensive exception path.
     """
 
-    class BrokenInstance:
+    class BrokenInstance(dict):
         def __init__(self, exc: type[Exception]) -> None:
             """Initialize BrokenInstance.
 
             Args:
                 exc: Exc provided by pytest or the test case.
             """
+            super().__init__({"enabled": True})
             self._exc = exc
 
         def get(self, *args, **kwargs) -> Never:
@@ -1196,6 +1269,7 @@ def test_vpn_sensor_fails_closed_for_malformed_instance_members(
     [
         ([], False, None, False),
         ({"telemetry": {}}, False, None, False),
+        ({"telemetry": {"temps": {"other": {"temperature": 55}}}}, False, None, False),
         (
             {"telemetry": {"temps": {"sensor1": {"temperature": 55, "device_id": "dev0"}}}},
             True,
@@ -1349,6 +1423,49 @@ def test_filesystem_sensor_fails_closed_for_malformed_telemetry_payload(
 
 
 @pytest.mark.parametrize(
+    "coord_data",
+    [
+        [],
+        {"telemetry": {"filesystems": "not-a-list"}},
+        {"telemetry": {"filesystems": ["not-a-mapping"]}},
+        {"telemetry": {"filesystems": [{"mountpoint": "/var", "used_pct": 5}]}},
+        {"telemetry": {"filesystems": [{"mountpoint": "/", "device": "/dev/gpt/rootfs"}]}},
+    ],
+    ids=[
+        "state-not-mapping",
+        "filesystems-not-list",
+        "entry-not-mapping",
+        "filesystem-not-found",
+        "missing-used-pct",
+    ],
+)
+def test_filesystem_sensor_fails_closed_for_malformed_filesystems(
+    coord_data: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Filesystem sensor should become unavailable for malformed filesystem payloads."""
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = coord_data
+    desc = MagicMock()
+    desc.key = "telemetry.filesystems.root"
+    desc.name = "Filesystem Root"
+
+    sensor = OPNsenseFilesystemSensor(
+        config_entry=entry,
+        coordinator=coord,
+        entity_description=desc,
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.filesystem_root"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
+
+
+@pytest.mark.parametrize(
     ("desc_key", "state", "expect_close_icon"),
     [
         (
@@ -1454,6 +1571,7 @@ def test_normalize_filesystem_mountpoint(input_value: Any, expected: str) -> Non
     ("cpu_map", "previous", "expected_available", "expected_value"),
     [
         ({"usage_total": 0}, None, False, None),
+        ({"usage_total": 0}, 0, False, None),
         ({"usage_total": 0, "usage_1": 1}, 7, True, 7),
     ],
 )
@@ -1788,6 +1906,36 @@ def test_interface_sensor_enabled_state_handling(
 
 
 @pytest.mark.parametrize(
+    "coord_data",
+    [
+        {"interfaces": "not-a-mapping"},
+        {"interfaces": {"lan": {"name": "LAN", "status": "up"}}},
+    ],
+    ids=["interfaces-not-mapping", "interface-not-found"],
+)
+def test_interface_sensor_fails_closed_for_missing_interface_payloads(
+    coord_data: dict[str, Any],
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Interface sensor should be unavailable when interface state cannot be found."""
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = coord_data
+    desc = MagicMock()
+    desc.key = "interface.wan.status"
+    desc.name = "WAN Status"
+
+    sensor = OPNsenseInterfaceSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.wan_status"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
+
+
+@pytest.mark.parametrize(
     ("leases_val", "lease_interfaces_val"),
     [
         ([], {"lan": "LAN"}),
@@ -1878,6 +2026,33 @@ def test_dhcp_leases_interface_sensor_handles_non_mapping_leases(
 
     assert s.available is False
     assert writes == [False]
+
+
+def test_dhcp_leases_interface_sensor_handles_non_list_interface(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """DHCP interface lease sensor should be unavailable when interface leases are not a list."""
+    entry = make_config_entry()
+
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {"dhcp_leases": {"leases": {"lan": "not-a-list"}}}
+
+    desc = MagicMock()
+    desc.key = "dhcp_leases.lan"
+    desc.name = "DHCP LAN"
+
+    sensor = OPNsenseDHCPLeasesSensor(
+        config_entry=entry,
+        coordinator=coord,
+        entity_description=desc,
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.dhcp_lan"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
 
 
 @pytest.mark.parametrize(
@@ -2164,13 +2339,14 @@ def test_dhcp_leases_per_interface_handles_exceptions(
     lease object raises inside the surrounding exception handler.
     """
 
-    class BrokenLease:
+    class BrokenLease(dict):
         def __init__(self, exc: type[Exception]) -> None:
             """Initialize BrokenLease.
 
             Args:
                 exc: Exc provided by pytest or the test case.
             """
+            super().__init__({"address": "192.168.1.2"})
             self._exc = exc
 
         def get(self, *args, **kwargs) -> Never:

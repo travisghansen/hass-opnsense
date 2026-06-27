@@ -2000,6 +2000,128 @@ def test_switch_handlers_fail_closed_for_malformed_nested_payloads(
     assert writes == 1
 
 
+@pytest.mark.parametrize(
+    ("entity", "key", "state"),
+    [
+        pytest.param(
+            OPNsenseFirewallRuleSwitch,
+            "firewall.rule.r1",
+            {"firewall": {"rules": {"r1": "not-a-mapping"}}},
+            id="firewall-rule-not-mapping",
+        ),
+        pytest.param(
+            OPNsenseNATRuleSwitch,
+            "firewall.nat.source_nat.n1",
+            {"firewall": {"nat": {"source_nat": {"n1": "not-a-mapping"}}}},
+            id="nat-rule-not-mapping",
+        ),
+        pytest.param(
+            OPNsenseUnboundBlocklistSwitch,
+            "unbound_blocklist.switch.u1",
+            [],
+            id="unbound-state-not-mapping",
+        ),
+    ],
+)
+def test_switch_handlers_fail_closed_for_missing_mapping_entries(
+    entity: type[
+        OPNsenseFirewallRuleSwitch | OPNsenseNATRuleSwitch | OPNsenseUnboundBlocklistSwitch
+    ],
+    key: str,
+    state: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Switch handlers should mark unavailable when expected entries are malformed."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    coordinator.data = state
+    ent = entity(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=SwitchEntityDescription(key=key, name="Malformed Entry"),
+    )
+    ent.entity_id = "switch.malformed_entry"
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
+
+    ent._handle_coordinator_update()
+
+    assert ent.available is False
+
+
+@pytest.mark.parametrize(
+    ("entity", "key", "state"),
+    [
+        pytest.param(
+            OPNsenseFirewallRuleSwitch,
+            "firewall.rule.r1",
+            {"firewall": {"rules": {"r1": None}}},
+            id="firewall-rule-get-raises",
+        ),
+        pytest.param(
+            OPNsenseNATRuleSwitch,
+            "firewall.nat.source_nat.n1",
+            {"firewall": {"nat": {"source_nat": {"n1": None}}}},
+            id="nat-rule-get-raises",
+        ),
+    ],
+)
+def test_rule_switch_handlers_fail_closed_when_enabled_lookup_raises(
+    entity: type[OPNsenseFirewallRuleSwitch | OPNsenseNATRuleSwitch],
+    key: str,
+    state: dict[str, Any],
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Rule switches should be unavailable when reading the enabled flag fails."""
+
+    class BrokenRule(dict):
+        def __init__(self) -> None:
+            """Initialize a truthy mapping whose reads fail."""
+            super().__init__({"enabled": "1"})
+
+        def get(self, *args: Any, **kwargs: Any) -> Any:
+            """Raise ``TypeError`` when the handler reads the enabled flag."""
+            raise TypeError("simulated")
+
+    if entity is OPNsenseFirewallRuleSwitch:
+        state["firewall"]["rules"]["r1"] = BrokenRule()
+    else:
+        state["firewall"]["nat"]["source_nat"]["n1"] = BrokenRule()
+
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    coordinator.data = state
+    ent = entity(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=SwitchEntityDescription(key=key, name="Broken Rule"),
+    )
+    ent.entity_id = "switch.broken_rule"
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
+
+    ent._handle_coordinator_update()
+
+    assert ent.available is False
+
+
+def test_service_switch_ignores_malformed_service_rows(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Service lookup should skip non-mapping service rows without raising."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    coordinator.data = {"services": ["not-a-mapping"]}
+    ent = OPNsenseServiceSwitch(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=SwitchEntityDescription(key="service.svc1.status", name="Service"),
+    )
+
+    assert ent._opnsense_get_service() is None
+
+
 def test_entity_icons(make_config_entry: Callable[..., MockConfigEntry]) -> None:
     """Switch entities expose the correct platform icons based on type."""
     # firewall icon
