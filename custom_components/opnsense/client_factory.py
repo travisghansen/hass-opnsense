@@ -437,6 +437,20 @@ def _add_core_compat(client: OPNsenseClientProtocol) -> OPNsenseClientProtocol:
     return client
 
 
+async def _close_client(client: OPNsenseClientProtocol) -> None:
+    """Close a backend client when it exposes an async close hook.
+
+    Args:
+        client: Backend client instance to close.
+
+    Returns:
+        None: Closes the client if supported.
+    """
+    close_method: Callable[[], Any] | None = getattr(client, "async_close", None)
+    if close_method is not None:
+        await close_method()
+
+
 async def _create_external_client(**kwargs: Any) -> OPNsenseClientProtocol:
     """Create an external `aiopnsense` client instance.
 
@@ -473,6 +487,78 @@ async def _create_external_client(**kwargs: Any) -> OPNsenseClientProtocol:
     return _add_core_compat(_add_plugin_compat(_add_query_count_compat(client)))
 
 
+async def _try_external_client_after_probe_timeout(
+    *,
+    kwargs: dict[str, Any],
+    probe_error: TimeoutError | aiohttp.ServerTimeoutError,
+) -> OPNsenseClientProtocol:
+    """Try external aiopnsense when the initial legacy firmware probe times out.
+
+    Args:
+        kwargs: Normalized constructor arguments for the external client.
+        probe_error: Timeout raised by the bundled legacy firmware probe.
+
+    Returns:
+        OPNsenseClientProtocol: External client when it confirms firmware supported by
+            the external backend.
+
+    Raises:
+        TimeoutError | aiohttp.ServerTimeoutError: Original timeout when external
+            fallback is unavailable or cannot confirm new firmware.
+    """
+    _LOGGER.warning(
+        "Legacy firmware probe timed out during initial setup; trying aiopnsense fallback "
+        "for OPNsense firmware >= %s",
+        AIOPNSENSE_MIN_FIRMWARE,
+    )
+    try:
+        client = await _create_external_client(**kwargs)
+    except MissingExternalAiopnsenseDependency as err:
+        _LOGGER.debug(
+            "aiopnsense fallback unavailable after legacy firmware probe timeout",
+            exc_info=True,
+        )
+        raise probe_error from err
+
+    try:
+        firmware = await client.get_host_firmware_version()
+        supported_firmware = awesomeversion.AwesomeVersion(
+            firmware
+        ) >= awesomeversion.AwesomeVersion(AIOPNSENSE_MIN_FIRMWARE)
+    except (
+        TimeoutError,
+        aiohttp.ServerTimeoutError,
+        aiohttp.ClientError,
+        awesomeversion.exceptions.AwesomeVersionCompareException,
+        TypeError,
+        ValueError,
+    ) as err:
+        await _close_client(client)
+        _LOGGER.debug(
+            "aiopnsense fallback could not confirm supported firmware after legacy probe timeout",
+            exc_info=True,
+        )
+        raise probe_error from err
+
+    if supported_firmware:
+        aiopnsense_version: str | None = await _get_external_aiopnsense_version()
+        if aiopnsense_version:
+            _LOGGER.info(
+                "Using aiopnsense %s after legacy firmware probe timeout for firmware %s",
+                aiopnsense_version,
+                firmware,
+            )
+        else:
+            _LOGGER.info(
+                "Using aiopnsense after legacy firmware probe timeout for firmware %s",
+                firmware,
+            )
+        return client
+
+    await _close_client(client)
+    raise probe_error
+
+
 async def create_opnsense_client(
     *,
     url: str,
@@ -481,6 +567,7 @@ async def create_opnsense_client(
     session: aiohttp.ClientSession,
     opts: MutableMapping[str, Any] | None = None,
     initial: bool = False,
+    probe_timeout_fallback: bool = False,
     name: str | None = None,
 ) -> OPNsenseClientProtocol:
     """Create the backend client selected by detected firmware.
@@ -492,6 +579,9 @@ async def create_opnsense_client(
         session: Shared aiohttp session used by created clients.
         opts: Optional transport options, such as SSL verification flags.
         initial: Whether the client is being created for initial setup validation.
+        probe_timeout_fallback: Whether to use strict temporary probe behavior so
+            firmware probe timeouts can try the external backend without changing
+            the returned client's normal error handling.
         name: Optional display name for logs and diagnostics.
 
     Returns:
@@ -510,12 +600,23 @@ async def create_opnsense_client(
         initial=initial,
         name=name,
     )
-    probe_client: OPNsenseClientProtocol = LegacyOPNsenseClient(**kwargs)
+    probe_kwargs = dict(kwargs)
+    if probe_timeout_fallback:
+        probe_kwargs["initial"] = True
+    probe_client: OPNsenseClientProtocol = LegacyOPNsenseClient(**probe_kwargs)
     try:
         firmware = await probe_client.get_host_firmware_version()
+    except (TimeoutError, aiohttp.ServerTimeoutError) as err:
+        await _close_client(probe_client)
+        if initial or probe_timeout_fallback:
+            return await _try_external_client_after_probe_timeout(
+                kwargs=kwargs,
+                probe_error=err,
+            )
+        raise
     except Exception:  # noqa: BLE001
         try:
-            await probe_client.async_close()
+            await _close_client(probe_client)
         finally:
             raise
     # _LOGGER.debug("Client factory detected firmware: %s", firmware)
@@ -524,7 +625,7 @@ async def create_opnsense_client(
         if awesomeversion.AwesomeVersion(firmware) >= awesomeversion.AwesomeVersion(
             AIOPNSENSE_MIN_FIRMWARE
         ):
-            await probe_client.async_close()
+            await _close_client(probe_client)
             client = await _create_external_client(**kwargs)
             aiopnsense_version: str | None = await _get_external_aiopnsense_version()
             if aiopnsense_version:
@@ -546,4 +647,7 @@ async def create_opnsense_client(
         )
 
     _LOGGER.debug("Using bundled legacy pyopnsense backend")
+    if probe_kwargs["initial"] != kwargs["initial"]:
+        await _close_client(probe_client)
+        return LegacyOPNsenseClient(**kwargs)
     return probe_client

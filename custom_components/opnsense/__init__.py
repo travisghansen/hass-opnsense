@@ -181,6 +181,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 cookie_jar=aiohttp.CookieJar(unsafe=is_private_ip(url)),
             ),
             opts={"verify_ssl": verify_ssl},
+            probe_timeout_fallback=True,
             name=entry.title,
         )
     except MissingExternalAiopnsenseDependency:
