@@ -249,6 +249,40 @@ def test_handle_coordinator_update_entry_present(
     assert ent.icon == "mdi:lan-connect"
 
 
+def test_handle_coordinator_update_skips_malformed_arp_rows(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Malformed rows in arp_table should be skipped and valid rows still apply."""
+    coordinator.data = {
+        "arp_table": [
+            "not-an-arp-row",
+            {
+                "mac": "aa:bb:cc",
+                "ip": "1.2.3.4",
+                "hostname": "host?",
+                "manufacturer": "m",
+            },
+        ]
+    }
+    entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
+
+    ent = dt_mod.OPNsenseScannerEntity(
+        config_entry=entry,
+        coordinator=coordinator,
+        enabled_default=False,
+        mac="aa:bb:cc",
+        mac_vendor=None,
+        hostname=None,
+    )
+    object.__setattr__(ent, "async_write_ha_state", MagicMock())
+
+    ent._handle_coordinator_update()
+
+    assert ent.ip_address == "1.2.3.4"
+    assert ent.hostname == "host"
+
+
 def test_handle_coordinator_update_missing_entry_consider_home(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:

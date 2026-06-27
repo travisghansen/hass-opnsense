@@ -1532,6 +1532,8 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
             return None
         service_id: str = self._opnsense_get_service_id()
         for service in state.get("services", []):
+            if not isinstance(service, MutableMapping):
+                continue
             if service.get("id", None) == service_id:
                 return service
         return None

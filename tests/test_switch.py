@@ -2279,6 +2279,28 @@ async def test_async_setup_entry_skips_malformed_switch_rows(
     assert [entity.entity_description.key for entity in created] == ["service.svc.status"]
 
 
+def test_opnsense_get_service_skips_malformed_service_rows(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Malformed service rows should be ignored while matching a valid service."""
+    coordinator.data = {
+        "services": [
+            "bad-row",
+            {"id": "svc", "name": "service"},
+        ]
+    }
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    entity = OPNsenseServiceSwitch(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=SwitchEntityDescription(key="service.svc.status", name="Service"),
+    )
+    found = entity._opnsense_get_service()
+    assert isinstance(found, MutableMapping)
+    assert found.get("name") == "service"
+
+
 @pytest.mark.asyncio
 async def test_vpn_servers_properties_and_toggle(
     coordinator: MagicMock, ph_hass: Any, make_config_entry: Callable[..., MockConfigEntry]

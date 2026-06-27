@@ -929,6 +929,45 @@ def test_vpn_sensor_variants(
                 assert key in attrs
 
 
+def test_vpn_sensor_skips_malformed_client_rows(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Malformed nested VPN client rows should be skipped and valid clients still parsed."""
+    state = {
+        "openvpn": {
+            "servers": {
+                "uuid1": {
+                    "name": "ovpn1",
+                    "status": "up",
+                    "clients": [
+                        "bad-client-row",
+                        {"name": "good", "status": "up", "bytes_recv": 5},
+                    ],
+                }
+            }
+        }
+    }
+    entry = make_config_entry()
+
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = state
+
+    desc = MagicMock()
+    desc.key = "openvpn.servers.uuid1.status"
+    desc.name = "VPN Test"
+
+    s = OPNsenseVPNSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    s.hass = MagicMock()
+    s.entity_id = "sensor.vpn_malformed_client"
+    object.__setattr__(s, "async_write_ha_state", lambda: None)
+    s._handle_coordinator_update()
+
+    assert s.available is True
+    attrs = s.extra_state_attributes
+    assert attrs is not None
+    assert attrs.get("clients", []) == [{"name": "good", "status": "up", "bytes_recv": 5}]
+
+
 @pytest.mark.parametrize("exc_type", [TypeError, KeyError, ZeroDivisionError])
 def test_vpn_sensor_handles_exceptions_from_instance_get(
     exc_type: type[Exception], make_config_entry: Callable[..., MockConfigEntry]
@@ -2054,6 +2093,52 @@ async def test_async_setup_entry_creates_entities_with_malformed_dynamic_sensor_
     assert not any(isinstance(entity, OPNsenseTempSensor) for entity in created)
     assert not any(isinstance(entity, OPNsenseInterfaceSensor) for entity in created)
     assert not any(isinstance(entity, OPNsenseGatewaySensor) for entity in created)
+
+
+def test_filesystem_sensor_skips_malformed_rows(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Malformed filesystem rows should be skipped while reading a valid filesystem."""
+    state = {
+        "telemetry": {
+            "filesystems": [
+                "bad-row",
+                {
+                    "mountpoint": "/",
+                    "used_pct": 42,
+                    "device": "/dev/sda1",
+                    "type": "ext4",
+                    "blocks": 1000,
+                    "used": 420,
+                    "available": 580,
+                },
+            ],
+            "temps": {},
+        },
+        "interfaces": {},
+    }
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = state
+    desc = MagicMock()
+    desc.key = f"telemetry.filesystems.{slugify_filesystem_mountpoint('/')}"
+    desc.name = "Filesystem Test"
+
+    sensor = OPNsenseFilesystemSensor(
+        config_entry=entry,
+        coordinator=coord,
+        entity_description=desc,
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.fs_root"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is True
+    assert sensor.native_value == 42
+    attrs = sensor.extra_state_attributes
+    assert attrs is not None
+    assert attrs.get("mountpoint") == "/"
 
 
 @pytest.mark.asyncio

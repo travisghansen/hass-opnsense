@@ -1266,18 +1266,23 @@ class OPNsenseFilesystemSensor(OPNsenseSensor):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update."""
-        filesystem: dict[str, Any] = {}
+        filesystem: Mapping[str, object] = {}
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
             self._available = False
             self.async_write_ha_state()
             return
         for fsystem in state.get("telemetry", {}).get("filesystems", []):
+            if not isinstance(fsystem, Mapping):
+                continue
+            filesystem_row: Mapping[str, object] = fsystem
+            mountpoint = filesystem_row.get("mountpoint")
             if (
-                self.entity_description.key == "telemetry.filesystems."
-                f"{slugify_filesystem_mountpoint(fsystem.get('mountpoint', None))}"
+                isinstance(mountpoint, str)
+                and self.entity_description.key
+                == f"telemetry.filesystems.{slugify_filesystem_mountpoint(mountpoint)}"
             ):
-                filesystem = fsystem
+                filesystem = filesystem_row
         if not filesystem:
             self._available = False
             self.async_write_ha_state()
@@ -1585,12 +1590,15 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             self.async_write_ha_state()
             return
         uuid: str = self.entity_description.key.split(".")[2]
-        instance: dict[str, Any] = {}
+        instance: Mapping[str, object] = {}
         for instance_uuid, ins in (
             dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
         ).items():
+            if not isinstance(ins, Mapping):
+                continue
+            instance_row: Mapping[str, object] = ins
             if uuid == instance_uuid:
-                instance = ins
+                instance = instance_row
                 break
         prop_name: str = self._get_property_name()
         if not instance or (
@@ -1665,13 +1673,21 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             if instance.get(attr, None) is not None:
                 self._attr_extra_state_attributes[attr] = instance.get(attr)
 
+        clients = instance.get("clients")
         if (
-            isinstance(instance.get("clients", None), list)
+            isinstance(clients, list)
             and clients_servers == "servers"
-            and prop_name in {"connected_clients", "status"}
+            and prop_name
+            in {
+                "connected_clients",
+                "status",
+            }
         ):
             self._attr_extra_state_attributes["clients"] = []
-            for clnt in instance.get("clients", {}):
+            for clnt in clients:
+                if not isinstance(clnt, Mapping):
+                    continue
+                client_row: Mapping[str, object] = clnt
                 client: dict[str, Any] = {}
                 for client_attr in (
                     "name",
@@ -1682,8 +1698,8 @@ class OPNsenseVPNSensor(OPNsenseSensor):
                     "bytes_sent",
                     "bytes_recv",
                 ):
-                    if clnt.get(client_attr, None) is not None:
-                        client[client_attr] = clnt.get(client_attr)
+                    if client_row.get(client_attr, None) is not None:
+                        client[client_attr] = client_row.get(client_attr)
                 self._attr_extra_state_attributes["clients"].append(client)
         self.async_write_ha_state()
 
