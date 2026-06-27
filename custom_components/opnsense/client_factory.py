@@ -522,37 +522,38 @@ async def _try_external_client_after_probe_timeout(
 
     try:
         firmware = await client.get_host_firmware_version()
-        if awesomeversion.AwesomeVersion(firmware) >= awesomeversion.AwesomeVersion(
-            AIOPNSENSE_MIN_FIRMWARE
-        ):
-            aiopnsense_version: str | None = await _get_external_aiopnsense_version()
-            if aiopnsense_version:
-                _LOGGER.info(
-                    "Using aiopnsense %s after legacy firmware probe timeout for firmware %s",
-                    aiopnsense_version,
-                    firmware,
-                )
-            else:
-                _LOGGER.info(
-                    "Using aiopnsense after legacy firmware probe timeout for firmware %s",
-                    firmware,
-                )
-            return client
+        supported_firmware = awesomeversion.AwesomeVersion(
+            firmware
+        ) >= awesomeversion.AwesomeVersion(AIOPNSENSE_MIN_FIRMWARE)
     except (
+        TimeoutError,
+        aiohttp.ServerTimeoutError,
+        aiohttp.ClientError,
         awesomeversion.exceptions.AwesomeVersionCompareException,
         TypeError,
         ValueError,
-    ):
+    ) as err:
+        await _close_client(client)
         _LOGGER.debug(
-            "aiopnsense fallback could not compare firmware after legacy probe timeout",
+            "aiopnsense fallback could not confirm supported firmware after legacy probe timeout",
             exc_info=True,
         )
-    except TimeoutError, aiohttp.ServerTimeoutError:
-        _LOGGER.debug(
-            "aiopnsense fallback also timed out after legacy firmware probe timeout",
-            exc_info=True,
-        )
-        raise
+        raise probe_error from err
+
+    if supported_firmware:
+        aiopnsense_version: str | None = await _get_external_aiopnsense_version()
+        if aiopnsense_version:
+            _LOGGER.info(
+                "Using aiopnsense %s after legacy firmware probe timeout for firmware %s",
+                aiopnsense_version,
+                firmware,
+            )
+        else:
+            _LOGGER.info(
+                "Using aiopnsense after legacy firmware probe timeout for firmware %s",
+                firmware,
+            )
+        return client
 
     await _close_client(client)
     raise probe_error

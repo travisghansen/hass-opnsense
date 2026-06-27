@@ -698,6 +698,123 @@ async def test_create_client_reraises_initial_legacy_probe_timeout_when_fallback
 
 
 @pytest.mark.asyncio
+async def test_create_client_reraises_initial_legacy_probe_timeout_when_fallback_times_out(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Initial setup should preserve original timeout if aiopnsense also times out."""
+    created: dict[str, Any] = {"legacy_closed": False, "external_closed": False}
+
+    class _LegacyClient:
+        async def get_host_firmware_version(self) -> str:
+            """Raise timeout to emulate a hung legacy firmware status request.
+
+            Raises:
+                TimeoutError: Always raised by this stub.
+            """
+            raise TimeoutError("legacy firmware status timed out")
+
+        async def async_close(self) -> None:
+            """Record that the failed legacy probe was closed."""
+            created["legacy_closed"] = True
+
+    class _ExternalClient:
+        async def get_host_firmware_version(self) -> str:
+            """Raise timeout to emulate a hung aiopnsense firmware status request.
+
+            Raises:
+                TimeoutError: Always raised by this stub.
+            """
+            raise TimeoutError("fallback firmware status timed out")
+
+        async def async_close(self) -> None:
+            """Record that the failed aiopnsense fallback was closed."""
+            created["external_closed"] = True
+
+    monkeypatch.setattr(factory_mod, "LegacyOPNsenseClient", lambda **kwargs: _LegacyClient())
+    monkeypatch.setattr(
+        factory_mod, "_create_external_client", AsyncMock(return_value=_ExternalClient())
+    )
+
+    caplog.set_level("DEBUG")
+    with pytest.raises(TimeoutError, match="legacy firmware status timed out") as exc_info:
+        await factory_mod.create_opnsense_client(
+            url="https://router",
+            username="u",
+            password=TEST_PASSWORD,
+            session=cast("aiohttp.ClientSession", SimpleNamespace()),
+            opts={"verify_ssl": True},
+            initial=True,
+        )
+
+    assert isinstance(exc_info.value.__cause__, TimeoutError)
+    assert str(exc_info.value.__cause__) == "fallback firmware status timed out"
+    assert created["legacy_closed"] is True
+    assert created["external_closed"] is True
+    assert (
+        "aiopnsense fallback could not confirm supported firmware after legacy probe timeout"
+        in caplog.text
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_client_reraises_initial_legacy_probe_timeout_when_fallback_client_errors(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Initial setup should close fallback client and preserve original timeout on client errors."""
+    created: dict[str, Any] = {"legacy_closed": False, "external_closed": False}
+
+    class _LegacyClient:
+        async def get_host_firmware_version(self) -> str:
+            """Raise timeout to emulate a hung legacy firmware status request.
+
+            Raises:
+                TimeoutError: Always raised by this stub.
+            """
+            raise TimeoutError("legacy firmware status timed out")
+
+        async def async_close(self) -> None:
+            """Record that the failed legacy probe was closed."""
+            created["legacy_closed"] = True
+
+    class _ExternalClient:
+        async def get_host_firmware_version(self) -> str:
+            """Raise client error to emulate failed aiopnsense fallback validation.
+
+            Raises:
+                aiohttp.ClientError: Always raised by this stub.
+            """
+            raise aiohttp.ClientError("fallback client failed")
+
+        async def async_close(self) -> None:
+            """Record that the failed aiopnsense fallback was closed."""
+            created["external_closed"] = True
+
+    monkeypatch.setattr(factory_mod, "LegacyOPNsenseClient", lambda **kwargs: _LegacyClient())
+    monkeypatch.setattr(
+        factory_mod, "_create_external_client", AsyncMock(return_value=_ExternalClient())
+    )
+
+    caplog.set_level("DEBUG")
+    with pytest.raises(TimeoutError, match="legacy firmware status timed out") as exc_info:
+        await factory_mod.create_opnsense_client(
+            url="https://router",
+            username="u",
+            password=TEST_PASSWORD,
+            session=cast("aiohttp.ClientSession", SimpleNamespace()),
+            opts={"verify_ssl": True},
+            initial=True,
+        )
+
+    assert isinstance(exc_info.value.__cause__, aiohttp.ClientError)
+    assert created["legacy_closed"] is True
+    assert created["external_closed"] is True
+    assert (
+        "aiopnsense fallback could not confirm supported firmware after legacy probe timeout"
+        in caplog.text
+    )
+
+
+@pytest.mark.asyncio
 async def test_create_client_logs_external_version_for_new_firmware(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
