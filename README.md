@@ -12,19 +12,20 @@
 
 Join `OPNsense` with `Home Assistant`!
 
-`hass-opnsense` uses the OPNsense [REST API](https://docs.opnsense.org/development/api.html) to integrate OPNsense with Home Assistant. 
+`hass-opnsense` uses [`aiopnsense`](https://pypi.org/project/aiopnsense/) as the backend client library to integrate OPNsense with Home Assistant. 
 
-For OPNsense Firmware 25.1+, hass-opnsense uses [`aiopnsense`](https://pypi.org/project/aiopnsense/) as its backend client library.
 Source and releases for `aiopnsense`:
 
 * PyPI: <https://pypi.org/project/aiopnsense/>
 * GitHub: <https://github.com/Snuffy2/aiopnsense>
 
-With OPNsense Firmware 26.1.1+, Firewall and NAT rule switches use the native OPNsense API.
-For OPNsense Firmware 25.1 through 26.1.0, the integration remains supported, but Firewall and NAT rule switches are not available.
-The deprecated OPNsense Home Assistant plugin is no longer supported or used by hass-opnsense.
+A Discord server to discuss the integration is available. Click the Discord badge at the beginning of the page for the invite link.
 
-A Discord server to discuss the integration is available, please click the Discord badge at the beginning of the page for the invite link.
+## OPNSense Firmware Requirements
+
+* Requires OPNsense Firmware 25.1+
+* For OPNsense Firmware 25.1 through 26.1.0, the integration remains supported, but Firewall and NAT rule switches are not available.
+* With OPNsense Firmware 26.1.1+, Firewall and NAT rule switches are available as well.
 
 ## Table of Contents
 
@@ -54,9 +55,9 @@ A Discord server to discuss the integration is available, please click the Disco
 
 This integration **replaces** the built-in OPNsense integration which only provides `device_tracker` functionality. Be sure to remove any associated configuration for the built-in integration **before** installing this replacement.
 
-### Home Assistant Integration
+The deprecated OPNsense Home Assistant plugin is no longer supported or used by hass-opnsense.
 
-In Home Assistant, add this repository to the HACS installation or clone the directory manually.
+### Home Assistant Integration
 
 #### HACS Installation
 
@@ -167,7 +168,7 @@ Many entities are created by `hass-opnsense` for statistics etc. Due to the volu
 
 ### Device Tracker
 
-Entities are created for selected devices to track whether they are connected to the network. This feature is disabled by default and can be enabled in the Options.
+Entities are created for selected devices to track whether they are connected to the network. This feature is disabled by default and can be enabled in the Options once the integration is installed.
 
 The options flow supports three modes:
 
