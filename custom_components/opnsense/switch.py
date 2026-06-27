@@ -89,11 +89,18 @@ def _build_vpn_switch_description(
     Returns:
         A switch entity description for the VPN instance.
     """
+    instance_name = OPNsenseEntity.payload_display_name(
+        instance,
+        str(uuid),
+        "name",
+        "description",
+        allow_scalar=False,
+    )
     return SwitchEntityDescription(
         key=f"{vpn_type}.{clients_servers}.{uuid}",
         name=(
             f"{'OpenVPN' if vpn_type == 'openvpn' else vpn_type.title()} "
-            f"{clients_servers.title().rstrip('s')} {instance['name']}"
+            f"{clients_servers.title().rstrip('s')} {instance_name}"
         ),
         icon="mdi:folder-key-network-outline",
         device_class=SwitchDeviceClass.SWITCH,
@@ -253,7 +260,10 @@ async def _compile_vpn_switches(
         for clients_servers in ("clients", "servers"):
             if not isinstance(state, MutableMapping):
                 return []
-            for uuid, instance in state.get(vpn_type, {}).get(clients_servers, {}).items():
+            vpn_instances = dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
+            if not isinstance(vpn_instances, MutableMapping):
+                continue
+            for uuid, instance in vpn_instances.items():
                 if (
                     not isinstance(instance, MutableMapping)
                     or instance.get("enabled", None) is None
@@ -1122,7 +1132,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         if state is None:
             return None
         service_id: str = self._opnsense_get_service_id()
-        services = state.get("services", [])
+        services = state.get("services")
         if not isinstance(services, list):
             return None
         for service in services:

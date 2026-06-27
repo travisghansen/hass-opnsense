@@ -901,13 +901,17 @@ async def _compile_filesystem_sensors(
     """
     if not isinstance(state, MutableMapping):
         return []
+    filesystems = dict_get(state, "telemetry.filesystems", []) or []
+    if not isinstance(filesystems, list):
+        return []
     return _create_sensors(
         OPNsenseFilesystemSensor,
         config_entry,
         coordinator,
         [
             _build_filesystem_sensor_description(filesystem)
-            for filesystem in dict_get(state, "telemetry.filesystems", []) or []
+            for filesystem in filesystems
+            if isinstance(filesystem, Mapping)
         ],
     )
 
@@ -1059,7 +1063,13 @@ async def _compile_interface_sensors(
         return []
     entities: list[OPNsenseInterfaceSensor] = []
 
-    for interface_name, interface in (dict_get(state, "interfaces", {}) or {}).items():
+    interfaces = dict_get(state, "interfaces", {}) or {}
+    if not isinstance(interfaces, MutableMapping):
+        return []
+
+    for interface_name, interface in interfaces.items():
+        if not isinstance(interface, MutableMapping):
+            continue
         entities.extend(
             _create_sensor(
                 OPNsenseInterfaceSensor,
@@ -1089,8 +1099,14 @@ async def _compile_gateway_sensors(
         return []
     entities: list[OPNsenseGatewaySensor] = []
 
-    for gateway_key, gateway in (dict_get(state, "gateways", {}) or {}).items():
-        gateway_name = gateway.get("name", gateway_key)
+    gateways = dict_get(state, "gateways", {}) or {}
+    if not isinstance(gateways, MutableMapping):
+        return []
+
+    for gateway_key, gateway in gateways.items():
+        if not isinstance(gateway, MutableMapping):
+            continue
+        gateway_name = OPNsenseEntity.payload_display_name(gateway, str(gateway_key), "name")
         entities.extend(
             _create_sensor(
                 OPNsenseGatewaySensor,
@@ -1120,7 +1136,13 @@ async def _compile_temperature_sensors(
         return []
     entities: list = []
 
-    for temp_device, temp in state.get("telemetry", {}).get("temps", {}).items():
+    temps = dict_get(state, "telemetry.temps", {}) or {}
+    if not isinstance(temps, MutableMapping):
+        return []
+
+    for temp_device, temp in temps.items():
+        if not isinstance(temp, MutableMapping):
+            continue
         entities.append(
             _create_sensor(
                 OPNsenseTempSensor,
@@ -1148,9 +1170,11 @@ async def _compile_dhcp_leases_sensors(
         return []
     entities: list = []
 
-    for interface, interface_name in (
-        dict_get(state, "dhcp_leases.lease_interfaces", {}) or {}
-    ).items():
+    lease_interfaces = dict_get(state, "dhcp_leases.lease_interfaces", {}) or {}
+    if not isinstance(lease_interfaces, MutableMapping):
+        lease_interfaces = {}
+
+    for interface, interface_name in lease_interfaces.items():
         entities.append(
             _create_sensor(
                 OPNsenseDHCPLeasesSensor,
@@ -1191,14 +1215,19 @@ async def _compile_vpn_sensors(
     for vpn_type in ("openvpn", "wireguard"):
         clients_servers_groups = ["servers"] if vpn_type == "openvpn" else ["clients", "servers"]
         for clients_servers in clients_servers_groups:
-            for uuid, instance in (
-                dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
-            ).items():
+            vpn_instances = dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
+            if not isinstance(vpn_instances, MutableMapping):
+                continue
+            for uuid, instance in vpn_instances.items():
                 if not isinstance(instance, MutableMapping) or len(instance) == 0:
                     continue
-                instance_name = instance.get("name")
-                if not isinstance(instance_name, str) or not instance_name.strip():
-                    instance_name = uuid
+                instance_name = OPNsenseEntity.payload_display_name(
+                    instance,
+                    str(uuid),
+                    "name",
+                    "description",
+                    allow_scalar=False,
+                )
                 properties = list(_VPN_TRAFFIC_PROPERTIES)
                 if clients_servers == "servers":
                     properties.extend(_VPN_SERVER_PROPERTIES)
@@ -1541,9 +1570,11 @@ class OPNsenseFilesystemSensor(OPNsenseSensor):
         for fsystem in filesystems:
             if not isinstance(fsystem, MutableMapping):
                 continue
+            mountpoint = fsystem.get("mountpoint")
             if (
-                self.entity_description.key == "telemetry.filesystems."
-                f"{slugify_filesystem_mountpoint(fsystem.get('mountpoint', None))}"
+                isinstance(mountpoint, str)
+                and self.entity_description.key
+                == f"telemetry.filesystems.{slugify_filesystem_mountpoint(mountpoint)}"
             ):
                 filesystem = dict(fsystem)
         if not filesystem:
@@ -1854,6 +1885,8 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             return
         instance: MutableMapping[str, Any] = {}
         for instance_uuid, ins in instances.items():
+            if not isinstance(ins, MutableMapping):
+                continue
             if uuid == instance_uuid:
                 instance = ins
                 break
@@ -1931,16 +1964,20 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             if instance.get(attr, None) is not None:
                 self._attr_extra_state_attributes[attr] = instance.get(attr)
 
+        clients = instance.get("clients")
         if (
-            isinstance(instance.get("clients", None), list)
+            isinstance(clients, list)
             and clients_servers == "servers"
-            and prop_name in {"connected_clients", "status"}
+            and prop_name
+            in {
+                "connected_clients",
+                "status",
+            }
         ):
             self._attr_extra_state_attributes["clients"] = []
-            for clnt in instance.get("clients", {}):
+            for clnt in clients:
                 if not isinstance(clnt, MutableMapping):
-                    self._mark_unavailable()
-                    return
+                    continue
                 client: dict[str, Any] = {}
                 for client_attr in (
                     "name",
