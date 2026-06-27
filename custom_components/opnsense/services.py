@@ -340,15 +340,19 @@ def _resolve_target_entry_ids(
     if opndevice_id:
         try:
             device_entry = dr.async_get(hass).async_get(opndevice_id)
-        except TypeError, AttributeError, HomeAssistantError:
-            pass
+        except (TypeError, AttributeError, HomeAssistantError) as err:
+            _LOGGER.debug(
+                "Unable to resolve OPNsense service device target %r: %s", opndevice_id, err
+            )
         else:
             _append_device_entry_ids(entry_ids, device_entry)
     if opnentity_id:
         try:
             entity_entry = er.async_get(hass).async_get(opnentity_id)
-        except TypeError, AttributeError, HomeAssistantError:
-            pass
+        except (TypeError, AttributeError, HomeAssistantError) as err:
+            _LOGGER.debug(
+                "Unable to resolve OPNsense service entity target %r: %s", opnentity_id, err
+            )
         else:
             _append_entry_id(entry_ids, entity_entry.config_entry_id if entity_entry else None)
     return entry_ids

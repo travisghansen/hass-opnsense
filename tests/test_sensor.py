@@ -1448,6 +1448,57 @@ def test_interface_sensor_with_dotted_key_parses_interface_name(
     assert sensor.native_value == 321
 
 
+@pytest.mark.asyncio
+async def test_interface_rate_sensor_unavailable_when_counter_disappears_mid_refresh(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Interface rate sensors should become unavailable when a derived counter disappears."""
+    state = {
+        "interfaces": {
+            "eth0": {
+                "name": "eth0",
+                "inbytes_kilobytes_per_second": 123,
+                "inbytes": 2048,
+                "status": "up",
+                "interface": "eth0",
+                "device": "eth0",
+            }
+        }
+    }
+    entry = make_config_entry()
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+
+    entities = await sensor_module._compile_interface_sensors(entry, coordinator, state)
+    rate_sensor = next(
+        entity
+        for entity in entities
+        if entity.entity_description.key == "interface.eth0.inbytes_kilobytes_per_second"
+    )
+    rate_sensor.hass = MagicMock()
+    rate_sensor.entity_id = "sensor.eth0_inbytes_kilobytes_per_second"
+    object.__setattr__(rate_sensor, "async_write_ha_state", lambda: None)
+
+    rate_sensor._handle_coordinator_update()
+    assert rate_sensor.available is True
+    assert rate_sensor.native_value == 123
+
+    coordinator.data = {
+        "interfaces": {
+            "eth0": {
+                "name": "eth0",
+                "inbytes": 4096,
+                "status": "up",
+                "interface": "eth0",
+                "device": "eth0",
+            }
+        }
+    }
+
+    rate_sensor._handle_coordinator_update()
+    assert rate_sensor.available is False
+
+
 @pytest.mark.parametrize("description_key", ["interface", "interface.lan"])
 def test_interface_sensor_invalid_description_key_unavailable(
     description_key: str,
