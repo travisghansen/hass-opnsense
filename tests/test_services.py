@@ -497,17 +497,24 @@ async def test_service_restart_only_if_running_and_reload_interface(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("method_name", "method_attr"),
+    ("method_name", "method_attr", "client_order"),
     [
-        ("_service_start_service", "start_service"),
-        ("_service_stop_service", "stop_service"),
-        ("_service_restart_service", "restart_service"),
+        ("_service_start_service", "start_service", "ok-first"),
+        ("_service_start_service", "start_service", "bad-first"),
+        ("_service_stop_service", "stop_service", "ok-first"),
+        ("_service_stop_service", "stop_service", "bad-first"),
+        ("_service_restart_service", "restart_service", "ok-first"),
+        ("_service_restart_service", "restart_service", "bad-first"),
     ],
 )
 async def test_service_start_stop_restart_failure_variants(
-    monkeypatch: pytest.MonkeyPatch, ph_hass: Any, method_name: Any, method_attr: Any
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    method_name: str,
+    method_attr: str,
+    client_order: str,
 ) -> None:
-    """Parameterized failure tests for start/stop/restart service handlers. For each handler, ensure that if any client returns False the handler raises ServiceValidationError."""
+    """Service control handlers fail if any selected client reports failure."""
     hass = ph_hass
     hass.data = {}
     ok_client = MagicMock()
@@ -518,7 +525,10 @@ async def test_service_start_stop_restart_failure_variants(
     setattr(ok_client, method_attr, AsyncMock(return_value=True))
     setattr(bad_client, method_attr, AsyncMock(return_value=False))
 
-    _patch_clients(monkeypatch, [ok_client, bad_client])
+    clients = [ok_client, bad_client]
+    if client_order == "bad-first":
+        clients = [bad_client, ok_client]
+    _patch_clients(monkeypatch, clients)
     call = _service_call({"service_id": "svc"})
 
     handler = getattr(services_mod, method_name)
@@ -671,6 +681,9 @@ async def test_kill_states_success_and_failure(
     c1 = MagicMock()
     c1.name = "c1"
     c1.kill_states = AsyncMock(return_value={"success": True, "dropped_states": 5})
+    c2 = MagicMock()
+    c2.name = "c2"
+    c2.kill_states = AsyncMock(return_value={"success": False})
     hass.data[DOMAIN] = {"e1": c1}
     call = _service_call({"ip_addr": "1.2.3.4"})
 
@@ -679,7 +692,11 @@ async def test_kill_states_success_and_failure(
     expected = {"dropped_states": [{"client_name": "c1", "dropped_states": 5}]}
     assert resp == expected
 
-    c1.kill_states = AsyncMock(return_value={"success": False})
+    _patch_clients(monkeypatch, [c1, c2])
+    with pytest.raises(ServiceValidationError):
+        await services_mod._service_kill_states(hass, call)
+
+    _patch_clients(monkeypatch, [c2, c1])
     with pytest.raises(ServiceValidationError):
         await services_mod._service_kill_states(hass, call)
 
