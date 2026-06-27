@@ -2386,52 +2386,6 @@ def test_dhcp_leases_per_interface_handles_exceptions(
     assert any(w is False for w in writes), f"expected a False write captured, got {writes}"
 
 
-def test_dhcp_leases_coverage_tracer(make_config_entry: Callable[..., MockConfigEntry]) -> None:
-    """Exercise the BrokenLease path and verify the observable failure behavior.
-
-    Instead of inspecting source lines directly, the test triggers the same
-    lease-access failure and asserts that the sensor becomes unavailable and
-    writes state.
-    """
-
-    class BrokenLease:
-        def get(self, *args, **kwargs) -> Never:
-            """Raise ``TypeError`` when the sensor reads the tracer lease mapping.
-
-            Args:
-                *args: Additional positional arguments forwarded by the function.
-                **kwargs: Additional keyword arguments forwarded by the function.
-
-            Raises:
-                TypeError: If a supplied argument has an unsupported type.
-            """
-            raise TypeError("simulated")
-
-    entry = make_config_entry()
-    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = {"dhcp_leases": {"leases": {"lan": [BrokenLease()]}}}
-
-    desc = MagicMock()
-    desc.key = "dhcp_leases.lan"
-    desc.name = "DHCP Per-Interface Collector"
-
-    s = OPNsenseDHCPLeasesSensor(config_entry=entry, coordinator=coord, entity_description=desc)
-    s.hass = MagicMock()
-    s.entity_id = "sensor.dhcp_per_if_collector"
-
-    writes: list[bool] = []
-
-    def collector() -> None:
-        """Collector."""
-        writes.append(bool(getattr(s, "_available", None)))
-
-    object.__setattr__(s, "async_write_ha_state", collector)
-    s._handle_coordinator_update()
-
-    assert writes, "async_write_ha_state was not called"
-    assert any(w is False for w in writes), f"expected a False write captured, got {writes}"
-
-
 def _setup_entry_with_all_syncs(
     state: dict, make_config_entry: Callable[..., MockConfigEntry]
 ) -> Any:
