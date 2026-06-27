@@ -638,7 +638,7 @@ async def test_generate_vouchers_does_not_mutate_client_voucher_response(
     ph_hass: Any,
 ) -> None:
     """Client voucher mappings are copied before adding Home Assistant metadata."""
-    voucher = {"code": "A1"}
+    voucher = {"code": "A1", "client": "upstream"}
     client = MagicMock()
     client.name = "svc1"
     client.generate_vouchers = AsyncMock(return_value=[voucher])
@@ -648,8 +648,8 @@ async def test_generate_vouchers_does_not_mutate_client_voucher_response(
 
     response = await services_mod._service_generate_vouchers(ph_hass, call)
 
-    assert voucher == {"code": "A1"}
-    assert response == {"vouchers": [{"client": "svc1", "code": "A1"}]}
+    assert voucher == {"code": "A1", "client": "upstream"}
+    assert response == {"vouchers": [{"code": "A1", "client": "svc1"}]}
 
 
 @pytest.mark.asyncio

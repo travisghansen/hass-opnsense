@@ -581,17 +581,19 @@ async def _collect_voucher_results(
                 _TRANSLATION_KEY_VOUCHER_SERVER_ERROR,
                 {"client": client.name, "error": e},
             ) from e
+        voucher_count = len(vouchers) if isinstance(vouchers, list) else 0
+        voucher_status = "ok" if isinstance(vouchers, list) else "skipped_non_list"
         _LOGGER.debug(
-            "[service_generate_vouchers] client: %s, data: %s, vouchers: %s",
+            "[service_generate_vouchers] client: %s, voucher_count: %s, status: %s",
             client.name,
-            call_data,
-            vouchers,
+            voucher_count,
+            voucher_status,
         )
         if not isinstance(vouchers, list):
             continue
         for voucher in vouchers:
             if isinstance(voucher, MutableMapping):
-                voucher_list.append({"client": client.name, **voucher})
+                voucher_list.append({**voucher, "client": client.name})
             else:
                 voucher_list.append(voucher)
     return voucher_list
@@ -792,9 +794,11 @@ async def _service_generate_vouchers(hass: HomeAssistant, call: ServiceCall) -> 
     """
     clients = await _get_target_clients(hass, call)
     voucher_list = await _collect_voucher_results(clients, dict(call.data))
-    final_vouchers: dict[str, Any] = {"vouchers": voucher_list}
-    _LOGGER.debug("[service_generate_vouchers] vouchers: %s", final_vouchers)
-    return final_vouchers
+    _LOGGER.debug(
+        "[service_generate_vouchers] status: ok, voucher_count: %s",
+        len(voucher_list),
+    )
+    return {"vouchers": voucher_list}
 
 
 async def _service_kill_states(hass: HomeAssistant, call: ServiceCall) -> ServiceResponse:
