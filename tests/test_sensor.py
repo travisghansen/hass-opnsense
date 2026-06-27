@@ -2105,8 +2105,10 @@ async def test_async_setup_entry_handles_partial_or_malformed_dynamic_sensor_pay
 @pytest.mark.parametrize(
     ("compile_helper", "state"),
     [
+        (sensor_module._compile_filesystem_sensors, []),
         (sensor_module._compile_filesystem_sensors, {"telemetry": {"filesystems": "bad"}}),
         (sensor_module._compile_interface_sensors, {"interfaces": "bad"}),
+        (sensor_module._compile_gateway_sensors, []),
         (sensor_module._compile_gateway_sensors, {"gateways": "bad"}),
         (sensor_module._compile_temperature_sensors, {"telemetry": {"temps": "bad"}}),
     ],
@@ -2114,10 +2116,10 @@ async def test_async_setup_entry_handles_partial_or_malformed_dynamic_sensor_pay
 async def test_dynamic_sensor_compile_helpers_skip_malformed_containers(
     make_config_entry: Callable[..., MockConfigEntry],
     compile_helper: Callable[
-        [MockConfigEntry, OPNsenseDataUpdateCoordinator, dict[str, Any]],
+        [MockConfigEntry, OPNsenseDataUpdateCoordinator, Any],
         Any,
     ],
-    state: dict[str, Any],
+    state: Any,
 ) -> None:
     """Malformed dynamic sensor containers should compile to no entities."""
     entry = make_config_entry()
@@ -2226,15 +2228,17 @@ def test_filesystem_sensor_skips_malformed_rows(
 @pytest.mark.parametrize(
     "state",
     [
+        [],
         {"telemetry": {"filesystems": "bad-filesystems"}},
+        {"telemetry": {"filesystems": [{"mountpoint": "/var", "used_pct": 12}]}},
         {"telemetry": "bad-telemetry"},
     ],
 )
 def test_filesystem_sensor_unavailable_with_malformed_containers(
     make_config_entry: Callable[..., MockConfigEntry],
-    state: dict[str, Any],
+    state: Any,
 ) -> None:
-    """Malformed telemetry or filesystem containers should mark the sensor unavailable."""
+    """Missing or malformed filesystem state should mark the sensor unavailable."""
     entry = make_config_entry()
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord.data = state

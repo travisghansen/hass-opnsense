@@ -20,6 +20,7 @@ from custom_components.opnsense import switch as switch_mod
 from custom_components.opnsense.const import (
     ATTR_NAT_OUTBOUND,
     ATTR_NAT_PORT_FORWARD,
+    ATTR_UNBOUND_BLOCKLIST,
     CONF_DEVICE_UNIQUE_ID,
     CONF_SYNC_CARP,
     CONF_SYNC_FIREWALL_AND_NAT,
@@ -2283,6 +2284,26 @@ async def test_async_setup_entry_skips_malformed_switch_rows(
     assert [entity.entity_description.key for entity in created] == ["service.svc.status"]
 
 
+@pytest.mark.parametrize(
+    ("compile_helper", "state"),
+    [
+        (_compile_unbound_switches, []),
+        (_compile_unbound_switches, {ATTR_UNBOUND_BLOCKLIST: {"bad-row": "bad-row"}}),
+    ],
+)
+async def test_dynamic_switch_compile_helpers_skip_malformed_containers(
+    make_config_entry: Callable[..., MockConfigEntry],
+    compile_helper: Callable[[MockConfigEntry, OPNsenseDataUpdateCoordinator, Any], Any],
+    state: Any,
+) -> None:
+    """Malformed dynamic switch containers should compile to no entities."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+
+    assert await compile_helper(config_entry, coordinator, state) == []
+
+
 def test_opnsense_get_service_skips_malformed_service_rows(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
@@ -2312,6 +2333,21 @@ def test_opnsense_get_service_with_malformed_services_container(
     coordinator.data = {
         "services": "bad-services",
     }
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    entity = OPNsenseServiceSwitch(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=SwitchEntityDescription(key="service.svc.status", name="Service"),
+    )
+    assert entity._opnsense_get_service() is None
+
+
+def test_opnsense_get_service_returns_none_when_state_is_malformed(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Malformed top-level service state should return None."""
+    coordinator.data = []
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     entity = OPNsenseServiceSwitch(
