@@ -1367,3 +1367,55 @@ async def test_async_update_dt_data_device_id_branches(
         # Should return empty dict and not call get_query_counts
         assert res == {}
         assert client.get_query_counts.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_async_update_dt_data_uses_shared_device_id_mismatch_policy(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
+    """Device-tracker refreshes should use the shared device-ID mismatch policy."""
+    entry = make_config_entry({"device_unique_id": "id"})
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+        device_tracker_coordinator=True,
+    )
+
+    async def fake_get_states(categories: list[dict[str, str]]) -> dict[str, Any]:
+        """Return a mismatched device ID for the device-tracker refresh."""
+        return {
+            "device_unique_id": "other",
+            "host_firmware_version": "fv",
+            "system_info": {"name": "opn"},
+            "arp_table": [],
+        }
+
+    called: dict[str, Any] = {"issue": 0, "shutdown": 0}
+
+    async def fake_shutdown() -> None:
+        """Record coordinator shutdown requests."""
+        called["shutdown"] += 1
+
+    def fake_async_create_issue(**kwargs: Any) -> None:
+        """Record repair issue creation requests."""
+        called["issue"] += 1
+
+    monkeypatch.setattr(coord, "_get_states", fake_get_states)
+    monkeypatch.setattr(coordinator_module.ir, "async_create_issue", fake_async_create_issue)
+    object.__setattr__(coord, "async_shutdown", fake_shutdown)
+    object.__setattr__(client, "get_query_counts", AsyncMock(return_value=3))
+
+    assert await coord._async_update_dt_data() == {}
+    assert await coord._async_update_dt_data() == {}
+    assert await coord._async_update_dt_data() == {}
+
+    assert coord._mismatched_count == 3
+    assert called == {"issue": 1, "shutdown": 1}
+    client.get_query_counts.assert_not_awaited()
