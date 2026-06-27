@@ -1556,13 +1556,11 @@ class OPNsenseFilesystemSensor(OPNsenseSensor):
         filesystem: dict[str, Any] = {}
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         filesystems = self._list_at("telemetry.filesystems")
         if filesystems is None:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         for fsystem in filesystems:
             if not isinstance(fsystem, MutableMapping):
@@ -1573,15 +1571,13 @@ class OPNsenseFilesystemSensor(OPNsenseSensor):
             ):
                 filesystem = dict(fsystem)
         if not filesystem:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         try:
             self._attr_native_value = filesystem["used_pct"]
         except TypeError, KeyError, AttributeError:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         self._available = True
 
@@ -1903,8 +1899,7 @@ class OPNsenseVPNSensor(OPNsenseSensor):
         """Handle coordinator update."""
         key_parts = self.entity_description.key.split(".")
         if len(key_parts) != 4:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         vpn_type = key_parts[0]
         clients_servers = key_parts[1]
@@ -1912,13 +1907,11 @@ class OPNsenseVPNSensor(OPNsenseSensor):
         prop_name = key_parts[3]
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         instances = self._mapping_at(f"{vpn_type}.{clients_servers}")
         if instances is None:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         instance: dict[str, Any] = {}
         for instance_uuid, ins in instances.items():
@@ -1930,8 +1923,7 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             and instance.get("enabled", None) is not None
             and not instance.get("enabled")
         ):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         try:
@@ -1944,8 +1936,7 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             else:
                 self._attr_native_value = instance.get(prop_name)
         except TypeError, KeyError, ZeroDivisionError:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         self._available = True
 
@@ -2039,14 +2030,12 @@ class OPNsenseTempSensor(OPNsenseSensor):
         """Handle coordinator update."""
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         sensor_temp_device: str = self.entity_description.key.split(".")[2]
         temps = self._mapping_at("telemetry.temps")
         if temps is None:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         temp: dict[str, Any] = {}
         for temp_device, temp_temp in temps.items():
@@ -2054,15 +2043,13 @@ class OPNsenseTempSensor(OPNsenseSensor):
                 temp = temp_temp
                 break
         if not temp:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         try:
             self._attr_native_value = temp["temperature"]
         except TypeError, KeyError, ZeroDivisionError:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         self._available = True
 

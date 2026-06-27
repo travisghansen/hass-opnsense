@@ -829,14 +829,12 @@ class OPNsenseFirewallRuleSwitch(OPNsenseSwitch):
             return
         rule = self._opnsense_get_rule()
         if not rule:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         try:
             self._attr_is_on = bool(rule.get("enabled", "1") == "1")
         except TypeError, KeyError, AttributeError:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         self._available = True
         self._attr_extra_state_attributes = {}
@@ -965,14 +963,12 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
             return
         rule = self._opnsense_get_rule()
         if not rule:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         try:
             self._attr_is_on = bool(rule.get("enabled", "1") == "1")
         except TypeError, KeyError, AttributeError:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         self._available = True
         self._attr_extra_state_attributes = {}
@@ -1151,8 +1147,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         try:
             self._attr_is_on = self._service[self._prop_name]
         except TypeError, KeyError, AttributeError:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         self._available = True
         self._attr_extra_state_attributes = {}
@@ -1226,8 +1221,7 @@ class OPNsenseUnboundBlocklistSwitchLegacy(OPNsenseSwitch):
             return
         dnsbl = self._mapping_at(f"{ATTR_UNBOUND_BLOCKLIST}.legacy")
         if not isinstance(dnsbl, MutableMapping) or len(dnsbl) == 0:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         self._available = True
         self._attr_is_on = dnsbl.get("enabled", "0") == "1"
@@ -1313,13 +1307,11 @@ class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
             return
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         dnsbl = self._mapping_at(f"{ATTR_UNBOUND_BLOCKLIST}.{self._uuid}")
         if not isinstance(dnsbl, MutableMapping) or len(dnsbl) == 0:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         self._available = True
         self._attr_is_on = dnsbl.get("enabled", "0") == "1"
@@ -1404,14 +1396,12 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
             return
         instance = self._mapping_at(f"{self._vpn_type}.{self._clients_servers}.{self._uuid}")
         if not isinstance(instance, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         try:
             self._attr_is_on = instance["enabled"]
         except TypeError, KeyError, AttributeError:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         self._available = True
         self._attr_extra_state_attributes = {}
