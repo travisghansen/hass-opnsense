@@ -126,6 +126,44 @@
       "description": "OPNsense Device ID has changed which indicates new or changed hardware. In order to accommodate this, hass-opnsense needs to be removed and reinstalled for this router. hass-opnsense is shutting down."
     }
   },
+  "exceptions": {
+    "generate_vouchers_failed": {
+      "message": "Generate vouchers failed. No selected OPNsense clients."
+    },
+    "get_vnstat_metrics_failed": {
+      "message": "Get vnStat metrics failed. No selected OPNsense clients have vnStat installed."
+    },
+    "kill_states_failed": {
+      "message": "Kill states failed: {ip_addr}"
+    },
+    "no_target_clients": {
+      "message": "No OPNsense clients match the selected target."
+    },
+    "reload_interface_failed": {
+      "message": "Reload interface failed: {interface}"
+    },
+    "restart_service_failed": {
+      "message": "Restart service failed: {service}"
+    },
+    "run_speedtest_failed": {
+      "message": "Run speedtest failed. No selected OPNsense clients have Speedtest installed."
+    },
+    "service_identifier_required": {
+      "message": "Must use service_id or service_name."
+    },
+    "start_service_failed": {
+      "message": "Start service failed: {service}"
+    },
+    "stop_service_failed": {
+      "message": "Stop service failed: {service}"
+    },
+    "toggle_alias_failed": {
+      "message": "Toggle alias failed. Alias: {alias}, action: {action}"
+    },
+    "voucher_server_error": {
+      "message": "Error getting vouchers from {client}. {error}"
+    }
+  },
   "selector": {
     "toggle_on_off": {
       "options": {
@@ -212,8 +250,12 @@
       "description": "Starts an OPNsense service",
       "fields": {
         "service_id": {
-          "name": "Service ID or Name",
-          "description": "The ID or name of the service. Like: udpbroadcastrelay/3, haproxy, dhcp, etc."
+          "name": "Service ID",
+          "description": "The ID of the service. Like: udpbroadcastrelay/3"
+        },
+        "service_name": {
+          "name": "Service Name",
+          "description": "The name of the service. Like: haproxy, dhcp, etc."
         },
         "device_id": {
           "name": "OPNsense Device",
@@ -235,8 +277,12 @@
       "description": "Stops an OPNsense service",
       "fields": {
         "service_id": {
-          "name": "Service ID or Name",
-          "description": "The ID or name of the service. Like: udpbroadcastrelay/3, haproxy, dhcp, etc."
+          "name": "Service ID",
+          "description": "The ID of the service. Like: udpbroadcastrelay/3"
+        },
+        "service_name": {
+          "name": "Service Name",
+          "description": "The name of the service. Like: haproxy, dhcp, etc."
         },
         "device_id": {
           "name": "OPNsense Device",
@@ -258,8 +304,12 @@
       "description": "Restarts an OPNsense service",
       "fields": {
         "service_id": {
-          "name": "Service ID or Name",
-          "description": "The ID or name of the service. Like: udpbroadcastrelay/3, haproxy, dhcp, etc."
+          "name": "Service ID",
+          "description": "The ID of the service. Like: udpbroadcastrelay/3"
+        },
+        "service_name": {
+          "name": "Service Name",
+          "description": "The name of the service. Like: haproxy, dhcp, etc."
         },
         "only_if_running": {
           "name": "Only if Running",
