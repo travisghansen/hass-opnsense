@@ -1394,7 +1394,11 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
         if self.delay_update:
             _LOGGER.debug("Skipping coordinator update for VPN switch %s due to delay", self.name)
             return
-        instance = self._mapping_at(f"{self._vpn_type}.{self._clients_servers}.{self._uuid}")
+        vpn_instances = self._mapping_at(f"{self._vpn_type}.{self._clients_servers}")
+        if not isinstance(vpn_instances, MutableMapping):
+            self._mark_unavailable()
+            return
+        instance = vpn_instances.get(self._uuid)
         if not isinstance(instance, MutableMapping):
             self._mark_unavailable()
             return

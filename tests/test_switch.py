@@ -2735,6 +2735,32 @@ def test_vpn_instance_non_mapping_sets_unavailable(
     assert ent.available is False
 
 
+def test_vpn_handle_numeric_string_uuid_looks_up_string_key(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Numeric-style UUIDs are resolved without coercing coordinator keys."""
+    desc = SwitchEntityDescription(key="openvpn.clients.1", name="VPN1")
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    ent = OPNsenseVPNSwitch(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=desc,
+    )
+    coordinator.data = {
+        "openvpn": {
+            "clients": {"1": {"enabled": True, "name": "Client1", "uuid": "1"}},
+        },
+        "wireguard": {"clients": {}, "servers": {}},
+    }
+    ent.coordinator = make_coord(coordinator.data)
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
+
+    ent._handle_coordinator_update()
+    assert ent.available is True
+    assert ent.is_on is True
+
+
 @pytest.mark.asyncio
 async def test_service_async_turn_on_off_failure(
     coordinator: MagicMock, ph_hass: Any, make_config_entry: Callable[..., MockConfigEntry]

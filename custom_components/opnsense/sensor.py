@@ -2074,7 +2074,7 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
                         if_descr,
                         if_count,
                     )
-            except TypeError, KeyError, ZeroDivisionError:
+            except TypeError, KeyError, AttributeError, ZeroDivisionError:
                 self._mark_unavailable()
                 return
             sorted_lease_counts: dict[str, Any] = {
@@ -2101,7 +2101,7 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
                     if lease.get("address") not in {None, ""}:
                         lease_count += 1
                 self._attr_native_value = lease_count
-            except TypeError, KeyError, ZeroDivisionError:
+            except TypeError, KeyError, AttributeError, ZeroDivisionError:
                 self._mark_unavailable()
                 return
             self._available = True

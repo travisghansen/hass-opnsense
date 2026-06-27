@@ -2106,7 +2106,7 @@ def test_dhcp_leases_sensor_fails_closed_for_scalar_lease_rows(
     assert writes == [False]
 
 
-@pytest.mark.parametrize("exc_type", [TypeError, KeyError, ZeroDivisionError])
+@pytest.mark.parametrize("exc_type", [TypeError, KeyError, AttributeError, ZeroDivisionError])
 def test_dhcp_leases_handles_exceptions(
     exc_type: type[Exception], make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
@@ -2159,7 +2159,7 @@ def test_dhcp_leases_handles_exceptions(
     assert s.available is False
 
 
-@pytest.mark.parametrize("exc_type", [TypeError, KeyError, ZeroDivisionError])
+@pytest.mark.parametrize("exc_type", [TypeError, KeyError, AttributeError, ZeroDivisionError])
 def test_dhcp_lease_interfaces_items_raises(
     exc_type: type[Exception], make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
@@ -2196,7 +2196,7 @@ def test_dhcp_lease_interfaces_items_raises(
     assert s.available is False
 
 
-@pytest.mark.parametrize("exc_type", [TypeError, KeyError, ZeroDivisionError])
+@pytest.mark.parametrize("exc_type", [TypeError, KeyError, AttributeError, ZeroDivisionError])
 def test_dhcp_leases_iterable_raises_on_iter(
     exc_type: type[Exception], make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
@@ -2329,7 +2329,7 @@ def test_dhcp_leases_items_except_writes_unavailable(
     assert any(w is False for w in writes), f"expected a False write captured, got {writes}"
 
 
-@pytest.mark.parametrize("exc_type", [TypeError, KeyError, ZeroDivisionError])
+@pytest.mark.parametrize("exc_type", [TypeError, KeyError, AttributeError, ZeroDivisionError])
 def test_dhcp_leases_per_interface_handles_exceptions(
     exc_type: type[Exception], make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
