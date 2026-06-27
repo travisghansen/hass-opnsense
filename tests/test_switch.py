@@ -2178,21 +2178,25 @@ async def test_async_setup_entry_respects_config_flags(
     assert calls.get("len") == 1
 
 
+@pytest.mark.parametrize(
+    ("client_payload", "expected_name"),
+    [
+        ({"description": "Remote Access", "enabled": True}, "OpenVPN Client Remote Access"),
+        ({"enabled": True}, "OpenVPN Client client-uuid"),
+    ],
+)
 @pytest.mark.asyncio
-async def test_async_setup_entry_creates_vpn_switch_when_name_is_missing(
+async def test_async_setup_entry_uses_vpn_description_or_uuid_when_name_is_missing(
     coordinator: MagicMock,
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
+    client_payload: dict[str, Any],
+    expected_name: str,
 ) -> None:
-    """Missing VPN instance names should not prevent switch setup."""
+    """Missing VPN names should fall back to description or the instance UUID."""
     coordinator.data = {
         "openvpn": {
-            "clients": {
-                "client-uuid": {
-                    "description": "Remote Access",
-                    "enabled": True,
-                }
-            },
+            "clients": {"client-uuid": client_payload},
             "servers": {},
         },
         "wireguard": {"clients": {}, "servers": {}},
@@ -2229,56 +2233,7 @@ async def test_async_setup_entry_creates_vpn_switch_when_name_is_missing(
         for entity in created
         if entity.entity_description.key == "openvpn.clients.client-uuid"
     )
-    assert vpn_switch.entity_description.name == "OpenVPN Client Remote Access"
-
-
-@pytest.mark.asyncio
-async def test_async_setup_entry_uses_uuid_when_vpn_name_and_description_missing(
-    coordinator: MagicMock,
-    ph_hass: Any,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Missing VPN instance name and description should fall back to the instance UUID."""
-    coordinator.data = {
-        "openvpn": {
-            "clients": {"client-uuid": {"enabled": True}},
-            "servers": {},
-        },
-        "wireguard": {"clients": {}, "servers": {}},
-    }
-    config_entry = make_config_entry(
-        data={
-            CONF_DEVICE_UNIQUE_ID: "dev1",
-            CONF_SYNC_FIREWALL_AND_NAT: False,
-            CONF_SYNC_SERVICES: False,
-            CONF_SYNC_VPN: True,
-            CONF_SYNC_UNBOUND: False,
-        }
-    )
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    created: list[Any] = []
-
-    def add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
-        """Capture switch entities emitted by setup.
-
-        Args:
-            entities: Switch entities emitted by setup.
-            _update_before_add: Whether HA should refresh entities before adding them.
-        """
-        created.extend(entities)
-
-    await switch_mod.async_setup_entry(
-        ph_hass,
-        config_entry,
-        cast("AddEntitiesCallback", add_entities),
-    )
-
-    vpn_switch = next(
-        entity
-        for entity in created
-        if entity.entity_description.key == "openvpn.clients.client-uuid"
-    )
-    assert vpn_switch.entity_description.name == "OpenVPN Client client-uuid"
+    assert vpn_switch.entity_description.name == expected_name
 
 
 @pytest.mark.asyncio
@@ -2356,6 +2311,25 @@ def test_opnsense_get_service_with_malformed_services_container(
     """Malformed service containers should return None instead of iterating."""
     coordinator.data = {
         "services": "bad-services",
+    }
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    entity = OPNsenseServiceSwitch(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=SwitchEntityDescription(key="service.svc.status", name="Service"),
+    )
+    assert entity._opnsense_get_service() is None
+
+
+def test_opnsense_get_service_returns_none_when_service_id_is_missing(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Missing service IDs should return None after scanning valid service rows."""
+    coordinator.data = {
+        "services": [
+            {"id": "other", "name": "other-service"},
+        ],
     }
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)

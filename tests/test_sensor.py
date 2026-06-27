@@ -2241,38 +2241,18 @@ def test_filesystem_sensor_skips_malformed_rows(
     assert attrs.get("mountpoint") == "/"
 
 
-def test_filesystem_sensor_unavailable_with_malformed_filesystems_container(
+@pytest.mark.parametrize(
+    "state",
+    [
+        {"telemetry": {"filesystems": "bad-filesystems"}},
+        {"telemetry": "bad-telemetry"},
+    ],
+)
+def test_filesystem_sensor_unavailable_with_malformed_containers(
     make_config_entry: Callable[..., MockConfigEntry],
+    state: dict[str, Any],
 ) -> None:
-    """Malformed filesystem container should mark filesystem sensor as unavailable."""
-    state = {
-        "telemetry": {"filesystems": "bad-filesystems"},
-    }
-    entry = make_config_entry()
-    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = state
-    desc = MagicMock()
-    desc.key = f"telemetry.filesystems.{slugify_filesystem_mountpoint('/')}"
-    desc.name = "Filesystem Test"
-
-    sensor = OPNsenseFilesystemSensor(
-        config_entry=entry,
-        coordinator=coord,
-        entity_description=desc,
-    )
-    sensor.hass = MagicMock()
-    sensor.entity_id = "sensor.fs_root"
-    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
-    sensor._handle_coordinator_update()
-
-    assert sensor.available is False
-
-
-def test_filesystem_sensor_unavailable_with_malformed_telemetry_container(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Malformed telemetry container should mark filesystem sensor as unavailable."""
-    state = {"telemetry": "bad-telemetry"}
+    """Malformed telemetry or filesystem containers should mark the sensor unavailable."""
     entry = make_config_entry()
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord.data = state
