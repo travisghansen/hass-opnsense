@@ -1279,6 +1279,10 @@ def test_vpn_sensor_fails_closed_for_malformed_instance_collection(
     [
         ({"openvpn": {"servers": {"uuid1": "not-a-mapping"}}}, "openvpn.servers.uuid1.status"),
         (
+            {"openvpn": {"servers": {"uuid1": {"clients": "not-a-list", "status": "up"}}}},
+            "openvpn.servers.uuid1.status",
+        ),
+        (
             {"openvpn": {"servers": {"uuid1": {"clients": ["not-a-mapping"], "status": "up"}}}},
             "openvpn.servers.uuid1.status",
         ),

@@ -24,6 +24,20 @@ class _BadStrValue:
         raise ValueError("string conversion failure")
 
 
+class _BadStripValue(str):
+    """String value that raises when stripped."""
+
+    __slots__ = ()
+
+    def strip(self, chars: str | None = None) -> str:
+        """Raise when display-name normalization strips whitespace.
+
+        Args:
+            chars: Optional characters to strip, matching ``str.strip``.
+        """
+        raise ValueError("strip failure")
+
+
 class _FaultyPayload(Mapping[str, object]):
     """Payload whose get() raises for a target field."""
 
@@ -47,11 +61,22 @@ class _FaultyPayload(Mapping[str, object]):
 
 def test_payload_display_name_skips_get_and_str_failures() -> None:
     """Display-name lookup should skip bad fields and return the fallback."""
-    payload = _FaultyPayload({"broken_get": "ignored", "broken_str": _BadStrValue()})
+    payload = _FaultyPayload(
+        {
+            "broken_get": "ignored",
+            "broken_strip": _BadStripValue("ignored"),
+            "broken_str": _BadStrValue(),
+        }
+    )
 
     assert (
         OPNsenseEntity.payload_display_name(
-            payload, "fallback", "broken_get", "broken_str", "missing"
+            payload,
+            "fallback",
+            "broken_get",
+            "broken_strip",
+            "broken_str",
+            "missing",
         )
         == "fallback"
     )
