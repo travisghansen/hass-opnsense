@@ -2005,6 +2005,17 @@ class OPNsenseTempSensor(OPNsenseSensor):
         self.async_write_ha_state()
 
 
+def _count_active_dhcp_leases(leases: Iterable[Any]) -> int | None:
+    """Return active DHCP lease count, or ``None`` when a lease row is malformed."""
+    lease_count = 0
+    for lease in leases:
+        if not isinstance(lease, MutableMapping):
+            return None
+        if lease.get("address") not in {None, ""}:
+            lease_count += 1
+    return lease_count
+
+
 class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
     """Class for OPNsense DHCP Leases Sensors."""
 
@@ -2031,13 +2042,10 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
             lease_counts: dict[str, Any] = {}
             try:
                 for ifn, if_descr in lease_interfaces.items():
-                    if_count: int = 0
-                    for lease in leases.get(ifn, []):
-                        if not isinstance(lease, MutableMapping):
-                            self._mark_unavailable()
-                            return
-                        if lease.get("address") not in {None, ""}:
-                            if_count += 1
+                    if_count = _count_active_dhcp_leases(leases.get(ifn, []))
+                    if if_count is None:
+                        self._mark_unavailable()
+                        return
                     lease_counts[if_descr] = f"{if_count} leases"
                     total_lease_count += if_count
                     _LOGGER.debug(
@@ -2064,13 +2072,10 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
                 self._mark_unavailable()
                 return
             try:
-                lease_count = 0
-                for lease in interface:
-                    if not isinstance(lease, MutableMapping):
-                        self._mark_unavailable()
-                        return
-                    if lease.get("address") not in {None, ""}:
-                        lease_count += 1
+                lease_count = _count_active_dhcp_leases(interface)
+                if lease_count is None:
+                    self._mark_unavailable()
+                    return
                 self._attr_native_value = lease_count
             except TypeError, KeyError, AttributeError, ZeroDivisionError:
                 self._mark_unavailable()
