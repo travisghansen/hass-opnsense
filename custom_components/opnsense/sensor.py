@@ -1174,7 +1174,13 @@ async def _compile_dhcp_leases_sensors(
     if not isinstance(lease_interfaces, MutableMapping):
         lease_interfaces = {}
 
-    for interface, interface_name in lease_interfaces.items():
+    lease_interface_items: Iterable[tuple[Any, Any]] = ()
+    try:
+        lease_interface_items = lease_interfaces.items()
+    except AttributeError, RuntimeError, TypeError, ValueError:
+        lease_interface_items = ()
+
+    for interface, interface_name in lease_interface_items:
         entities.append(
             _create_sensor(
                 OPNsenseDHCPLeasesSensor,
@@ -1183,7 +1189,6 @@ async def _compile_dhcp_leases_sensors(
                 _build_dhcp_leases_sensor_description(interface, interface_name),
             )
         )
-
     entities.append(
         _create_sensor(
             OPNsenseDHCPLeasesSensor,

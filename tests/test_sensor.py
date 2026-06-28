@@ -2649,6 +2649,32 @@ async def test_dhcp_leases_compile_helper_uses_all_sensor_for_malformed_interfac
     assert [entity.entity_description.key for entity in entities] == ["dhcp_leases.all"]
 
 
+class _BadDHCPLeaseInterfaces(dict):
+    """Mapping that raises when items() is queried."""
+
+    def items(self) -> Never:  # type: ignore[override]
+        raise RuntimeError("items failure for test")
+
+
+async def test_dhcp_leases_compile_helper_skips_on_items_failure(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """items() failures should be ignored but still produce the aggregate DHCP sensor."""
+    state: dict[str, Any] = {
+        "dhcp_leases": {
+            "lease_interfaces": _BadDHCPLeaseInterfaces({"lan": "LAN", "wan": "WAN"}),
+            "leases": {"lan": [{"address": "192.168.1.2"}], "wan": []},
+        }
+    }
+    entry = make_config_entry()
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+
+    entities = await sensor_module._compile_dhcp_leases_sensors(entry, coordinator, state)
+
+    assert [entity.entity_description.key for entity in entities] == ["dhcp_leases.all"]
+
+
 async def test_filesystem_compile_helper_skips_rows_without_mountpoint(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
