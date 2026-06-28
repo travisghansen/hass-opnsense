@@ -1963,15 +1963,14 @@ class OPNsenseVPNSensor(OPNsenseSensor):
                 self._attr_extra_state_attributes[attr] = instance.get(attr)
 
         clients = instance.get("clients")
-        if (
-            isinstance(clients, list)
-            and clients_servers == "servers"
-            and prop_name
-            in {
-                "connected_clients",
-                "status",
-            }
-        ):
+        include_clients = clients_servers == "servers" and prop_name in {
+            "connected_clients",
+            "status",
+        }
+        if include_clients and clients is not None and not isinstance(clients, list):
+            self._mark_unavailable()
+            return
+        if include_clients and isinstance(clients, list):
             self._attr_extra_state_attributes["clients"] = []
             for clnt in clients:
                 if not isinstance(clnt, MutableMapping):
@@ -1989,6 +1988,9 @@ class OPNsenseVPNSensor(OPNsenseSensor):
                     if clnt.get(client_attr, None) is not None:
                         client[client_attr] = clnt.get(client_attr)
                 self._attr_extra_state_attributes["clients"].append(client)
+            if clients and not self._attr_extra_state_attributes["clients"]:
+                self._mark_unavailable()
+                return
         self.async_write_ha_state()
 
     @property
