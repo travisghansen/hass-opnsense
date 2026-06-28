@@ -1305,12 +1305,8 @@ class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
                 self.name,
             )
             return
-        state: dict[str, Any] = self.coordinator.data
-        if not isinstance(state, MutableMapping):
-            self._mark_unavailable()
-            return
         dnsbl = self._mapping_at(f"{ATTR_UNBOUND_BLOCKLIST}.{self._uuid}")
-        if not isinstance(dnsbl, MutableMapping) or len(dnsbl) == 0:
+        if dnsbl is None or len(dnsbl) == 0:
             self._mark_unavailable()
             return
         self._available = True
@@ -1395,7 +1391,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
             _LOGGER.debug("Skipping coordinator update for VPN switch %s due to delay", self.name)
             return
         vpn_instances = self._mapping_at(f"{self._vpn_type}.{self._clients_servers}")
-        if not isinstance(vpn_instances, MutableMapping):
+        if vpn_instances is None:
             self._mark_unavailable()
             return
         instance = vpn_instances.get(self._uuid)

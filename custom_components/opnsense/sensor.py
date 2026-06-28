@@ -1534,10 +1534,6 @@ class OPNsenseFilesystemSensor(OPNsenseSensor):
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update."""
         filesystem: dict[str, Any] = {}
-        state: dict[str, Any] = self.coordinator.data
-        if not isinstance(state, MutableMapping):
-            self._mark_unavailable()
-            return
         filesystems = self._list_at("telemetry.filesystems")
         if filesystems is None:
             self._mark_unavailable()
@@ -1573,10 +1569,6 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update."""
-        state: dict[str, Any] = self.coordinator.data
-        if not isinstance(state, MutableMapping):
-            self._mark_unavailable()
-            return
         key_parts = self.entity_description.key.split(".", 1)
         if len(key_parts) != 2:
             self._mark_unavailable()
@@ -1588,8 +1580,8 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
             return
         interface_name, prop_name = interface_name_parts
         interface: dict[str, Any] = {}
-        interfaces = state.get("interfaces")
-        if not isinstance(interfaces, Mapping):
+        interfaces = self._mapping_at("interfaces")
+        if interfaces is None:
             self._mark_unavailable()
             return
         for i_interface_name, iface in interfaces.items():
@@ -1649,16 +1641,15 @@ class OPNsenseCarpInterfaceSensor(OPNsenseSensor):
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update."""
         carp_interface: dict[str, Any] = {}
-        state: dict[str, Any] = self.coordinator.data
-        if not isinstance(state, MutableMapping):
-            self._mark_unavailable()
-            return
         key_data = _parse_carp_interface_sensor_key(self.entity_description.key)
         if key_data is None:
             self._mark_unavailable()
             return
         expected_interface_slug, expected_subnet_slug = key_data
-        carp_interfaces = dict_get(state, "carp.interfaces", []) or []
+        carp_interfaces = self._list_at("carp.interfaces")
+        if carp_interfaces is None:
+            self._mark_unavailable()
+            return
         for i_interface in carp_interfaces:
             if not isinstance(i_interface, MutableMapping):
                 _LOGGER.debug(
@@ -1727,12 +1718,8 @@ class OPNsenseCarpStatusSensor(OPNsenseSensor):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update."""
-        state: dict[str, Any] = self.coordinator.data
-        if not isinstance(state, MutableMapping):
-            self._mark_unavailable()
-            return
-        summary_raw = dict_get(state, "carp.status_summary")
-        if not isinstance(summary_raw, MutableMapping):
+        summary_raw = self._mapping_at("carp.status_summary")
+        if summary_raw is None:
             self._mark_unavailable()
             return
 
@@ -1780,8 +1767,8 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
 
     def _opnsense_get_gateway_entry(self, gateway_name: str) -> dict[str, Any]:
         """Return matching gateway payload by mapping key or display name."""
-        gateways = self.coordinator.data.get("gateways", {})
-        if not isinstance(gateways, Mapping):
+        gateways = self._mapping_at("gateways")
+        if gateways is None:
             return {}
         if isinstance(gateways.get(gateway_name), Mapping):
             return dict(gateways[gateway_name])
@@ -1802,10 +1789,6 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update."""
-        state: dict[str, Any] = self.coordinator.data
-        if not isinstance(state, MutableMapping):
-            self._mark_unavailable()
-            return
         key_parts = self.entity_description.key.split(".", 1)
         if len(key_parts) != 2:
             self._mark_unavailable()
@@ -1865,10 +1848,6 @@ class OPNsenseVPNSensor(OPNsenseSensor):
         clients_servers = key_parts[1]
         uuid = key_parts[2]
         prop_name = key_parts[3]
-        state: dict[str, Any] = self.coordinator.data
-        if not isinstance(state, MutableMapping):
-            self._mark_unavailable()
-            return
         instances = self._mapping_at(f"{vpn_type}.{clients_servers}")
         if instances is None:
             self._mark_unavailable()
@@ -1995,10 +1974,6 @@ class OPNsenseTempSensor(OPNsenseSensor):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update."""
-        state: dict[str, Any] = self.coordinator.data
-        if not isinstance(state, MutableMapping):
-            self._mark_unavailable()
-            return
         key_parts = self.entity_description.key.split(".")
         if len(key_parts) != 3 or key_parts[:2] != ["telemetry", "temps"]:
             self._mark_unavailable()
@@ -2038,13 +2013,9 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update."""
-        state: dict[str, Any] = self.coordinator.data
-        if not isinstance(state, MutableMapping):
-            self._mark_unavailable()
-            return
         if_name: str = self.entity_description.key.split(".")[1].strip()
-        dhcp_leases = state.get("dhcp_leases")
-        if not isinstance(dhcp_leases, MutableMapping):
+        dhcp_leases = self._mapping_at("dhcp_leases")
+        if dhcp_leases is None:
             self._mark_unavailable()
             return
         if if_name.lower() == "all":
