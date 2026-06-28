@@ -1,6 +1,6 @@
 """Define the base entities for OPNsense."""
 
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -21,6 +21,50 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
     """Base entity for OPNsense."""
+
+    @staticmethod
+    def payload_display_name(
+        payload: Mapping[str, Any],
+        fallback: str,
+        *fields: str,
+        allow_scalar: bool = True,
+    ) -> str:
+        """Return a stable display label from a dynamic state payload.
+
+        Args:
+            payload: Mapping payload that may contain one of the display fields.
+            fallback: Value to use when none of the fields contain a displayable value.
+            *fields: Ordered field names to prefer for the display label.
+            allow_scalar: Whether non-container scalar values should be stringified.
+
+        Returns:
+            String display label from the first usable field, otherwise the fallback.
+        """
+        for field in fields:
+            value: Any | None
+            try:
+                value = payload.get(field)
+            except AttributeError, KeyError, RuntimeError, TypeError, ValueError:
+                value = None
+
+            if isinstance(value, str):
+                try:
+                    stripped_value = value.strip()
+                except AttributeError, RuntimeError, TypeError, ValueError:
+                    stripped_value = ""
+                if stripped_value:
+                    return stripped_value
+
+            if (
+                allow_scalar
+                and value is not None
+                and not isinstance(value, str | Mapping | list | tuple | set)
+            ):
+                try:
+                    return str(value)
+                except AttributeError, RuntimeError, TypeError, ValueError:
+                    pass
+        return fallback
 
     def __init__(
         self,

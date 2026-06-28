@@ -18,6 +18,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.opnsense import switch as switch_mod
 from custom_components.opnsense.const import (
+    ATTR_UNBOUND_BLOCKLIST,
     CONF_DEVICE_UNIQUE_ID,
     CONF_SYNC_CARP,
     CONF_SYNC_FIREWALL_AND_NAT,
@@ -2122,6 +2123,62 @@ def test_service_switch_ignores_malformed_service_rows(
     assert ent._opnsense_get_service() is None
 
 
+def test_service_switch_ignores_non_mapping_state(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Service lookup should return None when coordinator state is malformed."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    coordinator.data = []
+    ent = OPNsenseServiceSwitch(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=SwitchEntityDescription(key="service.svc1.status", name="Service"),
+    )
+
+    assert ent._opnsense_get_service() is None
+
+
+@pytest.mark.asyncio
+async def test_service_switch_malformed_services_container_on_update(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Service switch should become unavailable when services container becomes malformed."""
+    hass_local = MagicMock(spec=HomeAssistant)
+    loop = asyncio.new_event_loop()
+    try:
+        hass_local.loop = loop
+        hass_local.data = {}
+
+        config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+        coordinator.data = {"services": [{"id": "svc1", "name": "svc1", "status": True}]}
+        setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+        ent = OPNsenseServiceSwitch(
+            config_entry=config_entry,
+            coordinator=coordinator,
+            entity_description=SwitchEntityDescription(
+                key="service.svc1.status",
+                name="Svc",
+            ),
+        )
+        ent.hass = hass_local
+        ent.entity_id = "switch.svc"
+        object.__setattr__(ent, "async_write_ha_state", lambda: None)
+
+        ent._handle_coordinator_update()
+        assert ent.available is True
+        assert ent.is_on is True
+
+        coordinator.data = {"services": "bad-services"}
+        ent._handle_coordinator_update()
+        assert ent.available is False
+    finally:
+        # make sure we close the loop created for this test
+        with contextlib.suppress(RuntimeError):
+            loop.close()
+
+
 def test_entity_icons(make_config_entry: Callable[..., MockConfigEntry]) -> None:
     """Switch entities expose the correct platform icons based on type."""
     # firewall icon
@@ -2452,6 +2509,173 @@ async def test_async_setup_entry_unbound_uses_state_shape_for_unknown_firmware_e
     assert len(calls.get("entities", [])) == 2
 
 
+@pytest.mark.parametrize(
+    ("client_payload", "expected_name"),
+    [
+        ({"description": "Remote Access", "enabled": True}, "OpenVPN Client Remote Access"),
+        ({"enabled": True}, "OpenVPN Client client-uuid"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_async_setup_entry_uses_vpn_description_or_uuid_when_name_is_missing(
+    coordinator: MagicMock,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+    client_payload: dict[str, Any],
+    expected_name: str,
+) -> None:
+    """Missing VPN names should fall back to description or the instance UUID."""
+    coordinator.data = {
+        "openvpn": {
+            "clients": {"client-uuid": client_payload},
+            "servers": {},
+        },
+        "wireguard": {"clients": {}, "servers": {}},
+    }
+    config_entry = make_config_entry(
+        data={
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_SYNC_FIREWALL_AND_NAT: False,
+            CONF_SYNC_SERVICES: False,
+            CONF_SYNC_VPN: True,
+            CONF_SYNC_UNBOUND: False,
+        }
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    created: list[Any] = []
+
+    def add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Capture switch entities emitted by setup.
+
+        Args:
+            entities: Switch entities emitted by setup.
+            _update_before_add: Whether HA should refresh entities before adding them.
+        """
+        created.extend(entities)
+
+    await switch_mod.async_setup_entry(
+        ph_hass,
+        config_entry,
+        cast("AddEntitiesCallback", add_entities),
+    )
+
+    vpn_switch = next(
+        entity
+        for entity in created
+        if entity.entity_description.key == "openvpn.clients.client-uuid"
+    )
+    assert vpn_switch.entity_description.name == expected_name
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_skips_malformed_switch_rows(
+    coordinator: MagicMock,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Malformed switch rows should not prevent valid switches from being created."""
+    coordinator.data = {
+        "host_firmware_version": "25.7.8",
+        "services": [
+            "not-a-service",
+            {"id": "svc", "description": "Valid Service", "locked": 0, "status": True},
+        ],
+        "openvpn": "not-openvpn-data",
+        "wireguard": {"clients": "not-client-data", "servers": {"bad": "not-a-server"}},
+        "unbound_blocklist": "not-unbound-data",
+    }
+    config_entry = make_config_entry(
+        data={
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_SYNC_FIREWALL_AND_NAT: False,
+            CONF_SYNC_SERVICES: True,
+            CONF_SYNC_VPN: True,
+            CONF_SYNC_UNBOUND: True,
+        }
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    created: list[Any] = []
+
+    def add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Capture switch entities emitted by setup.
+
+        Args:
+            entities: Switch entities emitted by setup.
+            _update_before_add: Whether HA should refresh entities before adding them.
+        """
+        created.extend(entities)
+
+    await switch_mod.async_setup_entry(
+        ph_hass,
+        config_entry,
+        cast("AddEntitiesCallback", add_entities),
+    )
+
+    assert [entity.entity_description.key for entity in created] == ["service.svc.status"]
+
+
+@pytest.mark.parametrize(
+    ("compile_helper", "state"),
+    [
+        (_compile_unbound_switches, []),
+        (_compile_unbound_switches, {ATTR_UNBOUND_BLOCKLIST: {"bad-row": "bad-row"}}),
+    ],
+)
+async def test_dynamic_switch_compile_helpers_skip_malformed_containers(
+    make_config_entry: Callable[..., MockConfigEntry],
+    compile_helper: Callable[[MockConfigEntry, OPNsenseDataUpdateCoordinator, Any], Any],
+    state: Any,
+) -> None:
+    """Malformed dynamic switch containers should compile to no entities."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+
+    assert await compile_helper(config_entry, coordinator, state) == []
+
+
+def test_opnsense_get_service_skips_malformed_service_rows(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Malformed service rows should be ignored while matching a valid service."""
+    coordinator.data = {
+        "services": [
+            "bad-row",
+            {"id": "svc", "name": "service"},
+        ]
+    }
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    entity = OPNsenseServiceSwitch(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=SwitchEntityDescription(key="service.svc.status", name="Service"),
+    )
+
+    found = entity._opnsense_get_service()
+
+    assert isinstance(found, MutableMapping)
+    assert found.get("name") == "service"
+
+
+def test_opnsense_get_service_with_malformed_services_container(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Malformed service containers should return None instead of iterating."""
+    coordinator.data = {
+        "services": "bad-services",
+    }
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    entity = OPNsenseServiceSwitch(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=SwitchEntityDescription(key="service.svc.status", name="Service"),
+    )
+
+    assert entity._opnsense_get_service() is None
+
+
 @pytest.mark.asyncio
 async def test_async_setup_entry_unbound_skips_when_firmware_unparseable_and_no_state(
     coordinator: MagicMock,
@@ -2679,6 +2903,75 @@ def test_vpn_handle_coordinator_update_state_not_mapping(
     coordinator.data = None
     object.__setattr__(ent, "async_write_ha_state", lambda: None)
     ent._handle_coordinator_update()
+    assert ent.available is False
+
+
+def test_unbound_blocklist_switch_update_handles_malformed_container(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Malformed Unbound blocklist containers should mark the switch unavailable."""
+    desc = SwitchEntityDescription(key="unbound_blocklist.switch.u1", name="Unbound u1")
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    ent = OPNsenseUnboundBlocklistSwitch(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=desc,
+    )
+    coordinator.data = {"unbound_blocklist": "bad-container"}
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
+
+    ent._handle_coordinator_update()
+
+    assert ent.available is False
+
+
+def test_unbound_legacy_switch_update_handles_malformed_container(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Malformed legacy Unbound blocklist containers should mark the legacy switch unavailable."""
+    desc = SwitchEntityDescription(key="unbound_blocklist.switch", name="Unbound Blocklist")
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    ent = OPNsenseUnboundBlocklistSwitchLegacy(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=desc,
+    )
+    coordinator.data = {"unbound_blocklist": "bad-container"}
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
+
+    ent._handle_coordinator_update()
+
+    assert ent.available is False
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        {"openvpn": "bad-openvpn"},
+        {"openvpn": {"clients": "bad-clients"}},
+    ],
+)
+def test_vpn_switch_update_handles_malformed_instance_container(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    state: dict[str, Any],
+) -> None:
+    """Malformed VPN containers should mark the switch unavailable."""
+    desc = SwitchEntityDescription(key="openvpn.clients.c1", name="VPNC")
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    ent = OPNsenseVPNSwitch(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=desc,
+    )
+    coordinator.data = state
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
+
+    ent._handle_coordinator_update()
+
     assert ent.available is False
 
 
