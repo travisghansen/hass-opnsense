@@ -364,8 +364,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         state: dict[str, Any] = self.coordinator.data
         arp_table = dict_get(state, "arp_table")
         if not isinstance(arp_table, list) or not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         self._available = True
         entry: MutableMapping[str, Any] | None = None

@@ -25,6 +25,7 @@ junit.xml
 pytest.xml
 pythonenv*
 Thumbs.db
+uv.lock
 venv.bak/
 venv/
 *.egg-info/
