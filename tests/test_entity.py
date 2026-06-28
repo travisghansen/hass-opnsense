@@ -83,6 +83,36 @@ def test_get_opnsense_state_value_nested_lookup(
     assert ent._get_opnsense_state_value("non.existent.path") is None
 
 
+def test_entity_helpers_fail_closed_for_non_mapping_coordinator_data(
+    make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
+) -> None:
+    """Entity helper lookups should return ``None`` when coordinator data is malformed."""
+    entry = make_config_entry()
+    coord = dummy_coordinator
+    coord.data = []
+    ent = OPNsenseBaseEntity(config_entry=entry, coordinator=coord, unique_id_suffix="test")
+
+    assert ent._mapping_at("anything") is None
+    assert ent._list_at("anything") is None
+
+
+def test_mark_unavailable_can_clear_attributes(
+    make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
+) -> None:
+    """Marking unavailable can clear stale attributes when requested."""
+    entry = make_config_entry()
+    coord = dummy_coordinator
+    ent = OPNsenseBaseEntity(config_entry=entry, coordinator=coord, unique_id_suffix="test")
+    ent._available = True
+    ent._attr_extra_state_attributes = {"stale": "value"}
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
+
+    ent._mark_unavailable(clear_attributes=True)
+
+    assert ent.available is False
+    assert ent.extra_state_attributes == {}
+
+
 @pytest.mark.asyncio
 async def test_async_added_to_hass_sets_client_and_calls_update(
     make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock

@@ -1,6 +1,6 @@
 """Define the base entities for OPNsense."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, MutableMapping
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -104,6 +104,59 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
         """
         state = self.coordinator.data
         return dict_get(state, path)
+
+    def _coordinator_mapping(self) -> MutableMapping[str, Any] | None:
+        """Return coordinator data when it is a mapping.
+
+        Returns:
+            MutableMapping[str, Any] | None: Current coordinator payload, or ``None``
+                when the payload shape is not usable for entity updates.
+        """
+        state = self.coordinator.data
+        return state if isinstance(state, MutableMapping) else None
+
+    def _mapping_at(self, path: str) -> MutableMapping[str, Any] | None:
+        """Return a nested mapping from coordinator data.
+
+        Args:
+            path: Dot-delimited key path inside the coordinator state payload.
+
+        Returns:
+            MutableMapping[str, Any] | None: Nested mapping at ``path``, or ``None``
+                when the value is missing or malformed.
+        """
+        state = self._coordinator_mapping()
+        if state is None:
+            return None
+        value = dict_get(state, path)
+        return value if isinstance(value, MutableMapping) else None
+
+    def _list_at(self, path: str) -> list[Any] | None:
+        """Return a nested list from coordinator data.
+
+        Args:
+            path: Dot-delimited key path inside the coordinator state payload.
+
+        Returns:
+            list[Any] | None: Nested list at ``path``, or ``None`` when missing or malformed.
+        """
+        state = self._coordinator_mapping()
+        if state is None:
+            return None
+        value = dict_get(state, path)
+        return value if isinstance(value, list) else None
+
+    def _mark_unavailable(self, *, clear_attributes: bool = False) -> None:
+        """Mark the entity unavailable and publish the state.
+
+        Args:
+            clear_attributes: Whether to clear extra state attributes while marking
+                the entity unavailable.
+        """
+        self._available = False
+        if clear_attributes:
+            self._attr_extra_state_attributes = {}
+        self.async_write_ha_state()
 
     async def async_added_to_hass(self) -> None:
         """Attach runtime client and trigger an immediate coordinator update callback."""
