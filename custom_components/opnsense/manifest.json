@@ -15,5 +15,5 @@
     "awesomeversion",
     "aiopnsense==1.0.15"
   ],
-  "version": "v0.7.3"
+  "version":"v0.7.4"
 }
