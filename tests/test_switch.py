@@ -2123,6 +2123,45 @@ def test_service_switch_ignores_malformed_service_rows(
     assert ent._opnsense_get_service() is None
 
 
+@pytest.mark.asyncio
+async def test_service_switch_malformed_services_container_on_update(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Service switch should become unavailable when services container becomes malformed."""
+    hass_local = MagicMock(spec=HomeAssistant)
+    loop = asyncio.new_event_loop()
+    try:
+        hass_local.loop = loop
+        hass_local.data = {}
+
+        config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+        coordinator.data = {"services": [{"id": "svc1", "name": "svc1", "status": True}]}
+        setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+        ent = OPNsenseServiceSwitch(
+            config_entry=config_entry,
+            coordinator=coordinator,
+            entity_description=SwitchEntityDescription(
+                key="service.svc1.status",
+                name="Svc",
+            ),
+        )
+        ent.hass = hass_local
+        ent.entity_id = "switch.svc"
+        object.__setattr__(ent, "async_write_ha_state", lambda: None)
+
+        ent._handle_coordinator_update()
+        assert ent.available is True
+        assert ent.is_on is True
+
+        coordinator.data = {"services": "bad-services"}
+        ent._handle_coordinator_update()
+        assert ent.available is False
+    finally:
+        # make sure we close the loop created for this test
+        with contextlib.suppress(RuntimeError):
+            loop.close()
+
+
 def test_entity_icons(make_config_entry: Callable[..., MockConfigEntry]) -> None:
     """Switch entities expose the correct platform icons based on type."""
     # firewall icon

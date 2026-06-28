@@ -1352,6 +1352,34 @@ def test_temp_sensor_key_wrong_prefix_marked_unavailable(
     assert s.available is False
 
 
+def test_temp_sensor_malformed_temps_container_on_update(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Temp sensor should become unavailable when a later update has malformed temps."""
+    entry = make_config_entry()
+
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {
+        "telemetry": {"temps": {"sensor1": {"temperature": 55, "device_id": "dev0"}}},
+    }
+
+    desc = MagicMock()
+    desc.key = "telemetry.temps.sensor1"
+    desc.name = "Temp Test"
+
+    s = OPNsenseTempSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    s.hass = MagicMock()
+    s.entity_id = "sensor.temp_test"
+    object.__setattr__(s, "async_write_ha_state", lambda: None)
+    s._handle_coordinator_update()
+    assert s.available is True
+    assert s.native_value == 55
+
+    coord.data = {"telemetry": {"temps": "bad"}}
+    s._handle_coordinator_update()
+    assert s.available is False
+
+
 @pytest.mark.parametrize("exc_type", [TypeError, KeyError, ZeroDivisionError])
 def test_temp_sensor_handles_index_exceptions(
     exc_type: type[Exception], make_config_entry: Callable[..., MockConfigEntry]

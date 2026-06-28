@@ -2021,9 +2021,11 @@ class OPNsenseTempSensor(OPNsenseSensor):
         if temps is None:
             self._mark_unavailable()
             return
-        temp: dict[str, Any] = {}
+        temp: MutableMapping[str, Any] = {}
         for temp_device, temp_temp in temps.items():
             if temp_device == sensor_temp_device:
+                if not isinstance(temp_temp, MutableMapping):
+                    break
                 temp = temp_temp
                 break
         if not temp:
