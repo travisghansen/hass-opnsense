@@ -2123,6 +2123,23 @@ def test_service_switch_ignores_malformed_service_rows(
     assert ent._opnsense_get_service() is None
 
 
+def test_service_switch_ignores_non_mapping_state(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Service lookup should return None when coordinator state is malformed."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    coordinator.data = []
+    ent = OPNsenseServiceSwitch(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=SwitchEntityDescription(key="service.svc1.status", name="Service"),
+    )
+
+    assert ent._opnsense_get_service() is None
+
+
 @pytest.mark.asyncio
 async def test_service_switch_malformed_services_container_on_update(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]

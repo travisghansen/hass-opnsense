@@ -2599,10 +2599,13 @@ async def test_async_setup_entry_handles_partial_or_malformed_dynamic_sensor_pay
     [
         (sensor_module._compile_filesystem_sensors, []),
         (sensor_module._compile_filesystem_sensors, {"telemetry": {"filesystems": "bad"}}),
+        (sensor_module._compile_interface_sensors, []),
         (sensor_module._compile_interface_sensors, {"interfaces": "bad"}),
         (sensor_module._compile_gateway_sensors, []),
         (sensor_module._compile_gateway_sensors, {"gateways": "bad"}),
+        (sensor_module._compile_temperature_sensors, []),
         (sensor_module._compile_temperature_sensors, {"telemetry": {"temps": "bad"}}),
+        (sensor_module._compile_dhcp_leases_sensors, []),
     ],
 )
 async def test_dynamic_sensor_compile_helpers_skip_malformed_containers(
@@ -2627,8 +2630,11 @@ async def test_compile_vpn_sensors_skips_malformed_containers(
 ) -> None:
     """Malformed VPN setup containers should not produce any VPN sensors."""
     state: dict[str, Any] = {
-        "openvpn": {"servers": "bad-servers"},
-        "wireguard": {"clients": "bad-clients", "servers": "bad-servers"},
+        "openvpn": {"servers": {"empty-server": {}}},
+        "wireguard": {
+            "clients": "bad-clients",
+            "servers": {"bad-server": "bad-server"},
+        },
     }
     entry = make_config_entry()
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
