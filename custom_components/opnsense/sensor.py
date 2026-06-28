@@ -2000,7 +2000,7 @@ class OPNsenseTempSensor(OPNsenseSensor):
             self._mark_unavailable()
             return
         key_parts = self.entity_description.key.split(".")
-        if len(key_parts) != 3:
+        if len(key_parts) != 3 or key_parts[:2] != ["telemetry", "temps"]:
             self._mark_unavailable()
             return
         sensor_temp_device: str = key_parts[2]
