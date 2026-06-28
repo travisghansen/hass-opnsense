@@ -1,6 +1,6 @@
 """Unit tests for custom_components.opnsense.entity."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator, Mapping
 from unittest.mock import MagicMock
 
 from homeassistant.util import slugify
@@ -15,6 +15,71 @@ from custom_components.opnsense.entity import OPNsenseBaseEntity, OPNsenseEntity
 def test_payload_display_name_uses_scalar_fallback() -> None:
     """Display names use scalar payload values when no string field is available."""
     assert OPNsenseEntity.payload_display_name({"name": 42}, "fallback", "name") == "42"
+
+
+class _BadStrValue:
+    """Value object that raises when converted to a string."""
+
+    def __str__(self) -> str:
+        raise ValueError("string conversion failure")
+
+
+class _BadStripValue(str):
+    """String value that raises when stripped."""
+
+    __slots__ = ()
+
+    def strip(self, chars: str | None = None) -> str:
+        """Raise when display-name normalization strips whitespace.
+
+        Args:
+            chars: Optional characters to strip, matching ``str.strip``.
+        """
+        raise ValueError("strip failure")
+
+
+class _FaultyPayload(Mapping[str, object]):
+    """Payload whose get() raises for a target field."""
+
+    def __init__(self, values: dict[str, object]) -> None:
+        self._values = values
+
+    def get(self, key: str, default: object | None = None) -> object | None:
+        if key == "broken_get":
+            raise ValueError("payload get failed")
+        return self._values.get(key, default)
+
+    def __getitem__(self, key: str) -> object:
+        return self._values[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._values)
+
+    def __len__(self) -> int:
+        return len(self._values)
+
+
+def test_payload_display_name_skips_get_and_str_failures() -> None:
+    """Display-name lookup should skip bad fields and return the fallback."""
+    payload = _FaultyPayload(
+        {
+            "broken_get": "ignored",
+            "broken_strip": _BadStripValue("ignored"),
+            "broken_str": _BadStrValue(),
+        }
+    )
+
+    assert (
+        OPNsenseEntity.payload_display_name(
+            payload,
+            "fallback",
+            "broken_get",
+            "broken_strip",
+            "broken_str",
+            "missing",
+        )
+        == "fallback"
+    )
 
 
 def test_init_sets_unique_and_name_suffixes(

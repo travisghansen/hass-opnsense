@@ -463,14 +463,12 @@ def _build_smart_sensor_description(device_name: str) -> SensorEntityDescription
 
 def _build_filesystem_sensor_description(filesystem: Mapping[str, Any]) -> SensorEntityDescription:
     """Build a filesystem usage sensor description."""
-    filesystem_slug = slugify_filesystem_mountpoint(filesystem.get("mountpoint", None))
+    mountpoint = filesystem["mountpoint"]
+    filesystem_slug = slugify_filesystem_mountpoint(mountpoint)
     enabled_default = filesystem_slug == "root"
     return SensorEntityDescription(
         key=f"telemetry.filesystems.{filesystem_slug}",
-        name=(
-            "Filesystem Used Percentage "
-            f"{normalize_filesystem_mountpoint(filesystem.get('mountpoint', None))}"
-        ),
+        name=(f"Filesystem Used Percentage {normalize_filesystem_mountpoint(mountpoint)}"),
         native_unit_of_measurement=PERCENTAGE,
         device_class=None,
         icon="mdi:harddisk",
@@ -901,13 +899,19 @@ async def _compile_filesystem_sensors(
     """
     if not isinstance(state, MutableMapping):
         return []
+    filesystems = dict_get(state, "telemetry.filesystems", []) or []
+    if not isinstance(filesystems, list):
+        return []
     return _create_sensors(
         OPNsenseFilesystemSensor,
         config_entry,
         coordinator,
         [
             _build_filesystem_sensor_description(filesystem)
-            for filesystem in dict_get(state, "telemetry.filesystems", []) or []
+            for filesystem in filesystems
+            if isinstance(filesystem, Mapping)
+            and isinstance(filesystem.get("mountpoint"), str)
+            and filesystem["mountpoint"].strip()
         ],
     )
 
@@ -1059,7 +1063,13 @@ async def _compile_interface_sensors(
         return []
     entities: list[OPNsenseInterfaceSensor] = []
 
-    for interface_name, interface in (dict_get(state, "interfaces", {}) or {}).items():
+    interfaces = dict_get(state, "interfaces", {}) or {}
+    if not isinstance(interfaces, MutableMapping):
+        return []
+
+    for interface_name, interface in interfaces.items():
+        if not isinstance(interface, MutableMapping):
+            continue
         entities.extend(
             _create_sensor(
                 OPNsenseInterfaceSensor,
@@ -1089,8 +1099,14 @@ async def _compile_gateway_sensors(
         return []
     entities: list[OPNsenseGatewaySensor] = []
 
-    for gateway_key, gateway in (dict_get(state, "gateways", {}) or {}).items():
-        gateway_name = gateway.get("name", gateway_key)
+    gateways = dict_get(state, "gateways", {}) or {}
+    if not isinstance(gateways, MutableMapping):
+        return []
+
+    for gateway_key, gateway in gateways.items():
+        if not isinstance(gateway, MutableMapping):
+            continue
+        gateway_name = OPNsenseEntity.payload_display_name(gateway, str(gateway_key), "name")
         entities.extend(
             _create_sensor(
                 OPNsenseGatewaySensor,
@@ -1120,7 +1136,13 @@ async def _compile_temperature_sensors(
         return []
     entities: list = []
 
-    for temp_device, temp in state.get("telemetry", {}).get("temps", {}).items():
+    temps = dict_get(state, "telemetry.temps", {}) or {}
+    if not isinstance(temps, MutableMapping):
+        return []
+
+    for temp_device, temp in temps.items():
+        if not isinstance(temp, MutableMapping):
+            continue
         entities.append(
             _create_sensor(
                 OPNsenseTempSensor,
@@ -1148,9 +1170,17 @@ async def _compile_dhcp_leases_sensors(
         return []
     entities: list = []
 
-    for interface, interface_name in (
-        dict_get(state, "dhcp_leases.lease_interfaces", {}) or {}
-    ).items():
+    lease_interfaces = dict_get(state, "dhcp_leases.lease_interfaces", {}) or {}
+    if not isinstance(lease_interfaces, MutableMapping):
+        lease_interfaces = {}
+
+    lease_interface_items: Iterable[tuple[Any, Any]] = ()
+    try:
+        lease_interface_items = lease_interfaces.items()
+    except AttributeError, RuntimeError, TypeError, ValueError:
+        lease_interface_items = ()
+
+    for interface, interface_name in lease_interface_items:
         entities.append(
             _create_sensor(
                 OPNsenseDHCPLeasesSensor,
@@ -1159,7 +1189,6 @@ async def _compile_dhcp_leases_sensors(
                 _build_dhcp_leases_sensor_description(interface, interface_name),
             )
         )
-
     entities.append(
         _create_sensor(
             OPNsenseDHCPLeasesSensor,
@@ -1191,14 +1220,19 @@ async def _compile_vpn_sensors(
     for vpn_type in ("openvpn", "wireguard"):
         clients_servers_groups = ["servers"] if vpn_type == "openvpn" else ["clients", "servers"]
         for clients_servers in clients_servers_groups:
-            for uuid, instance in (
-                dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
-            ).items():
+            vpn_instances = dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
+            if not isinstance(vpn_instances, MutableMapping):
+                continue
+            for uuid, instance in vpn_instances.items():
                 if not isinstance(instance, MutableMapping) or len(instance) == 0:
                     continue
-                instance_name = instance.get("name")
-                if not isinstance(instance_name, str) or not instance_name.strip():
-                    instance_name = uuid
+                instance_name = OPNsenseEntity.payload_display_name(
+                    instance,
+                    str(uuid),
+                    "name",
+                    "description",
+                    allow_scalar=False,
+                )
                 properties = list(_VPN_TRAFFIC_PROPERTIES)
                 if clients_servers == "servers":
                     properties.extend(_VPN_SERVER_PROPERTIES)
@@ -1541,9 +1575,11 @@ class OPNsenseFilesystemSensor(OPNsenseSensor):
         for fsystem in filesystems:
             if not isinstance(fsystem, MutableMapping):
                 continue
+            mountpoint = fsystem.get("mountpoint")
             if (
-                self.entity_description.key == "telemetry.filesystems."
-                f"{slugify_filesystem_mountpoint(fsystem.get('mountpoint', None))}"
+                isinstance(mountpoint, str)
+                and self.entity_description.key
+                == f"telemetry.filesystems.{slugify_filesystem_mountpoint(mountpoint)}"
             ):
                 filesystem = dict(fsystem)
         if not filesystem:
@@ -1559,7 +1595,8 @@ class OPNsenseFilesystemSensor(OPNsenseSensor):
 
         self._attr_extra_state_attributes = {}
         for attr in ("mountpoint", "device", "type", "blocks", "used", "available"):
-            self._attr_extra_state_attributes[attr] = filesystem[attr]
+            if attr in filesystem:
+                self._attr_extra_state_attributes[attr] = filesystem[attr]
         self.async_write_ha_state()
 
 
@@ -1773,16 +1810,13 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
         if isinstance(gateways.get(gateway_name), Mapping):
             return dict(gateways[gateway_name])
         gateway_name_normalized = gateway_name.strip()
-        for gateway in gateways.values():
+        for gateway_key, gateway in gateways.items():
             if not isinstance(gateway, Mapping):
                 continue
-            configured_name = gateway.get("name")
+            configured_name = OPNsenseEntity.payload_display_name(gateway, str(gateway_key), "name")
             if configured_name == gateway_name_normalized:
                 return dict(gateway)
-            if (
-                isinstance(configured_name, str)
-                and configured_name.casefold() == gateway_name_normalized.casefold()
-            ):
+            if configured_name.casefold() == gateway_name_normalized.casefold():
                 return dict(gateway)
         return {}
 
@@ -1854,6 +1888,8 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             return
         instance: MutableMapping[str, Any] = {}
         for instance_uuid, ins in instances.items():
+            if not isinstance(ins, MutableMapping):
+                continue
             if uuid == instance_uuid:
                 instance = ins
                 break
@@ -1931,16 +1967,19 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             if instance.get(attr, None) is not None:
                 self._attr_extra_state_attributes[attr] = instance.get(attr)
 
-        if (
-            isinstance(instance.get("clients", None), list)
-            and clients_servers == "servers"
-            and prop_name in {"connected_clients", "status"}
-        ):
+        clients = instance.get("clients")
+        include_clients = clients_servers == "servers" and prop_name in {
+            "connected_clients",
+            "status",
+        }
+        if include_clients and clients is not None and not isinstance(clients, list):
+            self._mark_unavailable()
+            return
+        if include_clients and isinstance(clients, list):
             self._attr_extra_state_attributes["clients"] = []
-            for clnt in instance.get("clients", {}):
+            for clnt in clients:
                 if not isinstance(clnt, MutableMapping):
-                    self._mark_unavailable()
-                    return
+                    continue
                 client: dict[str, Any] = {}
                 for client_attr in (
                     "name",
@@ -1954,6 +1993,9 @@ class OPNsenseVPNSensor(OPNsenseSensor):
                     if clnt.get(client_attr, None) is not None:
                         client[client_attr] = clnt.get(client_attr)
                 self._attr_extra_state_attributes["clients"].append(client)
+            if clients and not self._attr_extra_state_attributes["clients"]:
+                self._mark_unavailable()
+                return
         self.async_write_ha_state()
 
     @property
@@ -1983,9 +2025,11 @@ class OPNsenseTempSensor(OPNsenseSensor):
         if temps is None:
             self._mark_unavailable()
             return
-        temp: dict[str, Any] = {}
+        temp: MutableMapping[str, Any] = {}
         for temp_device, temp_temp in temps.items():
             if temp_device == sensor_temp_device:
+                if not isinstance(temp_temp, MutableMapping):
+                    break
                 temp = temp_temp
                 break
         if not temp:
