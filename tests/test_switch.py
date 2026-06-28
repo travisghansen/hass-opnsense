@@ -2909,6 +2909,26 @@ def test_unbound_blocklist_switch_update_handles_malformed_container(
     assert ent.available is False
 
 
+def test_unbound_legacy_switch_update_handles_malformed_container(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Malformed legacy Unbound blocklist containers should mark the legacy switch unavailable."""
+    desc = SwitchEntityDescription(key="unbound_blocklist.switch", name="Unbound Blocklist")
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    ent = OPNsenseUnboundBlocklistSwitchLegacy(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=desc,
+    )
+    coordinator.data = {"unbound_blocklist": "bad-container"}
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
+
+    ent._handle_coordinator_update()
+
+    assert ent.available is False
+
+
 @pytest.mark.parametrize(
     "state",
     [
