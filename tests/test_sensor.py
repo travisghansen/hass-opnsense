@@ -354,6 +354,49 @@ def test_gateway_sensor_resolves_display_name_when_mapping_key_differs(
 
 
 @pytest.mark.parametrize(
+    ("gateway_key", "gateway_name", "expected_display_name"),
+    [
+        ("gw1", " WAN Gateway ", "WAN Gateway"),
+        ("gw2", 42, "42"),
+    ],
+    ids=["whitespace-padded-name", "scalar-name"],
+)
+@pytest.mark.asyncio
+async def test_gateway_compile_and_lookup_normalizes_display_name(
+    make_config_entry: Callable[..., MockConfigEntry],
+    gateway_key: str,
+    gateway_name: Any,
+    expected_display_name: str,
+) -> None:
+    """Compile and lookup should agree on normalized gateway display names."""
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {
+        "gateways": {
+            gateway_key: {"name": gateway_name, "status": "online"},
+        }
+    }
+
+    entities = await sensor_module._compile_gateway_sensors(entry, coord, coord.data)
+    expected_key = f"gateway.{expected_display_name}.status"
+    s = next(entity for entity in entities if entity.entity_description.key == expected_key)
+
+    assert isinstance(s, OPNsenseGatewaySensor)
+    assert s._opnsense_get_gateway_entry(expected_display_name) == {
+        "name": gateway_name,
+        "status": "online",
+    }
+
+    s.hass = MagicMock()
+    s.entity_id = "sensor.gateway_status"
+    object.__setattr__(s, "async_write_ha_state", lambda: None)
+    s._handle_coordinator_update()
+
+    assert s.available is True
+    assert s.native_value == "online"
+
+
+@pytest.mark.parametrize(
     "instance",
     [
         {"enabled": True},

@@ -1805,16 +1805,13 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
         if isinstance(gateways.get(gateway_name), Mapping):
             return dict(gateways[gateway_name])
         gateway_name_normalized = gateway_name.strip()
-        for gateway in gateways.values():
+        for gateway_key, gateway in gateways.items():
             if not isinstance(gateway, Mapping):
                 continue
-            configured_name = gateway.get("name")
+            configured_name = OPNsenseEntity.payload_display_name(gateway, str(gateway_key), "name")
             if configured_name == gateway_name_normalized:
                 return dict(gateway)
-            if (
-                isinstance(configured_name, str)
-                and configured_name.casefold() == gateway_name_normalized.casefold()
-            ):
+            if configured_name.casefold() == gateway_name_normalized.casefold():
                 return dict(gateway)
         return {}
 
