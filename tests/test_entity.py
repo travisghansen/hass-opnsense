@@ -3,7 +3,6 @@
 from collections.abc import Callable, Iterator, Mapping
 from unittest.mock import MagicMock
 
-from homeassistant.util import slugify
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -92,17 +91,9 @@ def test_init_sets_unique_and_name_suffixes(
         config_entry=entry, coordinator=coord, unique_id_suffix="suf", name_suffix="Name"
     )
 
-    assert hasattr(ent, "unique_id")
-    # deterministically compute expected slug from device_unique_id and assert
-    device_unique = entry.data.get(CONF_DEVICE_UNIQUE_ID)
-    expected_prefix = slugify(device_unique)
-    # entity unique id is slugified(device_unique_id) + '_' + suffix
     assert ent.unique_id is not None
-    assert ent.unique_id.startswith(f"{expected_prefix}_")
-    assert ent.unique_id.endswith("_suf")
     assert ent.unique_id == "dev_123_suf"
     assert ent.has_entity_name is True
-    assert hasattr(ent, "name")
     assert ent.name == "Name"
 
 
