@@ -296,7 +296,6 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         """
         super().__init__(config_entry, coordinator, unique_id_suffix=f"mac_{mac}")
         self._mac_vendor: str | None = mac_vendor
-        self._tracker_device_name: str | None = hostname or mac
         self._attr_name: str | None = None
         self._last_known_ip: str | None = None
         self._last_known_hostname: str | None = None
@@ -471,7 +470,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         return DeviceInfo(
             connections=connections,
             default_manufacturer=self._mac_vendor or "",
-            default_name=self._tracker_device_name or "",
+            default_name=self.hostname or self.mac_address or "",
             via_device=(DOMAIN, self._device_unique_id),
         )
 

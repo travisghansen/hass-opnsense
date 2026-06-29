@@ -101,7 +101,7 @@ def test_init_sets_unique_and_name_suffixes(
     assert ent.unique_id.startswith(f"{expected_prefix}_")
     assert ent.unique_id.endswith("_suf")
     assert ent.unique_id == "dev_123_suf"
-    assert ent._attr_has_entity_name is True
+    assert ent.has_entity_name is True
     assert hasattr(ent, "name")
     assert ent.name == "Name"
 
