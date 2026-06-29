@@ -634,8 +634,9 @@ async def test_restore_last_state_and_device_info(
         mac_vendor="mfg",
         hostname="dev",
     )
-    assert ent.name == "dev"
+    assert ent.name is None
     assert ent.unique_id == "dev1_mac_aa_bb_cc"
+    assert ent._attr_has_entity_name is True
     ent._attr_extra_state_attributes = {}
     last_known_connected_time = datetime.now(UTC)
 
