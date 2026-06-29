@@ -296,7 +296,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         """
         super().__init__(config_entry, coordinator, unique_id_suffix=f"mac_{mac}")
         self._mac_vendor: str | None = mac_vendor
-        self._attr_name: str | None = f"{self.opnsense_device_name} {hostname or mac}"
+        self._attr_name: str | None = None
         self._last_known_ip: str | None = None
         self._last_known_hostname: str | None = None
         self._is_connected: bool = False
@@ -344,6 +344,23 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             The Home Assistant entity unique ID.
         """
         return self._attr_unique_id
+
+    @property
+    def suggested_object_id(self) -> str | None:
+        """Return a stable object-id hint when linking to an existing device.
+
+        Returns:
+            Hostname when available, otherwise MAC, but only for the
+            auto-link path (enabled matching MAC + new-entity preference disabled).
+        """
+        if (
+            self._has_matching_enabled_mac_device()
+            and not self.config_entry.pref_disable_new_entities
+        ):
+            if self._attr_hostname is not None:
+                return self._attr_hostname
+            return self._attr_mac_address
+        return None
 
     @property
     def entity_registry_enabled_default(self) -> bool:
@@ -470,7 +487,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         return DeviceInfo(
             connections=connections,
             default_manufacturer=self._mac_vendor or "",
-            default_name=self.name if isinstance(self.name, str) else "",
+            default_name=self.hostname or self.mac_address or "",
             via_device=(DOMAIN, self._device_unique_id),
         )
 

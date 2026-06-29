@@ -350,6 +350,54 @@ def test_entity_registry_enabled_default_uses_existing_mac_device(
     assert ent.device_info is None
 
 
+def test_suggested_object_id_prefers_hostname_when_matching_enabled_mac_device(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_reg_factory: Any,
+) -> None:
+    """Hostnames should drive suggested_object_id for existing enabled MAC matches."""
+    ent = dt_mod.OPNsenseScannerEntity(
+        config_entry=make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"}),
+        coordinator=coordinator,
+        enabled_default=False,
+        mac="aa:bb:cc",
+        mac_vendor=None,
+        hostname="MyDevice",
+    )
+    ent.hass = ph_hass
+    device_reg = fake_reg_factory(device_exists=True, device_id="existing-device")
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: device_reg)
+
+    assert ent.device_info is None
+    assert ent.suggested_object_id == "MyDevice"
+
+
+def test_suggested_object_id_falls_back_to_mac_for_existing_enabled_mac_match(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_reg_factory: Any,
+) -> None:
+    """Use MAC as suggested_object_id when hostname is unavailable."""
+    ent = dt_mod.OPNsenseScannerEntity(
+        config_entry=make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"}),
+        coordinator=coordinator,
+        enabled_default=False,
+        mac="aa:bb:cc",
+        mac_vendor=None,
+        hostname=None,
+    )
+    ent.hass = ph_hass
+    device_reg = fake_reg_factory(device_exists=True, device_id="existing-device")
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: device_reg)
+
+    assert ent.device_info is None
+    assert ent.suggested_object_id == "aa:bb:cc"
+
+
 def test_entity_registry_enabled_default_respects_configured_enabled_default(
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
@@ -707,6 +755,9 @@ async def test_restore_last_state_and_device_info(
         mac_vendor="mfg",
         hostname="dev",
     )
+    assert ent.name is None
+    assert ent.unique_id == "dev1_mac_aa_bb_cc"
+    assert ent.has_entity_name is True
     ent._attr_extra_state_attributes = {}
     last_known_connected_time = datetime.now(UTC)
 
@@ -735,11 +786,14 @@ async def test_restore_last_state_and_device_info(
     if isinstance(devinfo, MutableMapping):
         connections = devinfo.get("connections", [])
         via = devinfo.get("via_device")
+        default_name = devinfo.get("default_name")
     else:
         connections = getattr(devinfo, "connections", [])
         via = getattr(devinfo, "via_device", None)
+        default_name = getattr(devinfo, "default_name", None)
 
     assert any(t[1] == "aa:bb:cc" for t in connections)
+    assert default_name == "dev"
     assert via is not None
     assert via[0] == dt_mod.DOMAIN
     assert via[1] == entry.data[pkg.CONF_DEVICE_UNIQUE_ID]
