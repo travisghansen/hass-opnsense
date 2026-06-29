@@ -16,8 +16,8 @@
 
 ## Agent permissions and venv policy
 
-- Agents may create and use a repository-local venv at `./.venv` and should reference `./.venv/bin/python` when running commands.
-- The project uses `pyproject.toml` dependency groups (`ha`, `lint`, `pytest`, `dev`). Installing packages from repo manifests into `./.venv` is allowed for running tests or local tooling; avoid unrelated network operations without explicit consent.
+- Agents may create and use a repository-local venv at `./.venv`. Use `./.venv/bin/python`, `./.venv/bin/pytest`, and `./.venv/bin/prek` for local commands unless using the main checkout venv for a git worktree with no dependency changes.
+- The project uses `pyproject.toml` dependency groups (`ha`, `lint`, `pytest`, `dev`). Installing packages from repo manifests into `./.venv` is allowed for running tests or local tooling after approval; avoid unrelated network operations without explicit consent.
 
 ## Folder structure (repo-specific)
 
@@ -33,6 +33,7 @@
 - `hass-opnsense` now uses the external `aiopnsense` library exclusively for OPNsense API access (https://github.com/Snuffy2/aiopnsense and https://pypi.org/project/aiopnsense).
 - Do not reintroduce `pyopnsense`, `client_factory.py`, `client_protocol.py`, or tests under `tests/pyopnsense`. Backend API behavior belongs in `aiopnsense`; this repository should consume it through `aiopnsense.OPNsenseClient` and `aiopnsense.exceptions`.
 - Create configured clients through `custom_components/opnsense/helpers.py:create_opnsense_client` so Home Assistant aiohttp session handling, TLS options, logging names, and `throw_errors` behavior stay consistent.
+- Keep the pinned `aiopnsense` version in `custom_components/opnsense/manifest.json` and `pyproject.toml` in sync.
 - OPNsense Firmware 25.1+ remains supported, but Firewall and NAT rule switches are available only when the aiopnsense firewall payload supports them, currently OPNsense Firmware 26.1.1+.
 - The deprecated OPNsense Home Assistant plugin is no longer supported or used. Handle legacy plugin-era entities only as migration or cleanup concerns; do not add new plugin-backed behavior.
 - Config-entry migrations live in `custom_components/opnsense/__init__.py`. Be careful with entity registry and device registry changes, especially legacy firewall/NAT entity cleanup, because they affect existing user installations.
@@ -64,7 +65,7 @@
 
 - Use `pytest` and Home Assistant pytest helpers (e.g., `MockConfigEntry`).
 - Add typed, well-documented tests in `tests/` and use fixtures in `conftest.py`.
-- Don't use `importlib` and minimize the use of `cast` and `Any` in tests
+- Use `importlib` only in workflow script tests; minimize `cast` and `Any` unless the test boundary requires them.
 - One test module per integration source file; achieve high coverage (target >= 80%).
 - Parameterize tests when appropriate; avoid duplicate test functions.
 - Mock `aiopnsense.OPNsenseClient` behavior at the integration boundary. Do not add tests for vendored or copied backend-client internals in this repository.
@@ -76,8 +77,7 @@
 
 ## Network / install consent
 
-- Obtain explicit consent before any network operations outside the repository not strictly needed to run local tests.
-- Package installs required for running tests are allowed when user approves.
+- Package installs from repo manifests for local tooling and tests are allowed after approval. Obtain explicit consent before unrelated network operations.
 
 ## CI/CD
 
