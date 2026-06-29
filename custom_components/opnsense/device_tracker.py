@@ -346,6 +346,23 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         return self._attr_unique_id
 
     @property
+    def suggested_object_id(self) -> str | None:
+        """Return a stable object-id hint when linking to an existing device.
+
+        Returns:
+            Hostname when available, otherwise MAC, but only for the
+            auto-link path (enabled matching MAC + new-entity preference disabled).
+        """
+        if (
+            self._has_matching_enabled_mac_device()
+            and not self.config_entry.pref_disable_new_entities
+        ):
+            if self._attr_hostname is not None:
+                return self._attr_hostname
+            return self._attr_mac_address
+        return None
+
+    @property
     def entity_registry_enabled_default(self) -> bool:
         """Return if the entity registry is enabled by default.
 
