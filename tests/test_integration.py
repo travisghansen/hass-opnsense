@@ -545,7 +545,7 @@ async def test_e2e_full_migration_chain(
         - v2 to v3 updates the device unique ID across the entry, entities, and devices.
         - v3 to v4 transforms telemetry-related sensor unique IDs and removes
           ``*_connected_client_count`` entities.
-        - v4 to v5 removes legacy switch entities using legacy rule tokens.
+        - v4 to v5 removes legacy switch entities and stale native firewall rule switches.
     """
     # Build hass mock with update_entry bypass logic
     hass = _build_mock_hass()
@@ -614,6 +614,16 @@ async def test_e2e_full_migration_chain(
                 FakeEntity(
                     "switch.router_nat_port_forward_rule",
                     "oldmacid_nat_port_forward_rule",
+                    "dev-main",
+                ),
+                FakeEntity(
+                    "switch.router_firewall_rule_stale",
+                    "oldmacid_firewall_rule_stale",
+                    "dev-main",
+                ),
+                FakeEntity(
+                    "switch.router_firewall_rule_current",
+                    "oldmacid_firewall_rule_current",
                     "dev-main",
                 ),
                 FakeEntity(
@@ -694,6 +704,10 @@ async def test_e2e_full_migration_chain(
             """Return minimal telemetry so migration code can inspect filesystems."""
             return {"filesystems": []}  # keep simple to avoid extra branches
 
+        async def get_firewall(self) -> dict[str, Any]:
+            """Return current aiopnsense firewall rules for stale-switch pruning."""
+            return {"rules": {"row-key": {"uuid": "current"}}}
+
     patch_opnsense_client(monkeypatch, init_mod, lambda **k: _MigClient())
     monkeypatch.setattr(
         init_mod, "async_create_clientsession", lambda **k: MagicMock(), raising=False
@@ -737,6 +751,10 @@ async def test_e2e_full_migration_chain(
     assert "sensor.router_vpn_clients" not in fake_entity_reg._entities
     assert "switch.router_nat_port_forward_rule" in fake_entity_reg.removed
     assert "switch.router_nat_port_forward_rule" not in fake_entity_reg._entities
+    assert "switch.router_firewall_rule_stale" in fake_entity_reg.removed
+    assert "switch.router_firewall_rule_stale" not in fake_entity_reg._entities
+    assert "switch.router_firewall_rule_current" not in fake_entity_reg.removed
+    assert "switch.router_firewall_rule_current" in fake_entity_reg._entities
     # Remaining entities use new prefix and no _telemetry_ substring
     for ent in ent_ids.values():
         assert ent.unique_id.startswith("newmacid_")

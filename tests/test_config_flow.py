@@ -5,7 +5,6 @@ and options flow behaviors such as device tracker handling.
 """
 
 from collections.abc import Callable
-import importlib
 from typing import Any, Never
 from unittest.mock import AsyncMock, MagicMock
 
@@ -15,6 +14,7 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 import voluptuous as vol
 
+import custom_components.opnsense.config_flow as config_flow_mod
 from custom_components.opnsense.const import (
     CONF_SYNC_FIREWALL_AND_NAT,
     CONF_SYNC_SMART,
@@ -22,7 +22,7 @@ from custom_components.opnsense.const import (
 )
 from tests.utilities import patch_opnsense_client
 
-cf_mod = importlib.import_module("custom_components.opnsense.config_flow")
+cf_mod: Any = config_flow_mod
 
 
 def _make_options_flow(config_entry: Any) -> Any:

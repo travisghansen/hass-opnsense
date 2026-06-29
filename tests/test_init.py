@@ -5,19 +5,28 @@ and removal/unload behaviors for the hass-opnsense integration.
 """
 
 from collections.abc import Callable
-import importlib
+from dataclasses import dataclass
 import logging
 from typing import Any, Never
 from unittest.mock import ANY, AsyncMock, MagicMock, call
 
+from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+import custom_components.opnsense as opnsense_mod
 from tests.utilities import patch_opnsense_client
 
-# import the package module object so we can access its functions/attrs
-init_mod = importlib.import_module("custom_components.opnsense")
+init_mod: Any = opnsense_mod
+
+
+@dataclass(slots=True)
+class _RegistryEntity:
+    """Minimal entity-registry record for migration and listener tests."""
+
+    entity_id: str
+    unique_id: str
 
 
 def _make_valid_setup_client() -> MagicMock:
@@ -120,9 +129,9 @@ async def test_async_setup_entry_success(
     # (data, options, title, entry_id, unique_id, listeners) are set
     entry = make_config_entry(
         data={
-            init_mod.CONF_URL: "http://1.2.3.4",
-            init_mod.CONF_USERNAME: "u",
-            init_mod.CONF_PASSWORD: "p",
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
             init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
         },
         options={},
@@ -173,16 +182,16 @@ async def test_async_setup_entry_validates_client_before_probes(
         """Return the probe-tracking client used by this setup-entry test."""
         return client
 
-    monkeypatch.setattr(init_mod, "create_opnsense_client", _create_client)
+    monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", _create_client)
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
     )
 
     entry = make_config_entry(
         data={
-            init_mod.CONF_URL: "http://1.2.3.4",
-            init_mod.CONF_USERNAME: "u",
-            init_mod.CONF_PASSWORD: "p",
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
             init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
         },
         options={},
@@ -217,13 +226,13 @@ async def test_async_setup_entry_closes_client_when_validation_fails(
         """Return the validation-failing client for this setup-entry test."""
         return client
 
-    monkeypatch.setattr(init_mod, "create_opnsense_client", _create_client)
+    monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", _create_client)
 
     entry = make_config_entry(
         data={
-            init_mod.CONF_URL: "http://1.2.3.4",
-            init_mod.CONF_USERNAME: "u",
-            init_mod.CONF_PASSWORD: "p",
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
             init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
         },
         options={},
@@ -255,13 +264,13 @@ async def test_async_setup_entry_does_not_catch_raw_validation_timeout(
         """Return the timeout-raising client for this setup-entry test."""
         return client
 
-    monkeypatch.setattr(init_mod, "create_opnsense_client", _create_client)
+    monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", _create_client)
 
     entry = make_config_entry(
         data={
-            init_mod.CONF_URL: "http://1.2.3.4",
-            init_mod.CONF_USERNAME: "u",
-            init_mod.CONF_PASSWORD: "p",
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
             init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
         },
         options={},
@@ -290,12 +299,12 @@ async def test_async_setup_entry_reraises_client_creation_error(
         """Raise a backend error before a client instance exists."""
         raise init_mod.OPNsenseError("boom")
 
-    monkeypatch.setattr(init_mod, "create_opnsense_client", _create_client)
+    monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", _create_client)
     entry = make_config_entry(
         data={
-            init_mod.CONF_URL: "http://1.2.3.4",
-            init_mod.CONF_USERNAME: "u",
-            init_mod.CONF_PASSWORD: "p",
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
             init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
         },
         options={},
@@ -342,16 +351,16 @@ async def test_async_setup_entry_continues_after_firmware_validation_error(
         """Return the firmware-failing client for this setup-entry test."""
         return client
 
-    monkeypatch.setattr(init_mod, "create_opnsense_client", _create_client)
+    monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", _create_client)
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
     )
 
     entry = make_config_entry(
         data={
-            init_mod.CONF_URL: "http://1.2.3.4",
-            init_mod.CONF_USERNAME: "u",
-            init_mod.CONF_PASSWORD: "p",
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
             init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
         },
         options={},
@@ -390,9 +399,9 @@ async def test_async_setup_entry_device_id_mismatch(
     # use the shared helper to construct the entry for consistency
     entry = make_config_entry(
         data={
-            init_mod.CONF_URL: "http://1.2.3.4",
-            init_mod.CONF_USERNAME: "u",
-            init_mod.CONF_PASSWORD: "p",
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
             init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
         },
         options={},
@@ -564,28 +573,41 @@ async def test_async_migrate_entry_does_not_call_migrate_3_to_4_when_version_not
 
 
 @pytest.mark.asyncio
-async def test_migrate_4_to_5_removes_legacy_rule_switch_entities(
+async def test_migrate_4_to_5_removes_rule_switch_entities(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any
 ) -> None:
-    """_migrate_4_to_5 removes legacy switch entities and updates config entry version."""
+    """_migrate_4_to_5 removes stale rule switch entities and updates config entry version."""
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
     entry = MockConfigEntry(
         domain=init_mod.DOMAIN,
-        data={init_mod.CONF_DEVICE_UNIQUE_ID: "device-id"},
+        data={
+            init_mod.CONF_DEVICE_UNIQUE_ID: "deviceid",
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+        },
         version=4,
     )
     entry.add_to_hass(ph_hass)
+    client = MagicMock()
+    client.get_firewall = AsyncMock(return_value={"rules": {"row-key": {"uuid": "current"}}})
+    client.async_close = AsyncMock()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", MagicMock(return_value=client)
+    )
 
-    class Ent:
-        def __init__(self, entity_id: str, unique_id: str) -> None:
-            self.entity_id = entity_id
-            self.unique_id = unique_id
-
-    legacy_filter = Ent("switch.filter", "device-id_filter_123")
-    legacy_nat_pf = Ent("switch.nat_pf", "device-id_nat_port_forward_123")
-    legacy_nat_out = Ent("switch.nat_out", "device-id_nat_outbound_123")
-    service_entity = Ent("switch.service", "device-id_service_unbound_status")
-    telemetry_entity = Ent("sensor.telemetry", "device-id_telemetry_cpu")
+    legacy_filter = _RegistryEntity("switch.filter", "deviceid_filter_123")
+    legacy_nat_pf = _RegistryEntity("switch.nat_pf", "deviceid_nat_port_forward_123")
+    legacy_nat_out = _RegistryEntity("switch.nat_out", "deviceid_nat_outbound_123")
+    stale_native_firewall = _RegistryEntity(
+        "switch.firewall_rule_stale", "deviceid_firewall_rule_stale"
+    )
+    current_native_firewall = _RegistryEntity(
+        "switch.firewall_rule_current", "deviceid_firewall_rule_current"
+    )
+    native_nat = _RegistryEntity("switch.firewall_nat", "deviceid_firewall_nat_123")
+    service_entity = _RegistryEntity("switch.service", "deviceid_service_unbound_status")
+    telemetry_entity = _RegistryEntity("sensor.telemetry", "deviceid_telemetry_cpu")
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock()
@@ -597,6 +619,9 @@ async def test_migrate_4_to_5_removes_legacy_rule_switch_entities(
             legacy_filter,
             legacy_nat_pf,
             legacy_nat_out,
+            stale_native_firewall,
+            current_native_firewall,
+            native_nat,
             service_entity,
             telemetry_entity,
         ],
@@ -609,11 +634,188 @@ async def test_migrate_4_to_5_removes_legacy_rule_switch_entities(
             call(legacy_filter.entity_id),
             call(legacy_nat_pf.entity_id),
             call(legacy_nat_out.entity_id),
+            call(stale_native_firewall.entity_id),
         ],
         any_order=True,
     )
-    assert entity_registry.async_remove.call_count == 3
+    assert entity_registry.async_remove.call_count == 4
     ph_hass.config_entries.async_update_entry.assert_called_once_with(entry, version=5)
+
+
+@pytest.mark.asyncio
+async def test_migrate_4_to_5_uses_rule_key_when_uuid_is_missing(
+    monkeypatch: pytest.MonkeyPatch, ph_hass: Any
+) -> None:
+    """_migrate_4_to_5 should keep non-uuid rules by mapping key."""
+    ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
+    entry = MockConfigEntry(
+        domain=init_mod.DOMAIN,
+        data={
+            init_mod.CONF_DEVICE_UNIQUE_ID: "deviceid",
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+        },
+        version=4,
+    )
+    entry.add_to_hass(ph_hass)
+    client = MagicMock()
+    client.get_firewall = AsyncMock(return_value={"rules": {"r1": {"description": "current"}}})
+    client.async_close = AsyncMock()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", MagicMock(return_value=client)
+    )
+
+    legacy_filter = _RegistryEntity("switch.filter", "deviceid_filter_123")
+    stale_native_firewall = _RegistryEntity(
+        "switch.firewall_rule_stale", "deviceid_firewall_rule_stale"
+    )
+    current_native_firewall = _RegistryEntity(
+        "switch.firewall_rule_current", "deviceid_firewall_rule_r1"
+    )
+
+    entity_registry = MagicMock()
+    entity_registry.async_remove = MagicMock()
+    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(
+        init_mod.er,
+        "async_entries_for_config_entry",
+        lambda registry, config_entry_id: [
+            legacy_filter,
+            stale_native_firewall,
+            current_native_firewall,
+        ],
+    )
+
+    res = await init_mod.async_migrate_entry(ph_hass, entry)
+
+    assert res is True
+    assert entity_registry.async_remove.call_count == 2
+    entity_registry.async_remove.assert_has_calls(
+        [call(legacy_filter.entity_id), call(stale_native_firewall.entity_id)],
+        any_order=True,
+    )
+    removed_entity_ids = {
+        remove_call.args[0] for remove_call in entity_registry.async_remove.call_args_list
+    }
+    assert current_native_firewall.entity_id not in removed_entity_ids
+    ph_hass.config_entries.async_update_entry.assert_called_once_with(entry, version=5)
+
+
+@pytest.mark.asyncio
+async def test_migrate_4_to_5_sync_disabled_skips_firewall_fetch_removes_legacy_only(
+    monkeypatch: pytest.MonkeyPatch, ph_hass: Any
+) -> None:
+    """_migrate_4_to_5 should skip firewall fetch and keep native rules when sync is disabled."""
+    ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
+    entry = MockConfigEntry(
+        domain=init_mod.DOMAIN,
+        data={
+            init_mod.CONF_DEVICE_UNIQUE_ID: "deviceid",
+            init_mod.CONF_SYNC_FIREWALL_AND_NAT: False,
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+        },
+        version=4,
+    )
+    entry.add_to_hass(ph_hass)
+    client = MagicMock()
+    client.get_firewall = AsyncMock(return_value={"rules": {}})
+    client.async_close = AsyncMock()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", MagicMock(return_value=client)
+    )
+
+    legacy_filter = _RegistryEntity("switch.filter", "deviceid_filter_123")
+    stale_native_firewall = _RegistryEntity(
+        "switch.firewall_rule_stale", "deviceid_firewall_rule_stale"
+    )
+    current_native_firewall = _RegistryEntity(
+        "switch.firewall_rule_current", "deviceid_firewall_rule_current"
+    )
+    native_nat = _RegistryEntity("switch.firewall_nat", "deviceid_firewall_nat_123")
+
+    entity_registry = MagicMock()
+    entity_registry.async_remove = MagicMock()
+    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(
+        init_mod.er,
+        "async_entries_for_config_entry",
+        lambda registry, config_entry_id: [
+            legacy_filter,
+            stale_native_firewall,
+            current_native_firewall,
+            native_nat,
+        ],
+    )
+
+    res = await init_mod.async_migrate_entry(ph_hass, entry)
+
+    assert res is True
+    client.get_firewall.assert_not_called()
+    entity_registry.async_remove.assert_has_calls([call(legacy_filter.entity_id)], any_order=True)
+    assert entity_registry.async_remove.call_count == 1
+    removed_entity_ids = {
+        remove_call.args[0] for remove_call in entity_registry.async_remove.call_args_list
+    }
+    assert stale_native_firewall.entity_id not in removed_entity_ids
+    assert current_native_firewall.entity_id not in removed_entity_ids
+    assert native_nat.entity_id not in removed_entity_ids
+    ph_hass.config_entries.async_update_entry.assert_called_once_with(entry, version=5)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "firewall_result",
+    [
+        pytest.param(init_mod.OPNsenseError("unavailable"), id="fetch-error"),
+        pytest.param({}, id="missing-rules"),
+        pytest.param({"rules": []}, id="invalid-rules"),
+    ],
+)
+async def test_migrate_4_to_5_defers_when_firewall_rules_unavailable(
+    monkeypatch: pytest.MonkeyPatch, ph_hass: Any, firewall_result: Any
+) -> None:
+    """_migrate_4_to_5 should not version-bump when firewall rules cannot be fetched."""
+    ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
+    entry = MockConfigEntry(
+        domain=init_mod.DOMAIN,
+        data={
+            init_mod.CONF_DEVICE_UNIQUE_ID: "device-id",
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+        },
+        version=4,
+    )
+    entry.add_to_hass(ph_hass)
+    client = MagicMock()
+    if isinstance(firewall_result, init_mod.OPNsenseError):
+        client.get_firewall = AsyncMock(side_effect=firewall_result)
+    else:
+        client.get_firewall = AsyncMock(return_value=firewall_result)
+    client.async_close = AsyncMock()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", MagicMock(return_value=client)
+    )
+
+    legacy_filter = _RegistryEntity("switch.filter", "device-id_filter_123")
+
+    entity_registry = MagicMock()
+    entity_registry.async_remove = MagicMock()
+    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(
+        init_mod.er,
+        "async_entries_for_config_entry",
+        lambda registry, config_entry_id: [legacy_filter],
+    )
+
+    res = await init_mod.async_migrate_entry(ph_hass, entry)
+
+    assert res is False
+    entity_registry.async_remove.assert_not_called()
+    ph_hass.config_entries.async_update_entry.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -625,18 +827,24 @@ async def test_migrate_4_to_5_legacy_entity_remove_failure_continues_migration(
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
     entry = MockConfigEntry(
         domain=init_mod.DOMAIN,
-        data={init_mod.CONF_DEVICE_UNIQUE_ID: "device-id"},
+        data={
+            init_mod.CONF_DEVICE_UNIQUE_ID: "device-id",
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+        },
         version=4,
     )
     entry.add_to_hass(ph_hass)
+    client = MagicMock()
+    client.get_firewall = AsyncMock(return_value={"rules": {}})
+    client.async_close = AsyncMock()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", MagicMock(return_value=client)
+    )
 
-    class Ent:
-        def __init__(self, entity_id: str, unique_id: str) -> None:
-            self.entity_id = entity_id
-            self.unique_id = unique_id
-
-    broken_ent = Ent("switch.filter", "device-id_filter_123")
-    ok_ent = Ent("switch.nat_pf", "device-id_nat_port_forward_123")
+    broken_ent = _RegistryEntity("switch.filter", "device-id_filter_123")
+    ok_ent = _RegistryEntity("switch.nat_pf", "device-id_nat_port_forward_123")
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock(side_effect=[exc, None])
@@ -665,17 +873,23 @@ async def test_migrate_4_to_5_version_bump_failure_aborts_migration(
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=False)
     entry = MockConfigEntry(
         domain=init_mod.DOMAIN,
-        data={init_mod.CONF_DEVICE_UNIQUE_ID: "device-id"},
+        data={
+            init_mod.CONF_DEVICE_UNIQUE_ID: "device-id",
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+        },
         version=4,
     )
     entry.add_to_hass(ph_hass)
+    client = MagicMock()
+    client.get_firewall = AsyncMock(return_value={"rules": {}})
+    client.async_close = AsyncMock()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", MagicMock(return_value=client)
+    )
 
-    class Ent:
-        def __init__(self, entity_id: str, unique_id: str) -> None:
-            self.entity_id = entity_id
-            self.unique_id = unique_id
-
-    legacy_filter = Ent("switch.filter", "device-id_filter_123")
+    legacy_filter = _RegistryEntity("switch.filter", "device-id_filter_123")
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock()
@@ -962,9 +1176,9 @@ async def test_async_setup_entry_firmware_below_min(
 
     entry = make_config_entry(
         data={
-            init_mod.CONF_URL: "http://1.2.3.4",
-            init_mod.CONF_USERNAME: "u",
-            init_mod.CONF_PASSWORD: "p",
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
             init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
         }
     )
@@ -998,9 +1212,9 @@ async def test_async_setup_entry_firmware_between_min_and_ltd(
 
     entry = make_config_entry(
         data={
-            init_mod.CONF_URL: "http://1.2.3.4",
-            init_mod.CONF_USERNAME: "u",
-            init_mod.CONF_PASSWORD: "p",
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
             init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
         }
     )
@@ -1031,9 +1245,9 @@ async def test_migrate_2_to_3_missing_device_id(
     client = fake_client(device_id=None)()
     cfg = MagicMock()
     cfg.data = {
-        init_mod.CONF_URL: "http://1.2.3.4",
-        init_mod.CONF_USERNAME: "u",
-        init_mod.CONF_PASSWORD: "p",
+        CONF_URL: "http://1.2.3.4",
+        CONF_USERNAME: "u",
+        CONF_PASSWORD: "p",
     }
     cfg.version = 2
     # set up hass fixture-like object for registry access
@@ -1081,9 +1295,9 @@ async def test_migrate_2_to_3_success(monkeypatch: pytest.MonkeyPatch, fake_clie
 
     cfg = MagicMock()
     cfg.data = {
-        init_mod.CONF_URL: "http://1.2.3.4",
-        init_mod.CONF_USERNAME: "u",
-        init_mod.CONF_PASSWORD: "p",
+        CONF_URL: "http://1.2.3.4",
+        CONF_USERNAME: "u",
+        CONF_PASSWORD: "p",
     }
     cfg.version = 2
     cfg.entry_id = "e"
@@ -1122,9 +1336,9 @@ async def test_migrate_2_to_3_returns_false_when_update_entry_fails(
 
     cfg = MagicMock()
     cfg.data = {
-        init_mod.CONF_URL: "http://1.2.3.4",
-        init_mod.CONF_USERNAME: "u",
-        init_mod.CONF_PASSWORD: "p",
+        CONF_URL: "http://1.2.3.4",
+        CONF_USERNAME: "u",
+        CONF_PASSWORD: "p",
     }
     cfg.version = 2
     cfg.entry_id = "e"
@@ -1168,9 +1382,9 @@ async def test_async_setup_entry_awesomeversion_exception(
     monkeypatch.setattr(init_mod.awesomeversion, "AwesomeVersion", DummyAV)
     entry = make_config_entry(
         data={
-            init_mod.CONF_URL: "http://1.2.3.4",
-            init_mod.CONF_USERNAME: "u",
-            init_mod.CONF_PASSWORD: "p",
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
             init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
         }
     )
@@ -1233,9 +1447,9 @@ async def test_migrate_3_to_4_filesystem_and_remove(
 
     cfg = MagicMock()
     cfg.data = {
-        init_mod.CONF_URL: "http://1.2.3.4",
-        init_mod.CONF_USERNAME: "u",
-        init_mod.CONF_PASSWORD: "p",
+        CONF_URL: "http://1.2.3.4",
+        CONF_USERNAME: "u",
+        CONF_PASSWORD: "p",
     }
     cfg.version = 3
     cfg.entry_id = "e3"
@@ -1281,9 +1495,9 @@ async def test_migrate_3_to_4_filesystem_preserves_unique_id_prefix(
 
     cfg = MagicMock()
     cfg.data = {
-        init_mod.CONF_URL: "http://1.2.3.4",
-        init_mod.CONF_USERNAME: "u",
-        init_mod.CONF_PASSWORD: "p",
+        CONF_URL: "http://1.2.3.4",
+        CONF_USERNAME: "u",
+        CONF_PASSWORD: "p",
     }
     cfg.version = 3
     cfg.entry_id = "e3"
@@ -1347,9 +1561,9 @@ async def test_migrate_3_to_4_filesystem_skips_and_non_root_mountpoint(
 
     cfg = MagicMock()
     cfg.data = {
-        init_mod.CONF_URL: "http://1.2.3.4",
-        init_mod.CONF_USERNAME: "u",
-        init_mod.CONF_PASSWORD: "p",
+        CONF_URL: "http://1.2.3.4",
+        CONF_USERNAME: "u",
+        CONF_PASSWORD: "p",
     }
     cfg.version = 3
     cfg.entry_id = "e3"
@@ -1483,9 +1697,9 @@ async def test_migrate_3_to_4_returns_false_when_update_entry_fails(
 
     cfg = MagicMock()
     cfg.data = {
-        init_mod.CONF_URL: "http://1.2.3.4",
-        init_mod.CONF_USERNAME: "u",
-        init_mod.CONF_PASSWORD: "p",
+        CONF_URL: "http://1.2.3.4",
+        CONF_USERNAME: "u",
+        CONF_PASSWORD: "p",
     }
     cfg.version = 3
     cfg.entry_id = "e3"
@@ -1527,9 +1741,9 @@ async def test_migrate_2_to_3_handles_entity_update_value_error(
 
     cfg = MagicMock()
     cfg.data = {
-        init_mod.CONF_URL: "http://1.2.3.4",
-        init_mod.CONF_USERNAME: "u",
-        init_mod.CONF_PASSWORD: "p",
+        CONF_URL: "http://1.2.3.4",
+        CONF_USERNAME: "u",
+        CONF_PASSWORD: "p",
     }
     cfg.version = 2
     cfg.entry_id = "e"
@@ -1568,9 +1782,9 @@ async def test_migrate_3_to_4_handles_remove_exceptions(
 
     cfg = MagicMock()
     cfg.data = {
-        init_mod.CONF_URL: "http://1.2.3.4",
-        init_mod.CONF_USERNAME: "u",
-        init_mod.CONF_PASSWORD: "p",
+        CONF_URL: "http://1.2.3.4",
+        CONF_USERNAME: "u",
+        CONF_PASSWORD: "p",
     }
     cfg.version = 3
     cfg.entry_id = "e3"
@@ -1605,9 +1819,9 @@ async def test_migrate_3_to_4_handles_update_value_error(
 
     cfg = MagicMock()
     cfg.data = {
-        init_mod.CONF_URL: "http://1.2.3.4",
-        init_mod.CONF_USERNAME: "u",
-        init_mod.CONF_PASSWORD: "p",
+        CONF_URL: "http://1.2.3.4",
+        CONF_USERNAME: "u",
+        CONF_PASSWORD: "p",
     }
     cfg.version = 3
     cfg.entry_id = "e3"
@@ -1629,6 +1843,7 @@ async def test_migrate_3_to_4_handles_update_value_error(
         (1, "_migrate_1_to_2"),
         (2, "_migrate_2_to_3"),
         (3, "_migrate_3_to_4"),
+        (4, "_migrate_4_to_5"),
     ],
 )
 async def test_async_migrate_entry_returns_false_when_submigration_fails(
@@ -1640,14 +1855,14 @@ async def test_async_migrate_entry_returns_false_when_submigration_fails(
     client = MagicMock()
     client.async_close = AsyncMock()
     create_client = MagicMock(return_value=client)
-    monkeypatch.setattr(init_mod, "create_opnsense_client", create_client)
+    monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", create_client)
 
     cfg = MagicMock()
     cfg.version = version
     cfg.data = {
-        init_mod.CONF_URL: "http://1.2.3.4",
-        init_mod.CONF_USERNAME: "u",
-        init_mod.CONF_PASSWORD: "p",
+        CONF_URL: "http://1.2.3.4",
+        CONF_USERNAME: "u",
+        CONF_PASSWORD: "p",
     }
 
     # call with a real hass fixture
@@ -1662,19 +1877,21 @@ async def test_async_migrate_entry_returns_false_when_submigration_fails(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("version", [2, 3])
+@pytest.mark.parametrize("version", [2, 3, 4])
 async def test_async_migrate_entry_returns_false_when_migration_client_missing(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any, version: int
 ) -> None:
-    """async_migrate_entry should fail version 2/3 migrations without a client."""
-    monkeypatch.setattr(init_mod, "create_opnsense_client", lambda **_kwargs: None)
+    """async_migrate_entry should fail client-backed migrations without a client."""
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: None
+    )
 
     cfg = MagicMock()
     cfg.version = version
     cfg.data = {
-        init_mod.CONF_URL: "http://1.2.3.4",
-        init_mod.CONF_USERNAME: "u",
-        init_mod.CONF_PASSWORD: "p",
+        CONF_URL: "http://1.2.3.4",
+        CONF_USERNAME: "u",
+        CONF_PASSWORD: "p",
     }
     cfg.title = "router"
 
@@ -1704,9 +1921,9 @@ async def test_async_setup_entry_firmware_above_ltd_calls_delete(
 
     entry = make_config_entry(
         data={
-            init_mod.CONF_URL: "http://1.2.3.4",
-            init_mod.CONF_USERNAME: "u",
-            init_mod.CONF_PASSWORD: "p",
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
             init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
         }
     )
@@ -1741,9 +1958,9 @@ async def test_async_setup_entry_firmware_at_or_above_ltd_deletes_previous_issue
 
     entry = make_config_entry(
         data={
-            init_mod.CONF_URL: "http://1.2.3.4",
-            init_mod.CONF_USERNAME: "u",
-            init_mod.CONF_PASSWORD: "p",
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
             init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
         }
     )
@@ -1783,9 +2000,9 @@ async def test_async_setup_entry_delete_uses_actual_firmware_string(
 
     entry = make_config_entry(
         data={
-            init_mod.CONF_URL: "http://1.2.3.4",
-            init_mod.CONF_USERNAME: "u",
-            init_mod.CONF_PASSWORD: "p",
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
             init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
         }
     )
@@ -1824,9 +2041,9 @@ async def test_async_setup_entry_delete_not_called_for_between_min_and_ltd(
 
     entry = make_config_entry(
         data={
-            init_mod.CONF_URL: "http://1.2.3.4",
-            init_mod.CONF_USERNAME: "u",
-            init_mod.CONF_PASSWORD: "p",
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
             init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
         }
     )
@@ -1858,9 +2075,9 @@ async def test_async_setup_entry_with_device_tracker_enabled(
 
     entry = make_config_entry(
         data={
-            init_mod.CONF_URL: "http://1.2.3.4",
-            init_mod.CONF_USERNAME: "u",
-            init_mod.CONF_PASSWORD: "p",
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
             init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
         },
         options={init_mod.CONF_DEVICE_TRACKER_ENABLED: True},
@@ -1884,7 +2101,9 @@ async def test_async_setup_entry_cleans_up_when_device_tracker_refresh_fails(
 ) -> None:
     """async_setup_entry should clean up when device-tracker setup fails."""
     client = _make_valid_setup_client()
-    monkeypatch.setattr(init_mod, "create_opnsense_client", lambda **_kwargs: client)
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
+    )
 
     main_coordinator = _make_setup_coordinator()
     device_tracker_coordinator = _make_setup_coordinator()
@@ -1902,9 +2121,9 @@ async def test_async_setup_entry_cleans_up_when_device_tracker_refresh_fails(
 
     entry = make_config_entry(
         data={
-            init_mod.CONF_URL: "http://1.2.3.4",
-            init_mod.CONF_USERNAME: "u",
-            init_mod.CONF_PASSWORD: "p",
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
             init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
         },
         options={init_mod.CONF_DEVICE_TRACKER_ENABLED: True},
@@ -1932,16 +2151,18 @@ async def test_async_setup_entry_cleans_up_when_platform_forwarding_fails(
 ) -> None:
     """async_setup_entry should clean up when platform forwarding fails."""
     client = _make_valid_setup_client()
-    monkeypatch.setattr(init_mod, "create_opnsense_client", lambda **_kwargs: client)
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
+    )
 
     coordinator = _make_setup_coordinator()
     monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
 
     entry = make_config_entry(
         data={
-            init_mod.CONF_URL: "http://1.2.3.4",
-            init_mod.CONF_USERNAME: "u",
-            init_mod.CONF_PASSWORD: "p",
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
             init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
         },
         options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
@@ -1978,16 +2199,18 @@ async def test_async_setup_entry_registers_update_listener_before_forwarding(
     call_order: list[str] = []
 
     client = _make_valid_setup_client()
-    monkeypatch.setattr(init_mod, "create_opnsense_client", lambda **_kwargs: client)
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
+    )
 
     coordinator = _make_setup_coordinator()
     monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
 
     entry = make_config_entry(
         data={
-            init_mod.CONF_URL: "http://1.2.3.4",
-            init_mod.CONF_USERNAME: "u",
-            init_mod.CONF_PASSWORD: "p",
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
             init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
         },
         options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
@@ -2054,9 +2277,9 @@ async def test_migrate_2_to_3_handles_identifier_collision(
     )
     cfg = MagicMock()
     cfg.data = {
-        init_mod.CONF_URL: "http://1.2.3.4",
-        init_mod.CONF_USERNAME: "u",
-        init_mod.CONF_PASSWORD: "p",
+        CONF_URL: "http://1.2.3.4",
+        CONF_USERNAME: "u",
+        CONF_PASSWORD: "p",
     }
     cfg.version = 2
     cfg.entry_id = "e"

@@ -15,14 +15,7 @@ from aiopnsense import OPNsenseClient
 from aiopnsense.exceptions import OPNsenseBelowMinFirmware, OPNsenseError, OPNsenseUnknownFirmware
 import awesomeversion
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import (
-    CONF_PASSWORD,
-    CONF_SCAN_INTERVAL,
-    CONF_URL,
-    CONF_USERNAME,
-    CONF_VERIFY_SSL,
-    Platform,
-)
+from homeassistant.const import CONF_SCAN_INTERVAL, CONF_VERIFY_SSL, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import (
     config_validation as cv,
@@ -36,13 +29,13 @@ from .const import (
     CONF_DEVICE_TRACKER_ENABLED,
     CONF_DEVICE_TRACKER_SCAN_INTERVAL,
     CONF_DEVICE_UNIQUE_ID,
+    CONF_SYNC_FIREWALL_AND_NAT,
     CONF_TLS_INSECURE,
     DEFAULT_DEVICE_TRACKER_ENABLED,
     DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SYNC_OPTION_VALUE,
     DEFAULT_TLS_INSECURE,
-    DEFAULT_VERIFY_SSL,
     DOMAIN,
     GRANULAR_SYNC_PREFIX,
     LOADED_PLATFORMS,
@@ -54,7 +47,10 @@ from .const import (
     VERSION,
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
-from .helpers import create_opnsense_client
+from .helpers import (
+    create_opnsense_client_from_config_entry,
+    firewall_rule_switch_unique_ids_from_payload,
+)
 from .services import async_setup_services
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -68,6 +64,7 @@ NATIVE_RULE_ENTITY_TOKENS: tuple[str, ...] = (
     "_firewall_rule_",
     "_firewall_nat_",
 )
+NATIVE_FIREWALL_RULE_ENTITY_MARKER = "_firewall_rule_"
 
 
 @dataclass
@@ -223,14 +220,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     client: OPNsenseClient | None = None
     try:
-        client = create_opnsense_client(
-            hass=hass,
-            url=config[CONF_URL],
-            username=config[CONF_USERNAME],
-            password=config[CONF_PASSWORD],
-            verify_ssl=config.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
-            name=entry.title,
-        )
+        client = create_opnsense_client_from_config_entry(hass=hass, config_entry=entry)
         try:
             await client.validate()
         except OPNsenseBelowMinFirmware, OPNsenseUnknownFirmware:
@@ -665,24 +655,65 @@ async def _migrate_3_to_4(
     return True
 
 
-async def _migrate_4_to_5(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    """Prune stale legacy rule entities during migration from 4 to 5.
+async def _migrate_4_to_5(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    migration_client: OPNsenseClient,
+) -> bool:
+    """Prune stale rule switch entities during migration from 4 to 5.
 
     Args:
         hass: Home Assistant instance.
         config_entry: Config entry being migrated.
+        migration_client: Client used to fetch current firewall rules.
 
     Returns:
-        bool: `True` when legacy entities are removed and entry version is updated.
+        bool: `True` when rule entities are removed and entry version is updated.
     """
     _LOGGER.debug("[migrate_4_to_5] Initial Version: %s", config_entry.version)
     entity_registry = er.async_get(hass)
+    current_firewall_unique_ids: set[str] | None = None
+    sync_firewall_rules: bool = config_entry.data.get(
+        CONF_SYNC_FIREWALL_AND_NAT, DEFAULT_SYNC_OPTION_VALUE
+    )
+
+    if sync_firewall_rules:
+        try:
+            firewall = await migration_client.get_firewall()
+        except OPNsenseError as e:
+            _LOGGER.warning(
+                "Migration to version 5 deferred because current firewall rules are "
+                "unavailable: %s",
+                type(e).__name__,
+            )
+            return False
+
+        rules = firewall.get("rules") if isinstance(firewall, Mapping) else None
+        device_unique_id = config_entry.data.get(CONF_DEVICE_UNIQUE_ID)
+        if not isinstance(rules, Mapping) or not isinstance(device_unique_id, str):
+            _LOGGER.warning(
+                "Migration to version 5 deferred because firewall rule data is unavailable"
+            )
+            return False
+
+        current_firewall_unique_ids = firewall_rule_switch_unique_ids_from_payload(
+            device_unique_id,
+            rules,
+        )
 
     for ent in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
         platform = ent.entity_id.split(".")[0]
         if platform != Platform.SWITCH:
             continue
-        if any(token in ent.unique_id for token in LEGACY_RULE_ENTITY_TOKENS):
+        should_remove = any(token in ent.unique_id for token in LEGACY_RULE_ENTITY_TOKENS)
+        if (
+            not should_remove
+            and current_firewall_unique_ids is not None
+            and NATIVE_FIREWALL_RULE_ENTITY_MARKER in ent.unique_id
+            and ent.unique_id not in current_firewall_unique_ids
+        ):
+            should_remove = True
+        if should_remove:
             try:
                 entity_registry.async_remove(ent.entity_id)
                 _LOGGER.debug("[migrate_4_to_5] removed entity_id: %s", ent.entity_id)
@@ -733,14 +764,10 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
 
     migration_client: OPNsenseClient | None = None
     try:
-        if version in (2, 3):
-            migration_client = create_opnsense_client(
+        if version in (2, 3, 4):
+            migration_client = create_opnsense_client_from_config_entry(
                 hass=hass,
-                url=config_entry.data[CONF_URL],
-                username=config_entry.data[CONF_USERNAME],
-                password=config_entry.data[CONF_PASSWORD],
-                verify_ssl=config_entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
-                name=config_entry.title,
+                config_entry=config_entry,
             )
 
         # 2 -> 3: Change unique device id to use lowest MAC address
@@ -764,7 +791,10 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
             version = 4
 
         if version == 4:
-            v4to5: bool = await _migrate_4_to_5(hass, config_entry)
+            if migration_client is None:
+                _LOGGER.error("Missing migration client for Migration to Version 5")
+                return False
+            v4to5: bool = await _migrate_4_to_5(hass, config_entry, migration_client)
             if not v4to5:
                 return False
             version = 5
