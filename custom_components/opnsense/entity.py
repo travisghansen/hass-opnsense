@@ -104,16 +104,6 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
         """
         return self._available
 
-    def _device_name(self) -> str | None:
-        """Return the display name for the parent OPNsense device.
-
-        Returns:
-            str | None: Config entry title when present, otherwise the runtime device name.
-        """
-        if self.config_entry.title and len(self.config_entry.title) > 0:
-            return self.config_entry.title
-        return self._get_opnsense_state_value("system_info.name")
-
     def _get_opnsense_state_value(self, path: str) -> Any | None:
         """Read a nested value from coordinator state data.
 
@@ -210,7 +200,7 @@ class OPNsenseEntity(OPNsenseBaseEntity):
 
         device_info: DeviceInfo = {
             "identifiers": {(DOMAIN, self._device_unique_id)},
-            "name": self._device_name(),
+            "name": self.config_entry.title or self._get_opnsense_state_value("system_info.name"),
             "configuration_url": self.config_entry.data.get("url", None),
         }
 
