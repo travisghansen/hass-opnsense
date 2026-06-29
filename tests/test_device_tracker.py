@@ -17,7 +17,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.opnsense.device_tracker import OPNsenseScannerEntity
 
 dt_mod = importlib.import_module("custom_components.opnsense.device_tracker")
-ha_dt_entity_mod = importlib.import_module("homeassistant.components.device_tracker.entity")
+ha_dt_entity_mod = importlib.import_module("homeassistant.components.device_tracker.config_entry")
 pkg = importlib.import_module("custom_components.opnsense")
 
 
