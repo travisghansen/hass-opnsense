@@ -85,7 +85,7 @@ def test_payload_display_name_skips_get_and_str_failures() -> None:
 def test_init_sets_unique_and_name_suffixes(
     make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
 ) -> None:
-    """Verify unique_id and name suffix handling for base entities."""
+    """Verify unique_id and suffix-only name handling for base entities."""
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev-123", "url": "http://x"}, title="MyBox")
     coord = dummy_coordinator
     ent = OPNsenseBaseEntity(
@@ -100,8 +100,10 @@ def test_init_sets_unique_and_name_suffixes(
     assert ent.unique_id is not None
     assert ent.unique_id.startswith(f"{expected_prefix}_")
     assert ent.unique_id.endswith("_suf")
+    assert ent.unique_id == "dev_123_suf"
+    assert ent._attr_has_entity_name is True
     assert hasattr(ent, "name")
-    assert ent.name == "MyBox Name"
+    assert ent.name == "Name"
 
 
 def test_available_property_toggle(
@@ -116,24 +118,28 @@ def test_available_property_toggle(
     assert ent.available is True
 
 
-def test_opnsense_device_name_prefers_title_and_fallback_to_state(
+def test_device_info_name_prefers_title_and_fallback_to_state(
     make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
 ) -> None:
-    """Device name prefers config entry title and falls back to state name."""
+    """Device info name prefers config entry title and falls back to state name."""
     # when title present
     entry = make_config_entry(
         {CONF_DEVICE_UNIQUE_ID: "dev-123", "url": "http://x"}, title="BoxTitle"
     )
     coord = dummy_coordinator
-    ent = OPNsenseBaseEntity(config_entry=entry, coordinator=coord, unique_id_suffix="test")
-    assert ent.opnsense_device_name == "BoxTitle"
+    ent = OPNsenseEntity(config_entry=entry, coordinator=coord, unique_id_suffix="test")
+    info = ent.device_info
+    assert info is not None
+    assert info["name"] == "BoxTitle"
 
     # when title empty -> falls back to coordinator.data system_info.name
     entry2 = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev-123", "url": "http://x"}, title="")
     coord2 = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord2.data = {"system_info": {"name": "FromState"}}
-    ent2 = OPNsenseBaseEntity(config_entry=entry2, coordinator=coord2, unique_id_suffix="test")
-    assert ent2.opnsense_device_name == "FromState"
+    ent2 = OPNsenseEntity(config_entry=entry2, coordinator=coord2, unique_id_suffix="test")
+    info2 = ent2.device_info
+    assert info2 is not None
+    assert info2["name"] == "FromState"
 
 
 def test_get_opnsense_state_value_nested_lookup(

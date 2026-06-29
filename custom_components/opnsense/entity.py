@@ -22,6 +22,8 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
     """Base entity for OPNsense."""
 
+    _attr_has_entity_name = True
+
     @staticmethod
     def payload_display_name(
         payload: Mapping[str, Any],
@@ -87,7 +89,7 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
         if unique_id_suffix:
             self._attr_unique_id: str = slugify(f"{self._device_unique_id}_{unique_id_suffix}")
         if name_suffix:
-            self._attr_name: str | None = f"{self.opnsense_device_name or 'OPNsense'} {name_suffix}"
+            self._attr_name: str | None = name_suffix
         self._client: OPNsenseClient | None = None
         self._attr_extra_state_attributes: dict[str, Any] = {}
         self._available: bool = False
@@ -102,8 +104,7 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
         """
         return self._available
 
-    @property
-    def opnsense_device_name(self) -> str | None:
+    def _device_name(self) -> str | None:
         """Return the display name for the parent OPNsense device.
 
         Returns:
@@ -209,7 +210,7 @@ class OPNsenseEntity(OPNsenseBaseEntity):
 
         device_info: DeviceInfo = {
             "identifiers": {(DOMAIN, self._device_unique_id)},
-            "name": self.opnsense_device_name,
+            "name": self._device_name(),
             "configuration_url": self.config_entry.data.get("url", None),
         }
 

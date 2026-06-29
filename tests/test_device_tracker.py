@@ -634,6 +634,8 @@ async def test_restore_last_state_and_device_info(
         mac_vendor="mfg",
         hostname="dev",
     )
+    assert ent.name == "dev"
+    assert ent.unique_id == "dev1_mac_aa_bb_cc"
     ent._attr_extra_state_attributes = {}
     last_known_connected_time = datetime.now(UTC)
 
@@ -662,11 +664,14 @@ async def test_restore_last_state_and_device_info(
     if isinstance(devinfo, MutableMapping):
         connections = devinfo.get("connections", [])
         via = devinfo.get("via_device")
+        default_name = devinfo.get("default_name")
     else:
         connections = getattr(devinfo, "connections", [])
         via = getattr(devinfo, "via_device", None)
+        default_name = getattr(devinfo, "default_name", None)
 
     assert any(t[1] == "aa:bb:cc" for t in connections)
+    assert default_name == "dev"
     assert via is not None
     assert via[0] == dt_mod.DOMAIN
     assert via[1] == entry.data[pkg.CONF_DEVICE_UNIQUE_ID]

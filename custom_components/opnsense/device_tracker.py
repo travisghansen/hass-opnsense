@@ -296,7 +296,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         """
         super().__init__(config_entry, coordinator, unique_id_suffix=f"mac_{mac}")
         self._mac_vendor: str | None = mac_vendor
-        self._attr_name: str | None = f"{self.opnsense_device_name} {hostname or mac}"
+        self._attr_name: str | None = hostname or mac
         self._last_known_ip: str | None = None
         self._last_known_hostname: str | None = None
         self._is_connected: bool = False
