@@ -124,20 +124,44 @@ def test_create_opnsense_client_builds_client_with_expected_options(
     assert created["client_kwargs"] == expected_client_kwargs
 
 
+@pytest.mark.parametrize(
+    ("entry_data", "throw_errors", "expected_verify_ssl"),
+    [
+        pytest.param(
+            {
+                "url": "https://router.example",
+                "username": "user",
+                "password": "pass",
+                "verify_ssl": False,
+            },
+            True,
+            False,
+            id="forwards-explicit-verify-ssl",
+        ),
+        pytest.param(
+            {
+                "url": "https://router.example",
+                "username": "user",
+                "password": "pass",
+            },
+            False,
+            DEFAULT_VERIFY_SSL,
+            id="defaults-missing-verify-ssl",
+        ),
+    ],
+)
 def test_create_opnsense_client_from_config_entry_forwards_entry_data(
     monkeypatch: pytest.MonkeyPatch,
+    entry_data: dict[str, Any],
+    throw_errors: bool,
+    expected_verify_ssl: bool,
 ) -> None:
     """Create OPNsense clients from config entries through the shared helper."""
     captured: dict[str, Any] = {}
     hass = MagicMock()
     client = MagicMock()
     entry = MockConfigEntry(
-        data={
-            "url": "https://router.example",
-            "username": "user",
-            "password": "pass",
-            "verify_ssl": False,
-        },
+        data=entry_data,
         title="router",
     )
 
@@ -151,7 +175,7 @@ def test_create_opnsense_client_from_config_entry_forwards_entry_data(
     result = create_opnsense_client_from_config_entry(
         hass=hass,
         config_entry=entry,
-        throw_errors=True,
+        throw_errors=throw_errors,
     )
 
     assert result is client
@@ -160,43 +184,10 @@ def test_create_opnsense_client_from_config_entry_forwards_entry_data(
         "url": "https://router.example",
         "username": "user",
         "password": "pass",
-        "verify_ssl": False,
-        "throw_errors": True,
+        "verify_ssl": expected_verify_ssl,
+        "throw_errors": throw_errors,
         "name": "router",
     }
-
-
-def test_create_opnsense_client_from_config_entry_defaults_verify_ssl(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Missing verify_ssl defaults to DEFAULT_VERIFY_SSL when loading clients."""
-    captured: dict[str, Any] = {}
-    hass = MagicMock()
-    client = MagicMock()
-    entry = MockConfigEntry(
-        data={
-            "url": "https://router.example",
-            "username": "user",
-            "password": "pass",
-        },
-        title="router",
-    )
-
-    def _create_opnsense_client(**kwargs: Any) -> MagicMock:
-        """Capture forwarded client settings."""
-        captured.update(kwargs)
-        return client
-
-    monkeypatch.setattr(helpers_mod, "create_opnsense_client", _create_opnsense_client)
-
-    result = create_opnsense_client_from_config_entry(
-        hass=hass,
-        config_entry=entry,
-        throw_errors=False,
-    )
-
-    assert result is client
-    assert captured["verify_ssl"] is DEFAULT_VERIFY_SSL
 
 
 @pytest.mark.parametrize(

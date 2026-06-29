@@ -5,6 +5,7 @@ and removal/unload behaviors for the hass-opnsense integration.
 """
 
 from collections.abc import Callable
+from dataclasses import dataclass
 import logging
 from typing import Any, Never
 from unittest.mock import ANY, AsyncMock, MagicMock, call
@@ -18,6 +19,14 @@ import custom_components.opnsense as opnsense_mod
 from tests.utilities import patch_opnsense_client
 
 init_mod: Any = opnsense_mod
+
+
+@dataclass(slots=True)
+class _RegistryEntity:
+    """Minimal entity-registry record for migration and listener tests."""
+
+    entity_id: str
+    unique_id: str
 
 
 def _make_valid_setup_client() -> MagicMock:
@@ -587,19 +596,18 @@ async def test_migrate_4_to_5_removes_rule_switch_entities(
         init_mod, "create_opnsense_client_from_config_entry", MagicMock(return_value=client)
     )
 
-    class Ent:
-        def __init__(self, entity_id: str, unique_id: str) -> None:
-            self.entity_id = entity_id
-            self.unique_id = unique_id
-
-    legacy_filter = Ent("switch.filter", "deviceid_filter_123")
-    legacy_nat_pf = Ent("switch.nat_pf", "deviceid_nat_port_forward_123")
-    legacy_nat_out = Ent("switch.nat_out", "deviceid_nat_outbound_123")
-    stale_native_firewall = Ent("switch.firewall_rule_stale", "deviceid_firewall_rule_stale")
-    current_native_firewall = Ent("switch.firewall_rule_current", "deviceid_firewall_rule_current")
-    native_nat = Ent("switch.firewall_nat", "deviceid_firewall_nat_123")
-    service_entity = Ent("switch.service", "deviceid_service_unbound_status")
-    telemetry_entity = Ent("sensor.telemetry", "deviceid_telemetry_cpu")
+    legacy_filter = _RegistryEntity("switch.filter", "deviceid_filter_123")
+    legacy_nat_pf = _RegistryEntity("switch.nat_pf", "deviceid_nat_port_forward_123")
+    legacy_nat_out = _RegistryEntity("switch.nat_out", "deviceid_nat_outbound_123")
+    stale_native_firewall = _RegistryEntity(
+        "switch.firewall_rule_stale", "deviceid_firewall_rule_stale"
+    )
+    current_native_firewall = _RegistryEntity(
+        "switch.firewall_rule_current", "deviceid_firewall_rule_current"
+    )
+    native_nat = _RegistryEntity("switch.firewall_nat", "deviceid_firewall_nat_123")
+    service_entity = _RegistryEntity("switch.service", "deviceid_service_unbound_status")
+    telemetry_entity = _RegistryEntity("sensor.telemetry", "deviceid_telemetry_cpu")
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock()
@@ -658,14 +666,13 @@ async def test_migrate_4_to_5_uses_rule_key_when_uuid_is_missing(
         init_mod, "create_opnsense_client_from_config_entry", MagicMock(return_value=client)
     )
 
-    class Ent:
-        def __init__(self, entity_id: str, unique_id: str) -> None:
-            self.entity_id = entity_id
-            self.unique_id = unique_id
-
-    legacy_filter = Ent("switch.filter", "deviceid_filter_123")
-    stale_native_firewall = Ent("switch.firewall_rule_stale", "deviceid_firewall_rule_stale")
-    current_native_firewall = Ent("switch.firewall_rule_current", "deviceid_firewall_rule_r1")
+    legacy_filter = _RegistryEntity("switch.filter", "deviceid_filter_123")
+    stale_native_firewall = _RegistryEntity(
+        "switch.firewall_rule_stale", "deviceid_firewall_rule_stale"
+    )
+    current_native_firewall = _RegistryEntity(
+        "switch.firewall_rule_current", "deviceid_firewall_rule_r1"
+    )
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock()
@@ -688,9 +695,10 @@ async def test_migrate_4_to_5_uses_rule_key_when_uuid_is_missing(
         [call(legacy_filter.entity_id), call(stale_native_firewall.entity_id)],
         any_order=True,
     )
-    assert current_native_firewall.entity_id not in {
-        call.args[0] for call in entity_registry.async_remove.call_args_list
+    removed_entity_ids = {
+        remove_call.args[0] for remove_call in entity_registry.async_remove.call_args_list
     }
+    assert current_native_firewall.entity_id not in removed_entity_ids
     ph_hass.config_entries.async_update_entry.assert_called_once_with(entry, version=5)
 
 
@@ -719,15 +727,14 @@ async def test_migrate_4_to_5_sync_disabled_skips_firewall_fetch_removes_legacy_
         init_mod, "create_opnsense_client_from_config_entry", MagicMock(return_value=client)
     )
 
-    class Ent:
-        def __init__(self, entity_id: str, unique_id: str) -> None:
-            self.entity_id = entity_id
-            self.unique_id = unique_id
-
-    legacy_filter = Ent("switch.filter", "deviceid_filter_123")
-    stale_native_firewall = Ent("switch.firewall_rule_stale", "deviceid_firewall_rule_stale")
-    current_native_firewall = Ent("switch.firewall_rule_current", "deviceid_firewall_rule_current")
-    native_nat = Ent("switch.firewall_nat", "deviceid_firewall_nat_123")
+    legacy_filter = _RegistryEntity("switch.filter", "deviceid_filter_123")
+    stale_native_firewall = _RegistryEntity(
+        "switch.firewall_rule_stale", "deviceid_firewall_rule_stale"
+    )
+    current_native_firewall = _RegistryEntity(
+        "switch.firewall_rule_current", "deviceid_firewall_rule_current"
+    )
+    native_nat = _RegistryEntity("switch.firewall_nat", "deviceid_firewall_nat_123")
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock()
@@ -749,15 +756,12 @@ async def test_migrate_4_to_5_sync_disabled_skips_firewall_fetch_removes_legacy_
     client.get_firewall.assert_not_called()
     entity_registry.async_remove.assert_has_calls([call(legacy_filter.entity_id)], any_order=True)
     assert entity_registry.async_remove.call_count == 1
-    assert stale_native_firewall.entity_id not in {
-        call.args[0] for call in entity_registry.async_remove.call_args_list
+    removed_entity_ids = {
+        remove_call.args[0] for remove_call in entity_registry.async_remove.call_args_list
     }
-    assert current_native_firewall.entity_id not in {
-        call.args[0] for call in entity_registry.async_remove.call_args_list
-    }
-    assert native_nat.entity_id not in {
-        call.args[0] for call in entity_registry.async_remove.call_args_list
-    }
+    assert stale_native_firewall.entity_id not in removed_entity_ids
+    assert current_native_firewall.entity_id not in removed_entity_ids
+    assert native_nat.entity_id not in removed_entity_ids
     ph_hass.config_entries.async_update_entry.assert_called_once_with(entry, version=5)
 
 
@@ -796,12 +800,7 @@ async def test_migrate_4_to_5_defers_when_firewall_rules_unavailable(
         init_mod, "create_opnsense_client_from_config_entry", MagicMock(return_value=client)
     )
 
-    class Ent:
-        def __init__(self, entity_id: str, unique_id: str) -> None:
-            self.entity_id = entity_id
-            self.unique_id = unique_id
-
-    legacy_filter = Ent("switch.filter", "device-id_filter_123")
+    legacy_filter = _RegistryEntity("switch.filter", "device-id_filter_123")
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock()
@@ -844,13 +843,8 @@ async def test_migrate_4_to_5_legacy_entity_remove_failure_continues_migration(
         init_mod, "create_opnsense_client_from_config_entry", MagicMock(return_value=client)
     )
 
-    class Ent:
-        def __init__(self, entity_id: str, unique_id: str) -> None:
-            self.entity_id = entity_id
-            self.unique_id = unique_id
-
-    broken_ent = Ent("switch.filter", "device-id_filter_123")
-    ok_ent = Ent("switch.nat_pf", "device-id_nat_port_forward_123")
+    broken_ent = _RegistryEntity("switch.filter", "device-id_filter_123")
+    ok_ent = _RegistryEntity("switch.nat_pf", "device-id_nat_port_forward_123")
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock(side_effect=[exc, None])
@@ -895,12 +889,7 @@ async def test_migrate_4_to_5_version_bump_failure_aborts_migration(
         init_mod, "create_opnsense_client_from_config_entry", MagicMock(return_value=client)
     )
 
-    class Ent:
-        def __init__(self, entity_id: str, unique_id: str) -> None:
-            self.entity_id = entity_id
-            self.unique_id = unique_id
-
-    legacy_filter = Ent("switch.filter", "device-id_filter_123")
+    legacy_filter = _RegistryEntity("switch.filter", "device-id_filter_123")
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock()
