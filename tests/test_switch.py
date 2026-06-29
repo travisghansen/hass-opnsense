@@ -2390,7 +2390,8 @@ async def test_compile_service_skips_locked(
 def test_firewall_rule_description_normalizes_non_string_interface() -> None:
     """Firewall rule descriptions should normalize non-string interfaces to Floating."""
     description = switch_mod._build_firewall_rule_switch_description(
-        {"uuid": "r1", "description": "Test", "%interface": ["lan", "wan"]}
+        "r1",
+        {"uuid": "r1", "description": "Test", "%interface": ["lan", "wan"]},
     )
 
     assert description.name == "Firewall: Floating: Test"

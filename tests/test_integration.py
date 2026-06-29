@@ -706,7 +706,7 @@ async def test_e2e_full_migration_chain(
 
         async def get_firewall(self) -> dict[str, Any]:
             """Return current aiopnsense firewall rules for stale-switch pruning."""
-            return {"rules": {"current": {"uuid": "current"}}}
+            return {"rules": {"row-key": {"uuid": "current"}}}
 
     patch_opnsense_client(monkeypatch, init_mod, lambda **k: _MigClient())
     monkeypatch.setattr(

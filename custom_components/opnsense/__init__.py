@@ -15,14 +15,7 @@ from aiopnsense import OPNsenseClient
 from aiopnsense.exceptions import OPNsenseBelowMinFirmware, OPNsenseError, OPNsenseUnknownFirmware
 import awesomeversion
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import (
-    CONF_PASSWORD as CONF_PASSWORD,
-    CONF_SCAN_INTERVAL,
-    CONF_URL as CONF_URL,
-    CONF_USERNAME as CONF_USERNAME,
-    CONF_VERIFY_SSL,
-    Platform,
-)
+from homeassistant.const import CONF_SCAN_INTERVAL, CONF_VERIFY_SSL, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import (
     config_validation as cv,
@@ -31,7 +24,6 @@ from homeassistant.helpers import (
     issue_registry as ir,
 )
 from homeassistant.helpers.typing import ConfigType
-from homeassistant.util import slugify
 
 from .const import (
     CONF_DEVICE_TRACKER_ENABLED,
@@ -54,7 +46,10 @@ from .const import (
     VERSION,
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
-from .helpers import create_opnsense_client_from_config_entry
+from .helpers import (
+    create_opnsense_client_from_config_entry,
+    firewall_rule_switch_unique_ids_from_payload,
+)
 from .services import async_setup_services
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -662,7 +657,7 @@ async def _migrate_3_to_4(
 async def _migrate_4_to_5(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
-    migration_client: OPNsenseClient | None,
+    migration_client: OPNsenseClient,
 ) -> bool:
     """Prune stale rule switch entities during migration from 4 to 5.
 
@@ -678,22 +673,25 @@ async def _migrate_4_to_5(
     entity_registry = er.async_get(hass)
     current_firewall_unique_ids: set[str] | None = None
 
-    if migration_client is not None:
-        try:
-            firewall = await migration_client.get_firewall()
-        except OPNsenseError as e:
-            _LOGGER.warning(
-                "Unable to fetch current firewall rules during migration to version 5: %s",
-                type(e).__name__,
-            )
-        else:
-            rules = firewall.get("rules") if isinstance(firewall, Mapping) else None
-            if isinstance(rules, Mapping):
-                device_unique_id = config_entry.data.get(CONF_DEVICE_UNIQUE_ID)
-                if isinstance(device_unique_id, str):
-                    current_firewall_unique_ids = {
-                        slugify(f"{device_unique_id}_firewall.rule.{rule_id}") for rule_id in rules
-                    }
+    try:
+        firewall = await migration_client.get_firewall()
+    except OPNsenseError as e:
+        _LOGGER.warning(
+            "Migration to version 5 deferred because current firewall rules are unavailable: %s",
+            type(e).__name__,
+        )
+        return False
+
+    rules = firewall.get("rules") if isinstance(firewall, Mapping) else None
+    device_unique_id = config_entry.data.get(CONF_DEVICE_UNIQUE_ID)
+    if not isinstance(rules, Mapping) or not isinstance(device_unique_id, str):
+        _LOGGER.warning("Migration to version 5 deferred because firewall rule data is unavailable")
+        return False
+
+    current_firewall_unique_ids = firewall_rule_switch_unique_ids_from_payload(
+        device_unique_id,
+        rules,
+    )
 
     for ent in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
         platform = ent.entity_id.split(".")[0]

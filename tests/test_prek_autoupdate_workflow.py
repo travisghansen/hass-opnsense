@@ -1,7 +1,6 @@
 """Tests for the prek autoupdate workflow."""
 
 from collections.abc import Generator
-from importlib import util
 from pathlib import Path
 import sys
 from types import ModuleType
@@ -94,20 +93,22 @@ def _workflow_pull(
 @pytest.fixture
 def cleanup_script() -> Generator[ModuleType]:
     """Load the prek cleanup script as a test module."""
-    spec = util.spec_from_file_location("cleanup_prek_update_branches", CLEANUP_SCRIPT_PATH)
-    assert spec is not None
-    assert spec.loader is not None
-    module = util.module_from_spec(spec)
-    previous_module = sys.modules.get("cleanup_prek_update_branches")
-    sys.modules["cleanup_prek_update_branches"] = module
-    spec.loader.exec_module(module)
+    module_name = "cleanup_prek_update_branches"
+    module = ModuleType(module_name)
+    module.__file__ = str(CLEANUP_SCRIPT_PATH)
+    previous_module = sys.modules.get(module_name)
+    sys.modules[module_name] = module
     try:
+        exec(  # noqa: S102
+            compile(CLEANUP_SCRIPT_PATH.read_text(), str(CLEANUP_SCRIPT_PATH), "exec"),
+            module.__dict__,
+        )
         yield module
     finally:
         if previous_module is None:
-            sys.modules.pop("cleanup_prek_update_branches", None)
+            sys.modules.pop(module_name, None)
         else:
-            sys.modules["cleanup_prek_update_branches"] = previous_module
+            sys.modules[module_name] = previous_module
 
 
 @pytest.mark.parametrize(

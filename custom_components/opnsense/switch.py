@@ -22,7 +22,7 @@ from .const import (
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity
-from .helpers import coerce_bool, dict_get
+from .helpers import coerce_bool, dict_get, firewall_rule_id_from_payload
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -158,10 +158,14 @@ def _build_unbound_switch_description(
     )
 
 
-def _build_firewall_rule_switch_description(rule: Mapping[str, Any]) -> SwitchEntityDescription:
+def _build_firewall_rule_switch_description(
+    rule_id: str,
+    rule: Mapping[str, Any],
+) -> SwitchEntityDescription:
     """Build the firewall rule switch description.
 
     Args:
+        rule_id: Firewall rule identifier used for entity identity and toggling.
         rule: Firewall rule data from the OPNsense payload.
 
     Returns:
@@ -173,7 +177,7 @@ def _build_firewall_rule_switch_description(rule: Mapping[str, Any]) -> SwitchEn
     if "," in interface or interface == "":
         interface = "Floating"
     return SwitchEntityDescription(
-        key=f"firewall.rule.{rule.get('uuid', 'unknown')}",
+        key=f"firewall.rule.{rule_id}",
         name=f"Firewall: {interface}: {rule.get('description', 'unknown')}",
         icon="mdi:play-network-outline",
         device_class=SwitchDeviceClass.SWITCH,
@@ -381,8 +385,11 @@ async def _compile_firewall_rules_switches(
         return []
 
     entities: list = []
-    for rule in rules.values():
+    for rule_key, rule in rules.items():
         if not isinstance(rule, MutableMapping):
+            continue
+        rule_id = firewall_rule_id_from_payload(rule_key, rule)
+        if not rule_id:
             continue
         interface = rule.get("%interface", rule.get("interface", ""))
         if not isinstance(interface, str):
@@ -392,7 +399,7 @@ async def _compile_firewall_rules_switches(
                 OPNsenseFirewallRuleSwitch,
                 config_entry,
                 coordinator,
-                _build_firewall_rule_switch_description(rule),
+                _build_firewall_rule_switch_description(rule_id, rule),
             )
         )
     return entities
