@@ -1,5 +1,6 @@
 """Tests for the aiopnsense dependency update workflow."""
 
+from importlib import util
 import json
 from pathlib import Path
 import sys
@@ -128,17 +129,12 @@ def cleanup_script() -> ModuleType:
 
 def _load_script(module_name: str, script_path: Path) -> ModuleType:
     """Load a checked-in workflow helper script as a test module."""
-    module = ModuleType(module_name)
-    module.__file__ = str(script_path)
-    previous_module = sys.modules.get(module_name)
+    spec = util.spec_from_file_location(module_name, script_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = util.module_from_spec(spec)
     sys.modules[module_name] = module
-    try:
-        exec(compile(script_path.read_text(), str(script_path), "exec"), module.__dict__)  # noqa: S102
-    finally:
-        if previous_module is None:
-            sys.modules.pop(module_name, None)
-        else:
-            sys.modules[module_name] = previous_module
+    spec.loader.exec_module(module)
     return module
 
 
