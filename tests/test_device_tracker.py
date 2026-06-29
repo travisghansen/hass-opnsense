@@ -6,19 +6,22 @@ and device info formatting for the integration's device tracker entities.
 
 from collections.abc import Callable, Iterable, MutableMapping
 from datetime import UTC, datetime, timedelta
-import importlib
 from types import MappingProxyType
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+import custom_components.opnsense as opnsense_pkg
+import custom_components.opnsense.device_tracker as device_tracker_mod
 from custom_components.opnsense.device_tracker import OPNsenseScannerEntity
+import custom_components.opnsense.entity as entity_mod
 
-dt_mod = importlib.import_module("custom_components.opnsense.device_tracker")
-ha_dt_entity_mod = importlib.import_module("homeassistant.components.device_tracker.entity")
-pkg = importlib.import_module("custom_components.opnsense")
+base_entity_mod: Any = entity_mod
+dt_mod: Any = device_tracker_mod
+pkg: Any = opnsense_pkg
 
 
 def _make_scanner_entity(
@@ -945,8 +948,7 @@ async def test_async_added_to_hass_calls_restore(
     )
 
     ent._restore_last_state = AsyncMock()
-    base_mod = importlib.import_module("custom_components.opnsense.entity")
-    monkeypatch.setattr(base_mod.OPNsenseBaseEntity, "async_added_to_hass", AsyncMock())
+    monkeypatch.setattr(base_entity_mod.OPNsenseBaseEntity, "async_added_to_hass", AsyncMock())
 
     await ent.async_added_to_hass()
     assert ent._restore_last_state.called
@@ -954,15 +956,18 @@ async def test_async_added_to_hass_calls_restore(
 
 @pytest.mark.asyncio
 async def test_async_internal_added_to_hass_links_existing_mac_device(
-    monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
-    fake_reg_factory: Any,
 ) -> None:
     """Scanner entity should link to an existing registry device with the same MAC."""
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"}, entry_id="entry-1")
+    entry.add_to_hass(ph_hass)
+    existing_entry = make_config_entry(
+        data={pkg.CONF_DEVICE_UNIQUE_ID: "other"}, entry_id="existing-entry"
+    )
+    existing_entry.add_to_hass(ph_hass)
     setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
     ent = dt_mod.OPNsenseScannerEntity(
         config_entry=entry,
@@ -974,41 +979,39 @@ async def test_async_internal_added_to_hass_links_existing_mac_device(
     )
     ent.hass = ph_hass
     ent.platform = MagicMock(config_entry=entry, platform_name=dt_mod.DOMAIN)
-    ent.registry_entry = MagicMock()
-    ent.registry_entry.device_id = None
-    ent.registry_entry.disabled_by = None
-    ent.entity_id = "device_tracker.opnsense_existing"
 
-    device_reg = fake_reg_factory(device_exists=True, device_id="existing-device")
-    entity_reg = MagicMock()
-    updated_registry_entry = MagicMock()
-    updated_registry_entry.device_id = "existing-device"
-    updated_registry_entry.disabled_by = None
-    entity_reg.async_update_entity.return_value = updated_registry_entry
-    monkeypatch.setattr(ha_dt_entity_mod.dr, "async_get", lambda _hass: device_reg)
-    monkeypatch.setattr(ha_dt_entity_mod.er, "async_get", lambda _hass: entity_reg)
-    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: device_reg)
+    device_reg = dr.async_get(ph_hass)
+    existing_device = device_reg.async_get_or_create(
+        config_entry_id="existing-entry",
+        connections={(dr.CONNECTION_NETWORK_MAC, "aa:bb:cc")},
+    )
+    entity_reg = er.async_get(ph_hass)
+    ent.registry_entry = entity_reg.async_get_or_create(
+        "device_tracker",
+        dt_mod.DOMAIN,
+        ent.unique_id,
+        config_entry=entry,
+    )
+    ent.entity_id = ent.registry_entry.entity_id
 
     await ent.async_internal_added_to_hass()
 
-    entity_reg.async_update_entity.assert_called_once_with(
-        "device_tracker.opnsense_existing", device_id="existing-device"
-    )
-    assert ent.registry_entry is updated_registry_entry
-    assert device_reg.updated_devices == [("existing-device", {"add_config_entry_id": "entry-1"})]
+    assert ent.registry_entry.device_id == existing_device.id
+    updated_device = device_reg.async_get(existing_device.id)
+    assert updated_device is not None
+    assert entry.entry_id in updated_device.config_entries
 
 
 @pytest.mark.asyncio
 async def test_async_internal_added_to_hass_keeps_fallback_device_info_without_match(
-    monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
-    fake_reg_factory: Any,
 ) -> None:
     """Scanner entity should keep its fallback device info when no MAC device exists."""
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"}, entry_id="entry-1")
+    entry.add_to_hass(ph_hass)
     setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
     ent = dt_mod.OPNsenseScannerEntity(
         config_entry=entry,
@@ -1020,20 +1023,18 @@ async def test_async_internal_added_to_hass_keeps_fallback_device_info_without_m
     )
     ent.hass = ph_hass
     ent.platform = MagicMock(config_entry=entry, platform_name=dt_mod.DOMAIN)
-    ent.registry_entry = MagicMock()
-    ent.registry_entry.device_id = None
-    ent.registry_entry.disabled_by = None
-    ent.entity_id = "device_tracker.opnsense_fallback"
-
-    device_reg = fake_reg_factory(device_exists=False)
-    entity_reg = MagicMock()
-    monkeypatch.setattr(ha_dt_entity_mod.dr, "async_get", lambda _hass: device_reg)
-    monkeypatch.setattr(ha_dt_entity_mod.er, "async_get", lambda _hass: entity_reg)
+    entity_reg = er.async_get(ph_hass)
+    ent.registry_entry = entity_reg.async_get_or_create(
+        "device_tracker",
+        dt_mod.DOMAIN,
+        ent.unique_id,
+        config_entry=entry,
+    )
+    ent.entity_id = ent.registry_entry.entity_id
 
     await ent.async_internal_added_to_hass()
 
-    entity_reg.async_update_entity.assert_not_called()
-    assert device_reg.updated_devices == []
+    assert ent.registry_entry.device_id is None
     assert ent.device_info is not None
 
 
