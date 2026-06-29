@@ -22,6 +22,8 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
     """Base entity for OPNsense."""
 
+    _attr_has_entity_name = True
+
     @staticmethod
     def payload_display_name(
         payload: Mapping[str, Any],
@@ -87,7 +89,7 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
         if unique_id_suffix:
             self._attr_unique_id: str = slugify(f"{self._device_unique_id}_{unique_id_suffix}")
         if name_suffix:
-            self._attr_name: str | None = f"{self.opnsense_device_name or 'OPNsense'} {name_suffix}"
+            self._attr_name: str | None = name_suffix
         self._client: OPNsenseClient | None = None
         self._attr_extra_state_attributes: dict[str, Any] = {}
         self._available: bool = False
@@ -101,17 +103,6 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
             bool: `True` when the entity is available for state updates.
         """
         return self._available
-
-    @property
-    def opnsense_device_name(self) -> str | None:
-        """Return the display name for the parent OPNsense device.
-
-        Returns:
-            str | None: Config entry title when present, otherwise the runtime device name.
-        """
-        if self.config_entry.title and len(self.config_entry.title) > 0:
-            return self.config_entry.title
-        return self._get_opnsense_state_value("system_info.name")
 
     def _get_opnsense_state_value(self, path: str) -> Any | None:
         """Read a nested value from coordinator state data.
@@ -209,7 +200,7 @@ class OPNsenseEntity(OPNsenseBaseEntity):
 
         device_info: DeviceInfo = {
             "identifiers": {(DOMAIN, self._device_unique_id)},
-            "name": self.opnsense_device_name,
+            "name": self.config_entry.title or self._get_opnsense_state_value("system_info.name"),
             "configuration_url": self.config_entry.data.get("url", None),
         }
 
