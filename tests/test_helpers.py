@@ -5,9 +5,14 @@ from unittest.mock import MagicMock
 
 import aiohttp
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.opnsense import helpers as helpers_mod
-from custom_components.opnsense.helpers import coerce_bool, create_opnsense_client
+from custom_components.opnsense.helpers import (
+    coerce_bool,
+    create_opnsense_client,
+    create_opnsense_client_from_config_entry,
+)
 
 
 @pytest.mark.parametrize(
@@ -114,3 +119,45 @@ def test_create_opnsense_client_builds_client_with_expected_options(
     if name is not None:
         expected_client_kwargs["name"] = name
     assert created["client_kwargs"] == expected_client_kwargs
+
+
+def test_create_opnsense_client_from_config_entry_forwards_entry_data(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Create OPNsense clients from config entries through the shared helper."""
+    captured: dict[str, Any] = {}
+    hass = MagicMock()
+    client = MagicMock()
+    entry = MockConfigEntry(
+        data={
+            "url": "https://router.example",
+            "username": "user",
+            "password": "pass",
+            "verify_ssl": False,
+        },
+        title="router",
+    )
+
+    def _create_opnsense_client(**kwargs: Any) -> MagicMock:
+        """Capture forwarded client settings."""
+        captured.update(kwargs)
+        return client
+
+    monkeypatch.setattr(helpers_mod, "create_opnsense_client", _create_opnsense_client)
+
+    result = create_opnsense_client_from_config_entry(
+        hass=hass,
+        config_entry=entry,
+        throw_errors=True,
+    )
+
+    assert result is client
+    assert captured == {
+        "hass": hass,
+        "url": "https://router.example",
+        "username": "user",
+        "password": "pass",
+        "verify_ssl": False,
+        "throw_errors": True,
+        "name": "router",
+    }

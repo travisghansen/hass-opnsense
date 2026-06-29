@@ -8,8 +8,12 @@ from urllib.parse import urlparse
 
 import aiohttp
 from aiopnsense import OPNsenseClient
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME, CONF_VERIFY_SSL
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
+
+from .const import DEFAULT_VERIFY_SSL
 
 
 def dict_get(data: MutableMapping[str, Any], path: str, default: Any | None = None) -> Any | None:
@@ -84,6 +88,33 @@ def create_opnsense_client(
         opts={"verify_ssl": verify_ssl},
         throw_errors=throw_errors,
         **client_kwargs,
+    )
+
+
+def create_opnsense_client_from_config_entry(
+    *,
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    throw_errors: bool = False,
+) -> OPNsenseClient:
+    """Create an OPNsense client from a Home Assistant config entry.
+
+    Args:
+        hass: Home Assistant instance used to create the aiohttp session.
+        config_entry: Config entry containing the OPNsense connection settings.
+        throw_errors: Whether aiopnsense should propagate request/decorator errors.
+
+    Returns:
+        OPNsenseClient: Configured aiopnsense client.
+    """
+    return create_opnsense_client(
+        hass=hass,
+        url=config_entry.data[CONF_URL],
+        username=config_entry.data[CONF_USERNAME],
+        password=config_entry.data[CONF_PASSWORD],
+        verify_ssl=config_entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
+        throw_errors=throw_errors,
+        name=config_entry.title,
     )
 
 

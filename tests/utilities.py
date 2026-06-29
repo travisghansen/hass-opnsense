@@ -59,4 +59,37 @@ def patch_opnsense_client(monkeypatch: pytest.MonkeyPatch, module: Any, client_c
             name=name,
         )
 
-    monkeypatch.setattr(module, "create_opnsense_client", _create_opnsense_client)
+    def _create_opnsense_client_from_config_entry(
+        *,
+        hass: Any,
+        config_entry: Any,
+        throw_errors: bool = False,
+    ) -> Any:
+        """Create a fake OPNsense client from a config entry.
+
+        Args:
+            hass: Home Assistant instance passed by production code.
+            config_entry: Config entry with connection settings.
+            throw_errors: Error propagation behavior passed by shared helper callers.
+
+        Returns:
+            Any: Fake client instance returned by `client_ctor`.
+        """
+        return _create_opnsense_client(
+            hass=hass,
+            url=config_entry.data["url"],
+            username=config_entry.data["username"],
+            password=config_entry.data["password"],
+            verify_ssl=config_entry.data.get("verify_ssl"),
+            throw_errors=throw_errors,
+            name=config_entry.title,
+        )
+
+    if hasattr(module, "create_opnsense_client_from_config_entry"):
+        monkeypatch.setattr(
+            module,
+            "create_opnsense_client_from_config_entry",
+            _create_opnsense_client_from_config_entry,
+        )
+    if hasattr(module, "create_opnsense_client"):
+        monkeypatch.setattr(module, "create_opnsense_client", _create_opnsense_client)
