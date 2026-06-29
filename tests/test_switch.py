@@ -2394,6 +2394,7 @@ def test_firewall_rule_description_normalizes_non_string_interface() -> None:
         {"uuid": "r1", "description": "Test", "%interface": ["lan", "wan"]},
     )
 
+    assert description.key == "firewall.rule.r1"
     assert description.name == "Firewall: Floating: Test"
 
 

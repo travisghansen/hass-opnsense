@@ -8,10 +8,13 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.opnsense import helpers as helpers_mod
+from custom_components.opnsense.const import DEFAULT_VERIFY_SSL
 from custom_components.opnsense.helpers import (
     coerce_bool,
     create_opnsense_client,
     create_opnsense_client_from_config_entry,
+    firewall_rule_id_from_payload,
+    firewall_rule_switch_unique_ids_from_payload,
 )
 
 
@@ -160,4 +163,73 @@ def test_create_opnsense_client_from_config_entry_forwards_entry_data(
         "verify_ssl": False,
         "throw_errors": True,
         "name": "router",
+    }
+
+
+def test_create_opnsense_client_from_config_entry_defaults_verify_ssl(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Missing verify_ssl defaults to DEFAULT_VERIFY_SSL when loading clients."""
+    captured: dict[str, Any] = {}
+    hass = MagicMock()
+    client = MagicMock()
+    entry = MockConfigEntry(
+        data={
+            "url": "https://router.example",
+            "username": "user",
+            "password": "pass",
+        },
+        title="router",
+    )
+
+    def _create_opnsense_client(**kwargs: Any) -> MagicMock:
+        """Capture forwarded client settings."""
+        captured.update(kwargs)
+        return client
+
+    monkeypatch.setattr(helpers_mod, "create_opnsense_client", _create_opnsense_client)
+
+    result = create_opnsense_client_from_config_entry(
+        hass=hass,
+        config_entry=entry,
+        throw_errors=False,
+    )
+
+    assert result is client
+    assert captured["verify_ssl"] is DEFAULT_VERIFY_SSL
+
+
+@pytest.mark.parametrize(
+    ("rule_key", "rule", "expected"),
+    [
+        pytest.param("r1", {"uuid": "uuid-1"}, "uuid-1", id="has-uuid"),
+        pytest.param("r1", {}, "r1", id="uuid-missing-falls-back-to-key"),
+        pytest.param("r1", {"uuid": ""}, "r1", id="empty-uuid-falls-back-to-key"),
+        pytest.param("r1", {"uuid": 123}, "r1", id="bad-uuid-falls-back-to-key"),
+        pytest.param("r1", "not-a-mapping", None, id="non-mapping-row-no-id"),
+        pytest.param(3, {}, None, id="non-string-key-no-uuid"),
+    ],
+)
+def test_firewall_rule_id_from_payload(
+    rule_key: object,
+    rule: object,
+    expected: str | None,
+) -> None:
+    """Read rule IDs from payload with fallback to the payload key when safe."""
+    assert firewall_rule_id_from_payload(rule_key, rule) == expected
+
+
+def test_firewall_rule_switch_unique_ids_from_payload_skips_invalid_rules() -> None:
+    """Only include mapping rows with string interface values and valid rule IDs."""
+    rules: dict[str, Any] = {
+        "r1": {"description": "rule-with-key"},
+        "r2": {"uuid": "uuid-2", "%interface": ["wan", "lan"]},
+        "r3": ["bad-row"],
+        "r4": {"uuid": "uuid-4", "interface": "wan"},
+    }
+
+    ids = firewall_rule_switch_unique_ids_from_payload("deviceid", rules)
+    assert ids == {
+        "deviceid_firewall_rule_r1",
+        "deviceid_firewall_rule_uuid_4",
     }

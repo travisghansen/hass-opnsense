@@ -635,6 +635,133 @@ async def test_migrate_4_to_5_removes_rule_switch_entities(
 
 
 @pytest.mark.asyncio
+async def test_migrate_4_to_5_uses_rule_key_when_uuid_is_missing(
+    monkeypatch: pytest.MonkeyPatch, ph_hass: Any
+) -> None:
+    """_migrate_4_to_5 should keep non-uuid rules by mapping key."""
+    ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
+    entry = MockConfigEntry(
+        domain=init_mod.DOMAIN,
+        data={
+            init_mod.CONF_DEVICE_UNIQUE_ID: "deviceid",
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+        },
+        version=4,
+    )
+    entry.add_to_hass(ph_hass)
+    client = MagicMock()
+    client.get_firewall = AsyncMock(return_value={"rules": {"r1": {"description": "current"}}})
+    client.async_close = AsyncMock()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", MagicMock(return_value=client)
+    )
+
+    class Ent:
+        def __init__(self, entity_id: str, unique_id: str) -> None:
+            self.entity_id = entity_id
+            self.unique_id = unique_id
+
+    legacy_filter = Ent("switch.filter", "deviceid_filter_123")
+    stale_native_firewall = Ent("switch.firewall_rule_stale", "deviceid_firewall_rule_stale")
+    current_native_firewall = Ent("switch.firewall_rule_current", "deviceid_firewall_rule_r1")
+
+    entity_registry = MagicMock()
+    entity_registry.async_remove = MagicMock()
+    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(
+        init_mod.er,
+        "async_entries_for_config_entry",
+        lambda registry, config_entry_id: [
+            legacy_filter,
+            stale_native_firewall,
+            current_native_firewall,
+        ],
+    )
+
+    res = await init_mod.async_migrate_entry(ph_hass, entry)
+
+    assert res is True
+    assert entity_registry.async_remove.call_count == 2
+    entity_registry.async_remove.assert_has_calls(
+        [call(legacy_filter.entity_id), call(stale_native_firewall.entity_id)],
+        any_order=True,
+    )
+    assert current_native_firewall.entity_id not in {
+        call.args[0] for call in entity_registry.async_remove.call_args_list
+    }
+    ph_hass.config_entries.async_update_entry.assert_called_once_with(entry, version=5)
+
+
+@pytest.mark.asyncio
+async def test_migrate_4_to_5_sync_disabled_skips_firewall_fetch_removes_legacy_only(
+    monkeypatch: pytest.MonkeyPatch, ph_hass: Any
+) -> None:
+    """_migrate_4_to_5 should skip firewall fetch and keep native rules when sync is disabled."""
+    ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
+    entry = MockConfigEntry(
+        domain=init_mod.DOMAIN,
+        data={
+            init_mod.CONF_DEVICE_UNIQUE_ID: "deviceid",
+            init_mod.CONF_SYNC_FIREWALL_AND_NAT: False,
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+        },
+        version=4,
+    )
+    entry.add_to_hass(ph_hass)
+    client = MagicMock()
+    client.get_firewall = AsyncMock(return_value={"rules": {}})
+    client.async_close = AsyncMock()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", MagicMock(return_value=client)
+    )
+
+    class Ent:
+        def __init__(self, entity_id: str, unique_id: str) -> None:
+            self.entity_id = entity_id
+            self.unique_id = unique_id
+
+    legacy_filter = Ent("switch.filter", "deviceid_filter_123")
+    stale_native_firewall = Ent("switch.firewall_rule_stale", "deviceid_firewall_rule_stale")
+    current_native_firewall = Ent("switch.firewall_rule_current", "deviceid_firewall_rule_current")
+    native_nat = Ent("switch.firewall_nat", "deviceid_firewall_nat_123")
+
+    entity_registry = MagicMock()
+    entity_registry.async_remove = MagicMock()
+    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(
+        init_mod.er,
+        "async_entries_for_config_entry",
+        lambda registry, config_entry_id: [
+            legacy_filter,
+            stale_native_firewall,
+            current_native_firewall,
+            native_nat,
+        ],
+    )
+
+    res = await init_mod.async_migrate_entry(ph_hass, entry)
+
+    assert res is True
+    client.get_firewall.assert_not_called()
+    entity_registry.async_remove.assert_has_calls([call(legacy_filter.entity_id)], any_order=True)
+    assert entity_registry.async_remove.call_count == 1
+    assert stale_native_firewall.entity_id not in {
+        call.args[0] for call in entity_registry.async_remove.call_args_list
+    }
+    assert current_native_firewall.entity_id not in {
+        call.args[0] for call in entity_registry.async_remove.call_args_list
+    }
+    assert native_nat.entity_id not in {
+        call.args[0] for call in entity_registry.async_remove.call_args_list
+    }
+    ph_hass.config_entries.async_update_entry.assert_called_once_with(entry, version=5)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "firewall_result",
     [

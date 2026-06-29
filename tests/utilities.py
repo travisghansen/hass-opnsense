@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from homeassistant.const import CONF_VERIFY_SSL
 import pytest
+
+from custom_components.opnsense.const import DEFAULT_VERIFY_SSL
 
 
 def stub_async_write_ha_state(entity: Any) -> None:
@@ -80,7 +83,10 @@ def patch_opnsense_client(monkeypatch: pytest.MonkeyPatch, module: Any, client_c
             url=config_entry.data["url"],
             username=config_entry.data["username"],
             password=config_entry.data["password"],
-            verify_ssl=config_entry.data.get("verify_ssl"),
+            verify_ssl=config_entry.data.get(
+                CONF_VERIFY_SSL,
+                DEFAULT_VERIFY_SSL,
+            ),
             throw_errors=throw_errors,
             name=config_entry.title,
         )

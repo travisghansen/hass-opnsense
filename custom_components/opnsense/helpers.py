@@ -44,7 +44,10 @@ def firewall_rule_id_from_payload(rule_key: Any, rule: Any) -> str | None:
     Returns:
         str | None: The rule UUID, falling back to the mapping key when usable.
     """
-    rule_id = rule.get("uuid") if isinstance(rule, Mapping) else None
+    if not isinstance(rule, Mapping):
+        return None
+
+    rule_id = rule.get("uuid")
     if not isinstance(rule_id, str) or not rule_id:
         rule_id = rule_key if isinstance(rule_key, str) else None
     return rule_id
@@ -65,6 +68,13 @@ def firewall_rule_switch_unique_ids_from_payload(
     """
     unique_ids: set[str] = set()
     for rule_key, rule in rules.items():
+        if not isinstance(rule, Mapping):
+            continue
+
+        interface = rule.get("%interface", rule.get("interface", ""))
+        if not isinstance(interface, str):
+            continue
+
         rule_id = firewall_rule_id_from_payload(rule_key, rule)
         if rule_id:
             unique_ids.add(slugify(f"{device_unique_id}_firewall.rule.{rule_id}"))

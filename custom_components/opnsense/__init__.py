@@ -29,6 +29,7 @@ from .const import (
     CONF_DEVICE_TRACKER_ENABLED,
     CONF_DEVICE_TRACKER_SCAN_INTERVAL,
     CONF_DEVICE_UNIQUE_ID,
+    CONF_SYNC_FIREWALL_AND_NAT,
     CONF_TLS_INSECURE,
     DEFAULT_DEVICE_TRACKER_ENABLED,
     DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
@@ -672,26 +673,33 @@ async def _migrate_4_to_5(
     _LOGGER.debug("[migrate_4_to_5] Initial Version: %s", config_entry.version)
     entity_registry = er.async_get(hass)
     current_firewall_unique_ids: set[str] | None = None
-
-    try:
-        firewall = await migration_client.get_firewall()
-    except OPNsenseError as e:
-        _LOGGER.warning(
-            "Migration to version 5 deferred because current firewall rules are unavailable: %s",
-            type(e).__name__,
-        )
-        return False
-
-    rules = firewall.get("rules") if isinstance(firewall, Mapping) else None
-    device_unique_id = config_entry.data.get(CONF_DEVICE_UNIQUE_ID)
-    if not isinstance(rules, Mapping) or not isinstance(device_unique_id, str):
-        _LOGGER.warning("Migration to version 5 deferred because firewall rule data is unavailable")
-        return False
-
-    current_firewall_unique_ids = firewall_rule_switch_unique_ids_from_payload(
-        device_unique_id,
-        rules,
+    sync_firewall_rules: bool = config_entry.data.get(
+        CONF_SYNC_FIREWALL_AND_NAT, DEFAULT_SYNC_OPTION_VALUE
     )
+
+    if sync_firewall_rules:
+        try:
+            firewall = await migration_client.get_firewall()
+        except OPNsenseError as e:
+            _LOGGER.warning(
+                "Migration to version 5 deferred because current firewall rules are "
+                "unavailable: %s",
+                type(e).__name__,
+            )
+            return False
+
+        rules = firewall.get("rules") if isinstance(firewall, Mapping) else None
+        device_unique_id = config_entry.data.get(CONF_DEVICE_UNIQUE_ID)
+        if not isinstance(rules, Mapping) or not isinstance(device_unique_id, str):
+            _LOGGER.warning(
+                "Migration to version 5 deferred because firewall rule data is unavailable"
+            )
+            return False
+
+        current_firewall_unique_ids = firewall_rule_switch_unique_ids_from_payload(
+            device_unique_id,
+            rules,
+        )
 
     for ent in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
         platform = ent.entity_id.split(".")[0]
