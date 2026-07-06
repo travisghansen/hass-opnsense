@@ -1,96 +1,14 @@
 name: prek Autoupdate
+
 on:
   schedule:
-    - cron: '0 2 * * 1'
+    - cron: '47 7 * * 4'
   workflow_dispatch:
 
-permissions:
-  contents: write
-  pull-requests: write
-
 jobs:
-  update-hooks:
-    name: Update prek Hooks
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v7
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.14'
-          cache: 'pip'
-
-      - name: Install prek
-        uses: taiki-e/install-action@v2
-        with:
-          tool: prek
-
-      - name: Run prek auto-update
-        id: prek
-        run: |
-          set -euo pipefail
-          body_file="$GITHUB_WORKSPACE/prek-autoupdate-body.md"
-          {
-            echo "Automated update of \`prek\` hooks."
-            echo
-            echo '```text'
-            prek auto-update --cooldown-days 7 2>&1
-            echo '```'
-          } | tee "$body_file"
-
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v8
-        id: cpr
-        with:
-          commit-message: 'chore: update prek hooks'
-          title: 'Bump prek Hooks'
-          branch: chore/prek-updates
-          author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
-          labels: dependencies
-          delete-branch: true
-          body-path: prek-autoupdate-body.md
-          add-paths: |
-            prek.toml
-
-      - name: Close extra auto-generated PRs
-        if: steps.cpr.outputs.pull-request-number != ''
-        env:
-          BODY_MARKER: Automated update of `prek` hooks.
-          GITHUB_TOKEN: ${{ github.token }}
-          KEEP_PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
-          REPOSITORY: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-
-          python .github/scripts/cleanup_prek_update_branches.py \
-            --repository "$REPOSITORY" \
-            --branch chore/prek-updates \
-            --branch-prefix chore/prek-updates \
-            --label-name dependencies \
-            --author-login 'github-actions[bot]' \
-            --body-marker "$BODY_MARKER" \
-            --keep-pr-number "$KEEP_PR_NUMBER" \
-            --close-stale-prs \
-            --delete-merged-branches
-
-      - name: Close stale prek update PRs
-        if: steps.cpr.outputs.pull-request-number == ''
-        env:
-          BODY_MARKER: Automated update of `prek` hooks.
-          GITHUB_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-
-          python .github/scripts/cleanup_prek_update_branches.py \
-            --repository "$REPOSITORY" \
-            --branch chore/prek-updates \
-            --branch-prefix chore/prek-updates \
-            --label-name dependencies \
-            --author-login 'github-actions[bot]' \
-            --body-marker "$BODY_MARKER" \
-            --close-stale-prs \
-            --delete-stale-branch \
-            --delete-merged-branches
+  prek-autoupdate:
+    uses: Snuffy2/prek-autoupdate/.github/workflows/prek_autoupdate.yml@v1
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
