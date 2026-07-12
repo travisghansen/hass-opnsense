@@ -158,6 +158,11 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
                 None,
             )
 
+            tracker_device_ids: set[str] = {
+                ent.device_id
+                for ent in entity_entries
+                if ent.domain == Platform.DEVICE_TRACKER and ent.device_id is not None
+            }
             for ent in entity_entries:
                 if ent.domain == Platform.DEVICE_TRACKER:
                     _LOGGER.debug(
@@ -169,51 +174,56 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
                     entity_registry.async_remove(ent.entity_id)
 
             for device in devices:
-                if device.via_device_id:
-                    replacement_router_id = None
-                    if router_device_id is not None and device.via_device_id == router_device_id:
-                        replacement_router_id = find_replacement_router_device_id(
-                            shared_config_entry_id=entry.entry_id,
-                            shared_device_entry=device,
-                            config_entries=hass.config_entries,
-                            device_registry=device_registry,
-                        )
-                    if replacement_router_id is not None:
-                        _LOGGER.debug(
-                            "[async_update_listener] reparenting shared "
-                            "tracker device %s from %s to %s",
-                            device.id,
-                            router_device_id,
-                            replacement_router_id,
-                        )
-                        device_registry.async_update_device(
-                            device.id,
-                            remove_config_entry_id=entry.entry_id,
-                            via_device_id=replacement_router_id,
-                        )
-                    elif device.via_device_id == router_device_id:
-                        _LOGGER.debug(
-                            "[async_update_listener] dissociating shared "
-                            "tracker device %s from router %s",
-                            device.id,
-                            config_device_id,
-                        )
-                        device_registry.async_update_device(
-                            device.id,
-                            remove_config_entry_id=entry.entry_id,
-                            via_device_id=None,
-                        )
-                    else:
-                        _LOGGER.debug(
-                            "[async_update_listener] dissociating "
-                            "tracker device %s from config entry %s",
-                            device.id,
-                            entry.entry_id,
-                        )
-                        device_registry.async_update_device(
-                            device.id,
-                            remove_config_entry_id=entry.entry_id,
-                        )
+                if device.id not in tracker_device_ids:
+                    continue
+                replacement_router_id = None
+                if (
+                    device.via_device_id is not None
+                    and router_device_id is not None
+                    and device.via_device_id == router_device_id
+                ):
+                    replacement_router_id = find_replacement_router_device_id(
+                        shared_config_entry_id=entry.entry_id,
+                        shared_device_entry=device,
+                        config_entries=hass.config_entries,
+                        device_registry=device_registry,
+                    )
+                if replacement_router_id is not None:
+                    _LOGGER.debug(
+                        "[async_update_listener] reparenting shared "
+                        "tracker device %s from %s to %s",
+                        device.id,
+                        router_device_id,
+                        replacement_router_id,
+                    )
+                    device_registry.async_update_device(
+                        device.id,
+                        remove_config_entry_id=entry.entry_id,
+                        via_device_id=replacement_router_id,
+                    )
+                elif device.via_device_id is not None and device.via_device_id == router_device_id:
+                    _LOGGER.debug(
+                        "[async_update_listener] dissociating shared "
+                        "tracker device %s from router %s",
+                        device.id,
+                        config_device_id,
+                    )
+                    device_registry.async_update_device(
+                        device.id,
+                        remove_config_entry_id=entry.entry_id,
+                        via_device_id=None,
+                    )
+                else:
+                    _LOGGER.debug(
+                        "[async_update_listener] dissociating "
+                        "tracker device %s from config entry %s",
+                        device.id,
+                        entry.entry_id,
+                    )
+                    device_registry.async_update_device(
+                        device.id,
+                        remove_config_entry_id=entry.entry_id,
+                    )
         hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
     else:
         _LOGGER.info("[async_update_listener] Not Reloading")

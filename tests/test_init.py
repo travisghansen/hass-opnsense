@@ -1662,11 +1662,12 @@ async def test_async_update_listener_uses_shared_default_for_smart_entity_prunin
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("dt_enabled", "via_device_id", "expect_updated"),
+    ("dt_enabled", "via_device_id", "tracker_device_id", "expect_updated"),
     [
-        (False, True, True),
-        (False, False, False),
-        (True, True, False),
+        (False, True, "tracked-device", True),
+        (False, False, "tracked-device", True),
+        (True, True, "tracked-device", False),
+        (False, True, None, False),
     ],
 )
 async def test_async_update_listener_device_removal_param(
@@ -1675,6 +1676,7 @@ async def test_async_update_listener_device_removal_param(
     make_config_entry: Callable[..., MockConfigEntry],
     dt_enabled: Any,
     via_device_id: Any,
+    tracker_device_id: Any,
     expect_updated: Any,
 ) -> None:
     """Remove only this config entry from tracked devices when tracking is disabled."""
@@ -1689,10 +1691,23 @@ async def test_async_update_listener_device_removal_param(
     hass.config_entries.async_reload = AsyncMock()
     hass.data = {}
 
+    # ensure hass.async_create_task exists for scheduling reload
+    if not hasattr(hass, "async_create_task"):
+        hass.async_create_task = MagicMock()
+
+    dt_ent = None
+    if tracker_device_id is not None:
+        dt_ent = MagicMock(
+            entity_id=f"device_tracker.{tracker_device_id}",
+            domain=init_mod.Platform.DEVICE_TRACKER,
+            unique_id=f"{entry.unique_id}_{tracker_device_id}",
+            device_id=tracker_device_id,
+        )
+
     # prepare a single device entry returned by the device registry
     device = MagicMock()
     device.via_device_id = via_device_id
-    device.id = "d_device"
+    device.id = tracker_device_id or "d_device"
     device.name = "devname"
 
     dr_reg = MagicMock()
@@ -1706,22 +1721,95 @@ async def test_async_update_listener_device_removal_param(
     )
 
     # ensure no entity registry removals interfere
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: MagicMock())
+    er_reg = MagicMock()
+    er_reg.async_remove = MagicMock()
+    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: er_reg)
     monkeypatch.setattr(
         init_mod.er,
         "async_entries_for_config_entry",
-        lambda registry, config_entry_id: [],
+        lambda registry, config_entry_id: [dt_ent] if dt_ent is not None else [],
     )
 
     await init_mod._async_update_listener(hass, entry)
 
     dr_reg.async_remove_device.assert_not_called()
+    if tracker_device_id is None:
+        er_reg.async_remove.assert_not_called()
     if expect_updated:
         dr_reg.async_update_device.assert_called_once_with(
             device.id, remove_config_entry_id=entry.entry_id
         )
     else:
         dr_reg.async_update_device.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_async_update_listener_detaches_no_parent_tracker_device(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Trackers with no parent remain detached from removed config entry."""
+    entry = make_config_entry(
+        data={init_mod.CONF_DEVICE_UNIQUE_ID: "router-mac"},
+        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+    )
+    setattr(entry.runtime_data, init_mod.SHOULD_RELOAD, True)
+
+    ph_hass.config_entries.async_reload = AsyncMock()
+    ph_hass.data = {}
+    if not hasattr(ph_hass, "async_create_task"):
+        ph_hass.async_create_task = MagicMock()
+
+    dt_ent = MagicMock(
+        entity_id="device_tracker.tracked_device",
+        domain=init_mod.Platform.DEVICE_TRACKER,
+        unique_id=f"{entry.unique_id}_mac_aabbccddeeff",
+        device_id="tracker-device-no-parent",
+    )
+    sensor_ent = MagicMock(
+        entity_id="sensor.system_uptime",
+        domain=init_mod.Platform.SENSOR,
+        unique_id=f"{entry.unique_id}_system_uptime",
+    )
+    er_reg = MagicMock()
+    monkeypatch.setattr(init_mod.er, "async_get", MagicMock(return_value=er_reg))
+    monkeypatch.setattr(
+        init_mod.er,
+        "async_entries_for_config_entry",
+        MagicMock(return_value=[dt_ent, sensor_ent]),
+    )
+
+    tracker_without_parent = MagicMock(id="tracker-device-no-parent", via_device_id=None)
+    non_tracker_no_parent = MagicMock(id="nontracker-no-parent-device", via_device_id=None)
+    dr_reg = MagicMock()
+    dr_reg.async_update_device = MagicMock()
+    monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: dr_reg)
+    monkeypatch.setattr(
+        init_mod.dr,
+        "async_entries_for_config_entry",
+        MagicMock(return_value=[tracker_without_parent, non_tracker_no_parent]),
+    )
+
+    await init_mod._async_update_listener(ph_hass, entry)
+
+    er_reg.async_remove.assert_called_once_with(dt_ent.entity_id)
+    assert (
+        call(tracker_without_parent.id, remove_config_entry_id=entry.entry_id)
+        in dr_reg.async_update_device.mock_calls
+    )
+    assert (
+        call(
+            non_tracker_no_parent.id,
+            remove_config_entry_id=entry.entry_id,
+        )
+        not in dr_reg.async_update_device.mock_calls
+    )
+    assert (
+        call(non_tracker_no_parent.id, remove_config_entry_id=entry.entry_id, via_device_id=None)
+        not in dr_reg.async_update_device.mock_calls
+    )
+    assert dr_reg.async_update_device.call_count == 1
 
 
 @pytest.mark.asyncio
@@ -1746,6 +1834,13 @@ async def test_async_update_listener_reparents_tracker_link_to_remaining_opnsens
         entity_id="device_tracker.living_room_device",
         domain=init_mod.Platform.DEVICE_TRACKER,
         unique_id=f"{entry.unique_id}_mac_aabbccddeeff",
+        device_id="shared-device",
+    )
+    dt_ent_non_router = MagicMock(
+        entity_id="device_tracker.kitchen_device",
+        domain=init_mod.Platform.DEVICE_TRACKER,
+        unique_id=f"{entry.unique_id}_mac_cdddeeff0011",
+        device_id="nonopnsense-device",
     )
     sensor_ent = MagicMock(
         entity_id="sensor.system_uptime",
@@ -1757,7 +1852,7 @@ async def test_async_update_listener_reparents_tracker_link_to_remaining_opnsens
     monkeypatch.setattr(
         init_mod.er,
         "async_entries_for_config_entry",
-        MagicMock(return_value=[dt_ent, sensor_ent]),
+        MagicMock(return_value=[dt_ent, dt_ent_non_router, sensor_ent]),
     )
 
     router_device = MagicMock(
@@ -1841,16 +1936,11 @@ async def test_async_update_listener_reparents_tracker_link_to_remaining_opnsens
 
     await init_mod._async_update_listener(ph_hass, entry)
 
-    er_reg.async_remove.assert_called_once_with(dt_ent.entity_id)
-    assert call(sensor_ent.entity_id) not in er_reg.async_remove.mock_calls
-    assert (
-        call(
-            linked_to_other_router.id,
-            remove_config_entry_id=entry.entry_id,
-            via_device_id=None,
-        )
-        not in dr_reg.async_update_device.mock_calls
+    er_reg.async_remove.assert_has_calls(
+        [call(dt_ent.entity_id), call(dt_ent_non_router.entity_id)],
+        any_order=True,
     )
+    assert call(sensor_ent.entity_id) not in er_reg.async_remove.mock_calls
     dr_reg.async_update_device.assert_has_calls(
         [
             call(
@@ -1863,19 +1953,25 @@ async def test_async_update_listener_reparents_tracker_link_to_remaining_opnsens
                 remove_config_entry_id=entry.entry_id,
                 via_device_id=None,
             ),
-            call(linked_to_other_router.id, remove_config_entry_id=entry.entry_id),
         ],
         any_order=True,
     )
     assert (
         call(
             linked_to_other_router.id,
-            remove_config_entry_id=entry.entry_id,
             via_device_id=None,
         )
         not in dr_reg.async_update_device.mock_calls
     )
-    assert dr_reg.async_update_device.call_count == 3
+    assert (
+        call(no_parent.id, remove_config_entry_id=entry.entry_id)
+        not in dr_reg.async_update_device.mock_calls
+    )
+    assert (
+        call(no_parent.id, remove_config_entry_id=entry.entry_id, via_device_id=None)
+        not in dr_reg.async_update_device.mock_calls
+    )
+    assert dr_reg.async_update_device.call_count == 2
 
 
 @pytest.mark.asyncio
