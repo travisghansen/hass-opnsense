@@ -8,13 +8,14 @@ from urllib.parse import urlparse
 
 import aiohttp
 from aiopnsense import OPNsenseClient
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntries, ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME, CONF_VERIFY_SSL
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceEntry, DeviceRegistry
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.util import slugify
 
-from .const import DEFAULT_VERIFY_SSL
+from .const import CONF_DEVICE_UNIQUE_ID, DEFAULT_VERIFY_SSL, DOMAIN
 
 
 def dict_get(data: MutableMapping[str, Any], path: str, default: Any | None = None) -> Any | None:
@@ -191,6 +192,42 @@ def create_opnsense_client_from_config_entry(
         throw_errors=throw_errors,
         name=config_entry.title,
     )
+
+
+def find_replacement_router_device_id(
+    shared_config_entry_id: str,
+    shared_device_entry: DeviceEntry,
+    config_entries: ConfigEntries,
+    device_registry: DeviceRegistry,
+) -> str | None:
+    """Find a replacement OPNsense router device id for a shared tracked device.
+
+    Args:
+        shared_config_entry_id: The config entry currently being detached.
+        shared_device_entry: Device registry entry shared by multiple integrations.
+        config_entries: HA config-entry registry object.
+        device_registry: HA device registry for router lookup by identifier.
+
+    Returns:
+        str | None: Replacement router ``device_id`` if a surviving OPNsense entry
+            can be resolved, otherwise ``None``.
+    """
+    remaining_config_entries = sorted(shared_device_entry.config_entries)
+    for owner_entry_id in remaining_config_entries:
+        if owner_entry_id == shared_config_entry_id:
+            continue
+        owner_entry = config_entries.async_get_entry(owner_entry_id)
+        if owner_entry is None or owner_entry.domain != DOMAIN:
+            continue
+        owner_device_unique_id = owner_entry.data.get(CONF_DEVICE_UNIQUE_ID)
+        if not isinstance(owner_device_unique_id, str):
+            continue
+        owner_router = device_registry.async_get_device(
+            identifiers={(DOMAIN, owner_device_unique_id)}
+        )
+        if owner_router is not None:
+            return owner_router.id
+    return None
 
 
 def coerce_bool(value: Any) -> bool | None:

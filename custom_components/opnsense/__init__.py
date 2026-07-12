@@ -50,7 +50,7 @@ from .const import (
     VERSION,
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
-from .helpers import create_opnsense_client_from_config_entry
+from .helpers import create_opnsense_client_from_config_entry, find_replacement_router_device_id
 from .migrate import (
     _is_firewall_sync_enabled,
     _migrate_1_to_2,
@@ -170,7 +170,28 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 
             for device in devices:
                 if device.via_device_id:
-                    if device.via_device_id == router_device_id:
+                    replacement_router_id = None
+                    if router_device_id is not None and device.via_device_id == router_device_id:
+                        replacement_router_id = find_replacement_router_device_id(
+                            shared_config_entry_id=entry.entry_id,
+                            shared_device_entry=device,
+                            config_entries=hass.config_entries,
+                            device_registry=device_registry,
+                        )
+                    if replacement_router_id is not None:
+                        _LOGGER.debug(
+                            "[async_update_listener] reparenting shared "
+                            "tracker device %s from %s to %s",
+                            device.id,
+                            router_device_id,
+                            replacement_router_id,
+                        )
+                        device_registry.async_update_device(
+                            device.id,
+                            remove_config_entry_id=entry.entry_id,
+                            via_device_id=replacement_router_id,
+                        )
+                    elif device.via_device_id == router_device_id:
                         _LOGGER.debug(
                             "[async_update_listener] dissociating shared "
                             "tracker device %s from router %s",

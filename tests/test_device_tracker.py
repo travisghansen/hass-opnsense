@@ -1302,19 +1302,25 @@ async def test_async_setup_entry_from_arp_entries(
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_removes_stale_tracker_entities_before_detach(
+async def test_async_setup_entry_removes_stale_tracker_entities_and_reparents_shared_router(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Stale MAC removal should clear via-links and remove matching tracker entities."""
+    """Stale MAC cleanup reassigns shared parents to surviving OPNsense routers."""
     coordinator.data = {"arp_table": [{"mac": "keep:mac"}]}
     stale_router_mac = "stale:mac:router"
     stale_other_mac = "stale:mac:other"
+    stale_non_opnsense_mac = "stale:mac:nonopnsense"
     entry = make_config_entry(
         data={
-            dt_mod.TRACKED_MACS: [stale_router_mac, stale_other_mac, "keep:mac"],
+            dt_mod.TRACKED_MACS: [
+                stale_router_mac,
+                stale_other_mac,
+                stale_non_opnsense_mac,
+                "keep:mac",
+            ],
             pkg.CONF_DEVICE_UNIQUE_ID: "dev1",
         },
         options={dt_mod.CONF_DEVICE_TRACKER_ENABLED: True},
@@ -1326,6 +1332,7 @@ async def test_async_setup_entry_removes_stale_tracker_entities_before_detach(
     entity_ids = {
         "dev1_mac_stale_mac_router": "device_tracker.device_stale_router",
         "dev1_mac_stale_mac_other": "device_tracker.device_stale_other",
+        "dev1_mac_stale_mac_nonopnsense": "device_tracker.device_stale_nonopnsense_router",
     }
 
     def get_entity_id(domain: str, platform: str, unique_id: str) -> str | None:
@@ -1335,10 +1342,60 @@ async def test_async_setup_entry_removes_stale_tracker_entities_before_detach(
     entity_registry.async_get_entity_id.side_effect = get_entity_id
     monkeypatch.setattr(dt_mod.er, "async_get", MagicMock(return_value=entity_registry))
 
-    router_device = MagicMock(id="router-device-id")
+    router_device = MagicMock(
+        id="router-device-id",
+        identifiers={(dt_mod.DOMAIN, entry.data[dt_mod.CONF_DEVICE_UNIQUE_ID])},
+    )
+    surviving_entry_a = MagicMock(
+        entry_id="survive-entry-b",
+        domain=dt_mod.DOMAIN,
+        data={dt_mod.CONF_DEVICE_UNIQUE_ID: "survive-b"},
+    )
+    surviving_entry_b = MagicMock(
+        entry_id="survive-entry-a",
+        domain=dt_mod.DOMAIN,
+        data={dt_mod.CONF_DEVICE_UNIQUE_ID: "survive-a"},
+    )
+    non_opnsense_entry = MagicMock(
+        entry_id="non-opnsense-entry",
+        domain="other",
+        data={dt_mod.CONF_DEVICE_UNIQUE_ID: "non-opnsense"},
+    )
+    async_get_entry_map = {
+        entry.entry_id: entry,
+        surviving_entry_a.entry_id: surviving_entry_a,
+        surviving_entry_b.entry_id: surviving_entry_b,
+        non_opnsense_entry.entry_id: non_opnsense_entry,
+    }
+    ph_hass.config_entries.async_get_entry = MagicMock(side_effect=async_get_entry_map.get)
+    surviving_router_a = MagicMock(id="survivor-a-router")
+    surviving_router_b = MagicMock(id="survivor-b-router")
+    identifier_router_map = {
+        (dt_mod.DOMAIN, entry.data[dt_mod.CONF_DEVICE_UNIQUE_ID]): router_device,
+        (dt_mod.DOMAIN, "survive-b"): surviving_router_b,
+        (dt_mod.DOMAIN, "survive-a"): surviving_router_a,
+    }
     devices = {
-        stale_router_mac: MagicMock(id="stale-router-device", via_device_id="router-device-id"),
-        stale_other_mac: MagicMock(id="stale-other-device", via_device_id="other-device-id"),
+        stale_router_mac: MagicMock(
+            id="stale-router-device",
+            via_device_id="router-device-id",
+            config_entries={
+                entry.entry_id,
+                surviving_entry_a.entry_id,
+                surviving_entry_b.entry_id,
+                non_opnsense_entry.entry_id,
+            },
+        ),
+        stale_other_mac: MagicMock(
+            id="stale-other-device",
+            via_device_id="other-device-id",
+            config_entries={entry.entry_id, non_opnsense_entry.entry_id},
+        ),
+        stale_non_opnsense_mac: MagicMock(
+            id="stale-nonopnsense-device",
+            via_device_id="router-device-id",
+            config_entries={entry.entry_id, non_opnsense_entry.entry_id},
+        ),
     }
 
     def get_device(
@@ -1348,7 +1405,8 @@ async def test_async_setup_entry_removes_stale_tracker_entities_before_detach(
     ) -> Any:
         """Return the fake router or stale device for the requested lookup."""
         if identifiers is not None:
-            return router_device
+            key = next(iter(identifiers))
+            return identifier_router_map.get(key)
         if connections is not None:
             return devices[next(iter(connections))[1]]
         return None
@@ -1364,19 +1422,30 @@ async def test_async_setup_entry_removes_stale_tracker_entities_before_detach(
         [
             call(dt_mod.Platform.DEVICE_TRACKER, dt_mod.DOMAIN, "dev1_mac_stale_mac_router"),
             call(dt_mod.Platform.DEVICE_TRACKER, dt_mod.DOMAIN, "dev1_mac_stale_mac_other"),
+            call(
+                dt_mod.Platform.DEVICE_TRACKER,
+                dt_mod.DOMAIN,
+                "dev1_mac_stale_mac_nonopnsense",
+            ),
         ],
         any_order=True,
     )
-    assert entity_registry.async_get_entity_id.call_count == 2
+    assert entity_registry.async_get_entity_id.call_count == 3
     removed_ids = {item.args[0] for item in entity_registry.async_remove.call_args_list}
     assert removed_ids == {
         "device_tracker.device_stale_router",
         "device_tracker.device_stale_other",
+        "device_tracker.device_stale_nonopnsense_router",
     }
     device_registry.async_update_device.assert_has_calls(
         [
             call(
                 "stale-router-device",
+                remove_config_entry_id=entry.entry_id,
+                via_device_id="survivor-a-router",
+            ),
+            call(
+                "stale-nonopnsense-device",
                 remove_config_entry_id=entry.entry_id,
                 via_device_id=None,
             ),
