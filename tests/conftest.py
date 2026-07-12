@@ -380,7 +380,6 @@ def fake_reg_factory() -> Any:
     def _make(
         device_exists: bool = False,
         device_id: str = "dev",
-        remove_result: Any | None = None,
         config_entries: set[str] | None = None,
         disabled_by: str | None = None,
     ) -> Any:
@@ -389,7 +388,6 @@ def fake_reg_factory() -> Any:
         Args:
             device_exists: Whether ``async_get_device`` should return a device record.
             device_id: Device identifier returned when ``device_exists`` is true.
-            remove_result: Value returned by ``async_remove_device``.
             config_entries: Config entries already linked to the fake device.
             disabled_by: Disable source reported by the fake device entry.
         """
@@ -404,7 +402,6 @@ def fake_reg_factory() -> Any:
                 disabled_by=disabled_by,
             )
         )
-        registry.async_remove_device.return_value = remove_result
         return registry
 
     return _make
