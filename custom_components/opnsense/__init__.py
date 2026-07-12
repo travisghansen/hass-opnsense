@@ -116,9 +116,10 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
         _LOGGER.debug("[async_update_listener] removal_prefixes: %s", removal_prefixes)
 
         entity_registry = er.async_get(hass)
-        for ent in er.async_entries_for_config_entry(
+        entity_entries = er.async_entries_for_config_entry(
             registry=entity_registry, config_entry_id=entry.entry_id
-        ):
+        )
+        for ent in entity_entries:
             if uid_prefix is None or not ent.unique_id.startswith(f"{uid_prefix}_"):
                 continue
             # _LOGGER.debug("[async_update_listener] ent: %s", ent)
@@ -152,17 +153,13 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
                 registry=device_registry, config_entry_id=entry.entry_id
             )
 
-            router_device_id: str | None = None
-            for dev in devices:
-                if (DOMAIN, config_device_id) in dev.identifiers:
-                    router_device_id = dev.id
-                    break
+            router_device_id: str | None = next(
+                (dev.id for dev in devices if (DOMAIN, config_device_id) in dev.identifiers),
+                None,
+            )
 
-            for ent in er.async_entries_for_config_entry(entity_registry, entry.entry_id):
-                entity_domain = getattr(ent, "domain", None)
-                if entity_domain is None and getattr(ent, "entity_id", None):
-                    entity_domain = str(ent.entity_id).split(".", 1)[0]
-                if entity_domain == Platform.DEVICE_TRACKER:
+            for ent in entity_entries:
+                if ent.domain == Platform.DEVICE_TRACKER:
                     _LOGGER.debug(
                         "[async_update_listener] dissociating "
                         "device_tracker entity %s from config entry %s",

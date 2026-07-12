@@ -373,8 +373,8 @@ def fake_client() -> Any:
 def fake_reg_factory() -> Any:
     """Provide a factory that builds configurable fake device registries.
 
-    The returned registry object exposes device lookup, update, and removal
-    methods so tests can assert how registry cleanup behaves.
+    The returned registry object exposes configurable lookup, update, and
+    removal methods so tests can assert registry cleanup behavior.
     """
 
     def _make(
@@ -393,70 +393,19 @@ def fake_reg_factory() -> Any:
             config_entries: Config entries already linked to the fake device.
             disabled_by: Disable source reported by the fake device entry.
         """
-
-        class _FakeReg:
-            def __init__(self) -> None:
-                """Initialize _FakeReg."""
-                self.removed = False
-                self.updated_devices: list[tuple[str, dict[str, Any]]] = []
-                self._device_exists = device_exists
-                self._device_id = device_id
-                self._remove_result = remove_result
-                self._config_entries = config_entries or set()
-                self._disabled_by = disabled_by
-
-            class _FakeDevice:
-                def __init__(self, device_id: str, via_device_id: str | None = None) -> None:
-                    self.id = device_id
-                    self.via_device_id = via_device_id
-                    self.config_entries = config_entries or set()
-                    self.disabled_by = disabled_by
-
-            def async_get_device(self, *args, **kwargs) -> Any:
-                """Return a fake device entry when the fixture is configured to find one.
-
-                Args:
-                    *args: Positional lookup arguments accepted for API compatibility.
-                    **kwargs: Keyword lookup arguments accepted for API compatibility.
-                """
-                if not self._device_exists:
-                    return None
-
-                if "identifiers" in kwargs:
-                    # Router-aware lookup is handled by test-specific fakes.
-                    return None
-                return self._FakeDevice(device_id=self._device_id)
-
-            def async_update_device(self, device_id: str, **kwargs: Any) -> None:
-                """Record device updates for assertions.
-
-                Args:
-                    device_id: Device identifier being updated.
-                    **kwargs: Device update keyword arguments.
-                """
-                self.updated_devices.append((device_id, kwargs))
-
-            def async_remove_device(self, *args, **kwargs) -> Any:
-                # mirror previous tests which sometimes inspect a `removed` flag
-                """Record device removal and return the configured removal result.
-
-                Args:
-                    *args: Positional removal arguments accepted for API compatibility.
-                    **kwargs: Keyword removal arguments accepted for API compatibility.
-                """
-                self.removed = True
-                return self._remove_result
-
-            def async_update_device(self, *args: Any, **kwargs: Any) -> None:
-                """Record a device registry update.
-
-                Args:
-                    *args: Positional update arguments.
-                    **kwargs: Keyword update arguments.
-                """
-                self.updated = (args, kwargs)
-
-        return _FakeReg()
+        registry = MagicMock()
+        registry.async_get_device.side_effect = lambda *args, **kwargs: (
+            None
+            if not device_exists or "identifiers" in kwargs
+            else MagicMock(
+                id=device_id,
+                via_device_id=None,
+                config_entries=config_entries or set(),
+                disabled_by=disabled_by,
+            )
+        )
+        registry.async_remove_device.return_value = remove_result
+        return registry
 
     return _make
 

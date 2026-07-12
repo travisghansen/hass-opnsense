@@ -1465,6 +1465,7 @@ async def test_async_update_listener_reload_and_remove(
             """Store the entity and unique IDs used by the update-listener test."""
             self.entity_id = entity_id
             self.unique_id = unique_id
+            self.domain = init_mod.Platform.SENSOR
 
     # explicitly use the 'sync_telemetry' prefix so the test targets the intended sync item
     prefix = list(init_mod.GRANULAR_SYNC_PREFIX["sync_telemetry"])
@@ -1729,86 +1730,78 @@ async def test_async_update_listener_disassociates_tracker_entities_and_router_l
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Disabling device tracker should remove tracker entities and clear only matching router parent links."""
+    """Disabling tracking removes tracker entities and only matching parent links."""
     entry = make_config_entry(
         data={init_mod.CONF_DEVICE_UNIQUE_ID: "router-mac"},
         options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
     )
     setattr(entry.runtime_data, init_mod.SHOULD_RELOAD, True)
 
-    hass = ph_hass
-    hass.config_entries.async_reload = AsyncMock()
-    hass.data = {}
-    if not hasattr(hass, "async_create_task"):
-        hass.async_create_task = MagicMock()
+    ph_hass.config_entries.async_reload = AsyncMock()
+    ph_hass.data = {}
+    if not hasattr(ph_hass, "async_create_task"):
+        ph_hass.async_create_task = MagicMock()
 
-    dt_ent = MagicMock()
-    dt_ent.entity_id = "device_tracker.living_room_device"
-    dt_ent.domain = "device_tracker"
-    dt_ent.unique_id = f"{entry.unique_id}_mac_aabbccddeeff"
-
-    sensor_ent = MagicMock()
-    sensor_ent.entity_id = "sensor.system_uptime"
-    sensor_ent.domain = "sensor"
-    sensor_ent.unique_id = f"{entry.unique_id}_system_uptime"
-
+    dt_ent = MagicMock(
+        entity_id="device_tracker.living_room_device",
+        domain=init_mod.Platform.DEVICE_TRACKER,
+        unique_id=f"{entry.unique_id}_mac_aabbccddeeff",
+    )
+    sensor_ent = MagicMock(
+        entity_id="sensor.system_uptime",
+        domain=init_mod.Platform.SENSOR,
+        unique_id=f"{entry.unique_id}_system_uptime",
+    )
     er_reg = MagicMock()
-    er_reg.async_remove = MagicMock()
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: er_reg)
+    monkeypatch.setattr(init_mod.er, "async_get", MagicMock(return_value=er_reg))
     monkeypatch.setattr(
         init_mod.er,
         "async_entries_for_config_entry",
-        lambda registry, config_entry_id: [dt_ent, sensor_ent],
+        MagicMock(return_value=[dt_ent, sensor_ent]),
     )
 
-    router_device = MagicMock()
-    router_device.id = "router-device-id"
-    router_device.identifiers = {(init_mod.DOMAIN, "router-mac")}
-    router_device.via_device_id = None
-
-    linked_to_router = MagicMock()
-    linked_to_router.id = "shared-device"
-    linked_to_router.via_device_id = "router-device-id"
-
-    linked_to_other_router = MagicMock()
-    linked_to_other_router.id = "other-device"
-    linked_to_other_router.via_device_id = "other-device-id"
-
-    no_parent = MagicMock()
-    no_parent.id = "noparent-device"
-    no_parent.via_device_id = None
-
+    router_device = MagicMock(
+        id="router-device-id",
+        identifiers={(init_mod.DOMAIN, "router-mac")},
+        via_device_id=None,
+    )
+    linked_to_router = MagicMock(id="shared-device", via_device_id=router_device.id)
+    linked_to_other_router = MagicMock(id="other-device", via_device_id="other-device-id")
+    no_parent = MagicMock(id="noparent-device", via_device_id=None)
     dr_reg = MagicMock()
-    dr_reg.async_update_device = MagicMock()
-    monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: dr_reg)
+    monkeypatch.setattr(init_mod.dr, "async_get", MagicMock(return_value=dr_reg))
     monkeypatch.setattr(
         init_mod.dr,
         "async_entries_for_config_entry",
-        lambda registry, config_entry_id: [
-            router_device,
-            linked_to_router,
-            linked_to_other_router,
-            no_parent,
-        ],
+        MagicMock(
+            return_value=[router_device, linked_to_router, linked_to_other_router, no_parent]
+        ),
     )
 
-    await init_mod._async_update_listener(hass, entry)
+    await init_mod._async_update_listener(ph_hass, entry)
 
     er_reg.async_remove.assert_called_once_with(dt_ent.entity_id)
-    assert sensor_ent.entity_id not in [c.args[0] for c in er_reg.async_remove.mock_calls]
-    assert dr_reg.async_update_device.call_count == 2
+    assert call(sensor_ent.entity_id) not in er_reg.async_remove.mock_calls
+    dr_reg.async_update_device.assert_has_calls(
+        [
+            call(
+                linked_to_router.id,
+                remove_config_entry_id=entry.entry_id,
+                via_device_id=None,
+            ),
+            call(linked_to_other_router.id, remove_config_entry_id=entry.entry_id),
+        ],
+        any_order=True,
+    )
     assert (
         call(
-            linked_to_router.id,
+            linked_to_other_router.id,
             remove_config_entry_id=entry.entry_id,
             via_device_id=None,
         )
-        in dr_reg.async_update_device.mock_calls
+        not in dr_reg.async_update_device.mock_calls
     )
-    assert (
-        call(linked_to_other_router.id, remove_config_entry_id=entry.entry_id)
-        in dr_reg.async_update_device.mock_calls
-    )
+    assert dr_reg.async_update_device.call_count == 2
 
 
 @pytest.mark.asyncio

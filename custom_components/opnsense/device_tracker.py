@@ -281,49 +281,44 @@ async def async_setup_entry(
             hostname=device.get("hostname", None),
         )
         entities.append(entity)
-    # _LOGGER.debug(
-    #     "[device_tracker async_setup_entry] mac_addresses: %s, previous_mac_addresses: %s",
-    #     mac_addresses,
-    #     previous_mac_addresses,
-    # )
-    # Get the MACs that need to be removed and remove their devices
-    router_device_id = None
-    if router_device := dev_reg.async_get_device(
-        identifiers={(DOMAIN, config_entry.data[CONF_DEVICE_UNIQUE_ID])}
-    ):
-        router_device_id = router_device.id
-
-    for mac_address in list(set(previous_mac_addresses) - set(mac_addresses)):
-        rem_device = dev_reg.async_get_device(connections={(CONNECTION_NETWORK_MAC, mac_address)})
-        expected_unique_id = slugify(
-            f"{config_entry.data[CONF_DEVICE_UNIQUE_ID]}_mac_{mac_address}"
-        )
+    stale_mac_addresses = set(previous_mac_addresses) - set(mac_addresses)
+    if stale_mac_addresses:
         entity_registry = er.async_get(hass)
-        for ent in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
-            entity_domain = getattr(ent, "domain", None)
-            if entity_domain is None and getattr(ent, "entity_id", None):
-                entity_domain = str(ent.entity_id).split(".", 1)[0]
-            if entity_domain == Platform.DEVICE_TRACKER and ent.unique_id == expected_unique_id:
+        router_device = dev_reg.async_get_device(
+            identifiers={(DOMAIN, config_entry.data[CONF_DEVICE_UNIQUE_ID])}
+        )
+        router_device_id = router_device.id if router_device else None
+
+        for mac_address in stale_mac_addresses:
+            rem_device = dev_reg.async_get_device(
+                connections={(CONNECTION_NETWORK_MAC, mac_address)}
+            )
+            expected_unique_id = slugify(
+                f"{config_entry.data[CONF_DEVICE_UNIQUE_ID]}_mac_{mac_address}"
+            )
+            if entity_id := entity_registry.async_get_entity_id(
+                Platform.DEVICE_TRACKER, DOMAIN, expected_unique_id
+            ):
                 _LOGGER.debug(
                     "[device_tracker async_setup_entry] "
                     "removing tracker entity_id %s for stale MAC %s",
-                    ent.entity_id,
+                    entity_id,
                     mac_address,
                 )
-                entity_registry.async_remove(ent.entity_id)
-        if rem_device:
-            rem_device_via_id = getattr(rem_device, "via_device_id", None)
-            if rem_device_via_id is not None and rem_device_via_id == router_device_id:
-                dev_reg.async_update_device(
-                    rem_device.id,
-                    remove_config_entry_id=config_entry.entry_id,
-                    via_device_id=None,
-                )
-            else:
-                dev_reg.async_update_device(
-                    rem_device.id,
-                    remove_config_entry_id=config_entry.entry_id,
-                )
+                entity_registry.async_remove(entity_id)
+
+            if rem_device:
+                if router_device_id is not None and rem_device.via_device_id == router_device_id:
+                    dev_reg.async_update_device(
+                        rem_device.id,
+                        remove_config_entry_id=config_entry.entry_id,
+                        via_device_id=None,
+                    )
+                else:
+                    dev_reg.async_update_device(
+                        rem_device.id,
+                        remove_config_entry_id=config_entry.entry_id,
+                    )
 
     if set(mac_addresses) != set(previous_mac_addresses):
         setattr(config_entry.runtime_data, SHOULD_RELOAD, False)
