@@ -107,6 +107,7 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
             _LOGGER.debug("[async_update_listener] Skipping entity cleanup; empty entry uid prefix")
             uid_prefix = None
         sync_firewall_and_nat_enabled = _is_firewall_sync_enabled(entry)
+        config_device_id: str = entry.data[CONF_DEVICE_UNIQUE_ID]
         # _LOGGER.debug("[async_update_listener] uid_prefix: %s", uid_prefix)
         removal_prefixes: list[str] = []
         for item, prefix in GRANULAR_SYNC_PREFIX.items():
@@ -150,13 +151,51 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
             devices = dr.async_entries_for_config_entry(
                 registry=device_registry, config_entry_id=entry.entry_id
             )
-            # _LOGGER.debug("[async_update_listener] devices: %s", devices)
+
+            router_device_id: str | None = None
+            for dev in devices:
+                if (DOMAIN, config_device_id) in dev.identifiers:
+                    router_device_id = dev.id
+                    break
+
+            for ent in er.async_entries_for_config_entry(entity_registry, entry.entry_id):
+                entity_domain = getattr(ent, "domain", None)
+                if entity_domain is None and getattr(ent, "entity_id", None):
+                    entity_domain = str(ent.entity_id).split(".", 1)[0]
+                if entity_domain == Platform.DEVICE_TRACKER:
+                    _LOGGER.debug(
+                        "[async_update_listener] dissociating "
+                        "device_tracker entity %s from config entry %s",
+                        ent.entity_id,
+                        entry.entry_id,
+                    )
+                    entity_registry.async_remove(ent.entity_id)
+
             for device in devices:
                 if device.via_device_id:
-                    _LOGGER.debug("[async_update_listener] removing device: %s", device.name)
-                    device_registry.async_update_device(
-                        device.id, remove_config_entry_id=entry.entry_id
-                    )
+                    if device.via_device_id == router_device_id:
+                        _LOGGER.debug(
+                            "[async_update_listener] dissociating shared "
+                            "tracker device %s from router %s",
+                            device.id,
+                            config_device_id,
+                        )
+                        device_registry.async_update_device(
+                            device.id,
+                            remove_config_entry_id=entry.entry_id,
+                            via_device_id=None,
+                        )
+                    else:
+                        _LOGGER.debug(
+                            "[async_update_listener] dissociating "
+                            "tracker device %s from config entry %s",
+                            device.id,
+                            entry.entry_id,
+                        )
+                        device_registry.async_update_device(
+                            device.id,
+                            remove_config_entry_id=entry.entry_id,
+                        )
         hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
     else:
         _LOGGER.info("[async_update_listener] Not Reloading")

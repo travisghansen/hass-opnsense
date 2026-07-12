@@ -1298,3 +1298,110 @@ async def test_async_setup_entry_from_arp_entries(
     assert len(added) == 2
     assert all(isinstance(e, dt_mod.OPNsenseScannerEntity) for e in added)
     assert {e.unique_id for e in added} == {"dev1_mac_m1", "dev1_mac_m2"}
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_removes_stale_tracker_entities_before_detach(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Stale MAC removal should clear via-links and remove matching tracker entities."""
+    coordinator.data = {"arp_table": [{"mac": "keep:mac"}]}
+    stale_router_mac = "stale:mac:router"
+    stale_other_mac = "stale:mac:other"
+    entry = make_config_entry(
+        data={
+            dt_mod.TRACKED_MACS: [stale_router_mac, stale_other_mac, "keep:mac"],
+            pkg.CONF_DEVICE_UNIQUE_ID: "dev1",
+        },
+        options={dt_mod.CONF_DEVICE_TRACKER_ENABLED: True},
+        entry_id="entity-rm",
+    )
+    setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
+
+    stale_router_ent = MagicMock()
+    stale_router_ent.entity_id = "device_tracker.device_stale_router"
+    stale_router_ent.unique_id = "dev1_mac_stale_mac_router"
+    stale_router_ent.domain = "device_tracker"
+
+    stale_other_ent = MagicMock()
+    stale_other_ent.entity_id = "device_tracker.device_stale_other"
+    stale_other_ent.unique_id = "dev1_mac_stale_mac_other"
+    stale_other_ent.domain = "device_tracker"
+
+    other_ent = MagicMock()
+    other_ent.entity_id = "sensor.other"
+    other_ent.unique_id = "dev1_sensor_other"
+    other_ent.domain = "sensor"
+
+    class _FakeEntityReg:
+        def __init__(self) -> None:
+            """Track removed entity IDs."""
+            self.removed: list[str] = []
+            self.updated: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+            self._router_device = MagicMock()
+            self._router_device.id = "router-device-id"
+            self._router_device.identifiers = {(dt_mod.DOMAIN, "dev1")}
+            self._mac_devices: dict[frozenset[Any], MagicMock] = {
+                frozenset({(dt_mod.CONNECTION_NETWORK_MAC, stale_router_mac)}): MagicMock(
+                    id="stale-router-device", via_device_id="router-device-id"
+                ),
+                frozenset({(dt_mod.CONNECTION_NETWORK_MAC, stale_other_mac)}): MagicMock(
+                    id="stale-other-device", via_device_id="other-device-id"
+                ),
+            }
+
+        def async_entries_for_config_entry(self, registry: Any, config_entry_id: str) -> list[Any]:
+            """Return registry entries for this config entry."""
+            return [stale_router_ent, stale_other_ent, other_ent]
+
+        def async_remove(self, entity_id: str) -> None:
+            """Record removed entity identifiers."""
+            self.removed.append(entity_id)
+
+        def async_get_device(self, *args: Any, **kwargs: Any) -> Any:
+            """Return configured stale router or stale tracker devices by lookup.
+
+            Returns the router device by identifiers and stale devices by connection.
+            """
+            if "identifiers" in kwargs:
+                identifiers = kwargs["identifiers"]
+                if identifiers == self._router_device.identifiers:
+                    return self._router_device
+                return None
+            if "connections" in kwargs:
+                return self._mac_devices.get(frozenset(kwargs["connections"]))
+            return None
+
+        def async_update_device(self, *args: Any, **kwargs: Any) -> None:
+            """Record a cleanup update to the device registry."""
+            self.updated.append((args, kwargs))
+
+    entity_registry = _FakeEntityReg()
+    monkeypatch.setattr(dt_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(
+        dt_mod.er,
+        "async_entries_for_config_entry",
+        entity_registry.async_entries_for_config_entry,
+    )
+
+    hass = ph_hass
+    hass.config_entries.async_update_entry = MagicMock()
+
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: entity_registry)
+
+    await dt_mod.async_setup_entry(hass, entry, lambda x: None)
+    assert set(entity_registry.removed) == {
+        "device_tracker.device_stale_router",
+        "device_tracker.device_stale_other",
+    }
+    assert (
+        ("stale-router-device",),
+        {"remove_config_entry_id": entry.entry_id, "via_device_id": None},
+    ) in entity_registry.updated
+    assert (
+        ("stale-other-device",),
+        {"remove_config_entry_id": entry.entry_id},
+    ) in entity_registry.updated

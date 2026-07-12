@@ -405,6 +405,13 @@ def fake_reg_factory() -> Any:
                 self._config_entries = config_entries or set()
                 self._disabled_by = disabled_by
 
+            class _FakeDevice:
+                def __init__(self, device_id: str, via_device_id: str | None = None) -> None:
+                    self.id = device_id
+                    self.via_device_id = via_device_id
+                    self.config_entries = config_entries or set()
+                    self.disabled_by = disabled_by
+
             def async_get_device(self, *args, **kwargs) -> Any:
                 """Return a fake device entry when the fixture is configured to find one.
 
@@ -412,15 +419,13 @@ def fake_reg_factory() -> Any:
                     *args: Positional lookup arguments accepted for API compatibility.
                     **kwargs: Keyword lookup arguments accepted for API compatibility.
                 """
-                if self._device_exists:
+                if not self._device_exists:
+                    return None
 
-                    class _D:
-                        id = self._device_id
-                        config_entries = self._config_entries
-                        disabled_by = self._disabled_by
-
-                    return _D()
-                return None
+                if "identifiers" in kwargs:
+                    # Router-aware lookup is handled by test-specific fakes.
+                    return None
+                return self._FakeDevice(device_id=self._device_id)
 
             def async_update_device(self, device_id: str, **kwargs: Any) -> None:
                 """Record device updates for assertions.
