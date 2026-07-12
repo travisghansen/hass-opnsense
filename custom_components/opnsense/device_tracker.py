@@ -1,6 +1,6 @@
 """Support for tracking for OPNsense devices."""
 
-from collections.abc import Mapping, MutableMapping, Sequence
+from collections.abc import Mapping, MutableMapping
 import contextlib
 from datetime import datetime, timedelta, timezone
 import logging
@@ -304,8 +304,8 @@ def _cleanup_stale_tracked_devices(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
     device_registry: DeviceRegistry,
-    previous_mac_addresses: Sequence[Any],
-    current_mac_addresses: Sequence[str],
+    previous_mac_addresses: list[Any],
+    current_mac_addresses: list[str],
 ) -> None:
     """Remove stale tracker entities and reparent shared tracker devices.
 
