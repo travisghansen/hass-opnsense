@@ -230,6 +230,65 @@ def find_replacement_router_device_id(
     return None
 
 
+def detach_shared_router_parent(
+    *,
+    shared_config_entry_id: str,
+    shared_device_entry: DeviceEntry,
+    router_device_id: str | None,
+    config_entries: ConfigEntries,
+    device_registry: DeviceRegistry,
+) -> tuple[bool, str | None]:
+    """Detach a shared tracker device from a removed router config entry.
+
+    Args:
+        shared_config_entry_id: The config entry being detached from the shared device.
+        shared_device_entry: Shared device entry associated with one or more OPNsense
+            integrations.
+        router_device_id: The current router device ID for the detaching integration.
+        config_entries: HA config-entry registry used for surviving router lookup.
+        device_registry: HA device registry used for updating tracker relationships.
+
+    Returns:
+        tuple[bool, str | None]: ``True`` when device was parented through the
+        current router, with optional replacement router id for reparenting.
+    """
+    is_device_from_router: bool = (
+        shared_device_entry.via_device_id is not None
+        and router_device_id is not None
+        and shared_device_entry.via_device_id == router_device_id
+    )
+    replacement_router_id: str | None = None
+    if is_device_from_router:
+        replacement_router_id = find_replacement_router_device_id(
+            shared_config_entry_id=shared_config_entry_id,
+            shared_device_entry=shared_device_entry,
+            config_entries=config_entries,
+            device_registry=device_registry,
+        )
+
+    if replacement_router_id is not None:
+        device_registry.async_update_device(
+            shared_device_entry.id,
+            remove_config_entry_id=shared_config_entry_id,
+            via_device_id=replacement_router_id,
+        )
+        return is_device_from_router, replacement_router_id
+
+    if is_device_from_router:
+        device_registry.async_update_device(
+            shared_device_entry.id,
+            remove_config_entry_id=shared_config_entry_id,
+            via_device_id=None,
+        )
+        return is_device_from_router, None
+
+    device_registry.async_update_device(
+        shared_device_entry.id,
+        remove_config_entry_id=shared_config_entry_id,
+    )
+    return is_device_from_router, None
+
+
 def coerce_bool(value: Any) -> bool | None:
     """Normalize values that may represent booleans.
 

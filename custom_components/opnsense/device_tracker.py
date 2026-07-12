@@ -36,7 +36,7 @@ from .const import (
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseBaseEntity
-from .helpers import dict_get, find_replacement_router_device_id
+from .helpers import detach_shared_router_parent, dict_get
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -308,14 +308,13 @@ async def async_setup_entry(
                 entity_registry.async_remove(entity_id)
 
             if rem_device:
-                replacement_router_id = None
-                if router_device_id is not None and rem_device.via_device_id == router_device_id:
-                    replacement_router_id = find_replacement_router_device_id(
-                        shared_config_entry_id=config_entry.entry_id,
-                        shared_device_entry=rem_device,
-                        config_entries=hass.config_entries,
-                        device_registry=dev_reg,
-                    )
+                _from_current_router, replacement_router_id = detach_shared_router_parent(
+                    shared_config_entry_id=config_entry.entry_id,
+                    shared_device_entry=rem_device,
+                    router_device_id=router_device_id,
+                    config_entries=hass.config_entries,
+                    device_registry=dev_reg,
+                )
                 if replacement_router_id is not None:
                     _LOGGER.debug(
                         "[device_tracker async_setup_entry] reparenting shared tracker "
@@ -323,22 +322,6 @@ async def async_setup_entry(
                         rem_device.id,
                         router_device_id,
                         replacement_router_id,
-                    )
-                    dev_reg.async_update_device(
-                        rem_device.id,
-                        remove_config_entry_id=config_entry.entry_id,
-                        via_device_id=replacement_router_id,
-                    )
-                elif router_device_id is not None and rem_device.via_device_id == router_device_id:
-                    dev_reg.async_update_device(
-                        rem_device.id,
-                        remove_config_entry_id=config_entry.entry_id,
-                        via_device_id=None,
-                    )
-                else:
-                    dev_reg.async_update_device(
-                        rem_device.id,
-                        remove_config_entry_id=config_entry.entry_id,
                     )
 
     if set(mac_addresses) != set(previous_mac_addresses):
