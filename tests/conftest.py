@@ -373,9 +373,8 @@ def fake_client() -> Any:
 def fake_reg_factory() -> Any:
     """Provide a factory that builds configurable fake device registries.
 
-    The returned registry object exposes ``async_get_device()``,
-    ``async_remove_device()``, and a ``removed`` flag so tests can assert how
-    registry cleanup behaves.
+    The returned registry object exposes device lookup, update, and removal
+    methods so tests can assert how registry cleanup behaves.
     """
 
     def _make(
@@ -442,6 +441,15 @@ def fake_reg_factory() -> Any:
                 """
                 self.removed = True
                 return self._remove_result
+
+            def async_update_device(self, *args: Any, **kwargs: Any) -> None:
+                """Record a device registry update.
+
+                Args:
+                    *args: Positional update arguments.
+                    **kwargs: Keyword update arguments.
+                """
+                self.updated = (args, kwargs)
 
         return _FakeReg()
 

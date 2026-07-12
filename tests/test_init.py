@@ -1661,7 +1661,7 @@ async def test_async_update_listener_uses_shared_default_for_smart_entity_prunin
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("dt_enabled", "via_device_id", "expect_removed"),
+    ("dt_enabled", "via_device_id", "expect_updated"),
     [
         (False, True, True),
         (False, False, False),
@@ -1674,9 +1674,9 @@ async def test_async_update_listener_device_removal_param(
     make_config_entry: Callable[..., MockConfigEntry],
     dt_enabled: Any,
     via_device_id: Any,
-    expect_removed: Any,
+    expect_updated: Any,
 ) -> None:
-    """Parameterized: ensure devices are removed only when device tracker disabled and via_device_id is True."""
+    """Remove only this config entry from tracked devices when tracking is disabled."""
     # create an entry with the device tracker option set per parameter
     entry = make_config_entry(
         data={init_mod.CONF_DEVICE_UNIQUE_ID: "dev1"},
@@ -1696,6 +1696,7 @@ async def test_async_update_listener_device_removal_param(
 
     dr_reg = MagicMock()
     dr_reg.async_remove_device = MagicMock()
+    dr_reg.async_update_device = MagicMock()
     monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: dr_reg)
     monkeypatch.setattr(
         init_mod.dr,
@@ -1713,10 +1714,13 @@ async def test_async_update_listener_device_removal_param(
 
     await init_mod._async_update_listener(hass, entry)
 
-    if expect_removed:
-        dr_reg.async_remove_device.assert_called_once_with(device.id)
+    dr_reg.async_remove_device.assert_not_called()
+    if expect_updated:
+        dr_reg.async_update_device.assert_called_once_with(
+            device.id, remove_config_entry_id=entry.entry_id
+        )
     else:
-        dr_reg.async_remove_device.assert_not_called()
+        dr_reg.async_update_device.assert_not_called()
 
 
 @pytest.mark.asyncio

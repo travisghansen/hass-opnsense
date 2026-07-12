@@ -1137,7 +1137,10 @@ async def test_async_setup_entry_removes_previous_mac(
     hass.config_entries.async_update_entry = MagicMock()
 
     await dt_mod.async_setup_entry(hass, entry, cast("AddEntitiesCallback", lambda _x: None))
-    assert fake.removed is True
+    assert fake.removed is False
+    assert fake.updated_devices == [
+        ("dev_to_remove", {"remove_config_entry_id": entry.entry_id})
+    ]
     assert hass.config_entries.async_update_entry.called
 
 

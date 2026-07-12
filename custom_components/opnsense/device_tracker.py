@@ -281,7 +281,7 @@ async def async_setup_entry(
     for mac_address in list(set(previous_mac_addresses) - set(mac_addresses)):
         rem_device = dev_reg.async_get_device(connections={(CONNECTION_NETWORK_MAC, mac_address)})
         if rem_device:
-            dev_reg.async_remove_device(rem_device.id)
+            dev_reg.async_update_device(rem_device.id, remove_config_entry_id=config_entry.entry_id)
 
     if set(mac_addresses) != set(previous_mac_addresses):
         setattr(config_entry.runtime_data, SHOULD_RELOAD, False)

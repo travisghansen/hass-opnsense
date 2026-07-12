@@ -154,7 +154,9 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
             for device in devices:
                 if device.via_device_id:
                     _LOGGER.debug("[async_update_listener] removing device: %s", device.name)
-                    device_registry.async_remove_device(device.id)
+                    device_registry.async_update_device(
+                        device.id, remove_config_entry_id=entry.entry_id
+                    )
         hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
     else:
         _LOGGER.info("[async_update_listener] Not Reloading")
