@@ -333,6 +333,7 @@ async def _async_setup_carp_entry(hass: HomeAssistant, entry: ConfigEntry) -> bo
         return True
     finally:
         if not setup_succeeded:
+            entry.runtime_data = None
             if coordinator is not None:
                 await coordinator.async_shutdown()
             if DOMAIN in hass.data:

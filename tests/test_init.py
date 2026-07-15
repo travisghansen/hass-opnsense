@@ -559,6 +559,7 @@ async def test_async_setup_entry_carp_platform_forward_failure_cleans_up(
     coordinator.async_shutdown.assert_awaited_once()
     client.async_close.assert_awaited_once()
     assert entry.entry_id not in hass.data.get(init_mod.DOMAIN, {})
+    assert entry.runtime_data is None
 
 
 @pytest.mark.asyncio
