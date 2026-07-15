@@ -189,6 +189,7 @@ def _build_nat_rule_switch_description(
     nat_rule_type: str,
     name_prefix: str,
     rule: Mapping[str, Any],
+    rule_id: str,
 ) -> SwitchEntityDescription:
     """Build a NAT rule switch description.
 
@@ -196,12 +197,13 @@ def _build_nat_rule_switch_description(
         nat_rule_type: NAT section name such as ``source_nat`` or ``d_nat``.
         name_prefix: Human-readable prefix for the entity name.
         rule: NAT rule data from the OPNsense payload.
+        rule_id: NAT rule identifier used for entity identity and toggling.
 
     Returns:
         A switch entity description for the NAT rule toggle.
     """
     return SwitchEntityDescription(
-        key=f"firewall.nat.{nat_rule_type}.{rule.get('uuid', 'unknown')}",
+        key=f"firewall.nat.{nat_rule_type}.{rule_id}",
         name=f"{name_prefix}: {rule.get('%interface', '')}: {rule.get('description', 'unknown')}",
         icon="mdi:network-outline",
         device_class=SwitchDeviceClass.SWITCH,
@@ -429,15 +431,18 @@ async def _compile_nat_rule_switches(
         return []
 
     entities: list = []
-    for rule in rules.values():
+    for rule_key, rule in rules.items():
         if not isinstance(rule, MutableMapping):
+            continue
+        rule_id = firewall_rule_id_from_payload(rule_key, rule)
+        if not rule_id:
             continue
         entities.append(
             _create_switch(
                 OPNsenseNATRuleSwitch,
                 config_entry,
                 coordinator,
-                _build_nat_rule_switch_description(nat_rule_type, name_prefix, rule),
+                _build_nat_rule_switch_description(nat_rule_type, name_prefix, rule, rule_id),
             )
         )
     return entities
@@ -958,7 +963,10 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
         Returns:
             str: The rule ID.
         """
-        return self.entity_description.key.split(".")[-1]
+        parts = self.entity_description.key.split(".", maxsplit=3)
+        if len(parts) == 4:
+            return parts[3]
+        return self.entity_description.key.rsplit(".", maxsplit=1)[-1]
 
     def _opnsense_get_rule(self) -> MutableMapping[str, Any] | None:
         """Get the NAT rule data from the coordinator.

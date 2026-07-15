@@ -3755,6 +3755,80 @@ async def test_compile_nat_rule_switches(
 
 
 @pytest.mark.asyncio
+async def test_compile_nat_rule_switches_uses_rule_key_for_missing_uuid(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Use the NAT payload mapping key when uuid is missing."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    state = {
+        "firewall": {
+            "nat": {
+                "source_nat": {
+                    "fallback-key": {
+                        "description": "Source NAT Rule",
+                        "%interface": "wan",
+                        "enabled": "1",
+                    }
+                }
+            }
+        }
+    }
+    ents = await _compile_nat_source_rules_switches(config_entry, coordinator, state)
+    assert len(ents) == 1
+    assert isinstance(ents[0], OPNsenseNATRuleSwitch)
+    assert ents[0].entity_description.key == "firewall.nat.source_nat.fallback-key"
+
+
+@pytest.mark.asyncio
+async def test_nat_rule_switch_with_dotted_rule_key_uses_full_rule_id(
+    coordinator: MagicMock,
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Preserve dots in NAT rule IDs derived from payload keys."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    state = {
+        "firewall": {
+            "nat": {
+                "source_nat": {
+                    "fallback.key.with.dots": {
+                        "description": "Source NAT Rule",
+                        "%interface": "wan",
+                        "enabled": "1",
+                    }
+                }
+            }
+        }
+    }
+    ents = await _compile_nat_source_rules_switches(config_entry, coordinator, state)
+    assert len(ents) == 1
+    ent = ents[0]
+    assert isinstance(ent, OPNsenseNATRuleSwitch)
+    assert ent.entity_description.key == "firewall.nat.source_nat.fallback.key.with.dots"
+
+    ent.coordinator = make_coord(state)
+    ent.hass = ph_hass
+    ent.entity_id = "switch.source_nat_fallback_rule_key_with_dots"
+    stub_async_write_ha_state(ent)
+
+    assert ent._rule_id == "fallback.key.with.dots"
+    assert ent._opnsense_get_rule() == {
+        "description": "Source NAT Rule",
+        "%interface": "wan",
+        "enabled": "1",
+    }
+
+    ent._client = MagicMock()
+    ent._client.toggle_nat_rule = AsyncMock(return_value=True)
+    await ent.async_turn_on()
+    ent._client.toggle_nat_rule.assert_awaited_once_with(
+        "source_nat",
+        "fallback.key.with.dots",
+        "on",
+    )
+
+
+@pytest.mark.asyncio
 async def test_compile_new_api_empty_state(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:

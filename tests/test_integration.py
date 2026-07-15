@@ -33,6 +33,7 @@ from custom_components.opnsense.const import (
     CONF_DEVICES,
     CONF_GRANULAR_SYNC_OPTIONS,
     CONF_MANUAL_DEVICES,
+    CONF_TLS_INSECURE,
 )
 from tests.utilities import patch_opnsense_client
 
@@ -720,7 +721,7 @@ async def test_e2e_full_migration_chain(
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
             init_mod.CONF_DEVICE_UNIQUE_ID: "oldmacid",
-            init_mod.CONF_TLS_INSECURE: True,
+            CONF_TLS_INSECURE: True,
         },
         title="Router",
         unique_id="oldmacid",
@@ -736,7 +737,7 @@ async def test_e2e_full_migration_chain(
     assert len(migration_clients) == 1
     assert migration_clients[0].close_calls == 1
     # v1->2: tls_insecure removed, verify_ssl added (inverse of True -> False)
-    assert init_mod.CONF_TLS_INSECURE not in entry.data
+    assert CONF_TLS_INSECURE not in entry.data
     assert entry.data.get(CONF_VERIFY_SSL) is False
     # v2->3: unique id updated
     assert entry.data[init_mod.CONF_DEVICE_UNIQUE_ID] == "newmacid"

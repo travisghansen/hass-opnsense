@@ -81,6 +81,33 @@ def firewall_rule_switch_unique_ids_from_payload(
     return unique_ids
 
 
+def firewall_nat_switch_unique_ids_from_payload(
+    device_unique_id: str,
+    nat_rule_type: str,
+    nat_rules: Mapping[Any, Any],
+) -> set[str]:
+    """Build current native NAT rule switch unique IDs from a firewall NAT payload.
+
+    Args:
+        device_unique_id: Device unique ID prefix used by this config entry.
+        nat_rule_type: NAT section name such as ``source_nat`` or ``d_nat``.
+        nat_rules: NAT rule mapping from a firewall payload section.
+
+    Returns:
+        set[str]: Unique IDs for NAT rule switches still present in the payload.
+    """
+    unique_ids: set[str] = set()
+    for rule_key, rule in nat_rules.items():
+        if not isinstance(rule, Mapping):
+            continue
+
+        rule_id = firewall_rule_id_from_payload(rule_key, rule)
+        if not rule_id:
+            continue
+        unique_ids.add(slugify(f"{device_unique_id}_firewall.nat.{nat_rule_type}.{rule_id}"))
+    return unique_ids
+
+
 def is_private_ip(url: str) -> bool:
     """Check if the address in the given URL is a private IP address."""
     parsed_url = urlparse(url)
