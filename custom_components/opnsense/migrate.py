@@ -190,9 +190,7 @@ async def _migrate_2_to_3(
             _, unique_id_suffix = ent.unique_id.split("_", 1)
         except ValueError:
             unique_id_suffix = f"mac_{ent.unique_id}"
-        new_unique_id: str = (
-            (f"{new_device_unique_id}_{unique_id_suffix}").replace(":", "_").strip()
-        )
+        new_unique_id: str = slugify(f"{new_device_unique_id}_{unique_id_suffix}")
         _LOGGER.debug(
             "[migrate_2_to_3] ent: %s, platform: %s, unique_id: %s, new_unique_id: %s",
             ent.entity_id,

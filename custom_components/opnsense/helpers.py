@@ -34,7 +34,7 @@ def dict_get(data: MutableMapping[str, Any], path: str, default: Any | None = No
     return result
 
 
-def firewall_rule_id_from_payload(rule_key: Any, rule: Any) -> str | None:
+def firewall_rule_id_from_payload(rule_key: object, rule: object) -> str | None:
     """Get a firewall rule ID from an aiopnsense rule payload.
 
     Args:

@@ -3635,6 +3635,73 @@ async def test_compile_nat_rule_switches(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    (
+        "compile_func",
+        "nat_family",
+        "expected_key",
+    ),
+    [
+        pytest.param(
+            _compile_nat_source_rules_switches,
+            "source_nat",
+            "firewall.nat.source_nat.valid",
+            id="source",
+        ),
+        pytest.param(
+            _compile_nat_destination_rules_switches,
+            "d_nat",
+            "firewall.nat.d_nat.valid",
+            id="destination",
+        ),
+        pytest.param(
+            _compile_nat_one_to_one_rules_switches,
+            "one_to_one",
+            "firewall.nat.one_to_one.valid",
+            id="one-to-one",
+        ),
+        pytest.param(
+            _compile_nat_npt_rules_switches,
+            "npt",
+            "firewall.nat.npt.valid",
+            id="npt",
+        ),
+    ],
+)
+async def test_compile_nat_rule_switches_skips_non_string_interface(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    compile_func: Callable[..., Any],
+    nat_family: str,
+    expected_key: str,
+) -> None:
+    """NAT rule compilation should skip entries where interface is not a string."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    state = {
+        "firewall": {
+            "nat": {
+                nat_family: {
+                    "invalid": {
+                        "description": "Non-string Interface",
+                        "%interface": {"name": "lan"},
+                        "enabled": "1",
+                    },
+                    "valid": {
+                        "description": "String Interface",
+                        "%interface": "wan",
+                        "enabled": "1",
+                    },
+                }
+            }
+        }
+    }
+    ents = await compile_func(config_entry, coordinator, state)
+    assert len(ents) == 1
+    assert isinstance(ents[0], OPNsenseNATRuleSwitch)
+    assert ents[0].entity_description.key == expected_key
+
+
+@pytest.mark.asyncio
 async def test_compile_nat_rule_switches_uses_rule_key_for_missing_uuid(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:

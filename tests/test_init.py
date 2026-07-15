@@ -1837,6 +1837,52 @@ async def test_migrate_2_to_3_success(monkeypatch: pytest.MonkeyPatch, fake_clie
 
 
 @pytest.mark.asyncio
+async def test_migrate_2_to_3_normalizes_legacy_entity_unique_ids_with_slugify(
+    monkeypatch: pytest.MonkeyPatch, fake_client: Any
+) -> None:
+    """_migrate_2_to_3 should slugify legacy unique IDs with colons and case."""
+    client = fake_client(device_id="newdev")()
+
+    ent = MagicMock()
+    ent.entity_id = "sensor.x"
+    ent.unique_id = "AA:BB:CC"
+    er_reg = MagicMock()
+    er_reg.async_update_entity = MagicMock(
+        return_value=MagicMock(entity_id=ent.entity_id, unique_id="updated")
+    )
+    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: er_reg)
+    monkeypatch.setattr(
+        init_mod.er, "async_entries_for_config_entry", lambda registry, config_entry_id: [ent]
+    )
+
+    monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: MagicMock())
+    monkeypatch.setattr(
+        init_mod.dr, "async_entries_for_config_entry", lambda registry, config_entry_id: []
+    )
+
+    cfg = MagicMock()
+    cfg.data = {
+        CONF_URL: "http://1.2.3.4",
+        CONF_USERNAME: "u",
+        CONF_PASSWORD: "p",
+    }
+    cfg.version = 2
+    cfg.entry_id = "e"
+    cfg.unique_id = "old_unique"
+
+    hass = MagicMock(spec=HomeAssistant)
+    hass.data = {}
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_update_entry = MagicMock(return_value=True)
+
+    await init_mod._migrate_2_to_3(hass, cfg, client)
+    expected_unique_id = slugify("newdev_mac_AA:BB:CC")
+    er_reg.async_update_entity.assert_called_once_with(
+        ent.entity_id, new_unique_id=expected_unique_id
+    )
+
+
+@pytest.mark.asyncio
 async def test_migrate_2_to_3_returns_false_when_update_entry_fails(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
@@ -2703,7 +2749,7 @@ async def test_async_setup_entry_cleans_up_when_platform_forwarding_fails(
     client.async_close.assert_awaited_once()
     entry.add_update_listener.assert_called_once()
     entry.async_on_unload.assert_called_once_with(remove_listener)
-    remove_listener.assert_called_once()
+    remove_listener.assert_not_called()
     assert entry.runtime_data is None
     assert entry.entry_id not in hass.data.get(init_mod.DOMAIN, {})
 

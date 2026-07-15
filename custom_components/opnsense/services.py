@@ -5,6 +5,7 @@ import functools
 import logging
 from typing import Any
 
+from aiopnsense import OPNsenseClient
 from aiopnsense.exceptions import OPNsenseVoucherServerError
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
@@ -47,7 +48,7 @@ _TRANSLATION_KEY_START_SERVICE_FAILED = "start_service_failed"
 _TRANSLATION_KEY_STOP_SERVICE_FAILED = "stop_service_failed"
 _TRANSLATION_KEY_TOGGLE_ALIAS_FAILED = "toggle_alias_failed"
 _TRANSLATION_KEY_VOUCHER_SERVER_ERROR = "voucher_server_error"
-type OPNsenseServiceClient = Any
+type OPNsenseServiceClient = OPNsenseClient
 type ServiceHandler = Callable[[HomeAssistant, ServiceCall], Awaitable[Any]]
 type BooleanClientAction = Callable[[OPNsenseServiceClient], Awaitable[bool]]
 
@@ -532,7 +533,7 @@ async def _collect_kill_state_results(
     success: bool | None = None
     response_list: list[dict[str, Any]] = []
     for client in clients:
-        response: dict[str, Any] = await client.kill_states(ip_addr)
+        response: MutableMapping[str, Any] = await client.kill_states(ip_addr)
         _LOGGER.debug(
             "[service_kill_states] client: %s, ip_addr: %s, response: %s",
             client.name,
@@ -886,8 +887,8 @@ async def _service_toggle_alias(hass: HomeAssistant, call: ServiceCall) -> None:
         required value.
     """
     clients = await _get_target_clients(hass, call)
-    alias = call.data.get("alias")
-    toggle_on_off = call.data.get("toggle_on_off")
+    alias: str = call.data["alias"]
+    toggle_on_off: str = call.data["toggle_on_off"]
     await _run_boolean_client_action(
         clients=clients,
         log_prefix="service_toggle_alias",

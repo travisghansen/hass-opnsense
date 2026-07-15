@@ -10,6 +10,7 @@ import re
 from typing import Any
 from urllib.parse import ParseResult, quote_plus, urlparse
 
+import aiohttp
 from aiopnsense.exceptions import (
     OPNsenseBelowMinFirmware,
     OPNsenseConnectionError,
@@ -349,21 +350,12 @@ async def validate_input(
     """
     try:
         await _validate_client_details(hass=hass, user_input=user_input, expected_id=expected_id)
-    except OPNsenseError as err:
-        validation_error = _get_validation_error_details(err, user_input)
+    except (OPNsenseError, TimeoutError, aiohttp.ClientError) as err:
+        validation_error = _get_connection_error_details(error=err, user_input=user_input)
         if validation_error is None:
             raise
         error_key, log_message = validation_error
         _record_validation_error(errors=errors, key=error_key, message=log_message)
-    except TimeoutError as err:
-        _record_validation_error(
-            errors=errors,
-            key="connect_timeout",
-            message=cleanse_sensitive_data(
-                f"Connection TimeoutError. {type(err).__name__}: {err}",
-                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
-            ),
-        )
     return errors
 
 
@@ -411,6 +403,61 @@ def _get_validation_error_details(
                     [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
                 ),
             )
+
+    return None
+
+
+def _get_connection_error_details(
+    error: BaseException,
+    user_input: Mapping[str, Any],
+) -> tuple[str, str] | None:
+    """Map connection-level validation exceptions to config-flow error keys.
+
+    Args:
+        error: Error raised from API communication or validation.
+        user_input: User input containing optional secrets for log redaction.
+
+    Returns:
+        tuple[str, str] | None: Error key and log message when mapped, otherwise ``None``.
+    """
+    if isinstance(error, TimeoutError):
+        return (
+            "connect_timeout",
+            cleanse_sensitive_data(
+                f"Connection TimeoutError. {type(error).__name__}: {error}",
+                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
+            ),
+        )
+
+    if isinstance(error, aiohttp.ClientResponseError) and error.status == 403:
+        return (
+            "privilege_missing",
+            cleanse_sensitive_data(
+                f"aiohttp Error. {type(error).__name__}: {error}",
+                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
+            ),
+        )
+
+    if isinstance(error, aiohttp.ClientSSLError):
+        return (
+            "cannot_connect_ssl",
+            cleanse_sensitive_data(
+                f"aiohttp SSL Error. {type(error).__name__}: {error}",
+                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
+            ),
+        )
+
+    if isinstance(error, aiohttp.ClientError):
+        return (
+            "cannot_connect",
+            cleanse_sensitive_data(
+                f"aiohttp Error. {type(error).__name__}: {error}",
+                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
+            ),
+        )
+
+    if isinstance(error, OPNsenseError):
+        return _get_validation_error_details(error=error, user_input=user_input)
 
     return None
 
@@ -1087,9 +1134,15 @@ class OPNsenseOptionsFlow(OptionsFlow):
             dt_entries: DeviceEntries = await _get_dt_entries(
                 hass=self.hass, config=self.config_entry.data, selected_devices=selected_devices
             )
-        except OPNsenseConnectionError as err:
-            _LOGGER.warning("Failed to load device tracker entries: %s", err)
-            errors["base"] = "cannot_connect"
+        except (OPNsenseConnectionError, TimeoutError, aiohttp.ClientError) as err:
+            validation_error = _get_connection_error_details(
+                error=err, user_input=self.config_entry.data
+            )
+            if validation_error is None:
+                raise
+            error_key, log_message = validation_error
+            _LOGGER.warning("Failed to load device tracker entries: %s", log_message)
+            errors["base"] = error_key
             dt_entries = {
                 mac: _format_selected_device_label(mac)
                 for mac in _merge_selected_devices(selected_devices)

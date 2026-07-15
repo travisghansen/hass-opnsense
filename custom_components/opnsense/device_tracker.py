@@ -301,7 +301,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         config_entry: ConfigEntry,
         coordinator: OPNsenseDataUpdateCoordinator,
         enabled_default: bool,
-        mac: str,
+        mac: str | None,
         mac_vendor: str | None,
         hostname: str | None,
     ) -> None:
@@ -311,7 +311,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             config_entry: Config entry owning the entity.
             coordinator: Shared OPNsense data coordinator.
             enabled_default: Whether the entity is enabled by default.
-            mac: MAC address tracked by the entity.
+            mac: MAC address tracked by the entity, or ``None`` when unavailable.
             mac_vendor: Vendor name reported for the MAC address.
             hostname: Hostname reported by OPNsense.
         """

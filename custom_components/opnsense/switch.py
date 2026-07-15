@@ -437,6 +437,9 @@ async def _compile_nat_rule_switches(
         rule_id = firewall_rule_id_from_payload(rule_key, rule)
         if not rule_id:
             continue
+        interface = rule.get("%interface", rule.get("interface", ""))
+        if not isinstance(interface, str):
+            continue
         entities.append(
             _create_switch(
                 OPNsenseNATRuleSwitch,

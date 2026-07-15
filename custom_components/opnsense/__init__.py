@@ -346,8 +346,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return True
     finally:
         if not setup_succeeded:
-            if remove_listener is not None:
-                remove_listener()
             entry.runtime_data = None
             if device_tracker_coordinator is not None:
                 await device_tracker_coordinator.async_shutdown()
