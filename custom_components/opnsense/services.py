@@ -447,7 +447,7 @@ async def _run_boolean_client_action(
     Raises:
         ServiceValidationError: If no selected clients report success or any selected client fails.
     """
-    success: bool | None = None
+    all_clients_succeeded = bool(clients)
     for client in clients:
         response = await action(client)
         log_action = f"{action_name}, " if action_name else ""
@@ -460,9 +460,8 @@ async def _run_boolean_client_action(
             target_value,
             response,
         )
-        if success is None or success:
-            success = response
-    if success is None or not success:
+        all_clients_succeeded = all_clients_succeeded and response
+    if not all_clients_succeeded:
         raise _service_validation_error(failure_translation_key, failure_translation_placeholders)
 
 
@@ -530,7 +529,7 @@ async def _collect_kill_state_results(
     Raises:
         ServiceValidationError: If no selected clients report success or any selected client fails.
     """
-    success: bool | None = None
+    all_clients_succeeded = bool(clients)
     response_list: list[dict[str, Any]] = []
     for client in clients:
         response: MutableMapping[str, Any] = await client.kill_states(ip_addr)
@@ -547,9 +546,8 @@ async def _collect_kill_state_results(
                     "dropped_states": response.get("dropped_states", 0),
                 }
             )
-        if success is None or success:
-            success = response.get("success", False)
-    if success is None or not success:
+        all_clients_succeeded = all_clients_succeeded and bool(response.get("success", False))
+    if not all_clients_succeeded:
         raise _service_validation_error(
             _TRANSLATION_KEY_KILL_STATES_FAILED,
             {"ip_addr": ip_addr},
