@@ -5,14 +5,20 @@ including system information, network interfaces, firewall rules, DHCP leases,
 and various other OPNsense features through the Home Assistant interface.
 """
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import timedelta
 import logging
 from typing import Any
 
+import aiohttp
 from aiopnsense import OPNsenseClient
-from aiopnsense.exceptions import OPNsenseBelowMinFirmware, OPNsenseError, OPNsenseUnknownFirmware
+from aiopnsense.exceptions import (
+    OPNsenseBelowMinFirmware,
+    OPNsenseError,
+    OPNsenseMissingDeviceUniqueID,
+    OPNsenseUnknownFirmware,
+)
 import awesomeversion
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_SCAN_INTERVAL, Platform
@@ -193,11 +199,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     config_device_id: str = config[CONF_DEVICE_UNIQUE_ID]
 
     client: OPNsenseClient | None = None
-    remove_listener: Callable[[], None] | None = None
     try:
         client = create_opnsense_client_from_config_entry(hass=hass, config_entry=entry)
         try:
             await client.validate()
+        except OPNsenseMissingDeviceUniqueID:
+            _LOGGER.debug(
+                "Client validation reported missing device id; continuing to device-id probes"
+            )
         except OPNsenseBelowMinFirmware, OPNsenseUnknownFirmware:
             _LOGGER.debug(
                 "Client validation reported firmware issues; continuing to firmware probes"
@@ -333,14 +342,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             device_unique_id=config_device_id,
             loaded_platforms=platforms,
         )
-        remove_listener = entry.add_update_listener(_async_update_listener)
-        entry.async_on_unload(remove_listener)
 
         if device_tracker_enabled and device_tracker_coordinator:
             # Fetch initial data so we have data when entities subscribe
             await device_tracker_coordinator.async_config_entry_first_refresh()
 
         await hass.config_entries.async_forward_entry_setups(entry, platforms)
+        entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
         setup_succeeded = True
         return True
@@ -434,18 +442,26 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
     try:
         sync_enabled = _is_firewall_sync_enabled(config_entry)
         if version in (2, 3) or (version == 4 and sync_enabled):
-            migration_client = create_opnsense_client_from_config_entry(
-                hass=hass,
-                config_entry=config_entry,
-                throw_errors=True,
-            )
+            try:
+                migration_client = create_opnsense_client_from_config_entry(
+                    hass=hass,
+                    config_entry=config_entry,
+                    throw_errors=True,
+                )
+            except OPNsenseError, TimeoutError, aiohttp.ClientError:
+                _LOGGER.warning("Deferring migration due to a temporary API transport error")
+                return False
 
         # 2 -> 3: Change unique device id to use lowest MAC address
         if version == 2:
             if migration_client is None:
                 _LOGGER.error("Missing migration client for Migration to Version 3")
                 return False
-            v2to3: bool = await _migrate_2_to_3(hass, config_entry, migration_client)
+            try:
+                v2to3: bool = await _migrate_2_to_3(hass, config_entry, migration_client)
+            except OPNsenseError, TimeoutError, aiohttp.ClientError:
+                _LOGGER.warning("Deferring migration to version 3 due to a temporary API error")
+                return False
             if not v2to3:
                 return False
             version = 3
@@ -455,7 +471,11 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
             if migration_client is None:
                 _LOGGER.error("Missing migration client for Migration to Version 4")
                 return False
-            v3to4: bool = await _migrate_3_to_4(hass, config_entry, migration_client)
+            try:
+                v3to4: bool = await _migrate_3_to_4(hass, config_entry, migration_client)
+            except OPNsenseError, TimeoutError, aiohttp.ClientError:
+                _LOGGER.warning("Deferring migration to version 4 due to a temporary API error")
+                return False
             if not v3to4:
                 return False
             version = 4

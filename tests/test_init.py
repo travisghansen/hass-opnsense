@@ -10,6 +10,7 @@ import logging
 from typing import Any, Never
 from unittest.mock import ANY, AsyncMock, MagicMock, call
 
+import aiohttp
 from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME, CONF_VERIFY_SSL
 from homeassistant.core import HomeAssistant
 from homeassistant.util import slugify
@@ -355,6 +356,69 @@ async def test_async_setup_entry_continues_after_firmware_validation_error(
 
     def _create_client(**kwargs: Any) -> Any:
         """Return the firmware-failing client for this setup-entry test."""
+        return client
+
+    monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", _create_client)
+    monkeypatch.setattr(
+        init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
+    )
+
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+        },
+        options={},
+    )
+
+    hass = ph_hass
+    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+    hass.config_entries.async_reload = AsyncMock()
+    hass.data = {}
+
+    res = await init_mod.async_setup_entry(hass, entry)
+    assert res is True
+    assert probe_calls == [
+        "get_device_unique_id",
+        "get_host_firmware_version",
+    ]
+    client.async_close.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_continues_after_missing_device_unique_id_validation(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator_capture: Any,
+    fake_coordinator: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """async_setup_entry should continue when unique-id validation is unavailable."""
+    probe_calls: list[str] = []
+    client = MagicMock()
+    client.name = "test-router"
+    client.validate = AsyncMock(
+        side_effect=init_mod.OPNsenseMissingDeviceUniqueID("unable to determine device id")
+    )
+    client.async_close = AsyncMock(return_value=True)
+
+    async def _get_device_unique_id(expected_id: str | None = None) -> str:
+        """Return test router device id after recording probe ordering."""
+        probe_calls.append("get_device_unique_id")
+        return "dev1"
+
+    async def _get_host_firmware_version() -> str:
+        """Return test firmware after recording probe ordering."""
+        probe_calls.append("get_host_firmware_version")
+        return "99.0"
+
+    client.get_device_unique_id = _get_device_unique_id
+    client.get_host_firmware_version = _get_host_firmware_version
+
+    def _create_client(**kwargs: Any) -> Any:
+        """Return the unique-id-missing client for this setup-entry test."""
         return client
 
     monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", _create_client)
@@ -2490,6 +2554,93 @@ async def test_async_migrate_entry_returns_false_when_submigration_fails(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("exc", [TimeoutError, aiohttp.ClientError, init_mod.OPNsenseError])
+async def test_async_migrate_entry_defers_when_migration_client_raises_transient_error(
+    monkeypatch: pytest.MonkeyPatch, ph_hass: Any, exc: type[BaseException]
+) -> None:
+    """async_migrate_entry should return False when migration-client creation fails."""
+    migration_exc = exc("temporary failure")
+    create_client = MagicMock(side_effect=migration_exc)
+    monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", create_client)
+
+    cfg = MagicMock()
+    cfg.version = 2
+    cfg.data = {
+        CONF_URL: "http://1.2.3.4",
+        CONF_USERNAME: "u",
+        CONF_PASSWORD: "p",
+    }
+
+    res = await init_mod.async_migrate_entry(ph_hass, cfg)
+    assert res is False
+    create_client.assert_called_once_with(
+        hass=ph_hass,
+        config_entry=cfg,
+        throw_errors=True,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("exc", [TimeoutError, aiohttp.ClientError, init_mod.OPNsenseError])
+async def test_async_migrate_entry_defers_when_v2_to_3_fails_with_transient_error(
+    monkeypatch: pytest.MonkeyPatch, ph_hass: Any, exc: type[BaseException]
+) -> None:
+    """async_migrate_entry should return False when v2->v3 migration raises transient errors."""
+    client = MagicMock()
+    client.async_close = AsyncMock()
+    monkeypatch.setattr(
+        init_mod,
+        "create_opnsense_client_from_config_entry",
+        MagicMock(return_value=client),
+    )
+    monkeypatch.setattr(
+        init_mod, "_migrate_2_to_3", AsyncMock(side_effect=exc("temporary failure"))
+    )
+
+    cfg = MagicMock()
+    cfg.version = 2
+    cfg.data = {
+        CONF_URL: "http://1.2.3.4",
+        CONF_USERNAME: "u",
+        CONF_PASSWORD: "p",
+    }
+
+    res = await init_mod.async_migrate_entry(ph_hass, cfg)
+    assert res is False
+    client.async_close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("exc", [TimeoutError, aiohttp.ClientError, init_mod.OPNsenseError])
+async def test_async_migrate_entry_defers_when_v3_to_4_fails_with_transient_error(
+    monkeypatch: pytest.MonkeyPatch, ph_hass: Any, exc: type[BaseException]
+) -> None:
+    """async_migrate_entry should return False when v3->v4 migration raises transient errors."""
+    client = MagicMock()
+    client.async_close = AsyncMock()
+    monkeypatch.setattr(
+        init_mod,
+        "create_opnsense_client_from_config_entry",
+        MagicMock(return_value=client),
+    )
+    monkeypatch.setattr(
+        init_mod, "_migrate_3_to_4", AsyncMock(side_effect=exc("temporary failure"))
+    )
+
+    cfg = MagicMock()
+    cfg.version = 3
+    cfg.data = {
+        CONF_URL: "http://1.2.3.4",
+        CONF_USERNAME: "u",
+        CONF_PASSWORD: "p",
+    }
+
+    res = await init_mod.async_migrate_entry(ph_hass, cfg)
+    assert res is False
+    client.async_close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("version", [2, 3, 4])
 async def test_async_migrate_entry_returns_false_when_migration_client_missing(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any, version: int
@@ -2796,20 +2947,20 @@ async def test_async_setup_entry_cleans_up_when_platform_forwarding_fails(
 
     coordinator.async_shutdown.assert_awaited_once()
     client.async_close.assert_awaited_once()
-    entry.add_update_listener.assert_called_once()
-    entry.async_on_unload.assert_called_once_with(remove_listener)
+    entry.add_update_listener.assert_not_called()
+    entry.async_on_unload.assert_not_called()
     remove_listener.assert_not_called()
     assert entry.runtime_data is None
     assert entry.entry_id not in hass.data.get(init_mod.DOMAIN, {})
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_registers_update_listener_before_forwarding(
+async def test_async_setup_entry_registers_update_listener_after_forwarding(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Update listener registration should happen before platform forwarding."""
+    """Update listener registration should happen after platform forwarding."""
     call_order: list[str] = []
 
     client = _make_valid_setup_client()
@@ -2853,7 +3004,7 @@ async def test_async_setup_entry_registers_update_listener_before_forwarding(
     res = await init_mod.async_setup_entry(hass, entry)
 
     assert res is True
-    assert call_order.index("add_listener") < call_order.index("forward")
+    assert call_order.index("forward") < call_order.index("add_listener")
     entry.add_update_listener.assert_called_once_with(init_mod._async_update_listener)
     entry.async_on_unload.assert_called_once_with(remove_listener)
     remove_listener.assert_not_called()
