@@ -13,6 +13,10 @@ from unittest.mock import ANY, AsyncMock, MagicMock, call
 from aiopnsense.exceptions import (
     OPNsenseBelowMinFirmware,
     OPNsenseConnectionError,
+    OPNsenseInvalidAuth,
+    OPNsenseInvalidURL,
+    OPNsensePrivilegeMissing,
+    OPNsenseSSLError,
     OPNsenseTimeoutError,
     OPNsenseUnknownFirmware,
 )
@@ -598,6 +602,144 @@ async def test_async_setup_entry_closes_client_when_validation_fails(
     hass.data = {}
 
     with pytest.raises(type(error), match=str(error)):
+        await init_mod.async_setup_entry(hass, entry)
+
+    client.async_close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_does_not_catch_raw_validation_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Validation timeout mapping belongs to aiopnsense, not setup-entry cleanup."""
+    client = MagicMock()
+    client.validate = AsyncMock(side_effect=TimeoutError)
+    client.async_close = AsyncMock(return_value=True)
+
+    def _create_client(**kwargs: Any) -> Any:
+        """Return the timeout-raising client for this setup-entry test."""
+        return client
+
+    monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", _create_client)
+
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+        },
+        options={},
+    )
+
+    hass = ph_hass
+    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+    hass.config_entries.async_reload = AsyncMock()
+    hass.data = {}
+
+    with pytest.raises(TimeoutError):
+        await init_mod.async_setup_entry(hass, entry)
+
+    client.async_close.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "exc", [OPNsenseTimeoutError, OPNsenseConnectionError], ids=["timeout", "connection"]
+)
+@pytest.mark.asyncio
+async def test_async_setup_entry_retries_on_transient_validation_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    exc: type[BaseException],
+) -> None:
+    """Transient validation connection failures should trigger ConfigEntryNotReady."""
+    client = MagicMock()
+    client.validate = AsyncMock(side_effect=exc("timed out"))
+    client.async_close = AsyncMock(return_value=True)
+
+    def _create_client(**kwargs: Any) -> Any:
+        """Return the timeout-raising client for this setup-entry test."""
+        return client
+
+    monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", _create_client)
+
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+        },
+        options={},
+    )
+
+    hass = ph_hass
+    monkeypatch.setattr(
+        hass.config_entries, "async_forward_entry_setups", AsyncMock(return_value=True)
+    )
+    monkeypatch.setattr(hass.config_entries, "async_reload", AsyncMock())
+    hass.data.clear()
+
+    with pytest.raises(ConfigEntryNotReady):
+        await init_mod.async_setup_entry(hass, entry)
+
+    client.async_close.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        OPNsenseInvalidAuth,
+        OPNsensePrivilegeMissing,
+        OPNsenseSSLError,
+        OPNsenseInvalidURL,
+    ],
+    ids=[
+        "invalid_auth",
+        "privilege_missing",
+        "ssl_error",
+        "invalid_url",
+    ],
+)
+@pytest.mark.asyncio
+async def test_async_setup_entry_does_not_retry_non_transient_validation_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    exc: type[BaseException],
+) -> None:
+    """Non-transient validation failures should bubble as hard errors."""
+    client = MagicMock()
+    client.validate = AsyncMock(side_effect=exc("invalid"))
+    client.async_close = AsyncMock(return_value=True)
+
+    def _create_client(**kwargs: Any) -> Any:
+        """Return the auth-failing client for this setup-entry test."""
+        return client
+
+    monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", _create_client)
+
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+        },
+        options={},
+    )
+
+    hass = ph_hass
+    monkeypatch.setattr(
+        hass.config_entries, "async_forward_entry_setups", AsyncMock(return_value=True)
+    )
+    monkeypatch.setattr(hass.config_entries, "async_reload", AsyncMock())
+    hass.data.clear()
+
+    with pytest.raises(exc):
         await init_mod.async_setup_entry(hass, entry)
 
     client.async_close.assert_awaited_once()
