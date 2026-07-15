@@ -1469,7 +1469,10 @@ async def test_async_update_listener_reload_and_remove(
     # explicitly use the 'sync_telemetry' prefix so the test targets the intended sync item
     prefix = list(init_mod.GRANULAR_SYNC_PREFIX["sync_telemetry"])
     pre = prefix[0]
-    ent = Ent("sensor.x", f"{slugify(entry.unique_id)}_{pre}_suffix")
+    ent = Ent(
+        "sensor.x",
+        f"{slugify(entry.data[init_mod.CONF_DEVICE_UNIQUE_ID])}_{pre}_suffix",
+    )
 
     # monkeypatch entity registry functions
     er_reg = MagicMock()
@@ -1526,7 +1529,10 @@ async def test_async_update_listener_removes_native_firewall_entities(
             self.entity_id = entity_id
             self.unique_id = unique_id
 
-    ent = Ent("switch.native_firewall", f"{slugify(entry.unique_id)}_firewall_rule_rule1")
+    ent = Ent(
+        "switch.native_firewall",
+        f"{slugify(entry.data[init_mod.CONF_DEVICE_UNIQUE_ID])}_firewall_rule_rule1",
+    )
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock()
@@ -1579,7 +1585,10 @@ async def test_async_update_listener_skips_native_firewall_entities_when_firewal
             self.entity_id = entity_id
             self.unique_id = unique_id
 
-    ent = Ent("switch.native_firewall", f"{slugify(entry.unique_id)}_firewall_rule_rule1")
+    ent = Ent(
+        "switch.native_firewall",
+        f"{slugify(entry.data[init_mod.CONF_DEVICE_UNIQUE_ID])}_firewall_rule_rule1",
+    )
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock()
@@ -1622,10 +1631,10 @@ async def test_async_update_listener_uses_shared_default_for_smart_entity_prunin
 
     smart_entity = MagicMock()
     smart_entity.entity_id = "binary_sensor.opnsense_smart_nvme0_status"
-    smart_entity.unique_id = f"{entry.unique_id}_smart_nvme0_status"
+    smart_entity.unique_id = f"{entry.data[init_mod.CONF_DEVICE_UNIQUE_ID]}_smart_nvme0_status"
     telemetry_entity = MagicMock()
     telemetry_entity.entity_id = "sensor.opnsense_cpu"
-    telemetry_entity.unique_id = f"{entry.unique_id}_telemetry_cpu"
+    telemetry_entity.unique_id = f"{entry.data[init_mod.CONF_DEVICE_UNIQUE_ID]}_telemetry_cpu"
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock()
