@@ -53,7 +53,6 @@ def dict_get(data: MutableMapping[str, Any], path: str, default: Any | None = No
 
 def normalize_arp_mac(mac: object) -> str:
     """Normalize a MAC address from an ARP payload."""
-
     if not isinstance(mac, str):
         return ""
     return mac.strip().lower().replace("-", ":")
@@ -61,7 +60,6 @@ def normalize_arp_mac(mac: object) -> str:
 
 def get_arp_mac(entry: Mapping[str, Any]) -> str:
     """Return a normalized MAC address from an ARP payload."""
-
     mac: object = entry.get("mac")
     if not isinstance(mac, str):
         mac = entry.get("mac-address")
@@ -70,7 +68,6 @@ def get_arp_mac(entry: Mapping[str, Any]) -> str:
 
 def get_arp_ip(entry: Mapping[str, Any]) -> str:
     """Return an IP address from an ARP payload."""
-
     ip: object = entry.get("ip")
     if not isinstance(ip, str):
         ip = entry.get("ip-address")
@@ -79,7 +76,6 @@ def get_arp_ip(entry: Mapping[str, Any]) -> str:
 
 def get_smart_device_name(smart_device: Mapping[str, Any]) -> str:
     """Return a SMART device identifier, preferring ``device`` over ``ident``."""
-
     device_name = smart_device.get("device")
     if not isinstance(device_name, str) or not device_name.strip():
         device_name = smart_device.get("ident")
@@ -90,7 +86,6 @@ def get_smart_device_name(smart_device: Mapping[str, Any]) -> str:
 
 def firewall_rule_id_from_payload(rule_key: object, rule: object) -> str | None:
     """Get a firewall rule ID from an aiopnsense rule payload."""
-
     if not isinstance(rule, Mapping):
         return None
 

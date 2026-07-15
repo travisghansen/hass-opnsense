@@ -398,6 +398,7 @@ async def test_validate_input_maps_raw_aiohttp_ssl_error(
 
     assert res["base"] == "cannot_connect_ssl"
 
+
 @pytest.mark.parametrize(
     (
         "failing_attribute",

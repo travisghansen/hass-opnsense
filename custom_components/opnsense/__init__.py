@@ -110,7 +110,7 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
     if getattr(entry.runtime_data, SHOULD_RELOAD, True):
         _LOGGER.info("[async_update_listener] Reloading")
 
-        uid_prefix = slugify(config_entry_identity(entry))
+        uid_prefix: str | None = slugify(config_entry_identity(entry))
         if not uid_prefix:
             _LOGGER.debug("[async_update_listener] Skipping entity cleanup; empty entry uid prefix")
             uid_prefix = None
