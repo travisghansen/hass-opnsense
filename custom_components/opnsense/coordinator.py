@@ -31,7 +31,7 @@ from .const import (
     DEFAULT_SYNC_OPTION_VALUE,
 )
 from .helpers import dict_get, get_smart_device_name, is_carp_entry
-from .repairs import async_create_device_id_mismatch_issue
+from .repairs import async_create_device_id_mismatch_issue, is_valid_device_id
 
 if TYPE_CHECKING:
     from aiopnsense import OPNsenseClient
@@ -265,8 +265,8 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         ):
             return True
         runtime_device_id = self._state.get("device_unique_id")
-        if not isinstance(runtime_device_id, str) or not runtime_device_id:
-            _LOGGER.warning("Coordinator failed to confirm OPNsense Router Unique ID. Will retry")
+        if not is_valid_device_id(runtime_device_id):
+            _LOGGER.warning("Coordinator received malformed OPNsense Router Unique ID. Will retry")
             self._mismatched_count = 0
             return False
         if runtime_device_id != self._device_unique_id:

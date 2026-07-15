@@ -413,12 +413,14 @@ async def test_loaded_entry_unloads_before_registry_cleanup(
         pytest.param(TimeoutError("timeout"), None, id="timeout-error"),
         pytest.param(None, None, id="missing-device-id"),
         pytest.param(None, "", id="blank-device-id"),
+        pytest.param(None, "   ", id="whitespace-device-id"),
+        pytest.param(None, 123, id="non-string-device-id"),
     ],
 )
 async def test_invalid_probe_result_aborts_without_mutations(
     monkeypatch: pytest.MonkeyPatch,
     probe_error: BaseException | None,
-    observed_device_id: str | None,
+    observed_device_id: Any,
 ) -> None:
     """Invalid strict-probe results should abort and close the client."""
     hass = MagicMock()
@@ -1392,20 +1394,81 @@ async def test_removed_entry_aborts_without_mutations(
 
 
 @pytest.mark.asyncio
-async def test_fix_flow_factory_validates_issue_suffix_and_payload() -> None:
+@pytest.mark.parametrize(
+    ("data", "expects_replacement_flow"),
+    [
+        (
+            {
+                "entry_id": "entry-1",
+                "old_device_id": "dev1",
+                "new_device_id": "other",
+            },
+            True,
+        ),
+        (
+            {
+                "entry_id": "entry-1",
+                "old_device_id": "dev1",
+                "new_device_id": "   ",
+            },
+            False,
+        ),
+        (
+            {
+                "entry_id": "entry-1",
+                "old_device_id": "   ",
+                "new_device_id": "other",
+            },
+            False,
+        ),
+    ],
+)
+async def test_fix_flow_factory_validates_issue_suffix_and_payload(
+    data: dict[str, str | int | float | None],
+    expects_replacement_flow: bool,
+) -> None:
     """Only well-formed device-ID issues should construct the destructive flow."""
     hass = MagicMock()
-    data: dict[str, str | int | float | None] = {
-        "entry_id": "entry-1",
-        "old_device_id": "dev1",
-        "new_device_id": "other",
-    }
-
     flow = await repairs.async_create_fix_flow(hass, "entry-1_device_id_mismatched", data)
-
-    assert isinstance(flow, repairs.DeviceIDMismatchRepairFlow)
+    if expects_replacement_flow:
+        assert isinstance(flow, repairs.DeviceIDMismatchRepairFlow)
+    else:
+        assert isinstance(flow, ConfirmRepairFlow)
     unknown_flow = await repairs.async_create_fix_flow(hass, "unrelated", None)
     assert isinstance(unknown_flow, ConfirmRepairFlow)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("entry_device_id", "observed_device_id", "expect_issue"),
+    [
+        ("dev1", "other", True),
+        ("   ", "other", False),
+        ("dev1", "   ", False),
+    ],
+)
+async def test_async_create_device_id_mismatch_issue_ignores_invalid_ids(
+    monkeypatch: pytest.MonkeyPatch,
+    entry_device_id: str,
+    observed_device_id: str,
+    expect_issue: bool,
+) -> None:
+    """Do not create mismatches when configured or observed IDs are malformed."""
+    entry = _make_entry(device_id=entry_device_id)
+    called: dict[str, int] = {"count": 0}
+
+    def _capture_issue(**kwargs: Any) -> None:
+        del kwargs
+        called["count"] += 1
+
+    monkeypatch.setattr(repairs.ir, "async_create_issue", _capture_issue)
+
+    repairs.async_create_device_id_mismatch_issue(MagicMock(), entry, observed_device_id)
+
+    if expect_issue:
+        assert called["count"] == 1
+    else:
+        assert called["count"] == 0
 
 
 @pytest.mark.asyncio

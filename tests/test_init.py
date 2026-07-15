@@ -994,6 +994,16 @@ async def test_async_setup_entry_continues_after_missing_device_unique_id_valida
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("router_device_id", "should_create_issue"),
+    [
+        ("other", True),
+        (None, False),
+        ("", False),
+        ("   ", False),
+        (123, False),
+    ],
+)
 async def test_async_setup_entry_device_id_mismatch(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
@@ -1002,10 +1012,12 @@ async def test_async_setup_entry_device_id_mismatch(
     fake_coordinator: Any,
     make_config_entry: Callable[..., MockConfigEntry],
     caplog: pytest.LogCaptureFixture,
+    router_device_id: Any,
+    should_create_issue: bool,
 ) -> None:
     """async_setup_entry should fail when client reports mismatched device id."""
     caplog.set_level(logging.ERROR, logger=init_mod.__name__)
-    patch_opnsense_client(monkeypatch, init_mod, fake_client(device_id="other"))
+    patch_opnsense_client(monkeypatch, init_mod, fake_client(device_id=router_device_id))
     # use shared coordinator capture fixture
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
@@ -1034,27 +1046,31 @@ async def test_async_setup_entry_device_id_mismatch(
 
     monkeypatch.setattr(init_mod.ir, "async_create_issue", _capture_issue)
 
-    # should return False because router id mismatches and coordinator.shutdown called
     res = await init_mod.async_setup_entry(hass, entry)
-    assert res is False
-
-    # ensure coordinator shutdown was invoked
-    assert any(getattr(inst, "shut", False) for inst in coordinator_capture.instances)
-    assert hass.config_entries.async_forward_entry_setups.await_count == 0
-    assert issue_kwargs["is_fixable"] is True
-    assert issue_kwargs["issue_id"] == f"{entry.entry_id}_device_id_mismatched"
-    assert issue_kwargs["data"] == {
-        "entry_id": entry.entry_id,
-        "old_device_id": "dev1",
-        "new_device_id": "other",
-    }
-    assert issue_kwargs["translation_placeholders"] == {
-        "entry_title": entry.title,
-        "old_device_id": "dev1",
-        "new_device_id": "other",
-    }
-    assert "fixable repair issue" in caplog.text
-    assert "rebuild entities" in caplog.text
+    if should_create_issue:
+        # should return False because router id mismatches and coordinator.shutdown called
+        assert res is False
+        assert any(getattr(inst, "shut", False) for inst in coordinator_capture.instances)
+        assert hass.config_entries.async_forward_entry_setups.await_count == 0
+        assert issue_kwargs["is_fixable"] is True
+        assert issue_kwargs["issue_id"] == f"{entry.entry_id}_device_id_mismatched"
+        assert issue_kwargs["data"] == {
+            "entry_id": entry.entry_id,
+            "old_device_id": "dev1",
+            "new_device_id": router_device_id,
+        }
+        assert issue_kwargs["translation_placeholders"] == {
+            "entry_title": entry.title,
+            "old_device_id": "dev1",
+            "new_device_id": router_device_id,
+        }
+        assert "fixable repair issue" in caplog.text
+        assert "rebuild entities" in caplog.text
+    else:
+        assert res is True
+        assert not issue_kwargs
+        assert hass.config_entries.async_forward_entry_setups.await_count == 1
+        assert not any(getattr(inst, "shut", False) for inst in coordinator_capture.instances)
 
 
 @pytest.mark.asyncio

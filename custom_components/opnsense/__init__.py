@@ -68,7 +68,7 @@ from .migrate import (
     _migrate_3_to_4,
     _migrate_4_to_5,
 )
-from .repairs import async_create_device_id_mismatch_issue
+from .repairs import async_create_device_id_mismatch_issue, is_valid_device_id
 from .services import async_setup_services
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -416,7 +416,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             config_device_id,
             router_device_id,
         )
-        if router_device_id != config_device_id and router_device_id:
+        if (
+            is_valid_device_id(config_device_id)
+            and is_valid_device_id(router_device_id)
+            and router_device_id != config_device_id
+        ):
             async_create_device_id_mismatch_issue(hass, entry, router_device_id)
             _LOGGER.error(
                 "OPNsense Device ID has changed which indicates new or changed hardware. "

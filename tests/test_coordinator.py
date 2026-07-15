@@ -1496,6 +1496,7 @@ async def test_calculate_entity_speeds_returns_early_when_missing(
     [
         (None, False),
         ("other", False),
+        (" ", False),
         ("id", True),
     ],
 )
@@ -1626,6 +1627,7 @@ async def test_async_update_dt_data_uses_shared_device_id_mismatch_policy(
         pytest.param({"device_unique_id": ""}, id="blank"),
         pytest.param({"device_unique_id": None}, id="none"),
         pytest.param({"device_unique_id": 123}, id="number"),
+        pytest.param({"device_unique_id": "   "}, id="whitespace"),
     ],
 )
 async def test_check_device_unique_id_invalid_runtime_id_is_not_counted(

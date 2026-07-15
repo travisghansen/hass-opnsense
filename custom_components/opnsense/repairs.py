@@ -2,6 +2,7 @@
 
 from copy import deepcopy
 import logging
+from typing import TypeGuard
 
 import aiohttp
 from aiopnsense.exceptions import OPNsenseError
@@ -17,6 +18,11 @@ from .helpers import create_opnsense_client_from_config_entry
 
 _ISSUE_SUFFIX = "_device_id_mismatched"
 _LOGGER = logging.getLogger(__name__)
+
+
+def is_valid_device_id(device_id: object) -> TypeGuard[str]:
+    """Return whether a device ID is a usable string identifier."""
+    return isinstance(device_id, str) and bool(device_id.strip())
 
 
 def _entry_matches_snapshot(
@@ -144,7 +150,7 @@ def _device_id_repair_abort_reason(
     Returns:
         str | None: Repair abort reason, or ``None`` when the replacement is valid.
     """
-    if not isinstance(observed_device_id, str) or not observed_device_id:
+    if not is_valid_device_id(observed_device_id):
         return "cannot_connect"
     if observed_device_id != expected_device_id or observed_device_id == current_device_id:
         return "entry_changed"
@@ -154,7 +160,7 @@ def _device_id_repair_abort_reason(
 def async_create_device_id_mismatch_issue(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
-    observed_device_id: str,
+    observed_device_id: object,
 ) -> None:
     """Create a fixable hardware-replacement issue for a normal device entry.
 
@@ -164,6 +170,8 @@ def async_create_device_id_mismatch_issue(
         observed_device_id: Replacement device identifier observed at runtime.
     """
     old_device_id = config_entry.data[CONF_DEVICE_UNIQUE_ID]
+    if not is_valid_device_id(old_device_id) or not is_valid_device_id(observed_device_id):
+        return
     ir.async_create_issue(
         hass=hass,
         domain=DOMAIN,
@@ -527,10 +535,8 @@ async def async_create_fix_flow(
     if not (
         isinstance(entry_id, str)
         and entry_id
-        and isinstance(old_device_id, str)
-        and old_device_id
-        and isinstance(new_device_id, str)
-        and new_device_id
+        and is_valid_device_id(old_device_id)
+        and is_valid_device_id(new_device_id)
         and issue_id == f"{entry_id}{_ISSUE_SUFFIX}"
     ):
         return ConfirmRepairFlow()
