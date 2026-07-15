@@ -10,7 +10,7 @@ import logging
 from typing import Any, Never
 from unittest.mock import ANY, AsyncMock, MagicMock, call
 
-import aiohttp
+from aiopnsense.exceptions import OPNsenseConnectionError, OPNsenseTimeoutError
 from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME, CONF_VERIFY_SSL
 from homeassistant.core import HomeAssistant
 from homeassistant.util import slugify
@@ -2554,8 +2554,10 @@ async def test_async_migrate_entry_returns_false_when_submigration_fails(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("exc", [TimeoutError, aiohttp.ClientError, init_mod.OPNsenseError])
-async def test_async_migrate_entry_defers_when_migration_client_raises_transient_error(
+@pytest.mark.parametrize(
+    "exc", [OPNsenseTimeoutError, OPNsenseConnectionError, init_mod.OPNsenseError]
+)
+async def test_async_migrate_entry_defers_when_migration_client_raises_opnsense_error(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any, exc: type[BaseException]
 ) -> None:
     """async_migrate_entry should return False when migration-client creation fails."""
@@ -2581,11 +2583,13 @@ async def test_async_migrate_entry_defers_when_migration_client_raises_transient
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("exc", [TimeoutError, aiohttp.ClientError, init_mod.OPNsenseError])
-async def test_async_migrate_entry_defers_when_v2_to_3_fails_with_transient_error(
+@pytest.mark.parametrize(
+    "exc", [OPNsenseTimeoutError, OPNsenseConnectionError, init_mod.OPNsenseError]
+)
+async def test_async_migrate_entry_defers_when_v2_to_3_fails_with_opnsense_error(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any, exc: type[BaseException]
 ) -> None:
-    """async_migrate_entry should return False when v2->v3 migration raises transient errors."""
+    """async_migrate_entry should return False when v2->v3 raises OPNsense errors."""
     client = MagicMock()
     client.async_close = AsyncMock()
     monkeypatch.setattr(
@@ -2611,11 +2615,13 @@ async def test_async_migrate_entry_defers_when_v2_to_3_fails_with_transient_erro
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("exc", [TimeoutError, aiohttp.ClientError, init_mod.OPNsenseError])
-async def test_async_migrate_entry_defers_when_v3_to_4_fails_with_transient_error(
+@pytest.mark.parametrize(
+    "exc", [OPNsenseTimeoutError, OPNsenseConnectionError, init_mod.OPNsenseError]
+)
+async def test_async_migrate_entry_defers_when_v3_to_4_fails_with_opnsense_error(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any, exc: type[BaseException]
 ) -> None:
-    """async_migrate_entry should return False when v3->v4 migration raises transient errors."""
+    """async_migrate_entry should return False when v3->v4 raises OPNsense errors."""
     client = MagicMock()
     client.async_close = AsyncMock()
     monkeypatch.setattr(

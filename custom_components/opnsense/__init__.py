@@ -11,7 +11,6 @@ from datetime import timedelta
 import logging
 from typing import Any
 
-import aiohttp
 from aiopnsense import OPNsenseClient
 from aiopnsense.exceptions import (
     OPNsenseBelowMinFirmware,
@@ -448,8 +447,8 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
                     config_entry=config_entry,
                     throw_errors=True,
                 )
-            except OPNsenseError, TimeoutError, aiohttp.ClientError:
-                _LOGGER.warning("Deferring migration due to a temporary API transport error")
+            except OPNsenseError:
+                _LOGGER.warning("Deferring migration due to an OPNsense client error")
                 return False
 
         # 2 -> 3: Change unique device id to use lowest MAC address
@@ -459,8 +458,8 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
                 return False
             try:
                 v2to3: bool = await _migrate_2_to_3(hass, config_entry, migration_client)
-            except OPNsenseError, TimeoutError, aiohttp.ClientError:
-                _LOGGER.warning("Deferring migration to version 3 due to a temporary API error")
+            except OPNsenseError:
+                _LOGGER.warning("Deferring migration to version 3 due to an OPNsense API error")
                 return False
             if not v2to3:
                 return False
@@ -473,8 +472,8 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
                 return False
             try:
                 v3to4: bool = await _migrate_3_to_4(hass, config_entry, migration_client)
-            except OPNsenseError, TimeoutError, aiohttp.ClientError:
-                _LOGGER.warning("Deferring migration to version 4 due to a temporary API error")
+            except OPNsenseError:
+                _LOGGER.warning("Deferring migration to version 4 due to an OPNsense API error")
                 return False
             if not v3to4:
                 return False
