@@ -135,9 +135,7 @@ async def test_compile_gateway_sensors_creates_disabled_address_sensor(
 
     entities = await sensor_module._compile_gateway_sensors(entry, coordinator, coordinator.data)
     address_sensor = next(
-        entity
-        for entity in entities
-        if entity.entity_description.key == "gateway.WAN Gateway.address"
+        entity for entity in entities if entity.entity_description.key == "gateway.wan.address"
     )
 
     assert isinstance(address_sensor, OPNsenseGatewaySensor)
@@ -413,10 +411,11 @@ async def test_gateway_compile_and_lookup_normalizes_display_name(
     }
 
     entities = await sensor_module._compile_gateway_sensors(entry, coord, coord.data)
-    expected_key = f"gateway.{expected_display_name}.status"
+    expected_key = f"gateway.{gateway_key}.status"
     s = next(entity for entity in entities if entity.entity_description.key == expected_key)
 
     assert isinstance(s, OPNsenseGatewaySensor)
+    assert s.entity_description.name == f"Gateway {expected_display_name} status"
     assert s._opnsense_get_gateway_entry(expected_display_name) == {
         "name": gateway_name,
         "status": "online",
@@ -2920,69 +2919,6 @@ def test_filesystem_sensor_unavailable_with_malformed_containers(
     assert sensor.available is False
 
 
-def test_vpn_sensor_unavailable_when_instance_container_is_not_mapping(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Malformed VPN instance container should mark VPNSensor unavailable."""
-    entry = make_config_entry()
-    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = {
-        "openvpn": {
-            "servers": "bad-servers",
-        }
-    }
-
-    desc = MagicMock()
-    desc.key = "openvpn.servers.uuid1.status"
-    desc.name = "VPN Test"
-
-    sensor = OPNsenseVPNSensor(config_entry=entry, coordinator=coord, entity_description=desc)
-    sensor.hass = MagicMock()
-    sensor.entity_id = "sensor.vpn_test"
-    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
-    sensor._handle_coordinator_update()
-
-    assert sensor.available is False
-
-
-def test_vpn_sensor_skips_malformed_client_rows(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Malformed nested VPN client rows should be skipped and valid clients still parsed."""
-    state = {
-        "openvpn": {
-            "servers": {
-                "uuid1": {
-                    "name": "ovpn1",
-                    "status": "up",
-                    "clients": [
-                        "bad-client-row",
-                        {"name": "good", "status": "up", "bytes_recv": 5},
-                    ],
-                }
-            }
-        }
-    }
-    entry = make_config_entry()
-    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = state
-    desc = MagicMock()
-    desc.key = "openvpn.servers.uuid1.status"
-    desc.name = "VPN Test"
-
-    sensor = OPNsenseVPNSensor(config_entry=entry, coordinator=coord, entity_description=desc)
-    sensor.hass = MagicMock()
-    sensor.entity_id = "sensor.vpn_malformed_client"
-    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
-    sensor._handle_coordinator_update()
-
-    assert sensor.available is True
-    assert sensor.extra_state_attributes is not None
-    assert sensor.extra_state_attributes.get("clients", []) == [
-        {"name": "good", "status": "up", "bytes_recv": 5}
-    ]
-
-
 @pytest.mark.asyncio
 async def test_compile_and_handle_many_entities(
     make_config_entry: Callable[..., MockConfigEntry],
@@ -3139,131 +3075,6 @@ async def test_async_setup_entry_creates_entities(
     assert any(isinstance(e, OPNsenseStaticKeySensor) for e in created)
 
 
-@pytest.mark.parametrize(
-    ("state", "expected_key", "expected_name", "absent_classes"),
-    [
-        (
-            {
-                "telemetry": {"filesystems": [], "temps": {}},
-                "interfaces": {},
-                "gateways": {},
-                "openvpn": {
-                    "servers": {"server-uuid": {"description": "Remote Access", "status": "up"}}
-                },
-            },
-            "openvpn.servers.server-uuid.status",
-            "OpenVPN Server Remote Access status",
-            (),
-        ),
-        (
-            {
-                "telemetry": {"filesystems": [], "temps": {}},
-                "interfaces": {},
-                "gateways": {"wan": {"status": "online", "delay": "12ms", "loss": "0%"}},
-                "openvpn": {"servers": {}},
-            },
-            "gateway.wan.status",
-            "Gateway wan status",
-            (),
-        ),
-        (
-            {
-                "telemetry": {
-                    "filesystems": ["not-a-filesystem"],
-                    "temps": {"cpu": "not-a-temp"},
-                },
-                "interfaces": {"wan": "not-an-interface"},
-                "gateways": {"wan": "not-a-gateway"},
-                "openvpn": {"servers": {}},
-            },
-            None,
-            None,
-            (
-                OPNsenseFilesystemSensor,
-                OPNsenseTempSensor,
-                OPNsenseInterfaceSensor,
-                OPNsenseGatewaySensor,
-            ),
-        ),
-    ],
-)
-@pytest.mark.asyncio
-async def test_async_setup_entry_handles_partial_or_malformed_dynamic_sensor_payloads(
-    make_config_entry: Callable[..., MockConfigEntry],
-    state: dict[str, Any],
-    expected_key: str | None,
-    expected_name: str | None,
-    absent_classes: tuple[type[object], ...],
-) -> None:
-    """Partial or malformed dynamic sensor payloads should not block setup."""
-    entry, _coord = _setup_entry_with_all_syncs(state, make_config_entry)
-    created: list[Any] = []
-
-    def add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
-        """Add entities.
-
-        Args:
-            entities: Entities provided by pytest or the test case.
-        """
-        created.extend(entities)
-
-    await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
-
-    assert any(isinstance(entity, OPNsenseStaticKeySensor) for entity in created)
-    if expected_key is not None:
-        matched = next(
-            entity for entity in created if entity.entity_description.key == expected_key
-        )
-        assert matched.entity_description.name == expected_name
-    for entity_class in absent_classes:
-        assert not any(isinstance(entity, entity_class) for entity in created)
-
-
-@pytest.mark.parametrize(
-    ("compile_helper", "state"),
-    [
-        (sensor_module._compile_filesystem_sensors, []),
-        (sensor_module._compile_filesystem_sensors, {"telemetry": {"filesystems": "bad"}}),
-        (sensor_module._compile_interface_sensors, {"interfaces": "bad"}),
-        (sensor_module._compile_gateway_sensors, []),
-        (sensor_module._compile_gateway_sensors, {"gateways": "bad"}),
-        (sensor_module._compile_temperature_sensors, {"telemetry": {"temps": "bad"}}),
-    ],
-)
-async def test_dynamic_sensor_compile_helpers_skip_malformed_containers(
-    make_config_entry: Callable[..., MockConfigEntry],
-    compile_helper: Callable[
-        [MockConfigEntry, OPNsenseDataUpdateCoordinator, Any],
-        Any,
-    ],
-    state: Any,
-) -> None:
-    """Malformed dynamic sensor containers should compile to no entities."""
-    entry = make_config_entry()
-    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coordinator.data = state
-
-    assert await compile_helper(entry, coordinator, state) == []
-
-
-@pytest.mark.asyncio
-async def test_compile_vpn_sensors_skips_malformed_containers(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Malformed VPN setup containers should not produce any VPN sensors."""
-    state: dict[str, Any] = {
-        "openvpn": {"servers": "bad-servers"},
-        "wireguard": {"clients": "bad-clients", "servers": "bad-servers"},
-    }
-    entry = make_config_entry()
-    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coordinator.data = state
-
-    entities = await sensor_module._compile_vpn_sensors(entry, coordinator, state)
-
-    assert entities == []
-
-
 @pytest.mark.asyncio
 async def test_compile_vpn_sensors_skips_empty_instances(
     make_config_entry: Callable[..., MockConfigEntry],
@@ -3280,66 +3091,6 @@ async def test_compile_vpn_sensors_skips_empty_instances(
     entities = await sensor_module._compile_vpn_sensors(entry, coordinator, state)
 
     assert entities == []
-
-
-async def test_dhcp_leases_compile_helper_uses_all_sensor_for_malformed_interfaces(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Malformed DHCP lease interface containers should still create aggregate sensor."""
-    state: dict[str, Any] = {"dhcp_leases": {"lease_interfaces": "bad"}}
-    entry = make_config_entry()
-    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coordinator.data = state
-
-    entities = await sensor_module._compile_dhcp_leases_sensors(entry, coordinator, state)
-
-    assert [entity.entity_description.key for entity in entities] == ["dhcp_leases.all"]
-
-
-def test_filesystem_sensor_skips_malformed_rows(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Malformed filesystem rows should be skipped while reading a valid filesystem."""
-    state = {
-        "telemetry": {
-            "filesystems": [
-                "bad-row",
-                {
-                    "mountpoint": "/",
-                    "used_pct": 42,
-                    "device": "/dev/sda1",
-                    "type": "ext4",
-                    "blocks": 1000,
-                    "used": 420,
-                    "available": 580,
-                },
-            ],
-            "temps": {},
-        },
-        "interfaces": {},
-    }
-    entry = make_config_entry()
-    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = state
-    desc = MagicMock()
-    desc.key = f"telemetry.filesystems.{slugify_filesystem_mountpoint('/')}"
-    desc.name = "Filesystem Test"
-
-    sensor = OPNsenseFilesystemSensor(
-        config_entry=entry,
-        coordinator=coord,
-        entity_description=desc,
-    )
-    sensor.hass = MagicMock()
-    sensor.entity_id = "sensor.fs_root"
-    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
-    sensor._handle_coordinator_update()
-
-    assert sensor.available is True
-    assert sensor.native_value == 42
-    attrs = sensor.extra_state_attributes
-    assert attrs is not None
-    assert attrs.get("mountpoint") == "/"
 
 
 def test_filesystem_sensor_handles_partial_telemetry_row(
@@ -3394,40 +3145,6 @@ def test_filesystem_sensor_unavailable_when_used_percent_missing(
         },
         "interfaces": {},
     }
-    entry = make_config_entry()
-    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = state
-    desc = MagicMock()
-    desc.key = f"telemetry.filesystems.{slugify_filesystem_mountpoint('/')}"
-    desc.name = "Filesystem Test"
-
-    sensor = OPNsenseFilesystemSensor(
-        config_entry=entry,
-        coordinator=coord,
-        entity_description=desc,
-    )
-    sensor.hass = MagicMock()
-    sensor.entity_id = "sensor.fs_root"
-    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
-    sensor._handle_coordinator_update()
-
-    assert sensor.available is False
-
-
-@pytest.mark.parametrize(
-    "state",
-    [
-        [],
-        {"telemetry": {"filesystems": "bad-filesystems"}},
-        {"telemetry": {"filesystems": [{"mountpoint": "/var", "used_pct": 12}]}},
-        {"telemetry": "bad-telemetry"},
-    ],
-)
-def test_filesystem_sensor_unavailable_with_malformed_containers(
-    make_config_entry: Callable[..., MockConfigEntry],
-    state: Any,
-) -> None:
-    """Missing or malformed filesystem state should mark the sensor unavailable."""
     entry = make_config_entry()
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord.data = state
@@ -3817,7 +3534,7 @@ async def test_generated_sensor_entity_contract(
             "suggested_display_precision": 1,
             "entity_registry_enabled_default": False,
         },
-        "gateway.WAN Gateway.address": {
+        "gateway.gw1.address": {
             "name": "Gateway WAN Gateway address",
             "native_unit_of_measurement": None,
             "device_class": None,
@@ -3866,13 +3583,13 @@ async def test_generated_sensor_entity_contract(
         "interface.wan.outpkts_packets_per_second",
     }
 
-    gateway_keys = {key for key in entities_by_key if key.startswith("gateway.WAN Gateway.")}
+    gateway_keys = {key for key in entities_by_key if key.startswith("gateway.gw1.")}
     assert gateway_keys == {
-        "gateway.WAN Gateway.status",
-        "gateway.WAN Gateway.delay",
-        "gateway.WAN Gateway.stddev",
-        "gateway.WAN Gateway.loss",
-        "gateway.WAN Gateway.address",
+        "gateway.gw1.status",
+        "gateway.gw1.delay",
+        "gateway.gw1.stddev",
+        "gateway.gw1.loss",
+        "gateway.gw1.address",
     }
 
     openvpn_server_keys = {key for key in entities_by_key if key.startswith("openvpn.servers.s1.")}

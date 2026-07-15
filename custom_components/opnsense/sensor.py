@@ -537,6 +537,7 @@ def _build_interface_sensor_description(
 
 
 def _build_gateway_sensor_description(
+    gateway_key: str,
     gateway_name: str,
     prop_name: str,
 ) -> SensorEntityDescription:
@@ -560,7 +561,7 @@ def _build_gateway_sensor_description(
         state_class = None
 
     return SensorEntityDescription(
-        key=f"gateway.{gateway_name}.{prop_name}",
+        key=f"gateway.{gateway_key}.{prop_name}",
         name=f"Gateway {gateway_name} {prop_name}",
         native_unit_of_measurement=native_unit_of_measurement,
         device_class=device_class,
@@ -1108,11 +1109,13 @@ async def _compile_gateway_sensors(
             continue
         gateway_name = OPNsenseEntity.payload_display_name(gateway, str(gateway_key), "name")
         entities.extend(
-            _create_sensor(
-                OPNsenseGatewaySensor,
-                config_entry,
-                coordinator,
-                _build_gateway_sensor_description(gateway_name, prop_name),
+            OPNsenseGatewaySensor(
+                config_entry=config_entry,
+                coordinator=coordinator,
+                entity_description=_build_gateway_sensor_description(
+                    str(gateway_key), gateway_name, prop_name
+                ),
+                unique_id_suffix=f"gateway.{gateway_name}.{prop_name}",
             )
             for prop_name in _GATEWAY_SENSOR_PROPERTIES
         )
@@ -1325,14 +1328,16 @@ class OPNsenseSensor(OPNsenseEntity, SensorEntity):
         config_entry: ConfigEntry,
         coordinator: OPNsenseDataUpdateCoordinator,
         entity_description: SensorEntityDescription,
+        unique_id_suffix: str | None = None,
     ) -> None:
         """Initialize the sensor."""
         name_suffix: str | None = (
             entity_description.name if isinstance(entity_description.name, str) else None
         )
-        unique_id_suffix: str | None = (
-            entity_description.key if isinstance(entity_description.key, str) else None
-        )
+        if unique_id_suffix is None:
+            unique_id_suffix = (
+                entity_description.key if isinstance(entity_description.key, str) else None
+            )
         super().__init__(
             config_entry,
             coordinator,
