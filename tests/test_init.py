@@ -2422,7 +2422,7 @@ async def test_migrate_2_to_3_handles_entity_update_value_error(
 async def test_migrate_3_to_4_handles_remove_exceptions(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any, exc: BaseException | None
 ) -> None:
-    """If entity_registry.async_remove raises KeyError/ValueError, migration continues."""
+    """If entity_registry.async_remove raises KeyError/ValueError, migration fails."""
     client = fake_client(telemetry={})()
 
     e = MagicMock()
@@ -2451,15 +2451,16 @@ async def test_migrate_3_to_4_handles_remove_exceptions(
     hass.config_entries.async_update_entry = MagicMock(return_value=True)
 
     res = await init_mod._migrate_3_to_4(hass, cfg, client)
-    assert res is True
+    assert res is False
     er_reg.async_remove.assert_called_once_with(e.entity_id)
+    hass.config_entries.async_update_entry.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_migrate_3_to_4_handles_update_value_error(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
-    """If entity_registry.async_update_entity raises ValueError, migration continues."""
+    """If entity_registry.async_update_entity raises ValueError, migration fails."""
     client = fake_client(telemetry={})()
 
     e = MagicMock()
@@ -2488,8 +2489,9 @@ async def test_migrate_3_to_4_handles_update_value_error(
     hass.config_entries.async_update_entry = MagicMock(return_value=True)
 
     res = await init_mod._migrate_3_to_4(hass, cfg, client)
-    assert res is True
+    assert res is False
     er_reg.async_update_entity.assert_called_once()
+    hass.config_entries.async_update_entry.assert_not_called()
 
 
 @pytest.mark.asyncio

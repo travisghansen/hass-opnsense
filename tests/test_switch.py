@@ -3668,27 +3668,48 @@ async def test_compile_nat_rule_switches(
         ),
     ],
 )
-async def test_compile_nat_rule_switches_skips_non_string_interface(
+@pytest.mark.parametrize(
+    (
+        "invalid_interface_key",
+        "invalid_interface_value",
+    ),
+    [
+        pytest.param(None, None, id="missing"),
+        pytest.param("%interface", "", id="percent-empty"),
+        pytest.param("%interface", "   ", id="percent-whitespace"),
+        pytest.param("%interface", {"name": "lan"}, id="percent-non-string"),
+        pytest.param("interface", "", id="interface-empty"),
+        pytest.param("interface", "   ", id="interface-whitespace"),
+        pytest.param("interface", {"name": "lan"}, id="interface-non-string"),
+    ],
+)
+async def test_compile_nat_rule_switches_skips_invalid_interface(
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
     compile_func: Callable[..., Any],
     nat_family: str,
     expected_key: str,
+    invalid_interface_key: str | None,
+    invalid_interface_value: Any,
 ) -> None:
-    """NAT rule compilation should skip entries where interface is not a string."""
+    """NAT rule compilation should skip malformed interface values."""
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    invalid_rule: dict[str, Any] = {
+        "description": "Invalid Interface",
+        "enabled": "1",
+    }
+    if invalid_interface_key is not None:
+        invalid_rule[invalid_interface_key] = invalid_interface_value
     state = {
         "firewall": {
             "nat": {
                 nat_family: {
                     "invalid": {
-                        "description": "Non-string Interface",
-                        "%interface": {"name": "lan"},
-                        "enabled": "1",
+                        **invalid_rule,
                     },
                     "valid": {
                         "description": "String Interface",
-                        "%interface": "wan",
+                        "interface": "wan",
                         "enabled": "1",
                     },
                 }

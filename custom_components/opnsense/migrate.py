@@ -176,12 +176,16 @@ def _get_filesystem_telemetry_unique_id(
 
 def _remove_connected_client_entity(
     entity_registry: er.EntityRegistry, entity: er.RegistryEntry
-) -> None:
+) -> bool:
     """Remove a legacy connected-client-count entity from the registry.
 
     Args:
         entity_registry: Home Assistant entity registry.
         entity: Legacy connected-client-count entity to remove.
+
+    Returns:
+        bool: ``True`` when the entity is removed or already handled, ``False``
+            when the registry reports an expected mutation failure.
     """
     try:
         entity_registry.async_remove(entity.entity_id)
@@ -192,6 +196,9 @@ def _remove_connected_client_entity(
             entity.entity_id,
             type(err).__name__,
         )
+        return False
+    else:
+        return True
 
 
 def _update_migrated_entity(
@@ -199,7 +206,7 @@ def _update_migrated_entity(
     entity: er.RegistryEntry,
     platform: str,
     new_unique_id: str,
-) -> None:
+) -> bool:
     """Update an entity-registry unique ID when the value changed.
 
     Args:
@@ -207,9 +214,13 @@ def _update_migrated_entity(
         entity: Entity whose unique ID is being migrated.
         platform: Entity platform used in migration diagnostics.
         new_unique_id: Target unique ID for the entity.
+
+    Returns:
+        bool: ``True`` when the unique ID update succeeds or is already current,
+            ``False`` when the registry reports an update failure.
     """
     if entity.unique_id == new_unique_id:
-        return
+        return True
 
     _LOGGER.debug(
         "[migrate_3_to_4] ent: %s, platform: %s, unique_id: %s, new_unique_id: %s",
@@ -233,14 +244,17 @@ def _update_migrated_entity(
             entity.entity_id,
             type(err).__name__,
         )
+        return False
+    else:
+        return True
 
 
 def _migrate_sensor_entity(
     entity_registry: er.EntityRegistry,
     entity: er.RegistryEntry,
     filesystems: list[Mapping[str, Any]] | None,
-) -> bool:
-    """Migrate one version-3 sensor entity and report deferred filesystem work.
+) -> tuple[bool, bool]:
+    """Migrate one version-3 sensor entity and report mutation status.
 
     Args:
         entity_registry: Home Assistant entity registry.
@@ -249,34 +263,41 @@ def _migrate_sensor_entity(
             filesystem migration is unavailable.
 
     Returns:
-        bool: ``True`` when filesystem telemetry was unavailable for this
-            entity and the enclosing migration must be retried.
+        tuple[bool, bool]:
+            - ``bool``: ``True`` when mutation succeeds for this entity.
+            - ``bool``: ``True`` when filesystem telemetry was unavailable for
+              this entity and the enclosing migration must be retried.
     """
     platform = entity.entity_id.split(".")[0]
     new_unique_id = _get_interface_gateway_telemetry_unique_id(entity.unique_id)
     if new_unique_id is not None:
-        _update_migrated_entity(entity_registry, entity, platform, new_unique_id)
-        return False
+        migration_success = _update_migrated_entity(
+            entity_registry, entity, platform, new_unique_id
+        )
+        return migration_success, False
 
     if "_connected_client_count" in entity.unique_id:
-        _remove_connected_client_entity(entity_registry, entity)
-        return False
+        migration_success = _remove_connected_client_entity(entity_registry, entity)
+        return migration_success, False
 
     if "_telemetry_openvpn_" in entity.unique_id:
-        _update_migrated_entity(
+        migration_success = _update_migrated_entity(
             entity_registry,
             entity,
             platform,
             entity.unique_id.replace("_telemetry_openvpn_", "_openvpn_"),
         )
-        return False
+        return migration_success, False
 
     new_unique_id, filesystem_migration_deferred = _get_filesystem_telemetry_unique_id(
         entity.unique_id, filesystems
     )
     if new_unique_id is not None:
-        _update_migrated_entity(entity_registry, entity, platform, new_unique_id)
-    return filesystem_migration_deferred
+        migration_success = _update_migrated_entity(
+            entity_registry, entity, platform, new_unique_id
+        )
+        return migration_success, filesystem_migration_deferred
+    return True, filesystem_migration_deferred
 
 
 async def _migrate_1_to_2(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
@@ -418,13 +439,20 @@ async def _migrate_3_to_4(
 
     telemetry = await client.get_telemetry()
     filesystems = _get_telemetry_filesystems(telemetry)
+    sensor_entity_migration_failed = False
     filesystem_migration_deferred = False
 
     for ent in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
         platform = ent.entity_id.split(".")[0]
         if platform != Platform.SENSOR:
             continue
-        filesystem_migration_deferred |= _migrate_sensor_entity(entity_registry, ent, filesystems)
+        migration_success, should_defer = _migrate_sensor_entity(entity_registry, ent, filesystems)
+        sensor_entity_migration_failed |= not migration_success
+        filesystem_migration_deferred |= should_defer
+
+    if sensor_entity_migration_failed:
+        _LOGGER.error("Migration to version 4 deferred because entity migration failed")
+        return False
     if filesystem_migration_deferred:
         _LOGGER.error("Migration to version 4 deferred because filesystem telemetry is unavailable")
         return False

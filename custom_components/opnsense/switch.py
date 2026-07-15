@@ -438,7 +438,7 @@ async def _compile_nat_rule_switches(
         if not rule_id:
             continue
         interface = rule.get("%interface", rule.get("interface", ""))
-        if not isinstance(interface, str):
+        if not isinstance(interface, str) or not interface.strip():
             continue
         entities.append(
             _create_switch(
