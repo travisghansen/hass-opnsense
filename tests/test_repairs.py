@@ -1077,32 +1077,24 @@ async def test_cleanup_failure_keeps_entry_update_and_recovers_with_reload(
     client.get_device_unique_id.assert_not_awaited()
     assert hass.config_entries.async_reload.await_count == 1
     assert hass.config_entries.async_update_entry.call_count == 1
-    if failure_point == "entity":
-        assert entity_registry.async_remove.call_count == 2
-        assert device_registry.async_update_device.call_count == 2
-    else:
-        assert entity_registry.async_remove.call_count == 2
-        assert device_registry.async_update_device.call_count == 2
+    assert entity_registry.async_remove.call_count == 2
+    assert device_registry.async_update_device.call_count == 2
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("reload_result", "reload_label"),
+    "reload_result",
     [
-        pytest.param(False, "reload-false", id="false-result"),
-        pytest.param(
-            HomeAssistantError("entry removed"), "homeassistant-error", id="homeassistant-error"
-        ),
-        pytest.param(KeyError("entry key"), "key-error", id="key-error"),
+        pytest.param(False, id="false-result"),
+        pytest.param(HomeAssistantError("entry removed"), id="homeassistant-error"),
+        pytest.param(KeyError("entry key"), id="key-error"),
     ],
 )
 async def test_reload_failure_keeps_entry_update_and_keeps_issue(
     monkeypatch: pytest.MonkeyPatch,
     reload_result: bool | Exception,
-    reload_label: str,
 ) -> None:
     """Reload failures should keep the new ID and schedule a follow-up reload."""
-    del reload_label
     hass = MagicMock()
     entry = _make_entry()
     _configure_hass(hass, entry)
