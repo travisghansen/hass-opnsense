@@ -620,8 +620,8 @@ def _build_gateway_sensor_description(
     """Build a gateway sensor description.
 
     Args:
-        gateway_key: OPNsense gateway key used in the entity key.
-        gateway_name: User-facing gateway name used in the entity name.
+        gateway_key: Stable gateway identifier used in the entity key.
+        gateway_name: Human-readable gateway name used in the entity label.
         prop_name: Gateway property represented by the sensor.
 
     Returns:
@@ -1651,6 +1651,7 @@ class OPNsenseSensor(OPNsenseEntity, SensorEntity):
             config_entry: Config entry owning the sensor.
             coordinator: Data update coordinator supplying sensor state.
             entity_description: Description of the sensor entity.
+            unique_id_suffix: Optional stable suffix for the entity unique ID.
         """
         name_suffix: str | None = (
             entity_description.name
