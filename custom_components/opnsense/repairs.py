@@ -311,7 +311,7 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         for entity in entities_to_cleanup:
             try:
                 entity_registry.async_remove(entity.entity_id)
-            except HomeAssistantError, KeyError:
+            except HomeAssistantError, KeyError, ValueError:
                 failed_cleanup = True
                 _LOGGER.exception(
                     "Device-ID repair did not finish for %s; cannot remove entity %s",
@@ -325,7 +325,7 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
                     device.id,
                     remove_config_entry_id=entry.entry_id,
                 )
-            except HomeAssistantError, KeyError:
+            except HomeAssistantError, KeyError, ValueError:
                 failed_cleanup = True
                 _LOGGER.exception(
                     "Device-ID repair did not finish for %s; cannot update device %s",

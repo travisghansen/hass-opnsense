@@ -264,20 +264,21 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             and is_carp_entry(self.config_entry)
         ):
             return True
-        if self._state.get("device_unique_id") is None:
+        runtime_device_id = self._state.get("device_unique_id")
+        if not isinstance(runtime_device_id, str) or not runtime_device_id:
             _LOGGER.warning("Coordinator failed to confirm OPNsense Router Unique ID. Will retry")
             self._mismatched_count = 0
             return False
-        if self._state.get("device_unique_id") != self._device_unique_id:
+        if runtime_device_id != self._device_unique_id:
             _LOGGER.debug(
                 "[Coordinator async_update_data]: config device id: %s, router device id: %s",
                 self._device_unique_id,
-                self._state.get("device_unique_id"),
+                runtime_device_id,
             )
             _LOGGER.error(
                 "Coordinator error. "
                 "OPNsense Router Device ID (%s) differs from the one saved in hass-opnsense (%s)",
-                self._state.get("device_unique_id"),
+                runtime_device_id,
                 self._device_unique_id,
             )
             self._mismatched_count += 1
@@ -287,7 +288,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                     async_create_device_id_mismatch_issue(
                         self.hass,
                         self.config_entry,
-                        self._state["device_unique_id"],
+                        runtime_device_id,
                     )
                 _LOGGER.error(
                     "OPNsense Device ID has changed which indicates new or changed hardware. "

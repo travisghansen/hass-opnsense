@@ -976,10 +976,19 @@ async def test_loaded_entry_retry_cleanup_failure_recovers_with_reload(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("failure_point", ["entity", "device"])
+@pytest.mark.parametrize(
+    ("failure_point", "cleanup_exception"),
+    [
+        pytest.param("entity", HomeAssistantError, id="entity-homeassistant-error"),
+        pytest.param("entity", ValueError, id="entity-valueerror"),
+        pytest.param("device", HomeAssistantError, id="device-homeassistant-error"),
+        pytest.param("device", ValueError, id="device-valueerror"),
+    ],
+)
 async def test_cleanup_failure_keeps_entry_update_and_recovers_with_reload(
     monkeypatch: pytest.MonkeyPatch,
     failure_point: str,
+    cleanup_exception: type[BaseException],
 ) -> None:
     """Cleanup failure keeps replacement ID for a retry that reruns cleanup."""
     hass = MagicMock()
@@ -1016,7 +1025,7 @@ async def test_cleanup_failure_keeps_entry_update_and_recovers_with_reload(
         def _remove(entity_id: str) -> None:
             """Fail entity cleanup to exercise recovery reload behavior."""
             del entity_id
-            raise HomeAssistantError("entity remove")
+            raise cleanup_exception("entity remove")
 
         entity_registry.async_remove.side_effect = _remove
     else:
@@ -1024,7 +1033,7 @@ async def test_cleanup_failure_keeps_entry_update_and_recovers_with_reload(
         def _update_device(device_id: str, **_: Any) -> None:
             """Fail device cleanup to exercise recovery reload behavior."""
             del device_id
-            raise HomeAssistantError("device update")
+            raise cleanup_exception("device update")
 
         device_registry.async_update_device.side_effect = _update_device
 
