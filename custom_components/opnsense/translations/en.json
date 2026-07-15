@@ -165,8 +165,23 @@
       "description": "Some hass-opnsense {version} functions require OPNsense firmware {ltd_firmware} or later. With firmware {firmware}, some functions may not work and there may be errors in the logs."
     },
     "device_id_mismatched": {
-      "title": "OPNsense Hardware Has Changed",
-      "description": "OPNsense Device ID has changed which indicates new or changed hardware. In order to accommodate this, hass-opnsense needs to be removed and reinstalled for this router. hass-opnsense is shutting down."
+      "title": "Replacement hardware detected",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Rebuild entities for replacement hardware",
+            "description": "This destructive repair will remove all current entities and devices for {entry_title}, including disabled entities, then rebuild entities from device ID {new_device_id}. The URL, credentials, and options will be preserved. Entity registry names, enabled/disabled selections, areas, and other customizations will be discarded. Recreated entity IDs may differ, so dashboards and automations may need updates. The previous device ID was {old_device_id}."
+          }
+        },
+        "abort": {
+          "entry_not_found": "The OPNsense device entry no longer exists.",
+          "entry_changed": "The OPNsense device entry changed while the repair was running. No registry changes were made.",
+          "cannot_connect": "The replacement hardware could not be confirmed. No changes were made.",
+          "already_configured": "Another OPNsense device entry already uses the replacement device ID. No changes were made.",
+          "cannot_unload": "The OPNsense device entry could not be unloaded safely. No registry changes were made.",
+          "repair_failed": "The replacement hardware repair did not finish. Some registry cleanup may already have occurred; review entities before retrying."
+        }
+      }
     }
   },
   "exceptions": {

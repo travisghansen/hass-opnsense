@@ -17,7 +17,7 @@ from homeassistant.config_entries import ConfigEntry
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.opnsense import coordinator as coordinator_module
+from custom_components.opnsense import coordinator as coordinator_module, repairs as repairs_module
 from custom_components.opnsense.const import (
     ATTR_UNBOUND_BLOCKLIST,
     CONF_DEVICE_UNIQUE_ID,
@@ -419,8 +419,10 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Mismatched device_unique_id should create an issue and shutdown after threshold."""
+    caplog.set_level(logging.ERROR, logger=coordinator_module.__name__)
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "expected"})
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -457,7 +459,7 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
         called["issue"] += 1
         called["issue_kwargs"] = kwargs
 
-    monkeypatch.setattr(coordinator_module.ir, "async_create_issue", fake_async_create_issue)
+    monkeypatch.setattr(repairs_module.ir, "async_create_issue", fake_async_create_issue)
     object.__setattr__(coord, "async_shutdown", fake_shutdown)
 
     # call 3 times -> should call issue once and shutdown once
@@ -469,10 +471,21 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
     assert called["shutdown"] == 1
     # validate the issue was created for the integration domain and expected id
     assert isinstance(called["issue_kwargs"], MutableMapping)
-    assert called["issue_kwargs"].get("domain") == coordinator_module.DOMAIN
-    assert (
-        called["issue_kwargs"].get("issue_id") == f"{coord._device_unique_id}_device_id_mismatched"
-    )
+    assert called["issue_kwargs"].get("domain") == repairs_module.DOMAIN
+    assert called["issue_kwargs"].get("issue_id") == f"{entry.entry_id}_device_id_mismatched"
+    assert called["issue_kwargs"].get("is_fixable") is True
+    assert called["issue_kwargs"].get("data") == {
+        "entry_id": entry.entry_id,
+        "old_device_id": "expected",
+        "new_device_id": "other",
+    }
+    assert called["issue_kwargs"].get("translation_placeholders") == {
+        "entry_title": entry.title,
+        "old_device_id": "expected",
+        "new_device_id": "other",
+    }
+    assert "fixable repair issue" in caplog.text
+    assert "rebuild entities" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -1567,7 +1580,7 @@ async def test_async_update_dt_data_uses_shared_device_id_mismatch_policy(
             "arp_table": [],
         }
 
-    called: dict[str, Any] = {"issue": 0, "shutdown": 0}
+    called: dict[str, Any] = {"issue": 0, "shutdown": 0, "issue_kwargs": None}
 
     async def fake_shutdown() -> None:
         """Record coordinator shutdown requests."""
@@ -1576,9 +1589,10 @@ async def test_async_update_dt_data_uses_shared_device_id_mismatch_policy(
     def fake_async_create_issue(**kwargs: Any) -> None:
         """Record repair issue creation requests."""
         called["issue"] += 1
+        called["issue_kwargs"] = kwargs
 
     monkeypatch.setattr(coord, "_get_states", fake_get_states)
-    monkeypatch.setattr(coordinator_module.ir, "async_create_issue", fake_async_create_issue)
+    monkeypatch.setattr(repairs_module.ir, "async_create_issue", fake_async_create_issue)
     object.__setattr__(coord, "async_shutdown", fake_shutdown)
     object.__setattr__(client, "get_query_counts", AsyncMock(return_value=3))
 
@@ -1587,5 +1601,18 @@ async def test_async_update_dt_data_uses_shared_device_id_mismatch_policy(
     assert await coord._async_update_dt_data() == {}
 
     assert coord._mismatched_count == 3
-    assert called == {"issue": 1, "shutdown": 1}
+    assert called["issue"] == 1
+    assert called["shutdown"] == 1
+    assert called["issue_kwargs"]["is_fixable"] is True
+    assert called["issue_kwargs"]["issue_id"] == f"{entry.entry_id}_device_id_mismatched"
+    assert called["issue_kwargs"]["data"] == {
+        "entry_id": entry.entry_id,
+        "old_device_id": "id",
+        "new_device_id": "other",
+    }
+    assert called["issue_kwargs"]["translation_placeholders"] == {
+        "entry_title": entry.title,
+        "old_device_id": "id",
+        "new_device_id": "other",
+    }
     client.get_query_counts.assert_not_awaited()

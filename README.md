@@ -52,7 +52,7 @@ A Discord server to discuss the integration is available. Click the Discord badg
 * [Actions](#actions-services)
 
 * [Known Issues](#known-issues)
-  * [Hardware Changes](#hardware-changes)
+  * [Replacing OPNsense Hardware](#replacing-opnsense-hardware)
 
 ## Installation
 
@@ -235,9 +235,13 @@ The persistent CARP maintenance switch remains on physical-node entries. Enablin
 
 ## Known Issues
 
-### Hardware Changes
+### Replacing OPNsense Hardware
 
-If you partially or fully change the <ins>OPNsense</ins> hardware, it will require a removal and reinstall of this integration. This is to ensure changed interfaces, services, gateways, etc. are accounted for and don't leave duplicate or non-functioning entities.
+Hardware replacement is an entity-inventory boundary: interfaces, services, gateways, disks, and other inventory can change even when the connection URL and credentials stay the same. Keeping stale disabled entities is dangerous because they can look valid while referring to hardware that no longer exists.
+
+When an OPNsense device entry reports a device-ID mismatch, Home Assistant offers a fixable repair. Confirm it only after the replacement hardware is reachable and is the intended node. The repair unloads the entry, removes all current entities and devices for it (including disabled entities), updates the device ID, and schedules a reload to rebuild entities.
+
+The repair preserves the URL, credentials, and options. It discards entity registry names, enabled/disabled selections, areas, and other customizations. Recreated entity IDs may differ, so dashboards and automations that reference those IDs may need updates.
 
 [commits-shield]: https://img.shields.io/github/last-commit/travisghansen/hass-opnsense?style=for-the-badge
 [commits]: https://github.com/travisghansen/hass-opnsense/commits/main
