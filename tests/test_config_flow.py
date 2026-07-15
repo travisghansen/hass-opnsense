@@ -1066,8 +1066,11 @@ async def test_validate_input_granular_sync_uses_native_validation_only(
         def __init__(self, firmware_version: str) -> None:
             """Initialize the fake client with a known firmware version."""
             self.firmware_version = firmware_version
-            self.removed_backend_check = AsyncMock(
-                side_effect=AssertionError("removed backend check called")
+            self.is_plugin_installed = AsyncMock(
+                side_effect=AssertionError("legacy plugin check called")
+            )
+            self.set_use_snake_case = AsyncMock(
+                side_effect=AssertionError("snake-case backend selection called")
             )
             self.validate = AsyncMock()
             self.async_close = AsyncMock()
@@ -1098,7 +1101,6 @@ async def test_validate_input_granular_sync_uses_native_validation_only(
     }
     errors: dict[str, Any] = {}
 
-    assert client.removed_backend_check.await_count == 0
     res = await cf_mod.validate_input(
         hass=MagicMock(),
         user_input=user_input,
@@ -1108,5 +1110,6 @@ async def test_validate_input_granular_sync_uses_native_validation_only(
     assert res == {}
     assert user_input[cf_mod.CONF_FIRMWARE_VERSION] == "25.1"
     client.validate.assert_awaited_once()
-    client.removed_backend_check.assert_not_awaited()
+    client.is_plugin_installed.assert_not_awaited()
+    client.set_use_snake_case.assert_not_awaited()
     client.async_close.assert_awaited_once()
