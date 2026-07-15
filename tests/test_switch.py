@@ -900,14 +900,12 @@ async def test_async_setup_entry_all_flags(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("firmware_version", ["26.1.1", "26.1.1_4"])
 async def test_async_setup_entry_new_firewall_api(
     coordinator: MagicMock,
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
-    firmware_version: str,
 ) -> None:
-    """Async setup should create native firewall entities for supported firmware."""
+    """Async setup should create native firewall entities from available payload data."""
     calls = {}
 
     def fake_add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
@@ -964,7 +962,7 @@ async def test_async_setup_entry_new_firewall_api(
                 },
             },
         },
-        "host_firmware_version": firmware_version,
+        "host_firmware_version": "26.1.1",
     }
     coordinator.data = state
 
@@ -991,17 +989,17 @@ async def test_async_setup_entry_new_firewall_api(
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_new_firewall_api_without_firmware_skips_firewall_and_nat(
+async def test_async_setup_entry_new_firewall_api_without_firmware_uses_firewall_state(
     coordinator: MagicMock, ph_hass: Any, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Missing firmware version should skip native firewall and NAT setup."""
+    """Available firewall state should drive setup when firmware is missing."""
     calls = {}
 
     def fake_add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
         """Capture entities created during setup for assertion."""
         calls["len"] = len(list(entities))
 
-    # create state without host_firmware_version; native setup should stay disabled
+    # create state without host_firmware_version; payload availability gates the feature
     state = {
         "firewall": {
             "rules": {
@@ -1042,14 +1040,14 @@ async def test_async_setup_entry_new_firewall_api_without_firmware_skips_firewal
         ph_hass, config_entry, cast("AddEntitiesCallback", fake_add_entities)
     )
 
-    assert calls.get("len") == 0
+    assert calls.get("len") == 2
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_new_firewall_api_with_old_firmware_skips_firewall_and_nat(
+async def test_async_setup_entry_uses_firewall_state_for_old_firmware(
     coordinator: MagicMock, ph_hass: Any, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Old firmware should skip native firewall and NAT setup."""
+    """Available firewall state should drive setup regardless of firmware metadata."""
     calls: dict[str, list[Any]] = {}
 
     def fake_add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
@@ -1109,16 +1107,16 @@ async def test_async_setup_entry_new_firewall_api_with_old_firmware_skips_firewa
         cast("AddEntitiesCallback", fake_add_entities),
     )
 
-    assert len(calls.get("entities", [])) == 0
+    assert len(calls.get("entities", [])) == 3
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_new_firewall_api_with_unknown_firmware_skips_firewall_and_nat(
+async def test_async_setup_entry_uses_firewall_state_when_firmware_unknown(
     coordinator: MagicMock,
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Unknown firmware payload types should skip native firewall and NAT setup."""
+    """Available firewall state should drive setup when firmware is unknown."""
     calls: dict[str, list[Any]] = {}
 
     def fake_add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
@@ -1168,16 +1166,16 @@ async def test_async_setup_entry_new_firewall_api_with_unknown_firmware_skips_fi
         cast("AddEntitiesCallback", fake_add_entities),
     )
 
-    assert len(calls.get("entities", [])) == 0
+    assert len(calls.get("entities", [])) == 2
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_new_firewall_api_with_missing_native_shape_skips_firewall_and_nat(
+async def test_async_setup_entry_compiles_available_native_sections_independently(
     coordinator: MagicMock,
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Valid firmware with malformed firewall payload should skip native switch setup."""
+    """A malformed NAT section should not suppress valid firewall rule entities."""
     calls: dict[str, list[Any]] = {}
 
     def fake_add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
@@ -1194,7 +1192,7 @@ async def test_async_setup_entry_new_firewall_api_with_missing_native_shape_skip
                     "enabled": "1",
                 }
             },
-            "nat": "legacy",  # malformed payload shape should skip native entities
+            "nat": "legacy",
         },
         "host_firmware_version": "26.1.1",
     }
@@ -1218,7 +1216,9 @@ async def test_async_setup_entry_new_firewall_api_with_missing_native_shape_skip
         cast("AddEntitiesCallback", fake_add_entities),
     )
 
-    assert len(calls.get("entities", [])) == 0
+    entities = calls.get("entities", [])
+    assert len(entities) == 1
+    assert isinstance(entities[0], OPNsenseFirewallRuleSwitch)
 
 
 def test_vpn_icon_property(make_config_entry: Callable[..., MockConfigEntry]) -> None:
