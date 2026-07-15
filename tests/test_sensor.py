@@ -312,6 +312,7 @@ def test_vnstat_sensor_fails_closed_for_malformed_payloads(
         ("loss", "0%", True, 0.0, False),
         ("delay", "not_a_float", False, None, True),
         ("loss", "oops", False, None, True),
+        ("stddev", "12.34.56", False, None, True),
         ("loss", "", False, None, True),
         ("delay", 12, True, 12, False),
         ("address", "203.0.113.1", True, "203.0.113.1", False),

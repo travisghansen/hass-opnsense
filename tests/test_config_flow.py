@@ -317,6 +317,38 @@ async def test_get_dt_entries_sorts_and_includes_selected(
 
 
 @pytest.mark.asyncio
+async def test_get_dt_entries_passes_throw_errors_to_client(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_client: Any,
+) -> None:
+    """_get_dt_entries should request throw-errors behavior from the API client."""
+    create_calls: dict[str, Any] = {}
+
+    client_cls = fake_client()
+
+    async def _get_arp_table(self: Any, resolve_hostnames: bool = True) -> list[dict[str, str]]:
+        """Return no ARP rows for deterministic entry-point assertions."""
+        return []
+
+    client_cls.get_arp_table = _get_arp_table
+
+    def _init_client(**kwargs: Any) -> Any:
+        """Capture the create_opnsense_client call and return the fake client."""
+        create_calls.update(kwargs)
+        return client_cls(**kwargs)
+
+    monkeypatch.setattr(cf_mod, "create_opnsense_client", _init_client)
+
+    await cf_mod._get_dt_entries(
+        hass=MagicMock(),
+        config={cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"},
+        selected_devices=[],
+    )
+
+    assert create_calls["throw_errors"] is True
+
+
+@pytest.mark.asyncio
 async def test_get_dt_entries_preserves_missing_selected_devices(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:

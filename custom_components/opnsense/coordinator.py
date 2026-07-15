@@ -490,9 +490,13 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         Returns:
             tuple[str, int]: Tuple of derived property name and rounded rate value.
         """
+        rate = 0.0
         try:
-            change: float = current_parent_value - previous_parent_value
-            rate: float = max(change, 0) / elapsed_time
+            if elapsed_time <= 0:
+                rate = 0
+            else:
+                change: float = current_parent_value - previous_parent_value
+                rate = max(change, 0) / elapsed_time
         except TypeError, ZeroDivisionError:
             rate = 0
 

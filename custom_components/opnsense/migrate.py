@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_VERIFY_SSL, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.util import slugify
 
 from .const import (
     CONF_DEVICE_UNIQUE_ID,
@@ -357,6 +358,11 @@ async def _migrate_4_to_5(
     """
     _LOGGER.debug("[migrate_4_to_5] Initial Version: %s", config_entry.version)
     entity_registry = er.async_get(hass)
+    entry_device_unique_id = config_entry.data.get(CONF_DEVICE_UNIQUE_ID)
+    if not isinstance(entry_device_unique_id, str) or not entry_device_unique_id.strip():
+        _LOGGER.warning("Migration to version 5 deferred because device unique ID is unavailable")
+        return False
+    entry_prefix = slugify(entry_device_unique_id)
     current_firewall_unique_ids: set[str] | None = None
     current_native_nat_unique_ids: dict[str, set[str]] = {}
     sync_firewall_rules = _is_firewall_sync_enabled(config_entry)
@@ -375,13 +381,6 @@ async def _migrate_4_to_5(
             )
             return False
 
-        device_unique_id = config_entry.data.get(CONF_DEVICE_UNIQUE_ID)
-        if not isinstance(device_unique_id, str):
-            _LOGGER.warning(
-                "Migration to version 5 deferred because device unique ID is unavailable"
-            )
-            return False
-
         if not isinstance(firewall, Mapping):
             _LOGGER.warning(
                 "Migration to version 5 skipping native rule pruning because firewall payload is "
@@ -391,7 +390,7 @@ async def _migrate_4_to_5(
             rules = firewall.get("rules")
             if isinstance(rules, Mapping):
                 current_firewall_unique_ids = firewall_rule_switch_unique_ids_from_payload(
-                    device_unique_id,
+                    entry_device_unique_id,
                     rules,
                 )
             else:
@@ -407,7 +406,7 @@ async def _migrate_4_to_5(
                     if isinstance(nat_rules, Mapping):
                         current_native_nat_unique_ids[nat_section] = (
                             firewall_nat_switch_unique_ids_from_payload(
-                                device_unique_id,
+                                entry_device_unique_id,
                                 nat_section,
                                 nat_rules,
                             )
@@ -425,13 +424,22 @@ async def _migrate_4_to_5(
         platform = ent.entity_id.split(".")[0]
         if platform != Platform.SWITCH:
             continue
-        should_remove = any(token in ent.unique_id for token in LEGACY_RULE_ENTITY_TOKENS)
-        if not should_remove and NATIVE_FIREWALL_RULE_ENTITY_MARKER in ent.unique_id:
+        if not ent.unique_id.startswith(f"{entry_prefix}_"):
+            continue
+        should_remove = any(
+            ent.unique_id.startswith(f"{entry_prefix}{token}")
+            for token in LEGACY_RULE_ENTITY_TOKENS
+        )
+        if not should_remove and ent.unique_id.startswith(
+            f"{entry_prefix}{NATIVE_FIREWALL_RULE_ENTITY_MARKER}"
+        ):
             should_remove = not sync_firewall_rules or (
                 current_firewall_unique_ids is not None
                 and ent.unique_id not in current_firewall_unique_ids
             )
-        elif not should_remove and NATIVE_FIREWALL_NAT_ENTITY_MARKER in ent.unique_id:
+        elif not should_remove and ent.unique_id.startswith(
+            f"{entry_prefix}{NATIVE_FIREWALL_NAT_ENTITY_MARKER}"
+        ):
             should_remove = not sync_firewall_rules
             if sync_firewall_rules:
                 nat_entity_section = _infer_native_nat_section_from_unique_id(ent.unique_id)
@@ -451,6 +459,7 @@ async def _migrate_4_to_5(
                     ent.entity_id,
                     type(e).__name__,
                 )
+                return False
 
     migration_ok: bool = hass.config_entries.async_update_entry(config_entry, version=5)
     if not migration_ok:

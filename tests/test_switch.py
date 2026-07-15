@@ -900,10 +900,14 @@ async def test_async_setup_entry_all_flags(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("firmware_version", ["26.1.1", "26.1.1_4"])
 async def test_async_setup_entry_new_firewall_api(
-    coordinator: MagicMock, ph_hass: Any, make_config_entry: Callable[..., MockConfigEntry]
+    coordinator: MagicMock,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+    firmware_version: str,
 ) -> None:
-    """Async setup should create entities for new firewall API (>= 26.1.1)."""
+    """Async setup should create native firewall entities for supported firmware."""
     calls = {}
 
     def fake_add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
@@ -960,7 +964,7 @@ async def test_async_setup_entry_new_firewall_api(
                 },
             },
         },
-        "host_firmware_version": "26.1.1",
+        "host_firmware_version": firmware_version,
     }
     coordinator.data = state
 
@@ -987,17 +991,17 @@ async def test_async_setup_entry_new_firewall_api(
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_new_firewall_api_without_firmware_uses_firewall_state(
+async def test_async_setup_entry_new_firewall_api_without_firmware_skips_firewall_and_nat(
     coordinator: MagicMock, ph_hass: Any, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Runtime firmware should not gate firewall/NAT setup when state exists."""
+    """Missing firmware version should skip native firewall and NAT setup."""
     calls = {}
 
     def fake_add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
         """Capture entities created during setup for assertion."""
         calls["len"] = len(list(entities))
 
-    # create state without host_firmware_version; firewall state should gate feature
+    # create state without host_firmware_version; native setup should stay disabled
     state = {
         "firewall": {
             "rules": {
@@ -1038,15 +1042,14 @@ async def test_async_setup_entry_new_firewall_api_without_firmware_uses_firewall
         ph_hass, config_entry, cast("AddEntitiesCallback", fake_add_entities)
     )
 
-    # Should still create the native firewall/NAT entities when runtime firmware is missing.
-    assert calls.get("len") == 2
+    assert calls.get("len") == 0
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_uses_firewall_state_for_old_firmware(
+async def test_async_setup_entry_new_firewall_api_with_old_firmware_skips_firewall_and_nat(
     coordinator: MagicMock, ph_hass: Any, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Firewall/NAT entities compile from state even when firmware is older than 26.1.1."""
+    """Old firmware should skip native firewall and NAT setup."""
     calls: dict[str, list[Any]] = {}
 
     def fake_add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
@@ -1106,18 +1109,16 @@ async def test_async_setup_entry_uses_firewall_state_for_old_firmware(
         cast("AddEntitiesCallback", fake_add_entities),
     )
 
-    entities = calls.get("entities", [])
-    assert any(isinstance(entity, OPNsenseFirewallRuleSwitch) for entity in entities)
-    assert any(isinstance(entity, OPNsenseNATRuleSwitch) for entity in entities)
+    assert len(calls.get("entities", [])) == 0
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_uses_firewall_state_when_firmware_unknown(
+async def test_async_setup_entry_new_firewall_api_with_unknown_firmware_skips_firewall_and_nat(
     coordinator: MagicMock,
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Unknown firmware should still create native firewall/NAT entities when state is present."""
+    """Unknown firmware payload types should skip native firewall and NAT setup."""
     calls: dict[str, list[Any]] = {}
 
     def fake_add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
@@ -1167,9 +1168,57 @@ async def test_async_setup_entry_uses_firewall_state_when_firmware_unknown(
         cast("AddEntitiesCallback", fake_add_entities),
     )
 
-    entities = calls.get("entities", [])
-    assert any(isinstance(entity, OPNsenseFirewallRuleSwitch) for entity in entities)
-    assert any(isinstance(entity, OPNsenseNATRuleSwitch) for entity in entities)
+    assert len(calls.get("entities", [])) == 0
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_new_firewall_api_with_missing_native_shape_skips_firewall_and_nat(
+    coordinator: MagicMock,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Valid firmware with malformed firewall payload should skip native switch setup."""
+    calls: dict[str, list[Any]] = {}
+
+    def fake_add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Capture entities emitted by setup for assertion."""
+        calls["entities"] = list(entities)
+
+    state = {
+        "firewall": {
+            "rules": {
+                "rule1": {
+                    "uuid": "rule1",
+                    "description": "Malformed Firewall Rule",
+                    "%interface": "wan",
+                    "enabled": "1",
+                }
+            },
+            "nat": "legacy",  # malformed payload shape should skip native entities
+        },
+        "host_firmware_version": "26.1.1",
+    }
+    coordinator.data = state
+
+    config_entry = make_config_entry(
+        data={
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_SYNC_FIREWALL_AND_NAT: True,
+            CONF_SYNC_SERVICES: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_UNBOUND: False,
+        },
+        title="OPNsenseTest",
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    await switch_mod.async_setup_entry(
+        ph_hass,
+        config_entry,
+        cast("AddEntitiesCallback", fake_add_entities),
+    )
+
+    assert len(calls.get("entities", [])) == 0
 
 
 def test_vpn_icon_property(make_config_entry: Callable[..., MockConfigEntry]) -> None:

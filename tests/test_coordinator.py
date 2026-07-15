@@ -394,7 +394,7 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
 
 @pytest.mark.asyncio
 async def test_calculate_speed_normal_and_exception() -> None:
-    """Calculate speed handles normal and exceptional (zero elapsed) cases."""
+    """Calculate speed handles normal and exceptional (non-positive elapsed) cases."""
     # normal pkts
     new_prop, value = await OPNsenseDataUpdateCoordinator._calculate_speed(
         prop_name="inpkts",
@@ -406,7 +406,7 @@ async def test_calculate_speed_normal_and_exception() -> None:
     assert isinstance(value, int)
     assert value == 50
 
-    # zero elapsed_time -> exception handled -> rate 0
+    # zero elapsed_time -> explicit zero
     _new_prop2, value2 = await OPNsenseDataUpdateCoordinator._calculate_speed(
         prop_name="inpkts",
         elapsed_time=0,
@@ -414,6 +414,15 @@ async def test_calculate_speed_normal_and_exception() -> None:
         previous_parent_value=5,
     )
     assert value2 == 0
+
+    # negative elapsed_time -> explicit zero
+    _new_prop3, value3 = await OPNsenseDataUpdateCoordinator._calculate_speed(
+        prop_name="inpkts",
+        elapsed_time=-5,
+        current_parent_value=10,
+        previous_parent_value=5,
+    )
+    assert value3 == 0
 
 
 @pytest.mark.asyncio

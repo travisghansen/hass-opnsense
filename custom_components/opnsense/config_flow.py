@@ -742,6 +742,7 @@ async def _get_dt_entries(
         username=username,
         password=password,
         verify_ssl=verify_ssl,
+        throw_errors=True,
     )
     try:
         # dicts are ordered so put all previously selected items at the top

@@ -5,7 +5,7 @@ including system information, network interfaces, firewall rules, DHCP leases,
 and various other OPNsense features through the Home Assistant interface.
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import timedelta
 import logging
@@ -24,6 +24,7 @@ from homeassistant.helpers import (
     issue_registry as ir,
 )
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.util import slugify
 
 from .const import (
     CONF_DEVICE_TRACKER_ENABLED,
@@ -94,7 +95,11 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
     if getattr(entry.runtime_data, SHOULD_RELOAD, True):
         _LOGGER.info("[async_update_listener] Reloading")
 
-        uid_prefix = entry.unique_id
+        uid_prefix: str | None = slugify(entry.unique_id or "")
+        if not uid_prefix:
+            _LOGGER.debug("[async_update_listener] Skipping entity cleanup; empty entry uid prefix")
+            uid_prefix = None
+        sync_firewall_and_nat_enabled = _is_firewall_sync_enabled(entry)
         # _LOGGER.debug("[async_update_listener] uid_prefix: %s", uid_prefix)
         removal_prefixes: list[str] = []
         for item, prefix in GRANULAR_SYNC_PREFIX.items():
@@ -106,7 +111,10 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
         for ent in er.async_entries_for_config_entry(
             registry=entity_registry, config_entry_id=entry.entry_id
         ):
+            if uid_prefix is None or not ent.unique_id.startswith(f"{uid_prefix}_"):
+                continue
             # _LOGGER.debug("[async_update_listener] ent: %s", ent)
+            removed = False
             for pre in removal_prefixes:
                 if ent.unique_id.startswith(f"{uid_prefix}_{pre}"):
                     _LOGGER.debug(
@@ -115,8 +123,11 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
                         ent.unique_id,
                     )
                     entity_registry.async_remove(ent.entity_id)
+                    removed = True
                     break
-            else:
+            if removed:
+                continue
+            if not sync_firewall_and_nat_enabled:
                 for pre in NATIVE_RULE_ENTITY_TOKENS:
                     if ent.unique_id.startswith(f"{uid_prefix}{pre}"):
                         _LOGGER.debug(
@@ -182,6 +193,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     config_device_id: str = config[CONF_DEVICE_UNIQUE_ID]
 
     client: OPNsenseClient | None = None
+    remove_listener: Callable[[], None] | None = None
     try:
         client = create_opnsense_client_from_config_entry(hass=hass, config_entry=entry)
         try:
@@ -334,6 +346,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return True
     finally:
         if not setup_succeeded:
+            if remove_listener is not None:
+                remove_listener()
+            entry.runtime_data = None
             if device_tracker_coordinator is not None:
                 await device_tracker_coordinator.async_shutdown()
             await coordinator.async_shutdown()
@@ -424,6 +439,7 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
             migration_client = create_opnsense_client_from_config_entry(
                 hass=hass,
                 config_entry=config_entry,
+                throw_errors=True,
             )
 
         # 2 -> 3: Change unique device id to use lowest MAC address

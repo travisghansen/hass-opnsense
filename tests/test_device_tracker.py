@@ -83,13 +83,50 @@ def test_devices_from_arp_entries_skips_malformed_invalid_and_duplicate_macs() -
             object(),
             {"mac": None},
             {"mac": ""},
-            {"mac": "aa:bb:cc", "hostname": "tracked"},
-            {"mac": "aa:bb:cc", "hostname": "duplicate"},
+            {"mac": "AA:BB:CC:DD:EE:FF", "hostname": "tracked"},
+            {"mac": "aa:bb:cc:dd:ee:ff", "hostname": "duplicate"},
+            {"mac": "AA-BB-CC-DD-EE-FF", "hostname": "dash-case"},
+            {"mac": "aa:bb:cc:dd:ee:ff", "hostname": "lower"},
+            {"mac": "11:22:33:44:55:66", "hostname": "first"},
         ],
     )
 
-    assert mac_addresses == ["aa:bb:cc"]
-    assert devices == [{"mac": "aa:bb:cc", "hostname": "tracked"}]
+    assert mac_addresses == ["aa:bb:cc:dd:ee:ff", "11:22:33:44:55:66"]
+    assert devices == [
+        {"mac": "aa:bb:cc:dd:ee:ff", "hostname": "tracked"},
+        {"mac": "11:22:33:44:55:66", "hostname": "first"},
+    ]
+
+
+def test_compile_tracked_devices_normalizes_and_deduplicates_configured_macs(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Configured MACs should be normalized and deduplicated before entity creation."""
+    config_entry = make_config_entry(
+        options={
+            dt_mod.CONF_DEVICE_TRACKER_ENABLED: True,
+            dt_mod.CONF_DEVICES: [
+                "AA-BB-CC-DD-EE-FF",
+                "aa:bb:cc:dd:ee:ff",
+                "11:22:33:44:55:66",
+                "11-22-33-44-55-66",
+            ],
+        }
+    )
+    devices, mac_addresses, enabled_default = dt_mod._compile_tracked_devices(
+        config_entry,
+        [
+            {"mac": "aa:bb:cc:dd:ee:ff", "hostname": "canonical"},
+            {"mac": "11:22:33:44:55:66", "hostname": "canonical2"},
+        ],
+    )
+
+    assert enabled_default is True
+    assert mac_addresses == ["aa:bb:cc:dd:ee:ff", "11:22:33:44:55:66"]
+    assert devices == [
+        {"mac": "aa:bb:cc:dd:ee:ff", "hostname": "canonical"},
+        {"mac": "11:22:33:44:55:66", "hostname": "canonical2"},
+    ]
 
 
 @pytest.mark.asyncio

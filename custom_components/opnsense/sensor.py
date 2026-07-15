@@ -1854,7 +1854,7 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
                 return
 
             self._attr_native_value = value
-        except TypeError, KeyError, ZeroDivisionError:
+        except TypeError, KeyError, ZeroDivisionError, ValueError:
             self._mark_unavailable()
             return
         self._available = True

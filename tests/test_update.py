@@ -884,6 +884,46 @@ async def test_async_install_handles_masked_polling_response(
 
 
 @pytest.mark.asyncio
+async def test_async_install_retries_masked_polling_then_skips_reboot_and_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    dummy_coordinator: MagicMock,
+) -> None:
+    """Malformed polling responses beyond retry limit should not fetch firmware info."""
+    entry = make_config_entry()
+    ent = OPNsenseFirmwareUpdatesAvailableUpdate(
+        config_entry=entry,
+        coordinator=dummy_coordinator,
+        entity_description=UpdateEntityDescription(
+            key="firmware.update_available", name="Firmware"
+        ),
+    )
+
+    bad: Any = _FirmwareInstallClient(
+        status_responses=[None, None, None, None],
+        firmware_info={"needs_reboot": "1", "upgrade_needs_reboot": None},
+    )
+    object.__setattr__(bad, "upgrade_status", AsyncMock(side_effect=[None, None, None, None]))
+    object.__setattr__(bad, "upgrade_firmware", AsyncMock(wraps=bad.upgrade_firmware))
+    object.__setattr__(
+        bad,
+        "get_firmware_update_info",
+        AsyncMock(wraps=bad.get_firmware_update_info),
+    )
+    object.__setattr__(ent, "_client", bad)
+    ent.coordinator.data = {"firmware_update_info": {"status": "upgrade"}}
+    monkeypatch.setattr(asyncio, "sleep", AsyncMock(return_value=None))
+
+    await ent.async_install()
+
+    bad.upgrade_status.assert_awaited()
+    assert bad.upgrade_status.await_count == 4
+    bad.upgrade_firmware.assert_awaited_once()
+    bad.get_firmware_update_info.assert_not_awaited()
+    assert bad.rebooted is False
+
+
+@pytest.mark.asyncio
 async def test_async_install_transport_polling_error_raises(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],

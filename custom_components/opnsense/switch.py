@@ -4,6 +4,7 @@ from collections.abc import Callable, Mapping, MutableMapping
 import logging
 from typing import Any
 
+from aiopnsense.helpers import firmware_is_at_least
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity, SwitchEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
@@ -25,6 +26,41 @@ from .entity import OPNsenseEntity
 from .helpers import coerce_bool, dict_get, firewall_rule_id_from_payload
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+
+_NATIVE_FW_MIN_VERSION: str = "26.1.1"
+
+
+def _is_native_firewall_supported(host_firmware_version: Any) -> bool:
+    """Return whether host firmware supports native firewall and NAT entities.
+
+    Args:
+        host_firmware_version: Firmware version string from coordinator state.
+
+    Returns:
+        ``True`` when firmware parses and compares as supported or newer.
+    """
+    if not isinstance(host_firmware_version, str):
+        return False
+    return firmware_is_at_least(host_firmware_version, _NATIVE_FW_MIN_VERSION) is True
+
+
+def _firewall_payload_has_native_shape(state: Mapping[str, Any]) -> bool:
+    """Return whether coordinator state exposes the expected native firewall payload.
+
+    Args:
+        state: Coordinator payload.
+
+    Returns:
+        ``True`` when firewall and NAT sections are mapping-like.
+    """
+    firewall = state.get("firewall")
+    if not isinstance(firewall, Mapping):
+        return False
+    if not isinstance(firewall.get("rules"), Mapping):
+        return False
+    if not isinstance(firewall.get("nat"), Mapping):
+        return False
+    return True
 
 
 def _create_switch[EntityT: OPNsenseSwitch](
@@ -547,7 +583,11 @@ async def async_setup_entry(
 
     entities: list = []
 
-    if config.get(CONF_SYNC_FIREWALL_AND_NAT, DEFAULT_SYNC_OPTION_VALUE):
+    if (
+        config.get(CONF_SYNC_FIREWALL_AND_NAT, DEFAULT_SYNC_OPTION_VALUE)
+        and _is_native_firewall_supported(state.get("host_firmware_version"))
+        and _firewall_payload_has_native_shape(state)
+    ):
         entities.extend(await _compile_firewall_rules_switches(config_entry, coordinator, state))
         entities.extend(await _compile_nat_source_rules_switches(config_entry, coordinator, state))
         entities.extend(

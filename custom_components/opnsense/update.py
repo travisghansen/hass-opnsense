@@ -416,7 +416,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
                     e,
                 )
                 if exceptions > 3:
-                    running = False
+                    return
             else:
                 exceptions = 0
 

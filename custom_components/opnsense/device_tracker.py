@@ -18,6 +18,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
+from .config_flow import normalize_mac_address
 from .const import (
     CONF_DEVICE_TRACKER_CONSIDER_HOME,
     CONF_DEVICE_TRACKER_ENABLED,
@@ -63,8 +64,16 @@ def _device_data_from_arp_entry(
 
 
 def _mac_matches(mac_a: object, mac_b: object) -> bool:
-    """Compare MAC addresses case-insensitively when both values are strings."""
-    return isinstance(mac_a, str) and isinstance(mac_b, str) and mac_a.lower() == mac_b.lower()
+    """Compare MAC addresses case-insensitively and normalize known formats."""
+    if not isinstance(mac_a, str) or not isinstance(mac_b, str):
+        return False
+
+    mac_a_normalized = normalize_mac_address(mac_a)
+    mac_b_normalized = normalize_mac_address(mac_b)
+    if mac_a_normalized is not None and mac_b_normalized is not None:
+        return mac_a_normalized == mac_b_normalized
+
+    return mac_a.lower() == mac_b.lower()
 
 
 def _device_from_arp_entry(mac_address: str, arp_entries: list[Any]) -> dict[str, Any]:
@@ -104,10 +113,14 @@ def _devices_from_arp_entries(arp_entries: list[Any]) -> tuple[list[dict[str, An
         if not isinstance(arp_entry, MutableMapping):
             continue
         mac_address = arp_entry.get("mac")
-        if not isinstance(mac_address, str) or not mac_address or mac_address in mac_addresses:
+        if not isinstance(mac_address, str):
             continue
-        mac_addresses.append(mac_address)
-        devices.append(_device_data_from_arp_entry(mac_address, arp_entry))
+        normalized_mac = normalize_mac_address(mac_address)
+        mac = normalized_mac or mac_address.lower().strip()
+        if not mac or mac in mac_addresses:
+            continue
+        mac_addresses.append(mac)
+        devices.append(_device_data_from_arp_entry(mac, arp_entry))
 
     return devices, mac_addresses
 
@@ -198,7 +211,15 @@ def _compile_tracked_devices(
     if not config_entry.options.get(CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED):
         return [], [], False
 
-    configured_mac_addresses = config_entry.options.get(CONF_DEVICES, [])
+    configured_mac_addresses = []
+    for mac_address in config_entry.options.get(CONF_DEVICES, []):
+        if not isinstance(mac_address, str):
+            continue
+        normalized_mac = normalize_mac_address(mac_address)
+        normalized_mac = normalized_mac or mac_address.lower().strip()
+        if not normalized_mac or normalized_mac in configured_mac_addresses:
+            continue
+        configured_mac_addresses.append(normalized_mac)
     if configured_mac_addresses:
         _LOGGER.debug(
             "[device_tracker async_setup_entry] configured_mac_addresses: %s",
