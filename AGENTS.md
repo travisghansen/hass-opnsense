@@ -37,7 +37,7 @@
 - Keep the pinned `aiopnsense` version in `custom_components/opnsense/manifest.json` and `pyproject.toml` in sync.
 - OPNsense Firmware 25.1+ remains supported, but Firewall and NAT rule switches are available only when the aiopnsense firewall payload supports them, currently OPNsense Firmware 26.1.1+.
 - The deprecated OPNsense Home Assistant plugin is no longer supported or used. Handle legacy plugin-era entities only as migration or cleanup concerns; do not add new plugin-backed behavior.
-- Config-entry migrations live in `custom_components/opnsense/__init__.py`. Be careful with entity registry and device registry changes, especially legacy firewall/NAT entity cleanup, because they affect existing user installations.
+- Config-entry migrations live in `custom_components/opnsense/migrate.py`. Be careful with entity registry and device registry changes, especially legacy firewall/NAT entity cleanup, because they affect existing user installations.
 - Any changes that require changes to both hass-opnsense and aiopnsense require coordinated branches and PRs in both repositories. Update the aiopnsense pin when dependency behavior changes.
 
 ## Coding standards
