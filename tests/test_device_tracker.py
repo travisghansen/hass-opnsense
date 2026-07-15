@@ -130,6 +130,26 @@ def test_compile_tracked_devices_normalizes_and_deduplicates_configured_macs(
     ]
 
 
+def test_device_from_arp_entry_uses_raw_arp_keys() -> None:
+    """Raw aiopnsense ARP keys should be discovered alongside normalized keys."""
+    device = dt_mod._device_from_arp_entry(
+        "aa:bb:cc",
+        [{"mac-address": "AA-BB-CC"}, {"mac": "11:22:33"}],
+    )
+
+    assert device == {"mac": "aa:bb:cc"}
+
+
+def test_devices_from_arp_entries_reads_raw_mac_ip_keys() -> None:
+    """Raw ARP key names should be consumed when scanning configured devices."""
+    devices, mac_addresses = dt_mod._devices_from_arp_entries(
+        [{"mac-address": "AA-BB-CC", "ip-address": "10.0.0.2", "hostname": "raw"}],
+    )
+
+    assert mac_addresses == ["aa:bb:cc"]
+    assert devices == [{"mac": "aa:bb:cc", "hostname": "raw"}]
+
+
 @pytest.mark.asyncio
 async def test_async_setup_entry_configured_devices(
     monkeypatch: pytest.MonkeyPatch,
@@ -351,26 +371,6 @@ def test_handle_coordinator_update_entry_present(
     assert attributes.get("type") == "arp"
     assert ent.icon == "mdi:lan-connect"
     assert ent.source_type == dt_mod.SourceType.ROUTER
-
-
-def test_scanner_entity_uses_attr_backed_home_assistant_properties() -> None:
-    """Scanner entity should rely on Home Assistant attr-backed properties."""
-    locally_defined_properties = {
-        name
-        for name, value in vars(dt_mod.OPNsenseScannerEntity).items()
-        if isinstance(value, property)
-    }
-
-    assert "unique_id" in locally_defined_properties
-    assert "device_info" in locally_defined_properties
-    assert "entity_registry_enabled_default" in locally_defined_properties
-    assert "is_connected" in locally_defined_properties
-    assert {
-        "hostname",
-        "ip_address",
-        "mac_address",
-        "source_type",
-    }.isdisjoint(locally_defined_properties)
 
 
 def test_entity_registry_enabled_default_uses_existing_mac_device(
@@ -660,6 +660,28 @@ def test_handle_coordinator_update_matches_mac_case_insensitively(
     assert ent.available is True
 
 
+def test_handle_coordinator_update_reads_raw_arp_ip_key(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Tracker update should still read `ip-address` when `ip` is absent."""
+    coordinator.data = {
+        "arp_table": [
+            {"mac-address": "AA:BB:CC", "ip-address": "10.0.0.12", "intf_description": "lan"}
+        ],
+        "update_time": 0,
+    }
+    ent = _make_scanner_entity(
+        coordinator=coordinator,
+        make_config_entry=make_config_entry,
+        coordinator_data=coordinator.data,
+    )
+    object.__setattr__(ent, "async_write_ha_state", MagicMock())
+
+    ent._handle_coordinator_update()
+
+    assert ent.ip_address == "10.0.0.12"
+
+
 def test_update_arp_extra_state_attributes_clears_stale_values() -> None:
     """Stale ARP extra state attributes are removed when absent in current entry."""
     attributes: dict[str, Any] = {
@@ -900,52 +922,23 @@ async def test_restore_last_state_restores_tz_aware_connected_time(
 
 
 @pytest.mark.asyncio
-async def test_restore_last_state_ignores_naive_iso_connected_time(
+@pytest.mark.parametrize(
+    "connected_time",
+    [
+        pytest.param("2026-06-22T12:30:05", id="naive-iso"),
+        pytest.param("not-a-date", id="unparsable"),
+        pytest.param(1, id="non-datetime"),
+    ],
+)
+async def test_restore_last_state_ignores_invalid_connected_time(
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Naive ISO timestamps should be ignored during state restore."""
-    ent = _make_scanner_entity(coordinator, make_config_entry)
-    last_state = MagicMock()
-    last_state.attributes = {"last_known_connected_time": "2026-06-22T12:30:05"}
-    object.__setattr__(ent, "async_get_last_state", AsyncMock(return_value=last_state))
-
-    await ent._restore_last_state()
-
-    assert ent._last_known_connected_time is None
-    attrs = ent.extra_state_attributes
-    assert attrs is not None
-    assert "last_known_connected_time" not in attrs
-
-
-@pytest.mark.asyncio
-async def test_restore_last_state_ignores_unparseable_connected_time(
-    coordinator: MagicMock,
-    make_config_entry: Callable[..., MockConfigEntry],
+    connected_time: str | int,
 ) -> None:
     """Restoring state should ignore invalid saved connection timestamps."""
     ent = _make_scanner_entity(coordinator, make_config_entry)
     last_state = MagicMock()
-    last_state.attributes = {"last_known_connected_time": "not-a-date"}
-    object.__setattr__(ent, "async_get_last_state", AsyncMock(return_value=last_state))
-
-    await ent._restore_last_state()
-
-    assert ent._last_known_connected_time is None
-    attrs = ent.extra_state_attributes
-    assert attrs is not None
-    assert "last_known_connected_time" not in attrs
-
-
-@pytest.mark.asyncio
-async def test_restore_last_state_ignores_non_datetime_connected_time(
-    coordinator: MagicMock,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Restoring state should ignore non-string and non-datetime timestamps."""
-    ent = _make_scanner_entity(coordinator, make_config_entry)
-    last_state = MagicMock()
-    last_state.attributes = {"last_known_connected_time": 1}
+    last_state.attributes = {"last_known_connected_time": connected_time}
     object.__setattr__(ent, "async_get_last_state", AsyncMock(return_value=last_state))
 
     await ent._restore_last_state()

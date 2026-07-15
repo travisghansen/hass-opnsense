@@ -9,9 +9,9 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import slugify
 
-from .const import CONF_DEVICE_UNIQUE_ID, DOMAIN, OPNSENSE_CLIENT
+from .const import DOMAIN, OPNSENSE_CLIENT
 from .coordinator import OPNsenseDataUpdateCoordinator
-from .helpers import dict_get
+from .helpers import config_entry_identity, dict_get
 
 if TYPE_CHECKING:
     from aiopnsense import OPNsenseClient
@@ -85,7 +85,9 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
         """
         self.config_entry: ConfigEntry = config_entry
         self.coordinator: OPNsenseDataUpdateCoordinator = coordinator
-        self._device_unique_id: str = config_entry.data[CONF_DEVICE_UNIQUE_ID]
+        # Keep the existing attribute name for compatibility; this is now the
+        # identity prefix for both device and CARP config entry modes.
+        self._device_unique_id: str = config_entry_identity(config_entry)
         if unique_id_suffix:
             self._attr_unique_id: str = slugify(f"{self._device_unique_id}_{unique_id_suffix}")
         if name_suffix:

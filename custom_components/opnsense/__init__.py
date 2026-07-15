@@ -14,14 +14,17 @@ from typing import Any
 from aiopnsense import OPNsenseClient
 from aiopnsense.exceptions import (
     OPNsenseBelowMinFirmware,
+    OPNsenseConnectionError,
     OPNsenseError,
     OPNsenseMissingDeviceUniqueID,
+    OPNsenseTimeoutError,
     OPNsenseUnknownFirmware,
 )
 import awesomeversion
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_SCAN_INTERVAL, Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import (
     config_validation as cv,
     device_registry as dr,
@@ -32,6 +35,7 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import slugify
 
 from .const import (
+    CARP_PLATFORMS,
     CONF_DEVICE_TRACKER_ENABLED,
     CONF_DEVICE_TRACKER_SCAN_INTERVAL,
     CONF_DEVICE_UNIQUE_ID,
@@ -50,7 +54,13 @@ from .const import (
     VERSION,
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
-from .helpers import create_opnsense_client_from_config_entry, detach_shared_router_parent
+from .helpers import (
+    config_entry_identity,
+    create_opnsense_client_from_config_entry,
+    detach_shared_router_parent,
+    is_carp_entry,
+    is_usable_carp_vip,
+)
 from .migrate import (
     _is_firewall_sync_enabled,
     _migrate_1_to_2,
@@ -100,9 +110,7 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
     if getattr(entry.runtime_data, SHOULD_RELOAD, True):
         _LOGGER.info("[async_update_listener] Reloading")
 
-        uid_prefix: str | None = slugify(
-            str(entry.data.get(CONF_DEVICE_UNIQUE_ID) or entry.unique_id or "")
-        )
+        uid_prefix = slugify(config_entry_identity(entry))
         if not uid_prefix:
             _LOGGER.debug("[async_update_listener] Skipping entity cleanup; empty entry uid prefix")
             uid_prefix = None
@@ -255,6 +263,84 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
+async def _async_setup_carp_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up a CARP integration entry with a runtime ID-less coordinator.
+
+    Args:
+        hass: Home Assistant instance that owns the config entry.
+        entry: CARP config entry being set up.
+
+    Returns:
+        bool: ``True`` after the coordinator refresh and platform setup succeed.
+
+    Raises:
+        ConfigEntryNotReady: If the initial refresh returns no usable CARP VIPs.
+        OPNsenseError: If client validation or the initial refresh fails.
+    """
+    client: OPNsenseClient | None = None
+    setup_succeeded: bool = False
+    coordinator: OPNsenseDataUpdateCoordinator | None = None
+
+    try:
+        client = create_opnsense_client_from_config_entry(hass=hass, config_entry=entry)
+        try:
+            await client.validate(require_device_id=False)
+        except OPNsenseTimeoutError as err:
+            raise ConfigEntryNotReady("OPNsense validation timed out") from err
+        except OPNsenseConnectionError as err:
+            if type(err) is not OPNsenseConnectionError:
+                raise
+            raise ConfigEntryNotReady("OPNsense validation could not complete") from err
+
+        scan_interval: int = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        _LOGGER.info("Starting hass-opnsense %s", VERSION)
+
+        coordinator = OPNsenseDataUpdateCoordinator(
+            hass=hass,
+            name=f"{entry.title} state",
+            update_interval=timedelta(seconds=scan_interval),
+            client=client,
+            device_unique_id=None,
+            config_entry=entry,
+        )
+
+        await coordinator.async_config_entry_first_refresh()
+
+        coordinator_data = coordinator.data
+        carp_state = coordinator_data.get("carp") if isinstance(coordinator_data, Mapping) else None
+        carp_interfaces = carp_state.get("interfaces") if isinstance(carp_state, Mapping) else None
+        if not isinstance(carp_interfaces, list) or not any(
+            is_usable_carp_vip(interface) for interface in carp_interfaces
+        ):
+            raise ConfigEntryNotReady("No usable CARP VIPs were returned during initial refresh")
+
+        platforms: list[Platform] = CARP_PLATFORMS.copy()
+        hass.data.setdefault(DOMAIN, {})
+        hass.data[DOMAIN][entry.entry_id] = client
+        entry.runtime_data = OPNsenseData(
+            coordinator=coordinator,
+            device_tracker_coordinator=None,
+            opnsense_client=client,
+            device_unique_id=None,
+            loaded_platforms=platforms,
+        )
+        remove_listener = entry.add_update_listener(_async_update_listener)
+        entry.async_on_unload(remove_listener)
+
+        await hass.config_entries.async_forward_entry_setups(entry, platforms)
+
+        setup_succeeded = True
+        return True
+    finally:
+        if not setup_succeeded:
+            if coordinator is not None:
+                await coordinator.async_shutdown()
+            if DOMAIN in hass.data:
+                hass.data[DOMAIN].pop(entry.entry_id, None)
+            if client is not None:
+                await client.async_close()
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up OPNsense integration state for a config entry.
 
@@ -266,9 +352,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         bool: `True` when setup and initial refresh succeed; otherwise `False`.
 
     Raises:
+        ConfigEntryNotReady: If transient connection validation fails and setup should be retried.
         OPNsenseError: Raised when validation cannot complete because of
             authentication, privilege, firmware, or transport failures.
     """
+    if is_carp_entry(entry):
+        return await _async_setup_carp_entry(hass, entry)
+
     config: Mapping[str, Any] = entry.data
     options: Mapping[str, Any] = entry.options
     # _LOGGER.debug("[async_setup_entry] entry: %s", entry.as_dict())
@@ -291,6 +381,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.debug(
                 "Client validation reported firmware issues; continuing to firmware probes"
             )
+        except OPNsenseTimeoutError as err:
+            raise ConfigEntryNotReady("OPNsense validation timed out") from err
+        except OPNsenseConnectionError as err:
+            if type(err) is not OPNsenseConnectionError:
+                raise
+            raise ConfigEntryNotReady("OPNsense validation could not complete") from err
+    except ConfigEntryNotReady:
+        if client is not None:
+            await client.async_close()
+        raise
     except OPNsenseError:
         if client is not None:
             await client.async_close()

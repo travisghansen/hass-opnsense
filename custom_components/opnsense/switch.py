@@ -822,15 +822,7 @@ class OPNsenseFirewallRuleSwitch(OPNsenseSwitch):
             coordinator=coordinator,
             entity_description=entity_description,
         )
-        self._rule_id: str = self._opnsense_get_rule_id()
-
-    def _opnsense_get_rule_id(self) -> str:
-        """Get the rule ID from the entity description.
-
-        Returns:
-            str: The rule ID.
-        """
-        return self.entity_description.key.split(".")[-1]
+        self._rule_id: str = self.entity_description.key.split(".")[-1]
 
     def _opnsense_get_rule(self) -> MutableMapping[str, Any] | None:
         """Get the firewall rule data from the coordinator.
@@ -950,15 +942,7 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
             entity_description=entity_description,
         )
         self._rule_id: str = self._opnsense_get_rule_id()
-        self._nat_rule_type: str = self._get_nat_rule_type()
-
-    def _get_nat_rule_type(self) -> str:
-        """Get the NAT rule type from the entity description.
-
-        Returns:
-            str: The NAT rule type.
-        """
-        return self.entity_description.key.split(".")[2]
+        self._nat_rule_type: str = self.entity_description.key.split(".")[2]
 
     def _opnsense_get_rule_id(self) -> str:
         """Get the rule ID from the entity description.
@@ -1122,23 +1106,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
             entity_description=entity_description,
         )
         self._service: MutableMapping[str, Any] | None = None
-        self._prop_name: str = self._opnsense_get_property_name()
-
-    def _opnsense_get_property_name(self) -> str:
-        """Get the property name from the entity description.
-
-        Returns:
-            str: The property name.
-        """
-        return self.entity_description.key.split(".")[2]
-
-    def _opnsense_get_service_id(self) -> str:
-        """Get the service ID from the entity description.
-
-        Returns:
-            str: The service ID.
-        """
-        return self.entity_description.key.split(".")[1]
+        self._prop_name: str = self.entity_description.key.split(".")[2]
 
     def _opnsense_get_service(self) -> MutableMapping[str, Any] | None:
         """Get the service data from the coordinator.
@@ -1149,7 +1117,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         state = self._coordinator_mapping()
         if state is None:
             return None
-        service_id: str = self._opnsense_get_service_id()
+        service_id: str = self.entity_description.key.split(".")[1]
         services = state.get("services")
         if not isinstance(services, list):
             return None

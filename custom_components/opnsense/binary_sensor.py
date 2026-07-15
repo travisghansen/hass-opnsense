@@ -23,21 +23,9 @@ from .const import (
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity
-from .helpers import coerce_bool, dict_get
+from .helpers import coerce_bool, dict_get, get_smart_device_name
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
-
-
-def _smart_device_slug(device_name: str) -> str:
-    """Return the entity key slug for a SMART device name.
-
-    Args:
-        device_name: SMART device name to normalize.
-
-    Returns:
-        The slugified device name, or ``unknown`` when slugification fails.
-    """
-    return slugify(device_name) or "unknown"
 
 
 def _build_interface_enabled_binary_sensor_description(
@@ -73,7 +61,7 @@ def _build_smart_status_binary_sensor_description(
         A binary sensor description for SMART health state.
     """
     return BinarySensorEntityDescription(
-        key=f"smart.{_smart_device_slug(device_name)}.status",
+        key=f"smart.{slugify(device_name) or 'unknown'}.status",
         name=f"SMART {device_name} Status",
         icon="mdi:harddisk",
         device_class=BinarySensorDeviceClass.PROBLEM,
@@ -160,10 +148,9 @@ async def _compile_smart_status_binary_sensors(
     for smart_device in smart_devices:
         if not isinstance(smart_device, Mapping):
             continue
-        device_name = smart_device.get("device")
-        if not isinstance(device_name, str) or not device_name.strip():
+        device_name = get_smart_device_name(smart_device)
+        if not device_name:
             continue
-        device_name = device_name.strip()
 
         entities.append(
             OPNsenseSmartStatusBinarySensor(
@@ -300,10 +287,10 @@ class OPNsenseSmartStatusBinarySensor(OPNsenseBinarySensor):
         for candidate in smart_devices:
             if not isinstance(candidate, Mapping):
                 continue
-            device_name = candidate.get("device")
-            if not isinstance(device_name, str) or not device_name.strip():
+            device_name = get_smart_device_name(candidate)
+            if not device_name:
                 continue
-            if _smart_device_slug(device_name.strip()) == expected_device_slug:
+            if (slugify(device_name.strip()) or "unknown") == expected_device_slug:
                 smart_device = candidate
                 break
 
@@ -311,12 +298,9 @@ class OPNsenseSmartStatusBinarySensor(OPNsenseBinarySensor):
             self._mark_unavailable()
             return
 
-        device_name = smart_device.get("device")
+        device_name = get_smart_device_name(smart_device)
         smart_info = state.get("smart_info")
-        normalized_device_name = device_name.strip() if isinstance(device_name, str) else ""
-        device_info = (
-            smart_info.get(normalized_device_name) if isinstance(smart_info, Mapping) else None
-        )
+        device_info = smart_info.get(device_name) if isinstance(smart_info, Mapping) else None
         if not isinstance(device_info, Mapping):
             device_info = {}
 

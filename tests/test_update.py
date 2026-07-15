@@ -885,12 +885,12 @@ async def test_async_install_handles_masked_polling_response(
 
 
 @pytest.mark.asyncio
-async def test_async_install_retries_masked_polling_then_skips_reboot_and_metadata(
+async def test_async_install_propagates_polling_errors(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
 ) -> None:
-    """Malformed polling responses beyond retry limit should not fetch firmware info."""
+    """async_install should not hide errors raised while polling firmware status."""
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,

@@ -240,6 +240,41 @@ async def test_async_setup_entry_creates_smart_status_problem_binary_sensors(
 
 
 @pytest.mark.asyncio
+async def test_async_setup_entry_creates_smart_status_binary_sensors_from_ident_only_rows(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART status entities should be compiled when rows provide `ident` only."""
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_NOTICES: False,
+            CONF_SYNC_SMART: True,
+        }
+    )
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {
+        "smart": [{"ident": "SERIAL-ONLY", "state": {"smart_status": {"passed": False}}}],
+        "smart_info": {"SERIAL-ONLY": {"smart_status": {"passed": False}}},
+    }
+    setattr(entry.runtime_data, COORDINATOR, coord)
+    created: list = []
+
+    def add_entities(ents: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Add entities."""
+        created.extend(ents)
+
+    await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
+
+    smart_entities = [
+        entity for entity in created if isinstance(entity, OPNsenseSmartStatusBinarySensor)
+    ]
+    assert {entity.entity_description.key for entity in smart_entities} == {
+        "smart.serial_only.status",
+    }
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("coord_data", [None, {"smart": {}}])
 async def test_compile_smart_status_binary_sensors_skips_invalid_state(
     coord_data: Any, make_config_entry: Callable[..., MockConfigEntry]
@@ -366,6 +401,24 @@ def test_smart_status_binary_sensor_parses_supported_status_shapes(
     assert sensor.available is True
     assert sensor.is_on is expected_is_on
     assert sensor.extra_state_attributes == {"device": "nvme0"}
+
+
+def test_smart_status_binary_sensor_uses_ident_when_device_missing(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART status binary sensors should match rows using `ident` when `device` is absent."""
+    sensor = _build_smart_status_binary_sensor(
+        make_config_entry,
+        {
+            "smart": [{"ident": "SERIAL-ONLY", "state": {"smart_status": {"passed": False}}}],
+            "smart_info": {"SERIAL-ONLY": {"smart_status": {"passed": False}}},
+        },
+        "smart.serial_only.status",
+    )
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is True
+    assert sensor.is_on is True
 
 
 def test_smart_status_binary_sensor_strips_device_name_before_smart_info_lookup(

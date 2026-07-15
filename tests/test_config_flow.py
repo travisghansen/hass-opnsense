@@ -8,6 +8,7 @@ from collections.abc import Callable
 from typing import Any, Never
 from unittest.mock import AsyncMock, MagicMock
 
+from aiohttp import ClientError, ClientResponseError, ClientSSLError, ServerTimeoutError
 from aiopnsense import exceptions as aiopnsense_exceptions
 from homeassistant.core import HomeAssistant
 import pytest
@@ -16,9 +17,12 @@ import voluptuous as vol
 
 import custom_components.opnsense.config_flow as config_flow_mod
 from custom_components.opnsense.const import (
+    CONF_ENTRY_TYPE,
     CONF_SYNC_FIREWALL_AND_NAT,
     CONF_SYNC_SMART,
     CONF_SYNC_TELEMETRY,
+    ENTRY_TYPE_CARP,
+    ENTRY_TYPE_DEVICE,
 )
 from tests.utilities import patch_opnsense_client
 
@@ -36,6 +40,79 @@ def _make_options_flow(config_entry: Any) -> Any:
     flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
     flow.handler = config_entry.entry_id
     return flow
+
+
+class _CarpFlowClient:
+    """Fake client for CARP config-flow validation and setup tests."""
+
+    def __init__(
+        self,
+        *,
+        firmware_version: str = "26.1.11",
+        system_name: str = "fw-a.example",
+        carp_interfaces: list[dict[str, str]] | None = None,
+        validate_error: BaseException | None = None,
+    ) -> None:
+        """Initialize fake client responses for config-flow tests.
+
+        Args:
+            firmware_version: Firmware version returned by the fake client.
+            system_name: System name returned by the fake client.
+            carp_interfaces: CARP interface rows returned by the fake client.
+            validate_error: Optional validation exception raised by the fake client.
+        """
+        self.firmware_version = firmware_version
+        self.system_name = system_name
+        self.carp_interfaces = (
+            carp_interfaces
+            if carp_interfaces is not None
+            else [
+                {
+                    "interface": "lan",
+                    "subnet": "192.0.2.1",
+                    "vhid": "1",
+                    "status": "MASTER",
+                }
+            ]
+        )
+        self.validate = AsyncMock()
+        if validate_error is not None:
+            self.validate.side_effect = validate_error
+        self.async_close = AsyncMock()
+        self.get_device_unique_id = AsyncMock(return_value="dev-id")
+
+    async def get_host_firmware_version(self) -> str:
+        """Return fake firmware version."""
+        return self.firmware_version
+
+    async def get_system_info(self) -> dict[str, str]:
+        """Return fake responder metadata."""
+        return {"name": self.system_name}
+
+    async def get_carp(self) -> dict[str, Any]:
+        """Return CARP endpoint payload."""
+        return {"interfaces": self.carp_interfaces}
+
+
+def _make_basic_device_input() -> dict[str, Any]:
+    """Build a minimal device-flow input payload."""
+    return {
+        "url": "https://router.example",
+        "username": "user",
+        "password": "pass",
+        "verify_ssl": True,
+        "granular_sync_options": False,
+    }
+
+
+def _make_basic_carp_input() -> dict[str, Any]:
+    """Build a minimal CARP-flow input payload."""
+    return {
+        "url": "https://router.example",
+        "username": "user",
+        "password": "pass",
+        "verify_ssl": True,
+    }
 
 
 def test_mac_and_ip_and_cleanse() -> None:
@@ -150,6 +227,58 @@ async def test_clean_and_parse_url_success_and_failure() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    ("input_url", "expected_url"),
+    [
+        ("https://router.example:443", "https://router.example"),
+        ("http://router.example:80", "http://router.example"),
+        ("https://router.example:8443", "https://router.example:8443"),
+        ("http://router.example:8080", "http://router.example:8080"),
+    ],
+)
+async def test_clean_and_parse_url_canonicalizes_default_ports(
+    input_url: str, expected_url: str
+) -> None:
+    """Normalize default HTTP ports while preserving non-default ports."""
+    user_input = {cf_mod.CONF_URL: input_url}
+
+    await cf_mod._clean_and_parse_url(user_input)
+
+    assert user_input[cf_mod.CONF_URL] == expected_url
+
+
+@pytest.mark.parametrize(
+    ("stored_url", "normalized_url"),
+    [
+        ("https://router.example:443", "https://router.example"),
+        ("http://router.example:80", "http://router.example"),
+    ],
+)
+def test_url_conflict_matches_persisted_default_ports(
+    make_config_entry: Callable[..., MockConfigEntry], stored_url: str, normalized_url: str
+) -> None:
+    """Opposite-kind URL conflicts should match legacy explicit default ports."""
+    existing_entry = make_config_entry(
+        data={
+            cf_mod.CONF_URL: stored_url,
+            cf_mod.CONF_USERNAME: "carp-user",
+            cf_mod.CONF_PASSWORD: "carp-pass",
+            cf_mod.CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+        },
+        options={},
+    )
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+    flow.hass.config_entries = MagicMock()
+    flow.hass.config_entries.async_entries = MagicMock(return_value=[existing_entry])
+
+    result = flow._async_abort_if_url_conflict(url=normalized_url, carp=False)
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "carp_device_url_conflict"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     ("exc_key", "expected"),
     [
         ("below_min", "below_min_firmware"),
@@ -161,6 +290,7 @@ async def test_clean_and_parse_url_success_and_failure() -> None:
         ("privilege_missing", "privilege_missing"),
         ("timeout", "connect_timeout"),
         ("connection", "cannot_connect"),
+        ("aiohttp_client_error", "cannot_connect"),
     ],
 )
 async def test_validate_input_exception_mapping(
@@ -187,6 +317,8 @@ async def test_validate_input_exception_mapping(
         exc = aiopnsense_exceptions.OPNsenseTimeoutError("t")
     elif exc_key == "connection":
         exc = aiopnsense_exceptions.OPNsenseConnectionError("boom")
+    elif exc_key == "aiohttp_client_error":
+        exc = ClientError("boom")
     else:
         exc = OSError("unknown")
 
@@ -206,6 +338,114 @@ async def test_validate_input_exception_mapping(
     errors: dict[str, str] = {}
     res = await cf_mod.validate_input(hass=MagicMock(), user_input={}, errors=errors)
     assert res.get("base") == expected
+
+
+@pytest.mark.asyncio
+async def test_validate_input_maps_raw_aiohttp_client_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Aiohttp ClientError should map to cannot_connect without aborting the flow."""
+
+    async def _raise(*args: object, **kwargs: object) -> Never:
+        """Raise a raw aiohttp ClientError to exercise transport mapping."""
+        raise ClientError("client request failed")
+
+    monkeypatch.setattr(cf_mod, "_validate_client_details", _raise)
+    errors: dict[str, str] = {}
+    res = await cf_mod.validate_input(hass=MagicMock(), user_input={}, errors=errors)
+
+    assert res["base"] == "cannot_connect"
+
+
+@pytest.mark.asyncio
+async def test_validate_input_maps_raw_aiohttp_forbidden_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Aiohttp 403 responses should map to privilege_missing."""
+
+    async def _raise(*args: object, **kwargs: object) -> Never:
+        """Raise a fake 403 response error to exercise privilege mapping."""
+        error = ClientResponseError(
+            request_info=MagicMock(real_url="https://x"),
+            history=(),
+            status=403,
+            message="forbidden",
+            headers=MagicMock(),
+        )
+        raise error
+
+    monkeypatch.setattr(cf_mod, "_validate_client_details", _raise)
+    errors: dict[str, str] = {}
+    res = await cf_mod.validate_input(hass=MagicMock(), user_input={}, errors=errors)
+
+    assert res["base"] == "privilege_missing"
+
+
+@pytest.mark.asyncio
+async def test_validate_input_maps_raw_aiohttp_ssl_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Aiohttp SSL errors should map to cannot_connect_ssl."""
+
+    async def _raise(*args: object, **kwargs: object) -> Never:
+        """Raise a raw aiohttp SSL error to exercise ssl mapping."""
+        error = ClientSSLError(MagicMock(host="x", port=443, ssl=True), OSError("ssl"))
+        raise error
+
+    monkeypatch.setattr(cf_mod, "_validate_client_details", _raise)
+    errors: dict[str, str] = {}
+    res = await cf_mod.validate_input(hass=MagicMock(), user_input={}, errors=errors)
+
+    assert res["base"] == "cannot_connect_ssl"
+
+@pytest.mark.parametrize(
+    (
+        "failing_attribute",
+        "carp",
+    ),
+    [
+        ("get_system_info", False),
+        ("get_device_unique_id", False),
+        ("get_carp", True),
+    ],
+)
+async def test_validate_input_maps_aiohttp_client_error_from_enrichment_calls(
+    monkeypatch: pytest.MonkeyPatch,
+    failing_attribute: str,
+    carp: bool,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Raw aiohttp errors from enrichment calls should map to cannot_connect."""
+    username = "admin"
+    password = "supersecret"
+    client = _CarpFlowClient()
+    setattr(
+        client,
+        failing_attribute,
+        AsyncMock(side_effect=ClientError(f"timeout user={username} pass={password}")),
+    )
+    patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
+
+    user_input = _make_basic_carp_input() if carp else _make_basic_device_input()
+    user_input.update(
+        {
+            cf_mod.CONF_USERNAME: username,
+            cf_mod.CONF_PASSWORD: password,
+        }
+    )
+
+    with caplog.at_level("ERROR"):
+        result = await cf_mod.validate_input(
+            hass=MagicMock(),
+            user_input=user_input,
+            errors={},
+            carp=carp,
+        )
+
+    assert result["base"] == "cannot_connect"
+    assert "[redacted]" in caplog.text
+    assert username not in caplog.text
+    assert password not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -263,12 +503,452 @@ async def test_validate_input_timeout_uses_connect_timeout_error(
     assert password not in caplog.text
 
 
+@pytest.mark.asyncio
+async def test_validate_input_timeout_subclass_of_client_error_still_maps_connect_timeout(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Timeout subclasses that also appear as ClientError map to connect_timeout."""
+    username = "admin"
+    password = "supersecret"
+
+    async def _raiser(*args: object, **kwargs: object) -> Never:
+        """Raise an exception that is both TimeoutError and ClientError."""
+        raise ServerTimeoutError(f"timeout user={username} pass={password}")
+
+    monkeypatch.setattr(cf_mod, "_validate_client_details", _raiser)
+    with caplog.at_level("ERROR"):
+        result = await cf_mod.validate_input(
+            hass=MagicMock(),
+            user_input={cf_mod.CONF_USERNAME: username, cf_mod.CONF_PASSWORD: password},
+            errors={},
+        )
+
+    assert result.get("base") == "connect_timeout"
+    assert "[redacted]" in caplog.text
+    assert username not in caplog.text
+    assert password not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_async_step_user_shows_menu() -> None:
+    """Initial config flow step should present a menu with two entry types."""
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+
+    result = await flow.async_step_user()
+
+    assert result["type"] == "menu"
+    assert result["step_id"] == "user"
+    assert result["menu_options"] == ["device", "carp"]
+
+
+@pytest.mark.asyncio
+async def test_async_step_device_creates_entry_and_sets_entry_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Device flow should continue to set a hardware-backed entry type."""
+    client = _CarpFlowClient()
+    patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
+
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+    object.__setattr__(
+        flow,
+        "async_set_unique_id",
+        AsyncMock(),
+    )
+    object.__setattr__(flow, "_abort_if_unique_id_configured", lambda: None)
+    flow.hass.config_entries = MagicMock()
+    flow.hass.config_entries.async_entries = MagicMock(return_value=[])
+
+    result = await flow.async_step_device(user_input=_make_basic_device_input())
+
+    assert result["type"] == "create_entry"
+    assert result["data"][CONF_ENTRY_TYPE] == ENTRY_TYPE_DEVICE
+    assert result["data"][cf_mod.CONF_DEVICE_UNIQUE_ID] == "dev-id"
+    assert not result["data"][cf_mod.CONF_GRANULAR_SYNC_OPTIONS]
+
+
+@pytest.mark.asyncio
+async def test_async_step_device_routes_to_granular_sync(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Device flow must still forward granular-sync-enabled submissions."""
+    client = _CarpFlowClient()
+    patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
+
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+    object.__setattr__(
+        flow,
+        "async_set_unique_id",
+        AsyncMock(),
+    )
+    object.__setattr__(flow, "_abort_if_unique_id_configured", lambda: None)
+    flow.hass.config_entries = MagicMock()
+    flow.hass.config_entries.async_entries = MagicMock(return_value=[])
+
+    ui = _make_basic_device_input()
+    ui[cf_mod.CONF_GRANULAR_SYNC_OPTIONS] = True
+    result = await flow.async_step_device(user_input=ui)
+
+    assert result["type"] == "form"
+    assert result["step_id"] == "granular_sync"
+
+
+@pytest.mark.asyncio
+async def test_async_step_device_aborts_on_duplicate_carp_url(
+    monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Device flow should reject a normalized URL already used by a CARP entry."""
+    client = _CarpFlowClient()
+    patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
+
+    existing_entry = make_config_entry(
+        data={
+            cf_mod.CONF_URL: "https://router.example",
+            cf_mod.CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+            cf_mod.CONF_USERNAME: "carp-user",
+            cf_mod.CONF_PASSWORD: "carp-pass",
+        },
+        options={},
+    )
+    assert existing_entry.data[cf_mod.CONF_ENTRY_TYPE] == ENTRY_TYPE_CARP
+
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+    flow.hass.config_entries = MagicMock()
+    flow.hass.config_entries.async_entries = MagicMock(return_value=[existing_entry])
+    set_unique_id = AsyncMock()
+    abort_if_configured = MagicMock()
+    object.__setattr__(flow, "async_set_unique_id", set_unique_id)
+    object.__setattr__(flow, "_abort_if_unique_id_configured", abort_if_configured)
+
+    user_input = _make_basic_device_input()
+    user_input[cf_mod.CONF_URL] = "https://router.example/"
+    result = await flow.async_step_device(user_input=user_input)
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "carp_device_url_conflict"
+    flow.hass.config_entries.async_entries.assert_called_once_with(cf_mod.DOMAIN)
+    set_unique_id.assert_not_awaited()
+    abort_if_configured.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_async_step_carp_aborts_on_device_url_conflict(
+    monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """CARP flow should reject a URL already used by a device entry."""
+    client = _CarpFlowClient()
+    patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
+
+    existing_entry = make_config_entry(
+        data={
+            cf_mod.CONF_URL: "https://router.example",
+            cf_mod.CONF_USERNAME: "device-user",
+            cf_mod.CONF_PASSWORD: "device-pass",
+        },
+        options={},
+    )
+
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+    flow.hass.config_entries = MagicMock()
+    flow.hass.config_entries.async_entries = MagicMock(return_value=[existing_entry])
+    abort_match = MagicMock(return_value={"type": "abort", "reason": "already_configured"})
+    object.__setattr__(flow, "_async_abort_entries_match", abort_match)
+
+    user_input = _make_basic_carp_input()
+    user_input[cf_mod.CONF_URL] = "https://router.example/"
+    result = await flow.async_step_carp(user_input=user_input)
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "carp_device_url_conflict"
+    flow.hass.config_entries.async_entries.assert_called_once_with(cf_mod.DOMAIN)
+    abort_match.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_async_step_device_allows_same_url_for_non_carp_entry(
+    monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Device flow should not block URL duplicates when matching entry is not CARP."""
+    client = _CarpFlowClient()
+    patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
+
+    existing_entry = make_config_entry(
+        data={
+            cf_mod.CONF_URL: "https://router.example",
+            cf_mod.CONF_USERNAME: "device-user",
+            cf_mod.CONF_PASSWORD: "device-pass",
+        },
+        options={},
+    )
+    assert existing_entry.data.get(cf_mod.CONF_ENTRY_TYPE, ENTRY_TYPE_DEVICE) == ENTRY_TYPE_DEVICE
+
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+    flow.hass.config_entries = MagicMock()
+    flow.hass.config_entries.async_entries = MagicMock(return_value=[existing_entry])
+    set_unique_id = AsyncMock()
+    abort_if_configured = MagicMock()
+
+    object.__setattr__(
+        flow,
+        "async_set_unique_id",
+        set_unique_id,
+    )
+    object.__setattr__(flow, "_abort_if_unique_id_configured", abort_if_configured)
+
+    user_input = _make_basic_device_input()
+    user_input[cf_mod.CONF_URL] = "https://router.example/"
+    result = await flow.async_step_device(user_input=user_input)
+
+    assert result["type"] == "create_entry"
+    assert result["data"][CONF_ENTRY_TYPE] == ENTRY_TYPE_DEVICE
+    assert result["data"][cf_mod.CONF_URL] == "https://router.example"
+    set_unique_id.assert_awaited_once_with("dev-id")
+    abort_if_configured.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_async_step_carp_validates_without_device_id_and_sets_entry_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CARP flow should validate with device-id disabled and skip granular sync fields."""
+    client = _CarpFlowClient()
+    patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
+
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+
+    result = await flow.async_step_carp(user_input=_make_basic_carp_input())
+
+    assert result["type"] == "create_entry"
+    assert result["data"][CONF_ENTRY_TYPE] == ENTRY_TYPE_CARP
+    assert result["data"][cf_mod.CONF_FIRMWARE_VERSION] == client.firmware_version
+    assert result["data"][cf_mod.CONF_NAME] == f"{client.system_name} CARP VIP"
+    assert result["data"].get(cf_mod.CONF_DEVICE_UNIQUE_ID) is None
+    assert result["data"].get(cf_mod.CONF_GRANULAR_SYNC_OPTIONS) is None
+    client.validate.assert_awaited_once_with(require_device_id=False)
+    client.get_device_unique_id.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "interfaces",
+    [
+        None,
+        (),
+        "not-a-list",
+        [],
+        [{}],
+        ["not-a-mapping"],
+        [{"vhid": "", "subnet": "192.0.2.1"}],
+        [{"vhid": "1", "subnet": ""}],
+        [{"vhid": "  ", "subnet": "  "}],
+    ],
+)
+async def test_async_step_carp_rejects_malformed_or_blank_vip_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    interfaces: Any,
+) -> None:
+    """CARP validation should require a mapping row with usable VHID and subnet."""
+    client = _CarpFlowClient()
+    object.__setattr__(client, "get_carp", AsyncMock(return_value={"interfaces": interfaces}))
+    patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
+
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+
+    result = await flow.async_step_carp(user_input=_make_basic_carp_input())
+
+    assert result["type"] == "form"
+    assert result["errors"]["base"] == "carp_responder_unavailable"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "interface",
+    [
+        {"vhid": 1, "subnet": "192.0.2.1"},
+        {"vhid": " 2 ", "subnet": " 192.0.2.2 "},
+    ],
+)
+async def test_async_step_carp_accepts_vip_identity_without_physical_interface(
+    monkeypatch: pytest.MonkeyPatch,
+    interface: dict[str, Any],
+) -> None:
+    """CARP validation should accept integer/string VHIDs without interface names."""
+    client = _CarpFlowClient()
+    object.__setattr__(client, "get_carp", AsyncMock(return_value={"interfaces": [interface]}))
+    patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
+
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+
+    result = await flow.async_step_carp(user_input=_make_basic_carp_input())
+
+    assert result["type"] == "create_entry"
+    assert result["data"][cf_mod.CONF_ENTRY_TYPE] == ENTRY_TYPE_CARP
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "system_info",
+    [None, {}, {"name": None}, {"name": ""}, {"name": "  "}, {"name": 123}, []],
+)
+async def test_async_step_carp_rejects_missing_or_blank_responder_name(
+    monkeypatch: pytest.MonkeyPatch,
+    system_info: Any,
+) -> None:
+    """CARP validation should require a usable responder name from system info."""
+    client = _CarpFlowClient()
+    object.__setattr__(client, "get_system_info", AsyncMock(return_value=system_info))
+    patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
+
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+
+    result = await flow.async_step_carp(user_input=_make_basic_carp_input())
+
+    assert result["type"] == "form"
+    assert result["errors"]["base"] == "carp_not_configured"
+    client.get_device_unique_id.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_async_step_carp_custom_name_does_not_waive_responder_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A custom entry name should not bypass required responder metadata."""
+    client = _CarpFlowClient()
+    object.__setattr__(client, "get_system_info", AsyncMock(return_value={"name": "  "}))
+    patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
+
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+    user_input = _make_basic_carp_input()
+    user_input[cf_mod.CONF_NAME] = "Custom CARP"
+
+    result = await flow.async_step_carp(user_input=user_input)
+
+    assert result["type"] == "form"
+    assert result["errors"]["base"] == "carp_responder_unavailable"
+
+
+def test_validation_error_details_maps_carp_responder_unavailable() -> None:
+    """Responder validation errors should use their dedicated form error key."""
+    result = cf_mod._get_validation_error_details(
+        cf_mod.OPNsenseCarpResponderUnavailableError("missing responder"),
+        _make_basic_carp_input(),
+    )
+
+    assert result is not None
+    assert result[0] == "carp_responder_unavailable"
+    assert result[1] == "Unable to determine the active CARP responder"
+
+
+@pytest.mark.asyncio
+async def test_async_step_carp_rejects_below_min_firmware(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Below-minimum firmware in CARP mode should map to below_min_firmware."""
+    client = _CarpFlowClient(
+        firmware_version="0.1.0",
+        validate_error=aiopnsense_exceptions.OPNsenseBelowMinFirmware("too old"),
+    )
+    patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
+
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+    result = await flow.async_step_carp(user_input=_make_basic_carp_input())
+
+    assert result["type"] == "form"
+    assert result["errors"]["base"] == "below_min_firmware"
+
+
+@pytest.mark.asyncio
+async def test_async_step_carp_aborts_on_duplicate_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CARP flow should use abort-by-URL dedupe for existing entries."""
+    client = _CarpFlowClient()
+    patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
+
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+    object.__setattr__(
+        flow,
+        "_async_abort_entries_match",
+        lambda _match: {"type": "abort", "reason": "already_configured"},
+    )
+
+    result = await flow.async_step_carp(user_input=_make_basic_carp_input())
+
+    assert result == {"type": "abort", "reason": "already_configured"}
+
+
+@pytest.mark.asyncio
+async def test_validate_input_can_map_carp_not_configured_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """validate_input should map CARP payload errors to base key carp_not_configured."""
+
+    async def _raise(*_args: object, **_kwargs: object) -> Never:
+        """Raise the CARP validation error requested by the test."""
+        raise cf_mod.OPNsenseCarpNotConfiguredError("No CARP VIPs were returned")
+
+    monkeypatch.setattr(cf_mod, "_validate_carp_client_details", _raise)
+    errors: dict[str, str] = {}
+    result = await cf_mod.validate_input(
+        hass=MagicMock(),
+        user_input=_make_basic_carp_input(),
+        errors=errors,
+        carp=True,
+    )
+    assert result["base"] == "carp_not_configured"
+
+
 def test_record_validation_error_sets_base(caplog: pytest.LogCaptureFixture) -> None:
     """_record_validation_error should log the message and set errors['base']."""
     errors: dict[str, str] = {}
     cf_mod._record_validation_error(errors=errors, key="test_key", message="an msg")
     assert errors.get("base") == "test_key"
     assert "an msg" in caplog.text
+
+
+def test_build_carp_input_schema_defaults_and_rejects_unknown_fields() -> None:
+    """CARP schema should apply defaults and ignore unrelated field keys."""
+    schema = cf_mod._build_carp_input_schema(
+        user_input=None,
+        stored_values={
+            cf_mod.CONF_URL: "https://stored.example",
+            cf_mod.CONF_VERIFY_SSL: False,
+            cf_mod.CONF_USERNAME: "stored-user",
+            cf_mod.CONF_PASSWORD: "stored-pass",
+            cf_mod.CONF_NAME: "Stored Router",
+        },
+    )
+    values = schema({})
+    assert values[cf_mod.CONF_URL] == "https://stored.example"
+    assert values[cf_mod.CONF_VERIFY_SSL] is False
+    assert values[cf_mod.CONF_USERNAME] == "stored-user"
+    assert values[cf_mod.CONF_PASSWORD] == "stored-pass"
+    assert values[cf_mod.CONF_NAME] == "Stored Router"
+    with pytest.raises(vol.Invalid):
+        schema({cf_mod.CONF_GRANULAR_SYNC_OPTIONS: True})
+
+
+def test_build_carp_options_schema_exposes_scan_interval_only() -> None:
+    """CARP options schema should only contain scan interval."""
+    schema = cf_mod._build_carp_options_schema(user_input=None, stored_options=None)
+    values = schema({})
+    assert values == {cf_mod.CONF_SCAN_INTERVAL: cf_mod.DEFAULT_SCAN_INTERVAL}
+
+    with pytest.raises(vol.Invalid):
+        schema({cf_mod.CONF_DEVICE_TRACKING_MODE: cf_mod.DEVICE_TRACKING_MODE_ALL})
 
 
 @pytest.mark.asyncio
@@ -378,10 +1058,34 @@ async def test_get_dt_entries_preserves_missing_selected_devices(
 
 
 @pytest.mark.asyncio
+async def test_get_dt_entries_supports_raw_arp_keys(
+    monkeypatch: pytest.MonkeyPatch, fake_client: Any
+) -> None:
+    """_get_dt_entries should parse raw aiopnsense 1.1.1 ARP keys."""
+    client_cls = fake_client()
+
+    async def _get_arp_table(self: Any, resolve_hostnames: bool = True) -> Any:
+        return [{"mac-address": "AA-BB-CC-00-00-01", "ip-address": "10.0.0.10"}]
+
+    client_cls.get_arp_table = _get_arp_table
+    patch_opnsense_client(monkeypatch, cf_mod, client_cls)
+
+    res = await cf_mod._get_dt_entries(
+        hass=MagicMock(),
+        config={cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"},
+        selected_devices=[],
+    )
+
+    assert res == {"aa:bb:cc:00:00:01": "10.0.0.10 [aa:bb:cc:00:00:01]"}
+
+
+@pytest.mark.asyncio
 async def test_get_dt_entries_closes_client(monkeypatch: pytest.MonkeyPatch) -> None:
-    """_get_dt_entries should always close the temporary client."""
+    """_get_dt_entries should close the client and request propagated errors."""
 
     class _Client:
+        """Fake client that records closure for device-tracker entry tests."""
+
         last_instance = None
 
         def __init__(self, *args, **kwargs) -> None:
@@ -392,6 +1096,7 @@ async def test_get_dt_entries_closes_client(monkeypatch: pytest.MonkeyPatch) -> 
                 **kwargs: Unused keyword constructor args from factory helper.
             """
             type(self).last_instance = self
+            self.throw_errors = kwargs.get("throw_errors")
             self.async_close = AsyncMock()
 
         async def get_arp_table(self, resolve_hostnames: bool = True) -> Any:
@@ -413,6 +1118,7 @@ async def test_get_dt_entries_closes_client(monkeypatch: pytest.MonkeyPatch) -> 
         selected_devices=[],
     )
     assert _Client.last_instance is not None
+    assert _Client.last_instance.throw_errors is True
     _Client.last_instance.async_close.assert_awaited_once()
 
 
@@ -421,6 +1127,8 @@ async def test_validate_client_details_closes_client(monkeypatch: pytest.MonkeyP
     """_validate_client_details should always close the temporary client."""
 
     class _Client:
+        """Fake client that records closure for validation cleanup tests."""
+
         last_instance = None
 
         def __init__(self, *args, **kwargs) -> None:
@@ -487,6 +1195,8 @@ async def test_validate_client_details_raises_when_device_id_missing(
     """_validate_client_details should reject clients that return no device id."""
 
     class _Client:
+        """Fake client that returns no device ID for validation tests."""
+
         last_instance = None
 
         def __init__(self, *args: object, **kwargs: object) -> None:
@@ -724,6 +1434,67 @@ def test_async_get_options_flow_returns_options_flow() -> None:
 
 
 @pytest.mark.asyncio
+async def test_options_flow_init_for_carp_entry_only_allows_scan_interval(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP options init should render scan interval form and skip device-tracker fields."""
+    cfg = make_config_entry(
+        data={
+            cf_mod.CONF_URL: "https://x",
+            cf_mod.CONF_USERNAME: "u",
+            cf_mod.CONF_PASSWORD: "p",
+            cf_mod.CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+        },
+        options={cf_mod.CONF_SCAN_INTERVAL: 45},
+    )
+    flow = _make_options_flow(cfg)
+    flow._config = dict(cfg.data)
+    flow._options = dict(cfg.options)
+
+    res = await flow.async_step_init()
+
+    assert res["type"] == "form"
+    assert res["step_id"] == "init"
+    assert res["description_placeholders"]["options_scope"] == (
+        "scan interval only for this CARP VIP entry"
+    )
+    data = res["data_schema"]({})
+    assert data == {cf_mod.CONF_SCAN_INTERVAL: 45}
+
+
+@pytest.mark.asyncio
+async def test_options_flow_init_for_carp_entry_saves_scan_interval(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Submitting CARP options should normalize scan interval and preserve unrelated options."""
+    cfg = make_config_entry(
+        data={
+            cf_mod.CONF_URL: "https://x",
+            cf_mod.CONF_USERNAME: "u",
+            cf_mod.CONF_PASSWORD: "p",
+            cf_mod.CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+        },
+        options={
+            cf_mod.CONF_SCAN_INTERVAL: 60,
+            cf_mod.CONF_DEVICE_TRACKER_ENABLED: False,
+            cf_mod.CONF_DEVICE_TRACKING_MODE: cf_mod.DEVICE_TRACKING_MODE_SELECTED,
+        },
+    )
+    flow = _make_options_flow(cfg)
+    flow._config = dict(cfg.data)
+    flow._options = dict(cfg.options)
+
+    res = await flow.async_step_init(user_input={cf_mod.CONF_SCAN_INTERVAL: 120})
+
+    assert res["type"] == "create_entry"
+    assert flow._options == {
+        cf_mod.CONF_SCAN_INTERVAL: 120,
+        cf_mod.CONF_DEVICE_TRACKER_ENABLED: False,
+        cf_mod.CONF_DEVICE_TRACKING_MODE: cf_mod.DEVICE_TRACKING_MODE_SELECTED,
+    }
+
+
+@pytest.mark.asyncio
 async def test_options_flow_init_with_user_triggers_update() -> None:
     """Submitting user input to async_step_init should update entry and create entry."""
     cfg = MagicMock()
@@ -744,6 +1515,28 @@ async def test_options_flow_init_with_user_triggers_update() -> None:
     assert res["type"] == "create_entry"
     assert flow._options.get(cf_mod.CONF_SCAN_INTERVAL) == 30
     assert isinstance(flow._options.get(cf_mod.CONF_SCAN_INTERVAL), int)
+
+
+@pytest.mark.asyncio
+async def test_options_flow_init_for_device_shows_resolved_description_scope(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Device options form render should include normal options-scope description placeholders."""
+    cfg = make_config_entry(
+        data={cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"},
+        options={},
+    )
+    flow = _make_options_flow(cfg)
+    flow._config = dict(cfg.data)
+    flow._options = dict(cfg.options)
+
+    res = await flow.async_step_init()
+
+    assert res["type"] == "form"
+    assert res["step_id"] == "init"
+    assert res["description_placeholders"] == {
+        "options_scope": "all available integration and device-tracker options"
+    }
 
 
 @pytest.mark.asyncio
@@ -844,13 +1637,36 @@ async def test_device_tracker_shows_form_when_no_user_input(
     assert cf_mod.CONF_DEVICES in validated
 
 
+@pytest.mark.parametrize(
+    ("exception_factory", "expected_base_error"),
+    [
+        (aiopnsense_exceptions.OPNsenseConnectionError, "cannot_connect"),
+        (aiopnsense_exceptions.OPNsenseInvalidAuth, "invalid_auth"),
+        (cf_mod.OPNsenseSSLError, "cannot_connect_ssl"),
+        (aiopnsense_exceptions.OPNsensePrivilegeMissing, "privilege_missing"),
+        (aiopnsense_exceptions.OPNsenseTimeoutError, "connect_timeout"),
+        (ServerTimeoutError, "connect_timeout"),
+        (ClientError, "cannot_connect"),
+    ],
+    ids=[
+        "cannot_connect",
+        "invalid_auth",
+        "ssl",
+        "privilege_missing",
+        "timeout",
+        "server_timeout",
+        "aiohttp",
+    ],
+)
 @pytest.mark.asyncio
 async def test_device_tracker_handles_arp_lookup_failure(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
+    exception_factory: type[BaseException],
+    expected_base_error: str,
 ) -> None:
     """ARP lookup failures should not abort device tracker form rendering."""
-    exc = aiopnsense_exceptions.OPNsenseConnectionError("boom")
+    exc = exception_factory("boom")
     cfg = make_config_entry(
         data={cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"},
         options={cf_mod.CONF_DEVICES: ["AA-BB-CC-DD-EE-FF"]},
@@ -875,7 +1691,33 @@ async def test_device_tracker_handles_arp_lookup_failure(
 
     res = await flow.async_step_device_tracker(user_input=None)
     assert res["type"] == "form"
-    assert res["errors"]["base"] == "cannot_connect"
+    assert res["errors"]["base"] == expected_base_error
+    validated = res["data_schema"]({})
+    assert validated[cf_mod.CONF_DEVICES] == ["aa:bb:cc:dd:ee:ff"]
+
+
+@pytest.mark.asyncio
+async def test_device_tracker_handles_builtin_timeout_lookup_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Builtin TimeoutError from ARP lookup should map to connect_timeout."""
+    cfg = make_config_entry(
+        data={cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"},
+        options={cf_mod.CONF_DEVICES: ["AA-BB-CC-DD-EE-FF"]},
+    )
+    flow = _make_options_flow(cfg)
+    flow._config = dict(cfg.data)
+    flow._options = dict(cfg.options)
+
+    async def _raise(*args, **kwargs) -> Never:
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(cf_mod, "_get_dt_entries", _raise)
+
+    res = await flow.async_step_device_tracker(user_input=None)
+    assert res["type"] == "form"
+    assert res["errors"]["base"] == "connect_timeout"
     validated = res["data_schema"]({})
     assert validated[cf_mod.CONF_DEVICES] == ["aa:bb:cc:dd:ee:ff"]
 
@@ -1052,6 +1894,339 @@ async def test_reconfigure_updates_entry_when_validation_succeeds(
             cf_mod.CONF_DEVICE_UNIQUE_ID: "device-1",
         },
     )
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_device_aborts_on_carp_url_conflict(
+    monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Device reconfigure should reject a changed URL used by a CARP entry."""
+    config_entry = make_config_entry(
+        data={
+            cf_mod.CONF_URL: "https://old.example",
+            cf_mod.CONF_USERNAME: "u",
+            cf_mod.CONF_PASSWORD: "p",
+            cf_mod.CONF_DEVICE_UNIQUE_ID: "device-1",
+        },
+        options={},
+        unique_id="device-1",
+    )
+    existing_entry = make_config_entry(
+        data={
+            cf_mod.CONF_URL: "https://router.example:443",
+            cf_mod.CONF_USERNAME: "carp-user",
+            cf_mod.CONF_PASSWORD: "carp-pass",
+            cf_mod.CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+        },
+        options={},
+    )
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+    flow.hass.config_entries = MagicMock()
+    flow.hass.config_entries.async_entries = MagicMock(return_value=[existing_entry])
+    validate = AsyncMock(return_value={})
+    set_unique_id = AsyncMock()
+    update_and_abort = MagicMock()
+
+    monkeypatch.setattr(cf_mod, "validate_input", validate)
+    object.__setattr__(flow, "_get_reconfigure_entry", lambda: config_entry)
+    object.__setattr__(flow, "async_set_unique_id", set_unique_id)
+    object.__setattr__(flow, "_abort_if_unique_id_mismatch", lambda: None)
+    object.__setattr__(flow, "async_update_and_abort", update_and_abort)
+
+    result = await flow.async_step_reconfigure(
+        user_input={
+            cf_mod.CONF_URL: "https://router.example",
+            cf_mod.CONF_USERNAME: "u",
+            cf_mod.CONF_PASSWORD: "p",
+        }
+    )
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "carp_device_url_conflict"
+    validate.assert_awaited_once()
+    flow.hass.config_entries.async_entries.assert_called_once_with(cf_mod.DOMAIN)
+    set_unique_id.assert_not_awaited()
+    update_and_abort.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_carp_updates_entry_without_unique_id_checks(
+    monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """CARP reconfigure should validate with CARP mode and skip unique-id checks."""
+    config_entry = make_config_entry(
+        data={
+            cf_mod.CONF_URL: "https://x",
+            cf_mod.CONF_USERNAME: "u",
+            cf_mod.CONF_PASSWORD: "p",
+            cf_mod.CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+            cf_mod.CONF_FIRMWARE_VERSION: "26.1.11",
+            cf_mod.CONF_NAME: "Router CARP VIP",
+        },
+        options={},
+    )
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+    validate = AsyncMock(return_value={})
+    set_unique_id = AsyncMock()
+    update_and_abort = MagicMock(return_value={"type": "abort", "reason": "reconfigure_successful"})
+
+    monkeypatch.setattr(cf_mod, "validate_input", validate)
+    object.__setattr__(flow, "_get_reconfigure_entry", lambda: config_entry)
+    object.__setattr__(flow, "async_set_unique_id", set_unique_id)
+    object.__setattr__(flow, "_abort_if_unique_id_mismatch", lambda: None)
+    object.__setattr__(flow, "async_update_and_abort", update_and_abort)
+
+    result = await flow.async_step_reconfigure(
+        user_input={
+            cf_mod.CONF_URL: "https://carp-router.example",
+            cf_mod.CONF_USERNAME: "admin",
+            cf_mod.CONF_PASSWORD: "secret",
+            cf_mod.CONF_VERIFY_SSL: True,
+        }
+    )
+
+    assert result == {"type": "abort", "reason": "reconfigure_successful"}
+    validate.assert_awaited_once()
+    validate_call = validate.await_args
+    assert validate_call is not None
+    assert validate_call.kwargs["carp"] is True
+    assert "expected_id" not in validate_call.kwargs
+    set_unique_id.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_carp_aborts_on_device_url_conflict(
+    monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """CARP reconfigure should reject a changed URL used by a device entry."""
+    config_entry = make_config_entry(
+        data={
+            cf_mod.CONF_URL: "https://old-carp.example",
+            cf_mod.CONF_USERNAME: "u",
+            cf_mod.CONF_PASSWORD: "p",
+            cf_mod.CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+        },
+        options={},
+    )
+    existing_entry = make_config_entry(
+        data={
+            cf_mod.CONF_URL: "http://router.example:80",
+            cf_mod.CONF_USERNAME: "device-user",
+            cf_mod.CONF_PASSWORD: "device-pass",
+        },
+        options={},
+    )
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+    flow.hass.config_entries = MagicMock()
+    flow.hass.config_entries.async_entries = MagicMock(return_value=[existing_entry])
+    validate = AsyncMock(return_value={})
+    abort_match = MagicMock(return_value={"type": "abort", "reason": "already_configured"})
+    update_and_abort = MagicMock()
+
+    monkeypatch.setattr(cf_mod, "validate_input", validate)
+    object.__setattr__(flow, "_get_reconfigure_entry", lambda: config_entry)
+    object.__setattr__(flow, "_async_abort_entries_match", abort_match)
+    object.__setattr__(flow, "async_update_and_abort", update_and_abort)
+
+    result = await flow.async_step_reconfigure(
+        user_input={
+            cf_mod.CONF_URL: "http://router.example",
+            cf_mod.CONF_USERNAME: "admin",
+            cf_mod.CONF_PASSWORD: "secret",
+            cf_mod.CONF_VERIFY_SSL: True,
+        }
+    )
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "carp_device_url_conflict"
+    validate.assert_awaited_once()
+    flow.hass.config_entries.async_entries.assert_called_once_with(cf_mod.DOMAIN)
+    abort_match.assert_not_called()
+    update_and_abort.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_carp_returns_form_on_validation_error(
+    monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """CARP reconfigure validation errors should return form and not update."""
+    config_entry = make_config_entry(
+        data={
+            cf_mod.CONF_URL: "https://x",
+            cf_mod.CONF_USERNAME: "u",
+            cf_mod.CONF_PASSWORD: "p",
+            cf_mod.CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+        },
+        options={},
+    )
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+    validate = AsyncMock(return_value={"base": "invalid_host"})
+    abort_match = MagicMock(return_value={"type": "abort", "reason": "already_configured"})
+    update_and_abort = MagicMock()
+
+    monkeypatch.setattr(cf_mod, "validate_input", validate)
+    object.__setattr__(flow, "_get_reconfigure_entry", lambda: config_entry)
+    object.__setattr__(flow, "_async_abort_entries_match", abort_match)
+    object.__setattr__(flow, "async_update_and_abort", update_and_abort)
+
+    result = await flow.async_step_reconfigure(
+        user_input={
+            cf_mod.CONF_URL: "https://router.example",
+            cf_mod.CONF_USERNAME: "admin",
+            cf_mod.CONF_PASSWORD: "secret",
+            cf_mod.CONF_VERIFY_SSL: True,
+        }
+    )
+
+    assert result["type"] == "form"
+    assert result["step_id"] == "reconfigure"
+    assert result["errors"] == {"base": "invalid_host"}
+    abort_match.assert_not_called()
+    update_and_abort.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_carp_skips_duplicate_check_when_url_unchanged(
+    monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """CARP reconfigure should skip URL duplicate checks when the URL is unchanged."""
+    config_entry = make_config_entry(
+        entry_id="carp-entry",
+        data={
+            cf_mod.CONF_URL: "https://carp-router.example",
+            cf_mod.CONF_USERNAME: "u",
+            cf_mod.CONF_PASSWORD: "p",
+            cf_mod.CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+        },
+        options={},
+    )
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+    validate = AsyncMock(
+        side_effect=lambda **kwargs: kwargs["user_input"].update(
+            {cf_mod.CONF_URL: "https://carp-router.example"}
+        )
+    )
+    monkeypatch.setattr(cf_mod, "validate_input", validate)
+    object.__setattr__(flow, "_get_reconfigure_entry", lambda: config_entry)
+    abort_match = MagicMock(return_value={"type": "abort", "reason": "already_configured"})
+    object.__setattr__(flow, "_async_abort_entries_match", abort_match)
+    update_and_abort = MagicMock(return_value={"type": "abort", "reason": "reconfigure_successful"})
+    object.__setattr__(flow, "async_update_and_abort", update_and_abort)
+
+    result = await flow.async_step_reconfigure(
+        user_input={
+            cf_mod.CONF_URL: "https://carp-router.example/",
+            cf_mod.CONF_USERNAME: "admin",
+            cf_mod.CONF_PASSWORD: "secret",
+            cf_mod.CONF_VERIFY_SSL: True,
+        }
+    )
+
+    assert result == {"type": "abort", "reason": "reconfigure_successful"}
+    validate.assert_awaited_once()
+    abort_match.assert_not_called()
+    update_and_abort.assert_called_once_with(
+        entry=config_entry,
+        data={
+            cf_mod.CONF_URL: "https://carp-router.example",
+            cf_mod.CONF_USERNAME: "admin",
+            cf_mod.CONF_PASSWORD: "secret",
+            cf_mod.CONF_VERIFY_SSL: True,
+            cf_mod.CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_carp_aborts_on_normalized_duplicate_url(
+    monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """CARP reconfigure should reject a normalized URL used by another entry."""
+    config_entry = make_config_entry(
+        entry_id="carp-entry",
+        data={
+            cf_mod.CONF_URL: "https://old.example",
+            cf_mod.CONF_USERNAME: "u",
+            cf_mod.CONF_PASSWORD: "p",
+            cf_mod.CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+        },
+        options={},
+    )
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+    validate = AsyncMock(
+        side_effect=lambda **kwargs: kwargs["user_input"].update(
+            {cf_mod.CONF_URL: "https://carp-router.example"}
+        )
+    )
+    monkeypatch.setattr(cf_mod, "validate_input", validate)
+    object.__setattr__(flow, "_get_reconfigure_entry", lambda: config_entry)
+    duplicate_abort = {"type": "abort", "reason": "already_configured"}
+    abort_match = MagicMock(return_value=duplicate_abort)
+    object.__setattr__(flow, "_async_abort_entries_match", abort_match)
+    update_and_abort = MagicMock()
+    object.__setattr__(flow, "async_update_and_abort", update_and_abort)
+
+    result = await flow.async_step_reconfigure(
+        user_input={
+            cf_mod.CONF_URL: "https://carp-router.example/",
+            cf_mod.CONF_USERNAME: "admin",
+            cf_mod.CONF_PASSWORD: "secret",
+            cf_mod.CONF_VERIFY_SSL: True,
+        }
+    )
+
+    assert result == duplicate_abort
+    abort_match.assert_called_once_with({cf_mod.CONF_URL: "https://carp-router.example"})
+    update_and_abort.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_carp_preserves_self_url_when_no_duplicate(
+    monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """CARP reconfigure should keep its own normalized URL when no other entry matches."""
+    config_entry = make_config_entry(
+        entry_id="carp-entry",
+        data={
+            cf_mod.CONF_URL: "https://old.example",
+            cf_mod.CONF_USERNAME: "u",
+            cf_mod.CONF_PASSWORD: "p",
+            cf_mod.CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+        },
+        options={},
+    )
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+    validate = AsyncMock(
+        side_effect=lambda **kwargs: kwargs["user_input"].update(
+            {cf_mod.CONF_URL: "https://carp-router.example"}
+        )
+    )
+    monkeypatch.setattr(cf_mod, "validate_input", validate)
+    object.__setattr__(flow, "_get_reconfigure_entry", lambda: config_entry)
+    abort_match = MagicMock(return_value=None)
+    object.__setattr__(flow, "_async_abort_entries_match", abort_match)
+    update_and_abort = MagicMock(return_value={"type": "abort", "reason": "reconfigure_successful"})
+    object.__setattr__(flow, "async_update_and_abort", update_and_abort)
+
+    result = await flow.async_step_reconfigure(
+        user_input={
+            cf_mod.CONF_URL: "https://carp-router.example/",
+            cf_mod.CONF_USERNAME: "admin",
+            cf_mod.CONF_PASSWORD: "secret",
+            cf_mod.CONF_VERIFY_SSL: True,
+        }
+    )
+
+    assert result == {"type": "abort", "reason": "reconfigure_successful"}
+    abort_match.assert_called_once_with({cf_mod.CONF_URL: "https://carp-router.example"})
+    update_and_abort.assert_called_once()
 
 
 @pytest.mark.asyncio

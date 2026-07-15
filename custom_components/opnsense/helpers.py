@@ -15,11 +15,27 @@ from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.device_registry import DeviceEntry, DeviceRegistry
 from homeassistant.util import slugify
 
-from .const import CONF_DEVICE_UNIQUE_ID, DEFAULT_VERIFY_SSL, DOMAIN
+from .const import (
+    CONF_DEVICE_UNIQUE_ID,
+    CONF_ENTRY_TYPE,
+    DEFAULT_VERIFY_SSL,
+    DOMAIN,
+    ENTRY_TYPE_CARP,
+    ENTRY_TYPE_DEVICE,
+)
 
 
 def dict_get(data: MutableMapping[str, Any], path: str, default: Any | None = None) -> Any | None:
-    """Parse the path to get the desired value out of the data."""
+    """Parse a dotted path to get a value from nested mapping or list data.
+
+    Args:
+        data: Mutable mapping containing the value to retrieve.
+        path: Case-insensitive dotted path, including numeric list indexes.
+        default: Value returned when any path segment is unavailable.
+
+    Returns:
+        Any | None: Value found at the path, or ``default`` when absent.
+    """
     path_list: list = re.split(r"\.", path, flags=re.IGNORECASE)
     result: Any | None = data
 
@@ -35,16 +51,46 @@ def dict_get(data: MutableMapping[str, Any], path: str, default: Any | None = No
     return result
 
 
+def normalize_arp_mac(mac: object) -> str:
+    """Normalize a MAC address from an ARP payload."""
+
+    if not isinstance(mac, str):
+        return ""
+    return mac.strip().lower().replace("-", ":")
+
+
+def get_arp_mac(entry: Mapping[str, Any]) -> str:
+    """Return a normalized MAC address from an ARP payload."""
+
+    mac: object = entry.get("mac")
+    if not isinstance(mac, str):
+        mac = entry.get("mac-address")
+    return normalize_arp_mac(mac)
+
+
+def get_arp_ip(entry: Mapping[str, Any]) -> str:
+    """Return an IP address from an ARP payload."""
+
+    ip: object = entry.get("ip")
+    if not isinstance(ip, str):
+        ip = entry.get("ip-address")
+    return ip.strip() if isinstance(ip, str) else ""
+
+
+def get_smart_device_name(smart_device: Mapping[str, Any]) -> str:
+    """Return a SMART device identifier, preferring ``device`` over ``ident``."""
+
+    device_name = smart_device.get("device")
+    if not isinstance(device_name, str) or not device_name.strip():
+        device_name = smart_device.get("ident")
+    if not isinstance(device_name, str):
+        return ""
+    return device_name.strip()
+
+
 def firewall_rule_id_from_payload(rule_key: object, rule: object) -> str | None:
-    """Get a firewall rule ID from an aiopnsense rule payload.
+    """Get a firewall rule ID from an aiopnsense rule payload."""
 
-    Args:
-        rule_key: Mapping key for the rule in the firewall rules payload.
-        rule: Firewall rule payload.
-
-    Returns:
-        str | None: The rule UUID, falling back to the mapping key when usable.
-    """
     if not isinstance(rule, Mapping):
         return None
 
@@ -110,7 +156,14 @@ def firewall_nat_switch_unique_ids_from_payload(
 
 
 def is_private_ip(url: str) -> bool:
-    """Check if the address in the given URL is a private IP address."""
+    """Check whether the host address in a URL is private.
+
+    Args:
+        url: URL whose hostname should be inspected.
+
+    Returns:
+        bool: ``True`` when the URL hostname is a private IP address.
+    """
     parsed_url = urlparse(url)
     addr = parsed_url.hostname
     if not addr:
@@ -287,6 +340,52 @@ def detach_shared_router_parent(
         remove_config_entry_id=shared_config_entry_id,
     )
     return is_device_from_router, None
+
+
+def is_carp_entry(config_entry: ConfigEntry) -> bool:
+    """Return whether a config entry represents a CARP virtual endpoint.
+
+    Args:
+        config_entry: Config entry to classify.
+
+    Returns:
+        bool: ``True`` when the entry type is CARP.
+    """
+    return config_entry.data.get(CONF_ENTRY_TYPE, ENTRY_TYPE_DEVICE) == ENTRY_TYPE_CARP
+
+
+def config_entry_identity(config_entry: ConfigEntry) -> str:
+    """Return the stable Home Assistant identity prefix for a config entry.
+
+    Args:
+        config_entry: Config entry whose device or entry identity is needed.
+
+    Returns:
+        str: Device unique ID for normal entries, otherwise the entry ID.
+    """
+    device_id = config_entry.data.get(CONF_DEVICE_UNIQUE_ID)
+    return device_id if isinstance(device_id, str) and device_id else config_entry.entry_id
+
+
+def is_usable_carp_vip(value: object) -> bool:
+    """Return whether a CARP row has a usable VHID and subnet identity.
+
+    Args:
+        value: Raw CARP VIP row returned by the OPNsense API.
+
+    Returns:
+        bool: ``True`` when normalized VHID and subnet values are non-empty.
+    """
+    if not isinstance(value, Mapping):
+        return False
+
+    vhid = value.get("vhid")
+    if isinstance(vhid, bool) or not isinstance(vhid, (int, str)):
+        return False
+    normalized_vhid = str(vhid).strip()
+    subnet = value.get("subnet")
+    normalized_subnet = subnet.strip() if isinstance(subnet, str) else ""
+    return bool(normalized_vhid and normalized_subnet)
 
 
 def coerce_bool(value: Any) -> bool | None:

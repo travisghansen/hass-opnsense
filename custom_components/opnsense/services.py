@@ -32,6 +32,7 @@ from .const import (
     SERVICE_SYSTEM_REBOOT,
     SERVICE_TOGGLE_ALIAS,
 )
+from .helpers import is_carp_entry
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 _VNSTAT_PERIODS: tuple[str, ...] = ("hourly", "daily", "monthly", "yearly")
@@ -160,7 +161,11 @@ def _register_service(
 
 
 async def async_setup_services(hass: HomeAssistant) -> None:
-    """Create the OPNsense HA Services/Actions."""
+    """Create the OPNsense HA Services/Actions.
+
+    Args:
+        hass: Home Assistant instance receiving the service registrations.
+    """
     _register_service(
         hass,
         SERVICE_CLOSE_NOTICE,
@@ -294,6 +299,9 @@ async def _get_clients(
 
     Raises:
         ServiceValidationError: If explicit target selectors do not resolve to configured clients.
+
+    Returns:
+        list[OPNsenseServiceClient]: Clients selected by the request.
     """
     if (
         DOMAIN not in hass.data
@@ -303,9 +311,21 @@ async def _get_clients(
         if opndevice_id or opnentity_id:
             raise _service_validation_error(_TRANSLATION_KEY_NO_TARGET_CLIENTS)
         return []
-    first_entry_id = next(iter(hass.data[DOMAIN]))
-    if len(hass.data[DOMAIN]) == 1 and not opndevice_id and not opnentity_id:
-        return [hass.data[DOMAIN][first_entry_id]]
+
+    service_clients: dict[str, OPNsenseServiceClient] = {}
+    for entry_id, client in hass.data[DOMAIN].items():
+        config_entry = hass.config_entries.async_get_entry(entry_id)
+        if config_entry is None or is_carp_entry(config_entry):
+            continue
+        service_clients[entry_id] = client
+
+    if not service_clients:
+        if opndevice_id or opnentity_id:
+            raise _service_validation_error(_TRANSLATION_KEY_NO_TARGET_CLIENTS)
+        return []
+    first_entry_id = next(iter(service_clients))
+    if len(service_clients) == 1 and not opndevice_id and not opnentity_id:
+        return [service_clients[first_entry_id]]
 
     entry_ids = _resolve_target_entry_ids(hass, opndevice_id, opnentity_id)
 
@@ -313,7 +333,7 @@ async def _get_clients(
         raise _service_validation_error(_TRANSLATION_KEY_NO_TARGET_CLIENTS)
 
     clients: list[OPNsenseServiceClient] = []
-    for entry_id, opnsense_client in hass.data[DOMAIN].items():
+    for entry_id, opnsense_client in service_clients.items():
         if not entry_ids or entry_id in entry_ids:
             clients.append(opnsense_client)
     if (opndevice_id or opnentity_id) and not clients:
@@ -794,6 +814,9 @@ async def _service_generate_vouchers(hass: HomeAssistant, call: ServiceCall) -> 
     Raises:
         ServiceValidationError: If the service call payload is missing a valid target or
         required value.
+
+    Returns:
+        ServiceResponse: Generated voucher values grouped under ``vouchers``.
     """
     clients = await _get_target_clients(hass, call)
     voucher_list = await _collect_voucher_results(clients, dict(call.data))
@@ -815,6 +838,9 @@ async def _service_kill_states(hass: HomeAssistant, call: ServiceCall) -> Servic
     Raises:
         ServiceValidationError: If the service call payload is missing a valid target or
         required value.
+
+    Returns:
+        ServiceResponse: Dropped-state results grouped under ``dropped_states``.
     """
     clients = await _get_target_clients(hass, call)
     response_list = await _collect_kill_state_results(clients, call.data["ip_addr"])
