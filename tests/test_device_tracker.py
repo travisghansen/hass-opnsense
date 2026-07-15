@@ -7,10 +7,11 @@ and device info formatting for the integration's device tracker entities.
 from collections.abc import Callable, Iterable, MutableMapping
 from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -19,9 +20,9 @@ import custom_components.opnsense.device_tracker as device_tracker_mod
 from custom_components.opnsense.device_tracker import OPNsenseScannerEntity
 import custom_components.opnsense.entity as entity_mod
 
-base_entity_mod: Any = entity_mod
-dt_mod: Any = device_tracker_mod
-pkg: Any = opnsense_pkg
+base_entity_mod = entity_mod
+dt_mod = device_tracker_mod
+pkg = opnsense_pkg
 
 
 def _make_scanner_entity(
@@ -172,7 +173,7 @@ async def test_async_setup_entry_configured_devices(
         """
         added.extend(ents)
 
-    await dt_mod.async_setup_entry(hass, entry, async_add_entities)
+    await dt_mod.async_setup_entry(hass, entry, cast("AddEntitiesCallback", async_add_entities))
 
     assert len(added) == 1
     created = added[0]
@@ -222,7 +223,7 @@ async def test_async_setup_entry_skips_malformed_arp_rows(
     monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda hass: fake, raising=False)
     added: list[Any] = []
 
-    await dt_mod.async_setup_entry(hass, entry, added.extend)
+    await dt_mod.async_setup_entry(hass, entry, cast("AddEntitiesCallback", added.extend))
 
     assert len(added) == 1
     assert added[0].mac_address == "aa:bb:cc"
@@ -269,7 +270,7 @@ async def test_async_setup_entry_removes_nonmatching_tracked_macs(
         """
         added.extend(ents)
 
-    await dt_mod.async_setup_entry(hass, entry, async_add_entities)
+    await dt_mod.async_setup_entry(hass, entry, cast("AddEntitiesCallback", async_add_entities))
 
     assert hass.config_entries.async_update_entry.called
     call = hass.config_entries.async_update_entry.call_args
@@ -298,11 +299,12 @@ def test_handle_coordinator_update_unavailable(
         mac_vendor=None,
         hostname=None,
     )
-    object.__setattr__(ent, "async_write_ha_state", MagicMock())
+    async_write_ha_state = MagicMock()
+    object.__setattr__(ent, "async_write_ha_state", async_write_ha_state)
 
     ent._handle_coordinator_update()
     assert ent.available is False
-    assert ent.async_write_ha_state.called
+    assert async_write_ha_state.called
 
 
 def test_handle_coordinator_update_entry_present(
@@ -342,9 +344,11 @@ def test_handle_coordinator_update_entry_present(
     assert ent.ip_address == "1.2.3.4"
     assert ent.hostname == "host"
     assert ent.is_connected is True
-    assert ent.extra_state_attributes.get("expires") == "Never"
-    assert ent.extra_state_attributes.get("interface") == "lan0"
-    assert ent.extra_state_attributes.get("type") == "arp"
+    attributes = ent.extra_state_attributes
+    assert attributes is not None
+    assert attributes.get("expires") == "Never"
+    assert attributes.get("interface") == "lan0"
+    assert attributes.get("type") == "arp"
     assert ent.icon == "mdi:lan-connect"
     assert ent.source_type == dt_mod.SourceType.ROUTER
 
@@ -707,7 +711,9 @@ def test_handle_coordinator_update_skips_malformed_arp_rows(
 
     assert ent.ip_address == "1.2.3.4"
     assert ent.hostname == "host"
-    assert "expires" not in ent.extra_state_attributes
+    attributes = ent.extra_state_attributes
+    assert attributes is not None
+    assert "expires" not in attributes
 
 
 def test_handle_coordinator_update_missing_entry_consider_home(
@@ -818,8 +824,10 @@ async def test_restore_last_state_and_device_info(
     assert ent._last_known_hostname == "oldhost"
     assert ent._last_known_ip == "9.9.9.9"
     assert ent._last_known_connected_time == last_known_connected_time
-    assert ent.extra_state_attributes.get("interface") == "lan0"
-    assert "last_known_connected_time" in ent.extra_state_attributes
+    attributes = ent.extra_state_attributes
+    assert attributes is not None
+    assert attributes.get("interface") == "lan0"
+    assert "last_known_connected_time" in attributes
 
     devinfo = ent.device_info
     # support both DeviceInfo object and dict-shaped DeviceInfo used in tests
@@ -984,11 +992,12 @@ async def test_async_added_to_hass_calls_restore(
         hostname=None,
     )
 
-    ent._restore_last_state = AsyncMock()
+    restore_last_state = AsyncMock()
+    object.__setattr__(ent, "_restore_last_state", restore_last_state)
     monkeypatch.setattr(base_entity_mod.OPNsenseBaseEntity, "async_added_to_hass", AsyncMock())
 
     await ent.async_added_to_hass()
-    assert ent._restore_last_state.called
+    assert restore_last_state.called
 
 
 @pytest.mark.asyncio
@@ -1023,10 +1032,12 @@ async def test_async_internal_added_to_hass_links_existing_mac_device(
         connections={(dr.CONNECTION_NETWORK_MAC, "aa:bb:cc")},
     )
     entity_reg = er.async_get(ph_hass)
+    unique_id = ent.unique_id
+    assert unique_id is not None
     ent.registry_entry = entity_reg.async_get_or_create(
         "device_tracker",
         dt_mod.DOMAIN,
-        ent.unique_id,
+        unique_id,
         config_entry=entry,
     )
     ent.entity_id = ent.registry_entry.entity_id
@@ -1061,10 +1072,12 @@ async def test_async_internal_added_to_hass_keeps_fallback_device_info_without_m
     ent.hass = ph_hass
     ent.platform = MagicMock(config_entry=entry, platform_name=dt_mod.DOMAIN)
     entity_reg = er.async_get(ph_hass)
+    unique_id = ent.unique_id
+    assert unique_id is not None
     ent.registry_entry = entity_reg.async_get_or_create(
         "device_tracker",
         dt_mod.DOMAIN,
-        ent.unique_id,
+        unique_id,
         config_entry=entry,
     )
     ent.entity_id = ent.registry_entry.entity_id
@@ -1095,7 +1108,7 @@ async def test_async_setup_entry_state_not_mapping(
     fake = fake_reg_factory(device_exists=False)
     monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: fake, raising=False)
 
-    await dt_mod.async_setup_entry(hass, entry, added.extend)
+    await dt_mod.async_setup_entry(hass, entry, cast("AddEntitiesCallback", added.extend))
     assert len(added) == 0
     assert not hass.config_entries.async_update_entry.called
 
@@ -1123,7 +1136,7 @@ async def test_async_setup_entry_removes_previous_mac(
 
     hass.config_entries.async_update_entry = MagicMock()
 
-    await dt_mod.async_setup_entry(hass, entry, lambda _x: None)
+    await dt_mod.async_setup_entry(hass, entry, cast("AddEntitiesCallback", lambda _x: None))
     assert fake.removed is True
     assert hass.config_entries.async_update_entry.called
 
@@ -1159,7 +1172,9 @@ def test_handle_coordinator_update_expires_positive(
     object.__setattr__(ent, "async_write_ha_state", MagicMock())
 
     ent._handle_coordinator_update()
-    assert isinstance(ent.extra_state_attributes.get("expires"), datetime)
+    attributes = ent.extra_state_attributes
+    assert attributes is not None
+    assert isinstance(attributes.get("expires"), datetime)
 
 
 def test_handle_coordinator_update_skips_malformed_expires(
@@ -1194,9 +1209,11 @@ def test_handle_coordinator_update_skips_malformed_expires(
 
     ent._handle_coordinator_update()
 
-    assert ent.extra_state_attributes.get("interface") == "lan"
-    assert "expires" not in ent.extra_state_attributes
-    assert ent.extra_state_attributes.get("type") == "arp"
+    attributes = ent.extra_state_attributes
+    assert attributes is not None
+    assert attributes.get("interface") == "lan"
+    assert "expires" not in attributes
+    assert attributes.get("type") == "arp"
 
 
 def test_handle_coordinator_update_ip_typeerror(
@@ -1244,7 +1261,9 @@ def test_handle_coordinator_update_expired_preserve_last_known_ip(
 
     ent._handle_coordinator_update()
     assert ent.is_connected is False
-    assert ent.extra_state_attributes.get("last_known_ip") == "1.2.3.4"
+    attributes = ent.extra_state_attributes
+    assert attributes is not None
+    assert attributes.get("last_known_ip") == "1.2.3.4"
     assert ent.icon == "mdi:lan-disconnect"
 
 
@@ -1272,7 +1291,7 @@ async def test_async_setup_entry_from_arp_entries(
 
     added: list[Any] = []
 
-    await dt_mod.async_setup_entry(hass, entry, added.extend)
+    await dt_mod.async_setup_entry(hass, entry, cast("AddEntitiesCallback", added.extend))
     assert len(added) == 2
     assert all(isinstance(e, dt_mod.OPNsenseScannerEntity) for e in added)
     assert {e.unique_id for e in added} == {"dev1_mac_m1", "dev1_mac_m2"}
