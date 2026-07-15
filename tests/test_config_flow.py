@@ -765,7 +765,8 @@ async def test_async_step_carp_rejects_malformed_or_blank_vip_rows(
     result = await flow.async_step_carp(user_input=_make_basic_carp_input())
 
     assert result["type"] == "form"
-    assert result["errors"]["base"] == "carp_responder_unavailable"
+    assert result["errors"]["base"] == "carp_not_configured"
+    client.get_device_unique_id.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -814,8 +815,7 @@ async def test_async_step_carp_rejects_missing_or_blank_responder_name(
     result = await flow.async_step_carp(user_input=_make_basic_carp_input())
 
     assert result["type"] == "form"
-    assert result["errors"]["base"] == "carp_not_configured"
-    client.get_device_unique_id.assert_not_awaited()
+    assert result["errors"]["base"] == "carp_responder_unavailable"
 
 
 @pytest.mark.asyncio

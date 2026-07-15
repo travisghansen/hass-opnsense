@@ -1860,16 +1860,19 @@ async def test_async_update_listener_reload_and_remove(
 
 
 @pytest.mark.asyncio
-async def test_async_update_listener_removes_native_firewall_entities(
+@pytest.mark.parametrize(("sync_enabled", "expect_removed"), [(False, True), (True, False)])
+async def test_async_update_listener_handles_native_firewall_entities_by_sync_state(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
+    sync_enabled: bool,
+    expect_removed: bool,
 ) -> None:
-    """Update listener should remove native firewall entities when sync is disabled."""
+    """Remove native firewall entities only when Firewall/NAT sync is disabled."""
     entry = make_config_entry(
         data={
             init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
-            CONF_SYNC_FIREWALL_AND_NAT: False,
+            CONF_SYNC_FIREWALL_AND_NAT: sync_enabled,
         },
         unique_id="unit two",
     )
@@ -1912,7 +1915,10 @@ async def test_async_update_listener_removes_native_firewall_entities(
 
     await init_mod._async_update_listener(hass, entry)
 
-    entity_registry.async_remove.assert_called_once_with(ent.entity_id)
+    if expect_removed:
+        entity_registry.async_remove.assert_called_once_with(ent.entity_id)
+    else:
+        entity_registry.async_remove.assert_not_called()
 
 
 @pytest.mark.asyncio
