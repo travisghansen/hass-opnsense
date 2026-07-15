@@ -219,14 +219,22 @@ async def test_async_setup_entry_validates_client_before_probes(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(init_mod.OPNsenseError("boom"), id="generic"),
+        pytest.param(OPNsenseTimeoutError("timed out"), id="timeout"),
+    ],
+)
 async def test_async_setup_entry_closes_client_when_validation_fails(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
+    error: init_mod.OPNsenseError,
 ) -> None:
     """async_setup_entry should close a constructed client when validation fails."""
     client = MagicMock()
-    client.validate = AsyncMock(side_effect=init_mod.OPNsenseError("boom"))
+    client.validate = AsyncMock(side_effect=error)
     client.async_close = AsyncMock(return_value=True)
 
     def _create_client(**kwargs: Any) -> Any:
@@ -250,48 +258,10 @@ async def test_async_setup_entry_closes_client_when_validation_fails(
     hass.config_entries.async_reload = AsyncMock()
     hass.data = {}
 
-    with pytest.raises(init_mod.OPNsenseError):
+    with pytest.raises(type(error), match=str(error)):
         await init_mod.async_setup_entry(hass, entry)
 
     client.async_close.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_async_setup_entry_does_not_catch_raw_validation_timeout(
-    monkeypatch: pytest.MonkeyPatch,
-    ph_hass: Any,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Validation timeout mapping belongs to aiopnsense, not setup-entry cleanup."""
-    client = MagicMock()
-    client.validate = AsyncMock(side_effect=TimeoutError)
-    client.async_close = AsyncMock(return_value=True)
-
-    def _create_client(**kwargs: Any) -> Any:
-        """Return the timeout-raising client for this setup-entry test."""
-        return client
-
-    monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", _create_client)
-
-    entry = make_config_entry(
-        data={
-            CONF_URL: "http://1.2.3.4",
-            CONF_USERNAME: "u",
-            CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
-        },
-        options={},
-    )
-
-    hass = ph_hass
-    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
-    hass.config_entries.async_reload = AsyncMock()
-    hass.data = {}
-
-    with pytest.raises(TimeoutError):
-        await init_mod.async_setup_entry(hass, entry)
-
-    client.async_close.assert_not_awaited()
 
 
 @pytest.mark.asyncio

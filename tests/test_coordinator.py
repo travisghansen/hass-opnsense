@@ -12,6 +12,7 @@ import time
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, call
 
+from aiopnsense.exceptions import OPNsenseTimeoutError
 from homeassistant.config_entries import ConfigEntry
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -158,10 +159,10 @@ async def test_get_states_fetches_smart_info_for_each_smart_device(
 
 
 @pytest.mark.asyncio
-async def test_get_states_does_not_catch_raw_smart_info_timeout(
+async def test_get_states_does_not_catch_smart_info_timeout(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """SMART info errors should be handled by aiopnsense before reaching the coordinator."""
+    """Public aiopnsense SMART errors should propagate through the coordinator."""
     client = MagicMock()
     client.get_smart = AsyncMock(
         return_value=[
@@ -171,7 +172,7 @@ async def test_get_states_does_not_catch_raw_smart_info_timeout(
     )
     client.get_smart_info = AsyncMock(
         side_effect=[
-            TimeoutError("nvme0 timed out"),
+            OPNsenseTimeoutError("nvme0 timed out"),
         ]
     )
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_SMART: True})
@@ -184,7 +185,7 @@ async def test_get_states_does_not_catch_raw_smart_info_timeout(
         config_entry=entry,
     )
 
-    with pytest.raises(TimeoutError, match="nvme0 timed out"):
+    with pytest.raises(OPNsenseTimeoutError, match="nvme0 timed out"):
         await coordinator._get_states(
             [
                 {"function": "get_smart", "state_key": "smart"},

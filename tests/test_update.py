@@ -5,6 +5,7 @@ from collections.abc import Callable, MutableMapping
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
+from aiopnsense.exceptions import OPNsenseError, OPNsenseTimeoutError
 from homeassistant.components.update import UpdateDeviceClass, UpdateEntityDescription
 from homeassistant.components.update.const import UpdateEntityFeature
 from homeassistant.core import HomeAssistant
@@ -924,12 +925,12 @@ async def test_async_install_retries_masked_polling_then_skips_reboot_and_metada
 
 
 @pytest.mark.asyncio
-async def test_async_install_transport_polling_error_raises(
+async def test_async_install_timeout_polling_error_raises(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
 ) -> None:
-    """async_install should not hide transport errors raised by aiopnsense."""
+    """async_install should not hide timeout errors raised by aiopnsense."""
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,
@@ -939,22 +940,22 @@ async def test_async_install_transport_polling_error_raises(
         ),
     )
 
-    bad: Any = _FirmwareInstallClient(status_error=TimeoutError("fail"))
+    bad: Any = _FirmwareInstallClient(status_error=OPNsenseTimeoutError("fail"))
     object.__setattr__(ent, "_client", bad)
     ent.coordinator.data = {"firmware_update_info": {"status": "update"}}
     monkeypatch.setattr(asyncio, "sleep", AsyncMock(return_value=None))
 
-    with pytest.raises(TimeoutError, match="fail"):
+    with pytest.raises(OPNsenseTimeoutError, match="fail"):
         await ent.async_install()
 
 
 @pytest.mark.asyncio
-async def test_async_install_unexpected_polling_error_raises(
+async def test_async_install_generic_opnsense_polling_error_raises(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
 ) -> None:
-    """async_install should not hide unexpected polling errors."""
+    """async_install should not hide generic errors raised by aiopnsense."""
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,
@@ -964,12 +965,12 @@ async def test_async_install_unexpected_polling_error_raises(
         ),
     )
 
-    bad: Any = _FirmwareInstallClient(status_error=RuntimeError("unexpected"))
+    bad: Any = _FirmwareInstallClient(status_error=OPNsenseError("unexpected"))
     object.__setattr__(ent, "_client", bad)
     ent.coordinator.data = {"firmware_update_info": {"status": "update"}}
     monkeypatch.setattr(asyncio, "sleep", AsyncMock(return_value=None))
 
-    with pytest.raises(RuntimeError, match="unexpected"):
+    with pytest.raises(OPNsenseError, match="unexpected"):
         await ent.async_install()
 
 
