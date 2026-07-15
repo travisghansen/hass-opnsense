@@ -581,7 +581,7 @@ async def _collect_voucher_results(
         try:
             vouchers: list[Any] = await client.generate_vouchers(call_data)
         except OPNsenseVoucherServerError as e:
-            _LOGGER.error("Error getting vouchers from %s. %s", client.name, e)
+            _LOGGER.exception("Error getting vouchers from %s", client.name)
             raise _service_validation_error(
                 _TRANSLATION_KEY_VOUCHER_SERVER_ERROR,
                 {"client": client.name, "error": e},

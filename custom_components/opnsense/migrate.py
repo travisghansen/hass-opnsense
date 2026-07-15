@@ -38,6 +38,11 @@ NATIVE_FIREWALL_NAT_SECTIONS: tuple[str, ...] = (
     "source_nat",
     "npt",
 )
+TELEMETRY_FILESYSTEM_ENTITY_MARKER = "_telemetry_filesystems_"
+TELEMETRY_INTERFACE_GATEWAY_REPLACEMENTS: tuple[tuple[str, str], ...] = (
+    ("_telemetry_interface_", "_interface_"),
+    ("_telemetry_gateway_", "_gateway_"),
+)
 
 
 def _is_firewall_sync_enabled(config_entry: ConfigEntry) -> bool:
@@ -111,6 +116,167 @@ def _get_telemetry_filesystems(telemetry: object) -> list[Mapping[str, Any]] | N
         valid_filesystems.append(filesystem)
 
     return valid_filesystems
+
+
+def _get_interface_gateway_telemetry_unique_id(unique_id: str) -> str | None:
+    """Return a migrated unique ID for interface or gateway telemetry entities.
+
+    Args:
+        unique_id: Existing entity-registry unique ID.
+
+    Returns:
+        str | None: Migrated unique ID when a known telemetry marker is found.
+    """
+    for old_marker, new_marker in TELEMETRY_INTERFACE_GATEWAY_REPLACEMENTS:
+        if old_marker in unique_id:
+            return unique_id.replace(old_marker, new_marker)
+    return None
+
+
+def _get_filesystem_telemetry_unique_id(
+    unique_id: str, filesystems: list[Mapping[str, Any]] | None
+) -> tuple[str | None, bool]:
+    """Return a migrated filesystem ID and whether migration must be deferred.
+
+    Args:
+        unique_id: Existing filesystem telemetry entity unique ID.
+        filesystems: Validated telemetry filesystem payload, or ``None`` when
+            the payload was unavailable or malformed.
+
+    Returns:
+        tuple[str | None, bool]: The migrated unique ID, when a matching
+            filesystem exists, and a flag indicating unavailable filesystem
+            telemetry.
+    """
+    if TELEMETRY_FILESYSTEM_ENTITY_MARKER not in unique_id:
+        return None, False
+    if filesystems is None:
+        return None, True
+
+    telemetry_filesystem_prefix, unique_id_device_name = unique_id.split(
+        TELEMETRY_FILESYSTEM_ENTITY_MARKER, 1
+    )
+    normalized_device_name = unique_id_device_name.lower()
+    for filesystem in filesystems:
+        device: str = filesystem.get("device", "")
+        device_name = device.replace("/", "_slash_").strip("_").lower()
+        if device_name != normalized_device_name:
+            continue
+        mountpoint: str = filesystem.get("mountpoint", "")
+        normalized_mountpoint = (
+            "root" if mountpoint == "/" else mountpoint.replace("/", "_").strip("_")
+        )
+        return (
+            f"{telemetry_filesystem_prefix}{TELEMETRY_FILESYSTEM_ENTITY_MARKER}"
+            f"{normalized_mountpoint}",
+            False,
+        )
+    return None, False
+
+
+def _remove_connected_client_entity(
+    entity_registry: er.EntityRegistry, entity: er.RegistryEntry
+) -> None:
+    """Remove a legacy connected-client-count entity from the registry.
+
+    Args:
+        entity_registry: Home Assistant entity registry.
+        entity: Legacy connected-client-count entity to remove.
+    """
+    try:
+        entity_registry.async_remove(entity.entity_id)
+        _LOGGER.debug("[migrate_3_to_4] removed_entity_id: %s", entity.entity_id)
+    except (KeyError, ValueError) as err:
+        _LOGGER.exception(
+            "Error removing entity: %s. %s",
+            entity.entity_id,
+            type(err).__name__,
+        )
+
+
+def _update_migrated_entity(
+    entity_registry: er.EntityRegistry,
+    entity: er.RegistryEntry,
+    platform: str,
+    new_unique_id: str,
+) -> None:
+    """Update an entity-registry unique ID when the value changed.
+
+    Args:
+        entity_registry: Home Assistant entity registry.
+        entity: Entity whose unique ID is being migrated.
+        platform: Entity platform used in migration diagnostics.
+        new_unique_id: Target unique ID for the entity.
+    """
+    if entity.unique_id == new_unique_id:
+        return
+
+    _LOGGER.debug(
+        "[migrate_3_to_4] ent: %s, platform: %s, unique_id: %s, new_unique_id: %s",
+        entity.entity_id,
+        platform,
+        entity.unique_id,
+        new_unique_id,
+    )
+    try:
+        updated_entity = entity_registry.async_update_entity(
+            entity.entity_id, new_unique_id=new_unique_id
+        )
+        _LOGGER.debug(
+            "[migrate_3_to_4] updated_entity_id: %s, updated_unique_id: %s",
+            updated_entity.entity_id,
+            updated_entity.unique_id,
+        )
+    except ValueError as err:
+        _LOGGER.exception(
+            "Error migrating entity: %s. %s",
+            entity.entity_id,
+            type(err).__name__,
+        )
+
+
+def _migrate_sensor_entity(
+    entity_registry: er.EntityRegistry,
+    entity: er.RegistryEntry,
+    filesystems: list[Mapping[str, Any]] | None,
+) -> bool:
+    """Migrate one version-3 sensor entity and report deferred filesystem work.
+
+    Args:
+        entity_registry: Home Assistant entity registry.
+        entity: Sensor entity to migrate.
+        filesystems: Validated telemetry filesystem payload, or ``None`` when
+            filesystem migration is unavailable.
+
+    Returns:
+        bool: ``True`` when filesystem telemetry was unavailable for this
+            entity and the enclosing migration must be retried.
+    """
+    platform = entity.entity_id.split(".")[0]
+    new_unique_id = _get_interface_gateway_telemetry_unique_id(entity.unique_id)
+    if new_unique_id is not None:
+        _update_migrated_entity(entity_registry, entity, platform, new_unique_id)
+        return False
+
+    if "_connected_client_count" in entity.unique_id:
+        _remove_connected_client_entity(entity_registry, entity)
+        return False
+
+    if "_telemetry_openvpn_" in entity.unique_id:
+        _update_migrated_entity(
+            entity_registry,
+            entity,
+            platform,
+            entity.unique_id.replace("_telemetry_openvpn_", "_openvpn_"),
+        )
+        return False
+
+    new_unique_id, filesystem_migration_deferred = _get_filesystem_telemetry_unique_id(
+        entity.unique_id, filesystems
+    )
+    if new_unique_id is not None:
+        _update_migrated_entity(entity_registry, entity, platform, new_unique_id)
+    return filesystem_migration_deferred
 
 
 async def _migrate_1_to_2(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
@@ -256,77 +422,9 @@ async def _migrate_3_to_4(
 
     for ent in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
         platform = ent.entity_id.split(".")[0]
-        if platform == Platform.SENSOR:
-            if "_telemetry_interface_" in ent.unique_id:
-                new_unique_id: str | None = ent.unique_id.replace(
-                    "_telemetry_interface_", "_interface_"
-                )
-            elif "_telemetry_gateway_" in ent.unique_id:
-                new_unique_id = ent.unique_id.replace("_telemetry_gateway_", "_gateway_")
-            elif "_connected_client_count" in ent.unique_id:
-                try:
-                    entity_registry.async_remove(ent.entity_id)
-                    _LOGGER.debug("[migrate_3_to_4] removed_entity_id: %s", ent.entity_id)
-                except (KeyError, ValueError) as e:
-                    _LOGGER.exception(
-                        "Error removing entity: %s. %s",
-                        ent.entity_id,
-                        type(e).__name__,
-                    )
-                continue
-            elif "_telemetry_openvpn_" in ent.unique_id:
-                new_unique_id = ent.unique_id.replace("_telemetry_openvpn_", "_openvpn_")
-            elif "_telemetry_filesystems_" in ent.unique_id:
-                telemetry_filesystem_prefix, unique_id_device_name = ent.unique_id.split(
-                    "_telemetry_filesystems_", 1
-                )
-                unique_id_device_name = unique_id_device_name.lower()
-                new_unique_id = None
-                if filesystems is None:
-                    filesystem_migration_deferred = True
-                    continue
-                for filesystem in filesystems:
-                    device: str = filesystem.get("device", "")
-                    device_name: str = device.replace("/", "_slash_").strip("_").lower()
-                    if device_name == unique_id_device_name:
-                        mpoint: str = filesystem.get("mountpoint", "")
-                        if mpoint == "/":
-                            mountpoint = "root"
-                        else:
-                            mountpoint = mpoint.replace("/", "_").strip("_")
-                        new_unique_id = (
-                            f"{telemetry_filesystem_prefix}_telemetry_filesystems_{mountpoint}"
-                        )
-                        break
-            else:
-                continue
-            if new_unique_id is None:
-                continue
-            migrated_unique_id = new_unique_id
-            if ent.unique_id == migrated_unique_id:
-                continue
-            _LOGGER.debug(
-                "[migrate_3_to_4] ent: %s, platform: %s, unique_id: %s, new_unique_id: %s",
-                ent.entity_id,
-                platform,
-                ent.unique_id,
-                migrated_unique_id,
-            )
-            try:
-                updated_ent = entity_registry.async_update_entity(
-                    ent.entity_id, new_unique_id=migrated_unique_id
-                )
-                _LOGGER.debug(
-                    "[migrate_3_to_4] updated_entity_id: %s, updated_unique_id: %s",
-                    updated_ent.entity_id,
-                    updated_ent.unique_id,
-                )
-            except ValueError as e:
-                _LOGGER.exception(
-                    "Error migrating entity: %s. %s",
-                    ent.entity_id,
-                    type(e).__name__,
-                )
+        if platform != Platform.SENSOR:
+            continue
+        filesystem_migration_deferred |= _migrate_sensor_entity(entity_registry, ent, filesystems)
     if filesystem_migration_deferred:
         _LOGGER.error("Migration to version 4 deferred because filesystem telemetry is unavailable")
         return False

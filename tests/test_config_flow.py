@@ -715,6 +715,24 @@ def test_options_schema_clamps_legacy_stored_defaults(
 
 
 @pytest.mark.parametrize(
+    "option_key",
+    list(cf_mod.OPTIONS_INIT_NUMBER_BOUNDS),
+)
+def test_options_init_schema_boundaries_match_keyed_lookup(option_key: str) -> None:
+    """Selector bounds for options should come from keyed bounds lookup values."""
+    oschema = cf_mod._build_options_init_schema(user_input=None)
+    minimum, maximum = cf_mod.OPTIONS_INIT_NUMBER_BOUNDS[option_key]
+
+    assert oschema({option_key: minimum}).get(option_key) == minimum
+    assert oschema({option_key: maximum}).get(option_key) == maximum
+
+    with pytest.raises(vol.Invalid):
+        oschema({option_key: minimum - 1})
+    with pytest.raises(vol.Invalid):
+        oschema({option_key: maximum + 1})
+
+
+@pytest.mark.parametrize(
     "value",
     [
         pytest.param(None, id="none"),

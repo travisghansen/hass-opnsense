@@ -2035,6 +2035,55 @@ async def test_migrate_3_to_4_filesystem_and_remove(
 
 
 @pytest.mark.asyncio
+async def test_migrate_3_to_4_preserves_mixed_marker_precedence(
+    monkeypatch: pytest.MonkeyPatch, fake_client: Any
+) -> None:
+    """Mixed legacy markers follow the original migration branch precedence."""
+    client = fake_client(telemetry={"filesystems": []})()
+
+    gateway_entity = MagicMock(
+        entity_id="sensor.gateway",
+        unique_id="abc_telemetry_gateway_lan_connected_client_count",
+    )
+    connected_entity = MagicMock(
+        entity_id="sensor.clients",
+        unique_id="abc_connected_client_count_telemetry_openvpn_vpn",
+    )
+    openvpn_entity = MagicMock(
+        entity_id="sensor.openvpn",
+        unique_id="abc_telemetry_openvpn_vpn",
+    )
+
+    entity_registry = MagicMock()
+    entity_registry.async_update_entity = MagicMock(
+        return_value=MagicMock(entity_id=gateway_entity.entity_id, unique_id="updated")
+    )
+    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(
+        init_mod.er,
+        "async_entries_for_config_entry",
+        lambda registry, config_entry_id: [gateway_entity, connected_entity, openvpn_entity],
+    )
+
+    config_entry = MagicMock(version=3, entry_id="e3")
+    hass = MagicMock(spec=HomeAssistant)
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_update_entry = MagicMock(return_value=True)
+
+    result = await init_mod._migrate_3_to_4(hass, config_entry, client)
+
+    assert result is True
+    assert entity_registry.async_update_entity.call_args_list == [
+        call(
+            gateway_entity.entity_id,
+            new_unique_id="abc_gateway_lan_connected_client_count",
+        ),
+        call(openvpn_entity.entity_id, new_unique_id="abc_openvpn_vpn"),
+    ]
+    entity_registry.async_remove.assert_called_once_with(connected_entity.entity_id)
+
+
+@pytest.mark.asyncio
 async def test_migrate_3_to_4_filesystem_preserves_unique_id_prefix(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:

@@ -297,7 +297,17 @@ def _create_sensor[SensorT: OPNsenseSensor](
     coordinator: OPNsenseDataUpdateCoordinator,
     entity_description: SensorEntityDescription,
 ) -> SensorT:
-    """Create a sensor entity from shared compile context."""
+    """Create one sensor entity from shared compile context.
+
+    Args:
+        entity_cls: Sensor entity class to instantiate.
+        config_entry: Home Assistant config entry for the integration.
+        coordinator: Coordinator providing the OPNsense data for the entity.
+        entity_description: Metadata describing the sensor entity.
+
+    Returns:
+        SensorT: Instantiated sensor entity.
+    """
     return entity_cls(
         config_entry=config_entry,
         coordinator=coordinator,
@@ -311,7 +321,17 @@ def _create_sensors[SensorT: OPNsenseSensor](
     coordinator: OPNsenseDataUpdateCoordinator,
     entity_descriptions: Iterable[SensorEntityDescription],
 ) -> list[SensorT]:
-    """Create multiple sensor entities from shared compile context."""
+    """Create sensor entities from shared compile context.
+
+    Args:
+        entity_cls: Sensor entity class to instantiate for each description.
+        config_entry: Home Assistant config entry for the integration.
+        coordinator: Coordinator providing the OPNsense data for each entity.
+        entity_descriptions: Metadata describing the sensor entities to create.
+
+    Returns:
+        list[SensorT]: Instantiated sensor entities in description order.
+    """
     return [
         _create_sensor(entity_cls, config_entry, coordinator, entity_description)
         for entity_description in entity_descriptions
@@ -414,7 +434,17 @@ def _build_vnstat_sensor_description(
     metric_name: str,
     metric_def: Mapping[str, Any],
 ) -> SensorEntityDescription:
-    """Build a vnStat sensor description."""
+    """Build a vnStat sensor description.
+
+    Args:
+        interface_name: OPNsense interface identifier used in the entity key.
+        interface_display_name: User-facing interface name used in the entity name.
+        metric_name: vnStat metric key used to identify the measurement.
+        metric_def: Metric metadata containing its icon and state class.
+
+    Returns:
+        SensorEntityDescription: Description for the vnStat sensor entity.
+    """
     return SensorEntityDescription(
         key=f"vnstat.{interface_name}.{metric_name}",
         name=f"vnStat: {interface_display_name}: {_vnstat_metric_display_name(metric_name)}",
@@ -434,7 +464,17 @@ def _build_speedtest_sensor_description(
     native_unit: UnitOfDataRate | UnitOfTime,
     icon: str,
 ) -> SensorEntityDescription:
-    """Build a speedtest sensor description."""
+    """Build a speedtest sensor description.
+
+    Args:
+        key: Entity key for the speedtest measurement.
+        name: User-facing name for the speedtest sensor.
+        native_unit: Native unit of the speedtest measurement.
+        icon: Material Design icon for the speedtest sensor.
+
+    Returns:
+        SensorEntityDescription: Description for the speedtest sensor entity.
+    """
     return SensorEntityDescription(
         key=key,
         name=name,
@@ -447,7 +487,14 @@ def _build_speedtest_sensor_description(
 
 
 def _build_smart_sensor_description(device_name: str) -> SensorEntityDescription:
-    """Build a SMART temperature sensor description."""
+    """Build a SMART temperature sensor description.
+
+    Args:
+        device_name: SMART device name used in the entity key and display name.
+
+    Returns:
+        SensorEntityDescription: Description for the SMART temperature sensor.
+    """
     return SensorEntityDescription(
         key=f"smart.{_smart_device_slug(device_name)}.temperature",
         name=f"SMART {device_name} Temperature",
@@ -462,7 +509,14 @@ def _build_smart_sensor_description(device_name: str) -> SensorEntityDescription
 
 
 def _build_filesystem_sensor_description(filesystem: Mapping[str, Any]) -> SensorEntityDescription:
-    """Build a filesystem usage sensor description."""
+    """Build a filesystem usage sensor description.
+
+    Args:
+        filesystem: Filesystem payload containing its ``mountpoint`` value.
+
+    Returns:
+        SensorEntityDescription: Description for the filesystem usage sensor.
+    """
     mountpoint = filesystem["mountpoint"]
     filesystem_slug = slugify_filesystem_mountpoint(mountpoint)
     enabled_default = filesystem_slug == "root"
@@ -482,7 +536,16 @@ def _build_interface_sensor_description(
     interface: Mapping[str, Any],
     prop_name: str,
 ) -> SensorEntityDescription:
-    """Build an interface sensor description."""
+    """Build an interface sensor description.
+
+    Args:
+        interface_name: OPNsense interface identifier used in the entity key.
+        interface: Interface payload used for its friendly display name.
+        prop_name: Interface property represented by the sensor.
+
+    Returns:
+        SensorEntityDescription: Description for the interface sensor.
+    """
     state_class: SensorStateClass | None = SensorStateClass.MEASUREMENT
     native_unit_of_measurement = None
     device_class = None
@@ -541,7 +604,16 @@ def _build_gateway_sensor_description(
     gateway_name: str,
     prop_name: str,
 ) -> SensorEntityDescription:
-    """Build a gateway sensor description."""
+    """Build a gateway sensor description.
+
+    Args:
+        gateway_key: OPNsense gateway key used in the entity key.
+        gateway_name: User-facing gateway name used in the entity name.
+        prop_name: Gateway property represented by the sensor.
+
+    Returns:
+        SensorEntityDescription: Description for the gateway sensor.
+    """
     native_unit_of_measurement = None
     device_class: SensorDeviceClass | None = None
     state_class: SensorStateClass | None = SensorStateClass.MEASUREMENT
@@ -575,7 +647,15 @@ def _build_temperature_sensor_description(
     temp_device: str,
     temp: Mapping[str, Any],
 ) -> SensorEntityDescription:
-    """Build a temperature telemetry sensor description."""
+    """Build a temperature telemetry sensor description.
+
+    Args:
+        temp_device: Temperature device identifier used in the entity key.
+        temp: Temperature payload used for its friendly display name.
+
+    Returns:
+        SensorEntityDescription: Description for the temperature sensor.
+    """
     return SensorEntityDescription(
         key=f"telemetry.temps.{temp_device}",
         name=f"Temp {temp.get('name', temp_device)}",
@@ -593,7 +673,15 @@ def _build_dhcp_leases_sensor_description(
     interface: str,
     interface_name: str,
 ) -> SensorEntityDescription:
-    """Build a per-interface DHCP leases sensor description."""
+    """Build a per-interface DHCP leases sensor description.
+
+    Args:
+        interface: OPNsense interface identifier used in the entity key.
+        interface_name: User-facing interface name used in the entity name.
+
+    Returns:
+        SensorEntityDescription: Description for the interface lease sensor.
+    """
     return SensorEntityDescription(
         key=f"dhcp_leases.{interface}",
         name=f"DHCP Leases {interface_name}",
@@ -606,7 +694,11 @@ def _build_dhcp_leases_sensor_description(
 
 
 def _build_dhcp_leases_total_sensor_description() -> SensorEntityDescription:
-    """Build the aggregate DHCP leases sensor description."""
+    """Build the aggregate DHCP leases sensor description.
+
+    Returns:
+        SensorEntityDescription: Description for the aggregate lease sensor.
+    """
     return SensorEntityDescription(
         key="dhcp_leases.all",
         name="DHCP Leases All",
@@ -625,7 +717,18 @@ def _build_vpn_sensor_description(
     instance_name: str,
     prop_name: str,
 ) -> SensorEntityDescription:
-    """Build a VPN sensor description."""
+    """Build a VPN sensor description.
+
+    Args:
+        vpn_type: VPN implementation type, such as ``openvpn`` or ``wireguard``.
+        clients_servers: VPN collection type represented by the sensor.
+        uuid: VPN instance identifier used in the entity key.
+        instance_name: User-facing VPN instance name.
+        prop_name: VPN property represented by the sensor.
+
+    Returns:
+        SensorEntityDescription: Description for the VPN sensor entity.
+    """
     state_class: SensorStateClass | None = None
     native_unit_of_measurement: UnitOfDataRate | UnitOfInformation | None = None
     device_class: SensorDeviceClass | None = None
@@ -1808,7 +1911,15 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
     """Class for OPNsense Gateway Sensors."""
 
     def _opnsense_get_gateway_entry(self, gateway_name: str) -> dict[str, Any]:
-        """Return matching gateway payload by mapping key or display name."""
+        """Return a gateway payload matched by mapping key or display name.
+
+        Args:
+            gateway_name: Gateway key or configured display name to find.
+
+        Returns:
+            dict[str, Any]: Matching gateway payload, or an empty dictionary when
+                no matching gateway is available.
+        """
         gateways = self._mapping_at("gateways")
         if gateways is None:
             return {}
@@ -2055,7 +2166,15 @@ class OPNsenseTempSensor(OPNsenseSensor):
 
 
 def _count_active_dhcp_leases(leases: Iterable[Any]) -> int | None:
-    """Return active DHCP lease count, or ``None`` when a lease row is malformed."""
+    """Count DHCP lease rows with a non-empty address.
+
+    Args:
+        leases: Iterable of DHCP lease rows represented as mutable mappings.
+
+    Returns:
+        int | None: Number of rows with a non-empty ``address``, or ``None`` when
+            any row is not a mutable mapping.
+    """
     lease_count = 0
     for lease in leases:
         if not isinstance(lease, MutableMapping):

@@ -21,7 +21,7 @@ Source and releases for `aiopnsense`:
 
 A Discord server to discuss the integration is available. Click the Discord badge at the beginning of the page for the invite link.
 
-## OPNSense Firmware Requirements
+## OPNsense Firmware Requirements
 
 * Requires OPNsense Firmware 25.1+
 * For OPNsense Firmware 25.1 through 26.1.0, the integration remains supported, but Firewall and NAT rule switches are not available.

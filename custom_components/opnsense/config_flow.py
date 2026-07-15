@@ -75,11 +75,11 @@ CONNECTION_ERROR_KEYS: tuple[tuple[type[OPNsenseError], str], ...] = (
     (OPNsenseTimeoutError, "connect_timeout"),
     (OPNsenseConnectionError, "cannot_connect"),
 )
-OPTIONS_INIT_NUMBER_BOUNDS: tuple[tuple[str, int, int], ...] = (
-    (CONF_SCAN_INTERVAL, 10, 300),
-    (CONF_DEVICE_TRACKER_SCAN_INTERVAL, 30, 300),
-    (CONF_DEVICE_TRACKER_CONSIDER_HOME, 0, 3600),
-)
+OPTIONS_INIT_NUMBER_BOUNDS: dict[str, tuple[int, int]] = {
+    CONF_SCAN_INTERVAL: (10, 300),
+    CONF_DEVICE_TRACKER_SCAN_INTERVAL: (30, 300),
+    CONF_DEVICE_TRACKER_CONSIDER_HOME: (0, 3600),
+}
 
 
 def normalize_mac_address(mac: str) -> str | None:
@@ -676,7 +676,7 @@ def _build_options_init_schema(
         CONF_GRANULAR_SYNC_OPTIONS: granular_sync_options,
         **(user_input or {}),
     }
-    for key, minimum, maximum in OPTIONS_INIT_NUMBER_BOUNDS:
+    for key, (minimum, maximum) in OPTIONS_INIT_NUMBER_BOUNDS.items():
         defaults[key] = _normalize_int_option(defaults[key], minimum, maximum)
 
     return vol.Schema(
@@ -686,8 +686,8 @@ def _build_options_init_schema(
                 default=defaults[CONF_SCAN_INTERVAL],
             ): selector.NumberSelector(
                 selector.NumberSelectorConfig(
-                    min=10,
-                    max=300,
+                    min=OPTIONS_INIT_NUMBER_BOUNDS[CONF_SCAN_INTERVAL][0],
+                    max=OPTIONS_INIT_NUMBER_BOUNDS[CONF_SCAN_INTERVAL][1],
                     step=1,
                     unit_of_measurement="seconds",
                 )
@@ -711,8 +711,8 @@ def _build_options_init_schema(
                 default=defaults[CONF_DEVICE_TRACKER_SCAN_INTERVAL],
             ): selector.NumberSelector(
                 selector.NumberSelectorConfig(
-                    min=30,
-                    max=300,
+                    min=OPTIONS_INIT_NUMBER_BOUNDS[CONF_DEVICE_TRACKER_SCAN_INTERVAL][0],
+                    max=OPTIONS_INIT_NUMBER_BOUNDS[CONF_DEVICE_TRACKER_SCAN_INTERVAL][1],
                     step=1,
                     unit_of_measurement="seconds",
                 )
@@ -722,8 +722,8 @@ def _build_options_init_schema(
                 default=defaults[CONF_DEVICE_TRACKER_CONSIDER_HOME],
             ): selector.NumberSelector(
                 selector.NumberSelectorConfig(
-                    min=0,
-                    max=3600,
+                    min=OPTIONS_INIT_NUMBER_BOUNDS[CONF_DEVICE_TRACKER_CONSIDER_HOME][0],
+                    max=OPTIONS_INIT_NUMBER_BOUNDS[CONF_DEVICE_TRACKER_CONSIDER_HOME][1],
                     step=1,
                     unit_of_measurement="seconds",
                 )
@@ -1031,7 +1031,7 @@ class OPNsenseOptionsFlow(OptionsFlow):
                     if key != CONF_DEVICE_TRACKING_MODE
                 }
             )
-            for key, minimum, maximum in OPTIONS_INIT_NUMBER_BOUNDS:
+            for key, (minimum, maximum) in OPTIONS_INIT_NUMBER_BOUNDS.items():
                 if key in self._options:
                     self._options[key] = _normalize_int_option(self._options[key], minimum, maximum)
             _apply_device_tracking_mode(self._options, tracking_mode)
