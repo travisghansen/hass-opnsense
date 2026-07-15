@@ -911,7 +911,7 @@ async def test_expected_id_retry_rechecks_snapshot_after_unload(
 async def test_loaded_entry_retry_cleanup_failure_recovers_with_reload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Loaded retry cleanup failures should stay available without scheduling reload."""
+    """Loaded retry cleanup failures should schedule a guarded recovery reload."""
     hass = MagicMock()
     entry = _make_entry(state=ConfigEntryState.LOADED, device_id="other", unique_id="other")
     _configure_hass(hass, entry)
@@ -944,6 +944,13 @@ async def test_loaded_entry_retry_cleanup_failure_recovers_with_reload(
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "repair_failed"
     assert entry.state is ConfigEntryState.NOT_LOADED
+    assert entry.data == {
+        "url": "https://router.example",
+        "username": "api-user",
+        "password": "api-password",
+        CONF_DEVICE_UNIQUE_ID: "other",
+    }
+    assert entry.unique_id == "other"
     hass.config_entries.async_unload.assert_awaited_once_with(entry.entry_id)
     entity_registry.async_remove.assert_called_once_with("sensor.old")
     device_registry.async_update_device.assert_called_once_with(
@@ -951,8 +958,21 @@ async def test_loaded_entry_retry_cleanup_failure_recovers_with_reload(
     )
     hass.config_entries.async_update_entry.assert_not_called()
     hass.config_entries.async_reload.assert_not_awaited()
-    hass.config_entries.async_schedule_reload.assert_not_called()
+    hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
     issue_delete.assert_not_called()
+
+    entity_registry.async_remove.side_effect = None
+    device_registry.async_update_device.side_effect = None
+    hass.config_entries.async_schedule_reload.reset_mock()
+
+    retry_result = await flow.async_step_confirm({})
+
+    assert retry_result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.state is ConfigEntryState.NOT_LOADED
+    assert entity_registry.async_remove.call_count == 2
+    assert device_registry.async_update_device.call_count == 2
+    assert hass.config_entries.async_reload.await_count == 1
+    hass.config_entries.async_schedule_reload.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1028,12 +1048,13 @@ async def test_cleanup_failure_keeps_entry_update_and_recovers_with_reload(
     assert len(hass.config_entries.async_update_entry.call_args_list) == 1
     issue_delete.assert_not_called()
     hass.config_entries.async_reload.assert_not_awaited()
-    hass.config_entries.async_schedule_reload.assert_not_called()
+    hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
 
     hass.config_entries.async_reload.reset_mock()
     entity_registry.async_remove.side_effect = None
     device_registry.async_update_device.side_effect = None
     client.get_device_unique_id.reset_mock()
+    hass.config_entries.async_schedule_reload.reset_mock()
 
     retry_result = await flow.async_step_confirm({})
 

@@ -266,7 +266,7 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         entry_id: str,
         entry_title: str,
     ) -> None:
-        """Schedule a recovery reload without mutating an untouched repair entry.
+        """Schedule a guarded recovery reload when the repair may have mutated state.
 
         Args:
             data_snapshot: Snapshot of the entry data used to detect changes.
@@ -289,7 +289,7 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         except HomeAssistantError, KeyError:
             _LOGGER.exception(
                 "Device-ID repair did not finish for %s; cannot schedule recovery "
-                "reload after a non-mutating failure",
+                "reload after an interrupted repair mutation",
                 entry_title,
             )
 
@@ -373,6 +373,13 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
             if current_entry is None:
                 return self.async_abort(reason="entry_changed")
             if not self._cleanup_entry_registries(current_entry):
+                self._schedule_recovery_reload(
+                    data_snapshot=entry_data_snapshot,
+                    options_snapshot=entry_options_snapshot,
+                    unique_id_snapshot=entry_unique_id_snapshot,
+                    entry_id=current_entry.entry_id,
+                    entry_title=current_entry.title,
+                )
                 return self.async_abort(reason="repair_failed")
             return await self._async_reload_with_recovery(
                 current_entry,
@@ -478,6 +485,13 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         post_update_entry_unique_id_snapshot = observed_device_id
 
         if not self._cleanup_entry_registries(entry):
+            self._schedule_recovery_reload(
+                data_snapshot=post_update_entry_data_snapshot,
+                options_snapshot=entry_options_snapshot,
+                unique_id_snapshot=post_update_entry_unique_id_snapshot,
+                entry_id=entry.entry_id,
+                entry_title=entry.title,
+            )
             return self.async_abort(reason="repair_failed")
 
         return await self._async_reload_with_recovery(
