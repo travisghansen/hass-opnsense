@@ -487,6 +487,8 @@ def _get_connection_error_details(
 def _normalize_url(url: str) -> str:
     """Normalize and validate an OPNsense base URL."""
     fix_url = url.strip()
+    if "://" not in fix_url:
+        fix_url = "https://" + fix_url
     url_parts = urlparse(fix_url)
     if not url_parts.scheme and not url_parts.netloc:
         fix_url = "https://" + fix_url
@@ -949,6 +951,8 @@ async def _get_dt_entries(
             ip_by_mac: dict[str, str] = {}
             # follow with all arp table entries
             for entry in arp_table:
+                if not isinstance(entry, Mapping):
+                    continue
                 arp_mac = get_arp_mac(entry)
                 normalized_mac = normalize_mac_address(arp_mac)
                 mac: str = normalized_mac or arp_mac

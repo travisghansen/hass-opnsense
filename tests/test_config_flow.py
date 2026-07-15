@@ -229,6 +229,26 @@ async def test_clean_and_parse_url_success_and_failure() -> None:
 @pytest.mark.parametrize(
     ("input_url", "expected_url"),
     [
+        ("router.example:8443", "https://router.example:8443"),
+        ("router.example:443", "https://router.example"),
+        ("https://router.example:443", "https://router.example"),
+    ],
+)
+async def test_clean_and_parse_url_with_and_without_scheme(
+    input_url: str, expected_url: str
+) -> None:
+    """Normalize URLs that omit a scheme and retain canonical default-port behavior."""
+    user_input = {cf_mod.CONF_URL: input_url}
+
+    await cf_mod._clean_and_parse_url(user_input)
+
+    assert user_input[cf_mod.CONF_URL] == expected_url
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("input_url", "expected_url"),
+    [
         ("https://router.example:443", "https://router.example"),
         ("http://router.example:80", "http://router.example"),
         ("https://router.example:8443", "https://router.example:8443"),
@@ -1078,6 +1098,37 @@ async def test_get_dt_entries_supports_raw_arp_keys(
     )
 
     assert res == {"aa:bb:cc:00:00:01": "10.0.0.10 [aa:bb:cc:00:00:01]"}
+
+
+@pytest.mark.asyncio
+async def test_get_dt_entries_skips_non_mapping_arp_rows(
+    monkeypatch: pytest.MonkeyPatch, fake_client: Any
+) -> None:
+    """Non-mapping ARP rows should be ignored instead of raising mapping errors."""
+    client_cls = fake_client()
+
+    async def _get_arp_table(self: Any, resolve_hostnames: bool = True) -> Any:
+        return [
+            "invalid row",
+            {"mac": "aa:bb:cc:00:00:02", "hostname": "hostb", "ip": "10.0.0.10"},
+            None,
+        ]
+
+    client_cls.get_arp_table = _get_arp_table
+    patch_opnsense_client(monkeypatch, cf_mod, client_cls)
+
+    res = await cf_mod._get_dt_entries(
+        hass=MagicMock(),
+        config={cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"},
+        selected_devices=["AA-BB-CC-DD-EE-FF"],
+    )
+
+    assert list(res.keys()) == [
+        "aa:bb:cc:dd:ee:ff",
+        "aa:bb:cc:00:00:02",
+    ]
+    assert res["aa:bb:cc:dd:ee:ff"] == "Not currently detected [aa:bb:cc:dd:ee:ff]"
+    assert res["aa:bb:cc:00:00:02"] == "hostb [10.0.0.10 | aa:bb:cc:00:00:02]"
 
 
 @pytest.mark.asyncio
