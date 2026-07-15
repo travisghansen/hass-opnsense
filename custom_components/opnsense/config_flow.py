@@ -383,7 +383,7 @@ async def validate_input(
 
 
 def _get_validation_error_details(
-    error: OPNsenseError | ClientError | TimeoutError,
+    error: OPNsenseError,
     user_input: Mapping[str, Any],
 ) -> tuple[str, str] | None:
     """Return config-flow error details for a validation exception.
@@ -417,22 +417,6 @@ def _get_validation_error_details(
         return (
             "missing_device_unique_id",
             f"Missing Device Unique ID Error. {type(error).__name__}: {error}",
-        )
-    if isinstance(error, TimeoutError):
-        return (
-            "connect_timeout",
-            cleanse_sensitive_data(
-                f"Connection TimeoutError. {type(error).__name__}: {error}",
-                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
-            ),
-        )
-    if isinstance(error, ClientError):
-        return (
-            "cannot_connect",
-            cleanse_sensitive_data(
-                f"ClientError. {type(error).__name__}: {error}",
-                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
-            ),
         )
     if isinstance(error, OPNsenseInvalidURL):
         return (
