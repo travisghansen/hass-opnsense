@@ -70,6 +70,7 @@ from .migrate import (
 )
 from .repair_reconciliation import (
     REPAIR_MARKER_KEY,
+    RepairMarker,
     RepairReconciliation,
     RepairReconciliationError,
     has_repair_marker,
@@ -84,6 +85,7 @@ NATIVE_RULE_ENTITY_TOKENS: tuple[str, ...] = (
     "_firewall_rule_",
     "_firewall_nat_",
 )
+_DEVICE_ID_MISMATCH_ISSUE_SUFFIX = "_device_id_mismatched"
 
 
 @dataclass
@@ -106,6 +108,111 @@ def _align_aiopnsense_log_level() -> None:
         return
 
     aiopnsense_logger.setLevel(_LOGGER.level)
+
+
+def _build_device_id_mismatch_issue_id(entry_id: str) -> str:
+    """Build the stable mismatch issue ID for a config entry."""
+    return f"{entry_id}{_DEVICE_ID_MISMATCH_ISSUE_SUFFIX}"
+
+
+def _async_delete_device_id_mismatch_issue(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Delete a stale nonpersistent device-id mismatch repair issue.
+
+    Args:
+        hass: Home Assistant instance.
+        entry: OPNsense config entry owning the mismatch issue.
+    """
+    ir.async_delete_issue(hass, DOMAIN, _build_device_id_mismatch_issue_id(entry.entry_id))
+
+
+def _async_create_marker_repair_issue(
+    hass: HomeAssistant, entry: ConfigEntry, repair_marker: RepairMarker
+) -> None:
+    """Create a marker-backed nonpersistent mismatch issue for reconciliation retries."""
+    ir.async_create_issue(
+        hass=hass,
+        domain=DOMAIN,
+        issue_id=_build_device_id_mismatch_issue_id(entry.entry_id),
+        is_fixable=True,
+        is_persistent=False,
+        severity=ir.IssueSeverity.ERROR,
+        translation_key="device_id_mismatched",
+        translation_placeholders={
+            "entry_title": entry.title,
+            "old_device_id": repair_marker.old_device_id,
+            "new_device_id": repair_marker.new_device_id,
+        },
+        data={
+            "entry_id": entry.entry_id,
+            "old_device_id": repair_marker.old_device_id,
+            "new_device_id": repair_marker.new_device_id,
+        },
+    )
+
+
+def _resolve_device_id_probe_state(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    config_device_id: str | None,
+    router_device_id: str | None,
+    repair_marker: RepairMarker | None,
+) -> bool:
+    """Handle marker and mismatch-issue decisions after device-ID probe."""
+    if repair_marker is not None and router_device_id != repair_marker.new_device_id:
+        _LOGGER.error(
+            "Device-ID reconciliation probe mismatch for %s: expected %s, got %s",
+            entry.title,
+            repair_marker.new_device_id,
+            router_device_id,
+        )
+        return False
+    if (
+        is_valid_device_id(config_device_id)
+        and is_valid_device_id(router_device_id)
+        and router_device_id != config_device_id
+    ):
+        if async_create_device_id_mismatch_issue(hass, entry, router_device_id):
+            _LOGGER.error(
+                "OPNsense Device ID has changed which indicates new or changed hardware. "
+                "A fixable repair issue is available to rebuild entities for this "
+                "OPNsense device. "
+                "hass-opnsense is shutting down."
+            )
+        return False
+    if repair_marker is None:
+        _async_delete_device_id_mismatch_issue(hass, entry)
+    return True
+
+
+async def _unload_setup_platforms_after_reconciliation_failure(
+    hass: HomeAssistant, entry: ConfigEntry, platforms: list[Platform]
+) -> None:
+    """Unload forwarded setup platforms when reconciliation aborts."""
+    try:
+        unloaded: bool = await hass.config_entries.async_unload_platforms(entry, platforms)
+    except HomeAssistantError, KeyError:
+        _LOGGER.exception(
+            "Device-ID reconciliation cleanup failed for %s; cannot unload entry platforms",
+            entry.title,
+        )
+        return
+    if not unloaded:
+        _LOGGER.debug(
+            "Device-ID reconciliation cleanup could not unload all platforms for %s",
+            entry.title,
+        )
+
+
+async def _cleanup_reconciliation_failure(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    platforms: list[Platform],
+    repair_marker: RepairMarker | None,
+) -> None:
+    """Persist marker-backed repair issue and unload any partially loaded platforms."""
+    if repair_marker is not None:
+        _async_create_marker_repair_issue(hass, entry, repair_marker)
+    await _unload_setup_platforms_after_reconciliation_failure(hass, entry, platforms)
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -440,26 +547,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             config_device_id,
             router_device_id,
         )
-        if repair_marker is not None and router_device_id != repair_marker.new_device_id:
-            _LOGGER.error(
-                "Device-ID reconciliation probe mismatch for %s: expected %s, got %s",
-                entry.title,
-                repair_marker.new_device_id,
-                router_device_id,
-            )
-            return False
-        if (
-            is_valid_device_id(config_device_id)
-            and is_valid_device_id(router_device_id)
-            and router_device_id != config_device_id
+        if not _resolve_device_id_probe_state(
+            hass,
+            entry,
+            config_device_id,
+            router_device_id,
+            repair_marker,
         ):
-            if async_create_device_id_mismatch_issue(hass, entry, router_device_id):
-                _LOGGER.error(
-                    "OPNsense Device ID has changed which indicates new or changed hardware. "
-                    "A fixable repair issue is available to rebuild entities for this "
-                    "OPNsense device. "
-                    "hass-opnsense is shutting down."
-                )
             return False
 
         firmware: str | None = await client.get_host_firmware_version()
@@ -563,6 +657,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "Device-ID reconciliation preflight failed for %s; retaining marker",
                     entry.title,
                 )
+                if repair_marker is not None:
+                    _async_create_marker_repair_issue(hass, entry, repair_marker)
                 return False
 
         await hass.config_entries.async_forward_entry_setups(entry, platforms)
@@ -585,6 +681,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 _LOGGER.exception(
                     "Device-ID reconciliation cleanup failed for %s; retaining marker",
                     entry.title,
+                )
+                await _cleanup_reconciliation_failure(
+                    hass,
+                    entry,
+                    platforms,
+                    repair_marker,
                 )
                 return False
         entry.async_on_unload(entry.add_update_listener(_async_update_listener))

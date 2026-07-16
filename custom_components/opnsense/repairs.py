@@ -12,7 +12,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import issue_registry as ir
 import voluptuous as vol
 
-from .const import CONF_DEVICE_UNIQUE_ID, DOMAIN
+from .const import CONF_DEVICE_UNIQUE_ID, DOMAIN, TRACKED_MACS
 from .helpers import create_opnsense_client_from_config_entry
 from .repair_reconciliation import REPAIR_MARKER_KEY, build_repair_marker, parse_repair_marker
 
@@ -31,6 +31,8 @@ def _entry_matches_snapshot(
     data_snapshot: dict[str, object],
     options_snapshot: dict[str, object],
     unique_id_snapshot: str | None,
+    *,
+    allow_tracked_macs_mutation: bool = False,
 ) -> bool:
     """Return whether a re-fetched entry still matches the repair snapshot.
 
@@ -40,17 +42,32 @@ def _entry_matches_snapshot(
         data_snapshot: Original config-entry data mapping.
         options_snapshot: Original config-entry options mapping.
         unique_id_snapshot: Original config-entry unique ID.
+        allow_tracked_macs_mutation: Whether tracked-MACS-only changes are ignored.
 
     Returns:
         bool: ``True`` when the entry identity and persisted values are unchanged.
     """
+    normalized_snapshot = data_snapshot
+    normalized_entry_data = dict(entry.data) if entry is not None else None
+    if allow_tracked_macs_mutation:
+        normalized_snapshot = _without_tracked_macs_for_recovery(normalized_snapshot)
+        if normalized_entry_data is not None:
+            normalized_entry_data = _without_tracked_macs_for_recovery(normalized_entry_data)
+
     return bool(
         entry is not None
         and entry.entry_id == entry_id
-        and dict(entry.data) == data_snapshot
+        and normalized_entry_data == normalized_snapshot
         and dict(entry.options) == options_snapshot
         and entry.unique_id == unique_id_snapshot
     )
+
+
+def _without_tracked_macs_for_recovery(payload: dict[str, object]) -> dict[str, object]:
+    """Return a snapshot copy that ignores setup-time tracked MAC mutations."""
+    normalized_payload: dict[str, object] = dict(payload)
+    normalized_payload.pop(TRACKED_MACS, None)
+    return normalized_payload
 
 
 def _get_entry_matching_snapshot(
@@ -292,6 +309,7 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
             data_snapshot,
             options_snapshot,
             unique_id_snapshot,
+            allow_tracked_macs_mutation=True,
         ):
             return
         try:
@@ -318,6 +336,45 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
                 "reload after the config entry changed during unload",
                 entry_title,
             )
+
+    def _schedule_changed_entry_reload_if_needed(
+        self,
+        *,
+        entry_was_loaded: bool,
+        entry: ConfigEntry,
+    ) -> None:
+        """Schedule a recovery reload when a previously loaded entry changed."""
+        if entry_was_loaded:
+            self._schedule_changed_entry_reload(
+                entry_id=entry.entry_id,
+                entry_title=entry.title,
+            )
+
+    def _validate_entry_snapshot(
+        self,
+        *,
+        current_entry: ConfigEntry | None,
+        entry_was_loaded: bool,
+        entry_data_snapshot: dict[str, object],
+        entry_options_snapshot: dict[str, object],
+        entry_unique_id_snapshot: str | None,
+    ) -> ConfigEntry | None:
+        """Return the entry when the runtime snapshot still matches."""
+        if _entry_matches_snapshot(
+            current_entry,
+            self._entry_id,
+            entry_data_snapshot,
+            entry_options_snapshot,
+            entry_unique_id_snapshot,
+        ):
+            return current_entry
+
+        if current_entry is not None:
+            self._schedule_changed_entry_reload_if_needed(
+                entry_was_loaded=entry_was_loaded,
+                entry=current_entry,
+            )
+        return None
 
     async def async_step_confirm(
         self, user_input: dict[str, str] | None = None
@@ -374,19 +431,14 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
             entry_ready, entry_was_loaded = await _async_prepare_entry_for_repair(self.hass, entry)
             if not entry_ready:
                 return self.async_abort(reason="cannot_unload")
-            current_entry = self.hass.config_entries.async_get_entry(self._entry_id)
-            if current_entry is None or not _entry_matches_snapshot(
-                current_entry,
-                self._entry_id,
-                entry_data_snapshot,
-                entry_options_snapshot,
-                entry_unique_id_snapshot,
-            ):
-                if entry_was_loaded and current_entry is not None:
-                    self._schedule_changed_entry_reload(
-                        entry_id=entry.entry_id,
-                        entry_title=entry.title,
-                    )
+            current_entry = self._validate_entry_snapshot(
+                current_entry=self.hass.config_entries.async_get_entry(self._entry_id),
+                entry_was_loaded=entry_was_loaded,
+                entry_data_snapshot=entry_data_snapshot,
+                entry_options_snapshot=entry_options_snapshot,
+                entry_unique_id_snapshot=entry_unique_id_snapshot,
+            )
+            if current_entry is None:
                 return self.async_abort(reason="entry_changed")
             return await self._async_reload_with_recovery(
                 current_entry,
@@ -436,19 +488,14 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         if not entry_ready:
             return self.async_abort(reason="cannot_unload")
 
-        current_entry = self.hass.config_entries.async_get_entry(self._entry_id)
-        if current_entry is None or not _entry_matches_snapshot(
-            current_entry,
-            self._entry_id,
-            entry_data_snapshot,
-            entry_options_snapshot,
-            entry_unique_id_snapshot,
-        ):
-            if entry_was_loaded and current_entry is not None:
-                self._schedule_changed_entry_reload(
-                    entry_id=entry.entry_id,
-                    entry_title=entry.title,
-                )
+        current_entry = self._validate_entry_snapshot(
+            current_entry=self.hass.config_entries.async_get_entry(self._entry_id),
+            entry_was_loaded=entry_was_loaded,
+            entry_data_snapshot=entry_data_snapshot,
+            entry_options_snapshot=entry_options_snapshot,
+            entry_unique_id_snapshot=entry_unique_id_snapshot,
+        )
+        if current_entry is None:
             return self.async_abort(reason="entry_changed")
         entry = current_entry
 
@@ -462,6 +509,10 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
             None,
         )
         if duplicate is not None:
+            self._schedule_changed_entry_reload_if_needed(
+                entry_was_loaded=entry_was_loaded,
+                entry=entry,
+            )
             return self.async_abort(reason="already_configured")
 
         new_data = {

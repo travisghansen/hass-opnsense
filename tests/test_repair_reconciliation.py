@@ -9,7 +9,7 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.opnsense import repair_reconciliation as rr
-from custom_components.opnsense.const import DOMAIN
+from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID, DOMAIN
 
 
 class _EntityRegistry:
@@ -71,7 +71,31 @@ class _DeviceRegistry:
             device.identifiers = changes["new_identifiers"]
         if "remove_config_entry_id" in changes:
             device.config_entries.discard(changes["remove_config_entry_id"])
+        if "via_device_id" in changes:
+            device.via_device_id = changes["via_device_id"]
         return device
+
+
+class _ConfigEntries:
+    """Minimal config-entry registry used for shared-router lookup."""
+
+    def __init__(self, entries: dict[str, object]) -> None:
+        self._entries = entries
+
+    def async_get_entry(self, entry_id: str) -> object | None:
+        """Return a stored config entry."""
+        return self._entries.get(entry_id)
+
+
+def _other_config_entry(entry_id: str, unique_id: str) -> MockConfigEntry:
+    """Create a config entry carrying OPNsense device unique identifier."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_DEVICE_UNIQUE_ID: unique_id},
+        unique_id=unique_id,
+    )
+    object.__setattr__(entry, "entry_id", entry_id)
+    return entry
 
 
 def _entry(unique_id: str, *, entity_id: str, device_id: str | None = None, **attrs: Any) -> Any:
@@ -92,12 +116,14 @@ def _device(
     identifier: str,
     *,
     config_entries: set[str] | None = None,
+    via_device_id: str | None = None,
 ) -> Any:
     """Create a device-registry stand-in."""
     return SimpleNamespace(
         id=device_id,
         identifiers={(DOMAIN, identifier)},
         config_entries=set(config_entries or {"entry-1"}),
+        via_device_id=via_device_id,
     )
 
 
@@ -105,6 +131,7 @@ def _subject(
     monkeypatch: pytest.MonkeyPatch,
     entities: list[Any],
     devices: list[Any],
+    extra_config_entries: dict[str, MockConfigEntry] | None = None,
 ) -> tuple[rr.RepairReconciliation, _EntityRegistry, _DeviceRegistry]:
     """Create reconciliation with patched mutable registries."""
     entity_registry = _EntityRegistry(entities)
@@ -127,9 +154,12 @@ def _subject(
     )
     entry = MockConfigEntry(domain=DOMAIN, data={}, unique_id="new_id")
     object.__setattr__(entry, "entry_id", "entry-1")
-    reconciliation = rr.RepairReconciliation(
-        MagicMock(), entry, rr.RepairMarker(1, "old_id", "new_id")
-    )
+    config_entry_map: dict[str, MockConfigEntry] = {"entry-1": entry}
+    if extra_config_entries:
+        config_entry_map.update(extra_config_entries)
+    hass = MagicMock()
+    hass.config_entries = _ConfigEntries(config_entry_map)
+    reconciliation = rr.RepairReconciliation(hass, entry, rr.RepairMarker(1, "old_id", "new_id"))
     return reconciliation, entity_registry, device_registry
 
 
@@ -280,6 +310,57 @@ def test_prepare_and_finalize_are_idempotent_after_partial_retry(
         "new_id_second",
     }
     assert registry.removed == []
+
+
+def test_finalize_reassigns_shared_tracker_parent_to_remaining_router(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Shared tracker devices are reparented when another router still owns shared trackers."""
+    stale = _entry("old_id_stale", entity_id="sensor.stale", device_id="shared-device")
+    surviving_entry = _other_config_entry("entry-2", "survivor_router")
+    current_router = _device("current_router", "new_id")
+    surviving_router = _device("survivor_router_id", "survivor_router", config_entries={"entry-2"})
+    shared_tracker = _device(
+        "shared-device",
+        "shared-tracker",
+        config_entries={"entry-1", "entry-2"},
+    )
+    shared_tracker.via_device_id = current_router.id
+
+    reconciliation, _, devices = _subject(
+        monkeypatch,
+        [stale],
+        [current_router, surviving_router, shared_tracker],
+        extra_config_entries={"entry-2": surviving_entry},
+    )
+    reconciliation.prepare()
+
+    reconciliation.finalize()
+
+    assert (
+        "shared-device",
+        {"remove_config_entry_id": "entry-1", "via_device_id": "survivor_router_id"},
+    ) in devices.updates
+
+
+def test_finalize_clears_parent_from_shared_tracker_when_no_replacement_exists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Shared tracker parent reference is cleared when no surviving router can be resolved."""
+    stale = _entry("old_id_stale", entity_id="sensor.stale", device_id="shared-device")
+    current_router = _device("current_router", "new_id")
+    shared_tracker = _device("shared-device", "shared-tracker", config_entries={"entry-1"})
+    shared_tracker.via_device_id = current_router.id
+
+    reconciliation, _, devices = _subject(monkeypatch, [stale], [current_router, shared_tracker])
+    reconciliation.prepare()
+
+    reconciliation.finalize()
+
+    assert (
+        "shared-device",
+        {"remove_config_entry_id": "entry-1", "via_device_id": None},
+    ) in devices.updates
 
 
 def test_records_all_final_platform_lists_including_disabled_entities() -> None:

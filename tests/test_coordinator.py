@@ -41,6 +41,7 @@ from custom_components.opnsense.const import (
     ENTRY_TYPE_CARP,
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
+from custom_components.opnsense.repair_reconciliation import REPAIR_MARKER_KEY, build_repair_marker
 
 
 @pytest.mark.asyncio
@@ -459,7 +460,7 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
         called["issue"] += 1
         called["issue_kwargs"] = kwargs
 
-    monkeypatch.setattr(repairs_module.ir, "async_create_issue", fake_async_create_issue)
+    monkeypatch.setattr(coordinator_module.ir, "async_create_issue", fake_async_create_issue)
     object.__setattr__(coord, "async_shutdown", fake_shutdown)
 
     # call 3 times -> should call issue once and shutdown once
@@ -486,6 +487,67 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
     }
     assert "fixable repair issue" in caplog.text
     assert "rebuild entities" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_check_device_unique_id_clears_stale_issue_without_repair_marker(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
+    """Matching IDs should clear stale mismatch issues when no repair marker exists."""
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "expected"})
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="expected",
+        config_entry=entry,
+    )
+    coord._state = {"device_unique_id": "expected"}
+    create_issue_delete = MagicMock()
+    monkeypatch.setattr(coordinator_module.ir, "async_delete_issue", create_issue_delete)
+
+    res = await coord._check_device_unique_id()
+
+    assert res is True
+    create_issue_delete.assert_called_once_with(
+        coord.hass,
+        coordinator_module.DOMAIN,
+        f"{entry.entry_id}_device_id_mismatched",
+    )
+
+
+@pytest.mark.asyncio
+async def test_check_device_unique_id_keeps_stale_issue_when_repair_marker_present(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
+    """Matching IDs should keep stale issues while a repair marker is still active."""
+    marker = build_repair_marker("old-dev", "expected")
+    entry = make_config_entry(
+        {CONF_DEVICE_UNIQUE_ID: "expected", REPAIR_MARKER_KEY: marker},
+    )
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="expected",
+        config_entry=entry,
+    )
+    coord._state = {"device_unique_id": "expected"}
+    create_issue_delete = MagicMock()
+    monkeypatch.setattr(coordinator_module.ir, "async_delete_issue", create_issue_delete)
+
+    res = await coord._check_device_unique_id()
+
+    assert res is True
+    create_issue_delete.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1593,7 +1655,7 @@ async def test_async_update_dt_data_uses_shared_device_id_mismatch_policy(
         called["issue_kwargs"] = kwargs
 
     monkeypatch.setattr(coord, "_get_states", fake_get_states)
-    monkeypatch.setattr(repairs_module.ir, "async_create_issue", fake_async_create_issue)
+    monkeypatch.setattr(coordinator_module.ir, "async_create_issue", fake_async_create_issue)
     object.__setattr__(coord, "async_shutdown", fake_shutdown)
     object.__setattr__(client, "get_query_counts", AsyncMock(return_value=3))
 
@@ -1666,7 +1728,7 @@ async def test_check_device_unique_id_invalid_runtime_id_is_not_counted(
         del kwargs
         called["issue"] += 1
 
-    monkeypatch.setattr(repairs_module.ir, "async_create_issue", fake_async_create_issue)
+    monkeypatch.setattr(coordinator_module.ir, "async_create_issue", fake_async_create_issue)
     object.__setattr__(coord, "async_shutdown", fake_shutdown)
     coord._state = state
 

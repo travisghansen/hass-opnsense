@@ -3890,7 +3890,17 @@ async def test_async_setup_entry_delete_not_called_for_between_min_and_ltd(
     res = await init_mod.async_setup_entry(hass, entry)
     assert res is True
     # delete should not be called for firmware between min and LTD
-    assert not delete_issue_mock.called
+    issue_ids = [call[0][2] for call in delete_issue_mock.call_args_list if len(call[0]) > 2]
+    assert issue_ids
+    assert f"{entry.entry_id}_device_id_mismatched" in issue_ids
+    assert (
+        f"{entry.data[init_mod.CONF_DEVICE_UNIQUE_ID]}_opnsense_below_min_firmware_"
+        f"{init_mod.OPNSENSE_MIN_FIRMWARE}" not in issue_ids
+    )
+    assert (
+        f"{entry.data[init_mod.CONF_DEVICE_UNIQUE_ID]}_opnsense_below_ltd_firmware_"
+        f"{init_mod.OPNSENSE_LTD_FIRMWARE}" not in issue_ids
+    )
 
 
 @pytest.mark.asyncio
@@ -4056,6 +4066,7 @@ async def test_reconciliation_incomplete_platform_does_not_finalize_or_clear_mar
     )
     monkeypatch.setattr(init_mod, "RepairReconciliation", lambda *_args: reconciliation)
     ph_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+    ph_hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
     ph_hass.data = {}
 
@@ -4067,6 +4078,8 @@ async def test_reconciliation_incomplete_platform_does_not_finalize_or_clear_mar
     reconciliation.require_platforms_complete.assert_called_once()
     reconciliation.finalize.assert_not_called()
     reconciliation.mark_complete.assert_not_called()
+    ph_hass.config_entries.async_unload_platforms.assert_awaited_once()
+    assert ph_hass.config_entries.async_unload_platforms.await_args.args[0] is entry
     ph_hass.config_entries.async_update_entry.assert_not_called()
     assert entry.data[init_mod.REPAIR_MARKER_KEY] == marker
 
@@ -4157,6 +4170,151 @@ async def test_reconciliation_marker_clear_exception_retains_marker(
     ph_hass.config_entries.async_update_entry.assert_called_once()
     reconciliation.mark_complete.assert_not_called()
     assert entry.data[init_mod.REPAIR_MARKER_KEY] == marker
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_deletes_stale_device_id_mismatch_issue(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """A matching device ID should clear any stale startup mismatch issue."""
+    client = _make_valid_setup_client()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
+    )
+    coordinator = _make_setup_coordinator()
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+        },
+        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+    )
+    ph_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+    ph_hass.config_entries.async_reload = AsyncMock()
+    delete_issue = MagicMock()
+    monkeypatch.setattr(init_mod.ir, "async_delete_issue", delete_issue)
+    ph_hass.data = {}
+
+    result = await init_mod.async_setup_entry(ph_hass, entry)
+
+    assert result is True
+    expected_issue_id = f"{entry.entry_id}_device_id_mismatched"
+    deleted_issue_ids = [call[0][2] for call in delete_issue.call_args_list if len(call[0]) > 2]
+    assert expected_issue_id in deleted_issue_ids
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_preserves_marker_and_skips_stale_issue_delete(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """An active repair marker should skip stale mismatch issue deletion until reconcile completes."""
+    client = _make_valid_setup_client()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
+    )
+    coordinator = _make_setup_coordinator()
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+    marker = {"version": 1, "old_device_id": "old-dev", "new_device_id": "dev1"}
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            init_mod.REPAIR_MARKER_KEY: marker,
+        },
+        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+        unique_id="dev1",
+    )
+    reconciliation = MagicMock()
+    monkeypatch.setattr(init_mod, "RepairReconciliation", lambda *_args: reconciliation)
+    ph_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+    ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
+    ph_hass.config_entries.async_reload = AsyncMock()
+    delete_issue = MagicMock()
+    monkeypatch.setattr(init_mod.ir, "async_delete_issue", delete_issue)
+    ph_hass.data = {}
+
+    result = await init_mod.async_setup_entry(ph_hass, entry)
+
+    assert result is True
+    delete_issue_ids = [call[0][2] for call in delete_issue.call_args_list if len(call[0]) > 2]
+    assert f"{entry.entry_id}_device_id_mismatched" not in delete_issue_ids
+    assert (
+        f"{entry.data[init_mod.CONF_DEVICE_UNIQUE_ID]}_opnsense_below_min_firmware_"
+        f"{init_mod.OPNSENSE_MIN_FIRMWARE}" in delete_issue_ids
+    )
+    assert (
+        f"{entry.data[init_mod.CONF_DEVICE_UNIQUE_ID]}_opnsense_below_ltd_firmware_"
+        f"{init_mod.OPNSENSE_LTD_FIRMWARE}" in delete_issue_ids
+    )
+    ph_hass.config_entries.async_forward_entry_setups.assert_awaited_once()
+    ph_hass.config_entries.async_update_entry.assert_called_once()
+    reconciliation.require_platforms_complete.assert_called_once()
+    reconciliation.finalize.assert_called_once_with()
+    reconciliation.mark_complete.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_reconciliation_prepare_failure_recreates_marker_issue_without_unloading_platforms(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Reconciliation preflight failures emit retryable marker issue and skip platform unload."""
+    client = _make_valid_setup_client()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
+    )
+    coordinator = _make_setup_coordinator()
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+    marker = {"version": 1, "old_device_id": "old-dev", "new_device_id": "dev1"}
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            init_mod.REPAIR_MARKER_KEY: marker,
+        },
+        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+        unique_id="dev1",
+    )
+    reconciliation = MagicMock()
+    reconciliation.prepare.side_effect = init_mod.RepairReconciliationError("prepare failed")
+    monkeypatch.setattr(init_mod, "RepairReconciliation", lambda *_args: reconciliation)
+    ph_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+    ph_hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
+    ph_hass.config_entries.async_reload = AsyncMock()
+    ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
+    create_issue = MagicMock()
+    monkeypatch.setattr(init_mod.ir, "async_create_issue", create_issue)
+    ph_hass.data = {}
+
+    result = await init_mod.async_setup_entry(ph_hass, entry)
+
+    assert result is False
+    expected_issue_id = f"{entry.entry_id}_device_id_mismatched"
+    issue_kwargs = create_issue.call_args.kwargs
+    assert create_issue.call_count == 1
+    assert issue_kwargs["issue_id"] == expected_issue_id
+    assert issue_kwargs["is_fixable"] is True
+    assert issue_kwargs["is_persistent"] is False
+    assert issue_kwargs["data"] == {
+        "entry_id": entry.entry_id,
+        "old_device_id": "old-dev",
+        "new_device_id": "dev1",
+    }
+    ph_hass.config_entries.async_unload_platforms.assert_not_awaited()
+    ph_hass.config_entries.async_update_entry.assert_not_called()
 
 
 @pytest.mark.asyncio

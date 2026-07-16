@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
@@ -29,8 +30,10 @@ from .const import (
     CONF_SYNC_VNSTAT,
     CONF_SYNC_VPN,
     DEFAULT_SYNC_OPTION_VALUE,
+    DOMAIN,
 )
 from .helpers import dict_get, get_smart_device_name, is_carp_entry
+from .repair_reconciliation import has_repair_marker
 from .repairs import async_create_device_id_mismatch_issue, is_valid_device_id
 
 if TYPE_CHECKING:
@@ -304,6 +307,13 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                     )
                 await self.async_shutdown()
             return False
+        config_entry = self.config_entry
+        if config_entry is not None and not has_repair_marker(config_entry):
+            ir.async_delete_issue(
+                self.hass,
+                DOMAIN,
+                f"{config_entry.entry_id}_device_id_mismatched",
+            )
         self._mismatched_count = 0
         return True
 

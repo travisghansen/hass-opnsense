@@ -18,7 +18,7 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.opnsense import repairs
-from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID, DOMAIN
+from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID, DOMAIN, TRACKED_MACS
 from custom_components.opnsense.repair_reconciliation import REPAIR_MARKER_KEY, build_repair_marker
 
 
@@ -314,10 +314,49 @@ async def test_duplicate_entry_aborts_before_unload_or_registry_mutation(
     entity_registry.async_remove.assert_not_called()
     device_registry.async_update_device.assert_not_called()
     hass.config_entries.async_update_entry.assert_not_called()
-    hass.config_entries.async_schedule_reload.assert_not_called()
+    hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
     issue_delete.assert_not_called()
     assert entry.data[CONF_DEVICE_UNIQUE_ID] == "dev1"
     assert entry.unique_id == "dev1"
+
+
+@pytest.mark.asyncio
+async def test_loaded_entry_duplicate_after_unload_schedules_changed_entry_reload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A duplicate that appears after unload should schedule a guarded reload."""
+    hass = MagicMock()
+    entry = _make_entry(state=ConfigEntryState.LOADED)
+    duplicate = _make_entry(entry_id="entry-2", device_id="other", unique_id="other")
+    _configure_hass(hass, entry)
+    entries_calls: list[str] = []
+
+    def _entries(domain: str) -> list[Any]:
+        """Return a duplicate config entry only after unload and snapshot checks."""
+        del domain
+        entries_calls.append("entries")
+        if len(entries_calls) == 1:
+            return [entry]
+        return [entry, duplicate]
+
+    hass.config_entries.async_entries.side_effect = _entries
+    entity_registry, device_registry = _patch_registries(
+        monkeypatch,
+        entities=[SimpleNamespace(entity_id="sensor.old")],
+        devices=[SimpleNamespace(id="device")],
+    )
+    _patch_probe_client(monkeypatch, observed_device_id="other")
+    flow = _make_flow(hass, entry)
+
+    result = await flow.async_step_confirm({})
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+    hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
+    hass.config_entries.async_unload.assert_awaited_once_with(entry.entry_id)
+    entity_registry.async_remove.assert_not_called()
+    device_registry.async_update_device.assert_not_called()
+    hass.config_entries.async_update_entry.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1206,3 +1245,77 @@ async def test_retry_rejects_invalid_or_mismatched_marker(
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "entry_changed"
     client.factory.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_entry_matches_snapshot_rejects_tracked_macs_mutation_by_default() -> None:
+    """Tracked-mac mutation must fail strict snapshot matching by default."""
+    entry = _make_entry()
+    baseline = dict(entry.data)
+    baseline_with_tracked_macs = {**baseline, TRACKED_MACS: ["AA:BB:CC:DD"]}
+    object.__setattr__(entry, "data", baseline_with_tracked_macs)
+
+    current = {**baseline, TRACKED_MACS: ["11:22:33:44"]}
+    object.__setattr__(entry, "data", current)
+    entry_options_snapshot = dict(entry.options)
+
+    assert not repairs._entry_matches_snapshot(
+        entry=entry,
+        entry_id=entry.entry_id,
+        data_snapshot=baseline_with_tracked_macs,
+        options_snapshot=entry_options_snapshot,
+        unique_id_snapshot=entry.unique_id,
+    )
+
+
+@pytest.mark.asyncio
+async def test_entry_matches_snapshot_allows_only_tracked_macs_mutation_for_recovery() -> None:
+    """Recovery-mode snapshot checks should ignore tracked-MAC drift only."""
+    entry = _make_entry()
+    baseline = dict(entry.data)
+    baseline_with_tracked_macs = {**baseline, TRACKED_MACS: ["AA:BB:CC:DD"]}
+    object.__setattr__(entry, "data", baseline_with_tracked_macs)
+
+    current = {**baseline, TRACKED_MACS: ["11:22:33:44"]}
+    object.__setattr__(entry, "data", current)
+    entry_options_snapshot = dict(entry.options)
+
+    assert repairs._entry_matches_snapshot(
+        entry=entry,
+        entry_id=entry.entry_id,
+        data_snapshot=baseline_with_tracked_macs,
+        options_snapshot=entry_options_snapshot,
+        unique_id_snapshot=entry.unique_id,
+        allow_tracked_macs_mutation=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_entry_matches_snapshot_rejects_non_tracked_mutations() -> None:
+    """Non-tracked payload mutation must invalidate the repair snapshot."""
+    entry = _make_entry()
+    baseline = dict(entry.data)
+    baseline["some_other_key"] = "original"
+    entry_options_snapshot = dict(entry.options)
+
+    object.__setattr__(entry, "data", baseline)
+    assert repairs._entry_matches_snapshot(
+        entry=entry,
+        entry_id=entry.entry_id,
+        data_snapshot=baseline,
+        options_snapshot=entry_options_snapshot,
+        unique_id_snapshot=entry.unique_id,
+    )
+
+    mutated = dict(baseline)
+    mutated["some_other_key"] = "mutated"
+    object.__setattr__(entry, "data", mutated)
+
+    assert not repairs._entry_matches_snapshot(
+        entry=entry,
+        entry_id=entry.entry_id,
+        data_snapshot=baseline,
+        options_snapshot=entry_options_snapshot,
+        unique_id_snapshot=entry.unique_id,
+        allow_tracked_macs_mutation=True,
+    )

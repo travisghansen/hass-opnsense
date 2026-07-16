@@ -13,6 +13,7 @@ from homeassistant.helpers.entity import Entity
 from homeassistant.util import slugify
 
 from .const import DOMAIN
+from .helpers import detach_shared_router_parent
 
 REPAIR_MARKER_KEY: str = "device_id_repair"
 _REPAIR_MARKER_VERSION = 1
@@ -202,8 +203,13 @@ class RepairReconciliation:
                 device_registry, self.config_entry.entry_id
             ):
                 if device.id not in preserved_device_ids:
-                    device_registry.async_update_device(
-                        device.id, remove_config_entry_id=self.config_entry.entry_id
+                    router_device_id = main_device.id if main_device is not None else None
+                    detach_shared_router_parent(
+                        shared_config_entry_id=self.config_entry.entry_id,
+                        shared_device_entry=device,
+                        router_device_id=router_device_id,
+                        config_entries=self.hass.config_entries,
+                        device_registry=device_registry,
                     )
         except (HomeAssistantError, KeyError, ValueError) as err:
             raise RepairReconciliationError("registry finalization failed") from err
