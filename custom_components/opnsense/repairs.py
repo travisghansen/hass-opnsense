@@ -4,7 +4,6 @@ from copy import deepcopy
 import logging
 from typing import TypeGuard
 
-import aiohttp
 from aiopnsense.exceptions import OPNsenseError
 from homeassistant.components.repairs import ConfirmRepairFlow, RepairsFlow, RepairsFlowResult
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
@@ -99,8 +98,6 @@ async def _async_validate_and_probe_device_id(
 
     Raises:
         OPNsenseError: If validation or the device-ID probe fails.
-        aiohttp.ClientError: If the client encounters a transport failure.
-        TimeoutError: If the client request times out.
     """
     client = create_opnsense_client_from_config_entry(
         hass=hass,
@@ -421,7 +418,7 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
 
         try:
             observed_device_id = await _async_validate_and_probe_device_id(self.hass, entry)
-        except OPNsenseError, aiohttp.ClientError, TimeoutError:
+        except OPNsenseError:
             return self.async_abort(reason="cannot_connect")
 
         current_entry = _get_entry_matching_snapshot(

@@ -4,8 +4,12 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
-import aiohttp
-from aiopnsense.exceptions import OPNsenseBelowMinFirmware, OPNsenseUnknownFirmware
+from aiopnsense.exceptions import (
+    OPNsenseBelowMinFirmware,
+    OPNsenseConnectionError,
+    OPNsenseTimeoutError,
+    OPNsenseUnknownFirmware,
+)
 from homeassistant.components.repairs import ConfirmRepairFlow
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.data_entry_flow import FlowResultType
@@ -409,8 +413,8 @@ async def test_loaded_entry_unloads_before_registry_cleanup(
 @pytest.mark.parametrize(
     ("probe_error", "observed_device_id"),
     [
-        pytest.param(aiohttp.ClientError("transport"), None, id="transport-error"),
-        pytest.param(TimeoutError("timeout"), None, id="timeout-error"),
+        pytest.param(OPNsenseConnectionError("transport"), None, id="connection-error"),
+        pytest.param(OPNsenseTimeoutError("timeout"), None, id="timeout-error"),
         pytest.param(None, None, id="missing-device-id"),
         pytest.param(None, "", id="blank-device-id"),
         pytest.param(None, "   ", id="whitespace-device-id"),
