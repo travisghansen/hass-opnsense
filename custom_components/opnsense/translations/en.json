@@ -38,7 +38,10 @@
           "verify_ssl": "Verify SSL certificate",
           "granular_sync_options": "Enable Granular Sync Options"
         },
-        "title": "Connect to the OPNsense firewall / router"
+        "title": "Connect to the OPNsense firewall / router",
+        "data_description": {
+          "url": "Use the actual OPNsense device URL. Do not use a CARP virtual URL."
+        }
       },
       "carp": {
         "description": "CARP VIP entries are read-only. Configure each physical node with its own management address in a separate OPNsense device entry.",
