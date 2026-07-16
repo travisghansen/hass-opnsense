@@ -1589,9 +1589,24 @@ async def async_setup_entry(
     reconciliation_complete = True
 
     if config.get(CONF_SYNC_TELEMETRY, DEFAULT_SYNC_OPTION_VALUE):
+        telemetry = state.get("telemetry")
+        has_filesystem_inventory = (
+            "telemetry" in state
+            and isinstance(telemetry, MutableMapping)
+            and "filesystems" in telemetry
+            and isinstance(telemetry.get("filesystems"), list)
+        )
+        has_temperature_inventory = (
+            "telemetry" in state
+            and isinstance(telemetry, MutableMapping)
+            and "temps" in telemetry
+            and isinstance(telemetry.get("temps"), Mapping)
+        )
         entities.extend(await _compile_static_telemetry_sensors(config_entry, coordinator))
         entities.extend(await _compile_filesystem_sensors(config_entry, coordinator, state))
         entities.extend(await _compile_temperature_sensors(config_entry, coordinator, state))
+        if not (has_filesystem_inventory and has_temperature_inventory):
+            reconciliation_complete = False
     if config.get(CONF_SYNC_VNSTAT, DEFAULT_SYNC_OPTION_VALUE):
         if "vnstat" in state and isinstance(state.get("vnstat"), MutableMapping):
             entities.extend(await _compile_vnstat_sensors(config_entry, coordinator, state))
@@ -1603,7 +1618,15 @@ async def async_setup_entry(
         else:
             reconciliation_complete = False
     if config.get(CONF_SYNC_SMART, DEFAULT_SYNC_OPTION_VALUE):
+        has_smart_inventory = (
+            "smart" in state
+            and isinstance(state.get("smart"), list)
+            and "smart_info" in state
+            and isinstance(state.get("smart_info"), Mapping)
+        )
         entities.extend(await _compile_smart_sensors(config_entry, coordinator, state))
+        if not has_smart_inventory:
+            reconciliation_complete = False
     if config.get(CONF_SYNC_CERTIFICATES, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_static_certificate_sensors(config_entry, coordinator))
     if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):
@@ -1613,9 +1636,8 @@ async def async_setup_entry(
         has_wireguard_inventory = "wireguard" in state and isinstance(
             state.get("wireguard"), MutableMapping
         )
-        if has_openvpn_inventory or has_wireguard_inventory:
-            entities.extend(await _compile_vpn_sensors(config_entry, coordinator, state))
-        else:
+        entities.extend(await _compile_vpn_sensors(config_entry, coordinator, state))
+        if not (has_openvpn_inventory and has_wireguard_inventory):
             reconciliation_complete = False
     if config.get(CONF_SYNC_GATEWAYS, DEFAULT_SYNC_OPTION_VALUE):
         if "gateways" in state and isinstance(state.get("gateways"), MutableMapping):
@@ -1629,9 +1651,26 @@ async def async_setup_entry(
             reconciliation_complete = False
     if config.get(CONF_SYNC_CARP, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_carp_status_sensor(config_entry, coordinator, state))
-        entities.extend(await _compile_carp_interface_sensors(config_entry, coordinator, state))
+        carp = state.get("carp")
+        if (
+            "carp" in state
+            and isinstance(carp, MutableMapping)
+            and "interfaces" in carp
+            and isinstance(carp.get("interfaces"), list)
+        ):
+            entities.extend(await _compile_carp_interface_sensors(config_entry, coordinator, state))
+        else:
+            reconciliation_complete = False
     if config.get(CONF_SYNC_DHCP_LEASES, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_dhcp_leases_sensors(config_entry, coordinator, state))
+        dhcp_leases = state.get("dhcp_leases")
+        if not (
+            "dhcp_leases" in state
+            and isinstance(dhcp_leases, MutableMapping)
+            and "lease_interfaces" in dhcp_leases
+            and isinstance(dhcp_leases.get("lease_interfaces"), MutableMapping)
+        ):
+            reconciliation_complete = False
 
     _LOGGER.debug("[sensor async_setup_entry] entities: %s", len(entities))
     record_desired_entities(config_entry, "sensor", entities if reconciliation_complete else None)

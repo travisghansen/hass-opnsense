@@ -296,6 +296,66 @@ async def test_async_setup_entry_records_empty_authoritative_vpn_inventory(
     assert recorded["entities"] == []
 
 
+@pytest.mark.parametrize(
+    ("state", "description"),
+    [
+        (
+            {"openvpn": {"clients": {"client-uuid": {"enabled": True}}}},
+            "Missing wireguard inventory",
+        ),
+        (
+            {
+                "openvpn": {"clients": {"client-uuid": {"enabled": True}}},
+                "wireguard": "bad-wireguard",
+            },
+            "Malformed wireguard inventory",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_none_for_partial_vpn_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    state: dict[str, Any],
+    description: str,
+) -> None:
+    """A valid VPN side alone must not mark switch reconciliation complete."""
+    coordinator = make_coord(state)
+    config_entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_FIREWALL_AND_NAT: False,
+            CONF_SYNC_SERVICES: False,
+            CONF_SYNC_VPN: True,
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_UNBOUND: False,
+        }
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    created: list[Any] = []
+    recorded: dict[str, Any] = {}
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture the desired-entity payload sent to reconciliation."""
+        recorded["entities"] = entities
+
+    def add_entities(ents: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Capture switch entities emitted by setup."""
+        created.extend(ents)
+
+    monkeypatch.setattr(switch_mod, "record_desired_entities", capture)
+
+    await switch_mod.async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", add_entities)
+    )
+    assert "entities" in recorded, description
+    assert recorded["entities"] is None, description
+    assert created
+    keys = {entity.entity_description.key for entity in created}
+    assert keys == {"openvpn.clients.client-uuid"}, description
+
+
 @pytest.mark.asyncio
 async def test_async_setup_entry_records_none_for_missing_unbound_inventory(
     monkeypatch: pytest.MonkeyPatch,

@@ -581,9 +581,8 @@ async def async_setup_entry(
         has_wireguard_inventory = "wireguard" in state and isinstance(
             state.get("wireguard"), MutableMapping
         )
-        if has_openvpn_inventory or has_wireguard_inventory:
-            entities.extend(await _compile_vpn_switches(config_entry, coordinator, state))
-        else:
+        entities.extend(await _compile_vpn_switches(config_entry, coordinator, state))
+        if not (has_openvpn_inventory and has_wireguard_inventory):
             reconciliation_complete = False
     if config.get(CONF_SYNC_CARP, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_carp_maintenance_switch(config_entry, coordinator, state))
