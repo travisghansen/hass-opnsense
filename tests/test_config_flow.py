@@ -5,29 +5,44 @@ and options flow behaviors such as device tracker handling.
 """
 
 from collections.abc import Callable
-import importlib
-from typing import Any, Never, cast
+from typing import Any, Never
 from unittest.mock import AsyncMock, MagicMock
-import xmlrpc.client
 
-import aiohttp
+from aiopnsense import exceptions as aiopnsense_exceptions
 from homeassistant.core import HomeAssistant
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
-from yarl import URL
+import voluptuous as vol
 
-from custom_components.opnsense.const import CONF_SYNC_SMART, CONF_SYNC_TELEMETRY
-from tests.utilities import patch_client_factory
+import custom_components.opnsense.config_flow as config_flow_mod
+from custom_components.opnsense.const import (
+    CONF_SYNC_FIREWALL_AND_NAT,
+    CONF_SYNC_SMART,
+    CONF_SYNC_TELEMETRY,
+)
+from tests.utilities import patch_opnsense_client
 
-cf_mod = importlib.import_module("custom_components.opnsense.config_flow")
+cf_mod: Any = config_flow_mod
+
+
+def _make_options_flow(config_entry: Any) -> Any:
+    """Create an options flow using Home Assistant's built-in config entry lookup."""
+    if not isinstance(getattr(config_entry, "entry_id", None), str):
+        config_entry.entry_id = "test-entry"
+    flow = cf_mod.OPNsenseOptionsFlow()
+    flow.hass = MagicMock()
+    flow.hass.config_entries = MagicMock()
+    flow.hass.config_entries.async_update_entry = MagicMock()
+    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
+    flow.handler = config_entry.entry_id
+    return flow
 
 
 def test_mac_and_ip_and_cleanse() -> None:
     """Validate MAC/IP helpers and cleanse sensitive data."""
-    assert cf_mod.is_valid_mac_address("aa:bb:cc:dd:ee:ff")
-    assert cf_mod.is_valid_mac_address("AA-BB-CC-DD-EE-FF")
+    assert cf_mod.normalize_mac_address("aa:bb:cc:dd:ee:ff") == "aa:bb:cc:dd:ee:ff"
     assert cf_mod.normalize_mac_address("AA-BB-CC-DD-EE-FF") == "aa:bb:cc:dd:ee:ff"
-    assert not cf_mod.is_valid_mac_address("not-a-mac")
+    assert cf_mod.normalize_mac_address("not-a-mac") is None
 
     # IP validation
     assert cf_mod.is_ip_address("192.168.1.1")
@@ -112,9 +127,25 @@ async def test_clean_and_parse_url_success_and_failure() -> None:
     await cf_mod._clean_and_parse_url(ui)
     assert ui[cf_mod.CONF_URL] == "https://router.example"
 
-    # invalid netloc -> raise InvalidURL
-    with pytest.raises(cf_mod.InvalidURL):
+    auth_ui = {cf_mod.CONF_URL: "https://user:pass@router.example:8443"}
+    await cf_mod._clean_and_parse_url(auth_ui)
+    assert auth_ui[cf_mod.CONF_URL] == "https://router.example:8443"
+
+    ipv6_ui = {cf_mod.CONF_URL: "https://user:pass@[2001:db8::1]:8443"}
+    await cf_mod._clean_and_parse_url(ipv6_ui)
+    assert ipv6_ui[cf_mod.CONF_URL] == "https://[2001:db8::1]:8443"
+
+    invalid_port_ui = {cf_mod.CONF_URL: "https://router.example:abc"}
+    with pytest.raises(cf_mod.OPNsenseInvalidURL):
+        await cf_mod._clean_and_parse_url(invalid_port_ui)
+
+    # invalid netloc -> raise OPNsenseInvalidURL
+    with pytest.raises(cf_mod.OPNsenseInvalidURL):
         await cf_mod._clean_and_parse_url({cf_mod.CONF_URL: ""})
+
+    missing_host_ui = {cf_mod.CONF_URL: "https://:8443"}
+    with pytest.raises(cf_mod.OPNsenseInvalidURL):
+        await cf_mod._clean_and_parse_url(missing_host_ui)
 
 
 @pytest.mark.asyncio
@@ -123,26 +154,13 @@ async def test_clean_and_parse_url_success_and_failure() -> None:
     [
         ("below_min", "below_min_firmware"),
         ("unknown_fw", "unknown_firmware"),
-        ("missing_external_dep", "missing_external_aiopnsense"),
         ("missing_id", "missing_device_unique_id"),
-        ("plugin_missing", "plugin_missing"),
         ("invalid_url", "invalid_url_format"),
-        ("xmlrpc_invalid_auth", "invalid_auth"),
-        ("xmlrpc_privilege", "privilege_missing"),
-        ("xmlrpc_plugin", "plugin_missing"),
-        ("xmlrpc_other", "cannot_connect"),
-        ("client_connector_ssl", "cannot_connect_ssl"),
-        ("resp_401", "invalid_auth"),
-        ("resp_403", "privilege_missing"),
-        ("resp_500", "cannot_connect"),
-        ("protocol_307", "url_redirect"),
-        ("too_many_redirects", "url_redirect"),
+        ("ssl", "cannot_connect_ssl"),
+        ("invalid_auth", "invalid_auth"),
+        ("privilege_missing", "privilege_missing"),
         ("timeout", "connect_timeout"),
-        ("server_timeout", "connect_timeout"),
-        ("os_ssl", "privilege_missing"),
-        ("os_timed_out", "connect_timeout"),
-        ("os_ssl_handshake", "cannot_connect_ssl"),
-        ("os_unknown", "unknown"),
+        ("connection", "cannot_connect"),
     ],
 )
 async def test_validate_input_exception_mapping(
@@ -150,72 +168,25 @@ async def test_validate_input_exception_mapping(
 ) -> None:
     """Ensure validate_input maps various exceptions to the expected error code."""
     # Build exception object lazily to avoid constructor issues at collection time
+    exc: BaseException
     if exc_key == "below_min":
-        exc = cf_mod.BelowMinFirmware()
+        exc = aiopnsense_exceptions.OPNsenseBelowMinFirmware()
     elif exc_key == "unknown_fw":
-        exc = cf_mod.OPNsenseUnknownFirmware()
-    elif exc_key == "missing_external_dep":
-        exc = cf_mod.MissingExternalAiopnsenseDependency()
+        exc = aiopnsense_exceptions.OPNsenseUnknownFirmware()
     elif exc_key == "missing_id":
-        exc = cf_mod.MissingDeviceUniqueID("x")
-    elif exc_key == "plugin_missing":
-        exc = cf_mod.PluginMissing()
+        exc = aiopnsense_exceptions.OPNsenseMissingDeviceUniqueID("x")
     elif exc_key == "invalid_url":
-        exc = aiohttp.InvalidURL("u")
-    elif exc_key == "xmlrpc_invalid_auth":
-        exc = xmlrpc.client.Fault(1, "Invalid username or password")
-    elif exc_key == "xmlrpc_privilege":
-        exc = xmlrpc.client.Fault(1, "Authentication failed: not enough privileges")
-    elif exc_key == "xmlrpc_plugin":
-        exc = xmlrpc.client.Fault(1, "opnsense.exec_php does not exist")
-    elif exc_key == "xmlrpc_other":
-        exc = xmlrpc.client.Fault(1, "other fault")
-    elif exc_key == "client_connector_ssl":
-        # Simulate an SSL-related client error that maps to "cannot_connect_ssl".
-        # ClientSSLError (and its base ClientConnectorError) require a connection
-        # key and an underlying os_error; provide a minimal connector-like
-        # object and an OSError to construct the exception instance.
-        class Conn:
-            host = "host.example"
-            port = 443
-            ssl = None
-
-        exc = aiohttp.ClientSSLError(
-            cast("aiohttp.client_reqrep.ConnectionKey", Conn()), OSError("ssl error")
-        )
-    elif exc_key in ("resp_401", "resp_403", "resp_500"):
-        status = 401 if exc_key == "resp_401" else 403 if exc_key == "resp_403" else 500
-
-        # Provide minimal request_info with a real_url to satisfy logging/str()
-        class ResponseRequestInfo:
-            real_url = URL("http://localhost")
-
-        exc = aiohttp.ClientResponseError(
-            request_info=cast("aiohttp.RequestInfo", ResponseRequestInfo()),
-            history=(),
-            status=status,
-            message="m",
-        )
-    elif exc_key == "protocol_307":
-        exc = xmlrpc.client.ProtocolError("u", 307, "307 Temporary Redirect", {})
-    elif exc_key == "too_many_redirects":
-
-        class RedirectRequestInfo:
-            real_url = URL("http://localhost")
-
-        exc = aiohttp.TooManyRedirects(
-            request_info=cast("aiohttp.RequestInfo", RedirectRequestInfo()), history=()
-        )
+        exc = cf_mod.OPNsenseInvalidURL("u")
+    elif exc_key == "ssl":
+        exc = aiopnsense_exceptions.OPNsenseSSLError("ssl error")
+    elif exc_key == "invalid_auth":
+        exc = aiopnsense_exceptions.OPNsenseInvalidAuth("auth error")
+    elif exc_key == "privilege_missing":
+        exc = aiopnsense_exceptions.OPNsensePrivilegeMissing("privilege error")
     elif exc_key == "timeout":
-        exc = TimeoutError("t")
-    elif exc_key == "server_timeout":
-        exc = aiohttp.ServerTimeoutError("t")
-    elif exc_key == "os_ssl":
-        exc = OSError("unsupported XML-RPC protocol")
-    elif exc_key == "os_timed_out":
-        exc = OSError("timed out")
-    elif exc_key == "os_ssl_handshake":
-        exc = OSError("SSL: handshake")
+        exc = aiopnsense_exceptions.OPNsenseTimeoutError("t")
+    elif exc_key == "connection":
+        exc = aiopnsense_exceptions.OPNsenseConnectionError("boom")
     else:
         exc = OSError("unknown")
 
@@ -231,25 +202,71 @@ async def test_validate_input_exception_mapping(
         """
         raise exc
 
-    monkeypatch.setattr(cf_mod, "_handle_user_input", _raiser)
+    monkeypatch.setattr(cf_mod, "_validate_client_details", _raiser)
     errors: dict[str, str] = {}
-    res = await cf_mod.validate_input(
-        hass=MagicMock(), user_input={}, errors=errors, config_step="user"
-    )
+    res = await cf_mod.validate_input(hass=MagicMock(), user_input={}, errors=errors)
     assert res.get("base") == expected
 
 
-def test_validate_firmware_version_raises() -> None:
-    """_validate_firmware_version should raise BelowMinFirmware for old versions."""
-    # pick an obviously old version
-    with pytest.raises(cf_mod.BelowMinFirmware):
-        cf_mod._validate_firmware_version("1.0")
+@pytest.mark.asyncio
+async def test_validate_input_reraises_unmapped_opnsense_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """validate_input should re-raise OPNsense errors without form mappings."""
+    exc = cf_mod.OPNsenseError("unmapped")
+
+    async def _raiser(*args: object, **kwargs: object) -> Never:
+        """Raise an unmapped OPNsense error.
+
+        Args:
+            *args: Positional validation arguments ignored by this stub.
+            **kwargs: Keyword validation arguments ignored by this stub.
+
+        Raises:
+            OPNsenseError: Always raised to exercise the re-raise path.
+        """
+        raise exc
+
+    monkeypatch.setattr(cf_mod, "_validate_client_details", _raiser)
+
+    with pytest.raises(cf_mod.OPNsenseError) as err:
+        await cf_mod.validate_input(hass=MagicMock(), user_input={}, errors={})
+
+    assert err.value is exc
 
 
-def test_log_and_set_error_sets_base(caplog: pytest.LogCaptureFixture) -> None:
-    """_log_and_set_error should log the message and set errors['base']."""
+@pytest.mark.asyncio
+async def test_validate_input_timeout_uses_connect_timeout_error(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """OPNsense timeout should map to connect_timeout and redact credentials in logs."""
+    username = "admin"
+    password = "supersecret"
+
+    async def _raiser(*args: object, **kwargs: object) -> Never:
+        """Raise an OPNsense timeout that includes secrets in the message."""
+        raise aiopnsense_exceptions.OPNsenseTimeoutError(
+            f"timed out for user={username} pass={password}"
+        )
+
+    monkeypatch.setattr(cf_mod, "_validate_client_details", _raiser)
+    with caplog.at_level("ERROR"):
+        result = await cf_mod.validate_input(
+            hass=MagicMock(),
+            user_input={cf_mod.CONF_USERNAME: username, cf_mod.CONF_PASSWORD: password},
+            errors={},
+        )
+
+    assert result.get("base") == "connect_timeout"
+    assert "[redacted]" in caplog.text
+    assert username not in caplog.text
+    assert password not in caplog.text
+
+
+def test_record_validation_error_sets_base(caplog: pytest.LogCaptureFixture) -> None:
+    """_record_validation_error should log the message and set errors['base']."""
     errors: dict[str, str] = {}
-    cf_mod._log_and_set_error(errors=errors, key="test_key", message="an msg")
+    cf_mod._record_validation_error(errors=errors, key="test_key", message="an msg")
     assert errors.get("base") == "test_key"
     assert "an msg" in caplog.text
 
@@ -277,19 +294,7 @@ async def test_get_dt_entries_sorts_and_includes_selected(
         ]
 
     client_cls.get_arp_table = _get_arp_table
-    patch_client_factory(monkeypatch, cf_mod, client_cls)
-
-    # Patch async_create_clientsession on the module under test to avoid real network I/O
-    def _fake_create_clientsession(*args, **kwargs) -> Any:
-        """Return a mock client session so the test avoids real network I/O.
-
-        Args:
-            *args: Positional arguments forwarded from the patched helper and ignored.
-            **kwargs: Keyword arguments forwarded from the patched helper and ignored.
-        """
-        return MagicMock()
-
-    monkeypatch.setattr(cf_mod, "async_create_clientsession", _fake_create_clientsession)
+    patch_opnsense_client(monkeypatch, cf_mod, client_cls)
 
     hass = MagicMock()
     config = {cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"}
@@ -314,6 +319,38 @@ async def test_get_dt_entries_sorts_and_includes_selected(
 
 
 @pytest.mark.asyncio
+async def test_get_dt_entries_passes_throw_errors_to_client(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_client: Any,
+) -> None:
+    """_get_dt_entries should request throw-errors behavior from the API client."""
+    create_calls: dict[str, Any] = {}
+
+    client_cls = fake_client()
+
+    async def _get_arp_table(self: Any, resolve_hostnames: bool = True) -> list[dict[str, str]]:
+        """Return no ARP rows for deterministic entry-point assertions."""
+        return []
+
+    client_cls.get_arp_table = _get_arp_table
+
+    def _init_client(**kwargs: Any) -> Any:
+        """Capture the create_opnsense_client call and return the fake client."""
+        create_calls.update(kwargs)
+        return client_cls(**kwargs)
+
+    monkeypatch.setattr(cf_mod, "create_opnsense_client", _init_client)
+
+    await cf_mod._get_dt_entries(
+        hass=MagicMock(),
+        config={cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"},
+        selected_devices=[],
+    )
+
+    assert create_calls["throw_errors"] is True
+
+
+@pytest.mark.asyncio
 async def test_get_dt_entries_preserves_missing_selected_devices(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
@@ -330,8 +367,7 @@ async def test_get_dt_entries_preserves_missing_selected_devices(
         return [{"mac": "11:22:33:44:55:66", "hostname": "", "ip": "10.0.0.5"}]
 
     client_cls.get_arp_table = _get_arp_table
-    patch_client_factory(monkeypatch, cf_mod, client_cls)
-    monkeypatch.setattr(cf_mod, "async_create_clientsession", lambda *a, **k: MagicMock())
+    patch_opnsense_client(monkeypatch, cf_mod, client_cls)
 
     res = await cf_mod._get_dt_entries(
         hass=MagicMock(),
@@ -369,8 +405,7 @@ async def test_get_dt_entries_closes_client(monkeypatch: pytest.MonkeyPatch) -> 
             """
             return []
 
-    patch_client_factory(monkeypatch, cf_mod, _Client)
-    monkeypatch.setattr(cf_mod, "async_create_clientsession", lambda *a, **k: MagicMock())
+    patch_opnsense_client(monkeypatch, cf_mod, _Client)
 
     await cf_mod._get_dt_entries(
         hass=MagicMock(),
@@ -382,8 +417,8 @@ async def test_get_dt_entries_closes_client(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 @pytest.mark.asyncio
-async def test_handle_user_input_closes_client(monkeypatch: pytest.MonkeyPatch) -> None:
-    """_handle_user_input should always close the temporary client."""
+async def test_validate_client_details_closes_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_validate_client_details should always close the temporary client."""
 
     class _Client:
         last_instance = None
@@ -396,6 +431,7 @@ async def test_handle_user_input_closes_client(monkeypatch: pytest.MonkeyPatch) 
                 **kwargs: Unused keyword constructor args from factory helper.
             """
             type(self).last_instance = self
+            self.validate = AsyncMock()
             self.async_close = AsyncMock()
 
         async def get_host_firmware_version(self) -> str:
@@ -406,22 +442,6 @@ async def test_handle_user_input_closes_client(monkeypatch: pytest.MonkeyPatch) 
             """
             return "26.1.1"
 
-        async def set_use_snake_case(self, initial: bool = False) -> None:
-            """Accept naming-mode call from validation flow.
-
-            Args:
-                initial: Initial-setup flag passed by validation logic.
-            """
-            return
-
-        async def is_plugin_installed(self) -> bool:
-            """Report plugin as installed for this validation path.
-
-            Returns:
-                bool: Always `True`.
-            """
-            return True
-
         async def get_system_info(self) -> Any:
             """Return minimal system metadata for name derivation.
 
@@ -430,19 +450,20 @@ async def test_handle_user_input_closes_client(monkeypatch: pytest.MonkeyPatch) 
             """
             return {"name": "OPNsense"}
 
-        async def get_device_unique_id(self, expected_id: str | None = None) -> str:
+        async def get_device_unique_id(
+            self, _expected_id: str | None = None, **_kwargs: Any
+        ) -> str:
             """Return deterministic device identifier for validation.
 
             Args:
-                expected_id: Expected device ID from caller and ignored in this stub.
+                _expected_id: Expected device ID from caller and ignored in this stub.
 
             Returns:
                 str: Fake device identifier.
             """
             return "dev123"
 
-    patch_client_factory(monkeypatch, cf_mod, _Client)
-    monkeypatch.setattr(cf_mod, "async_create_clientsession", lambda *a, **k: MagicMock())
+    patch_opnsense_client(monkeypatch, cf_mod, _Client)
 
     user_input = {
         cf_mod.CONF_URL: "https://router.example",
@@ -450,11 +471,61 @@ async def test_handle_user_input_closes_client(monkeypatch: pytest.MonkeyPatch) 
         cf_mod.CONF_PASSWORD: "p",
         cf_mod.CONF_GRANULAR_SYNC_OPTIONS: False,
     }
-    await cf_mod._handle_user_input(
+    await cf_mod._validate_client_details(
         hass=MagicMock(),
         user_input=user_input,
-        config_step="user",
     )
+    assert _Client.last_instance is not None
+    _Client.last_instance.validate.assert_awaited_once()
+    _Client.last_instance.async_close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_validate_client_details_raises_when_device_id_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_validate_client_details should reject clients that return no device id."""
+
+    class _Client:
+        last_instance = None
+
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            """Capture the created client instance.
+
+            Args:
+                *args: Positional constructor arguments ignored by this stub.
+                **kwargs: Keyword constructor arguments ignored by this stub.
+            """
+            type(self).last_instance = self
+            self.validate = AsyncMock()
+            self.async_close = AsyncMock()
+
+        async def get_host_firmware_version(self) -> str:
+            """Return firmware that passes minimum-version validation."""
+            return "26.1.1"
+
+        async def get_system_info(self) -> dict[str, str]:
+            """Return minimal system metadata for validation."""
+            return {"name": "OPNsense"}
+
+        async def get_device_unique_id(self, expected_id: str | None = None) -> str:
+            """Return an empty device identifier.
+
+            Args:
+                expected_id: Expected device ID supplied by validation and ignored.
+            """
+            return ""
+
+    patch_opnsense_client(monkeypatch, cf_mod, _Client)
+
+    user_input = {
+        cf_mod.CONF_URL: "https://router.example",
+        cf_mod.CONF_USERNAME: "u",
+        cf_mod.CONF_PASSWORD: "p",
+    }
+    with pytest.raises(cf_mod.OPNsenseMissingDeviceUniqueID):
+        await cf_mod._validate_client_details(hass=MagicMock(), user_input=user_input)
+
     assert _Client.last_instance is not None
     _Client.last_instance.async_close.assert_awaited_once()
 
@@ -485,38 +556,163 @@ def test_build_user_input_and_granular_and_options_schemas_defaults() -> None:
     assert cf_mod.CONF_DEVICE_TRACKING_MODE in out
 
 
+def test_schema_builders_preserve_submitted_values_before_stored_values() -> None:
+    """Schema defaults should prefer submitted values, then stored values, then constants."""
+    user_schema = cf_mod._build_user_input_schema(
+        user_input={
+            cf_mod.CONF_URL: "https://submitted.example",
+            cf_mod.CONF_GRANULAR_SYNC_OPTIONS: False,
+        },
+        stored_values={
+            cf_mod.CONF_URL: "https://stored.example",
+            cf_mod.CONF_GRANULAR_SYNC_OPTIONS: True,
+        },
+    )
+    user_values = user_schema({})
+    assert user_values[cf_mod.CONF_URL] == "https://submitted.example"
+    assert user_values[cf_mod.CONF_GRANULAR_SYNC_OPTIONS] is False
+
+    granular_schema = cf_mod._build_granular_sync_schema(
+        user_input={CONF_SYNC_SMART: False},
+        stored_values={CONF_SYNC_SMART: True, CONF_SYNC_TELEMETRY: False},
+    )
+    granular_values = granular_schema({})
+    assert granular_values[CONF_SYNC_SMART] is False
+    assert granular_values[CONF_SYNC_TELEMETRY] is False
+
+    options_schema = cf_mod._build_options_init_schema(
+        user_input={
+            cf_mod.CONF_SCAN_INTERVAL: 45,
+            cf_mod.CONF_DEVICE_TRACKING_MODE: cf_mod.DEVICE_TRACKING_MODE_SELECTED,
+        },
+        stored_config={cf_mod.CONF_GRANULAR_SYNC_OPTIONS: True},
+        stored_options={
+            cf_mod.CONF_SCAN_INTERVAL: 120,
+            cf_mod.CONF_DEVICE_TRACKER_ENABLED: True,
+            cf_mod.CONF_DEVICES: [],
+        },
+    )
+    options_values = options_schema({})
+    assert options_values[cf_mod.CONF_SCAN_INTERVAL] == 45
+    assert options_values[cf_mod.CONF_DEVICE_TRACKING_MODE] == cf_mod.DEVICE_TRACKING_MODE_SELECTED
+    assert options_values[cf_mod.CONF_GRANULAR_SYNC_OPTIONS] is True
+
+
 @pytest.mark.parametrize(
     ("input_value", "expected"),
     [
-        (5, 10),  # below minimum -> clamped to 10
         (150, 150),  # within range -> unchanged
-        (1000, 300),  # above maximum -> clamped to 300
     ],
 )
-def test_options_scan_interval_clamp(input_value: Any, expected: Any) -> None:
-    """_build_options_init_schema should clamp CONF_SCAN_INTERVAL to min/max values."""
+def test_options_scan_interval_accepts_native_selector_range(
+    input_value: Any, expected: Any
+) -> None:
+    """_build_options_init_schema should accept CONF_SCAN_INTERVAL values in range."""
     oschema = cf_mod._build_options_init_schema(user_input=None)
     # pass a dict with the scan interval set to the test value
     validated = oschema({cf_mod.CONF_SCAN_INTERVAL: input_value})
     assert validated.get(cf_mod.CONF_SCAN_INTERVAL) == expected
 
 
+@pytest.mark.parametrize("input_value", [5, 1000])
+def test_options_scan_interval_rejects_values_outside_selector_range(input_value: Any) -> None:
+    """_build_options_init_schema should reject CONF_SCAN_INTERVAL values outside range."""
+    oschema = cf_mod._build_options_init_schema(user_input=None)
+
+    with pytest.raises(vol.Invalid):
+        oschema({cf_mod.CONF_SCAN_INTERVAL: input_value})
+
+
+@pytest.mark.parametrize(
+    ("stored_options", "field", "expected"),
+    [
+        (
+            {cf_mod.CONF_SCAN_INTERVAL: 1000},
+            cf_mod.CONF_SCAN_INTERVAL,
+            300,
+        ),
+        (
+            {cf_mod.CONF_DEVICE_TRACKER_SCAN_INTERVAL: 5},
+            cf_mod.CONF_DEVICE_TRACKER_SCAN_INTERVAL,
+            30,
+        ),
+        (
+            {cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME: 5000},
+            cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME,
+            3600,
+        ),
+    ],
+)
+def test_options_schema_clamps_legacy_stored_defaults(
+    stored_options: dict[str, Any], field: str, expected: int
+) -> None:
+    """_build_options_init_schema should clamp legacy stored defaults into range."""
+    oschema = cf_mod._build_options_init_schema(
+        user_input=None,
+        stored_options=stored_options,
+    )
+
+    validated = oschema({})
+    assert validated[field] == expected
+
+
+@pytest.mark.parametrize(
+    "option_key",
+    list(cf_mod.OPTIONS_INIT_NUMBER_BOUNDS),
+)
+def test_options_init_schema_boundaries_match_keyed_lookup(option_key: str) -> None:
+    """Selector bounds for options should come from keyed bounds lookup values."""
+    oschema = cf_mod._build_options_init_schema(user_input=None)
+    minimum, maximum = cf_mod.OPTIONS_INIT_NUMBER_BOUNDS[option_key]
+
+    assert oschema({option_key: minimum}).get(option_key) == minimum
+    assert oschema({option_key: maximum}).get(option_key) == maximum
+
+    with pytest.raises(vol.Invalid):
+        oschema({option_key: minimum - 1})
+    with pytest.raises(vol.Invalid):
+        oschema({option_key: maximum + 1})
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(None, id="none"),
+        pytest.param("invalid", id="invalid-string"),
+    ],
+)
+def test_normalize_int_option_invalid_values_fall_back_to_minimum(value: Any) -> None:
+    """Invalid persisted numeric options should fall back to the selector minimum."""
+    assert cf_mod._normalize_int_option(value, 5, 3600) == 5
+
+
 @pytest.mark.parametrize(
     ("input_value", "expected"),
     [
-        (-10, 0),  # below minimum -> clamped to 0
         (300, 300),  # within range -> unchanged
         (1200, 1200),  # within new range (20 minutes) -> unchanged
         (3600, 3600),  # at maximum (1 hour) -> unchanged
-        (5000, 3600),  # above maximum -> clamped to 3600
     ],
 )
-def test_options_device_tracker_consider_home_clamp(input_value: Any, expected: Any) -> None:
-    """_build_options_init_schema should clamp CONF_DEVICE_TRACKER_CONSIDER_HOME to min/max values."""
+def test_options_device_tracker_consider_home_accepts_native_selector_range(
+    input_value: Any, expected: Any
+) -> None:
+    """_build_options_init_schema should accept consider_home values in range."""
     oschema = cf_mod._build_options_init_schema(user_input=None)
     # pass a dict with the consider_home value set to the test value
     validated = oschema({cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME: input_value})
     assert validated.get(cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME) == expected
+
+
+@pytest.mark.parametrize("input_value", [-10, 5000])
+def test_options_device_tracker_consider_home_rejects_values_outside_selector_range(
+    input_value: Any,
+) -> None:
+    """_build_options_init_schema should reject consider_home values outside range."""
+    oschema = cf_mod._build_options_init_schema(user_input=None)
+
+    with pytest.raises(vol.Invalid):
+        oschema({cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME: input_value})
 
 
 def test_async_get_options_flow_returns_options_flow() -> None:
@@ -524,6 +720,7 @@ def test_async_get_options_flow_returns_options_flow() -> None:
     cfg = MagicMock()
     res = cf_mod.OPNsenseConfigFlow.async_get_options_flow(cfg)
     assert isinstance(res, cf_mod.OPNsenseOptionsFlow)
+    assert isinstance(cf_mod.OPNsenseOptionsFlow(), cf_mod.OPNsenseOptionsFlow)
 
 
 @pytest.mark.asyncio
@@ -533,14 +730,7 @@ async def test_options_flow_init_with_user_triggers_update() -> None:
     cfg.data = {cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"}
     cfg.options = {cf_mod.CONF_DEVICE_TRACKER_ENABLED: False}
 
-    flow = cf_mod.OPNsenseOptionsFlow(cfg)
-    flow.hass = MagicMock()
-    flow.hass.config_entries = MagicMock()
-    flow.hass.config_entries.async_update_entry = MagicMock()
-    # set a handler so flow._config_entry_id property is available during the test
-    flow.handler = "opnsense"
-    # ensure async_get_known_entry returns our cfg when accessed
-    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=cfg)
+    flow = _make_options_flow(cfg)
 
     # populate internals to avoid Home Assistant property lookups in this unit test
     flow._config = dict(cfg.data)
@@ -553,6 +743,34 @@ async def test_options_flow_init_with_user_triggers_update() -> None:
     flow.hass.config_entries.async_update_entry.assert_called()
     assert res["type"] == "create_entry"
     assert flow._options.get(cf_mod.CONF_SCAN_INTERVAL) == 30
+    assert isinstance(flow._options.get(cf_mod.CONF_SCAN_INTERVAL), int)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        (cf_mod.CONF_SCAN_INTERVAL, 30.0),
+        (cf_mod.CONF_DEVICE_TRACKER_SCAN_INTERVAL, 150.0),
+        (cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME, 120.0),
+    ],
+)
+async def test_options_flow_init_normalizes_numeric_values(field: str, value: float) -> None:
+    """Submitting numeric options should persist integer values."""
+    cfg = MagicMock()
+    cfg.data = {cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"}
+    cfg.options = {cf_mod.CONF_DEVICE_TRACKER_ENABLED: False}
+
+    flow = _make_options_flow(cfg)
+    flow._config = dict(cfg.data)
+    flow._options = dict(cfg.options)
+
+    res = await flow.async_step_init(user_input={field: value})
+
+    flow.hass.config_entries.async_update_entry.assert_called()
+    assert res["type"] == "create_entry"
+    assert flow._options[field] == int(value)
+    assert isinstance(flow._options[field], int)
 
 
 @pytest.mark.asyncio
@@ -564,10 +782,7 @@ async def test_options_flow_granular_sync_calls_validate_and_updates(
     cfg.data = {cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"}
     cfg.options = {cf_mod.CONF_DEVICE_TRACKER_ENABLED: False}
 
-    flow = cf_mod.OPNsenseOptionsFlow(cfg)
-    flow.hass = MagicMock()
-    flow.hass.config_entries = MagicMock()
-    flow.hass.config_entries.async_update_entry = MagicMock()
+    flow = _make_options_flow(cfg)
 
     # monkeypatch validate_input to return no errors
     async def fake_validate(hass: HomeAssistant, user_input: Any, errors: Any, **kwargs) -> Any:
@@ -589,10 +804,6 @@ async def test_options_flow_granular_sync_calls_validate_and_updates(
     flow._config = dict(cfg.data)
     flow._options = dict(cfg.options)
     user_input = {gkey: True}
-    # set a handler and make async_get_known_entry return our cfg so the flow can access
-    # config_entry and options during unit tests without Home Assistant internals.
-    flow.handler = "opnsense"
-    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=cfg)
     res = await flow.async_step_granular_sync(user_input=user_input)
     flow.hass.config_entries.async_update_entry.assert_called()
     assert res["type"] == "create_entry"
@@ -608,8 +819,7 @@ async def test_device_tracker_shows_form_when_no_user_input(
         options={cf_mod.CONF_DEVICES: ["11:22:33:44:55:66"]},
     )
 
-    flow = cf_mod.OPNsenseOptionsFlow(cfg)
-    flow.hass = MagicMock()
+    flow = _make_options_flow(cfg)
 
     # monkeypatch _get_dt_entries to return an ordered dict-like mapping
     async def fake_get_dt_entries(hass: HomeAssistant, config: Any, selected_devices: Any) -> Any:
@@ -627,11 +837,6 @@ async def test_device_tracker_shows_form_when_no_user_input(
     # ensure internals are present so we don't trigger config_entry property lookup
     flow._config = dict(cfg.data)
     flow._options = dict(cfg.options)
-    # set a handler and make async_get_known_entry return our cfg so the flow can access
-    # config_entry and options during unit tests without Home Assistant internals.
-    flow.handler = "opnsense"
-    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=cfg)
-
     res = await flow.async_step_device_tracker(user_input=None)
     assert res["type"] == "form"
     assert "data_schema" in res
@@ -640,41 +845,31 @@ async def test_device_tracker_shows_form_when_no_user_input(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "exc",
-    [
-        aiohttp.ClientError("boom"),
-        cf_mod.MissingExternalAiopnsenseDependency("missing"),
-    ],
-)
 async def test_device_tracker_handles_arp_lookup_failure(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
-    exc: BaseException | None,
 ) -> None:
-    """ARP/dependency lookup failures should not abort device tracker form rendering."""
+    """ARP lookup failures should not abort device tracker form rendering."""
+    exc = aiopnsense_exceptions.OPNsenseConnectionError("boom")
     cfg = make_config_entry(
         data={cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"},
         options={cf_mod.CONF_DEVICES: ["AA-BB-CC-DD-EE-FF"]},
     )
-    flow = cf_mod.OPNsenseOptionsFlow(cfg)
-    flow.hass = MagicMock()
+    flow = _make_options_flow(cfg)
     flow._config = dict(cfg.data)
     flow._options = dict(cfg.options)
-    flow.handler = "opnsense"
-    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=cfg)
 
     async def _raise(*args, **kwargs) -> Never:
-        """Raise ``ClientError`` so device-tracker lookup failures can be tested.
+        """Raise the parametrized exception so device-tracker lookup failures can be tested.
 
         Args:
             *args: Additional positional arguments forwarded by the function.
             **kwargs: Additional keyword arguments forwarded by the function.
 
         Raises:
-            aiohttp.ClientError: Always raised to exercise error handling in the options flow.
+            BaseException: Always raised to exercise error handling in the options flow.
         """
-        raise aiohttp.ClientError("boom")
+        raise exc
 
     monkeypatch.setattr(cf_mod, "_get_dt_entries", _raise)
 
@@ -683,6 +878,32 @@ async def test_device_tracker_handles_arp_lookup_failure(
     assert res["errors"]["base"] == "cannot_connect"
     validated = res["data_schema"]({})
     assert validated[cf_mod.CONF_DEVICES] == ["aa:bb:cc:dd:ee:ff"]
+
+
+@pytest.mark.asyncio
+async def test_device_tracker_handles_opnsense_timeout_error(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """OPNsense timeouts should keep picker rendering with the saved MAC fallback."""
+    cfg = make_config_entry(
+        data={cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"},
+        options={cf_mod.CONF_DEVICES: ["AA-BB-CC-DD-EE-FF"]},
+    )
+    flow = _make_options_flow(cfg)
+    flow._config = dict(cfg.data)
+    flow._options = dict(cfg.options)
+
+    async def _raise_timeout(*args: object, **kwargs: object) -> Never:
+        """Raise an OPNsense timeout to exercise connect_timeout mapping."""
+        raise aiopnsense_exceptions.OPNsenseTimeoutError("request timed out")
+
+    monkeypatch.setattr(cf_mod, "_get_dt_entries", _raise_timeout)
+    res_timeout = await flow.async_step_device_tracker(user_input=None)
+    assert res_timeout["type"] == "form"
+    assert res_timeout["errors"]["base"] == "connect_timeout"
+    validated_timeout = res_timeout["data_schema"]({})
+    assert validated_timeout[cf_mod.CONF_DEVICES] == ["aa:bb:cc:dd:ee:ff"]
 
 
 @pytest.mark.asyncio
@@ -700,14 +921,7 @@ async def test_options_flow_device_tracker_user_input(
         options={cf_mod.CONF_DEVICE_TRACKER_ENABLED: True, cf_mod.CONF_DEVICES: []},
     )
 
-    flow = cf_mod.OPNsenseOptionsFlow(config_entry)
-    # attach hass with config_entries.update stub
-    flow.hass = MagicMock()
-    flow.hass.config_entries = MagicMock()
-    flow.hass.config_entries.async_update_entry = MagicMock()
-    # make the flow aware of its handler so config_entry property works during tests
-    flow.handler = "opnsense"
-    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
+    flow = _make_options_flow(config_entry)
 
     # emulate what async_step_init would do: populate _config and _options from entry
     flow._config = dict(config_entry.data)
@@ -747,12 +961,7 @@ async def test_options_flow_device_tracker_track_all_clears_device_list(
         },
     )
 
-    flow = cf_mod.OPNsenseOptionsFlow(config_entry)
-    flow.hass = MagicMock()
-    flow.hass.config_entries = MagicMock()
-    flow.hass.config_entries.async_update_entry = MagicMock()
-    flow.handler = "opnsense"
-    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
+    flow = _make_options_flow(config_entry)
     flow._config = dict(config_entry.data)
     flow._options = dict(config_entry.options)
 
@@ -780,12 +989,7 @@ async def test_options_flow_init_selected_mode_shows_picker_step(
         },
         options={cf_mod.CONF_DEVICE_TRACKER_ENABLED: False, cf_mod.CONF_DEVICES: []},
     )
-    flow = cf_mod.OPNsenseOptionsFlow(config_entry)
-    flow.hass = MagicMock()
-    flow.hass.config_entries = MagicMock()
-    flow.hass.config_entries.async_update_entry = MagicMock()
-    flow.handler = "opnsense"
-    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=config_entry)
+    flow = _make_options_flow(config_entry)
     monkeypatch.setattr(cf_mod, "_get_dt_entries", AsyncMock(return_value={}))
 
     result = await flow.async_step_init(
@@ -799,175 +1003,113 @@ async def test_options_flow_init_selected_mode_shows_picker_step(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("granular_flag", "config_step", "expected_called"),
-    [
-        # user step: no plugin check no matter the granular sync flag
-        (True, "user", False),
-        (False, "user", False),
-        # granular_sync or reconfigure step: if granular sync is enabled, plugin check should happen
-        (True, "granular_sync", True),
-        (False, "granular_sync", False),
-        (True, "reconfigure", True),
-        (False, "reconfigure", False),
-    ],
-)
-async def test_validate_input_user_respects_granular_flag_for_plugin_check(
-    monkeypatch: pytest.MonkeyPatch,
-    granular_flag: Any,
-    config_step: Any,
-    expected_called: Any,
-    fake_flow_client: Any,
+async def test_reconfigure_updates_entry_when_validation_succeeds(
+    monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Plugin check not required for config step of user. Otherwise, plugin check is required if granular sync options is enabled."""
-    # Use shared fake_flow_client fixture to supply a FakeClient class
-    client_cls = fake_flow_client()
-    patch_client_factory(monkeypatch, cf_mod, client_cls)
+    """Successful reconfigure submissions should update and abort the flow."""
+    config_entry = make_config_entry(
+        data={
+            cf_mod.CONF_URL: "https://x",
+            cf_mod.CONF_USERNAME: "u",
+            cf_mod.CONF_PASSWORD: "p",
+            cf_mod.CONF_DEVICE_UNIQUE_ID: "device-1",
+        },
+        options={},
+        unique_id="device-1",
+    )
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+    validate = AsyncMock(return_value={})
+    set_unique_id = AsyncMock()
+    update_and_abort = MagicMock(return_value={"type": "abort", "reason": "reconfigure_successful"})
 
-    # avoid real network sessions
-    monkeypatch.setattr(cf_mod, "async_create_clientsession", lambda *a, **k: MagicMock())
+    monkeypatch.setattr(cf_mod, "validate_input", validate)
+    object.__setattr__(flow, "_get_reconfigure_entry", lambda: config_entry)
+    object.__setattr__(flow, "async_set_unique_id", set_unique_id)
+    object.__setattr__(flow, "_abort_if_unique_id_mismatch", lambda: None)
+    object.__setattr__(flow, "async_update_and_abort", update_and_abort)
+
+    result = await flow.async_step_reconfigure(
+        user_input={
+            cf_mod.CONF_URL: "https://router.example",
+            cf_mod.CONF_USERNAME: "u",
+            cf_mod.CONF_PASSWORD: "p",
+        }
+    )
+
+    assert result == {"type": "abort", "reason": "reconfigure_successful"}
+    validate.assert_awaited_once()
+    validate_call = validate.await_args
+    assert validate_call is not None
+    assert validate_call.kwargs["expected_id"] == "device-1"
+    set_unique_id.assert_awaited_once_with("device-1")
+    update_and_abort.assert_called_once_with(
+        entry=config_entry,
+        data={
+            cf_mod.CONF_URL: "https://router.example",
+            cf_mod.CONF_USERNAME: "u",
+            cf_mod.CONF_PASSWORD: "p",
+            cf_mod.CONF_DEVICE_UNIQUE_ID: "device-1",
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_validate_input_granular_sync_uses_native_validation_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Granular sync flow should validate firmware without removed backend checks."""
+
+    class FakeClient:
+        """Client stub that asserts removed backend checks are not called."""
+
+        def __init__(self, firmware_version: str) -> None:
+            """Initialize the fake client with a known firmware version."""
+            self.firmware_version = firmware_version
+            self.is_plugin_installed = AsyncMock(
+                side_effect=AssertionError("legacy plugin check called")
+            )
+            self.set_use_snake_case = AsyncMock(
+                side_effect=AssertionError("snake-case backend selection called")
+            )
+            self.validate = AsyncMock()
+            self.async_close = AsyncMock()
+
+        async def get_host_firmware_version(self) -> str:
+            """Return the fake firmware version."""
+            return self.firmware_version
+
+        async def get_system_info(self) -> dict[str, str]:
+            """Return static system metadata for validation."""
+            return {"name": "OPNsense"}
+
+        async def get_device_unique_id(
+            self, _expected_id: str | None = None, **_kwargs: Any
+        ) -> str:
+            """Return a stable device unique id."""
+            return "dev-01"
+
+    client = FakeClient("25.1")
+    monkeypatch.setattr(cf_mod, "create_opnsense_client", lambda **_kwargs: client)
 
     user_input = {
         cf_mod.CONF_URL: "https://host.example",
         cf_mod.CONF_USERNAME: "user",
         cf_mod.CONF_PASSWORD: "pass",
-        cf_mod.CONF_GRANULAR_SYNC_OPTIONS: granular_flag,
+        cf_mod.CONF_GRANULAR_SYNC_OPTIONS: True,
+        CONF_SYNC_FIREWALL_AND_NAT: True,
     }
-    # Do not set granular sync items here; leave them absent so defaults apply
+    errors: dict[str, Any] = {}
 
-    # Create a real config flow and stub methods that interact with Home Assistant internals
-    flow = cf_mod.OPNsenseConfigFlow()
-    flow.hass = MagicMock()
+    res = await cf_mod.validate_input(
+        hass=MagicMock(),
+        user_input=user_input,
+        errors=errors,
+    )
 
-    async def _noop(*args, **kwargs) -> None:
-        """Noop.
-
-        Args:
-            *args: Additional positional arguments forwarded by the function.
-            **kwargs: Additional keyword arguments forwarded by the function.
-        """
-        return
-
-    # Prevent base ConfigFlow methods from touching HA internals during unit test
-    object.__setattr__(flow, "async_set_unique_id", _noop)
-    object.__setattr__(flow, "_abort_if_unique_id_configured", lambda: None)
-
-    # Call the requested config step which will call validate_input internally
-    if config_step == "user":
-        await flow.async_step_user(user_input=user_input)
-    elif config_step == "granular_sync":
-        # populate internal config as if the user completed the first step
-        flow._config = {
-            cf_mod.CONF_URL: "https://host.example",
-            cf_mod.CONF_USERNAME: "user",
-            cf_mod.CONF_PASSWORD: "pass",
-            cf_mod.CONF_GRANULAR_SYNC_OPTIONS: granular_flag,
-        }
-        await flow.async_step_granular_sync(user_input={})
-    elif config_step == "reconfigure":
-        # reconfigure should behave like granular_sync for plugin-check testing;
-        # populate internal config and invoke the reconfigure step
-        reconfigure_entry = MagicMock()
-        reconfigure_entry.data = {
-            cf_mod.CONF_URL: "https://host.example",
-            cf_mod.CONF_USERNAME: "user",
-            cf_mod.CONF_PASSWORD: "pass",
-            cf_mod.CONF_GRANULAR_SYNC_OPTIONS: granular_flag,
-        }
-        # Monkeypatch the helper the config flow uses to get the reconfigure entry
-        flow._get_reconfigure_entry = lambda: reconfigure_entry
-        # Prevent HA internals from being accessed if the flow reaches update/abort paths
-        flow.hass.config_entries = MagicMock()
-        flow.hass.config_entries.async_update_entry = MagicMock()
-        object.__setattr__(
-            flow,
-            "async_update_reload_and_abort",
-            lambda *args, **kwargs: {
-                "type": "abort",
-                "reason": "reconfigure_successful",
-            },
-        )
-        await flow.async_step_reconfigure(user_input={})
-    else:
-        raise ValueError(f"unknown config_step: {config_step}")
-
-    # ensure client was instantiated
-    assert client_cls.last_instance is not None
-    # Check whether the plugin check was called according to expected behavior
-    called_count = getattr(client_cls.last_instance, "_is_plugin_called", 0)
-    if expected_called:
-        assert called_count > 0
-    else:
-        assert called_count == 0
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("flow_type", "require_plugin", "expected_called"),
-    [
-        ("config", True, True),
-        ("config", False, False),
-        ("options", True, True),
-        ("options", False, False),
-    ],
-)
-async def test_granular_sync_flow_plugin_check(
-    monkeypatch: pytest.MonkeyPatch,
-    flow_type: Any,
-    require_plugin: Any,
-    expected_called: Any,
-    fake_flow_client: Any,
-) -> None:
-    """Test plugin check behavior when granular sync is enabled and granular items are set. For granular_sync step from both ConfigFlow and OptionsFlow: - If any SYNC_ITEMS_REQUIRING_PLUGIN is True -> is_plugin_installed should be called. - If none are True -> is_plugin_installed should NOT be called."""
-    # Use shared fake_flow_client fixture
-    client_cls = fake_flow_client()
-    patch_client_factory(monkeypatch, cf_mod, client_cls)
-    monkeypatch.setattr(cf_mod, "async_create_clientsession", lambda *a, **k: MagicMock())
-
-    # Build a user_input payload for granular sync where items in SYNC_ITEMS_REQUIRING_PLUGIN are toggled
-    # Start with all granular items as False, then set one plugin-required item True if require_plugin
-    granular_input = dict.fromkeys(cf_mod.GRANULAR_SYNC_ITEMS, False)
-    if require_plugin:
-        # pick the first item that requires plugin
-        plugin_item = list(cf_mod.SYNC_ITEMS_REQUIRING_PLUGIN)[0]
-        granular_input[plugin_item] = True
-
-    if flow_type == "config":
-        # Prepare a config flow and populate internal config
-        flow = cf_mod.OPNsenseConfigFlow()
-        flow.hass = MagicMock()
-        flow._config = {
-            cf_mod.CONF_URL: "https://host.example",
-            cf_mod.CONF_USERNAME: "user",
-            cf_mod.CONF_PASSWORD: "pass",
-            cf_mod.CONF_GRANULAR_SYNC_OPTIONS: True,
-        }
-        # Call the granular sync step which will invoke validate_input -> _handle_user_input
-        await flow.async_step_granular_sync(user_input=granular_input)
-    else:
-        # Options flow branch
-        cfg = MagicMock()
-        cfg.data = {
-            cf_mod.CONF_URL: "https://host.example",
-            cf_mod.CONF_USERNAME: "user",
-            cf_mod.CONF_PASSWORD: "pass",
-            cf_mod.CONF_GRANULAR_SYNC_OPTIONS: True,
-        }
-        cfg.options = {cf_mod.CONF_DEVICE_TRACKER_ENABLED: False}
-        flow = cf_mod.OPNsenseOptionsFlow(cfg)
-        flow.hass = MagicMock()
-        # emulate HA internals required by the options flow methods in tests
-        flow.handler = "opnsense"
-        flow.hass.config_entries = MagicMock()
-        flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=cfg)
-        flow._config = dict(cfg.data)
-        flow._options = dict(cfg.options)
-        await flow.async_step_granular_sync(user_input=granular_input)
-
-    # Check whether is_plugin_installed was invoked according to expectations
-    assert client_cls.last_instance is not None
-    called_count = getattr(client_cls.last_instance, "_is_plugin_called", 0)
-    if expected_called:
-        assert called_count > 0
-    else:
-        assert called_count == 0
+    assert res == {}
+    assert user_input[cf_mod.CONF_FIRMWARE_VERSION] == "25.1"
+    client.validate.assert_awaited_once()
+    client.is_plugin_installed.assert_not_awaited()
+    client.set_use_snake_case.assert_not_awaited()
+    client.async_close.assert_awaited_once()

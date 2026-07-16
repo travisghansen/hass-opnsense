@@ -20,6 +20,9 @@ from custom_components.opnsense.binary_sensor import (
     OPNsenseInterfaceEnabledBinarySensor,
     OPNsensePendingNoticesPresentBinarySensor,
     OPNsenseSmartStatusBinarySensor,
+    _build_interface_enabled_binary_sensor_description,
+    _build_pending_notices_present_binary_sensor_description,
+    _build_smart_status_binary_sensor_description,
     _compile_interface_enabled_binary_sensors,
     _compile_smart_status_binary_sensors,
     async_setup_entry,
@@ -33,6 +36,33 @@ from custom_components.opnsense.const import (
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 from tests.utilities import stub_async_write_ha_state
+
+
+def test_binary_sensor_description_builders_preserve_entity_contract() -> None:
+    """Binary sensor description builders should preserve generated entity metadata."""
+    interface_description = _build_interface_enabled_binary_sensor_description(
+        "wan", {"name": "WAN"}
+    )
+    smart_description = _build_smart_status_binary_sensor_description("nvme0")
+    notices_description = _build_pending_notices_present_binary_sensor_description()
+
+    assert interface_description.key == "interface.wan.enabled"
+    assert interface_description.name == "Interface WAN Enabled"
+    assert interface_description.icon == "mdi:network"
+    assert interface_description.device_class is None
+    assert interface_description.entity_registry_enabled_default is False
+
+    assert smart_description.key == "smart.nvme0.status"
+    assert smart_description.name == "SMART nvme0 Status"
+    assert smart_description.icon == "mdi:harddisk"
+    assert smart_description.device_class is BinarySensorDeviceClass.PROBLEM
+    assert smart_description.entity_registry_enabled_default is False
+
+    assert notices_description.key == "notices.pending_notices_present"
+    assert notices_description.name == "Pending Notices Present"
+    assert notices_description.icon == "mdi:alert"
+    assert notices_description.device_class is BinarySensorDeviceClass.PROBLEM
+    assert notices_description.entity_registry_enabled_default is True
 
 
 @pytest.mark.asyncio
@@ -84,32 +114,6 @@ async def test_async_setup_entry_skips_when_disabled(
 
     await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
     assert created == []
-
-
-@pytest.mark.asyncio
-async def test_async_setup_entry_creates_only_notices_when_notices_enabled(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Create only Notices entity when notices sync is enabled."""
-    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_NOTICES: True})
-    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = {}
-    setattr(entry.runtime_data, COORDINATOR, coord)
-
-    created: list = []
-
-    def add_entities(ents: Iterable[Any], _update_before_add: bool = False) -> None:
-        """Add entities.
-
-        Args:
-            ents: Ents provided by pytest or the test case.
-        """
-        created.extend(ents)
-
-    await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
-    # expect one Notices entity created
-    assert len(created) == 1
-    assert isinstance(created[0], OPNsensePendingNoticesPresentBinarySensor)
 
 
 @pytest.mark.asyncio

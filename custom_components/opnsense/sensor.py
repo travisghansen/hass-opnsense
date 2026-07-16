@@ -1,10 +1,10 @@
 """Provides sensors to track various status aspects of OPNsense."""
 
-from collections.abc import Mapping, MutableMapping
+from collections.abc import Iterable, Mapping, MutableMapping
 import inspect
 import logging
 import re
-from typing import Any
+from typing import Any, Final
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -42,14 +42,300 @@ from .const import (
     DATA_RATE_PACKETS_PER_SECOND,
     DEFAULT_SYNC_OPTION_VALUE,
     OPNSENSE_CLIENT,
-    STATIC_CERTIFICATE_SENSORS,
-    STATIC_TELEMETRY_SENSORS,
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity
 from .helpers import coerce_bool, dict_get
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+
+
+_INTERFACE_SENSOR_PROPERTIES: tuple[str, ...] = (
+    "status",
+    "inerrs",
+    "outerrs",
+    "collisions",
+    "inbytes",
+    "inbytes_kilobytes_per_second",
+    "outbytes",
+    "outbytes_kilobytes_per_second",
+    "inpkts",
+    "inpkts_packets_per_second",
+    "outpkts",
+    "outpkts_packets_per_second",
+)
+
+_GATEWAY_SENSOR_PROPERTIES: tuple[str, ...] = ("status", "delay", "stddev", "loss", "address")
+_VPN_TRAFFIC_PROPERTIES: tuple[str, ...] = (
+    "total_bytes_recv",
+    "total_bytes_sent",
+    "total_bytes_recv_kilobytes_per_second",
+    "total_bytes_sent_kilobytes_per_second",
+)
+_VPN_SERVER_PROPERTIES: tuple[str, ...] = ("status", "connected_clients")
+_VPN_WIREGUARD_CLIENT_PROPERTIES: tuple[str, ...] = ("connected_servers",)
+_ICON_MEMORY: Final[str] = "mdi:memory"
+
+STATIC_TELEMETRY_SENSORS: Final[tuple[SensorEntityDescription, ...]] = (
+    # pfstate
+    SensorEntityDescription(
+        key="telemetry.pfstate.used",
+        name="pf State Table Used",
+        native_unit_of_measurement=COUNT,
+        device_class=None,
+        icon="mdi:table-network",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="telemetry.pfstate.total",
+        name="pf State Table Total",
+        native_unit_of_measurement=COUNT,
+        device_class=None,
+        icon="mdi:table-network",
+        state_class=None,
+        entity_registry_enabled_default=False,
+        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="telemetry.pfstate.used_percent",
+        name="pf State Table Used Percentage",
+        native_unit_of_measurement=PERCENTAGE,
+        device_class=None,
+        icon="mdi:table-network",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    # mbuf
+    SensorEntityDescription(
+        key="telemetry.mbuf.used",
+        name="Memory Buffers Used",
+        native_unit_of_measurement=UnitOfInformation.BYTES,
+        device_class=SensorDeviceClass.DATA_SIZE,
+        icon=_ICON_MEMORY,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        suggested_unit_of_measurement=UnitOfInformation.KILOBYTES,
+        entity_registry_enabled_default=False,
+        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="telemetry.mbuf.total",
+        name="Memory Buffers Total",
+        native_unit_of_measurement=UnitOfInformation.BYTES,
+        device_class=SensorDeviceClass.DATA_SIZE,
+        icon=_ICON_MEMORY,
+        state_class=None,
+        suggested_display_precision=1,
+        suggested_unit_of_measurement=UnitOfInformation.KILOBYTES,
+        entity_registry_enabled_default=False,
+        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="telemetry.mbuf.used_percent",
+        name="Memory Buffers Used Percentage",
+        native_unit_of_measurement=PERCENTAGE,
+        device_class=None,
+        icon=_ICON_MEMORY,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    # memory with state_class due to being less static
+    SensorEntityDescription(
+        key="telemetry.memory.swap_reserved",
+        name="Memory Swap Reserved",
+        native_unit_of_measurement=UnitOfInformation.BYTES,
+        device_class=SensorDeviceClass.DATA_SIZE,
+        icon=_ICON_MEMORY,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        suggested_unit_of_measurement=UnitOfInformation.MEGABYTES,
+        entity_registry_enabled_default=False,
+        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    # memory without state_class due to being generally static
+    SensorEntityDescription(
+        key="telemetry.memory.physmem",
+        name="Memory Physmem",
+        native_unit_of_measurement=UnitOfInformation.BYTES,
+        device_class=SensorDeviceClass.DATA_SIZE,
+        icon=_ICON_MEMORY,
+        state_class=None,
+        suggested_display_precision=1,
+        suggested_unit_of_measurement=UnitOfInformation.GIGABYTES,
+        entity_registry_enabled_default=False,
+        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="telemetry.memory.used",
+        name="Memory Used",
+        native_unit_of_measurement=UnitOfInformation.BYTES,
+        device_class=SensorDeviceClass.DATA_SIZE,
+        icon=_ICON_MEMORY,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        suggested_unit_of_measurement=UnitOfInformation.GIGABYTES,
+        entity_registry_enabled_default=False,
+        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="telemetry.memory.swap_total",
+        name="Memory Swap Total",
+        native_unit_of_measurement=UnitOfInformation.BYTES,
+        device_class=SensorDeviceClass.DATA_SIZE,
+        icon=_ICON_MEMORY,
+        state_class=None,
+        suggested_display_precision=1,
+        suggested_unit_of_measurement=UnitOfInformation.MEGABYTES,
+        entity_registry_enabled_default=False,
+        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    # memory percentages
+    SensorEntityDescription(
+        key="telemetry.memory.swap_used_percent",
+        name="Memory Swap Used Percentage",
+        native_unit_of_measurement=PERCENTAGE,
+        device_class=None,
+        icon=_ICON_MEMORY,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="telemetry.memory.used_percent",
+        name="Memory Used Percentage",
+        native_unit_of_measurement=PERCENTAGE,
+        device_class=None,
+        icon=_ICON_MEMORY,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=True,
+        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="telemetry.cpu.count",
+        name="CPU Count",
+        native_unit_of_measurement=COUNT,
+        device_class=None,
+        icon="mdi:speedometer-medium",
+        state_class=None,
+        entity_registry_enabled_default=False,
+        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="telemetry.cpu.usage_total",
+        name="CPU Usage",
+        native_unit_of_measurement=PERCENTAGE,
+        device_class=None,
+        icon="mdi:speedometer-medium",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=True,
+        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="telemetry.system.load_average.one_minute",
+        name="System Load Average One Minute",
+        native_unit_of_measurement=None,
+        device_class=None,
+        icon="mdi:speedometer-slow",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        entity_registry_enabled_default=True,
+        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="telemetry.system.load_average.five_minute",
+        name="System Load Average Five Minute",
+        native_unit_of_measurement=None,
+        device_class=None,
+        icon="mdi:speedometer-slow",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        entity_registry_enabled_default=True,
+        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="telemetry.system.load_average.fifteen_minute",
+        name="System Load Average Fifteen Minute",
+        native_unit_of_measurement=None,
+        device_class=None,
+        icon="mdi:speedometer-slow",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        entity_registry_enabled_default=True,
+        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="telemetry.system.boottime",
+        name="System Boottime",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        icon="mdi:clock-outline",
+        state_class=None,
+        entity_registry_enabled_default=True,
+        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+)
+
+STATIC_CERTIFICATE_SENSORS: Final[tuple[SensorEntityDescription, ...]] = (
+    SensorEntityDescription(
+        key="certificates",
+        name="Certificates",
+        device_class=None,
+        icon="mdi:certificate-outline",
+        state_class=None,
+        entity_registry_enabled_default=False,
+        # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+)
+
+
+def _create_sensor[SensorT: OPNsenseSensor](
+    entity_cls: type[SensorT],
+    config_entry: ConfigEntry,
+    coordinator: OPNsenseDataUpdateCoordinator,
+    entity_description: SensorEntityDescription,
+) -> SensorT:
+    """Create one sensor entity from shared compile context.
+
+    Args:
+        entity_cls: Sensor entity class to instantiate.
+        config_entry: Home Assistant config entry for the integration.
+        coordinator: Coordinator providing the OPNsense data for the entity.
+        entity_description: Metadata describing the sensor entity.
+
+    Returns:
+        SensorT: Instantiated sensor entity.
+    """
+    return entity_cls(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=entity_description,
+    )
+
+
+def _create_sensors[SensorT: OPNsenseSensor](
+    entity_cls: type[SensorT],
+    config_entry: ConfigEntry,
+    coordinator: OPNsenseDataUpdateCoordinator,
+    entity_descriptions: Iterable[SensorEntityDescription],
+) -> list[SensorT]:
+    """Create sensor entities from shared compile context.
+
+    Args:
+        entity_cls: Sensor entity class to instantiate for each description.
+        config_entry: Home Assistant config entry for the integration.
+        coordinator: Coordinator providing the OPNsense data for each entity.
+        entity_descriptions: Metadata describing the sensor entities to create.
+
+    Returns:
+        list[SensorT]: Instantiated sensor entities in description order.
+    """
+    return [
+        _create_sensor(entity_cls, config_entry, coordinator, entity_description)
+        for entity_description in entity_descriptions
+    ]
 
 
 def _build_interface_device_description_map(
@@ -142,6 +428,357 @@ def _vnstat_metric_display_name(metric_name: str) -> str:
     return metric_names.get(metric_name, metric_name)
 
 
+def _build_vnstat_sensor_description(
+    interface_name: str,
+    interface_display_name: str,
+    metric_name: str,
+    metric_def: Mapping[str, Any],
+) -> SensorEntityDescription:
+    """Build a vnStat sensor description.
+
+    Args:
+        interface_name: OPNsense interface identifier used in the entity key.
+        interface_display_name: User-facing interface name used in the entity name.
+        metric_name: vnStat metric key used to identify the measurement.
+        metric_def: Metric metadata containing its icon and state class.
+
+    Returns:
+        SensorEntityDescription: Description for the vnStat sensor entity.
+    """
+    return SensorEntityDescription(
+        key=f"vnstat.{interface_name}.{metric_name}",
+        name=f"vnStat: {interface_display_name}: {_vnstat_metric_display_name(metric_name)}",
+        native_unit_of_measurement=UnitOfInformation.BYTES,
+        device_class=SensorDeviceClass.DATA_SIZE,
+        icon=metric_def["icon"],
+        state_class=metric_def["state_class"],
+        suggested_display_precision=1,
+        suggested_unit_of_measurement=UnitOfInformation.GIBIBYTES,
+        entity_registry_enabled_default=False,
+    )
+
+
+def _build_speedtest_sensor_description(
+    key: str,
+    name: str,
+    native_unit: UnitOfDataRate | UnitOfTime,
+    icon: str,
+) -> SensorEntityDescription:
+    """Build a speedtest sensor description.
+
+    Args:
+        key: Entity key for the speedtest measurement.
+        name: User-facing name for the speedtest sensor.
+        native_unit: Native unit of the speedtest measurement.
+        icon: Material Design icon for the speedtest sensor.
+
+    Returns:
+        SensorEntityDescription: Description for the speedtest sensor entity.
+    """
+    return SensorEntityDescription(
+        key=key,
+        name=name,
+        native_unit_of_measurement=native_unit,
+        device_class=None if key.endswith(".latency") else SensorDeviceClass.DATA_RATE,
+        icon=icon,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    )
+
+
+def _build_smart_sensor_description(device_name: str) -> SensorEntityDescription:
+    """Build a SMART temperature sensor description.
+
+    Args:
+        device_name: SMART device name used in the entity key and display name.
+
+    Returns:
+        SensorEntityDescription: Description for the SMART temperature sensor.
+    """
+    return SensorEntityDescription(
+        key=f"smart.{_smart_device_slug(device_name)}.temperature",
+        name=f"SMART {device_name} Temperature",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        icon="mdi:thermometer",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        suggested_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        entity_registry_enabled_default=False,
+    )
+
+
+def _build_filesystem_sensor_description(filesystem: Mapping[str, Any]) -> SensorEntityDescription:
+    """Build a filesystem usage sensor description.
+
+    Args:
+        filesystem: Filesystem payload containing its ``mountpoint`` value.
+
+    Returns:
+        SensorEntityDescription: Description for the filesystem usage sensor.
+    """
+    mountpoint = filesystem["mountpoint"]
+    filesystem_slug = slugify_filesystem_mountpoint(mountpoint)
+    enabled_default = filesystem_slug == "root"
+    return SensorEntityDescription(
+        key=f"telemetry.filesystems.{filesystem_slug}",
+        name=(f"Filesystem Used Percentage {normalize_filesystem_mountpoint(mountpoint)}"),
+        native_unit_of_measurement=PERCENTAGE,
+        device_class=None,
+        icon="mdi:harddisk",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=enabled_default,
+    )
+
+
+def _build_interface_sensor_description(
+    interface_name: str,
+    interface: Mapping[str, Any],
+    prop_name: str,
+) -> SensorEntityDescription:
+    """Build an interface sensor description.
+
+    Args:
+        interface_name: OPNsense interface identifier used in the entity key.
+        interface: Interface payload used for its friendly display name.
+        prop_name: Interface property represented by the sensor.
+
+    Returns:
+        SensorEntityDescription: Description for the interface sensor.
+    """
+    state_class: SensorStateClass | None = SensorStateClass.MEASUREMENT
+    native_unit_of_measurement = None
+    device_class = None
+    enabled_default = prop_name in {
+        "status",
+        "inbytes_kilobytes_per_second",
+        "outbytes_kilobytes_per_second",
+    }
+    suggested_display_precision = None
+    suggested_unit_of_measurement = None
+
+    if "_packets_per_second" in prop_name:
+        native_unit_of_measurement = DATA_RATE_PACKETS_PER_SECOND
+
+    if "_kilobytes_per_second" in prop_name:
+        native_unit_of_measurement = UnitOfDataRate.KILOBYTES_PER_SECOND
+        device_class = SensorDeviceClass.DATA_RATE
+
+    if native_unit_of_measurement is None:
+        if "bytes" in prop_name:
+            native_unit_of_measurement = UnitOfInformation.BYTES
+            device_class = SensorDeviceClass.DATA_SIZE
+            state_class = SensorStateClass.TOTAL_INCREASING
+            suggested_display_precision = 1
+            suggested_unit_of_measurement = UnitOfInformation.GIGABYTES
+        if "pkts" in prop_name:
+            native_unit_of_measurement = DATA_PACKETS
+            state_class = SensorStateClass.TOTAL_INCREASING
+
+    if prop_name in {"inerrs", "outerrs", "collisions"}:
+        native_unit_of_measurement = COUNT
+
+    if "pkts" in prop_name or "bytes" in prop_name:
+        icon = "mdi:server-network"
+    elif prop_name == "status":
+        icon = "mdi:check-network"
+        state_class = None
+    else:
+        icon = "mdi:gauge"
+
+    return SensorEntityDescription(
+        key=f"interface.{interface_name}.{prop_name}",
+        name=f"Interface {interface.get('name', interface_name)} {prop_name}",
+        native_unit_of_measurement=native_unit_of_measurement,
+        device_class=device_class,
+        icon=icon,
+        state_class=state_class,
+        suggested_display_precision=suggested_display_precision,
+        suggested_unit_of_measurement=suggested_unit_of_measurement,
+        entity_registry_enabled_default=enabled_default,
+    )
+
+
+def _build_gateway_sensor_description(
+    gateway_key: str,
+    gateway_name: str,
+    prop_name: str,
+) -> SensorEntityDescription:
+    """Build a gateway sensor description.
+
+    Args:
+        gateway_key: OPNsense gateway key used in the entity key.
+        gateway_name: User-facing gateway name used in the entity name.
+        prop_name: Gateway property represented by the sensor.
+
+    Returns:
+        SensorEntityDescription: Description for the gateway sensor.
+    """
+    native_unit_of_measurement = None
+    device_class: SensorDeviceClass | None = None
+    state_class: SensorStateClass | None = SensorStateClass.MEASUREMENT
+    enabled_default = False
+    icon = "mdi:router-network"
+
+    if prop_name == "loss":
+        native_unit_of_measurement = PERCENTAGE
+    if prop_name in {"delay", "stddev"}:
+        native_unit_of_measurement = UnitOfTime.MILLISECONDS
+    if prop_name == "status":
+        icon = "mdi:check-network"
+        state_class = None
+        enabled_default = True
+    if prop_name == "address":
+        icon = "mdi:ip-network"
+        state_class = None
+
+    return SensorEntityDescription(
+        key=f"gateway.{gateway_key}.{prop_name}",
+        name=f"Gateway {gateway_name} {prop_name}",
+        native_unit_of_measurement=native_unit_of_measurement,
+        device_class=device_class,
+        icon=icon,
+        state_class=state_class,
+        entity_registry_enabled_default=enabled_default,
+    )
+
+
+def _build_temperature_sensor_description(
+    temp_device: str,
+    temp: Mapping[str, Any],
+) -> SensorEntityDescription:
+    """Build a temperature telemetry sensor description.
+
+    Args:
+        temp_device: Temperature device identifier used in the entity key.
+        temp: Temperature payload used for its friendly display name.
+
+    Returns:
+        SensorEntityDescription: Description for the temperature sensor.
+    """
+    return SensorEntityDescription(
+        key=f"telemetry.temps.{temp_device}",
+        name=f"Temp {temp.get('name', temp_device)}",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        icon="mdi:thermometer",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        suggested_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        entity_registry_enabled_default=True,
+    )
+
+
+def _build_dhcp_leases_sensor_description(
+    interface: str,
+    interface_name: str,
+) -> SensorEntityDescription:
+    """Build a per-interface DHCP leases sensor description.
+
+    Args:
+        interface: OPNsense interface identifier used in the entity key.
+        interface_name: User-facing interface name used in the entity name.
+
+    Returns:
+        SensorEntityDescription: Description for the interface lease sensor.
+    """
+    return SensorEntityDescription(
+        key=f"dhcp_leases.{interface}",
+        name=f"DHCP Leases {interface_name}",
+        native_unit_of_measurement="leases",
+        device_class=None,
+        icon="mdi:devices",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    )
+
+
+def _build_dhcp_leases_total_sensor_description() -> SensorEntityDescription:
+    """Build the aggregate DHCP leases sensor description.
+
+    Returns:
+        SensorEntityDescription: Description for the aggregate lease sensor.
+    """
+    return SensorEntityDescription(
+        key="dhcp_leases.all",
+        name="DHCP Leases All",
+        native_unit_of_measurement="leases",
+        device_class=None,
+        icon="mdi:devices",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=True,
+    )
+
+
+def _build_vpn_sensor_description(
+    vpn_type: str,
+    clients_servers: str,
+    uuid: str,
+    instance_name: str,
+    prop_name: str,
+) -> SensorEntityDescription:
+    """Build a VPN sensor description.
+
+    Args:
+        vpn_type: VPN implementation type, such as ``openvpn`` or ``wireguard``.
+        clients_servers: VPN collection type represented by the sensor.
+        uuid: VPN instance identifier used in the entity key.
+        instance_name: User-facing VPN instance name.
+        prop_name: VPN property represented by the sensor.
+
+    Returns:
+        SensorEntityDescription: Description for the VPN sensor entity.
+    """
+    state_class: SensorStateClass | None = None
+    native_unit_of_measurement: UnitOfDataRate | UnitOfInformation | None = None
+    device_class: SensorDeviceClass | None = None
+    enabled_default = False
+    suggested_display_precision = None
+    suggested_unit_of_measurement = None
+
+    if "_kilobytes_per_second" in prop_name:
+        native_unit_of_measurement = UnitOfDataRate.KILOBYTES_PER_SECOND
+        device_class = SensorDeviceClass.DATA_RATE
+        state_class = SensorStateClass.MEASUREMENT
+
+    if native_unit_of_measurement is None and "bytes" in prop_name:
+        native_unit_of_measurement = UnitOfInformation.BYTES
+        device_class = SensorDeviceClass.DATA_SIZE
+        state_class = SensorStateClass.TOTAL_INCREASING
+        suggested_display_precision = 1
+        suggested_unit_of_measurement = UnitOfInformation.MEGABYTES
+
+    if prop_name in {"connected_clients", "connected_servers"}:
+        state_class = SensorStateClass.MEASUREMENT
+
+    if "bytes" in prop_name:
+        icon = "mdi:server-network"
+    elif prop_name == "status":
+        icon = "mdi:check-network"
+        enabled_default = True
+    elif prop_name == "connected_servers":
+        icon = "mdi:router-network"
+    elif prop_name == "connected_clients":
+        icon = "mdi:account-network"
+    else:
+        icon = "mdi:gauge"
+
+    return SensorEntityDescription(
+        key=f"{vpn_type}.{clients_servers}.{uuid}.{prop_name}",
+        name=(
+            f"{'OpenVPN' if vpn_type == 'openvpn' else vpn_type.title()} "
+            f"{clients_servers.title().rstrip('s')} {instance_name} {prop_name}"
+        ),
+        native_unit_of_measurement=native_unit_of_measurement,
+        device_class=device_class,
+        icon=icon,
+        state_class=state_class,
+        suggested_display_precision=suggested_display_precision,
+        suggested_unit_of_measurement=suggested_unit_of_measurement,
+        entity_registry_enabled_default=enabled_default,
+    )
+
+
 async def _compile_static_telemetry_sensors(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
@@ -152,15 +789,12 @@ async def _compile_static_telemetry_sensors(
         config_entry: Config entry being exercised by the helper or test.
         coordinator: Data update coordinator that caches OPNsense state for entities.
     """
-    entities: list = []
-    for static_sensor in STATIC_TELEMETRY_SENSORS.values():
-        entity = OPNsenseStaticKeySensor(
-            config_entry=config_entry,
-            coordinator=coordinator,
-            entity_description=static_sensor,
-        )
-        entities.append(entity)
-    return entities
+    return _create_sensors(
+        OPNsenseStaticKeySensor,
+        config_entry,
+        coordinator,
+        STATIC_TELEMETRY_SENSORS,
+    )
 
 
 async def _compile_static_certificate_sensors(
@@ -173,15 +807,12 @@ async def _compile_static_certificate_sensors(
         config_entry: Config entry being exercised by the helper or test.
         coordinator: Data update coordinator that caches OPNsense state for entities.
     """
-    entities: list = []
-    for static_sensor in STATIC_CERTIFICATE_SENSORS.values():
-        entity = OPNsenseStaticKeySensor(
-            config_entry=config_entry,
-            coordinator=coordinator,
-            entity_description=static_sensor,
-        )
-        entities.append(entity)
-    return entities
+    return _create_sensors(
+        OPNsenseStaticKeySensor,
+        config_entry,
+        coordinator,
+        STATIC_CERTIFICATE_SENSORS,
+    )
 
 
 async def _compile_vnstat_sensors(
@@ -226,23 +857,19 @@ async def _compile_vnstat_sensors(
             continue
         interface_display_name = interface_descriptions.get(interface_name, interface_name)
         for metric_name, metric_def in metric_defs.items():
-            entity = OPNsenseVnstatSensor(
-                config_entry=config_entry,
-                coordinator=coordinator,
-                entity_description=SensorEntityDescription(
-                    key=f"vnstat.{interface_name}.{metric_name}",
-                    name=f"vnStat: {interface_display_name}: "
-                    f"{_vnstat_metric_display_name(metric_name)}",
-                    native_unit_of_measurement=UnitOfInformation.BYTES,
-                    device_class=SensorDeviceClass.DATA_SIZE,
-                    icon=metric_def["icon"],
-                    state_class=metric_def["state_class"],
-                    suggested_display_precision=1,
-                    suggested_unit_of_measurement=UnitOfInformation.GIBIBYTES,
-                    entity_registry_enabled_default=False,
-                ),
+            entities.append(
+                _create_sensor(
+                    OPNsenseVnstatSensor,
+                    config_entry,
+                    coordinator,
+                    _build_vnstat_sensor_description(
+                        interface_name,
+                        interface_display_name,
+                        metric_name,
+                        metric_def,
+                    ),
+                )
             )
-            entities.append(entity)
     return entities
 
 
@@ -296,28 +923,15 @@ async def _compile_speedtest_sensors(
             "mdi:timer-outline",
         ),
     )
-    entities: list = []
-    for key, name, native_unit, icon in metric_definitions:
-        device_class: SensorDeviceClass | None = None
-        if not key.endswith(".latency"):
-            device_class = SensorDeviceClass.DATA_RATE
-
-        entities.append(
-            OPNsenseSpeedtestSensor(
-                config_entry=config_entry,
-                coordinator=coordinator,
-                entity_description=SensorEntityDescription(
-                    key=key,
-                    name=name,
-                    native_unit_of_measurement=native_unit,
-                    device_class=device_class,
-                    icon=icon,
-                    state_class=SensorStateClass.MEASUREMENT,
-                    entity_registry_enabled_default=False,
-                ),
-            )
-        )
-    return entities
+    return _create_sensors(
+        OPNsenseSpeedtestSensor,
+        config_entry,
+        coordinator,
+        [
+            _build_speedtest_sensor_description(key, name, native_unit, icon)
+            for key, name, native_unit, icon in metric_definitions
+        ],
+    )
 
 
 def _smart_device_slug(device_name: str) -> str:
@@ -343,7 +957,7 @@ async def _compile_smart_sensors(
     Args:
         config_entry: Config entry being exercised by the helper or test.
         coordinator: Data update coordinator that caches OPNsense state for entities.
-        state: Coordinator state snapshot that contains SMART plugin data.
+        state: Coordinator state snapshot that contains SMART device data.
 
     Returns:
         list: SMART disk sensor entities disabled by default.
@@ -364,22 +978,12 @@ async def _compile_smart_sensors(
             continue
         device_name = device_name.strip()
 
-        device_slug = _smart_device_slug(device_name)
         entities.append(
-            OPNsenseSmartSensor(
-                config_entry=config_entry,
-                coordinator=coordinator,
-                entity_description=SensorEntityDescription(
-                    key=f"smart.{device_slug}.temperature",
-                    name=f"SMART {device_name} Temperature",
-                    native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-                    device_class=SensorDeviceClass.TEMPERATURE,
-                    icon="mdi:thermometer",
-                    state_class=SensorStateClass.MEASUREMENT,
-                    suggested_display_precision=1,
-                    suggested_unit_of_measurement=UnitOfTemperature.CELSIUS,
-                    entity_registry_enabled_default=False,
-                ),
+            _create_sensor(
+                OPNsenseSmartSensor,
+                config_entry,
+                coordinator,
+                _build_smart_sensor_description(device_name),
             )
         )
     return entities
@@ -399,38 +1003,21 @@ async def _compile_filesystem_sensors(
     """
     if not isinstance(state, MutableMapping):
         return []
-    entities: list = []
-
     filesystems = dict_get(state, "telemetry.filesystems", []) or []
     if not isinstance(filesystems, list):
-        return entities
-
-    for filesystem in filesystems:
-        if not isinstance(filesystem, MutableMapping):
-            continue
-        filesystem_slug: str = slugify_filesystem_mountpoint(filesystem.get("mountpoint", None))
-        enabled_default = False
-        if filesystem_slug == "root":
-            enabled_default = True
-
-        entity = OPNsenseFilesystemSensor(
-            config_entry=config_entry,
-            coordinator=coordinator,
-            entity_description=SensorEntityDescription(
-                key=f"telemetry.filesystems.{filesystem_slug}",
-                name=f"Filesystem Used Percentage "
-                f"{normalize_filesystem_mountpoint(filesystem.get('mountpoint', None))}",
-                native_unit_of_measurement=PERCENTAGE,
-                device_class=None,
-                icon="mdi:harddisk",
-                state_class=SensorStateClass.MEASUREMENT,
-                entity_registry_enabled_default=enabled_default,
-                # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
-            ),
-        )
-        entities.append(entity)
-
-    return entities
+        return []
+    return _create_sensors(
+        OPNsenseFilesystemSensor,
+        config_entry,
+        coordinator,
+        [
+            _build_filesystem_sensor_description(filesystem)
+            for filesystem in filesystems
+            if isinstance(filesystem, Mapping)
+            and isinstance(filesystem.get("mountpoint"), str)
+            and filesystem["mountpoint"].strip()
+        ],
+    )
 
 
 async def _compile_carp_interface_sensors(
@@ -447,7 +1034,7 @@ async def _compile_carp_interface_sensors(
     """
     if not isinstance(state, MutableMapping):
         return []
-    entities: list = []
+    entities: list[OPNsenseCarpInterfaceSensor] = []
 
     interface_descriptions = _build_interface_device_description_map(
         dict_get(state, "interfaces", {}) or {}
@@ -474,20 +1061,22 @@ async def _compile_carp_interface_sensors(
             friendly_interface_name = interface_descriptions.get(interface_label, interface_label)
 
             display_name = f"CARP Interface: {friendly_interface_name}: {subnet}"
-            entity = OPNsenseCarpInterfaceSensor(
-                config_entry=config_entry,
-                coordinator=coordinator,
-                entity_description=SensorEntityDescription(
-                    key=_build_carp_interface_sensor_key(interface_label, subnet),
-                    name=display_name,
-                    native_unit_of_measurement=None,
-                    device_class=None,
-                    icon="mdi:check-network",
-                    state_class=None,
-                    entity_registry_enabled_default=False,
-                ),
+            entities.append(
+                _create_sensor(
+                    OPNsenseCarpInterfaceSensor,
+                    config_entry,
+                    coordinator,
+                    SensorEntityDescription(
+                        key=_build_carp_interface_sensor_key(interface_label, subnet),
+                        name=display_name,
+                        native_unit_of_measurement=None,
+                        device_class=None,
+                        icon="mdi:check-network",
+                        state_class=None,
+                        entity_registry_enabled_default=False,
+                    ),
+                )
             )
-            entities.append(entity)
         except (AttributeError, TypeError, ValueError) as err:
             _LOGGER.debug("Skipping malformed CARP interface entry: %r (%s)", interface, err)
     return entities
@@ -545,10 +1134,11 @@ async def _compile_carp_status_sensor(
     if not isinstance(state, MutableMapping):
         return []
     return [
-        OPNsenseCarpStatusSensor(
-            config_entry=config_entry,
-            coordinator=coordinator,
-            entity_description=SensorEntityDescription(
+        _create_sensor(
+            OPNsenseCarpStatusSensor,
+            config_entry,
+            coordinator,
+            SensorEntityDescription(
                 key="carp.status_summary",
                 name="CARP Status",
                 native_unit_of_measurement=None,
@@ -575,93 +1165,24 @@ async def _compile_interface_sensors(
     """
     if not isinstance(state, MutableMapping):
         return []
-    entities: list = []
+    entities: list[OPNsenseInterfaceSensor] = []
 
-    # interfaces
     interfaces = dict_get(state, "interfaces", {}) or {}
     if not isinstance(interfaces, MutableMapping):
-        return entities
+        return []
 
     for interface_name, interface in interfaces.items():
         if not isinstance(interface, MutableMapping):
             continue
-        for prop_name in (
-            "status",
-            "inerrs",
-            "outerrs",
-            "collisions",
-            "inbytes",
-            "inbytes_kilobytes_per_second",
-            "outbytes",
-            "outbytes_kilobytes_per_second",
-            "inpkts",
-            "inpkts_packets_per_second",
-            "outpkts",
-            "outpkts_packets_per_second",
-        ):
-            state_class: SensorStateClass | None = SensorStateClass.MEASUREMENT
-            native_unit_of_measurement = None
-            device_class = None
-            enabled_default = False
-            suggested_display_precision = None
-            suggested_unit_of_measurement = None
-
-            # enabled_default
-            if prop_name in {
-                "status",
-                "inbytes_kilobytes_per_second",
-                "outbytes_kilobytes_per_second",
-            }:
-                enabled_default = True
-
-            # native_unit_of_measurement
-            if "_packets_per_second" in prop_name:
-                native_unit_of_measurement = DATA_RATE_PACKETS_PER_SECOND
-
-            if "_kilobytes_per_second" in prop_name:
-                native_unit_of_measurement = UnitOfDataRate.KILOBYTES_PER_SECOND
-                device_class = SensorDeviceClass.DATA_RATE
-
-            if native_unit_of_measurement is None:
-                if "bytes" in prop_name:
-                    native_unit_of_measurement = UnitOfInformation.BYTES
-                    device_class = SensorDeviceClass.DATA_SIZE
-                    state_class = SensorStateClass.TOTAL_INCREASING
-                    suggested_display_precision = 1
-                    suggested_unit_of_measurement = UnitOfInformation.GIGABYTES
-                if "pkts" in prop_name:
-                    native_unit_of_measurement = DATA_PACKETS
-                    state_class = SensorStateClass.TOTAL_INCREASING
-
-            if prop_name in {"inerrs", "outerrs", "collisions"}:
-                native_unit_of_measurement = COUNT
-
-            # icon
-            if "pkts" in prop_name or "bytes" in prop_name:
-                icon = "mdi:server-network"
-            elif prop_name == "status":
-                icon = "mdi:check-network"
-                state_class = None
-            else:
-                icon = "mdi:gauge"
-
-            entity = OPNsenseInterfaceSensor(
-                config_entry=config_entry,
-                coordinator=coordinator,
-                entity_description=SensorEntityDescription(
-                    key=f"interface.{interface_name}.{prop_name}",
-                    name=f"Interface {interface.get('name', interface_name)} {prop_name}",
-                    native_unit_of_measurement=native_unit_of_measurement,
-                    device_class=device_class,
-                    icon=icon,
-                    state_class=state_class,
-                    suggested_display_precision=suggested_display_precision,
-                    suggested_unit_of_measurement=suggested_unit_of_measurement,
-                    entity_registry_enabled_default=enabled_default,
-                    # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
-                ),
+        entities.extend(
+            _create_sensor(
+                OPNsenseInterfaceSensor,
+                config_entry,
+                coordinator,
+                _build_interface_sensor_description(interface_name, interface, prop_name),
             )
-            entities.append(entity)
+            for prop_name in _INTERFACE_SENSOR_PROPERTIES
+        )
 
     return entities
 
@@ -680,56 +1201,27 @@ async def _compile_gateway_sensors(
     """
     if not isinstance(state, MutableMapping):
         return []
-    entities: list = []
+    entities: list[OPNsenseGatewaySensor] = []
 
     gateways = dict_get(state, "gateways", {}) or {}
     if not isinstance(gateways, MutableMapping):
-        return entities
+        return []
 
-    for gateway_id, gateway in gateways.items():
+    for gateway_key, gateway in gateways.items():
         if not isinstance(gateway, MutableMapping):
             continue
-        gateway_name = OPNsenseEntity.payload_display_name(gateway, str(gateway_id), "name")
-        gateway_key = str(gateway_id)
-        for prop_name in ("status", "delay", "stddev", "loss", "address"):
-            native_unit_of_measurement = None
-            device_class: SensorDeviceClass | None = None
-            state_class: SensorStateClass | None = SensorStateClass.MEASUREMENT
-            enabled_default = False
-            icon = "mdi:router-network"
-
-            if prop_name == "loss":
-                native_unit_of_measurement = PERCENTAGE
-
-            if prop_name in {"delay", "stddev"}:
-                native_unit_of_measurement = UnitOfTime.MILLISECONDS
-                # device_class = SensorDeviceClass.DURATION
-
-            if prop_name == "status":
-                icon = "mdi:check-network"
-                state_class = None
-                enabled_default = True
-
-            if prop_name == "address":
-                icon = "mdi:ip-network"
-                state_class = None
-
-            entity = OPNsenseGatewaySensor(
+        gateway_name = OPNsenseEntity.payload_display_name(gateway, str(gateway_key), "name")
+        entities.extend(
+            OPNsenseGatewaySensor(
                 config_entry=config_entry,
                 coordinator=coordinator,
-                entity_description=SensorEntityDescription(
-                    key=f"gateway.{gateway_key}.{prop_name}",
-                    name=f"Gateway {gateway_name} {prop_name}",
-                    native_unit_of_measurement=native_unit_of_measurement,
-                    device_class=device_class,
-                    icon=icon,
-                    state_class=state_class,
-                    entity_registry_enabled_default=enabled_default,
-                    # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+                entity_description=_build_gateway_sensor_description(
+                    str(gateway_key), gateway_name, prop_name
                 ),
                 unique_id_suffix=f"gateway.{gateway_name}.{prop_name}",
             )
-            entities.append(entity)
+            for prop_name in _GATEWAY_SENSOR_PROPERTIES
+        )
 
     return entities
 
@@ -750,31 +1242,21 @@ async def _compile_temperature_sensors(
         return []
     entities: list = []
 
-    # temperatures
     temps = dict_get(state, "telemetry.temps", {}) or {}
     if not isinstance(temps, MutableMapping):
-        return entities
+        return []
 
     for temp_device, temp in temps.items():
         if not isinstance(temp, MutableMapping):
             continue
-        entity = OPNsenseTempSensor(
-            config_entry=config_entry,
-            coordinator=coordinator,
-            entity_description=SensorEntityDescription(
-                key=f"telemetry.temps.{temp_device}",
-                name=f"Temp {temp.get('name', temp_device)}",
-                native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-                device_class=SensorDeviceClass.TEMPERATURE,
-                icon="mdi:thermometer",
-                state_class=SensorStateClass.MEASUREMENT,
-                suggested_display_precision=1,
-                suggested_unit_of_measurement=UnitOfTemperature.CELSIUS,
-                entity_registry_enabled_default=True,
-                # entity_category=entity_category,
-            ),
+        entities.append(
+            _create_sensor(
+                OPNsenseTempSensor,
+                config_entry,
+                coordinator,
+                _build_temperature_sensor_description(temp_device, temp),
+            )
         )
-        entities.append(entity)
     return entities
 
 
@@ -794,43 +1276,33 @@ async def _compile_dhcp_leases_sensors(
         return []
     entities: list = []
 
-    # interfaces
     lease_interfaces = dict_get(state, "dhcp_leases.lease_interfaces", {}) or {}
     if not isinstance(lease_interfaces, MutableMapping):
         lease_interfaces = {}
 
-    for interface, interface_name in lease_interfaces.items():
-        entity = OPNsenseDHCPLeasesSensor(
-            config_entry=config_entry,
-            coordinator=coordinator,
-            entity_description=SensorEntityDescription(
-                key=f"dhcp_leases.{interface}",
-                name=f"DHCP Leases {interface_name}",
-                native_unit_of_measurement="leases",
-                device_class=None,
-                icon="mdi:devices",
-                state_class=SensorStateClass.MEASUREMENT,
-                entity_registry_enabled_default=False,
-                # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
-            ),
-        )
-        entities.append(entity)
+    lease_interface_items: Iterable[tuple[Any, Any]] = ()
+    try:
+        lease_interface_items = lease_interfaces.items()
+    except AttributeError, RuntimeError, TypeError, ValueError:
+        lease_interface_items = ()
 
-    entity = OPNsenseDHCPLeasesSensor(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=SensorEntityDescription(
-            key="dhcp_leases.all",
-            name="DHCP Leases All",
-            native_unit_of_measurement="leases",
-            device_class=None,
-            icon="mdi:devices",
-            state_class=SensorStateClass.MEASUREMENT,
-            entity_registry_enabled_default=True,
-            # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
-        ),
+    for interface, interface_name in lease_interface_items:
+        entities.append(
+            _create_sensor(
+                OPNsenseDHCPLeasesSensor,
+                config_entry,
+                coordinator,
+                _build_dhcp_leases_sensor_description(interface, interface_name),
+            )
+        )
+    entities.append(
+        _create_sensor(
+            OPNsenseDHCPLeasesSensor,
+            config_entry,
+            coordinator,
+            _build_dhcp_leases_total_sensor_description(),
+        )
     )
-    entities.append(entity)
 
     return entities
 
@@ -852,10 +1324,8 @@ async def _compile_vpn_sensors(
     entities: list = []
 
     for vpn_type in ("openvpn", "wireguard"):
-        cs = ["servers"]
-        if vpn_type == "wireguard":
-            cs = ["clients", "servers"]
-        for clients_servers in cs:
+        clients_servers_groups = ["servers"] if vpn_type == "openvpn" else ["clients", "servers"]
+        for clients_servers in clients_servers_groups:
             vpn_instances = dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
             if not isinstance(vpn_instances, MutableMapping):
                 continue
@@ -867,72 +1337,28 @@ async def _compile_vpn_sensors(
                     str(uuid),
                     "name",
                     "description",
+                    allow_scalar=False,
                 )
-                properties: list[str] = [
-                    "total_bytes_recv",
-                    "total_bytes_sent",
-                    "total_bytes_recv_kilobytes_per_second",
-                    "total_bytes_sent_kilobytes_per_second",
-                ]
+                properties = list(_VPN_TRAFFIC_PROPERTIES)
                 if clients_servers == "servers":
-                    properties.extend(["status", "connected_clients"])
+                    properties.extend(_VPN_SERVER_PROPERTIES)
                 if vpn_type == "wireguard" and clients_servers == "clients":
-                    properties.append("connected_servers")
-                for prop_name in properties:
-                    state_class: SensorStateClass | None = None
-                    native_unit_of_measurement: UnitOfDataRate | UnitOfInformation | None = None
-                    device_class: SensorDeviceClass | None = None
-                    enabled_default = False
-                    suggested_display_precision = None
-                    suggested_unit_of_measurement = None
-
-                    if "_kilobytes_per_second" in prop_name:
-                        native_unit_of_measurement = UnitOfDataRate.KILOBYTES_PER_SECOND
-                        device_class = SensorDeviceClass.DATA_RATE
-                        state_class = SensorStateClass.MEASUREMENT
-
-                    if native_unit_of_measurement is None and "bytes" in prop_name:
-                        native_unit_of_measurement = UnitOfInformation.BYTES
-                        device_class = SensorDeviceClass.DATA_SIZE
-                        state_class = SensorStateClass.TOTAL_INCREASING
-                        suggested_display_precision = 1
-                        suggested_unit_of_measurement = UnitOfInformation.MEGABYTES
-
-                    if prop_name in {"connected_clients", "connected_servers"}:
-                        state_class = SensorStateClass.MEASUREMENT
-
-                    # icon
-                    if "bytes" in prop_name:
-                        icon = "mdi:server-network"
-                    elif prop_name == "status":
-                        icon = "mdi:check-network"
-                        enabled_default = True
-                    elif prop_name == "connected_servers":
-                        icon = "mdi:router-network"
-                    elif prop_name == "connected_clients":
-                        icon = "mdi:account-network"
-                    else:
-                        icon = "mdi:gauge"
-
-                    entity = OPNsenseVPNSensor(
-                        config_entry=config_entry,
-                        coordinator=coordinator,
-                        entity_description=SensorEntityDescription(
-                            key=f"{vpn_type}.{clients_servers}.{uuid}.{prop_name}",
-                            name=f"{'OpenVPN' if vpn_type == 'openvpn' else vpn_type.title()} "
-                            f"{clients_servers.title().rstrip('s')} {instance_name} "
-                            f"{prop_name}",
-                            native_unit_of_measurement=native_unit_of_measurement,
-                            device_class=device_class,
-                            icon=icon,
-                            state_class=state_class,
-                            suggested_display_precision=suggested_display_precision,
-                            suggested_unit_of_measurement=suggested_unit_of_measurement,
-                            entity_registry_enabled_default=enabled_default,
-                            # entity_category=entity_category,
+                    properties.extend(_VPN_WIREGUARD_CLIENT_PROPERTIES)
+                entities.extend(
+                    _create_sensor(
+                        OPNsenseVPNSensor,
+                        config_entry,
+                        coordinator,
+                        _build_vpn_sensor_description(
+                            vpn_type,
+                            clients_servers,
+                            uuid,
+                            instance_name,
+                            prop_name,
                         ),
                     )
-                    entities.append(entity)
+                    for prop_name in properties
+                )
     return entities
 
 
@@ -1007,19 +1433,14 @@ class OPNsenseSensor(OPNsenseEntity, SensorEntity):
         entity_description: SensorEntityDescription,
         unique_id_suffix: str | None = None,
     ) -> None:
-        """Initialize the sensor.
-
-        Args:
-            config_entry: Config entry that owns this sensor.
-            coordinator: Coordinator providing OPNsense state updates.
-            entity_description: Description containing the sensor lookup key and metadata.
-            unique_id_suffix: Optional unique ID suffix when it differs from the lookup key.
-        """
+        """Initialize the sensor."""
         name_suffix: str | None = (
             entity_description.name if isinstance(entity_description.name, str) else None
         )
-        if unique_id_suffix is None and isinstance(entity_description.key, str):
-            unique_id_suffix = entity_description.key
+        if unique_id_suffix is None:
+            unique_id_suffix = (
+                entity_description.key if isinstance(entity_description.key, str) else None
+            )
         super().__init__(
             config_entry,
             coordinator,
@@ -1039,8 +1460,7 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
         """Handle coordinator update."""
         value = self._get_opnsense_state_value(self.entity_description.key)
         if value is None:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         if (
@@ -1048,8 +1468,7 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
             and self._previous_value is None
             and self.entity_description.key == "telemetry.cpu.usage_total"
         ):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         if self.entity_description.key == "telemetry.system.boottime":
@@ -1060,8 +1479,7 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
                 value = self._previous_value
 
             if value == 0:
-                self._available = False
-                self.async_write_ha_state()
+                self._mark_unavailable()
                 return
         elif self.entity_description.key == "certificates":
             value = len(value)
@@ -1073,12 +1491,10 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
         self._attr_extra_state_attributes = {}
         if self.entity_description.key == "telemetry.cpu.usage_total":
             temp_attr = self._get_opnsense_state_value("telemetry.cpu")
-            # _LOGGER.debug(f"[extra_state_attributes] temp_attr: {temp_attr}")
             if isinstance(temp_attr, MutableMapping):
                 for k, v in temp_attr.items():
                     if k.startswith("usage_") and k != "usage_total":
                         self._attr_extra_state_attributes[k.replace("usage_", "")] = f"{v}%"
-                # _LOGGER.debug(f"[extra_state_attributes] attributes: {attributes}")
         elif self.entity_description.key == "certificates":
             certs = self._get_opnsense_state_value(self.entity_description.key)
             if isinstance(certs, MutableMapping):
@@ -1095,27 +1511,23 @@ class OPNsenseVnstatSensor(OPNsenseSensor):
         """Handle coordinator update."""
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         key_parts = self.entity_description.key.split(".")
         if len(key_parts) != 3:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         _, interface_name, metric_name = key_parts
 
         metric = dict_get(state, f"vnstat.interfaces.{interface_name}.metrics.{metric_name}", {})
         if not isinstance(metric, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         total = metric.get("total_bytes")
         if not isinstance(total, int):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         self._available = True
@@ -1140,27 +1552,23 @@ class OPNsenseSpeedtestSensor(OPNsenseSensor):
         """Handle coordinator updates for speedtest sensors."""
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         key_parts = self.entity_description.key.split(".")
         if len(key_parts) != 3:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         _, speedtest_section, metric_name = key_parts
 
         metric = dict_get(state, f"speedtest.{speedtest_section}.{metric_name}", {})
         if not isinstance(metric, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         value = metric.get("value")
         if not isinstance(value, (int, float)):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         self._available = True
@@ -1186,25 +1594,21 @@ class OPNsenseSmartSensor(OPNsenseSensor):
         """Handle coordinator updates for SMART disk sensors."""
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         key_parts = self.entity_description.key.split(".")
         if len(key_parts) != 3:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         _, expected_device_slug, prop_name = key_parts
         if prop_name != "temperature":
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         smart_devices = state.get("smart")
         if not isinstance(smart_devices, list):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         smart_device: Mapping[str, Any] | None = None
@@ -1219,8 +1623,7 @@ class OPNsenseSmartSensor(OPNsenseSensor):
                 break
 
         if smart_device is None:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         device_name = smart_device.get("device")
@@ -1230,19 +1633,16 @@ class OPNsenseSmartSensor(OPNsenseSensor):
             smart_info.get(normalized_device_name) if isinstance(smart_info, Mapping) else None
         )
         if not isinstance(device_info, Mapping):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         temperature_entry = device_info.get("temperature")
         if not isinstance(temperature_entry, (Mapping, int, float)):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         if isinstance(temperature_entry, bool):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         temperature: int | float | None = None
@@ -1256,8 +1656,7 @@ class OPNsenseSmartSensor(OPNsenseSensor):
                     temperature = None
 
         if temperature is None:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         self._available = True
@@ -1276,43 +1675,29 @@ class OPNsenseFilesystemSensor(OPNsenseSensor):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update."""
-        filesystem: Mapping[str, object] = {}
-        state: dict[str, Any] = self.coordinator.data
-        if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
-            return
-        telemetry = state.get("telemetry")
-        if not isinstance(telemetry, Mapping):
-            self._available = False
-            self.async_write_ha_state()
-            return
-        filesystems = telemetry.get("filesystems")
-        if not isinstance(filesystems, list):
-            self._available = False
-            self.async_write_ha_state()
+        filesystem: dict[str, Any] = {}
+        filesystems = self._list_at("telemetry.filesystems")
+        if filesystems is None:
+            self._mark_unavailable()
             return
         for fsystem in filesystems:
-            if not isinstance(fsystem, Mapping):
+            if not isinstance(fsystem, MutableMapping):
                 continue
-            filesystem_row: Mapping[str, object] = fsystem
-            mountpoint = filesystem_row.get("mountpoint")
+            mountpoint = fsystem.get("mountpoint")
             if (
                 isinstance(mountpoint, str)
                 and self.entity_description.key
                 == f"telemetry.filesystems.{slugify_filesystem_mountpoint(mountpoint)}"
             ):
-                filesystem = filesystem_row
+                filesystem = dict(fsystem)
         if not filesystem:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         try:
             self._attr_native_value = filesystem["used_pct"]
         except TypeError, KeyError, AttributeError:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         self._available = True
 
@@ -1326,39 +1711,35 @@ class OPNsenseFilesystemSensor(OPNsenseSensor):
 class OPNsenseInterfaceSensor(OPNsenseSensor):
     """Class for OPNsense Interface Sensors."""
 
-    def _opnsense_get_interface_property_name(self) -> str:
-        """Opnsense get interface property name."""
-        return self.entity_description.key.split(".")[2]
-
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update."""
-        state: dict[str, Any] = self.coordinator.data
-        if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+        key_parts = self.entity_description.key.split(".", 1)
+        if len(key_parts) != 2:
+            self._mark_unavailable()
             return
-        interface_name: str = self.entity_description.key.split(".")[1]
+        interface_and_prop = key_parts[1]
+        interface_name_parts = interface_and_prop.rsplit(".", 1)
+        if len(interface_name_parts) != 2:
+            self._mark_unavailable()
+            return
+        interface_name, prop_name = interface_name_parts
         interface: dict[str, Any] = {}
-        interfaces = state.get("interfaces")
-        if not isinstance(interfaces, Mapping):
-            self._available = False
-            self.async_write_ha_state()
+        interfaces = self._mapping_at("interfaces")
+        if interfaces is None:
+            self._mark_unavailable()
             return
         for i_interface_name, iface in interfaces.items():
             if i_interface_name == interface_name:
                 interface = iface
                 break
         if not interface:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
-        prop_name: str = self._opnsense_get_interface_property_name()
         try:
             self._attr_native_value = interface[prop_name]
         except TypeError, KeyError, ZeroDivisionError:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         self._available = True
         self._attr_extra_state_attributes = {}
@@ -1382,15 +1763,17 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
                 self._attr_extra_state_attributes[attr] = interface[attr]
         if interface.get("enabled") is not None and not coerce_bool(interface.get("enabled")):
             self._attr_native_value = None
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         self.async_write_ha_state()
 
     @property
     def icon(self) -> str | None:
         """Return the icon for the sensor."""
-        prop_name: str = self._opnsense_get_interface_property_name()
+        key_parts = self.entity_description.key.rsplit(".", 1)
+        if len(key_parts) != 2:
+            return super().icon
+        prop_name: str = key_parts[1]
         if prop_name == "status" and self.native_value != "up":
             return "mdi:close-network-outline"
         return super().icon
@@ -1403,18 +1786,15 @@ class OPNsenseCarpInterfaceSensor(OPNsenseSensor):
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update."""
         carp_interface: dict[str, Any] = {}
-        state: dict[str, Any] = self.coordinator.data
-        if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
-            return
         key_data = _parse_carp_interface_sensor_key(self.entity_description.key)
         if key_data is None:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         expected_interface_slug, expected_subnet_slug = key_data
-        carp_interfaces = dict_get(state, "carp.interfaces", []) or []
+        carp_interfaces = self._list_at("carp.interfaces")
+        if carp_interfaces is None:
+            self._mark_unavailable()
+            return
         for i_interface in carp_interfaces:
             if not isinstance(i_interface, MutableMapping):
                 _LOGGER.debug(
@@ -1440,15 +1820,13 @@ class OPNsenseCarpInterfaceSensor(OPNsenseSensor):
             carp_interface = dict(i_interface)
             break
         if not carp_interface:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         try:
             self._attr_native_value = carp_interface["status"]
         except TypeError, KeyError, ZeroDivisionError:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         self._available = True
         self._attr_extra_state_attributes = {}
@@ -1485,22 +1863,15 @@ class OPNsenseCarpStatusSensor(OPNsenseSensor):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update."""
-        state: dict[str, Any] = self.coordinator.data
-        if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
-            return
-        summary_raw = dict_get(state, "carp.status_summary")
-        if not isinstance(summary_raw, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+        summary_raw = self._mapping_at("carp.status_summary")
+        if summary_raw is None:
+            self._mark_unavailable()
             return
 
         summary = dict(summary_raw)
         raw_summary_state = summary.get("state")
         if not isinstance(raw_summary_state, str) or not raw_summary_state:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         self._available = True
@@ -1539,70 +1910,63 @@ class OPNsenseCarpStatusSensor(OPNsenseSensor):
 class OPNsenseGatewaySensor(OPNsenseSensor):
     """Class for OPNsense Gateway Sensors."""
 
-    def __init__(
-        self,
-        config_entry: ConfigEntry,
-        coordinator: OPNsenseDataUpdateCoordinator,
-        entity_description: SensorEntityDescription,
-        unique_id_suffix: str | None = None,
-    ) -> None:
-        """Initialize a gateway sensor with optional unique-id override.
+    def _opnsense_get_gateway_entry(self, gateway_name: str) -> dict[str, Any]:
+        """Return a gateway payload matched by mapping key or display name.
 
         Args:
-            config_entry: Config entry that owns this sensor.
-            coordinator: Coordinator providing OPNsense state updates.
-            entity_description: Description containing the raw gateway lookup key.
-            unique_id_suffix: Optional legacy/display-name-based unique ID suffix.
-        """
-        if unique_id_suffix is None:
-            unique_id_suffix = entity_description.key
-        super().__init__(
-            config_entry=config_entry,
-            coordinator=coordinator,
-            entity_description=entity_description,
-            unique_id_suffix=unique_id_suffix,
-        )
+            gateway_name: Gateway key or configured display name to find.
 
-    def _opnsense_get_gateway_property_name(self) -> str:
-        """Opnsense get gateway property name."""
-        return self.entity_description.key.split(".")[2]
+        Returns:
+            dict[str, Any]: Matching gateway payload, or an empty dictionary when
+                no matching gateway is available.
+        """
+        gateways = self._mapping_at("gateways")
+        if gateways is None:
+            return {}
+        if isinstance(gateways.get(gateway_name), Mapping):
+            return dict(gateways[gateway_name])
+        gateway_name_normalized = gateway_name.strip()
+        for gateway_key, gateway in gateways.items():
+            if not isinstance(gateway, Mapping):
+                continue
+            configured_name = OPNsenseEntity.payload_display_name(gateway, str(gateway_key), "name")
+            if configured_name == gateway_name_normalized:
+                return dict(gateway)
+            if configured_name.casefold() == gateway_name_normalized.casefold():
+                return dict(gateway)
+        return {}
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update."""
-        state: dict[str, Any] = self.coordinator.data
-        if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+        key_parts = self.entity_description.key.split(".", 1)
+        if len(key_parts) != 2:
+            self._mark_unavailable()
             return
-        gateway: dict[str, Any] = {}
-        gateway_name: str = self.entity_description.key.split(".")[1]
-        for i_gateway_name, gway in state.get("gateways", {}).items():
-            if i_gateway_name == gateway_name:
-                gateway = gway
-                break
+        gateway_and_prop = key_parts[1]
+        gateway_name_parts = gateway_and_prop.rsplit(".", 1)
+        if len(gateway_name_parts) != 2:
+            self._mark_unavailable()
+            return
+        gateway_name, prop_name = gateway_name_parts
+        gateway: dict[str, Any] = self._opnsense_get_gateway_entry(gateway_name)
         if not gateway:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
-        prop_name: str = self._opnsense_get_gateway_property_name()
         try:
             value = gateway[prop_name]
-            # cleanse "ms", etc from values
             if prop_name in {"stddev", "delay", "loss"} and isinstance(value, str):
                 value = re.sub(r"[^0-9\.]*", "", value)
                 if len(value) > 0:
                     value = float(value)
 
             if isinstance(value, str) and len(value) < 1:
-                self._available = False
-                self.async_write_ha_state()
+                self._mark_unavailable()
                 return
 
             self._attr_native_value = value
-        except TypeError, KeyError, ZeroDivisionError:
-            self._available = False
-            self.async_write_ha_state()
+        except TypeError, KeyError, ZeroDivisionError, ValueError:
+            self._mark_unavailable()
             return
         self._available = True
         self._attr_extra_state_attributes = {}
@@ -1611,7 +1975,10 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
     @property
     def icon(self) -> str | None:
         """Return the icon for the sensor."""
-        prop_name: str = self._opnsense_get_gateway_property_name()
+        key_parts = self.entity_description.key.rsplit(".", 1)
+        if len(key_parts) != 2:
+            return super().icon
+        prop_name: str = key_parts[1]
         if prop_name == "status" and self.native_value != "online":
             return "mdi:close-network-outline"
         return super().icon
@@ -1620,42 +1987,38 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
 class OPNsenseVPNSensor(OPNsenseSensor):
     """Class for OPNsense VPN Sensors."""
 
-    def _get_property_name(self) -> str:
-        """Return property name."""
-        return self.entity_description.key.split(".")[3]
-
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update."""
-        vpn_type: str = self.entity_description.key.split(".")[0]
-        clients_servers: str = self.entity_description.key.split(".")[1]
-        state: dict[str, Any] = self.coordinator.data
-        if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+        key_parts = self.entity_description.key.split(".")
+        if len(key_parts) != 4:
+            self._mark_unavailable()
             return
-        uuid: str = self.entity_description.key.split(".")[2]
-        instance: Mapping[str, object] = {}
-        vpn_instances = dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
-        if not isinstance(vpn_instances, Mapping):
-            self._available = False
-            self.async_write_ha_state()
+        vpn_type = key_parts[0]
+        clients_servers = key_parts[1]
+        uuid = key_parts[2]
+        prop_name = key_parts[3]
+        instances = self._mapping_at(f"{vpn_type}.{clients_servers}")
+        if instances is None:
+            self._mark_unavailable()
             return
-        for instance_uuid, ins in vpn_instances.items():
-            if not isinstance(ins, Mapping):
+        instance: MutableMapping[str, Any] = {}
+        for instance_uuid, ins in instances.items():
+            if not isinstance(ins, MutableMapping):
                 continue
-            instance_row: Mapping[str, object] = ins
             if uuid == instance_uuid:
-                instance = instance_row
+                instance = ins
                 break
-        prop_name: str = self._get_property_name()
-        if not instance or (
-            prop_name != "status"
-            and instance.get("enabled", None) is not None
-            and not instance.get("enabled")
+        if (
+            not isinstance(instance, MutableMapping)
+            or not instance
+            or (
+                prop_name != "status"
+                and instance.get("enabled", None) is not None
+                and not instance.get("enabled")
+            )
         ):
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         try:
@@ -1668,8 +2031,7 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             else:
                 self._attr_native_value = instance.get(prop_name)
         except TypeError, KeyError, ZeroDivisionError:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         self._available = True
 
@@ -1722,20 +2084,18 @@ class OPNsenseVPNSensor(OPNsenseSensor):
                 self._attr_extra_state_attributes[attr] = instance.get(attr)
 
         clients = instance.get("clients")
-        if (
-            isinstance(clients, list)
-            and clients_servers == "servers"
-            and prop_name
-            in {
-                "connected_clients",
-                "status",
-            }
-        ):
+        include_clients = clients_servers == "servers" and prop_name in {
+            "connected_clients",
+            "status",
+        }
+        if include_clients and clients is not None and not isinstance(clients, list):
+            self._mark_unavailable()
+            return
+        if include_clients and isinstance(clients, list):
             self._attr_extra_state_attributes["clients"] = []
             for clnt in clients:
-                if not isinstance(clnt, Mapping):
+                if not isinstance(clnt, MutableMapping):
                     continue
-                client_row: Mapping[str, object] = clnt
                 client: dict[str, Any] = {}
                 for client_attr in (
                     "name",
@@ -1746,15 +2106,21 @@ class OPNsenseVPNSensor(OPNsenseSensor):
                     "bytes_sent",
                     "bytes_recv",
                 ):
-                    if client_row.get(client_attr, None) is not None:
-                        client[client_attr] = client_row.get(client_attr)
+                    if clnt.get(client_attr, None) is not None:
+                        client[client_attr] = clnt.get(client_attr)
                 self._attr_extra_state_attributes["clients"].append(client)
+            if clients and not self._attr_extra_state_attributes["clients"]:
+                self._mark_unavailable()
+                return
         self.async_write_ha_state()
 
     @property
     def icon(self) -> str | None:
         """Return the icon for the sensor."""
-        prop_name: str = self._get_property_name()
+        key_parts = self.entity_description.key.split(".")
+        if len(key_parts) != 4:
+            return super().icon
+        prop_name = key_parts[3]
         if prop_name == "status" and self.native_value != "up":
             return "mdi:close-network-outline"
         return super().icon
@@ -1766,27 +2132,30 @@ class OPNsenseTempSensor(OPNsenseSensor):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update."""
-        state: dict[str, Any] = self.coordinator.data
-        if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+        key_parts = self.entity_description.key.split(".")
+        if len(key_parts) != 3 or key_parts[:2] != ["telemetry", "temps"]:
+            self._mark_unavailable()
             return
-        sensor_temp_device: str = self.entity_description.key.split(".")[2]
-        temp: dict[str, Any] = {}
-        for temp_device, temp_temp in state.get("telemetry", {}).get("temps", {}).items():
+        sensor_temp_device: str = key_parts[2]
+        temps = self._mapping_at("telemetry.temps")
+        if temps is None:
+            self._mark_unavailable()
+            return
+        temp: MutableMapping[str, Any] = {}
+        for temp_device, temp_temp in temps.items():
             if temp_device == sensor_temp_device:
+                if not isinstance(temp_temp, MutableMapping):
+                    break
                 temp = temp_temp
                 break
         if not temp:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
 
         try:
             self._attr_native_value = temp["temperature"]
         except TypeError, KeyError, ZeroDivisionError:
-            self._available = False
-            self.async_write_ha_state()
+            self._mark_unavailable()
             return
         self._available = True
 
@@ -1794,6 +2163,25 @@ class OPNsenseTempSensor(OPNsenseSensor):
         for attr in ["device_id"]:
             self._attr_extra_state_attributes[attr] = temp.get(attr, None)
         self.async_write_ha_state()
+
+
+def _count_active_dhcp_leases(leases: Iterable[Any]) -> int | None:
+    """Count DHCP lease rows with a non-empty address.
+
+    Args:
+        leases: Iterable of DHCP lease rows represented as mutable mappings.
+
+    Returns:
+        int | None: Number of rows with a non-empty ``address``, or ``None`` when
+            any row is not a mutable mapping.
+    """
+    lease_count = 0
+    for lease in leases:
+        if not isinstance(lease, MutableMapping):
+            return None
+        if lease.get("address") not in {None, ""}:
+            lease_count += 1
+    return lease_count
 
 
 class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
@@ -1804,39 +2192,28 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update."""
-        state: dict[str, Any] = self.coordinator.data
-        if not isinstance(state, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
-            return
         if_name: str = self.entity_description.key.split(".")[1].strip()
-        # _LOGGER.debug(f"[OPNsenseDHCPLeasesSensor handle_coordinator_update] if_name: {if_name}")
-        dhcp_leases = state.get("dhcp_leases")
-        if not isinstance(dhcp_leases, MutableMapping):
-            self._available = False
-            self.async_write_ha_state()
+        dhcp_leases = self._mapping_at("dhcp_leases")
+        if dhcp_leases is None:
+            self._mark_unavailable()
             return
         if if_name.lower() == "all":
             leases = dhcp_leases.get("leases", {})
             lease_interfaces = dhcp_leases.get("lease_interfaces", {})
-            # _LOGGER.debug(f"[OPNsenseDHCPLeasesSensor handle_coordinator_update]
-            # lease_interfaces: {lease_interfaces}")
-            # _LOGGER.debug(f"[OPNsenseDHCPLeasesSensor handle_coordinator_update]
-            # leases: {leases}")
             if not isinstance(leases, MutableMapping) or not isinstance(
                 lease_interfaces, MutableMapping
             ):
-                self._available = False
-                self.async_write_ha_state()
+                self._mark_unavailable()
                 return
             self._available = True
             total_lease_count: int = 0
             lease_counts: dict[str, Any] = {}
             try:
                 for ifn, if_descr in lease_interfaces.items():
-                    if_count: int = sum(
-                        1 for d in leases.get(ifn, []) if d.get("address") not in {None, ""}
-                    )
+                    if_count = _count_active_dhcp_leases(leases.get(ifn, []))
+                    if if_count is None:
+                        self._mark_unavailable()
+                        return
                     lease_counts[if_descr] = f"{if_count} leases"
                     total_lease_count += if_count
                     _LOGGER.debug(
@@ -1844,9 +2221,8 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
                         if_descr,
                         if_count,
                     )
-            except TypeError, KeyError, ZeroDivisionError:
-                self._available = False
-                self.async_write_ha_state()
+            except TypeError, KeyError, AttributeError, ZeroDivisionError:
+                self._mark_unavailable()
                 return
             sorted_lease_counts: dict[str, Any] = {
                 key: lease_counts[key] for key in sorted(lease_counts)
@@ -1857,21 +2233,20 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
         else:
             leases = dhcp_leases.get("leases", {})
             if not isinstance(leases, MutableMapping):
-                self._available = False
-                self.async_write_ha_state()
+                self._mark_unavailable()
                 return
             interface = leases.get(if_name, [])
             if not isinstance(interface, list):
-                self._available = False
-                self.async_write_ha_state()
+                self._mark_unavailable()
                 return
             try:
-                self._attr_native_value = sum(
-                    1 for d in interface if d.get("address") not in {None, ""}
-                )
-            except TypeError, KeyError, ZeroDivisionError:
-                self._available = False
-                self.async_write_ha_state()
+                lease_count = _count_active_dhcp_leases(interface)
+                if lease_count is None:
+                    self._mark_unavailable()
+                    return
+                self._attr_native_value = lease_count
+            except TypeError, KeyError, AttributeError, ZeroDivisionError:
+                self._mark_unavailable()
                 return
             self._available = True
             self._attr_extra_state_attributes = {"Leases": interface}

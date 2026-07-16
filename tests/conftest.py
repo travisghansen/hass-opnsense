@@ -6,30 +6,19 @@ background tasks, and simplify Home Assistant testing.
 """
 
 import asyncio
-from collections.abc import AsyncIterator, Generator, MutableMapping
+from collections.abc import AsyncIterator
 import contextlib
-import inspect
-import logging
-from pathlib import Path
-from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock
+from typing import Any
+from unittest.mock import MagicMock
 
-import aiohttp
-import homeassistant.core as ha_core
 from homeassistant.core import HomeAssistant
+import homeassistant.helpers.aiohttp_client as _ha_aiohttp_client
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
-from pytest_homeassistant_custom_component.plugins import get_scheduled_timer_handles
 
 import custom_components.opnsense as _init_mod
-from custom_components.opnsense import pyopnsense as _pyopnsense_mod
+from custom_components.opnsense import helpers as _helpers_mod
 from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID
-
-TEST_PASSWORD = "p"
-
-# expose the pyopnsense module under the plain name for tests that
-# import the fixture and expect `pyopnsense` to be available.
-pyopnsense = _pyopnsense_mod
 
 
 # Provide a shared FakeClientSession for tests to avoid creating real aiohttp sessions
@@ -90,13 +79,40 @@ def _ensure_async_create_task_mock(real: Any, side_effect: Any) -> None:
 
 @pytest.fixture(autouse=True)
 def _patch_async_create_clientsession(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Ensure the integration's async_create_clientsession does not create real sessions. This prevents tests from opening real network resources and leaking connectors."""
+    """Patch shared client-session construction so tests never open network resources."""
+
+    def create_clientsession(*args: Any, **kwargs: Any) -> FakeClientSession:
+        """Return a fake client session for all patched session helper surfaces."""
+        return FakeClientSession()
+
+    monkeypatch.setattr(
+        _ha_aiohttp_client,
+        "async_create_clientsession",
+        create_clientsession,
+    )
+    monkeypatch.setattr(
+        "homeassistant.helpers.aiohttp_client.async_create_clientsession",
+        create_clientsession,
+    )
     monkeypatch.setattr(
         _init_mod,
         "async_create_clientsession",
-        lambda *a, **k: FakeClientSession(),
+        create_clientsession,
         raising=False,
     )
+    monkeypatch.setattr(
+        _helpers_mod,
+        "async_create_clientsession",
+        create_clientsession,
+    )
+
+    class _FakeCookieJar:
+        """Test cookie jar replacement with a no-op initializer."""
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            """Ignore args and return a usable object for patch coverage."""
+
+    monkeypatch.setattr(_helpers_mod.aiohttp, "CookieJar", _FakeCookieJar, raising=True)
 
 
 @pytest.fixture
@@ -203,420 +219,6 @@ def fake_stream_response_factory() -> Any:
 
 
 @pytest.fixture
-async def make_client() -> Any:
-    """Return a factory that constructs an OPNsenseClient for tests. This mirrors the local helper used in some test modules but exposes it as a fixture so tests can request it via parameters for consistency."""
-    clients: list[pyopnsense.OPNsenseClient] = []
-
-    def _make(
-        session: aiohttp.ClientSession | None = None,
-        username: str = "u",
-        password: str = TEST_PASSWORD,
-        url: str = "http://localhost",
-    ) -> pyopnsense.OPNsenseClient:
-        # Tests should not pass a real aiohttp.ClientSession. If session is
-        # omitted, substitute the test FakeClientSession to avoid passing None
-        # into the production client which expects a session-like object.
-        """Create an ``OPNsenseClient`` instance configured for the current test.
-
-        Args:
-            session: HTTP client session used for outbound requests.
-            username: Username used to authenticate with OPNsense.
-            password: Password used to authenticate with OPNsense.
-            url: URL used to reach the OPNsense host or related endpoint.
-        """
-        if session is None:
-            session = cast("aiohttp.ClientSession", FakeClientSession())
-        client = pyopnsense.OPNsenseClient(
-            url=url, username=username, password=password, session=session
-        )
-        clients.append(client)
-        return client
-
-    try:
-        yield _make
-    finally:
-        # Ensure all created clients are closed to avoid leaking background tasks.
-        for c in clients:
-            with contextlib.suppress(Exception):
-                await c.async_close()
-
-
-# Module logger for test diagnostics
-logger = logging.getLogger(__name__)
-
-
-@pytest.fixture(autouse=True)
-def _patch_homeassistant_stop(monkeypatch: pytest.MonkeyPatch) -> Any:
-    """Wrap HomeAssistant.stop to ignore 'Event loop is closed' runtime errors. Some tests or integrations can close the event loop unexpectedly. During test teardown the pytest-homeassistant-custom-component plugin attempts to stop HomeAssistant instances which may call into a closed loop; this wrapper silently swallows that specific RuntimeError to allow teardown to continue in a best-effort manner."""
-    original_stop = getattr(ha_core.HomeAssistant, "stop", None)
-
-    if original_stop is None:
-        return
-
-    def _safe_stop(self: Any, *args, **kwargs) -> Any:
-        """Safe stop.
-
-        Args:
-            self: Home Assistant instance being stopped.
-            *args: Additional positional arguments forwarded by the function.
-            **kwargs: Additional keyword arguments forwarded by the function.
-        """
-        try:
-            return original_stop(self, *args, **kwargs)
-        except RuntimeError as err:
-            if "Event loop is closed" in str(err):
-                # Log for diagnostics then swallow this specific error during tests.
-                logger.exception(
-                    "HomeAssistant.stop suppressed during test teardown: Event loop is closed",
-                    exc_info=err,
-                )
-                return None
-            raise
-
-    monkeypatch.setattr(ha_core.HomeAssistant, "stop", _safe_stop, raising=False)
-
-
-@pytest.fixture(autouse=True)
-def _patch_asyncio_create_task(
-    monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
-) -> None:
-    """Patch pyopnsense task scheduling outside direct pyopnsense tests."""
-    try:
-        test_path = getattr(request, "fspath", None)
-        if test_path:
-            normalized_path = Path(str(test_path).replace("\\", "/"))
-            path_parts = tuple(part.lower() for part in normalized_path.parts)
-            has_pyopnsense_test_segments = any(
-                path_parts[index : index + 2] == ("tests", "pyopnsense")
-                for index in range(len(path_parts) - 1)
-            )
-            if normalized_path.name == "test_pyopnsense.py" or has_pyopnsense_test_segments:
-                return
-    except AttributeError, TypeError:
-        # If we cannot determine the requesting test, continue with patching.
-        pass
-
-    # Patch asyncio.create_task to avoid creating background workers for pyopnsense during tests.
-    # For coroutines created by pyopnsense, close the coroutine object and return a dummy
-    # task-like object to prevent "coroutine was never awaited" warnings while avoiding
-    # scheduling real background work during tests.
-    # keep a reference to the original so we can delegate for non-target coroutines
-    # Prefer the one from the pyopnsense module if present, otherwise fall back
-    # to the global asyncio.create_task.
-    # Prefer the pyopnsense module's asyncio.create_task when available; fall
-    # back to the global asyncio.create_task otherwise. Avoid relying on an
-    # ImportError here since the module import already occurred at module
-    # load time. Instead, detect presence safely using globals() and
-    # getattr.
-    if "_pyopnsense_mod" in globals() and getattr(_pyopnsense_mod, "asyncio", None) is not None:
-        # Prefer the module-scoped asyncio.create_task when available so we can
-        # delegate for non-target coroutines. Fall back to the global
-        # asyncio.create_task if the module doesn't expose one.
-        module_asyncio = cast("Any", _pyopnsense_mod).asyncio
-        _original_create_task = getattr(module_asyncio, "create_task", asyncio.create_task)
-    else:
-        # pyopnsense.asyncio is not present; delegate to the global
-        # asyncio.create_task. We intentionally avoid patching the global
-        # asyncio module below unless necessary.
-        _original_create_task = asyncio.create_task
-        logger.debug(
-            "pyopnsense.asyncio not present; attaching minimal namespace with fake create_task; delegating others to global asyncio"
-        )
-
-    def _fake_create_task(coro: Any, *args, **kwargs) -> Any:
-        # If the coroutine originates from pyopnsense background workers, close
-        # it to avoid 'coroutine was never awaited' warnings and return a dummy
-        # task-like object. Otherwise delegate to the original create_task.
-        """Create a safe stand-in task for patched asyncio scheduling.
-
-        Args:
-            coro: Coro provided by pytest or the test case.
-            *args: Additional positional arguments forwarded by the function.
-            **kwargs: Additional keyword arguments forwarded by the function.
-        """
-        frame = getattr(coro, "cr_frame", None)
-        module_name = ""
-        if frame:
-            try:
-                g = getattr(frame, "f_globals", None) or {}
-                module_name = g.get("__name__", "") if isinstance(g, MutableMapping) else ""
-            except AttributeError, TypeError:
-                module_name = ""
-
-        # Match module names that include 'pyopnsense' (e.g. 'custom_components.opnsense.pyopnsense')
-        if isinstance(module_name, str) and "pyopnsense" in module_name:
-            with contextlib.suppress(Exception):
-                coro.close()
-            # Return an already-completed future if a running loop is present.
-            try:
-                loop = asyncio.get_running_loop()
-                fut = loop.create_future()
-                fut.set_result(None)
-            except RuntimeError:
-                # No running loop; provide a minimally awaitable stub.
-                class _DoneTask:
-                    def done(self) -> bool:
-                        """Done."""
-                        return True
-
-                    def cancel(self) -> None:
-                        """Cancel."""
-                        return
-
-                    def cancelled(self) -> bool:
-                        """Cancelled."""
-                        return False
-
-                    def result(self) -> None:
-                        """Result."""
-                        return
-
-                    def exception(self) -> None:
-                        """Exception."""
-                        return
-
-                    def add_done_callback(self, cb: Any) -> None:
-                        """Add done callback.
-
-                        Args:
-                            cb: Cb provided by pytest or the test case.
-                        """
-                        with contextlib.suppress(Exception):
-                            cb(self)
-
-                    def __await__(self) -> Generator[Any]:
-                        """Await."""
-                        if False:
-                            yield None  # pragma: no cover
-
-                return _DoneTask()
-            else:
-                return fut
-        # Delegate to the original create_task for all other coroutines.
-        return _original_create_task(coro, *args, **kwargs)
-
-    # Patch create_task only on the pyopnsense module to avoid interfering
-    # with the rest of the test environment (Home Assistant / pytest-asyncio).
-    # If the pyopnsense module does not expose an `asyncio` attribute, attach
-    # a minimal namespace with our patched create_task so tests that construct
-    # OPNsenseClient outside a running loop do not attempt to schedule real
-    # background work. This avoids touching the global asyncio module.
-    try:
-        # Construct a proxy object that delegates all attributes to the real
-        # asyncio module except `create_task`, which we override with our
-        # test-local `_fake_create_task`. This avoids mutating the global
-        # asyncio module and confines behavior to the pyopnsense module.
-        real_asyncio = getattr(_pyopnsense_mod, "asyncio", asyncio)
-
-        class _AsyncioProxy:
-            """Proxy delegating attribute access to the real asyncio module.
-
-            Only `create_task` is implemented on the proxy to forward to the
-            provided fake implementation; all other attributes are looked up
-            on the underlying real asyncio module via __getattr__.
-            """
-
-            def __init__(self, real: Any, create_task_impl: Any) -> None:
-                """Initialize _AsyncioProxy.
-
-                Args:
-                    real: Real provided by pytest or the test case.
-                    create_task_impl: Create task impl provided by pytest or the test case.
-                """
-                self._real = real
-                # store the impl as a bound attribute so monkeypatch can
-                # replace it later if needed
-                self.create_task = create_task_impl
-
-            def __getattr__(self, name: str) -> Any:
-                """Getattr.
-
-                Args:
-                    name: Name provided by pytest or the test case.
-                """
-                return getattr(self._real, name)
-
-        proxy = _AsyncioProxy(real_asyncio, _fake_create_task)
-
-        # Replace whatever the pyopnsense module exposes with our proxy so
-        # calls like `pyopnsense.asyncio.create_task(...)` hit the proxy and
-        # use the fake implementation while all other asyncio behavior
-        # delegates to the real module.
-        monkeypatch.setattr(_pyopnsense_mod, "asyncio", proxy, raising=False)
-    except Exception:  # noqa: BLE001
-        logger.debug(
-            "Failed to attach asyncio proxy on pyopnsense; falling back to direct patching"
-        )
-
-
-@pytest.fixture(autouse=True)
-def _neutralize_pyopnsense_background_tasks(
-    monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
-) -> None:
-    """Autouse fixture to replace pyopnsense background queue workers with no-ops. This prevents the integration from scheduling background coroutines during tests which could interact with the event loop, create network IO, or produce 'coroutine was never awaited' warnings."""
-
-    async def _noop_async(self: Any, *args, **kwargs) -> None:
-        """Replace pyopnsense background workers with an async no-op.
-
-        Args:
-            self: Client instance whose background worker was patched.
-            *args: Additional positional arguments forwarded by the function.
-            **kwargs: Additional keyword arguments forwarded by the function.
-        """
-        return
-
-    # Try patching via the module/class object when available; fall back to
-    # import-path based monkeypatching for resilience in different test envs.
-    # Do not neutralize when running tests that exercise pyopnsense internals
-    # directly (they need the real implementations). Skip patching for those
-    # test modules (legacy tests/test_pyopnsense.py and split tests/pyopnsense/*).
-    try:
-        test_path = getattr(request, "fspath", None)
-        if test_path:
-            normalized_path = Path(str(test_path).replace("\\", "/"))
-            path_parts = tuple(part.lower() for part in normalized_path.parts)
-            has_pyopnsense_test_segments = any(
-                path_parts[index : index + 2] == ("tests", "pyopnsense")
-                for index in range(len(path_parts) - 1)
-            )
-            if normalized_path.name == "test_pyopnsense.py" or has_pyopnsense_test_segments:
-                return
-    except AttributeError, TypeError:
-        # If we cannot determine the requesting test, continue with patching.
-        pass
-
-    try:
-        if getattr(pyopnsense, "OPNsenseClient", None) is not None:
-            monkeypatch.setattr(
-                pyopnsense.OPNsenseClient, "_monitor_queue", _noop_async, raising=False
-            )
-            monkeypatch.setattr(
-                pyopnsense.OPNsenseClient, "_process_queue", _noop_async, raising=False
-            )
-    except AttributeError, TypeError:
-        # best-effort; continue to fallback below
-        pass
-
-    # Fallback to import path strings in case direct attribute access failed.
-    with contextlib.suppress(Exception):
-        monkeypatch.setattr(
-            "custom_components.opnsense.pyopnsense.OPNsenseClient._monitor_queue",
-            _noop_async,
-            raising=False,
-        )
-    with contextlib.suppress(Exception):
-        monkeypatch.setattr(
-            "custom_components.opnsense.pyopnsense.OPNsenseClient._process_queue",
-            _noop_async,
-            raising=False,
-        )
-
-    # Also make our patched asyncio.create_task (defined earlier in this file)
-    # recognize coroutines that are bound methods of OPNsenseClient even when
-    # the coroutine object originates from the test module (for example when
-    # tests replace the methods with test-local no-ops). Inspect the
-    # coroutine frame locals and treat coroutines with a `self` that is an
-    # OPNsenseClient as pyopnsense background workers.
-    try:
-        # If the module-level fake_create_task exists, decorate it to be more
-        # permissive. We patch the pyopnsense.asyncio.create_task if present.
-        target_asyncio = getattr(_pyopnsense_mod, "asyncio", None)
-        if target_asyncio is not None and hasattr(target_asyncio, "create_task"):
-            orig = target_asyncio.create_task
-
-            def _wrap_create_task(coro: Any, *args, **kwargs) -> Any:
-                """Wrap create task.
-
-                Args:
-                    coro: Coro provided by pytest or the test case.
-                    *args: Additional positional arguments forwarded by the function.
-                    **kwargs: Additional keyword arguments forwarded by the function.
-                """
-                frame = getattr(coro, "cr_frame", None)
-                module_name = ""
-                if frame:
-                    try:
-                        g = getattr(frame, "f_globals", None) or {}
-                        module_name = g.get("__name__", "") if isinstance(g, MutableMapping) else ""
-                    except AttributeError, TypeError:
-                        module_name = ""
-
-                # If the coroutine originates from a test-local no-op but is a
-                # bound method (has 'self' local that's an OPNsenseClient),
-                # treat it like a pyopnsense background worker.
-                is_pyopnsense_bound = False
-                if frame:
-                    try:
-                        locs = getattr(frame, "f_locals", {}) or {}
-                        self_obj = locs.get("self")
-                        if (
-                            self_obj is not None
-                            and getattr(pyopnsense, "OPNsenseClient", None) is not None
-                            and isinstance(self_obj, pyopnsense.OPNsenseClient)
-                        ):
-                            is_pyopnsense_bound = True
-                    except AttributeError, TypeError:
-                        is_pyopnsense_bound = False
-
-                if is_pyopnsense_bound or (
-                    isinstance(module_name, str) and "pyopnsense" in module_name
-                ):
-                    with contextlib.suppress(AttributeError, TypeError):
-                        coro.close()
-                    try:
-                        loop = asyncio.get_running_loop()
-                        fut = loop.create_future()
-                        fut.set_result(None)
-                    except RuntimeError:
-
-                        class _DoneTask:
-                            def done(self) -> bool:
-                                """Done."""
-                                return True
-
-                            def cancel(self) -> None:
-                                """Cancel."""
-                                return
-
-                            def cancelled(self) -> bool:
-                                """Cancelled."""
-                                return False
-
-                            def result(self) -> None:
-                                """Result."""
-                                return
-
-                            def exception(self) -> None:
-                                """Exception."""
-                                return
-
-                            def add_done_callback(self, cb: Any) -> None:
-                                """Add done callback.
-
-                                Args:
-                                    cb: Cb provided by pytest or the test case.
-                                """
-                                with contextlib.suppress(AttributeError, TypeError):
-                                    cb(self)
-
-                            def __await__(self) -> Generator[Any]:
-                                """Await."""
-                                if False:
-                                    yield None  # pragma: no cover
-
-                        return _DoneTask()
-                    else:
-                        return fut
-
-                return orig(coro, *args, **kwargs)
-
-            monkeypatch.setattr(target_asyncio, "create_task", _wrap_create_task, raising=False)
-    except AttributeError, TypeError:
-        # Best-effort; do not fail tests if this decoration cannot be applied.
-        pass
-
-
-@pytest.fixture
 def coordinator() -> Any:
     """Provide a lightweight coordinator mock for tests. Use MagicMock so that registering listeners (which happens synchronously) does not produce AsyncMock "never awaited" warnings. Tests that need async behavior can set specific async methods on the mock to AsyncMock."""
     return MagicMock()
@@ -676,9 +278,7 @@ def fake_client() -> Any:
                 self._telemetry = telemetry or {}
                 self._close_result = close_result
 
-                # state for query counts used by coordinator tests
-                self._query_counts_reset = False
-                self._query_counts = (1, 1)
+                self._query_counts = 0
 
             async def get_device_unique_id(self, expected_id: str | None = None) -> Any:
                 """Return the fake device identifier configured for this client.
@@ -688,6 +288,10 @@ def fake_client() -> Any:
                         and ignored by this fake implementation.
                 """
                 return self._device_id
+
+            async def validate(self) -> bool:
+                """Perform a no-op validation check for setup-time assertions."""
+                return True
 
             async def get_host_firmware_version(self) -> Any:
                 """Return the configured firmware version for test assertions."""
@@ -701,17 +305,13 @@ def fake_client() -> Any:
                 """Return the preloaded telemetry payload for coordinator tests."""
                 return self._telemetry
 
-            async def set_use_snake_case(self) -> bool:
-                """Acknowledge snake-case setup without mutating any fake state."""
-                return True
-
             async def reset_query_counts(self) -> None:
                 # mark reset and return None (used by coordinator)
                 """Mark that the query counters were reset during a coordinator update."""
                 self._query_counts_reset = True
 
-            async def get_query_counts(self) -> Any:
-                """Return the stored pair of fake REST and XML-RPC query counters."""
+            async def get_query_counts(self) -> int:
+                """Return the stored number of fake REST/API query calls."""
                 return self._query_counts
 
             async def get_interfaces(self) -> Any:
@@ -779,7 +379,11 @@ def fake_reg_factory() -> Any:
     """
 
     def _make(
-        device_exists: bool = False, device_id: str = "dev", remove_result: Any | None = None
+        device_exists: bool = False,
+        device_id: str = "dev",
+        remove_result: Any | None = None,
+        config_entries: set[str] | None = None,
+        disabled_by: str | None = None,
     ) -> Any:
         """Create a fake device registry with configurable lookup and removal behavior.
 
@@ -787,15 +391,20 @@ def fake_reg_factory() -> Any:
             device_exists: Whether ``async_get_device`` should return a device record.
             device_id: Device identifier returned when ``device_exists`` is true.
             remove_result: Value returned by ``async_remove_device``.
+            config_entries: Config entries already linked to the fake device.
+            disabled_by: Disable source reported by the fake device entry.
         """
 
         class _FakeReg:
             def __init__(self) -> None:
                 """Initialize _FakeReg."""
                 self.removed = False
+                self.updated_devices: list[tuple[str, dict[str, Any]]] = []
                 self._device_exists = device_exists
                 self._device_id = device_id
                 self._remove_result = remove_result
+                self._config_entries = config_entries or set()
+                self._disabled_by = disabled_by
 
             def async_get_device(self, *args, **kwargs) -> Any:
                 """Return a fake device entry when the fixture is configured to find one.
@@ -808,9 +417,20 @@ def fake_reg_factory() -> Any:
 
                     class _D:
                         id = self._device_id
+                        config_entries = self._config_entries
+                        disabled_by = self._disabled_by
 
                     return _D()
                 return None
+
+            def async_update_device(self, device_id: str, **kwargs: Any) -> None:
+                """Record device updates for assertions.
+
+                Args:
+                    device_id: Device identifier being updated.
+                    **kwargs: Device update keyword arguments.
+                """
+                self.updated_devices.append((device_id, kwargs))
 
             def async_remove_device(self, *args, **kwargs) -> Any:
                 # mirror previous tests which sometimes inspect a `removed` flag
@@ -830,19 +450,17 @@ def fake_reg_factory() -> Any:
 
 @pytest.fixture
 def fake_flow_client() -> Any:
-    """Return a factory that constructs a lightweight FakeClient used in flow tests. The returned factory when called yields a FakeClient class suitable for config/option flow validation paths and records calls to is_plugin_installed."""
+    """Return a factory that constructs a lightweight FakeClient used in flow tests."""
 
     def _make(
         device_id: str = "unique-id",
         firmware: str = "25.1",
-        plugin_installed: bool = False,
     ) -> Any:
         """Build a lightweight flow-test client class with configurable identity.
 
         Args:
             device_id: Device identifier returned by the fake client.
             firmware: Firmware version returned by the fake client.
-            plugin_installed: Whether ``is_plugin_installed`` should report success.
         """
 
         class FakeFlowClient:
@@ -863,18 +481,12 @@ def fake_flow_client() -> Any:
                     **kwargs: Additional keyword arguments forwarded by the function.
                 """
                 FakeFlowClient.last_instance = self
-                self._is_plugin_called = 0
                 self._device_id = device_id
                 self._firmware = firmware
-                self._plugin_installed = plugin_installed
 
             async def get_host_firmware_version(self) -> str:
                 """Return the configured firmware version for flow validation."""
                 return self._firmware
-
-            async def set_use_snake_case(self, initial: bool = False) -> None:
-                """Accept the snake-case toggle call without mutating fake state."""
-                return
 
             async def get_system_info(self) -> dict:
                 """Return minimal system information for config-flow validation."""
@@ -887,15 +499,6 @@ def fake_flow_client() -> Any:
                     expected_id: Expected device identifier supplied by the caller and ignored.
                 """
                 return self._device_id
-
-            async def is_plugin_installed(self) -> bool:
-                """Return whether plugin installed.
-
-                Returns:
-                    bool: True if plugin installed; otherwise, False.
-                """
-                self._is_plugin_called += 1
-                return self._plugin_installed
 
             async def async_close(self) -> None:
                 """Record a successful close operation for flow-client assertions."""
@@ -987,8 +590,8 @@ def make_config_entry() -> Any:
 
 
 @pytest.fixture
-def ph_hass(request: Any, hass: HomeAssistant | None = None) -> Any:
-    """Safe hass-like fixture: prefer real PHCC `hass` when available. Prefer the pytest-injected `hass` fixture when the pytest-homeassistant- custom-component plugin is present. To support environments where the plugin is absent (or where fixture injection order yields an async generator), fall back to using `request.getfixturevalue("hass")` only as a last resort; if that still isn't available, return a MagicMock that provides the minimal attributes tests expect."""
+def ph_hass(hass: HomeAssistant) -> HomeAssistant:
+    """Return the PHCC Home Assistant fixture with task creation observable by tests."""
 
     # Helper used to schedule coroutines on the running loop when possible.
     def _schedule_or_return(coro: Any) -> Any:
@@ -1005,141 +608,11 @@ def ph_hass(request: Any, hass: HomeAssistant | None = None) -> Any:
             # back to returning the coroutine so callers can decide.
             return coro
 
-    # helper _ensure_async_create_task_mock moved to module top-level
-
-    # If pytest injected a `hass` fixture, prefer it (but avoid advancing
-    # async-generator fixtures here). This lets pytest supply the real
-    # PHCC hass instance when available without calling getfixturevalue.
-    real = hass
-    if real is not None:
-        # If the injected fixture is an async-generator object, we must not
-        # advance it here because its lifecycle is managed by the plugin
-        # (treat as unavailable and fall back below).
-        if inspect.isasyncgen(real):
-            real = None
-        else:
-            # Reuse helper to ensure async_create_task is a MagicMock so tests
-            # can assert `.called` etc.
-            _ensure_async_create_task_mock(real, _schedule_or_return)
-            return real
-
-    # No injected hass or injected hass unusable; try the legacy fallback
-    # of requesting the fixture by name. Only call getfixturevalue as a
-    # safety net when injection did not occur.
-    try:
-        real = request.getfixturevalue("hass")
-        if inspect.isasyncgen(real):
-            real = None
-        if real is not None:
-            # Mirror the same robust assignment logic for the plugin-provided
-            # hass fixture path using the helper.
-            _ensure_async_create_task_mock(real, _schedule_or_return)
-            return real
-    except pytest.FixtureLookupError:
-        # No PHCC hass available; will return MagicMock fallback below.
-        pass
-
-    # No real hass fixture available; return a MagicMock fallback.
-    m = MagicMock()
-    m.config_entries = MagicMock()
-    m.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
-    m.config_entries.async_reload = AsyncMock(return_value=None)
-    m.data = {}
-    # Mirror HomeAssistant API used by the integration/tests.
-    m.async_create_task = MagicMock(side_effect=_schedule_or_return)
-    # provide a loop wrapper that cancels scheduled timer handles immediately
-    # so the pytest-homeassistant-custom-component plugin does not report
-    # lingering timers during test teardown.
-    try:
-        real_loop = asyncio.get_running_loop()
-    except RuntimeError:
-        real_loop = asyncio.new_event_loop()
-
-    class FakeLoop:
-        def __init__(self, loop: Any) -> None:
-            """Initialize FakeLoop.
-
-            Args:
-                loop: Loop provided by pytest or the test case.
-            """
-            self._loop = loop
-
-        def call_later(self, delay: Any, callback: Any, *args) -> Any:
-            """Call later.
-
-            Args:
-                delay: Delay provided by pytest or the test case.
-                callback: Callback provided by pytest or the test case.
-                *args: Additional positional arguments forwarded by the function.
-            """
-            handle = self._loop.call_later(delay, callback, *args)
-            with contextlib.suppress(Exception):
-                handle.cancel()
-            return handle
-
-        def __getattr__(self, name: str) -> Any:
-            """Getattr.
-
-            Args:
-                name: Name provided by pytest or the test case.
-            """
-            return getattr(self._loop, name)
-
-    m.loop = FakeLoop(real_loop)
-    return m
+    _ensure_async_create_task_mock(hass, _schedule_or_return)
+    return hass
 
 
 @pytest.fixture
 def expected_lingering_timers() -> bool:
-    """Tell the PHCC verify_cleanup fixture to allow lingering timers. Tests in this suite intentionally create short-lived timers; during the incremental migration we accept plugin warnings instead of hard failures."""
+    """Allow switch delay timers that tests intentionally leave scheduled."""
     return True
-
-
-def pytest_runtest_teardown(item: Any, nextitem: Any) -> None:
-    """Pytest hook: cancel any scheduled timer handles after each test. Prevent the pytest-homeassistant-custom-component plugin from failing tests due to lingering timer handles created by the integration (for example via hass.loop.call_later / async_call_later)."""
-    try:
-        # Prefer the running loop when called from a running async context.
-        event_loop = asyncio.get_running_loop()
-    except RuntimeError:
-        # No running loop; create a new event loop as a safe fallback.
-        # This avoids using the deprecated `get_event_loop` path and mirrors
-        # the recommended pattern for synchronous code needing a loop.
-        event_loop = asyncio.new_event_loop()
-    # If some integration code created and closed the global loop, we may
-    # need to replace it with a fresh loop to allow the PHCC plugin to
-    # perform teardown. However, this repository opts in to that behavior
-    # via the `expected_lingering_timers` fixture. Only perform loop
-    # replacement when the current test requested it; otherwise skip the
-    # surgery but still attempt to cancel any scheduled timer handles in a
-    # best-effort manner.
-    if getattr(event_loop, "is_closed", lambda: False)():
-        replace_loop = False
-        try:
-            # Prefer the fixture value for the current test if present.
-            replace_loop = bool(item.funcargs.get("expected_lingering_timers", False))
-        except AttributeError, KeyError:
-            replace_loop = False
-
-        if replace_loop:
-            try:
-                new_loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(new_loop)
-                event_loop = new_loop
-            except OSError, RuntimeError:
-                # Best-effort: if we cannot recreate the loop, continue and
-                # let teardown attempt to proceed (it may still error).
-                pass
-
-    # Collect scheduled timer handles from the (possibly replaced) loop;
-    # if the loop is closed and handle collection fails, skip cancellation
-    # gracefully.
-    try:
-        handles = get_scheduled_timer_handles(event_loop)
-    except RuntimeError, OSError:
-        handles = []
-
-    for handle in handles:
-        # Best-effort cancellation; don't raise from teardown hook.
-        with contextlib.suppress(Exception):
-            if not handle.cancelled():
-                handle.cancel()

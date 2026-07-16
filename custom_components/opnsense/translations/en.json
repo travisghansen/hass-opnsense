@@ -13,12 +13,10 @@
       "privilege_missing": "OPNsense User has insufficient privileges. Recommend admin access",
       "connect_timeout": "Connection timeout",
       "cannot_connect_ssl": "SSL Certificate Verification Error. If you are using a self-signed certificate, uncheck Verify SSL certificate",
-      "plugin_missing": "os-homeassistant-maxit plugin not installed",
       "url_redirect": "Incorrect URL (redirect)",
       "missing_device_unique_id": "Unable to get MAC addresses from OPNsense to use as Device Unique ID",
       "below_min_firmware": "OPNsense Firmware of {firmware} is below the minimum supported version of {min_firmware}",
-      "unknown_firmware": "Unable to get OPNsense Firmware version",
-      "missing_external_aiopnsense": "OPNsense firmware 26.1.1+ requires external aiopnsense package"
+      "unknown_firmware": "Unable to get OPNsense Firmware version"
     },
     "step": {
       "user": {
@@ -66,16 +64,15 @@
   "options": {
     "error": {
       "cannot_connect": "Failed to connect",
-      "unknown": "Unexpected error",
-      "missing_external_aiopnsense": "OPNsense firmware 26.1.1+ requires external aiopnsense package"
+      "unknown": "Unexpected error"
     },
     "step": {
       "init": {
         "data": {
-          "scan_interval": "Scan Interval (seconds)",
+          "scan_interval": "Scan Interval",
           "device_tracking_mode": "Device Tracker Mode",
-          "device_tracker_scan_interval": "Device Tracker Scan Interval (seconds)",
-          "device_tracker_consider_home": "Device Tracker Consider Home (seconds)",
+          "device_tracker_scan_interval": "Device Tracker Scan Interval",
+          "device_tracker_consider_home": "Device Tracker Consider Home",
           "granular_sync_options": "Enable Granular Sync Options"
         },
         "data_description": {
@@ -127,26 +124,44 @@
     "device_id_mismatched": {
       "title": "OPNsense Hardware Has Changed",
       "description": "OPNsense Device ID has changed which indicates new or changed hardware. In order to accommodate this, hass-opnsense needs to be removed and reinstalled for this router. hass-opnsense is shutting down."
+    }
+  },
+  "exceptions": {
+    "generate_vouchers_failed": {
+      "message": "Generate vouchers failed. No selected OPNsense clients."
     },
-    "plugin_cleanup_partial": {
-      "title": "OPNsense 26.1.1+ and Plugin cleanup partially completed",
-      "description": "OPNsense Plugin is still installed. NAT Outbound and NAT Port Forward rules removed. Firewall Filter rules will be removed once the plugin is removed."
+    "get_vnstat_metrics_failed": {
+      "message": "Get vnStat metrics failed. No selected OPNsense clients have vnStat installed."
     },
-    "plugin_cleanup_done": {
-      "title": "OPNsense 26.1.1+ and Plugin cleanup completed",
-      "description": "OPNsense Plugin is not installed. NAT Outbound, NAT Port Forward, and Firewall Filter rules removed."
+    "kill_states_failed": {
+      "message": "Kill states failed: {ip_addr}"
     },
-    "plugin_cleanup_deprecated": {
-      "title": "OPNsense 26.1.1+ and Plugin cleanup completed",
-      "description": "OPNsense Plugin is deprecated. NAT Outbound, NAT Port Forward, and Firewall Filter rules removed."
+    "no_target_clients": {
+      "message": "No OPNsense clients match the selected target."
     },
-    "remove_plugin": {
-      "title": "Remove Deprecated OPNsense Plugin",
-      "description": "OPNsense Firmware is 26.1.3+ and the deprecated Plugin is still installed. Both because it will no longer work and for security reasons, please remove this plugin from OPNsense."
+    "reload_interface_failed": {
+      "message": "Reload interface failed: {interface}"
     },
-    "missing_external_aiopnsense": {
-      "title": "Missing aiopnsense Dependency",
-      "description": "This OPNsense firmware requires the external aiopnsense package. Update/reinstall hass-opnsense so aiopnsense is available, then reload the integration."
+    "restart_service_failed": {
+      "message": "Restart service failed: {service}"
+    },
+    "run_speedtest_failed": {
+      "message": "Run speedtest failed. No selected OPNsense clients have Speedtest installed."
+    },
+    "service_identifier_required": {
+      "message": "Must use service_id or service_name."
+    },
+    "start_service_failed": {
+      "message": "Start service failed: {service}"
+    },
+    "stop_service_failed": {
+      "message": "Stop service failed: {service}"
+    },
+    "toggle_alias_failed": {
+      "message": "Toggle alias failed. Alias: {alias}, action: {action}"
+    },
+    "voucher_server_error": {
+      "message": "Error getting vouchers from {client}. {error}"
     }
   },
   "selector": {
@@ -235,8 +250,12 @@
       "description": "Starts an OPNsense service",
       "fields": {
         "service_id": {
-          "name": "Service ID or Name",
-          "description": "The ID or name of the service. Like: udpbroadcastrelay/3, haproxy, dhcp, etc."
+          "name": "Service ID",
+          "description": "The ID of the service. Like: udpbroadcastrelay/3"
+        },
+        "service_name": {
+          "name": "Service Name",
+          "description": "The name of the service. Like: haproxy, dhcp, etc."
         },
         "device_id": {
           "name": "OPNsense Device",
@@ -258,8 +277,12 @@
       "description": "Stops an OPNsense service",
       "fields": {
         "service_id": {
-          "name": "Service ID or Name",
-          "description": "The ID or name of the service. Like: udpbroadcastrelay/3, haproxy, dhcp, etc."
+          "name": "Service ID",
+          "description": "The ID of the service. Like: udpbroadcastrelay/3"
+        },
+        "service_name": {
+          "name": "Service Name",
+          "description": "The name of the service. Like: haproxy, dhcp, etc."
         },
         "device_id": {
           "name": "OPNsense Device",
@@ -281,8 +304,12 @@
       "description": "Restarts an OPNsense service",
       "fields": {
         "service_id": {
-          "name": "Service ID or Name",
-          "description": "The ID or name of the service. Like: udpbroadcastrelay/3, haproxy, dhcp, etc."
+          "name": "Service ID",
+          "description": "The ID of the service. Like: udpbroadcastrelay/3"
+        },
+        "service_name": {
+          "name": "Service Name",
+          "description": "The name of the service. Like: haproxy, dhcp, etc."
         },
         "only_if_running": {
           "name": "Only if Running",

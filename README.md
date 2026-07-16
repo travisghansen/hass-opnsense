@@ -12,24 +12,24 @@
 
 Join `OPNsense` with `Home Assistant`!
 
-`hass-opnsense` uses the OPNsense [REST API](https://docs.opnsense.org/development/api.html) to integrate OPNsense with Home Assistant. 
+`hass-opnsense` uses [`aiopnsense`](https://pypi.org/project/aiopnsense/) as the backend client library to integrate OPNsense with Home Assistant.
 
-**With OPNsense Firmware 26.1.1+, a plugin is no longer needed on the OPNsense Router.**
-
-For OPNsense Firmware 26.1.1+, `hass-opnsense` uses [`aiopnsense`](https://pypi.org/project/aiopnsense/) as its backend client library.
 Source and releases for `aiopnsense`:
 
 * PyPI: <https://pypi.org/project/aiopnsense/>
 * GitHub: <https://github.com/Snuffy2/aiopnsense>
 
-For OPNsense Firmware < 26.1.1, the legacy, built-in `pyopnsense` path remains in place for compatibility.
+A Discord server to discuss the integration is available. Click the Discord badge at the beginning of the page for the invite link.
 
-A Discord server to discuss the integration is available, please click the Discord badge at the beginning of the page for the invite link.
+## OPNsense Firmware Requirements
+
+* Requires OPNsense Firmware 25.1+
+* For OPNsense Firmware 25.1 through 26.1.0, the integration remains supported, but Firewall and NAT rule switches are not available.
+* With OPNsense Firmware 26.1.1+, Firewall and NAT rule switches are available as well.
 
 ## Table of Contents
 
 * [Installation](#installation)
-  * [OPNsense Plugin (deprecated)](#opnsense-plugin)
   * [Home Assistant Integration](#homeassistant-integration)
     * [HACS Installation](#hacs-installation)
     * [Manual Installation](#manual-installation)
@@ -55,39 +55,9 @@ A Discord server to discuss the integration is available, please click the Disco
 
 This integration **replaces** the built-in OPNsense integration which only provides `device_tracker` functionality. Be sure to remove any associated configuration for the built-in integration **before** installing this replacement.
 
-### OPNsense Plugin *(deprecated)*
+The deprecated OPNsense Home Assistant plugin is no longer supported or used by hass-opnsense.
 
-With OPNsense Firmware 26.1.1+, a plugin is **no longer needed** on the OPNsense Router.
-
-<details>
-<summary><h4>OPNsense Firmware < 26.1.1</h4></summary>
-
-In most cases, use of the integration requires an <ins>OPNsense</ins> plugin made available on mimugmail repository: `https://www.routerperformance.net/opnsense-repo/`. See [Granular Sync Options](#granular-sync-options) below for more details.
-
-#### First, install the repository
-
-* Open an SSH session on <ins>OPNsense</ins> and issue the following commands:
-
-```
-fetch -o /usr/local/etc/pkg/repos/mimugmail.conf https://www.routerperformance.net/mimugmail.conf
-pkg update
-```
-
-#### Then, install the plugin
-
-There are two ways to do it:
-
-1. In <ins>OPNsense</ins> web UI, go to `System -> Firmware -> Plugins` and install plugin `os-homeassistant-maxit`
-
-OR
-
-2. In an <ins>OPNsense</ins> SSH session: `pkg install os-homeassistant-maxit`
-
-</details>
-
-### HomeAssistant Integration
-
-In Home Assistant, add this repository to the HACS installation or clone the directory manually.
+### Home Assistant Integration
 
 #### HACS Installation
 
@@ -190,15 +160,15 @@ Many entities are created by `hass-opnsense` for statistics etc. Due to the volu
 
 **All switches are disabled by default**
 
-* Firewall Rules - enable/disable rules
-* NAT Rules - enable/disable rules
+* Firewall Rules - enable/disable rules (requires OPNsense Firmware 26.1.1+)
+* NAT Rules - enable/disable rules (requires OPNsense Firmware 26.1.1+)
 * Services - start/stop services
 * VPN Servers and Clients - enable/disable instances
 * Unbound blocklists - enable/disable blocklists
 
 ### Device Tracker
 
-Entities are created for selected devices to track whether they are connected to the network. This feature is disabled by default and can be enabled in the Options.
+Entities are created for selected devices to track whether they are connected to the network. This feature is disabled by default and can be enabled in the Options once the integration is installed.
 
 The options flow supports three modes:
 

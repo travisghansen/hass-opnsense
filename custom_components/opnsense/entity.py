@@ -1,18 +1,20 @@
 """Define the base entities for OPNsense."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, MutableMapping
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import slugify
 
-from .client_protocol import OPNsenseClientProtocol
 from .const import CONF_DEVICE_UNIQUE_ID, DOMAIN, OPNSENSE_CLIENT
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .helpers import dict_get
+
+if TYPE_CHECKING:
+    from aiopnsense import OPNsenseClient
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -20,11 +22,14 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
     """Base entity for OPNsense."""
 
+    _attr_has_entity_name = True
+
     @staticmethod
     def payload_display_name(
         payload: Mapping[str, Any],
         fallback: str,
         *fields: str,
+        allow_scalar: bool = True,
     ) -> str:
         """Return a stable display label from a dynamic state payload.
 
@@ -32,16 +37,35 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
             payload: Mapping payload that may contain one of the display fields.
             fallback: Value to use when none of the fields contain a displayable value.
             *fields: Ordered field names to prefer for the display label.
+            allow_scalar: Whether non-container scalar values should be stringified.
 
         Returns:
             String display label from the first usable field, otherwise the fallback.
         """
         for field in fields:
-            value = payload.get(field)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-            if value is not None and not isinstance(value, Mapping | list | tuple | set):
-                return str(value)
+            value: Any | None
+            try:
+                value = payload.get(field)
+            except AttributeError, KeyError, RuntimeError, TypeError, ValueError:
+                value = None
+
+            if isinstance(value, str):
+                try:
+                    stripped_value = value.strip()
+                except AttributeError, RuntimeError, TypeError, ValueError:
+                    stripped_value = ""
+                if stripped_value:
+                    return stripped_value
+
+            if (
+                allow_scalar
+                and value is not None
+                and not isinstance(value, str | Mapping | list | tuple | set)
+            ):
+                try:
+                    return str(value)
+                except AttributeError, RuntimeError, TypeError, ValueError:
+                    pass
         return fallback
 
     def __init__(
@@ -65,8 +89,8 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
         if unique_id_suffix:
             self._attr_unique_id: str = slugify(f"{self._device_unique_id}_{unique_id_suffix}")
         if name_suffix:
-            self._attr_name: str | None = f"{self.opnsense_device_name or 'OPNsense'} {name_suffix}"
-        self._client: OPNsenseClientProtocol | None = None
+            self._attr_name: str | None = name_suffix
+        self._client: OPNsenseClient | None = None
         self._attr_extra_state_attributes: dict[str, Any] = {}
         self._available: bool = False
         super().__init__(self.coordinator, self._attr_unique_id)
@@ -80,17 +104,6 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
         """
         return self._available
 
-    @property
-    def opnsense_device_name(self) -> str | None:
-        """Return the display name for the parent OPNsense device.
-
-        Returns:
-            str | None: Config entry title when present, otherwise the runtime device name.
-        """
-        if self.config_entry.title and len(self.config_entry.title) > 0:
-            return self.config_entry.title
-        return self._get_opnsense_state_value("system_info.name")
-
     def _get_opnsense_state_value(self, path: str) -> Any | None:
         """Read a nested value from coordinator state data.
 
@@ -102,6 +115,59 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
         """
         state = self.coordinator.data
         return dict_get(state, path)
+
+    def _coordinator_mapping(self) -> MutableMapping[str, Any] | None:
+        """Return coordinator data when it is a mapping.
+
+        Returns:
+            MutableMapping[str, Any] | None: Current coordinator payload, or ``None``
+                when the payload shape is not usable for entity updates.
+        """
+        state = self.coordinator.data
+        return state if isinstance(state, MutableMapping) else None
+
+    def _mapping_at(self, path: str) -> MutableMapping[str, Any] | None:
+        """Return a nested mapping from coordinator data.
+
+        Args:
+            path: Dot-delimited key path inside the coordinator state payload.
+
+        Returns:
+            MutableMapping[str, Any] | None: Nested mapping at ``path``, or ``None``
+                when the value is missing or malformed.
+        """
+        state = self._coordinator_mapping()
+        if state is None:
+            return None
+        value = dict_get(state, path)
+        return value if isinstance(value, MutableMapping) else None
+
+    def _list_at(self, path: str) -> list[Any] | None:
+        """Return a nested list from coordinator data.
+
+        Args:
+            path: Dot-delimited key path inside the coordinator state payload.
+
+        Returns:
+            list[Any] | None: Nested list at ``path``, or ``None`` when missing or malformed.
+        """
+        state = self._coordinator_mapping()
+        if state is None:
+            return None
+        value = dict_get(state, path)
+        return value if isinstance(value, list) else None
+
+    def _mark_unavailable(self, *, clear_attributes: bool = False) -> None:
+        """Mark the entity unavailable and publish the state.
+
+        Args:
+            clear_attributes: Whether to clear extra state attributes while marking
+                the entity unavailable.
+        """
+        self._available = False
+        if clear_attributes:
+            self._attr_extra_state_attributes = {}
+        self.async_write_ha_state()
 
     async def async_added_to_hass(self) -> None:
         """Attach runtime client and trigger an immediate coordinator update callback."""
@@ -134,7 +200,7 @@ class OPNsenseEntity(OPNsenseBaseEntity):
 
         device_info: DeviceInfo = {
             "identifiers": {(DOMAIN, self._device_unique_id)},
-            "name": self.opnsense_device_name,
+            "name": self.config_entry.title or self._get_opnsense_state_value("system_info.name"),
             "configuration_url": self.config_entry.data.get("url", None),
         }
 

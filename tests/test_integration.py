@@ -33,8 +33,9 @@ from custom_components.opnsense.const import (
     CONF_DEVICES,
     CONF_GRANULAR_SYNC_OPTIONS,
     CONF_MANUAL_DEVICES,
+    CONF_TLS_INSECURE,
 )
-from tests.utilities import patch_client_factory
+from tests.utilities import patch_opnsense_client
 
 homeassistant = pytest.importorskip("homeassistant")
 
@@ -56,21 +57,13 @@ class _FakeFlowClient:
         self._device_id = device_id
         self._firmware = firmware
 
+    async def validate(self) -> None:
+        """Satisfy aiopnsense validation during config-flow tests."""
+        return
+
     async def get_host_firmware_version(self) -> str:
         """Return the firmware version configured for this fake flow client."""
         return self._firmware
-
-    async def set_use_snake_case(self, initial: bool = False) -> None:
-        """Accept the snake-case toggle call used by flow validation without side effects."""
-        return
-
-    async def is_plugin_installed(self) -> bool:  # for SYNC_ITEMS_REQUIRING_PLUGIN path
-        """Report plugin availability for config-flow validation checks.
-
-        Returns:
-            bool: Always returns ``True`` so plugin-gated flow branches remain enabled.
-        """
-        return True
 
     async def get_system_info(self) -> MutableMapping[str, Any]:
         """Return a minimal system info payload used by flow validation."""
@@ -112,6 +105,10 @@ class _FakeRuntimeClient:
         self._firmware = firmware
         self._closed = False
 
+    async def validate(self) -> None:
+        """Satisfy aiopnsense validation during setup-entry tests."""
+        return
+
     async def get_device_unique_id(
         self, expected_id: str | None = None
     ) -> str:  # used by setup & coordinator
@@ -136,20 +133,13 @@ class _FakeRuntimeClient:
         self._closed = True
         return True
 
-    async def set_use_snake_case(
-        self, initial: bool = False
-    ) -> None:  # called during coordinator _async_setup
-        # Accept the optional `initial` flag like the production client. No-op for tests.
-        """Accept the snake-case toggle call used during coordinator setup."""
-        return
-
     async def reset_query_counts(self) -> None:
         """Accept query-count reset calls without changing test state."""
         return
 
-    async def get_query_counts(self) -> tuple[int, int]:
-        """Return a fixed pair of query counters for coordinator assertions."""
-        return (0, 0)
+    async def get_query_counts(self) -> int:
+        """Return a fixed query-count value for coordinator assertions."""
+        return 0
 
     async def get_system_info(self) -> dict[str, str]:  # first refresh path
         """Return minimal system information for the initial refresh path."""
@@ -159,8 +149,7 @@ class _FakeRuntimeClient:
 class _FakeCoordinator:
     """Minimal coordinator stand‑in used for async_setup_entry tests."""
 
-    def __init__(self, **kwargs: Any) -> None:  # pragma: no cover - simple init
-        # capture flags we care about for assertions if needed
+    def __init__(self, **kwargs: Any) -> None:
         """Capture the flags needed by async setup tests.
 
         Args:
@@ -179,7 +168,7 @@ class _FakeCoordinator:
         self._refreshed = True
         return True
 
-    async def async_shutdown(self) -> bool:  # pragma: no cover - not used in happy path
+    async def async_shutdown(self) -> bool:
         """Return a successful shutdown result for setup failure branches.
 
         Returns:
@@ -243,7 +232,7 @@ def _build_mock_hass() -> Any:
 
         async def async_forward_entry_setups(
             self, entry: MockConfigEntry, platforms: Iterable[str]
-        ) -> bool:  # pragma: no cover
+        ) -> bool:
             """Async forward entry setups.
 
             Args:
@@ -254,7 +243,7 @@ def _build_mock_hass() -> Any:
 
         async def async_unload_platforms(
             self, entry: MockConfigEntry, platforms: Iterable[str]
-        ) -> bool:  # pragma: no cover
+        ) -> bool:
             """Async unload platforms.
 
             Args:
@@ -263,9 +252,7 @@ def _build_mock_hass() -> Any:
             """
             return True
 
-        async def async_reload(
-            self, entry_id: str
-        ) -> None:  # pragma: no cover - reload path not asserted
+        async def async_reload(self, entry_id: str) -> None:
             """Async reload.
 
             Args:
@@ -284,7 +271,7 @@ async def test_e2e_basic_config_flow_and_setup(
 ) -> None:
     """E2E: basic config flow (single step) followed by entry setup."""
     # Patch client for config flow
-    patch_client_factory(monkeypatch, cf_mod, lambda **k: _FakeFlowClient(device_id="dev-basic"))
+    patch_opnsense_client(monkeypatch, cf_mod, lambda **k: _FakeFlowClient(device_id="dev-basic"))
     monkeypatch.setattr(
         cf_mod, "async_create_clientsession", lambda **k: MagicMock(), raising=False
     )
@@ -315,7 +302,7 @@ async def test_e2e_basic_config_flow_and_setup(
     assert data[CONF_NAME] == "MyRouter"
 
     # Now patch runtime client & coordinator and call async_setup_entry
-    patch_client_factory(
+    patch_opnsense_client(
         monkeypatch, init_mod, lambda **k: _FakeRuntimeClient(device_id="dev-basic")
     )
     monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", _FakeCoordinator)
@@ -359,7 +346,7 @@ async def test_e2e_granular_sync_and_options_device_tracker(
           instantiates two coordinators.
     """
     # Patch flow client
-    patch_client_factory(monkeypatch, cf_mod, lambda **k: _FakeFlowClient(device_id="dev-gran"))
+    patch_opnsense_client(monkeypatch, cf_mod, lambda **k: _FakeFlowClient(device_id="dev-gran"))
     monkeypatch.setattr(
         cf_mod, "async_create_clientsession", lambda **k: MagicMock(), raising=False
     )
@@ -407,24 +394,19 @@ async def test_e2e_granular_sync_and_options_device_tracker(
     hass.data.setdefault(init_mod.DOMAIN, {})
     # Provide async_get_known_entry for options flow compatibility
     if not hasattr(hass.config_entries, "async_get_known_entry"):
-        hass.config_entries.async_get_known_entry = lambda entry_id: entry
+        hass.config_entries._entries = {entry.entry_id: entry}
+
+        def _get_known_entry(entry_id: str) -> MockConfigEntry | None:
+            return hass.config_entries._entries.get(entry_id)
+
+        hass.config_entries.async_get_known_entry = _get_known_entry
 
     # Options flow path
     opt_flow = cf_mod.OPNsenseConfigFlow.async_get_options_flow(
         entry
     )  # returns OPNsenseOptionsFlow
     opt_flow.hass = hass
-    # Avoid Home Assistant usage reporting side-effects in this lightweight
-    # test harness (the real HA runtime sets up frame helpers). Stub the
-    # usage reporter so assigning the config_entry property on the flow
-    # doesn't fail during tests. Use raising=False to allow older HA versions
-    # that don't expose report_usage.
-    monkeypatch.setattr(
-        homeassistant.config_entries, "report_usage", lambda *a, **k: None, raising=False
-    )
-    # Provide the config entry to the options flow in this test environment
-    # so it can access entry.data/options without relying on HA internals.
-    opt_flow.config_entry = entry
+    opt_flow.handler = entry.entry_id
     # initial options step: enable device tracker & granular sync
     opt_init = await opt_flow.async_step_init(
         user_input={
@@ -453,7 +435,7 @@ async def test_e2e_granular_sync_and_options_device_tracker(
     assert entry.options.get(cf_mod.CONF_DEVICE_TRACKER_ENABLED) is True
 
     # Patch runtime setup components (client + coordinator) to count device tracker coordinator instantiation
-    patch_client_factory(
+    patch_opnsense_client(
         monkeypatch, init_mod, lambda **k: _FakeRuntimeClient(device_id="dev-gran")
     )
     monkeypatch.setattr(
@@ -481,7 +463,7 @@ async def test_e2e_reload_and_unload(
           removed.
     """
     # Patch config flow client
-    patch_client_factory(monkeypatch, cf_mod, lambda **k: _FakeFlowClient(device_id="dev-rel"))
+    patch_opnsense_client(monkeypatch, cf_mod, lambda **k: _FakeFlowClient(device_id="dev-rel"))
     monkeypatch.setattr(
         cf_mod, "async_create_clientsession", lambda **k: MagicMock(), raising=False
     )
@@ -507,7 +489,7 @@ async def test_e2e_reload_and_unload(
 
     # Runtime path patches
     runtime_client = _FakeRuntimeClient(device_id="dev-rel")
-    patch_client_factory(monkeypatch, init_mod, lambda **k: runtime_client)
+    patch_opnsense_client(monkeypatch, init_mod, lambda **k: runtime_client)
     monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", _FakeCoordinator)
 
     # Provide unload platforms async method
@@ -557,13 +539,14 @@ async def test_e2e_reload_and_unload(
 async def test_e2e_full_migration_chain(
     monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Exercise the full ``async_migrate_entry`` path from version 1 to 4.
+    """Exercise the full ``async_migrate_entry`` path from version 1 to 5.
 
     Verifies:
         - v1 to v2 removes ``tls_insecure`` and adds ``verify_ssl`` as its inverse.
         - v2 to v3 updates the device unique ID across the entry, entities, and devices.
         - v3 to v4 transforms telemetry-related sensor unique IDs and removes
           ``*_connected_client_count`` entities.
+        - v4 to v5 removes legacy switch entities and stale native firewall rule switches.
     """
     # Build hass mock with update_entry bypass logic
     hass = _build_mock_hass()
@@ -630,6 +613,21 @@ async def test_e2e_full_migration_chain(
                     "sensor.router_vpn_clients", "oldmacid_connected_client_count", "dev-main"
                 ),
                 FakeEntity(
+                    "switch.router_nat_port_forward_rule",
+                    "oldmacid_nat_port_forward_rule",
+                    "dev-main",
+                ),
+                FakeEntity(
+                    "switch.router_firewall_rule_stale",
+                    "oldmacid_firewall_rule_stale",
+                    "dev-main",
+                ),
+                FakeEntity(
+                    "switch.router_firewall_rule_current",
+                    "oldmacid_firewall_rule_current",
+                    "dev-main",
+                ),
+                FakeEntity(
                     "sensor.router_openvpn_status0",
                     "oldmacid_telemetry_openvpn_status0",
                     "dev-main",
@@ -683,14 +681,21 @@ async def test_e2e_full_migration_chain(
     )
 
     # Patch client used during migrations (v2->3 get_device_unique_id, v3->4 get_telemetry)
+    migration_clients: list[Any] = []
+
     class _MigClient:
+        def __init__(self) -> None:
+            """Track migration client instances created during the migration chain."""
+            self.close_calls = 0
+            migration_clients.append(self)
+
         async def get_device_unique_id(self) -> str:
             """Return the migrated device identifier used by the migration test."""
             return "newmacid"
 
         async def async_close(self) -> None:
             """Satisfy migration helper cleanup calls in the fake migration client."""
-            return
+            self.close_calls += 1
 
         async def get_host_firmware_version(self) -> str:  # not used in migration chain here
             """Return a placeholder firmware version for migration compatibility."""
@@ -700,7 +705,11 @@ async def test_e2e_full_migration_chain(
             """Return minimal telemetry so migration code can inspect filesystems."""
             return {"filesystems": []}  # keep simple to avoid extra branches
 
-    patch_client_factory(monkeypatch, init_mod, lambda **k: _MigClient())
+        async def get_firewall(self) -> dict[str, Any]:
+            """Return current aiopnsense firewall rules for stale-switch pruning."""
+            return {"rules": {"row-key": {"uuid": "current"}}}
+
+    patch_opnsense_client(monkeypatch, init_mod, lambda **k: _MigClient())
     monkeypatch.setattr(
         init_mod, "async_create_clientsession", lambda **k: MagicMock(), raising=False
     )
@@ -712,7 +721,7 @@ async def test_e2e_full_migration_chain(
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
             init_mod.CONF_DEVICE_UNIQUE_ID: "oldmacid",
-            init_mod.CONF_TLS_INSECURE: True,
+            CONF_TLS_INSECURE: True,
         },
         title="Router",
         unique_id="oldmacid",
@@ -724,9 +733,11 @@ async def test_e2e_full_migration_chain(
     # Run full migration
     ok = await init_mod.async_migrate_entry(hass, entry)
     assert ok is True
-    assert entry.version == 4
+    assert entry.version == 5
+    assert len(migration_clients) == 1
+    assert migration_clients[0].close_calls == 1
     # v1->2: tls_insecure removed, verify_ssl added (inverse of True -> False)
-    assert init_mod.CONF_TLS_INSECURE not in entry.data
+    assert CONF_TLS_INSECURE not in entry.data
     assert entry.data.get(CONF_VERIFY_SSL) is False
     # v2->3: unique id updated
     assert entry.data[init_mod.CONF_DEVICE_UNIQUE_ID] == "newmacid"
@@ -739,6 +750,12 @@ async def test_e2e_full_migration_chain(
     # connected_client_count entity should be removed during v3->4 migration
     assert "sensor.router_vpn_clients" in fake_entity_reg.removed
     assert "sensor.router_vpn_clients" not in fake_entity_reg._entities
+    assert "switch.router_nat_port_forward_rule" in fake_entity_reg.removed
+    assert "switch.router_nat_port_forward_rule" not in fake_entity_reg._entities
+    assert "switch.router_firewall_rule_stale" in fake_entity_reg.removed
+    assert "switch.router_firewall_rule_stale" not in fake_entity_reg._entities
+    assert "switch.router_firewall_rule_current" not in fake_entity_reg.removed
+    assert "switch.router_firewall_rule_current" in fake_entity_reg._entities
     # Remaining entities use new prefix and no _telemetry_ substring
     for ent in ent_ids.values():
         assert ent.unique_id.startswith("newmacid_")

@@ -12,15 +12,16 @@ import time
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, call
 
+from aiopnsense.exceptions import OPNsenseTimeoutError
 from homeassistant.config_entries import ConfigEntry
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.opnsense import coordinator as coordinator_module
-from custom_components.opnsense.client_protocol import OPNsenseClientProtocol
 from custom_components.opnsense.const import (
     ATTR_UNBOUND_BLOCKLIST,
     CONF_DEVICE_UNIQUE_ID,
+    CONF_FIRMWARE_VERSION,
     CONF_SYNC_CARP,
     CONF_SYNC_CERTIFICATES,
     CONF_SYNC_DHCP_LEASES,
@@ -158,10 +159,10 @@ async def test_get_states_fetches_smart_info_for_each_smart_device(
 
 
 @pytest.mark.asyncio
-async def test_get_states_continues_when_one_smart_device_lookup_fails(
+async def test_get_states_does_not_catch_smart_info_timeout(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """SMART attribute data should keep processing after one per-device lookup fails."""
+    """Public aiopnsense SMART errors should propagate through the coordinator."""
     client = MagicMock()
     client.get_smart = AsyncMock(
         return_value=[
@@ -171,8 +172,7 @@ async def test_get_states_continues_when_one_smart_device_lookup_fails(
     )
     client.get_smart_info = AsyncMock(
         side_effect=[
-            TimeoutError("nvme0 timed out"),
-            {"temperature": {"current": 42}},
+            OPNsenseTimeoutError("nvme0 timed out"),
         ]
     )
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_SMART: True})
@@ -185,18 +185,15 @@ async def test_get_states_continues_when_one_smart_device_lookup_fails(
         config_entry=entry,
     )
 
-    state = await coordinator._get_states(
-        [
-            {"function": "get_smart", "state_key": "smart"},
-            {"function": "get_smart_info", "state_key": "smart_info"},
-        ]
-    )
+    with pytest.raises(OPNsenseTimeoutError, match="nvme0 timed out"):
+        await coordinator._get_states(
+            [
+                {"function": "get_smart", "state_key": "smart"},
+                {"function": "get_smart_info", "state_key": "smart_info"},
+            ]
+        )
 
-    assert state["smart_info"] == {"ada0": {"temperature": {"current": 42}}}
-    assert client.get_smart_info.await_args_list == [
-        call(device="nvme0", info_type="A"),
-        call(device="ada0", info_type="A"),
-    ]
+    assert client.get_smart_info.await_args_list == [call(device="nvme0", info_type="A")]
 
 
 @pytest.mark.asyncio
@@ -244,7 +241,7 @@ async def test_build_categories_includes_smart_without_smart_info_when_client_la
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_SMART: True})
     coordinator = OPNsenseDataUpdateCoordinator(
         hass=MagicMock(),
-        client=cast("OPNsenseClientProtocol", ClientWithoutSmartInfo()),
+        client=cast("Any", ClientWithoutSmartInfo()),
         name="n",
         update_interval=timedelta(seconds=1),
         device_unique_id="id",
@@ -398,7 +395,7 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
 
 @pytest.mark.asyncio
 async def test_calculate_speed_normal_and_exception() -> None:
-    """Calculate speed handles normal and exceptional (zero elapsed) cases."""
+    """Calculate speed handles normal and exceptional (non-positive elapsed) cases."""
     # normal pkts
     new_prop, value = await OPNsenseDataUpdateCoordinator._calculate_speed(
         prop_name="inpkts",
@@ -410,7 +407,7 @@ async def test_calculate_speed_normal_and_exception() -> None:
     assert isinstance(value, int)
     assert value == 50
 
-    # zero elapsed_time -> exception handled -> rate 0
+    # zero elapsed_time -> explicit zero
     _new_prop2, value2 = await OPNsenseDataUpdateCoordinator._calculate_speed(
         prop_name="inpkts",
         elapsed_time=0,
@@ -418,6 +415,15 @@ async def test_calculate_speed_normal_and_exception() -> None:
         previous_parent_value=5,
     )
     assert value2 == 0
+
+    # negative elapsed_time -> explicit zero
+    _new_prop3, value3 = await OPNsenseDataUpdateCoordinator._calculate_speed(
+        prop_name="inpkts",
+        elapsed_time=-5,
+        current_parent_value=10,
+        previous_parent_value=5,
+    )
+    assert value3 == 0
 
 
 @pytest.mark.asyncio
@@ -487,10 +493,10 @@ async def test_calculate_entity_speeds_applies_calculations(
 
 
 @pytest.mark.asyncio
-async def test_calculate_entity_speeds_handles_counter_rollover(
+async def test_calculate_entity_speeds_treats_counter_decrease_as_reset(
     make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
 ) -> None:
-    """Regression: ensure rates never go negative when counters decrease (device reset/rollback)."""
+    """Counter resets should not be reported as traffic spikes."""
     entry = make_config_entry(
         {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
     )
@@ -519,26 +525,142 @@ async def test_calculate_entity_speeds_handles_counter_rollover(
         },
     }
 
-    # run calculation; code should clamp or avoid negative rates
     await coord._calculate_entity_speeds()
 
-    # interfaces rates exist and are non-negative
     eth0 = coord._state["interfaces"]["eth0"]
-    assert "inbytes_kilobytes_per_second" in eth0
-    assert "outbytes_kilobytes_per_second" in eth0
-    assert "inpkts_packets_per_second" in eth0
-    assert "outpkts_packets_per_second" in eth0
-    assert eth0["inbytes_kilobytes_per_second"] >= 0
-    assert eth0["outbytes_kilobytes_per_second"] >= 0
-    assert eth0["inpkts_packets_per_second"] >= 0
-    assert eth0["outpkts_packets_per_second"] >= 0
+    assert eth0["inbytes_kilobytes_per_second"] == 0
+    assert eth0["outbytes_kilobytes_per_second"] == 0
+    assert eth0["inpkts_packets_per_second"] == 0
+    assert eth0["outpkts_packets_per_second"] == 0
 
-    # openvpn rates exist and are non-negative
     s1 = coord._state["openvpn"]["servers"]["s1"]
-    assert "total_bytes_recv_kilobytes_per_second" in s1
-    assert "total_bytes_sent_kilobytes_per_second" in s1
-    assert s1["total_bytes_recv_kilobytes_per_second"] >= 0
-    assert s1["total_bytes_sent_kilobytes_per_second"] >= 0
+    assert s1["total_bytes_recv_kilobytes_per_second"] == 0
+    assert s1["total_bytes_sent_kilobytes_per_second"] == 0
+
+
+@pytest.mark.asyncio
+async def test_calculate_entity_speeds_skips_missing_counter_values(
+    make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
+) -> None:
+    """Missing counter values should not abort a coordinator refresh."""
+    entry = make_config_entry(
+        {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
+    )
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    now = time.time()
+    coord._state = {
+        "update_time": now,
+        "interfaces": {"eth0": {"inbytes": 200, "inpkts": 300}},
+        "openvpn": {"servers": {"s1": {"total_bytes_recv": 1000}}},
+        "wireguard": {"clients": {"c1": {"total_bytes_sent": 2000}}},
+        "previous_state": {
+            "update_time": now - 2,
+            "interfaces": {"eth0": {"inbytes": 100}},
+            "openvpn": {"servers": {"s1": {}}},
+            "wireguard": {"clients": {"c1": {"total_bytes_sent": 1000}}},
+        },
+    }
+
+    await coord._calculate_entity_speeds()
+
+    eth0 = coord._state["interfaces"]["eth0"]
+    assert eth0["inbytes_kilobytes_per_second"] == 0
+    assert "outbytes_kilobytes_per_second" not in eth0
+    assert "inpkts_packets_per_second" not in eth0
+    assert "outpkts_packets_per_second" not in eth0
+    assert "total_bytes_recv_kilobytes_per_second" not in coord._state["openvpn"]["servers"]["s1"]
+    assert coord._state["wireguard"]["clients"]["c1"]["total_bytes_sent_kilobytes_per_second"] == 0
+
+
+@pytest.mark.asyncio
+async def test_calculate_vpn_speeds_skips_malformed_payloads(
+    make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
+) -> None:
+    """Malformed VPN counter payloads should be ignored without mutating valid rows."""
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_VPN: True})
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    coord._state = {
+        "openvpn": {
+            "servers": ["malformed"],
+        },
+        "wireguard": {
+            "clients": {
+                "bad_current": [],
+                "bad_previous_parent": {"total_bytes_recv": 200},
+            },
+            "servers": {
+                "bad_previous_instance": {"total_bytes_recv": 200},
+            },
+        },
+        "previous_state": {
+            "wireguard": {
+                "clients": ["malformed"],
+                "servers": {"bad_previous_instance": []},
+            },
+        },
+    }
+
+    await coord._calculate_vpn_speeds(elapsed_time=2)
+
+    assert coord._state["wireguard"]["clients"]["bad_previous_parent"] == {"total_bytes_recv": 200}
+    assert coord._state["wireguard"]["servers"]["bad_previous_instance"] == {
+        "total_bytes_recv": 200
+    }
+
+
+@pytest.mark.asyncio
+async def test_calculate_interface_speeds_skips_malformed_payloads(
+    make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
+) -> None:
+    """Malformed interface counter payloads should be ignored without mutating valid rows."""
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True})
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    coord._state = {"interfaces": ["malformed"]}
+    await coord._calculate_interface_speeds(elapsed_time=2)
+    assert coord._state["interfaces"] == ["malformed"]
+
+    coord._state = {
+        "interfaces": {
+            "bad_current": [],
+            "bad_previous": {"inbytes": 200},
+        },
+        "previous_state": {
+            "interfaces": {
+                "bad_previous": [],
+            },
+        },
+    }
+
+    await coord._calculate_interface_speeds(elapsed_time=2)
+
+    assert coord._state["interfaces"]["bad_previous"] == {"inbytes": 200}
 
 
 @pytest.mark.asyncio
@@ -583,7 +705,7 @@ async def test_async_update_data_reentrancy_and_full_flow(
     object.__setattr__(
         client, "reset_query_counts", AsyncMock(wraps=getattr(client, "reset_query_counts", None))
     )
-    object.__setattr__(client, "get_query_counts", AsyncMock(return_value=(7, 0)))
+    object.__setattr__(client, "get_query_counts", AsyncMock(return_value=11))
 
     # run update; should return a dict
     out = await coord._async_update_data()
@@ -598,21 +720,58 @@ async def test_async_update_data_reentrancy_and_full_flow(
 
 
 @pytest.mark.asyncio
-async def test_async_setup_calls_client_set_use_snake_case(
+async def test_async_update_data_enables_firewall_polling_when_runtime_firmware_updates(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """Coordinator setup invokes client set_use_snake_case when appropriate."""
-    called = {"count": 0}
-
-    async def fake_set_use_snake_case() -> None:
-        """Record that coordinator setup invoked the client snake-case toggle."""
-        called["count"] += 1
-
-    entry = make_config_entry()
+    """Firewall polling should run when sync is enabled, regardless of stored firmware."""
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_FIRMWARE_VERSION: "25.1",
+            CONF_SYNC_FIREWALL_AND_NAT: True,
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_TELEMETRY: False,
+            CONF_SYNC_VNSTAT: False,
+            CONF_SYNC_SPEEDTEST: False,
+            CONF_SYNC_SMART: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_FIRMWARE_UPDATES: False,
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_DHCP_LEASES: False,
+            CONF_SYNC_GATEWAYS: False,
+            CONF_SYNC_SERVICES: False,
+            CONF_SYNC_NOTICES: False,
+            CONF_SYNC_UNBOUND: False,
+            CONF_SYNC_CERTIFICATES: False,
+        }
+    )
     client = fake_client()()
-    object.__setattr__(client, "set_use_snake_case", fake_set_use_snake_case)
+    object.__setattr__(
+        client,
+        "get_host_firmware_version",
+        AsyncMock(side_effect=["26.1.1", "26.1.1"]),
+    )
+    object.__setattr__(
+        client,
+        "get_firewall",
+        AsyncMock(return_value={"config": {"filter": {"rule": []}}}),
+    )
+    object.__setattr__(
+        client,
+        "get_system_info",
+        AsyncMock(return_value={"name": "test-router"}),
+    )
+    object.__setattr__(
+        client,
+        "reset_query_counts",
+        AsyncMock(
+            wraps=getattr(client, "reset_query_counts", None),
+        ),
+    )
+    object.__setattr__(client, "get_query_counts", AsyncMock(return_value=11))
+
     coord = OPNsenseDataUpdateCoordinator(
         hass=MagicMock(),
         client=client,
@@ -622,9 +781,274 @@ async def test_async_setup_calls_client_set_use_snake_case(
         config_entry=entry,
     )
 
-    # call the async setup which should call the client's set_use_snake_case
-    await coord._async_setup()
-    assert called["count"] == 1
+    async def true_check() -> bool:
+        """Force the device-id validation step to succeed."""
+        return True
+
+    monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
+
+    async def fake_calc() -> None:
+        """Skip speed calculations for this path under test."""
+        return
+
+    monkeypatch.setattr(coord, "_calculate_entity_speeds", fake_calc)
+
+    first_update = await coord._async_update_data()
+    assert first_update == coord._state
+    assert coord._state.get("host_firmware_version") == "26.1.1"
+    assert client.get_firewall.await_count == 1
+    assert coord._state.get("firewall") == {"config": {"filter": {"rule": []}}}
+
+    second_update = await coord._async_update_data()
+    assert second_update == coord._state
+    assert coord._state.get("firewall") == {"config": {"filter": {"rule": []}}}
+    assert client.get_firewall.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_build_categories_and_refresh_queue_firewall_for_legacy_firmware(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
+    """Legacy firmware should rely on aiopnsense empty firewall responses."""
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_FIRMWARE_VERSION: "26.1.1",
+            CONF_SYNC_FIREWALL_AND_NAT: True,
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_TELEMETRY: False,
+            CONF_SYNC_VNSTAT: False,
+            CONF_SYNC_SPEEDTEST: False,
+            CONF_SYNC_SMART: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_FIRMWARE_UPDATES: False,
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_DHCP_LEASES: False,
+            CONF_SYNC_GATEWAYS: False,
+            CONF_SYNC_SERVICES: False,
+            CONF_SYNC_NOTICES: False,
+            CONF_SYNC_UNBOUND: False,
+            CONF_SYNC_CERTIFICATES: False,
+        }
+    )
+    client = fake_client(device_id="id", firmware_version="26.1.1")()
+    object.__setattr__(client, "get_host_firmware_version", AsyncMock(return_value="25.1"))
+    object.__setattr__(
+        client,
+        "get_firewall",
+        AsyncMock(return_value={"rules": {}, "nat": {}}),
+    )
+    object.__setattr__(
+        client,
+        "get_system_info",
+        AsyncMock(return_value={"name": "test-router"}),
+    )
+    object.__setattr__(
+        client,
+        "reset_query_counts",
+        AsyncMock(wraps=getattr(client, "reset_query_counts", None)),
+    )
+    object.__setattr__(client, "get_query_counts", AsyncMock(return_value=11))
+
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    assert "firewall" in [category["state_key"] for category in coord._categories]
+
+    async def true_check() -> bool:
+        """Force the device-id validation step to succeed."""
+        return True
+
+    monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
+
+    async def fake_calc() -> None:
+        """Skip speed calculations for this path under test."""
+        return
+
+    monkeypatch.setattr(coord, "_calculate_entity_speeds", fake_calc)
+
+    first_update = await coord._async_update_data()
+    assert first_update == coord._state
+    assert coord._state.get("host_firmware_version") == "25.1"
+    assert coord._state.get("firewall") == {"rules": {}, "nat": {}}
+    assert client.get_firewall.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_async_update_data_continues_firewall_polling_after_runtime_downgrade(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
+    """Downgraded runtime firmware should still poll firewall state through aiopnsense."""
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_FIREWALL_AND_NAT: True,
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_TELEMETRY: False,
+            CONF_SYNC_VNSTAT: False,
+            CONF_SYNC_SPEEDTEST: False,
+            CONF_SYNC_SMART: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_FIRMWARE_UPDATES: False,
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_DHCP_LEASES: False,
+            CONF_SYNC_GATEWAYS: False,
+            CONF_SYNC_SERVICES: False,
+            CONF_SYNC_NOTICES: False,
+            CONF_SYNC_UNBOUND: False,
+            CONF_SYNC_CERTIFICATES: False,
+        }
+    )
+    client = fake_client(device_id="id", firmware_version="26.1.1")()
+    object.__setattr__(
+        client, "get_host_firmware_version", AsyncMock(side_effect=["26.1.1", "25.1"])
+    )
+    object.__setattr__(
+        client,
+        "get_firewall",
+        AsyncMock(
+            side_effect=[
+                {"rules": {"r1": {"uuid": "r1", "description": "Modern"}}},
+                {"rules": {}, "nat": {}},
+            ]
+        ),
+    )
+    object.__setattr__(
+        client,
+        "get_system_info",
+        AsyncMock(return_value={"name": "test-router"}),
+    )
+    object.__setattr__(
+        client,
+        "reset_query_counts",
+        AsyncMock(wraps=getattr(client, "reset_query_counts", None)),
+    )
+    object.__setattr__(client, "get_query_counts", AsyncMock(return_value=11))
+
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    async def true_check() -> bool:
+        """Force the device-id validation step to succeed."""
+        return True
+
+    monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
+
+    async def fake_calc() -> None:
+        """Skip speed calculations for this path under test."""
+        return
+
+    monkeypatch.setattr(coord, "_calculate_entity_speeds", fake_calc)
+
+    first_update = await coord._async_update_data()
+    assert first_update == coord._state
+    assert coord._state.get("host_firmware_version") == "26.1.1"
+    assert coord._state.get("firewall") == {
+        "rules": {"r1": {"uuid": "r1", "description": "Modern"}}
+    }
+    assert client.get_firewall.await_count == 1
+
+    second_update = await coord._async_update_data()
+    assert second_update == coord._state
+    assert coord._state.get("host_firmware_version") == "25.1"
+    assert coord._state.get("firewall") == {"rules": {}, "nat": {}}
+    assert client.get_firewall.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_async_update_data_fetches_firewall_on_first_refresh_if_firmware_is_learned_and_not_stored(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
+    """When stored firmware is missing, first refresh should fetch firewall after learning version."""
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_FIREWALL_AND_NAT: True,
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_TELEMETRY: False,
+            CONF_SYNC_VNSTAT: False,
+            CONF_SYNC_SPEEDTEST: False,
+            CONF_SYNC_SMART: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_FIRMWARE_UPDATES: False,
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_DHCP_LEASES: False,
+            CONF_SYNC_GATEWAYS: False,
+            CONF_SYNC_SERVICES: False,
+            CONF_SYNC_NOTICES: False,
+            CONF_SYNC_UNBOUND: False,
+            CONF_SYNC_CERTIFICATES: False,
+        }
+    )
+    client = fake_client(device_id="id", firmware_version="25.1")()
+    object.__setattr__(
+        client,
+        "get_host_firmware_version",
+        AsyncMock(side_effect=["26.1.1"]),
+    )
+    object.__setattr__(
+        client,
+        "get_firewall",
+        AsyncMock(return_value={"rules": {"r1": {"uuid": "r1", "description": "Bootstrapped"}}}),
+    )
+    object.__setattr__(
+        client,
+        "get_system_info",
+        AsyncMock(return_value={"name": "test-router"}),
+    )
+    object.__setattr__(
+        client,
+        "reset_query_counts",
+        AsyncMock(wraps=getattr(client, "reset_query_counts", None)),
+    )
+    object.__setattr__(client, "get_query_counts", AsyncMock(return_value=11))
+
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    async def true_check() -> bool:
+        """Force the device-id validation step to succeed."""
+        return True
+
+    monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
+
+    async def fake_calc() -> None:
+        """Skip speed calculations for this path under test."""
+        return
+
+    monkeypatch.setattr(coord, "_calculate_entity_speeds", fake_calc)
+
+    first_update = await coord._async_update_data()
+    assert first_update == coord._state
+    assert coord._state.get("host_firmware_version") == "26.1.1"
+    assert coord._state.get("firewall") == {
+        "rules": {"r1": {"uuid": "r1", "description": "Bootstrapped"}}
+    }
+    assert client.get_firewall.await_count == 1
 
 
 @pytest.mark.asyncio
@@ -677,7 +1101,6 @@ def test_build_categories_returns_empty_when_no_config(
         (CONF_SYNC_GATEWAYS, ["gateways"]),
         (CONF_SYNC_SERVICES, ["services"]),
         (CONF_SYNC_NOTICES, ["notices"]),
-        (CONF_SYNC_FIREWALL_AND_NAT, ["firewall"]),
         (CONF_SYNC_UNBOUND, [ATTR_UNBOUND_BLOCKLIST]),
         (CONF_SYNC_INTERFACES, ["interfaces"]),
         (CONF_SYNC_CERTIFICATES, ["certificates"]),
@@ -691,7 +1114,13 @@ async def test_build_categories_flag_true_and_false(
 ) -> None:
     """Verify categories include keys when flag True and exclude when False."""
     # When flag is True -> expected keys present
-    entry_true = make_config_entry({"device_unique_id": "id", flag: True})
+    entry_true = make_config_entry(
+        {
+            "device_unique_id": "id",
+            CONF_FIRMWARE_VERSION: "26.1.1",
+            flag: True,
+        }
+    )
     client = fake_client()()
     coord_true = OPNsenseDataUpdateCoordinator(
         hass=MagicMock(),
@@ -706,7 +1135,13 @@ async def test_build_categories_flag_true_and_false(
         assert ek in keys_true
 
     # When flag is False -> expected keys absent
-    entry_false = make_config_entry({"device_unique_id": "id", flag: False})
+    entry_false = make_config_entry(
+        {
+            "device_unique_id": "id",
+            CONF_FIRMWARE_VERSION: "26.1.1",
+            flag: False,
+        }
+    )
     coord_false = OPNsenseDataUpdateCoordinator(
         hass=MagicMock(),
         client=client,
@@ -721,12 +1156,72 @@ async def test_build_categories_flag_true_and_false(
 
 
 @pytest.mark.asyncio
-async def test_async_update_data_strips_nested_previous_state(
+async def test_build_categories_includes_firewall_when_sync_is_enabled(
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
+    """Firewall category should be queued whenever firewall sync is enabled."""
+    entry = make_config_entry(
+        {
+            "device_unique_id": "id",
+            CONF_SYNC_FIREWALL_AND_NAT: True,
+            CONF_FIRMWARE_VERSION: "25.1",
+        }
+    )
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+    keys_true = [c["state_key"] for c in coord._build_categories()]
+    assert "firewall" in keys_true
+
+
+@pytest.mark.asyncio
+async def test_build_categories_keeps_firewall_polling_for_legacy_firmware(
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
+    """Legacy firmware should keep native firewall polling and skip removed backends."""
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_FIREWALL_AND_NAT: True,
+            CONF_FIRMWARE_VERSION: "26.1.1",
+        }
+    )
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    # Force the runtime state to legacy firmware and rebuild categories.
+    coord._state["host_firmware_version"] = "25.1"
+    keys = [cat["state_key"] for cat in coord._build_categories()]
+    functions = [cat["function"] for cat in coord._build_categories()]
+
+    assert "firewall" in keys
+    assert "get_firewall" in functions
+    assert "is_plugin_installed" not in functions
+    assert "is_plugin_deprecated" not in functions
+
+
+@pytest.mark.asyncio
+async def test_async_update_data_preserves_only_counter_snapshot(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """Ensure nested 'previous_state' key is removed from the copied previous_state. The coordinator copies its current _state into previous_state, then removes any nested 'previous_state' key from that copy before assigning it back. This test verifies that behavior."""
+    """Previous state should keep only fields needed for counter rates."""
     entry = make_config_entry({"device_unique_id": "id", CONF_SYNC_INTERFACES: True})
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -738,14 +1233,17 @@ async def test_async_update_data_strips_nested_previous_state(
         config_entry=entry,
     )
 
-    # Prepare a state that contains a nested 'previous_state' key which should be stripped
+    now = time.time()
     coord._state = {
+        "update_time": now,
         "previous_state": {"inner": 1},
         "device_unique_id": "id",
+        "interfaces": {"eth0": {"inbytes": 100}},
+        "openvpn": {"servers": {"s1": {"total_bytes_recv": 1000}}},
+        "firewall": {"rules": {"r1": {"description": "large payload"}}},
         "extra": "keep",
     }
 
-    # Make device id check pass and skip heavy calculations
     async def true_check() -> bool:
         """Force device-ID validation to pass for previous-state assertions."""
         return True
@@ -757,20 +1255,20 @@ async def test_async_update_data_strips_nested_previous_state(
     monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
     monkeypatch.setattr(coord, "_calculate_entity_speeds", noop_calc)
 
-    # Spy on reset_query_counts to ensure update flow runs
     object.__setattr__(
         client, "reset_query_counts", AsyncMock(wraps=getattr(client, "reset_query_counts", None))
     )
 
     out = await coord._async_update_data()
 
-    # previous_state assigned on the coordinator should not contain the nested key
     assert isinstance(out, MutableMapping)
     assert "previous_state" in out
     assert "previous_state" not in out["previous_state"]
-    # other top-level keys from the original state should be preserved in the copy
-    assert out["previous_state"].get("device_unique_id") == "id"
-    assert out["previous_state"].get("extra") == "keep"
+    assert out["previous_state"] == {
+        "update_time": now,
+        "interfaces": {"eth0": {"inbytes": 100}},
+        "openvpn": {"servers": {"s1": {"total_bytes_recv": 1000}}},
+    }
 
 
 @pytest.mark.asyncio
@@ -944,7 +1442,7 @@ async def test_async_update_dt_data_device_id_branches(
     monkeypatch.setattr(coord, "_get_states", fake_get_states)
 
     # spy on client's get_query_counts
-    object.__setattr__(client, "get_query_counts", AsyncMock(return_value=(3, 4)))
+    object.__setattr__(client, "get_query_counts", AsyncMock(return_value=3))
 
     res = await coord._async_update_dt_data()
 
@@ -957,3 +1455,55 @@ async def test_async_update_dt_data_device_id_branches(
         # Should return empty dict and not call get_query_counts
         assert res == {}
         assert client.get_query_counts.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_async_update_dt_data_uses_shared_device_id_mismatch_policy(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
+    """Device-tracker refreshes should use the shared device-ID mismatch policy."""
+    entry = make_config_entry({"device_unique_id": "id"})
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+        device_tracker_coordinator=True,
+    )
+
+    async def fake_get_states(categories: list[dict[str, str]]) -> dict[str, Any]:
+        """Return a mismatched device ID for the device-tracker refresh."""
+        return {
+            "device_unique_id": "other",
+            "host_firmware_version": "fv",
+            "system_info": {"name": "opn"},
+            "arp_table": [],
+        }
+
+    called: dict[str, Any] = {"issue": 0, "shutdown": 0}
+
+    async def fake_shutdown() -> None:
+        """Record coordinator shutdown requests."""
+        called["shutdown"] += 1
+
+    def fake_async_create_issue(**kwargs: Any) -> None:
+        """Record repair issue creation requests."""
+        called["issue"] += 1
+
+    monkeypatch.setattr(coord, "_get_states", fake_get_states)
+    monkeypatch.setattr(coordinator_module.ir, "async_create_issue", fake_async_create_issue)
+    object.__setattr__(coord, "async_shutdown", fake_shutdown)
+    object.__setattr__(client, "get_query_counts", AsyncMock(return_value=3))
+
+    assert await coord._async_update_dt_data() == {}
+    assert await coord._async_update_dt_data() == {}
+    assert await coord._async_update_dt_data() == {}
+
+    assert coord._mismatched_count == 3
+    assert called == {"issue": 1, "shutdown": 1}
+    client.get_query_counts.assert_not_awaited()
