@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 from aiohttp import ClientError, ClientResponseError, ClientSSLError, ServerTimeoutError
 from aiopnsense import exceptions as aiopnsense_exceptions
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import AbortFlow
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 import voluptuous as vol
@@ -900,15 +901,13 @@ async def test_async_step_carp_aborts_on_duplicate_url(
 
     flow = cf_mod.OPNsenseConfigFlow()
     flow.hass = MagicMock()
-    object.__setattr__(
-        flow,
-        "_async_abort_entries_match",
-        lambda _match: {"type": "abort", "reason": "already_configured"},
-    )
+    abort_match = MagicMock(side_effect=AbortFlow("already_configured"))
+    object.__setattr__(flow, "_async_abort_entries_match", abort_match)
 
-    result = await flow.async_step_carp(user_input=_make_basic_carp_input())
+    with pytest.raises(AbortFlow, match="already_configured"):
+        await flow.async_step_carp(user_input=_make_basic_carp_input())
 
-    assert result == {"type": "abort", "reason": "already_configured"}
+    abort_match.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -2235,22 +2234,21 @@ async def test_reconfigure_carp_aborts_on_normalized_duplicate_url(
     )
     monkeypatch.setattr(cf_mod, "validate_input", validate)
     object.__setattr__(flow, "_get_reconfigure_entry", lambda: config_entry)
-    duplicate_abort = {"type": "abort", "reason": "already_configured"}
-    abort_match = MagicMock(return_value=duplicate_abort)
+    abort_match = MagicMock(side_effect=AbortFlow("already_configured"))
     object.__setattr__(flow, "_async_abort_entries_match", abort_match)
     update_and_abort = MagicMock()
     object.__setattr__(flow, "async_update_and_abort", update_and_abort)
 
-    result = await flow.async_step_reconfigure(
-        user_input={
-            cf_mod.CONF_URL: "https://carp-router.example/",
-            cf_mod.CONF_USERNAME: "admin",
-            cf_mod.CONF_PASSWORD: "secret",
-            cf_mod.CONF_VERIFY_SSL: True,
-        }
-    )
+    with pytest.raises(AbortFlow, match="already_configured"):
+        await flow.async_step_reconfigure(
+            user_input={
+                cf_mod.CONF_URL: "https://carp-router.example/",
+                cf_mod.CONF_USERNAME: "admin",
+                cf_mod.CONF_PASSWORD: "secret",
+                cf_mod.CONF_VERIFY_SSL: True,
+            }
+        )
 
-    assert result == duplicate_abort
     abort_match.assert_called_once_with({cf_mod.CONF_URL: "https://carp-router.example"})
     update_and_abort.assert_not_called()
 

@@ -386,10 +386,23 @@ def test_entry_type_and_identity_helpers(
     )
     carp_entry = make_config_entry(
         entry_id="carp-entry",
-        data={CONF_ENTRY_TYPE: ENTRY_TYPE_CARP},
+        data={
+            CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+            CONF_DEVICE_UNIQUE_ID: "stale-device-id",
+        },
+    )
+    blank_device_entry = make_config_entry(
+        entry_id="blank-device-entry",
+        data={CONF_DEVICE_UNIQUE_ID: "  \t"},
+    )
+    padded_device_entry = make_config_entry(
+        entry_id="padded-device-entry",
+        data={CONF_DEVICE_UNIQUE_ID: "  padded-device-id  "},
     )
 
     assert is_carp_entry(device_entry) is False
     assert config_entry_identity(device_entry) == "aa_bb_cc_dd_ee_ff"
     assert is_carp_entry(carp_entry) is True
     assert config_entry_identity(carp_entry) == "carp-entry"
+    assert config_entry_identity(blank_device_entry) == "blank-device-entry"
+    assert config_entry_identity(padded_device_entry) == "padded-device-id"

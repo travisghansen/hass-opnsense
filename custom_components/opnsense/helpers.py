@@ -359,8 +359,13 @@ def config_entry_identity(config_entry: ConfigEntry) -> str:
     Returns:
         str: Device unique ID for normal entries, otherwise the entry ID.
     """
+    if is_carp_entry(config_entry):
+        return config_entry.entry_id
+
     device_id = config_entry.data.get(CONF_DEVICE_UNIQUE_ID)
-    return device_id if isinstance(device_id, str) and device_id else config_entry.entry_id
+    if isinstance(device_id, str) and (device_id := device_id.strip()):
+        return device_id
+    return config_entry.entry_id
 
 
 def is_usable_carp_vip(value: object) -> bool:

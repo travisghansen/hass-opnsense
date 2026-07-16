@@ -1103,9 +1103,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
                 if abort:
                     return abort
 
-                abort = self._async_abort_entries_match({CONF_URL: user_input[CONF_URL]})
-                if abort:
-                    return abort
+                self._async_abort_entries_match({CONF_URL: user_input[CONF_URL]})
 
                 return self.async_create_entry(
                     title=user_input[CONF_NAME],
@@ -1193,9 +1191,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
                         )
                         if abort:
                             return abort
-                        abort = self._async_abort_entries_match({CONF_URL: self._config[CONF_URL]})
-                        if abort:
-                            return abort
+                        self._async_abort_entries_match({CONF_URL: self._config[CONF_URL]})
                     return self.async_update_and_abort(
                         entry=reconfigure_entry,
                         title=self._config[CONF_NAME],
