@@ -341,20 +341,19 @@ async def _async_setup_carp_entry(hass: HomeAssistant, entry: ConfigEntry) -> bo
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up OPNsense integration state for a config entry.
+    """Set up an OPNsense config entry and its runtime resources.
 
     Args:
         hass: Home Assistant instance.
         entry: Config entry containing OPNsense connection credentials and options.
 
     Returns:
-        bool: `True` when setup and initial refresh succeed; otherwise `False`.
+        bool: `True` when setup and initial refresh succeed. Returns `False` when
+            the router identity has changed or its firmware is unsupported.
 
     Raises:
-        TimeoutError: If client validation raises a raw timeout error.
-        ConfigEntryNotReady: If transient connection validation fails and setup should be retried.
-        OPNsenseError: Raised when validation cannot complete because of
-            authentication, privilege, firmware, or transport failures.
+        ConfigEntryNotReady: If a transient connection failure prevents setup.
+        OPNsenseError: If setup fails with a non-retryable OPNsense client error.
     """
     if is_carp_entry(entry):
         return await _async_setup_carp_entry(hass, entry)
