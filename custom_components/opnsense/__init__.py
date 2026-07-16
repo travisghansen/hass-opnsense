@@ -182,12 +182,27 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
                 is_current_router_child = (
                     router_device_id is not None and device.via_device_id == router_device_id
                 )
-                if device.id not in tracker_device_ids and not is_current_router_child:
+                is_orphaned_mac_tracker = (
+                    router_device_id is None
+                    and device.via_device_id is not None
+                    and any(
+                        connection_type == dr.CONNECTION_NETWORK_MAC
+                        for connection_type, _connection_value in device.connections
+                    )
+                )
+                if (
+                    device.id not in tracker_device_ids
+                    and not is_current_router_child
+                    and not is_orphaned_mac_tracker
+                ):
                     continue
+                effective_router_device_id = (
+                    device.via_device_id if is_orphaned_mac_tracker else router_device_id
+                )
                 from_current_router, replacement_router_id = detach_shared_router_parent(
                     shared_config_entry_id=entry.entry_id,
                     shared_device_entry=device,
-                    router_device_id=router_device_id,
+                    router_device_id=effective_router_device_id,
                     config_entries=hass.config_entries,
                     device_registry=device_registry,
                 )
@@ -196,7 +211,7 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
                         "[async_update_listener] reparenting shared "
                         "tracker device %s from %s to %s",
                         device.id,
-                        router_device_id,
+                        effective_router_device_id,
                         replacement_router_id,
                     )
                 elif from_current_router:
