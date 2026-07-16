@@ -320,6 +320,48 @@ async def test_duplicate_entry_aborts_before_unload_or_registry_mutation(
 
 
 @pytest.mark.asyncio
+async def test_duplicate_entry_created_during_unload_aborts_without_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A duplicate created during unload must abort before config or registry mutation."""
+    hass = MagicMock()
+    entry = _make_entry(state=ConfigEntryState.LOADED)
+    duplicate = _make_entry(entry_id="entry-2", device_id="other", unique_id="other")
+    _configure_hass(hass, entry)
+    entries = [entry]
+    hass.config_entries.async_entries.side_effect = lambda domain: entries
+
+    def _unload(entry_id: str) -> bool:
+        """Create a competing entry after the initial duplicate check."""
+        del entry_id
+        entries.append(duplicate)
+        return True
+
+    hass.config_entries.async_unload.side_effect = _unload
+    entity_registry, device_registry = _patch_registries(
+        monkeypatch,
+        entities=[SimpleNamespace(entity_id="sensor.old")],
+        devices=[SimpleNamespace(id="device")],
+    )
+    _patch_probe_client(monkeypatch)
+    issue_delete = MagicMock()
+    monkeypatch.setattr(repairs.ir, "async_delete_issue", issue_delete)
+    flow = _make_flow(hass, entry)
+
+    result = await flow.async_step_confirm({})
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+    hass.config_entries.async_unload.assert_awaited_once_with(entry.entry_id)
+    hass.config_entries.async_update_entry.assert_not_called()
+    entity_registry.async_remove.assert_not_called()
+    device_registry.async_update_device.assert_not_called()
+    issue_delete.assert_not_called()
+    assert entry.data[CONF_DEVICE_UNIQUE_ID] == "dev1"
+    assert entry.unique_id == "dev1"
+
+
+@pytest.mark.asyncio
 async def test_loaded_entry_unloads_before_registry_cleanup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -401,6 +443,8 @@ async def test_loaded_entry_unloads_before_registry_cleanup(
         "duplicate_scan",
         "duplicate_check",
         "unload",
+        "duplicate_scan",
+        "duplicate_check",
         "config_update",
         "entity",
         "device",

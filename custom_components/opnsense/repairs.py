@@ -475,6 +475,18 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
             return self.async_abort(reason="entry_changed")
         entry = current_entry
 
+        duplicate = next(
+            (
+                candidate
+                for candidate in self.hass.config_entries.async_entries(DOMAIN)
+                if candidate.entry_id != entry.entry_id
+                and candidate.unique_id == observed_device_id
+            ),
+            None,
+        )
+        if duplicate is not None:
+            return self.async_abort(reason="already_configured")
+
         new_data = {**entry.data, CONF_DEVICE_UNIQUE_ID: observed_device_id}
 
         try:
