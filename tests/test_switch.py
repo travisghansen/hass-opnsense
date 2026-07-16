@@ -92,208 +92,99 @@ def make_carp_maintenance_switch(
     return entity
 
 
-@pytest.mark.asyncio
-async def test_async_setup_entry_records_none_for_missing_service_inventory(
+def capture_reconciled_desired_entities(
     monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, Any]:
+    """Capture reconciliation desired entities during setup."""
+    captured: dict[str, Any] = {}
+
+    def capture(
+        _entry: MockConfigEntry,
+        _platform: str,
+        entities: Any | None = None,
+    ) -> None:
+        """Capture entities passed to ``record_desired_entities``."""
+        captured["entities"] = entities
+
+    monkeypatch.setattr(switch_mod, "record_desired_entities", capture)
+    return captured
+
+
+def setup_switch_reconciliation_entry(
     make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Missing service payload keeps switch platform reconciliation incomplete."""
-    coordinator = make_coord({})
+    coordinator: Any,
+    *,
+    sync_firewall_and_nat: bool = False,
+    sync_services: bool = False,
+    sync_vpn: bool = False,
+    sync_carp: bool = False,
+    sync_unbound: bool = False,
+) -> MockConfigEntry:
+    """Create a switch test entry with coordinator/runtime pre-wired."""
     config_entry = make_config_entry(
         {
             CONF_DEVICE_UNIQUE_ID: "id",
-            CONF_SYNC_FIREWALL_AND_NAT: False,
-            CONF_SYNC_SERVICES: True,
-            CONF_SYNC_VPN: False,
-            CONF_SYNC_CARP: False,
-            CONF_SYNC_UNBOUND: False,
+            CONF_SYNC_FIREWALL_AND_NAT: sync_firewall_and_nat,
+            CONF_SYNC_SERVICES: sync_services,
+            CONF_SYNC_VPN: sync_vpn,
+            CONF_SYNC_CARP: sync_carp,
+            CONF_SYNC_UNBOUND: sync_unbound,
         }
     )
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    return config_entry
 
-    recorded: dict[str, Any] = {}
 
-    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
-        """Capture the desired-entity payload sent to reconciliation."""
-        recorded["entities"] = entities
-
-    monkeypatch.setattr(switch_mod, "record_desired_entities", capture)
+@pytest.mark.parametrize(
+    ("state", "sync_firewall_and_nat", "sync_services", "sync_vpn", "sync_unbound", "expected"),
+    [
+        ({}, False, True, False, False, None),
+        ({"services": []}, False, True, False, False, []),
+        ({}, True, False, False, False, None),
+        ({"firewall": {}}, True, False, False, False, []),
+        ({}, False, False, True, False, None),
+        ({"openvpn": {}, "wireguard": {}}, False, False, True, False, []),
+        ({}, False, False, False, True, None),
+        ({"unbound_blocklist": {}}, False, False, False, True, []),
+    ],
+    ids=[
+        "missing_service",
+        "empty_service",
+        "missing_firewall",
+        "empty_firewall",
+        "missing_vpn",
+        "empty_vpn",
+        "missing_unbound",
+        "empty_unbound",
+    ],
+)
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_none_or_authoritative_empty_for_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    state: dict[str, Any],
+    sync_firewall_and_nat: bool,
+    sync_services: bool,
+    sync_vpn: bool,
+    sync_unbound: bool,
+    expected: Any,
+) -> None:
+    """Track missing vs authoritative-empty inventories across switch sync payloads."""
+    config_entry = setup_switch_reconciliation_entry(
+        make_config_entry,
+        coordinator=make_coord(state),
+        sync_firewall_and_nat=sync_firewall_and_nat,
+        sync_services=sync_services,
+        sync_vpn=sync_vpn,
+        sync_unbound=sync_unbound,
+    )
+    captured = capture_reconciled_desired_entities(monkeypatch)
 
     await switch_mod.async_setup_entry(
         MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
     )
-    assert "entities" in recorded
-    assert recorded["entities"] is None
-
-
-@pytest.mark.asyncio
-async def test_async_setup_entry_records_empty_authoritative_service_inventory(
-    monkeypatch: pytest.MonkeyPatch,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """An explicit empty service container is still authoritative."""
-    coordinator = make_coord({"services": []})
-    config_entry = make_config_entry(
-        {
-            CONF_DEVICE_UNIQUE_ID: "id",
-            CONF_SYNC_FIREWALL_AND_NAT: False,
-            CONF_SYNC_SERVICES: True,
-            CONF_SYNC_VPN: False,
-            CONF_SYNC_CARP: False,
-            CONF_SYNC_UNBOUND: False,
-        }
-    )
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-
-    recorded: dict[str, Any] = {}
-
-    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
-        """Capture the desired-entity payload sent to reconciliation."""
-        recorded["entities"] = entities
-
-    monkeypatch.setattr(switch_mod, "record_desired_entities", capture)
-
-    await switch_mod.async_setup_entry(
-        MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
-    )
-    assert "entities" in recorded
-    assert recorded["entities"] == []
-
-
-@pytest.mark.asyncio
-async def test_async_setup_entry_records_none_for_missing_firewall_inventory(
-    monkeypatch: pytest.MonkeyPatch,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Missing firewall payload keeps switch platform reconciliation incomplete."""
-    coordinator = make_coord({})
-    config_entry = make_config_entry(
-        {
-            CONF_DEVICE_UNIQUE_ID: "id",
-            CONF_SYNC_FIREWALL_AND_NAT: True,
-            CONF_SYNC_SERVICES: False,
-            CONF_SYNC_VPN: False,
-            CONF_SYNC_CARP: False,
-            CONF_SYNC_UNBOUND: False,
-        }
-    )
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-
-    recorded: dict[str, Any] = {}
-
-    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
-        """Capture the desired-entity payload sent to reconciliation."""
-        recorded["entities"] = entities
-
-    monkeypatch.setattr(switch_mod, "record_desired_entities", capture)
-
-    await switch_mod.async_setup_entry(
-        MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
-    )
-    assert "entities" in recorded
-    assert recorded["entities"] is None
-
-
-@pytest.mark.asyncio
-async def test_async_setup_entry_records_empty_authoritative_firewall_inventory(
-    monkeypatch: pytest.MonkeyPatch,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """An explicit empty firewall container is still authoritative."""
-    coordinator = make_coord({"firewall": {}})
-    config_entry = make_config_entry(
-        {
-            CONF_DEVICE_UNIQUE_ID: "id",
-            CONF_SYNC_FIREWALL_AND_NAT: True,
-            CONF_SYNC_SERVICES: False,
-            CONF_SYNC_VPN: False,
-            CONF_SYNC_CARP: False,
-            CONF_SYNC_UNBOUND: False,
-        }
-    )
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-
-    recorded: dict[str, Any] = {}
-
-    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
-        """Capture the desired-entity payload sent to reconciliation."""
-        recorded["entities"] = entities
-
-    monkeypatch.setattr(switch_mod, "record_desired_entities", capture)
-
-    await switch_mod.async_setup_entry(
-        MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
-    )
-    assert "entities" in recorded
-    assert recorded["entities"] == []
-
-
-@pytest.mark.asyncio
-async def test_async_setup_entry_records_none_for_missing_vpn_inventory(
-    monkeypatch: pytest.MonkeyPatch,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Missing VPN payload keeps switch platform reconciliation incomplete."""
-    coordinator = make_coord({})
-    config_entry = make_config_entry(
-        {
-            CONF_DEVICE_UNIQUE_ID: "id",
-            CONF_SYNC_FIREWALL_AND_NAT: False,
-            CONF_SYNC_SERVICES: False,
-            CONF_SYNC_VPN: True,
-            CONF_SYNC_CARP: False,
-            CONF_SYNC_UNBOUND: False,
-        }
-    )
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-
-    recorded: dict[str, Any] = {}
-
-    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
-        """Capture the desired-entity payload sent to reconciliation."""
-        recorded["entities"] = entities
-
-    monkeypatch.setattr(switch_mod, "record_desired_entities", capture)
-
-    await switch_mod.async_setup_entry(
-        MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
-    )
-    assert "entities" in recorded
-    assert recorded["entities"] is None
-
-
-@pytest.mark.asyncio
-async def test_async_setup_entry_records_empty_authoritative_vpn_inventory(
-    monkeypatch: pytest.MonkeyPatch,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """An explicit empty VPN container is still authoritative."""
-    coordinator = make_coord({"openvpn": {}, "wireguard": {}})
-    config_entry = make_config_entry(
-        {
-            CONF_DEVICE_UNIQUE_ID: "id",
-            CONF_SYNC_FIREWALL_AND_NAT: False,
-            CONF_SYNC_SERVICES: False,
-            CONF_SYNC_VPN: True,
-            CONF_SYNC_CARP: False,
-            CONF_SYNC_UNBOUND: False,
-        }
-    )
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-
-    recorded: dict[str, Any] = {}
-
-    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
-        """Capture the desired-entity payload sent to reconciliation."""
-        recorded["entities"] = entities
-
-    monkeypatch.setattr(switch_mod, "record_desired_entities", capture)
-
-    await switch_mod.async_setup_entry(
-        MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
-    )
-    assert "entities" in recorded
-    assert recorded["entities"] == []
+    assert "entities" in captured
+    assert captured["entities"] == expected
 
 
 @pytest.mark.parametrize(
@@ -354,74 +245,6 @@ async def test_async_setup_entry_records_none_for_partial_vpn_inventory(
     assert created
     keys = {entity.entity_description.key for entity in created}
     assert keys == {"openvpn.clients.client-uuid"}, description
-
-
-@pytest.mark.asyncio
-async def test_async_setup_entry_records_none_for_missing_unbound_inventory(
-    monkeypatch: pytest.MonkeyPatch,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Missing unbound payload keeps switch platform reconciliation incomplete."""
-    coordinator = make_coord({})
-    config_entry = make_config_entry(
-        {
-            CONF_DEVICE_UNIQUE_ID: "id",
-            CONF_SYNC_FIREWALL_AND_NAT: False,
-            CONF_SYNC_SERVICES: False,
-            CONF_SYNC_VPN: False,
-            CONF_SYNC_CARP: False,
-            CONF_SYNC_UNBOUND: True,
-        }
-    )
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-
-    recorded: dict[str, Any] = {}
-
-    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
-        """Capture the desired-entity payload sent to reconciliation."""
-        recorded["entities"] = entities
-
-    monkeypatch.setattr(switch_mod, "record_desired_entities", capture)
-
-    await switch_mod.async_setup_entry(
-        MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
-    )
-    assert "entities" in recorded
-    assert recorded["entities"] is None
-
-
-@pytest.mark.asyncio
-async def test_async_setup_entry_records_empty_authoritative_unbound_inventory(
-    monkeypatch: pytest.MonkeyPatch,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """An explicit empty unbound container is still authoritative."""
-    coordinator = make_coord({"unbound_blocklist": {}})
-    config_entry = make_config_entry(
-        {
-            CONF_DEVICE_UNIQUE_ID: "id",
-            CONF_SYNC_FIREWALL_AND_NAT: False,
-            CONF_SYNC_SERVICES: False,
-            CONF_SYNC_VPN: False,
-            CONF_SYNC_CARP: False,
-            CONF_SYNC_UNBOUND: True,
-        }
-    )
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-
-    recorded: dict[str, Any] = {}
-
-    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
-        """Capture the desired-entity payload sent to reconciliation."""
-        recorded["entities"] = entities
-
-    monkeypatch.setattr(switch_mod, "record_desired_entities", capture)
-
-    await switch_mod.async_setup_entry(
-        MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
-    )
-    assert "entities" in recorded
-    assert recorded["entities"] == []
 
 
 async def collect_setup_carp_switches(
