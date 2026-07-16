@@ -158,9 +158,15 @@ class RepairReconciliation:
             raise RepairReconciliationError("registry identifier migration failed") from err
 
     def record_desired_entities(
-        self, platform_domain: PlatformDomain, entities: Iterable[Entity]
+        self, platform_domain: PlatformDomain, entities: Iterable[Entity] | None
     ) -> None:
-        """Record a platform's complete intended entity list, including disabled rows."""
+        """Record a platform's complete intended entity list, including disabled rows.
+
+        If ``entities`` is ``None``, the platform discovery payload was missing
+        or malformed and should not be treated as complete.
+        """
+        if entities is None:
+            return
         domain = _platform_domain_value(platform_domain)
         self.completed_platform_domains.add(domain)
         for entity in entities:
@@ -222,7 +228,7 @@ class RepairReconciliation:
 def record_desired_entities(
     config_entry: ConfigEntry,
     platform_domain: PlatformDomain,
-    entities: Iterable[Entity],
+    entities: Iterable[Entity] | None,
 ) -> None:
     """Record a final platform entity list when reconciliation is active."""
     reconciliation = getattr(config_entry.runtime_data, "repair_reconciliation", None)

@@ -15,6 +15,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.opnsense import const as const_module, sensor as sensor_module
 from custom_components.opnsense.const import (
+    CONF_DEVICE_UNIQUE_ID,
     CONF_SYNC_CARP,
     CONF_SYNC_CERTIFICATES,
     CONF_SYNC_DHCP_LEASES,
@@ -3181,6 +3182,326 @@ async def test_async_setup_entry_handles_partial_or_malformed_dynamic_sensor_pay
         assert matched.entity_description.name == expected_name
     for entity_class in absent_classes:
         assert not any(isinstance(entity, entity_class) for entity in created)
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_none_for_missing_gateway_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Missing gateway inventory keeps sensor platform reconciliation incomplete."""
+    config_entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_TELEMETRY: False,
+            CONF_SYNC_VNSTAT: False,
+            CONF_SYNC_SPEEDTEST: False,
+            CONF_SYNC_SMART: False,
+            CONF_SYNC_GATEWAYS: True,
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_DHCP_LEASES: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_CERTIFICATES: False,
+        }
+    )
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {}
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    recorded: dict[str, Any] = {}
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture the desired-entity payload sent to reconciliation."""
+        recorded["entities"] = entities
+
+    monkeypatch.setattr(sensor_module, "record_desired_entities", capture)
+
+    await async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
+    )
+    assert "entities" in recorded
+    assert recorded["entities"] is None
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_empty_authoritative_gateway_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """An explicit empty gateway container is still authoritative."""
+    config_entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_TELEMETRY: False,
+            CONF_SYNC_VNSTAT: False,
+            CONF_SYNC_SPEEDTEST: False,
+            CONF_SYNC_SMART: False,
+            CONF_SYNC_GATEWAYS: True,
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_DHCP_LEASES: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_CERTIFICATES: False,
+        }
+    )
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {"gateways": {}}
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    recorded: dict[str, Any] = {}
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture the desired-entity payload sent to reconciliation."""
+        recorded["entities"] = entities
+
+    monkeypatch.setattr(sensor_module, "record_desired_entities", capture)
+
+    await async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
+    )
+    assert "entities" in recorded
+    assert recorded["entities"] == []
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_none_for_missing_vpn_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Missing VPN payload keeps sensor platform reconciliation incomplete."""
+    config_entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_TELEMETRY: False,
+            CONF_SYNC_VNSTAT: False,
+            CONF_SYNC_SPEEDTEST: False,
+            CONF_SYNC_SMART: False,
+            CONF_SYNC_GATEWAYS: False,
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_DHCP_LEASES: False,
+            CONF_SYNC_VPN: True,
+            CONF_SYNC_CERTIFICATES: False,
+        }
+    )
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {}
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    recorded: dict[str, Any] = {}
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture the desired-entity payload sent to reconciliation."""
+        recorded["entities"] = entities
+
+    monkeypatch.setattr(sensor_module, "record_desired_entities", capture)
+
+    await async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
+    )
+    assert "entities" in recorded
+    assert recorded["entities"] is None
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_empty_authoritative_vpn_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """An explicit empty VPN container is still authoritative."""
+    config_entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_TELEMETRY: False,
+            CONF_SYNC_VNSTAT: False,
+            CONF_SYNC_SPEEDTEST: False,
+            CONF_SYNC_SMART: False,
+            CONF_SYNC_GATEWAYS: False,
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_DHCP_LEASES: False,
+            CONF_SYNC_VPN: True,
+            CONF_SYNC_CERTIFICATES: False,
+        }
+    )
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {"openvpn": {}, "wireguard": {}}
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    recorded: dict[str, Any] = {}
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture the desired-entity payload sent to reconciliation."""
+        recorded["entities"] = entities
+
+    monkeypatch.setattr(sensor_module, "record_desired_entities", capture)
+
+    await async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
+    )
+    assert "entities" in recorded
+    assert recorded["entities"] == []
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_none_for_missing_vnstat_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Missing vnStat payload keeps sensor platform reconciliation incomplete."""
+    config_entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_TELEMETRY: False,
+            CONF_SYNC_VNSTAT: True,
+            CONF_SYNC_SPEEDTEST: False,
+            CONF_SYNC_SMART: False,
+            CONF_SYNC_GATEWAYS: False,
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_DHCP_LEASES: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_CERTIFICATES: False,
+        }
+    )
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {}
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    recorded: dict[str, Any] = {}
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture the desired-entity payload sent to reconciliation."""
+        recorded["entities"] = entities
+
+    monkeypatch.setattr(sensor_module, "record_desired_entities", capture)
+
+    await async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
+    )
+    assert "entities" in recorded
+    assert recorded["entities"] is None
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_empty_authoritative_vnstat_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """An explicit empty vnStat container is still authoritative."""
+    config_entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_TELEMETRY: False,
+            CONF_SYNC_VNSTAT: True,
+            CONF_SYNC_SPEEDTEST: False,
+            CONF_SYNC_SMART: False,
+            CONF_SYNC_GATEWAYS: False,
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_DHCP_LEASES: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_CERTIFICATES: False,
+        }
+    )
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {"vnstat": {}}
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    recorded: dict[str, Any] = {}
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture the desired-entity payload sent to reconciliation."""
+        recorded["entities"] = entities
+
+    monkeypatch.setattr(sensor_module, "record_desired_entities", capture)
+
+    await async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
+    )
+    assert "entities" in recorded
+    assert recorded["entities"] == []
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_none_for_missing_speedtest_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Missing speedtest payload keeps sensor platform reconciliation incomplete."""
+    config_entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_TELEMETRY: False,
+            CONF_SYNC_VNSTAT: False,
+            CONF_SYNC_SPEEDTEST: True,
+            CONF_SYNC_SMART: False,
+            CONF_SYNC_GATEWAYS: False,
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_DHCP_LEASES: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_CERTIFICATES: False,
+        }
+    )
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {}
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    recorded: dict[str, Any] = {}
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture the desired-entity payload sent to reconciliation."""
+        recorded["entities"] = entities
+
+    monkeypatch.setattr(sensor_module, "record_desired_entities", capture)
+
+    await async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
+    )
+    assert "entities" in recorded
+    assert recorded["entities"] is None
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_empty_authoritative_speedtest_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """An explicit empty speedtest container is still authoritative."""
+    config_entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_TELEMETRY: False,
+            CONF_SYNC_VNSTAT: False,
+            CONF_SYNC_SPEEDTEST: True,
+            CONF_SYNC_SMART: False,
+            CONF_SYNC_GATEWAYS: False,
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_DHCP_LEASES: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_CERTIFICATES: False,
+        }
+    )
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {"speedtest": {}}
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    recorded: dict[str, Any] = {}
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture the desired-entity payload sent to reconciliation."""
+        recorded["entities"] = entities
+
+    monkeypatch.setattr(sensor_module, "record_desired_entities", capture)
+
+    await async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
+    )
+    assert "entities" in recorded
+    assert recorded["entities"] == []
 
 
 @pytest.mark.parametrize(

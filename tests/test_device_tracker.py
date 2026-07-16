@@ -1108,6 +1108,64 @@ async def test_async_setup_entry_state_not_mapping(
 
 
 @pytest.mark.asyncio
+async def test_async_setup_entry_records_none_for_missing_arp_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Missing ARP payload should keep device tracker reconciliation incomplete."""
+    coordinator.data = {}
+    entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
+
+    recorded: dict[str, Any] = {}
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture the desired-entity payload sent to reconciliation."""
+        recorded["entities"] = entities
+
+    monkeypatch.setattr(dt_mod, "record_desired_entities", capture)
+
+    await dt_mod.async_setup_entry(
+        MagicMock(),
+        entry,
+        cast("AddEntitiesCallback", lambda _entities: None),
+    )
+
+    assert "entities" in recorded
+    assert recorded["entities"] is None
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_empty_authoritative_arp_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """An explicit empty ARP table is still authoritative for tracker reconciliation."""
+    coordinator.data = {"arp_table": []}
+    entry = make_config_entry(data={pkg.CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
+
+    recorded: dict[str, Any] = {}
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture the desired-entity payload sent to reconciliation."""
+        recorded["entities"] = entities
+
+    monkeypatch.setattr(dt_mod, "record_desired_entities", capture)
+
+    await dt_mod.async_setup_entry(
+        MagicMock(),
+        entry,
+        cast("AddEntitiesCallback", lambda _entities: None),
+    )
+
+    assert "entities" in recorded
+    assert recorded["entities"] == []
+
+
+@pytest.mark.asyncio
 async def test_async_setup_entry_removes_previous_mac(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,

@@ -16,6 +16,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+import custom_components.opnsense.binary_sensor as binary_sensor_module
 from custom_components.opnsense.binary_sensor import (
     OPNsenseInterfaceEnabledBinarySensor,
     OPNsensePendingNoticesPresentBinarySensor,
@@ -88,6 +89,146 @@ async def test_async_setup_entry_creates_entities_when_enabled(
     await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
     assert len(created) == 1
     assert isinstance(created[0], OPNsensePendingNoticesPresentBinarySensor)
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_none_for_missing_interface_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Missing interface payload keeps binary sensor platform reconciliation incomplete."""
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_INTERFACES: True,
+            CONF_SYNC_SMART: False,
+            CONF_SYNC_NOTICES: False,
+        }
+    )
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {}
+    setattr(entry.runtime_data, COORDINATOR, coord)
+
+    recorded: dict[str, Any] = {}
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture the desired-entity payload sent to reconciliation."""
+        recorded["entities"] = entities
+
+    monkeypatch.setattr(binary_sensor_module, "record_desired_entities", capture)
+
+    await async_setup_entry(
+        MagicMock(),
+        entry,
+        cast("AddEntitiesCallback", lambda ents, _=False: None),
+    )
+    assert "entities" in recorded
+    assert recorded["entities"] is None
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_empty_authoritative_interface_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """An explicit empty interface container is still authoritative."""
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_INTERFACES: True,
+            CONF_SYNC_SMART: False,
+            CONF_SYNC_NOTICES: False,
+        }
+    )
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {"interfaces": {}}
+    setattr(entry.runtime_data, COORDINATOR, coord)
+
+    recorded: dict[str, Any] = {}
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture the desired-entity payload sent to reconciliation."""
+        recorded["entities"] = entities
+
+    monkeypatch.setattr(binary_sensor_module, "record_desired_entities", capture)
+
+    await async_setup_entry(
+        MagicMock(),
+        entry,
+        cast("AddEntitiesCallback", lambda ents, _=False: None),
+    )
+    assert "entities" in recorded
+    assert recorded["entities"] == []
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_none_for_missing_smart_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Missing SMART payload keeps binary sensor platform reconciliation incomplete."""
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_SMART: True,
+            CONF_SYNC_NOTICES: False,
+        }
+    )
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {}
+    setattr(entry.runtime_data, COORDINATOR, coord)
+
+    recorded: dict[str, Any] = {}
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture the desired-entity payload sent to reconciliation."""
+        recorded["entities"] = entities
+
+    monkeypatch.setattr(binary_sensor_module, "record_desired_entities", capture)
+
+    await async_setup_entry(
+        MagicMock(),
+        entry,
+        cast("AddEntitiesCallback", lambda ents, _=False: None),
+    )
+    assert "entities" in recorded
+    assert recorded["entities"] is None
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_empty_authoritative_smart_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """An explicit empty SMART container is still authoritative."""
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_SMART: True,
+            CONF_SYNC_NOTICES: False,
+        }
+    )
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {"smart": [], "smart_info": {}}
+    setattr(entry.runtime_data, COORDINATOR, coord)
+
+    recorded: dict[str, Any] = {}
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture the desired-entity payload sent to reconciliation."""
+        recorded["entities"] = entities
+
+    monkeypatch.setattr(binary_sensor_module, "record_desired_entities", capture)
+
+    await async_setup_entry(
+        MagicMock(),
+        entry,
+        cast("AddEntitiesCallback", lambda ents, _=False: None),
+    )
+    assert "entities" in recorded
+    assert recorded["entities"] == []
 
 
 @pytest.mark.asyncio

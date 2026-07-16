@@ -176,13 +176,33 @@ async def async_setup_entry(
         async_add_entities: Callback used to register new entities.
     """
     coordinator: OPNsenseDataUpdateCoordinator = getattr(config_entry.runtime_data, COORDINATOR)
+    state: Any = coordinator.data
+    if not isinstance(state, MutableMapping):
+        _LOGGER.error("Missing state data in binary sensor async_setup_entry")
+        return
     config: Mapping[str, Any] = config_entry.data
+    reconciliation_complete = True
 
     entities: list = []
     if config.get(CONF_SYNC_INTERFACES, DEFAULT_SYNC_OPTION_VALUE):
-        entities.extend(await _compile_interface_enabled_binary_sensors(config_entry, coordinator))
+        if "interfaces" in state and isinstance(state.get("interfaces"), Mapping):
+            entities.extend(
+                await _compile_interface_enabled_binary_sensors(config_entry, coordinator)
+            )
+        else:
+            reconciliation_complete = False
     if config.get(CONF_SYNC_SMART, DEFAULT_SYNC_OPTION_VALUE):
-        entities.extend(await _compile_smart_status_binary_sensors(config_entry, coordinator))
+        smart_data = state.get("smart")
+        smart_info = state.get("smart_info")
+        if (
+            "smart" in state
+            and isinstance(smart_data, list)
+            and "smart_info" in state
+            and isinstance(smart_info, Mapping)
+        ):
+            entities.extend(await _compile_smart_status_binary_sensors(config_entry, coordinator))
+        else:
+            reconciliation_complete = False
     if config.get(CONF_SYNC_NOTICES, DEFAULT_SYNC_OPTION_VALUE):
         entities.append(
             OPNsensePendingNoticesPresentBinarySensor(
@@ -191,7 +211,9 @@ async def async_setup_entry(
                 entity_description=_build_pending_notices_present_binary_sensor_description(),
             ),
         )
-    record_desired_entities(config_entry, "binary_sensor", entities)
+    record_desired_entities(
+        config_entry, "binary_sensor", entities if reconciliation_complete else None
+    )
     async_add_entities(entities)
 
 

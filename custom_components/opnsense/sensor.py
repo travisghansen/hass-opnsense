@@ -1586,24 +1586,47 @@ async def async_setup_entry(
         async_add_entities(entities)
         return
 
+    reconciliation_complete = True
+
     if config.get(CONF_SYNC_TELEMETRY, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_static_telemetry_sensors(config_entry, coordinator))
         entities.extend(await _compile_filesystem_sensors(config_entry, coordinator, state))
         entities.extend(await _compile_temperature_sensors(config_entry, coordinator, state))
     if config.get(CONF_SYNC_VNSTAT, DEFAULT_SYNC_OPTION_VALUE):
-        entities.extend(await _compile_vnstat_sensors(config_entry, coordinator, state))
+        if "vnstat" in state and isinstance(state.get("vnstat"), MutableMapping):
+            entities.extend(await _compile_vnstat_sensors(config_entry, coordinator, state))
+        else:
+            reconciliation_complete = False
     if config.get(CONF_SYNC_SPEEDTEST, DEFAULT_SYNC_OPTION_VALUE):
-        entities.extend(await _compile_speedtest_sensors(config_entry, coordinator, state))
+        if "speedtest" in state and isinstance(state.get("speedtest"), MutableMapping):
+            entities.extend(await _compile_speedtest_sensors(config_entry, coordinator, state))
+        else:
+            reconciliation_complete = False
     if config.get(CONF_SYNC_SMART, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_smart_sensors(config_entry, coordinator, state))
     if config.get(CONF_SYNC_CERTIFICATES, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_static_certificate_sensors(config_entry, coordinator))
     if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):
-        entities.extend(await _compile_vpn_sensors(config_entry, coordinator, state))
+        has_openvpn_inventory = "openvpn" in state and isinstance(
+            state.get("openvpn"), MutableMapping
+        )
+        has_wireguard_inventory = "wireguard" in state and isinstance(
+            state.get("wireguard"), MutableMapping
+        )
+        if has_openvpn_inventory or has_wireguard_inventory:
+            entities.extend(await _compile_vpn_sensors(config_entry, coordinator, state))
+        else:
+            reconciliation_complete = False
     if config.get(CONF_SYNC_GATEWAYS, DEFAULT_SYNC_OPTION_VALUE):
-        entities.extend(await _compile_gateway_sensors(config_entry, coordinator, state))
+        if "gateways" in state and isinstance(state.get("gateways"), MutableMapping):
+            entities.extend(await _compile_gateway_sensors(config_entry, coordinator, state))
+        else:
+            reconciliation_complete = False
     if config.get(CONF_SYNC_INTERFACES, DEFAULT_SYNC_OPTION_VALUE):
-        entities.extend(await _compile_interface_sensors(config_entry, coordinator, state))
+        if "interfaces" in state and isinstance(state.get("interfaces"), MutableMapping):
+            entities.extend(await _compile_interface_sensors(config_entry, coordinator, state))
+        else:
+            reconciliation_complete = False
     if config.get(CONF_SYNC_CARP, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_carp_status_sensor(config_entry, coordinator, state))
         entities.extend(await _compile_carp_interface_sensors(config_entry, coordinator, state))
@@ -1611,7 +1634,7 @@ async def async_setup_entry(
         entities.extend(await _compile_dhcp_leases_sensors(config_entry, coordinator, state))
 
     _LOGGER.debug("[sensor async_setup_entry] entities: %s", len(entities))
-    record_desired_entities(config_entry, "sensor", entities)
+    record_desired_entities(config_entry, "sensor", entities if reconciliation_complete else None)
     async_add_entities(entities)
 
 

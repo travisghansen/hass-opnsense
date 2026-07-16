@@ -259,10 +259,20 @@ async def async_setup_entry(
     if not isinstance(state, MutableMapping):
         _LOGGER.error("Missing state data in device tracker async_setup_entry")
         return
+    reconciliation_complete = True
     entities: list = []
 
     arp_entries = dict_get(state, "arp_table")
+    configured_macs = config_entry.options.get(CONF_DEVICES, [])
+    has_configured_macs = bool(
+        isinstance(configured_macs, list)
+        and any(
+            isinstance(mac_address, str) and mac_address.strip() for mac_address in configured_macs
+        )
+    )
     if not isinstance(arp_entries, list):
+        if not has_configured_macs:
+            reconciliation_complete = False
         arp_entries = []
     devices, mac_addresses, enabled_default = _compile_tracked_devices(config_entry, arp_entries)
 
@@ -295,7 +305,9 @@ async def async_setup_entry(
         hass.config_entries.async_update_entry(config_entry, data=new_data)
 
     _LOGGER.debug("[device_tracker async_setup_entry] entities: %s", len(entities))
-    record_desired_entities(config_entry, "device_tracker", entities)
+    record_desired_entities(
+        config_entry, "device_tracker", entities if reconciliation_complete else None
+    )
     async_add_entities(entities)
 
 

@@ -391,3 +391,14 @@ def test_incomplete_platform_lists_block_finalization() -> None:
 
     with pytest.raises(rr.RepairReconciliationError, match="binary_sensor"):
         reconciliation.require_platforms_complete(("sensor", "binary_sensor"))
+
+
+def test_none_authenticates_as_incomplete_platform_discovery() -> None:
+    """Missing or malformed payloads keep a platform from being marked complete."""
+    reconciliation = rr.RepairReconciliation(
+        MagicMock(), MagicMock(), rr.RepairMarker(1, "old", "new")
+    )
+    reconciliation.record_desired_entities("sensor", None)
+
+    with pytest.raises(rr.RepairReconciliationError, match="sensor"):
+        reconciliation.require_platforms_complete(("sensor",))

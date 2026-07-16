@@ -548,30 +548,59 @@ async def async_setup_entry(
         _LOGGER.error("Missing state data in switch async_setup_entry")
         return
     config: Mapping[str, Any] = config_entry.data
+    reconciliation_complete = True
 
     entities: list = []
 
     if config.get(CONF_SYNC_FIREWALL_AND_NAT, DEFAULT_SYNC_OPTION_VALUE):
-        entities.extend(await _compile_firewall_rules_switches(config_entry, coordinator, state))
-        entities.extend(await _compile_nat_source_rules_switches(config_entry, coordinator, state))
-        entities.extend(
-            await _compile_nat_destination_rules_switches(config_entry, coordinator, state)
-        )
-        entities.extend(
-            await _compile_nat_one_to_one_rules_switches(config_entry, coordinator, state)
-        )
-        entities.extend(await _compile_nat_npt_rules_switches(config_entry, coordinator, state))
+        if "firewall" in state and isinstance(state.get("firewall"), MutableMapping):
+            entities.extend(
+                await _compile_firewall_rules_switches(config_entry, coordinator, state)
+            )
+            entities.extend(
+                await _compile_nat_source_rules_switches(config_entry, coordinator, state)
+            )
+            entities.extend(
+                await _compile_nat_destination_rules_switches(config_entry, coordinator, state)
+            )
+            entities.extend(
+                await _compile_nat_one_to_one_rules_switches(config_entry, coordinator, state)
+            )
+            entities.extend(await _compile_nat_npt_rules_switches(config_entry, coordinator, state))
+        else:
+            reconciliation_complete = False
     if config.get(CONF_SYNC_SERVICES, DEFAULT_SYNC_OPTION_VALUE):
-        entities.extend(await _compile_service_switches(config_entry, coordinator, state))
+        if "services" in state and isinstance(state.get("services"), list):
+            entities.extend(await _compile_service_switches(config_entry, coordinator, state))
+        else:
+            reconciliation_complete = False
     if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):
-        entities.extend(await _compile_vpn_switches(config_entry, coordinator, state))
+        has_openvpn_inventory = "openvpn" in state and isinstance(
+            state.get("openvpn"), MutableMapping
+        )
+        has_wireguard_inventory = "wireguard" in state and isinstance(
+            state.get("wireguard"), MutableMapping
+        )
+        if has_openvpn_inventory or has_wireguard_inventory:
+            entities.extend(await _compile_vpn_switches(config_entry, coordinator, state))
+        else:
+            reconciliation_complete = False
     if config.get(CONF_SYNC_CARP, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_carp_maintenance_switch(config_entry, coordinator, state))
     if config.get(CONF_SYNC_UNBOUND, DEFAULT_SYNC_OPTION_VALUE):
-        entities.extend(await _compile_unbound_switches(config_entry, coordinator, state))
+        if ATTR_UNBOUND_BLOCKLIST in state and isinstance(
+            state.get(ATTR_UNBOUND_BLOCKLIST), MutableMapping
+        ):
+            entities.extend(await _compile_unbound_switches(config_entry, coordinator, state))
+        else:
+            reconciliation_complete = False
 
     _LOGGER.debug("[switch async_setup_entry] entities: %s", len(entities))
-    record_desired_entities(config_entry, "switch", entities)
+    record_desired_entities(
+        config_entry,
+        "switch",
+        entities if reconciliation_complete else None,
+    )
     async_add_entities(entities)
 
 
