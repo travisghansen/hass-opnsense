@@ -8,7 +8,7 @@ from collections.abc import Callable, Iterable, MutableMapping
 from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call
 
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -1137,7 +1137,10 @@ async def test_async_setup_entry_removes_previous_mac(
     hass.config_entries.async_update_entry = MagicMock()
 
     await dt_mod.async_setup_entry(hass, entry, cast("AddEntitiesCallback", lambda _x: None))
-    assert fake.removed is True
+    fake.async_remove_device.assert_not_called()
+    fake.async_update_device.assert_called_once_with(
+        "dev_to_remove", remove_config_entry_id=entry.entry_id
+    )
     assert hass.config_entries.async_update_entry.called
 
 
@@ -1295,3 +1298,222 @@ async def test_async_setup_entry_from_arp_entries(
     assert len(added) == 2
     assert all(isinstance(e, dt_mod.OPNsenseScannerEntity) for e in added)
     assert {e.unique_id for e in added} == {"dev1_mac_m1", "dev1_mac_m2"}
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_removes_stale_tracker_entities_and_reparents_shared_router(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Stale MAC cleanup reassigns shared parents to surviving OPNsense routers."""
+    coordinator.data = {"arp_table": [{"mac": "keep:mac"}]}
+    stale_router_mac = "stale:mac:router"
+    stale_other_mac = "stale:mac:other"
+    stale_non_opnsense_mac = "stale:mac:nonopnsense"
+    entry = make_config_entry(
+        data={
+            dt_mod.TRACKED_MACS: [
+                stale_router_mac,
+                stale_other_mac,
+                stale_non_opnsense_mac,
+                "keep:mac",
+            ],
+            pkg.CONF_DEVICE_UNIQUE_ID: "dev1",
+        },
+        options={dt_mod.CONF_DEVICE_TRACKER_ENABLED: True},
+        entry_id="entity-rm",
+    )
+    setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
+
+    entity_registry = MagicMock()
+    entity_ids = {
+        "dev1_mac_stale_mac_router": "device_tracker.device_stale_router",
+        "dev1_mac_stale_mac_other": "device_tracker.device_stale_other",
+        "dev1_mac_stale_mac_nonopnsense": "device_tracker.device_stale_nonopnsense_router",
+    }
+
+    def get_entity_id(domain: str, platform: str, unique_id: str) -> str | None:
+        """Return the registered tracker entity for a stale unique ID."""
+        return entity_ids.get(unique_id)
+
+    entity_registry.async_get_entity_id.side_effect = get_entity_id
+    monkeypatch.setattr(dt_mod.er, "async_get", MagicMock(return_value=entity_registry))
+
+    router_device = MagicMock(
+        id="router-device-id",
+        identifiers={(dt_mod.DOMAIN, entry.data[dt_mod.CONF_DEVICE_UNIQUE_ID])},
+    )
+    surviving_entry_a = MagicMock(
+        entry_id="survive-entry-b",
+        domain=dt_mod.DOMAIN,
+        data={dt_mod.CONF_DEVICE_UNIQUE_ID: "survive-b"},
+    )
+    surviving_entry_b = MagicMock(
+        entry_id="survive-entry-a",
+        domain=dt_mod.DOMAIN,
+        data={dt_mod.CONF_DEVICE_UNIQUE_ID: "survive-a"},
+    )
+    non_opnsense_entry = MagicMock(
+        entry_id="non-opnsense-entry",
+        domain="other",
+        data={dt_mod.CONF_DEVICE_UNIQUE_ID: "non-opnsense"},
+    )
+    async_get_entry_map = {
+        entry.entry_id: entry,
+        surviving_entry_a.entry_id: surviving_entry_a,
+        surviving_entry_b.entry_id: surviving_entry_b,
+        non_opnsense_entry.entry_id: non_opnsense_entry,
+    }
+    ph_hass.config_entries.async_get_entry = MagicMock(side_effect=async_get_entry_map.get)
+    surviving_router_a = MagicMock(id="survivor-a-router")
+    surviving_router_b = MagicMock(id="survivor-b-router")
+    identifier_router_map = {
+        (dt_mod.DOMAIN, entry.data[dt_mod.CONF_DEVICE_UNIQUE_ID]): router_device,
+        (dt_mod.DOMAIN, "survive-b"): surviving_router_b,
+        (dt_mod.DOMAIN, "survive-a"): surviving_router_a,
+    }
+    devices = {
+        stale_router_mac: MagicMock(
+            id="stale-router-device",
+            via_device_id="router-device-id",
+            config_entries={
+                entry.entry_id,
+                surviving_entry_a.entry_id,
+                surviving_entry_b.entry_id,
+                non_opnsense_entry.entry_id,
+            },
+        ),
+        stale_other_mac: MagicMock(
+            id="stale-other-device",
+            via_device_id="other-device-id",
+            config_entries={entry.entry_id, non_opnsense_entry.entry_id},
+        ),
+        stale_non_opnsense_mac: MagicMock(
+            id="stale-nonopnsense-device",
+            via_device_id="router-device-id",
+            config_entries={entry.entry_id, non_opnsense_entry.entry_id},
+        ),
+    }
+
+    def get_device(
+        *,
+        identifiers: set[tuple[str, str]] | None = None,
+        connections: set[tuple[str, str]] | None = None,
+    ) -> Any:
+        """Return the fake router or stale device for the requested lookup."""
+        if identifiers is not None:
+            key = next(iter(identifiers))
+            return identifier_router_map.get(key)
+        if connections is not None:
+            return devices[next(iter(connections))[1]]
+        return None
+
+    device_registry = MagicMock()
+    device_registry.async_get_device.side_effect = get_device
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", MagicMock(return_value=device_registry))
+
+    ph_hass.config_entries.async_update_entry = MagicMock()
+    await dt_mod.async_setup_entry(ph_hass, entry, MagicMock())
+
+    entity_registry.async_get_entity_id.assert_has_calls(
+        [
+            call(dt_mod.Platform.DEVICE_TRACKER, dt_mod.DOMAIN, "dev1_mac_stale_mac_router"),
+            call(dt_mod.Platform.DEVICE_TRACKER, dt_mod.DOMAIN, "dev1_mac_stale_mac_other"),
+            call(
+                dt_mod.Platform.DEVICE_TRACKER,
+                dt_mod.DOMAIN,
+                "dev1_mac_stale_mac_nonopnsense",
+            ),
+        ],
+        any_order=True,
+    )
+    assert entity_registry.async_get_entity_id.call_count == 3
+    removed_ids = {item.args[0] for item in entity_registry.async_remove.call_args_list}
+    assert removed_ids == {
+        "device_tracker.device_stale_router",
+        "device_tracker.device_stale_other",
+        "device_tracker.device_stale_nonopnsense_router",
+    }
+    device_registry.async_update_device.assert_has_calls(
+        [
+            call(
+                "stale-router-device",
+                remove_config_entry_id=entry.entry_id,
+                via_device_id="survivor-a-router",
+            ),
+            call(
+                "stale-nonopnsense-device",
+                remove_config_entry_id=entry.entry_id,
+                via_device_id=None,
+            ),
+            call("stale-other-device", remove_config_entry_id=entry.entry_id),
+        ],
+        any_order=True,
+    )
+    assert call(
+        "stale-other-device", remove_config_entry_id=entry.entry_id, via_device_id=None
+    ) not in (device_registry.async_update_device.call_args_list)
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_removes_stale_tracker_entities_clears_missing_parent(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Clear stale tracker parent assignment when router lookup is no longer available."""
+    coordinator.data = {"arp_table": [{"mac": "keep:mac"}]}
+    stale_router_mac = "stale:mac:router"
+    entry = make_config_entry(
+        data={
+            dt_mod.TRACKED_MACS: [stale_router_mac, "keep:mac"],
+            pkg.CONF_DEVICE_UNIQUE_ID: "dev1",
+        },
+        options={dt_mod.CONF_DEVICE_TRACKER_ENABLED: True},
+        entry_id="entity-rm-missing-parent",
+    )
+    setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
+
+    entity_registry = MagicMock()
+    entity_registry.async_get_entity_id = MagicMock(return_value=None)
+    monkeypatch.setattr(dt_mod.er, "async_get", MagicMock(return_value=entity_registry))
+
+    missing_parent_id = "missing-router-device-id"
+    stale_device = MagicMock(
+        id="stale-router-device",
+        via_device_id=missing_parent_id,
+        config_entries={entry.entry_id},
+    )
+    devices = {
+        stale_router_mac: stale_device,
+    }
+
+    def get_device(
+        *,
+        identifiers: set[tuple[str, str]] | None = None,
+        connections: set[tuple[str, str]] | None = None,
+    ) -> Any:
+        """Return fake stale tracker devices and missing router lookup results."""
+        if identifiers is not None:
+            return None
+        if connections is not None:
+            return devices[next(iter(connections))[1]]
+        return None
+
+    device_registry = MagicMock()
+    device_registry.async_get_device = MagicMock(side_effect=get_device)
+    device_registry.async_get = MagicMock(return_value=None)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", MagicMock(return_value=device_registry))
+
+    ph_hass.config_entries.async_update_entry = MagicMock()
+    await dt_mod.async_setup_entry(ph_hass, entry, MagicMock())
+
+    device_registry.async_get.assert_called_once_with(missing_parent_id)
+    device_registry.async_update_device.assert_called_once_with(
+        stale_device.id,
+        remove_config_entry_id=entry.entry_id,
+        via_device_id=None,
+    )

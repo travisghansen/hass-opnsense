@@ -9,19 +9,24 @@ from typing import Any
 from homeassistant.components.device_tracker import SourceType
 from homeassistant.components.device_tracker.config_entry import ScannerEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import (
     CONNECTION_NETWORK_MAC,
+    DeviceRegistry,
     async_get as async_get_dev_reg,
 )
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.util import slugify
 
 from .config_flow import normalize_mac_address
 from .const import (
     CONF_DEVICE_TRACKER_CONSIDER_HOME,
     CONF_DEVICE_TRACKER_ENABLED,
+    CONF_DEVICE_UNIQUE_ID,
     CONF_DEVICES,
     DEFAULT_DEVICE_TRACKER_CONSIDER_HOME,
     DEFAULT_DEVICE_TRACKER_ENABLED,
@@ -32,7 +37,7 @@ from .const import (
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseBaseEntity
-from .helpers import dict_get
+from .helpers import detach_shared_router_parent, dict_get
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -277,11 +282,13 @@ async def async_setup_entry(
             hostname=device.get("hostname", None),
         )
         entities.append(entity)
-
-    for mac_address in list(set(previous_mac_addresses) - set(mac_addresses)):
-        rem_device = dev_reg.async_get_device(connections={(CONNECTION_NETWORK_MAC, mac_address)})
-        if rem_device:
-            dev_reg.async_remove_device(rem_device.id)
+    _cleanup_stale_tracked_devices(
+        hass=hass,
+        config_entry=config_entry,
+        device_registry=dev_reg,
+        previous_mac_addresses=previous_mac_addresses,
+        current_mac_addresses=mac_addresses,
+    )
 
     if set(mac_addresses) != set(previous_mac_addresses):
         setattr(config_entry.runtime_data, SHOULD_RELOAD, False)
@@ -291,6 +298,74 @@ async def async_setup_entry(
 
     _LOGGER.debug("[device_tracker async_setup_entry] entities: %s", len(entities))
     async_add_entities(entities)
+
+
+def _cleanup_stale_tracked_devices(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    device_registry: DeviceRegistry,
+    previous_mac_addresses: list[Any],
+    current_mac_addresses: list[str],
+) -> None:
+    """Remove stale tracker entities and reparent shared tracker devices.
+
+    Args:
+        hass: Home Assistant runtime object.
+        config_entry: Active integration config entry for this setup run.
+        device_registry: Device registry used to query and mutate tracked devices.
+        previous_mac_addresses: Previously persisted MAC addresses from config entry data.
+        current_mac_addresses: MAC addresses currently discovered during setup.
+    """
+    stale_mac_addresses = set(previous_mac_addresses) - set(current_mac_addresses)
+    if not stale_mac_addresses:
+        return
+
+    entity_registry = er.async_get(hass)
+    router_device = device_registry.async_get_device(
+        identifiers={(DOMAIN, config_entry.data[CONF_DEVICE_UNIQUE_ID])}
+    )
+    router_device_id = router_device.id if router_device else None
+
+    for mac_address in stale_mac_addresses:
+        rem_device = device_registry.async_get_device(
+            connections={(CONNECTION_NETWORK_MAC, mac_address)}
+        )
+        expected_unique_id = slugify(
+            f"{config_entry.data[CONF_DEVICE_UNIQUE_ID]}_mac_{mac_address}"
+        )
+        if entity_id := entity_registry.async_get_entity_id(
+            Platform.DEVICE_TRACKER, DOMAIN, expected_unique_id
+        ):
+            _LOGGER.debug(
+                "[device_tracker async_setup_entry] removing tracker entity_id %s for stale MAC %s",
+                entity_id,
+                mac_address,
+            )
+            entity_registry.async_remove(entity_id)
+
+        if rem_device:
+            effective_router_device_id: str | None = router_device_id
+            if (
+                effective_router_device_id is None
+                and isinstance(rem_device.via_device_id, str)
+                and device_registry.async_get(rem_device.via_device_id) is None
+            ):
+                effective_router_device_id = rem_device.via_device_id
+            _from_current_router, replacement_router_id = detach_shared_router_parent(
+                shared_config_entry_id=config_entry.entry_id,
+                shared_device_entry=rem_device,
+                router_device_id=effective_router_device_id,
+                config_entries=hass.config_entries,
+                device_registry=device_registry,
+            )
+            if replacement_router_id is not None:
+                _LOGGER.debug(
+                    "[device_tracker async_setup_entry] reparenting shared tracker "
+                    "device %s from %s to %s",
+                    rem_device.id,
+                    router_device_id,
+                    replacement_router_id,
+                )
 
 
 class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):

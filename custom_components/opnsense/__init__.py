@@ -50,7 +50,7 @@ from .const import (
     VERSION,
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
-from .helpers import create_opnsense_client_from_config_entry
+from .helpers import create_opnsense_client_from_config_entry, detach_shared_router_parent
 from .migrate import (
     _is_firewall_sync_enabled,
     _migrate_1_to_2,
@@ -107,6 +107,7 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
             _LOGGER.debug("[async_update_listener] Skipping entity cleanup; empty entry uid prefix")
             uid_prefix = None
         sync_firewall_and_nat_enabled = _is_firewall_sync_enabled(entry)
+        config_device_id: str = entry.data[CONF_DEVICE_UNIQUE_ID]
         # _LOGGER.debug("[async_update_listener] uid_prefix: %s", uid_prefix)
         removal_prefixes: list[str] = []
         for item, prefix in GRANULAR_SYNC_PREFIX.items():
@@ -115,9 +116,10 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
         _LOGGER.debug("[async_update_listener] removal_prefixes: %s", removal_prefixes)
 
         entity_registry = er.async_get(hass)
-        for ent in er.async_entries_for_config_entry(
+        entity_entries = er.async_entries_for_config_entry(
             registry=entity_registry, config_entry_id=entry.entry_id
-        ):
+        )
+        for ent in entity_entries:
             if uid_prefix is None or not ent.unique_id.startswith(f"{uid_prefix}_"):
                 continue
             # _LOGGER.debug("[async_update_listener] ent: %s", ent)
@@ -150,11 +152,88 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
             devices = dr.async_entries_for_config_entry(
                 registry=device_registry, config_entry_id=entry.entry_id
             )
-            # _LOGGER.debug("[async_update_listener] devices: %s", devices)
+
+            router_device_id: str | None = next(
+                (dev.id for dev in devices if (DOMAIN, config_device_id) in dev.identifiers),
+                None,
+            )
+
+            tracker_entries = [
+                ent
+                for ent in entity_entries
+                if getattr(ent, "domain", str(ent.entity_id).split(".", 1)[0])
+                == Platform.DEVICE_TRACKER
+            ]
+            tracker_device_ids: set[str] = {
+                device_id
+                for ent in tracker_entries
+                if (device_id := getattr(ent, "device_id", None)) is not None
+            }
+            for ent in tracker_entries:
+                _LOGGER.debug(
+                    "[async_update_listener] dissociating "
+                    "device_tracker entity %s from config entry %s",
+                    ent.entity_id,
+                    entry.entry_id,
+                )
+                entity_registry.async_remove(ent.entity_id)
+
             for device in devices:
-                if device.via_device_id:
-                    _LOGGER.debug("[async_update_listener] removing device: %s", device.name)
-                    device_registry.async_remove_device(device.id)
+                is_current_router_child = (
+                    router_device_id is not None and device.via_device_id == router_device_id
+                )
+                via_parent: object | None = (
+                    device_registry.async_get(device.via_device_id)
+                    if isinstance(device.via_device_id, str)
+                    else None
+                )
+                is_orphaned_mac_tracker = (
+                    router_device_id is None
+                    and isinstance(device.via_device_id, str)
+                    and via_parent is None
+                    and any(
+                        connection_type == dr.CONNECTION_NETWORK_MAC
+                        for connection_type, _connection_value in device.connections
+                    )
+                )
+                if (
+                    device.id not in tracker_device_ids
+                    and not is_current_router_child
+                    and not is_orphaned_mac_tracker
+                ):
+                    continue
+                effective_router_device_id = (
+                    device.via_device_id if is_orphaned_mac_tracker else router_device_id
+                )
+                from_current_router, replacement_router_id = detach_shared_router_parent(
+                    shared_config_entry_id=entry.entry_id,
+                    shared_device_entry=device,
+                    router_device_id=effective_router_device_id,
+                    config_entries=hass.config_entries,
+                    device_registry=device_registry,
+                )
+                if replacement_router_id is not None:
+                    _LOGGER.debug(
+                        "[async_update_listener] reparenting shared "
+                        "tracker device %s from %s to %s",
+                        device.id,
+                        effective_router_device_id,
+                        replacement_router_id,
+                    )
+                elif from_current_router:
+                    _LOGGER.debug(
+                        "[async_update_listener] dissociating shared "
+                        "tracker device %s from router %s",
+                        device.id,
+                        config_device_id,
+                    )
+                else:
+                    _LOGGER.debug(
+                        "[async_update_listener] dissociating "
+                        "tracker device %s from config entry %s",
+                        device.id,
+                        entry.entry_id,
+                    )
         hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
     else:
         _LOGGER.info("[async_update_listener] Not Reloading")
