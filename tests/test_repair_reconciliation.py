@@ -111,6 +111,13 @@ def _entry(unique_id: str, *, entity_id: str, device_id: str | None = None, **at
     )
 
 
+def _config_entry_with_runtime_data(runtime_data: Any) -> MockConfigEntry:
+    """Create an entry carrying explicit runtime reconciliation wiring."""
+    entry = _other_config_entry("entry-1", "new")
+    object.__setattr__(entry, "runtime_data", runtime_data)
+    return entry
+
+
 def _device(
     device_id: str,
     identifier: str,
@@ -402,3 +409,39 @@ def test_none_authenticates_as_incomplete_platform_discovery() -> None:
 
     with pytest.raises(rr.RepairReconciliationError, match="sensor"):
         reconciliation.require_platforms_complete(("sensor",))
+
+
+def test_record_desired_entities_and_is_reconciliation_active_handle_none_marker() -> None:
+    """None marker should be treated as inactive without raising."""
+    entry = _config_entry_with_runtime_data(SimpleNamespace(repair_reconciliation=None))
+    entity = Entity()
+    entity._attr_unique_id = "new_sensor"
+
+    rr.record_desired_entities(entry, "sensor", [entity])
+    assert rr.is_reconciliation_active(entry) is False
+
+
+def test_record_desired_entities_requires_runtime_marker_attribute() -> None:
+    """Missing repair_reconciliation on runtime_data should now raise."""
+    entry = _config_entry_with_runtime_data(SimpleNamespace())
+    entity = Entity()
+    entity._attr_unique_id = "new_sensor"
+
+    with pytest.raises(AttributeError):
+        rr.record_desired_entities(entry, "sensor", [entity])
+
+
+def test_record_desired_entities_uses_active_reconciliation_state() -> None:
+    """Active reconciliation keeps desired identities and returns active state."""
+    entry = _config_entry_with_runtime_data(SimpleNamespace())
+    entry.runtime_data.repair_reconciliation = rr.RepairReconciliation(
+        MagicMock(), entry, rr.RepairMarker(1, "old", "new")
+    )
+    entity = Entity()
+    entity._attr_unique_id = "new_sensor"
+
+    rr.record_desired_entities(entry, "sensor", [entity])
+    assert rr.is_reconciliation_active(entry) is True
+    assert "new_sensor" in {
+        identity[2] for identity in entry.runtime_data.repair_reconciliation.desired_identities
+    }

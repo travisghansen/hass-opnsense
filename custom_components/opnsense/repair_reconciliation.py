@@ -220,12 +220,12 @@ def record_desired_entities(
     entities: Iterable[Entity] | None,
 ) -> None:
     """Record a final platform entity list when reconciliation is active."""
-    reconciliation = getattr(config_entry.runtime_data, "repair_reconciliation", None)
+    reconciliation = config_entry.runtime_data.repair_reconciliation
     if isinstance(reconciliation, RepairReconciliation) and reconciliation.active:
         reconciliation.record_desired_entities(platform_domain, entities)
 
 
 def is_reconciliation_active(config_entry: ConfigEntry) -> bool:
     """Return whether this setup is performing device-ID reconciliation."""
-    reconciliation = getattr(config_entry.runtime_data, "repair_reconciliation", None)
+    reconciliation = config_entry.runtime_data.repair_reconciliation
     return isinstance(reconciliation, RepairReconciliation) and reconciliation.active
