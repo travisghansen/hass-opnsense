@@ -100,7 +100,7 @@ class RepairReconciliation:
         old_prefix = f"{slugify(self.marker.old_device_id)}_"
         new_prefix = f"{slugify(self.marker.new_device_id)}_"
 
-        migrations: list[tuple[er.RegistryEntry, str, er.RegistryEntry | None]] = []
+        migrations: list[tuple[er.RegistryEntry, str]] = []
         for candidate in candidates:
             if not candidate.unique_id.startswith(old_prefix):
                 continue
@@ -114,7 +114,7 @@ class RepairReconciliation:
                     f"entity target collision: {candidate.domain}, "
                     f"{candidate.platform}, {target_unique_id}"
                 )
-            migrations.append((candidate, target_unique_id, target))
+            migrations.append((candidate, target_unique_id))
 
         old_main = device_registry.async_get_device(
             identifiers={(DOMAIN, self.marker.old_device_id)}
@@ -137,9 +137,7 @@ class RepairReconciliation:
                 new_main = device_registry.async_update_device(
                     old_main.id, new_identifiers=new_identifiers
                 )
-            for candidate, target_unique_id, target in migrations:
-                if target is not None and target.entity_id != candidate.entity_id:
-                    continue
+            for candidate, target_unique_id in migrations:
                 changes: dict[str, Any] = {"new_unique_id": target_unique_id}
                 if (
                     old_main is not None
