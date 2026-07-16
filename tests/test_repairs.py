@@ -291,39 +291,7 @@ async def test_old_device_id_mismatch_aborts_without_mutations(
 async def test_duplicate_entry_aborts_before_unload_or_registry_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Duplicate replacement IDs must abort before any destructive mutation."""
-    hass = MagicMock()
-    entry = _make_entry(state=ConfigEntryState.LOADED)
-    duplicate = _make_entry(entry_id="entry-2", device_id="other", unique_id="other")
-    _configure_hass(hass, entry)
-    hass.config_entries.async_entries.return_value = [entry, duplicate]
-    entity_registry, device_registry = _patch_registries(
-        monkeypatch,
-        entities=[SimpleNamespace(entity_id="sensor.old")],
-        devices=[SimpleNamespace(id="device")],
-    )
-    _patch_probe_client(monkeypatch)
-    issue_delete = MagicMock()
-    monkeypatch.setattr(repairs.ir, "async_delete_issue", issue_delete)
-    flow = _make_flow(hass, entry)
-
-    result = await flow.async_step_confirm({})
-
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    hass.config_entries.async_unload.assert_not_awaited()
-    entity_registry.async_remove.assert_not_called()
-    device_registry.async_update_device.assert_not_called()
-    hass.config_entries.async_update_entry.assert_not_called()
-    hass.config_entries.async_schedule_reload.assert_not_called()
-    issue_delete.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_duplicate_entry_created_during_unload_aborts_without_mutation(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A duplicate created during unload must abort before config or registry mutation."""
+    """Duplicates created during unload must abort before config or registry mutation."""
     hass = MagicMock()
     entry = _make_entry(state=ConfigEntryState.LOADED)
     duplicate = _make_entry(entry_id="entry-2", device_id="other", unique_id="other")
@@ -353,9 +321,10 @@ async def test_duplicate_entry_created_during_unload_aborts_without_mutation(
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "already_configured"
     hass.config_entries.async_unload.assert_awaited_once_with(entry.entry_id)
-    hass.config_entries.async_update_entry.assert_not_called()
     entity_registry.async_remove.assert_not_called()
     device_registry.async_update_device.assert_not_called()
+    hass.config_entries.async_update_entry.assert_not_called()
+    hass.config_entries.async_schedule_reload.assert_not_called()
     issue_delete.assert_not_called()
     assert entry.data[CONF_DEVICE_UNIQUE_ID] == "dev1"
     assert entry.unique_id == "dev1"
