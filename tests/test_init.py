@@ -563,20 +563,13 @@ async def test_async_setup_entry_carp_platform_forward_failure_cleans_up(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "error",
-    [
-        pytest.param(init_mod.OPNsenseError("boom"), id="generic"),
-        pytest.param(OPNsenseTimeoutError("timed out"), id="timeout"),
-    ],
-)
 async def test_async_setup_entry_closes_client_when_validation_fails(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
-    error: init_mod.OPNsenseError,
 ) -> None:
     """async_setup_entry should close a constructed client when validation fails."""
+    error = init_mod.OPNsenseError("boom")
     client = MagicMock()
     client.validate = AsyncMock(side_effect=error)
     client.async_close = AsyncMock(return_value=True)

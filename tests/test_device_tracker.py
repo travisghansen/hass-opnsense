@@ -31,7 +31,7 @@ def _make_scanner_entity(
     *,
     coordinator_data: object | None = None,
     enabled_default: bool = False,
-    mac: str | None = "aa:bb:cc",
+    mac: str = "aa:bb:cc",
 ) -> OPNsenseScannerEntity:
     """Create a scanner entity with coordinator runtime data wired in.
 
@@ -466,8 +466,9 @@ def test_entity_registry_enabled_default_without_mac_stays_disabled(
         coordinator=coordinator,
         make_config_entry=make_config_entry,
         coordinator_data={"arp_table": []},
-        mac=None,
     )
+
+    object.__setattr__(ent, "_attr_mac_address", None)
 
     assert ent.entity_registry_enabled_default is False
     device_info = ent.device_info
