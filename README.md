@@ -9,7 +9,7 @@
 | custom\_components/opnsense/config\_flow.py    |      342 |       19 |      128 |       19 |     91% |94, 150, 173-\>171, 224, 262, 268, 545-\>557, 749, 807-811, 841-\>847, 847-\>850, 894-898, 919, 997, 1025-\>1033, 1033-\>1036, 1072-1073, 1086 |
 | custom\_components/opnsense/const.py           |       70 |        0 |        0 |        0 |    100% |           |
 | custom\_components/opnsense/coordinator.py     |      219 |        3 |      112 |        4 |     98% |100, 233-\>235, 421-\>424, 424-\>exit, 500-501, 507-\>510 |
-| custom\_components/opnsense/device\_tracker.py |      285 |        5 |      130 |        7 |     97% |222, 269, 275, 293-\>299, 346-\>329, 459, 526 |
+| custom\_components/opnsense/device\_tracker.py |      284 |        5 |      130 |        7 |     97% |221, 268, 274, 292-\>298, 345-\>328, 458, 525 |
 | custom\_components/opnsense/entity.py          |       93 |        0 |       24 |        2 |     98% |89-\>91, 175-\>177 |
 | custom\_components/opnsense/helpers.py         |      111 |        5 |       54 |        5 |     94% |28, 80-\>71, 117, 121-122, 224, 228-\>216 |
 | custom\_components/opnsense/migrate.py         |      245 |        5 |       98 |        5 |     97% |80, 318-\>321, 496-497, 509, 542 |
@@ -17,7 +17,7 @@
 | custom\_components/opnsense/services.py        |      230 |        0 |       64 |        0 |    100% |           |
 | custom\_components/opnsense/switch.py          |      590 |       29 |      230 |       26 |     93% |392, 395, 436, 439, 646-647, 851-854, 892, 900, 909, 917, 928, 972, 1044-\>1052, 1064, 1072, 1081, 1089, 1100, 1224, 1235, 1275, 1292, 1331-1335, 1362, 1379, 1464, 1520 |
 | custom\_components/opnsense/update.py          |      181 |        2 |       56 |        2 |     98% |296-297, 300-\>302, 438-\>exit |
-| **TOTAL**                                      | **3716** |  **111** | **1526** |  **108** | **96%** |           |
+| **TOTAL**                                      | **3715** |  **111** | **1526** |  **108** | **96%** |           |
 
 
 ## Setup coverage badge
