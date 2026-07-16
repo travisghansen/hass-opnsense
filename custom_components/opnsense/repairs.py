@@ -301,6 +301,22 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
                 entry_title,
             )
 
+    def _schedule_changed_entry_reload(self, *, entry_id: str, entry_title: str) -> None:
+        """Schedule recovery for an entry that changed while it was being unloaded.
+
+        Args:
+            entry_id: Config entry ID to schedule for reload.
+            entry_title: Human-readable entry title for log context.
+        """
+        try:
+            self.hass.config_entries.async_schedule_reload(entry_id)
+        except HomeAssistantError, KeyError:
+            _LOGGER.exception(
+                "Device-ID repair did not finish for %s; cannot schedule recovery "
+                "reload after the config entry changed during unload",
+                entry_title,
+            )
+
     def _cleanup_entry_registries(self, entry: ConfigEntry) -> bool:
         """Remove the entry's entities and device associations from the registries.
 
@@ -368,17 +384,22 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         entry_unique_id_snapshot = entry.unique_id
         stored_device_id = entry.data.get(CONF_DEVICE_UNIQUE_ID)
         if stored_device_id == self._expected_device_id:
-            entry_ready, _ = await _async_prepare_entry_for_repair(self.hass, entry)
+            entry_ready, entry_was_loaded = await _async_prepare_entry_for_repair(self.hass, entry)
             if not entry_ready:
                 return self.async_abort(reason="cannot_unload")
-            current_entry = _get_entry_matching_snapshot(
-                self.hass,
+            current_entry = self.hass.config_entries.async_get_entry(self._entry_id)
+            if current_entry is None or not _entry_matches_snapshot(
+                current_entry,
                 self._entry_id,
                 entry_data_snapshot,
                 entry_options_snapshot,
                 entry_unique_id_snapshot,
-            )
-            if current_entry is None:
+            ):
+                if entry_was_loaded and current_entry is not None:
+                    self._schedule_changed_entry_reload(
+                        entry_id=entry.entry_id,
+                        entry_title=entry.title,
+                    )
                 return self.async_abort(reason="entry_changed")
             if not self._cleanup_entry_registries(current_entry):
                 self._schedule_recovery_reload(
@@ -437,14 +458,19 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         if not entry_ready:
             return self.async_abort(reason="cannot_unload")
 
-        current_entry = _get_entry_matching_snapshot(
-            self.hass,
+        current_entry = self.hass.config_entries.async_get_entry(self._entry_id)
+        if current_entry is None or not _entry_matches_snapshot(
+            current_entry,
             self._entry_id,
             entry_data_snapshot,
             entry_options_snapshot,
             entry_unique_id_snapshot,
-        )
-        if current_entry is None:
+        ):
+            if entry_was_loaded and current_entry is not None:
+                self._schedule_changed_entry_reload(
+                    entry_id=entry.entry_id,
+                    entry_title=entry.title,
+                )
             return self.async_abort(reason="entry_changed")
         entry = current_entry
 

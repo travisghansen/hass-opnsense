@@ -638,10 +638,11 @@ async def test_entry_changed_during_probe_or_unload_aborts_without_mutation(
     entity_registry.async_remove.assert_not_called()
     device_registry.async_update_device.assert_not_called()
     hass.config_entries.async_update_entry.assert_not_called()
-    hass.config_entries.async_schedule_reload.assert_not_called()
     if mutation_stage == "probe":
+        hass.config_entries.async_schedule_reload.assert_not_called()
         hass.config_entries.async_unload.assert_not_awaited()
     else:
+        hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
         hass.config_entries.async_unload.assert_awaited_once_with(entry.entry_id)
 
 
@@ -905,8 +906,9 @@ async def test_expected_id_retry_rechecks_snapshot_after_unload(
     assert result["reason"] == "entry_changed"
     entity_registry.async_remove.assert_not_called()
     device_registry.async_update_device.assert_not_called()
+    hass.config_entries.async_update_entry.assert_not_called()
     hass.config_entries.async_reload.assert_not_awaited()
-    hass.config_entries.async_schedule_reload.assert_not_called()
+    hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
 
 
 @pytest.mark.asyncio
@@ -1541,7 +1543,7 @@ async def test_stored_expected_id_snapshot_change_aborts_before_cleanup(
 ) -> None:
     """A changed retry entry must abort before destructive registry cleanup."""
     hass = MagicMock()
-    entry = _make_entry(state=ConfigEntryState.LOADED)
+    entry = _make_entry(state=ConfigEntryState.NOT_LOADED)
     updated_entry = _make_entry(
         entry_id=entry.entry_id,
         device_id="mutated",
@@ -1562,5 +1564,7 @@ async def test_stored_expected_id_snapshot_change_aborts_before_cleanup(
     assert result["reason"] == "entry_changed"
     entity_registry.async_remove.assert_not_called()
     device_registry.async_update_device.assert_not_called()
+    hass.config_entries.async_update_entry.assert_not_called()
+    hass.config_entries.async_unload.assert_not_awaited()
     hass.config_entries.async_reload.assert_not_awaited()
     hass.config_entries.async_schedule_reload.assert_not_called()
