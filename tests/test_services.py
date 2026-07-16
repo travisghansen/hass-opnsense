@@ -331,12 +331,20 @@ async def test_get_clients_untargeted_resolution_skips_carp_entries(
 
 
 @pytest.mark.asyncio
-async def test_get_clients_explicit_carp_device_target_raises_no_target_clients(
+@pytest.mark.parametrize(
+    "target_kind",
+    [
+        pytest.param("device", id="device-target"),
+        pytest.param("entity", id="entity-target"),
+    ],
+)
+async def test_get_clients_explicit_carp_target_raises_no_target_clients(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: HomeAssistant,
     make_config_entry: Callable[..., MockConfigEntry],
+    target_kind: str,
 ) -> None:
-    """CARP device targets must raise no_target_clients even when other entries exist."""
+    """Explicit CARP targets must raise no_target_clients even when other entries exist."""
     hass_local = ph_hass
     normal_client = MagicMock(name="normal")
     normal_client.name = "normal"
@@ -345,33 +353,16 @@ async def test_get_clients_explicit_carp_device_target_raises_no_target_clients(
     hass_local.data = {DOMAIN: {"normal": normal_client, "carp": carp_client}}
     _add_entry_for_client(hass_local, make_config_entry, "normal")
     _add_entry_for_client(hass_local, make_config_entry, "carp", ENTRY_TYPE_CARP)
-    _patch_device_registry_entry(monkeypatch, "carp")
+
+    if target_kind == "device":
+        _patch_device_registry_entry(monkeypatch, "carp")
+        target_kwargs: dict[str, str] = {"opndevice_id": "carp-device"}
+    else:
+        _patch_entity_registry_entry(monkeypatch, "carp")
+        target_kwargs = {"opnentity_id": "sensor.carp"}
 
     with pytest.raises(ServiceValidationError) as exc_info:
-        await services_mod._get_clients(hass_local, opndevice_id="carp-device")
-
-    assert exc_info.value.translation_key == "no_target_clients"
-
-
-@pytest.mark.asyncio
-async def test_get_clients_explicit_carp_entity_target_raises_no_target_clients(
-    monkeypatch: pytest.MonkeyPatch,
-    ph_hass: HomeAssistant,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """CARP entity targets must raise no_target_clients even when other entries exist."""
-    hass_local = ph_hass
-    normal_client = MagicMock(name="normal")
-    normal_client.name = "normal"
-    carp_client = MagicMock(name="carp")
-    carp_client.name = "carp"
-    hass_local.data = {DOMAIN: {"normal": normal_client, "carp": carp_client}}
-    _add_entry_for_client(hass_local, make_config_entry, "normal")
-    _add_entry_for_client(hass_local, make_config_entry, "carp", ENTRY_TYPE_CARP)
-    _patch_entity_registry_entry(monkeypatch, "carp")
-
-    with pytest.raises(ServiceValidationError) as exc_info:
-        await services_mod._get_clients(hass_local, opnentity_id="sensor.carp")
+        await services_mod._get_clients(hass_local, **target_kwargs)
 
     assert exc_info.value.translation_key == "no_target_clients"
 

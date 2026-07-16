@@ -76,6 +76,16 @@ _VPN_TRAFFIC_PROPERTIES: tuple[str, ...] = (
 _VPN_SERVER_PROPERTIES: tuple[str, ...] = ("status", "connected_clients")
 _VPN_WIREGUARD_CLIENT_PROPERTIES: tuple[str, ...] = ("connected_servers",)
 _ICON_MEMORY: Final[str] = "mdi:memory"
+_CARP_INTERFACE_ATTRIBUTES: Final[tuple[str, ...]] = (
+    "interface",
+    "vhid",
+    "advskew",
+    "advbase",
+    "subnet_bits",
+    "subnet",
+    "descr",
+    "mode",
+)
 _CARP_STATUS_ICONS: Final[Mapping[str, str]] = {
     "MASTER": "mdi:check-network",
     "BACKUP": "mdi:backup-restore",
@@ -2075,16 +2085,7 @@ class OPNsenseCarpInterfaceSensor(OPNsenseSensor):
             return
         self._available = True
         self._attr_extra_state_attributes = {}
-        for attr in (
-            "interface",
-            "vhid",
-            "advskew",
-            "advbase",
-            "subnet_bits",
-            "subnet",
-            "descr",
-            "mode",
-        ):
+        for attr in _CARP_INTERFACE_ATTRIBUTES:
             if attr in carp_interface:
                 self._attr_extra_state_attributes[attr] = carp_interface[attr]
         self.async_write_ha_state()
@@ -2196,16 +2197,7 @@ class OPNsenseCarpVipSensor(OPNsenseSensor):
         self._available = True
         self._attr_native_value = status
         self._attr_extra_state_attributes = {}
-        for attr in (
-            "interface",
-            "vhid",
-            "advskew",
-            "advbase",
-            "subnet_bits",
-            "subnet",
-            "descr",
-            "mode",
-        ):
+        for attr in _CARP_INTERFACE_ATTRIBUTES:
             if attr in carp_vip:
                 self._attr_extra_state_attributes[attr] = carp_vip[attr]
         self.async_write_ha_state()

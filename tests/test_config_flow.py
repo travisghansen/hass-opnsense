@@ -228,31 +228,26 @@ def test_clean_and_parse_url_success_and_failure() -> None:
 @pytest.mark.parametrize(
     ("input_url", "expected_url"),
     [
-        ("router.example:8443", "https://router.example:8443"),
-        ("router.example:443", "https://router.example"),
-        ("https://router.example:443", "https://router.example"),
+        pytest.param(
+            "router.example:8443", "https://router.example:8443", id="no-scheme-custom-port"
+        ),
+        pytest.param("router.example:443", "https://router.example", id="no-scheme-default-port"),
+        pytest.param(
+            "https://router.example:443", "https://router.example", id="https-default-port"
+        ),
+        pytest.param("http://router.example:80", "http://router.example", id="http-default-port"),
+        pytest.param(
+            "https://router.example:8443",
+            "https://router.example:8443",
+            id="https-custom-port",
+        ),
+        pytest.param(
+            "http://router.example:8080", "http://router.example:8080", id="http-custom-port"
+        ),
     ],
 )
-def test_clean_and_parse_url_with_and_without_scheme(input_url: str, expected_url: str) -> None:
-    """Normalize URLs that omit a scheme and retain canonical default-port behavior."""
-    user_input = {cf_mod.CONF_URL: input_url}
-
-    cf_mod._clean_and_parse_url(user_input)
-
-    assert user_input[cf_mod.CONF_URL] == expected_url
-
-
-@pytest.mark.parametrize(
-    ("input_url", "expected_url"),
-    [
-        ("https://router.example:443", "https://router.example"),
-        ("http://router.example:80", "http://router.example"),
-        ("https://router.example:8443", "https://router.example:8443"),
-        ("http://router.example:8080", "http://router.example:8080"),
-    ],
-)
-def test_clean_and_parse_url_canonicalizes_default_ports(input_url: str, expected_url: str) -> None:
-    """Normalize default HTTP ports while preserving non-default ports."""
+def test_clean_and_parse_url_normalizes_scheme_and_ports(input_url: str, expected_url: str) -> None:
+    """Normalize URL schemes and ports into their canonical form."""
     user_input = {cf_mod.CONF_URL: input_url}
 
     cf_mod._clean_and_parse_url(user_input)
@@ -352,23 +347,6 @@ async def test_validate_input_exception_mapping(
     errors: dict[str, str] = {}
     res = await cf_mod.validate_input(hass=MagicMock(), user_input={}, errors=errors)
     assert res.get("base") == expected
-
-
-@pytest.mark.asyncio
-async def test_validate_input_maps_raw_aiohttp_client_error(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Aiohttp ClientError should map to cannot_connect without aborting the flow."""
-
-    async def _raise(*args: object, **kwargs: object) -> Never:
-        """Raise a raw aiohttp ClientError to exercise transport mapping."""
-        raise ClientError("client request failed")
-
-    monkeypatch.setattr(cf_mod, "_validate_client_details", _raise)
-    errors: dict[str, str] = {}
-    res = await cf_mod.validate_input(hass=MagicMock(), user_input={}, errors=errors)
-
-    assert res["base"] == "cannot_connect"
 
 
 @pytest.mark.asyncio
