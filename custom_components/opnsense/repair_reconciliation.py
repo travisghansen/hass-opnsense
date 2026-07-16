@@ -133,9 +133,7 @@ class RepairReconciliation:
                     (DOMAIN, self.marker.new_device_id) if domain == DOMAIN else (domain, value)
                     for domain, value in old_main.identifiers
                 }
-                new_main = device_registry.async_update_device(
-                    old_main.id, new_identifiers=new_identifiers
-                )
+                device_registry.async_update_device(old_main.id, new_identifiers=new_identifiers)
             for candidate, target_unique_id in migrations:
                 entity_registry.async_update_entity(
                     candidate.entity_id, new_unique_id=target_unique_id
