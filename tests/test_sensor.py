@@ -167,6 +167,33 @@ async def test_carp_entry_setup_has_exact_read_only_vip_inventory(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("entry_data", "expected_translation_key"),
+    [
+        ({}, None),
+        ({"entry_type": "carp"}, "carp_status_summary"),
+    ],
+)
+async def test_carp_status_description_preserves_entry_mode_naming(
+    entry_data: dict[str, Any],
+    expected_translation_key: str | None,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP status should keep legacy device naming and translated CARP naming."""
+    entry = make_config_entry(data=entry_data)
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {"carp": {"status_summary": {"state": "healthy"}}}
+
+    entities = await sensor_module._compile_carp_status_sensor(entry, coordinator, coordinator.data)
+
+    assert len(entities) == 1
+    sensor = entities[0]
+    assert sensor.entity_description.translation_key == expected_translation_key
+    if expected_translation_key is None:
+        assert sensor.name == "CARP Status"
+
+
+@pytest.mark.asyncio
 async def test_carp_entry_failover_keeps_vip_identity_and_updates_responder(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
@@ -245,6 +272,58 @@ async def test_carp_entry_failover_keeps_vip_identity_and_updates_responder(
         "descr": "Primary VIP",
         "mode": "carp",
     }
+
+
+@pytest.mark.parametrize(
+    "unavailable_scenario",
+    ["malformed_key", "disappeared_vip", "missing_status"],
+)
+def test_carp_vip_sensor_clears_attributes_when_becoming_unavailable(
+    unavailable_scenario: str,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """A CARP VIP should not retain attributes after its payload becomes unusable."""
+    entry = make_config_entry(data={"entry_type": "carp"}, entry_id="carp-entry")
+    interface = {
+        "vhid": 1,
+        "subnet": "192.0.2.1",
+        "interface": "igc0",
+        "status": "MASTER",
+    }
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {"carp": {"interfaces": [interface]}}
+    description = MagicMock(spec=SensorEntityDescription)
+    description.key = sensor_module._build_carp_vip_sensor_key("1", "192.0.2.1")
+    description.name = "CARP VIP 192.0.2.1 (VHID 1)"
+    description.translation_key = "carp_vip"
+    sensor = OPNsenseCarpVipSensor(
+        config_entry=entry,
+        coordinator=coordinator,
+        entity_description=description,
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.carp_vip"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+
+    sensor._handle_coordinator_update()
+    assert sensor.available is True
+    assert sensor.extra_state_attributes == {
+        "interface": "igc0",
+        "vhid": 1,
+        "subnet": "192.0.2.1",
+    }
+
+    if unavailable_scenario == "malformed_key":
+        description.key = "carp.vip.invalid"
+    elif unavailable_scenario == "disappeared_vip":
+        coordinator.data["carp"]["interfaces"] = []
+    else:
+        interface.pop("status")
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
+    assert sensor.extra_state_attributes == {}
 
 
 @pytest.mark.parametrize("system_info", [{}, {"name": None}, {"name": ""}, {"name": "  "}])

@@ -2032,6 +2032,7 @@ async def test_reconfigure_carp_updates_entry_without_unique_id_checks(
 
     result = await flow.async_step_reconfigure(
         user_input={
+            cf_mod.CONF_NAME: "Renamed CARP VIP",
             cf_mod.CONF_URL: "https://carp-router.example",
             cf_mod.CONF_USERNAME: "admin",
             cf_mod.CONF_PASSWORD: "secret",
@@ -2046,6 +2047,19 @@ async def test_reconfigure_carp_updates_entry_without_unique_id_checks(
     assert validate_call.kwargs["carp"] is True
     assert "expected_id" not in validate_call.kwargs
     set_unique_id.assert_not_awaited()
+    update_and_abort.assert_called_once_with(
+        entry=config_entry,
+        title="Renamed CARP VIP",
+        data={
+            cf_mod.CONF_URL: "https://carp-router.example",
+            cf_mod.CONF_USERNAME: "admin",
+            cf_mod.CONF_PASSWORD: "secret",
+            cf_mod.CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+            cf_mod.CONF_FIRMWARE_VERSION: "26.1.11",
+            cf_mod.CONF_NAME: "Renamed CARP VIP",
+            cf_mod.CONF_VERIFY_SSL: True,
+        },
+    )
 
 
 @pytest.mark.asyncio
@@ -2153,6 +2167,7 @@ async def test_reconfigure_carp_skips_duplicate_check_when_url_unchanged(
             cf_mod.CONF_USERNAME: "u",
             cf_mod.CONF_PASSWORD: "p",
             cf_mod.CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+            cf_mod.CONF_NAME: "Router CARP VIP",
         },
         options={},
     )
@@ -2184,12 +2199,14 @@ async def test_reconfigure_carp_skips_duplicate_check_when_url_unchanged(
     abort_match.assert_not_called()
     update_and_abort.assert_called_once_with(
         entry=config_entry,
+        title="Router CARP VIP",
         data={
             cf_mod.CONF_URL: "https://carp-router.example",
             cf_mod.CONF_USERNAME: "admin",
             cf_mod.CONF_PASSWORD: "secret",
             cf_mod.CONF_VERIFY_SSL: True,
             cf_mod.CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+            cf_mod.CONF_NAME: "Router CARP VIP",
         },
     )
 
@@ -2250,6 +2267,7 @@ async def test_reconfigure_carp_preserves_self_url_when_no_duplicate(
             cf_mod.CONF_USERNAME: "u",
             cf_mod.CONF_PASSWORD: "p",
             cf_mod.CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+            cf_mod.CONF_NAME: "Router CARP VIP",
         },
         options={},
     )

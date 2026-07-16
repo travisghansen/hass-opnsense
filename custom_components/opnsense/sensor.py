@@ -1298,7 +1298,7 @@ async def _compile_carp_status_sensor(
             SensorEntityDescription(
                 key="carp.status_summary",
                 name="CARP Status",
-                translation_key="carp_status_summary",
+                translation_key=("carp_status_summary" if is_carp_entry(config_entry) else None),
                 native_unit_of_measurement=None,
                 device_class=None,
                 icon="mdi:gauge",
@@ -2164,7 +2164,7 @@ class OPNsenseCarpVipSensor(OPNsenseSensor):
         key_data = _parse_carp_vip_sensor_key(self.entity_description.key)
         carp_interfaces = self._list_at("carp.interfaces")
         if key_data is None or carp_interfaces is None:
-            self._mark_unavailable()
+            self._mark_unavailable(clear_attributes=True)
             return
 
         expected_vhid_slug, expected_subnet_slug = key_data
@@ -2185,12 +2185,12 @@ class OPNsenseCarpVipSensor(OPNsenseSensor):
             break
 
         if not carp_vip:
-            self._mark_unavailable()
+            self._mark_unavailable(clear_attributes=True)
             return
 
         status = carp_vip.get("status")
         if status is None:
-            self._mark_unavailable()
+            self._mark_unavailable(clear_attributes=True)
             return
 
         self._available = True

@@ -1198,6 +1198,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
                             return abort
                     return self.async_update_and_abort(
                         entry=reconfigure_entry,
+                        title=self._config[CONF_NAME],
                         data=self._config,
                     )
             else:

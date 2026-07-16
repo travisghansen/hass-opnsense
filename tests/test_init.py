@@ -547,6 +547,9 @@ async def test_async_setup_entry_carp_platform_forward_failure_cleans_up(
         },
         options={},
     )
+    remove_listener = MagicMock()
+    entry.add_update_listener = MagicMock(return_value=remove_listener)
+    entry.async_on_unload = MagicMock(return_value=None)
     hass = ph_hass
     hass.data = {}
     hass.config_entries.async_forward_entry_setups = AsyncMock(
@@ -558,8 +561,67 @@ async def test_async_setup_entry_carp_platform_forward_failure_cleans_up(
 
     coordinator.async_shutdown.assert_awaited_once()
     client.async_close.assert_awaited_once()
+    entry.add_update_listener.assert_not_called()
+    entry.async_on_unload.assert_not_called()
+    remove_listener.assert_not_called()
     assert entry.entry_id not in hass.data.get(init_mod.DOMAIN, {})
     assert entry.runtime_data is None
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_carp_registers_update_listener_after_forwarding(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP update-listener registration should follow platform forwarding."""
+    call_order: list[str] = []
+    client = _make_valid_setup_client()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
+    )
+    coordinator = _make_setup_coordinator()
+    coordinator.data = {"carp": {"interfaces": [{"vhid": 1, "subnet": "192.0.2.1"}]}}
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+        },
+        options={},
+    )
+    remove_listener = MagicMock()
+
+    def _add_update_listener(listener: Any) -> MagicMock:
+        """Record listener registration and return its removal callback."""
+        call_order.append("add_listener")
+        return remove_listener
+
+    def _async_on_unload(unregister: MagicMock) -> None:
+        """Record unload-callback registration."""
+        call_order.append("async_on_unload")
+
+    entry.add_update_listener = MagicMock(side_effect=_add_update_listener)
+    entry.async_on_unload = MagicMock(side_effect=_async_on_unload)
+
+    async def _forward_entry_setups(*_args: Any, **_kwargs: Any) -> bool:
+        """Record CARP platform forwarding and report success."""
+        call_order.append("forward")
+        return True
+
+    hass = ph_hass
+    hass.data = {}
+    hass.config_entries.async_forward_entry_setups = AsyncMock(side_effect=_forward_entry_setups)
+
+    assert await init_mod.async_setup_entry(hass, entry) is True
+
+    assert call_order == ["forward", "add_listener", "async_on_unload"]
+    entry.add_update_listener.assert_called_once_with(init_mod._async_update_listener)
+    entry.async_on_unload.assert_called_once_with(remove_listener)
+    remove_listener.assert_not_called()
 
 
 @pytest.mark.asyncio

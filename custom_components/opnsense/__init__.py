@@ -324,10 +324,8 @@ async def _async_setup_carp_entry(hass: HomeAssistant, entry: ConfigEntry) -> bo
             device_unique_id=None,
             loaded_platforms=platforms,
         )
-        remove_listener = entry.add_update_listener(_async_update_listener)
-        entry.async_on_unload(remove_listener)
-
         await hass.config_entries.async_forward_entry_setups(entry, platforms)
+        entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
         setup_succeeded = True
         return True
