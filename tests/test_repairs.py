@@ -895,6 +895,37 @@ async def test_loaded_entry_update_exception_recovers_without_registry_mutation(
 
 
 @pytest.mark.asyncio
+async def test_expected_id_retry_reprobes_before_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A retry must not clean registries when the firewall ID no longer matches."""
+    hass = MagicMock()
+    entry = _make_entry(state=ConfigEntryState.LOADED, device_id="other", unique_id="other")
+    _configure_hass(hass, entry)
+    entity_registry, device_registry = _patch_registries(
+        monkeypatch,
+        entities=[SimpleNamespace(entity_id="sensor.old")],
+        devices=[SimpleNamespace(id="device")],
+    )
+    client = _patch_probe_client(monkeypatch, observed_device_id="reverted")
+    flow = _make_flow(hass, entry, old_device_id="dev1", new_device_id="other")
+
+    result = await flow.async_step_confirm({})
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "entry_changed"
+    client.validate.assert_awaited_once_with()
+    client.get_device_unique_id.assert_awaited_once_with()
+    client.async_close.assert_awaited_once_with()
+    hass.config_entries.async_unload.assert_not_awaited()
+    entity_registry.async_remove.assert_not_called()
+    device_registry.async_update_device.assert_not_called()
+    hass.config_entries.async_update_entry.assert_not_called()
+    hass.config_entries.async_reload.assert_not_awaited()
+    hass.config_entries.async_schedule_reload.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_expected_id_retry_rechecks_snapshot_after_unload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -915,6 +946,7 @@ async def test_expected_id_retry_rechecks_snapshot_after_unload(
         return True
 
     hass.config_entries.async_unload.side_effect = _unload_and_mutate
+    _patch_probe_client(monkeypatch)
     flow = _make_flow(hass, entry, old_device_id="dev1", new_device_id="other")
 
     result = await flow.async_step_confirm({})
@@ -958,6 +990,7 @@ async def test_loaded_entry_retry_cleanup_failure_recovers_with_reload(
     entity_registry.async_remove.side_effect = _remove_entity
     issue_delete = MagicMock()
     monkeypatch.setattr(repairs.ir, "async_delete_issue", issue_delete)
+    _patch_probe_client(monkeypatch)
     flow = _make_flow(hass, entry, old_device_id="dev1", new_device_id="other")
 
     result = await flow.async_step_confirm({})
@@ -1093,7 +1126,7 @@ async def test_cleanup_failure_keeps_entry_update_and_recovers_with_reload(
         "data": expected_updated_data,
         "unique_id": observed_device_id,
     }
-    client.get_device_unique_id.assert_not_awaited()
+    client.get_device_unique_id.assert_awaited_once_with()
     assert hass.config_entries.async_reload.await_count == 1
     assert hass.config_entries.async_update_entry.call_count == 1
     assert entity_registry.async_remove.call_count == 2
@@ -1249,7 +1282,7 @@ async def test_retry_recovers_when_reload_scheduling_failed(
     hass.config_entries.async_update_entry.assert_not_called()
     assert entity_scan_calls == [entry.entry_id, entry.entry_id]
     assert device_scan_calls == [entry.entry_id, entry.entry_id]
-    client.get_device_unique_id.assert_not_awaited()
+    client.get_device_unique_id.assert_awaited_once_with()
     assert hass.config_entries.async_reload.await_count == 2
 
 
@@ -1344,7 +1377,7 @@ async def test_retry_repeats_registry_cleanup_after_partial_failure(
     device_registry.async_update_device.assert_called_with(
         "device", remove_config_entry_id=entry.entry_id
     )
-    client.get_device_unique_id.assert_awaited_once_with()
+    assert client.get_device_unique_id.await_count == 2
     assert hass.config_entries.async_unload.await_count == 1
     assert hass.config_entries.async_reload.await_count == 1
     assert devices == []
@@ -1378,7 +1411,10 @@ async def test_retry_keeps_issue_when_recovery_reload_fails(
     hass.config_entries.async_update_entry.assert_not_called()
     entity_registry.async_remove.assert_not_called()
     device_registry.async_update_device.assert_not_called()
-    client.factory.assert_not_called()
+    client.factory.assert_called_once_with(hass=hass, config_entry=entry, throw_errors=True)
+    client.validate.assert_awaited_once_with()
+    client.get_device_unique_id.assert_awaited_once_with()
+    client.async_close.assert_awaited_once_with()
 
 
 @pytest.mark.asyncio
@@ -1496,6 +1532,7 @@ async def test_stored_expected_id_reload_false_retries_recovery_reload(
     _configure_hass(hass, entry)
     hass.config_entries.async_reload.return_value = False
     _patch_registries(monkeypatch)
+    _patch_probe_client(monkeypatch, observed_device_id="dev1")
     flow = _make_flow(hass, entry, new_device_id="dev1")
 
     result = await flow.async_step_confirm({})
@@ -1521,6 +1558,7 @@ async def test_stored_expected_id_unloaded_entry_retries_recovery_reload(
     _configure_hass(hass, entry)
     hass.config_entries.async_reload.return_value = False
     _patch_registries(monkeypatch)
+    _patch_probe_client(monkeypatch, observed_device_id="dev1")
     flow = _make_flow(hass, entry, new_device_id="dev1")
 
     result = await flow.async_step_confirm({})
@@ -1547,6 +1585,7 @@ async def test_stored_expected_id_resume_exception_recovers_reloaded_entry(
     _configure_hass(hass, entry)
     hass.config_entries.async_reload.side_effect = reload_error
     _patch_registries(monkeypatch)
+    _patch_probe_client(monkeypatch, observed_device_id="dev1")
     flow = _make_flow(hass, entry, new_device_id="dev1")
 
     result = await flow.async_step_confirm({})
@@ -1577,6 +1616,7 @@ async def test_stored_expected_id_snapshot_change_aborts_before_cleanup(
         devices=[SimpleNamespace(id="device")],
     )
     hass.config_entries.async_get_entry.side_effect = [entry, updated_entry]
+    _patch_probe_client(monkeypatch, observed_device_id="dev1")
     flow = _make_flow(hass, entry, new_device_id="dev1")
 
     result = await flow.async_step_confirm({})

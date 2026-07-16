@@ -385,6 +385,14 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         entry_unique_id_snapshot = entry.unique_id
         stored_device_id = entry.data.get(CONF_DEVICE_UNIQUE_ID)
         if stored_device_id == self._expected_device_id:
+            try:
+                observed_device_id = await _async_validate_and_probe_device_id(self.hass, entry)
+            except OPNsenseError:
+                return self.async_abort(reason="cannot_connect")
+            if not is_valid_device_id(observed_device_id):
+                return self.async_abort(reason="cannot_connect")
+            if observed_device_id != self._expected_device_id:
+                return self.async_abort(reason="entry_changed")
             entry_ready, entry_was_loaded = await _async_prepare_entry_for_repair(self.hass, entry)
             if not entry_ready:
                 return self.async_abort(reason="cannot_unload")
