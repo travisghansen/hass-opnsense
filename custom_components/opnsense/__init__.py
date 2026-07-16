@@ -113,16 +113,6 @@ def _align_aiopnsense_log_level() -> None:
     aiopnsense_logger.setLevel(_LOGGER.level)
 
 
-def _async_delete_device_id_mismatch_issue(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Delete a stale nonpersistent device-id mismatch repair issue.
-
-    Args:
-        hass: Home Assistant instance.
-        entry: OPNsense config entry owning the mismatch issue.
-    """
-    ir.async_delete_issue(hass, DOMAIN, build_device_id_mismatch_issue_id(entry.entry_id))
-
-
 def _async_create_marker_repair_issue(
     hass: HomeAssistant, entry: ConfigEntry, repair_marker: RepairMarker
 ) -> None:
@@ -184,7 +174,7 @@ def _resolve_device_id_probe_state(
         and is_valid_device_id(router_device_id)
         and router_device_id == config_device_id
     ):
-        _async_delete_device_id_mismatch_issue(hass, entry)
+        ir.async_delete_issue(hass, DOMAIN, build_device_id_mismatch_issue_id(entry.entry_id))
     return True
 
 

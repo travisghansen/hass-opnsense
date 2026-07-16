@@ -68,11 +68,6 @@ def parse_repair_marker(entry: ConfigEntry) -> RepairMarker | None:
     return RepairMarker(version, old_device_id, new_device_id)
 
 
-def _registry_identity(entry: er.RegistryEntry) -> EntityIdentity:
-    """Return an entity's full registry collision identity."""
-    return entry.domain, entry.platform, entry.unique_id
-
-
 def _platform_domain_value(platform_domain: PlatformDomain) -> str:
     """Return the string entity domain for a platform value."""
     return platform_domain.value if isinstance(platform_domain, Platform) else platform_domain
@@ -179,7 +174,11 @@ class RepairReconciliation:
         try:
             for entity_id in self._candidate_entity_ids:
                 candidate = entity_registry.async_get(entity_id)
-                if candidate is None or _registry_identity(candidate) in self.desired_identities:
+                if (
+                    candidate is None
+                    or (candidate.domain, candidate.platform, candidate.unique_id)
+                    in self.desired_identities
+                ):
                     continue
                 entity_registry.async_remove(entity_id)
 
