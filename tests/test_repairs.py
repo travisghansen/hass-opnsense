@@ -566,6 +566,43 @@ async def test_unload_failure_aborts_before_registry_mutation(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    "unload_error",
+    [
+        pytest.param(HomeAssistantError("transport"), id="homeassistant-error"),
+        pytest.param(KeyError("entry key"), id="key-error"),
+    ],
+)
+async def test_unload_exception_aborts_before_registry_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    unload_error: BaseException,
+) -> None:
+    """Exceptions when unloading a loaded entry should abort the repair with cannot_unload."""
+    hass = MagicMock()
+    entry = _make_entry(state=ConfigEntryState.LOADED)
+    _configure_hass(hass, entry)
+    hass.config_entries.async_unload.side_effect = unload_error
+    entity_registry, device_registry = _patch_registries(
+        monkeypatch,
+        entities=[SimpleNamespace(entity_id="sensor.old")],
+        devices=[SimpleNamespace(id="device")],
+    )
+    client = _patch_probe_client(monkeypatch)
+    flow = _make_flow(hass, entry)
+
+    result = await flow.async_step_confirm({})
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "cannot_unload"
+    client.async_close.assert_awaited_once_with()
+    hass.config_entries.async_unload.assert_awaited_once_with(entry.entry_id)
+    entity_registry.async_remove.assert_not_called()
+    device_registry.async_update_device.assert_not_called()
+    hass.config_entries.async_update_entry.assert_not_called()
+    hass.config_entries.async_schedule_reload.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     "state",
     [
         ConfigEntryState.FAILED_UNLOAD,

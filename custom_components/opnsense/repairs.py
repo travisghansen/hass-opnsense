@@ -145,8 +145,18 @@ async def _async_prepare_entry_for_repair(
     entry_was_loaded = config_entry.state is ConfigEntryState.LOADED
     if not config_entry.state.recoverable:
         return False, entry_was_loaded
-    if entry_was_loaded and not await hass.config_entries.async_unload(config_entry.entry_id):
-        return False, entry_was_loaded
+    if entry_was_loaded:
+        try:
+            unload_ok = await hass.config_entries.async_unload(config_entry.entry_id)
+        except HomeAssistantError, KeyError:
+            _LOGGER.exception(
+                "Device-ID repair could not unload %s; aborting repair",
+                config_entry.title,
+            )
+            return False, entry_was_loaded
+        if not unload_ok:
+            _LOGGER.debug("Device-ID repair could not unload %s", config_entry.title)
+            return False, entry_was_loaded
     return True, entry_was_loaded
 
 

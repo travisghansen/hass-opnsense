@@ -191,7 +191,7 @@ def _resolve_device_id_probe_state(
 
 async def _unload_setup_platforms_after_reconciliation_failure(
     hass: HomeAssistant, entry: ConfigEntry, platforms: list[Platform]
-) -> None:
+) -> bool:
     """Unload forwarded setup platforms when reconciliation aborts."""
     try:
         unloaded: bool = await hass.config_entries.async_unload_platforms(entry, platforms)
@@ -200,12 +200,14 @@ async def _unload_setup_platforms_after_reconciliation_failure(
             "Device-ID reconciliation cleanup failed for %s; cannot unload entry platforms",
             entry.title,
         )
-        return
+        return False
     if not unloaded:
         _LOGGER.debug(
             "Device-ID reconciliation cleanup could not unload all platforms for %s",
             entry.title,
         )
+        return False
+    return True
 
 
 async def _cleanup_reconciliation_failure(
@@ -213,11 +215,11 @@ async def _cleanup_reconciliation_failure(
     entry: ConfigEntry,
     platforms: list[Platform],
     repair_marker: RepairMarker | None,
-) -> None:
+) -> bool:
     """Persist marker-backed repair issue and unload any partially loaded platforms."""
     if repair_marker is not None:
         _async_create_marker_repair_issue(hass, entry, repair_marker)
-    await _unload_setup_platforms_after_reconciliation_failure(hass, entry, platforms)
+    return await _unload_setup_platforms_after_reconciliation_failure(hass, entry, platforms)
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -542,6 +544,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     device_tracker_coordinator: OPNsenseDataUpdateCoordinator | None = None
 
     setup_succeeded: bool = False
+    keep_reconciliation_runtime: bool = False
     try:
         # Trigger repair task and shutdown if device id has changed
         router_device_id: str | None = await client.get_device_unique_id(
@@ -687,19 +690,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "Device-ID reconciliation cleanup failed for %s; retaining marker",
                     entry.title,
                 )
-                await _cleanup_reconciliation_failure(
-                    hass,
-                    entry,
-                    platforms,
-                    repair_marker,
-                )
+                try:
+                    cleanup_ok: bool = await _cleanup_reconciliation_failure(
+                        hass,
+                        entry,
+                        platforms,
+                        repair_marker,
+                    )
+                except HomeAssistantError, KeyError:
+                    _LOGGER.exception(
+                        "Device-ID reconciliation cleanup raised while handling %s",
+                        entry.title,
+                    )
+                    keep_reconciliation_runtime = True
+                    return False
+                keep_reconciliation_runtime = not cleanup_ok
                 return False
         entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
         setup_succeeded = True
         return True
     finally:
-        if not setup_succeeded:
+        if not setup_succeeded and not keep_reconciliation_runtime:
             entry.runtime_data = None
             if device_tracker_coordinator is not None:
                 await device_tracker_coordinator.async_shutdown()
