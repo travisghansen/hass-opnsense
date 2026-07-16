@@ -182,9 +182,15 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
                 is_current_router_child = (
                     router_device_id is not None and device.via_device_id == router_device_id
                 )
+                via_parent: object | None = (
+                    device_registry.async_get(device.via_device_id)
+                    if isinstance(device.via_device_id, str)
+                    else None
+                )
                 is_orphaned_mac_tracker = (
                     router_device_id is None
-                    and device.via_device_id is not None
+                    and isinstance(device.via_device_id, str)
+                    and via_parent is None
                     and any(
                         connection_type == dr.CONNECTION_NETWORK_MAC
                         for connection_type, _connection_value in device.connections

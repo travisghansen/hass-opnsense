@@ -344,10 +344,17 @@ def _cleanup_stale_tracked_devices(
             entity_registry.async_remove(entity_id)
 
         if rem_device:
+            effective_router_device_id: str | None = router_device_id
+            if (
+                effective_router_device_id is None
+                and isinstance(rem_device.via_device_id, str)
+                and device_registry.async_get(rem_device.via_device_id) is None
+            ):
+                effective_router_device_id = rem_device.via_device_id
             _from_current_router, replacement_router_id = detach_shared_router_parent(
                 shared_config_entry_id=config_entry.entry_id,
                 shared_device_entry=rem_device,
-                router_device_id=router_device_id,
+                router_device_id=effective_router_device_id,
                 config_entries=hass.config_entries,
                 device_registry=device_registry,
             )

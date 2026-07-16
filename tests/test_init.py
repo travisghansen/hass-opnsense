@@ -1909,6 +1909,7 @@ async def test_async_update_listener_detaches_tracker_when_router_and_entity_are
         config_entries={entry.entry_id},
     )
     dr_reg = MagicMock()
+    dr_reg.async_get = MagicMock(return_value=None)
     monkeypatch.setattr(init_mod.dr, "async_get", MagicMock(return_value=dr_reg))
     monkeypatch.setattr(
         init_mod.dr,
@@ -1922,6 +1923,68 @@ async def test_async_update_listener_detaches_tracker_when_router_and_entity_are
         tracker_without_router_or_entity.id,
         remove_config_entry_id=entry.entry_id,
         via_device_id=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_update_listener_preserves_existing_tracker_parent_when_parent_device_exists(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Keep a shared tracker parent when disabling tracking if that parent still exists."""
+    entry = make_config_entry(
+        data={init_mod.CONF_DEVICE_UNIQUE_ID: "router-mac"},
+        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+    )
+    setattr(entry.runtime_data, init_mod.SHOULD_RELOAD, True)
+
+    ph_hass.config_entries.async_reload = AsyncMock()
+    ph_hass.data = {}
+    if not hasattr(ph_hass, "async_create_task"):
+        ph_hass.async_create_task = MagicMock()
+
+    dt_ent = MagicMock(
+        entity_id="device_tracker.shared_tracker",
+        domain=init_mod.Platform.DEVICE_TRACKER,
+        unique_id=f"{entry.unique_id}_mac_aabbccddeeff",
+        device_id="shared-device",
+    )
+    er_reg = MagicMock()
+    monkeypatch.setattr(init_mod.er, "async_get", MagicMock(return_value=er_reg))
+    monkeypatch.setattr(
+        init_mod.er,
+        "async_entries_for_config_entry",
+        MagicMock(return_value=[dt_ent]),
+    )
+
+    shared_parent = MagicMock(id="shared-router-device-id")
+    shared_tracker = MagicMock(
+        id="shared-device",
+        identifiers=set(),
+        via_device_id=shared_parent.id,
+        config_entries={entry.entry_id},
+    )
+    dr_reg = MagicMock()
+    dr_reg.async_update_device = MagicMock()
+    dr_reg.async_get = MagicMock(return_value=shared_parent)
+    monkeypatch.setattr(init_mod.dr, "async_get", MagicMock(return_value=dr_reg))
+    monkeypatch.setattr(
+        init_mod.dr,
+        "async_entries_for_config_entry",
+        MagicMock(return_value=[shared_tracker]),
+    )
+
+    await init_mod._async_update_listener(ph_hass, entry)
+
+    er_reg.async_remove.assert_called_once_with(dt_ent.entity_id)
+    dr_reg.async_get.assert_called_once_with(shared_parent.id)
+    dr_reg.async_update_device.assert_called_once_with(
+        shared_tracker.id, remove_config_entry_id=entry.entry_id
+    )
+    assert (
+        call(shared_tracker.id, remove_config_entry_id=entry.entry_id, via_device_id=None)
+        not in dr_reg.async_update_device.mock_calls
     )
 
 

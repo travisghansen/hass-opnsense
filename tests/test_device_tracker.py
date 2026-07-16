@@ -1455,3 +1455,65 @@ async def test_async_setup_entry_removes_stale_tracker_entities_and_reparents_sh
     assert call(
         "stale-other-device", remove_config_entry_id=entry.entry_id, via_device_id=None
     ) not in (device_registry.async_update_device.call_args_list)
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_removes_stale_tracker_entities_clears_missing_parent(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Clear stale tracker parent assignment when router lookup is no longer available."""
+    coordinator.data = {"arp_table": [{"mac": "keep:mac"}]}
+    stale_router_mac = "stale:mac:router"
+    entry = make_config_entry(
+        data={
+            dt_mod.TRACKED_MACS: [stale_router_mac, "keep:mac"],
+            pkg.CONF_DEVICE_UNIQUE_ID: "dev1",
+        },
+        options={dt_mod.CONF_DEVICE_TRACKER_ENABLED: True},
+        entry_id="entity-rm-missing-parent",
+    )
+    setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
+
+    entity_registry = MagicMock()
+    entity_registry.async_get_entity_id = MagicMock(return_value=None)
+    monkeypatch.setattr(dt_mod.er, "async_get", MagicMock(return_value=entity_registry))
+
+    missing_parent_id = "missing-router-device-id"
+    stale_device = MagicMock(
+        id="stale-router-device",
+        via_device_id=missing_parent_id,
+        config_entries={entry.entry_id},
+    )
+    devices = {
+        stale_router_mac: stale_device,
+    }
+
+    def get_device(
+        *,
+        identifiers: set[tuple[str, str]] | None = None,
+        connections: set[tuple[str, str]] | None = None,
+    ) -> Any:
+        """Return fake stale tracker devices and missing router lookup results."""
+        if identifiers is not None:
+            return None
+        if connections is not None:
+            return devices[next(iter(connections))[1]]
+        return None
+
+    device_registry = MagicMock()
+    device_registry.async_get_device = MagicMock(side_effect=get_device)
+    device_registry.async_get = MagicMock(return_value=None)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", MagicMock(return_value=device_registry))
+
+    ph_hass.config_entries.async_update_entry = MagicMock()
+    await dt_mod.async_setup_entry(ph_hass, entry, MagicMock())
+
+    device_registry.async_get.assert_called_once_with(missing_parent_id)
+    device_registry.async_update_device.assert_called_once_with(
+        stale_device.id,
+        remove_config_entry_id=entry.entry_id,
+        via_device_id=None,
+    )
