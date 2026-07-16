@@ -995,55 +995,15 @@ async def test_async_setup_entry_continues_after_missing_device_unique_id_valida
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "stored_device_id",
+    ("stored_device_id", "router_device_id", "should_create_issue", "setup_succeeds"),
     [
-        pytest.param("", id="blank"),
-        pytest.param("   ", id="whitespace"),
-        pytest.param(123, id="number"),
-    ],
-)
-async def test_async_setup_entry_rejects_malformed_stored_device_id(
-    monkeypatch: pytest.MonkeyPatch,
-    ph_hass: Any,
-    coordinator_capture: Any,
-    fake_coordinator: Any,
-    make_config_entry: Callable[..., MockConfigEntry],
-    stored_device_id: object,
-) -> None:
-    """async_setup_entry should reject malformed stored IDs before probing a router."""
-    client = _make_valid_setup_client()
-    client.get_device_unique_id = AsyncMock(return_value="valid-observed-id")
-    create_client = MagicMock(return_value=client)
-    monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", create_client)
-    monkeypatch.setattr(
-        init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
-    )
-    entry = make_config_entry(
-        data={
-            CONF_URL: "http://1.2.3.4",
-            CONF_USERNAME: "u",
-            CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: stored_device_id,
-        },
-        options={},
-    )
-
-    assert await init_mod.async_setup_entry(ph_hass, entry) is False
-    create_client.assert_not_called()
-    client.validate.assert_not_awaited()
-    client.get_device_unique_id.assert_not_awaited()
-    assert coordinator_capture.instances == []
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("router_device_id", "should_create_issue"),
-    [
-        ("other", True),
-        (None, False),
-        ("", False),
-        ("   ", False),
-        (123, False),
+        pytest.param("dev1", "other", True, False, id="mismatch"),
+        pytest.param("dev1", None, False, True, id="missing-router-id"),
+        pytest.param("dev1", "", False, True, id="blank-router-id"),
+        pytest.param("dev1", "   ", False, True, id="whitespace-router-id"),
+        pytest.param("dev1", 123, False, True, id="non-string-router-id"),
+        pytest.param("", "valid-router-id", False, False, id="blank-stored-id"),
+        pytest.param(123, "valid-router-id", False, False, id="non-string-stored-id"),
     ],
 )
 async def test_async_setup_entry_device_id_mismatch(
@@ -1054,12 +1014,15 @@ async def test_async_setup_entry_device_id_mismatch(
     fake_coordinator: Any,
     make_config_entry: Callable[..., MockConfigEntry],
     caplog: pytest.LogCaptureFixture,
+    stored_device_id: object,
     router_device_id: Any,
     should_create_issue: bool,
+    setup_succeeds: bool,
 ) -> None:
-    """async_setup_entry should fail when client reports mismatched device id."""
+    """async_setup_entry should handle malformed and mismatched device IDs safely."""
     caplog.set_level(logging.ERROR, logger=init_mod.__name__)
-    patch_opnsense_client(monkeypatch, init_mod, fake_client(device_id=router_device_id))
+    create_client = MagicMock(side_effect=fake_client(device_id=router_device_id))
+    patch_opnsense_client(monkeypatch, init_mod, create_client)
     # use shared coordinator capture fixture
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
@@ -1071,7 +1034,7 @@ async def test_async_setup_entry_device_id_mismatch(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            init_mod.CONF_DEVICE_UNIQUE_ID: stored_device_id,
         },
         options={},
     )
@@ -1108,11 +1071,17 @@ async def test_async_setup_entry_device_id_mismatch(
         }
         assert "fixable repair issue" in caplog.text
         assert "rebuild entities" in caplog.text
-    else:
+    elif setup_succeeds:
         assert res is True
         assert not issue_kwargs
         assert hass.config_entries.async_forward_entry_setups.await_count == 1
         assert not any(getattr(inst, "shut", False) for inst in coordinator_capture.instances)
+    else:
+        assert res is False
+        assert not issue_kwargs
+        create_client.assert_not_called()
+        assert coordinator_capture.instances == []
+        assert hass.config_entries.async_forward_entry_setups.await_count == 0
 
 
 @pytest.mark.asyncio
