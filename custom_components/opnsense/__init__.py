@@ -179,7 +179,12 @@ def _resolve_device_id_probe_state(
                 "hass-opnsense is shutting down."
             )
         return False
-    if repair_marker is None:
+    if (
+        repair_marker is None
+        and is_valid_device_id(config_device_id)
+        and is_valid_device_id(router_device_id)
+        and router_device_id == config_device_id
+    ):
         _async_delete_device_id_mismatch_issue(hass, entry)
     return True
 

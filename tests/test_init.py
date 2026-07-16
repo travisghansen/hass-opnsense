@@ -4263,6 +4263,57 @@ async def test_async_setup_entry_preserves_marker_and_skips_stale_issue_delete(
     reconciliation.mark_complete.assert_called_once()
 
 
+@pytest.mark.parametrize(
+    ("router_device_id", "expects_delete_issue"),
+    [
+        pytest.param(None, False, id="missing-router-id"),
+        pytest.param("", False, id="blank-router-id"),
+        pytest.param("   ", False, id="whitespace-router-id"),
+        pytest.param(123, False, id="non-string-router-id"),
+        pytest.param("dev1", True, id="valid-matching-router-id"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_async_setup_entry_deletes_stale_mismatch_issue_only_on_matching_valid_ids(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    fake_client: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+    router_device_id: Any,
+    expects_delete_issue: bool,
+) -> None:
+    """Only delete stale mismatch issues when configured and observed IDs are both valid and equal."""
+    create_client = MagicMock(side_effect=fake_client(device_id=router_device_id))
+    patch_opnsense_client(monkeypatch, init_mod, create_client)
+    coordinator = _make_setup_coordinator()
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+        },
+        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+    )
+    ph_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+    ph_hass.config_entries.async_reload = AsyncMock()
+    delete_issue = MagicMock()
+    monkeypatch.setattr(init_mod.ir, "async_delete_issue", delete_issue)
+    ph_hass.data = {}
+
+    result = await init_mod.async_setup_entry(ph_hass, entry)
+    assert result is True
+
+    expected_issue_id = f"{entry.entry_id}_device_id_mismatched"
+    delete_issue_ids = [call[0][2] for call in delete_issue.call_args_list if len(call[0]) > 2]
+    if expects_delete_issue:
+        assert expected_issue_id in delete_issue_ids
+    else:
+        assert expected_issue_id not in delete_issue_ids
+
+
 @pytest.mark.asyncio
 async def test_reconciliation_prepare_failure_recreates_marker_issue_without_unloading_platforms(
     monkeypatch: pytest.MonkeyPatch,
