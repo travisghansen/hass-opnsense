@@ -159,6 +159,7 @@ def _resolve_device_id_probe_state(
 ) -> bool:
     """Handle marker and mismatch-issue decisions after device-ID probe."""
     if repair_marker is not None and router_device_id != repair_marker.new_device_id:
+        _async_create_marker_repair_issue(hass, entry, repair_marker)
         _LOGGER.error(
             "Device-ID reconciliation probe mismatch for %s: expected %s, got %s",
             entry.title,

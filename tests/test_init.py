@@ -4599,6 +4599,80 @@ async def test_reconciliation_prepare_failure_recreates_marker_issue_without_unl
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "router_device_id",
+    [
+        pytest.param(None, id="missing-router-id"),
+        pytest.param("", id="blank-router-id"),
+        pytest.param("   ", id="whitespace-router-id"),
+        pytest.param(123, id="non-string-router-id"),
+        pytest.param("other-dev", id="other-valid-router-id"),
+    ],
+)
+async def test_async_setup_entry_recreates_marker_issue_on_probe_mismatch_before_forwarding(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+    router_device_id: Any,
+) -> None:
+    """Marker-backed mismatch should recreate the issue and stop before platform setup."""
+    client = _make_valid_setup_client()
+
+    async def _get_device_unique_id(expected_id: str | None = None) -> Any:
+        """Return a probe value that triggers marker-based probe mismatch."""
+        return router_device_id
+
+    client.get_device_unique_id = _get_device_unique_id
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
+    )
+    coordinator = _make_setup_coordinator()
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+
+    marker = {"version": 1, "old_device_id": "old-dev", "new_device_id": "dev1"}
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            init_mod.REPAIR_MARKER_KEY: marker,
+        },
+        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+        unique_id="dev1",
+    )
+    ph_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+    ph_hass.config_entries.async_unload_platforms = AsyncMock()
+    ph_hass.config_entries.async_reload = MagicMock()
+    create_issue = MagicMock()
+    monkeypatch.setattr(init_mod.ir, "async_create_issue", create_issue)
+
+    result = await init_mod.async_setup_entry(ph_hass, entry)
+
+    assert result is False
+    assert ph_hass.config_entries.async_forward_entry_setups.await_count == 0
+    assert ph_hass.config_entries.async_unload_platforms.await_count == 0
+    assert create_issue.call_count == 1
+    issue_kwargs = create_issue.call_args.kwargs
+    assert issue_kwargs["issue_id"] == f"{entry.entry_id}_device_id_mismatched"
+    assert issue_kwargs["is_fixable"] is True
+    assert issue_kwargs["is_persistent"] is False
+    assert issue_kwargs["data"] == {
+        "entry_id": entry.entry_id,
+        "old_device_id": "old-dev",
+        "new_device_id": "dev1",
+    }
+    assert issue_kwargs["translation_placeholders"] == {
+        "entry_title": entry.title,
+        "old_device_id": "old-dev",
+        "new_device_id": "dev1",
+    }
+    coordinator.async_shutdown.assert_awaited_once()
+    coordinator.async_config_entry_first_refresh.assert_not_awaited()
+    client.async_close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_async_setup_entry_registers_update_listener_after_forwarding(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
