@@ -490,9 +490,6 @@ def _normalize_url(url: str) -> str:
     if "://" not in fix_url:
         fix_url = "https://" + fix_url
     url_parts = urlparse(fix_url)
-    if not url_parts.scheme and not url_parts.netloc:
-        fix_url = "https://" + fix_url
-        url_parts = urlparse(fix_url)
 
     if not url_parts.netloc:
         raise OPNsenseInvalidURL
@@ -515,7 +512,7 @@ def _normalize_url(url: str) -> str:
     return f"{url_parts.scheme}://{host}"
 
 
-async def _clean_and_parse_url(user_input: MutableMapping[str, Any]) -> None:
+def _clean_and_parse_url(user_input: MutableMapping[str, Any]) -> None:
     """Normalize and validate the configured OPNsense base URL."""
     user_input[CONF_URL] = _normalize_url(user_input.get(CONF_URL, ""))
     _LOGGER.debug("[config_flow] Cleaned URL: %s", user_input[CONF_URL])
@@ -538,7 +535,7 @@ async def _validate_client_details(
         OPNsenseBelowMinFirmware: Firmware is below the minimum supported version.
         OPNsenseMissingDeviceUniqueID: Backend did not return a device unique ID.
     """
-    await _clean_and_parse_url(user_input)
+    _clean_and_parse_url(user_input)
 
     client = create_opnsense_client(
         hass=hass,
@@ -584,7 +581,7 @@ async def _validate_carp_client_details(
     Raises:
         OPNsenseError: If URL, client, responder, or CARP VIP validation fails.
     """
-    await _clean_and_parse_url(user_input)
+    _clean_and_parse_url(user_input)
 
     client = create_opnsense_client(
         hass=hass,
@@ -1011,8 +1008,6 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self.async_abort(reason="carp_device_url_conflict")
         return None
 
-    # gets invoked without user input initially
-    # when user submits has user_input
     async def async_step_user(
         self, user_input: MutableMapping[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -1248,13 +1243,13 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_import(self, user_input: MutableMapping[str, Any]) -> ConfigFlowResult:
-        """Handle YAML import by delegating to the user step.
+        """Handle YAML import by delegating to the device step.
 
         Args:
             user_input: Imported configuration payload.
 
         Returns:
-            ConfigFlowResult: Result from `async_step_user`.
+            ConfigFlowResult: Result returned from `async_step_device`.
         """
         return await self.async_step_device(user_input)
 

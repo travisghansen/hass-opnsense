@@ -387,15 +387,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if type(err) is not OPNsenseConnectionError:
                 raise
             raise ConfigEntryNotReady("OPNsense validation could not complete") from err
-    except ConfigEntryNotReady:
-        if client is not None:
-            await client.async_close()
-        raise
-    except TimeoutError:
-        if client is not None:
-            await client.async_close()
-        raise
-    except OPNsenseError:
+    except ConfigEntryNotReady, TimeoutError, OPNsenseError:
         if client is not None:
             await client.async_close()
         raise

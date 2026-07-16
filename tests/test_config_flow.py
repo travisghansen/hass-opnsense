@@ -198,35 +198,33 @@ def test_device_entry_sort_key_numeric_ip_sorting() -> None:
     assert subnet_key_2 < subnet_key_10
 
 
-@pytest.mark.asyncio
-async def test_clean_and_parse_url_success_and_failure() -> None:
+def test_clean_and_parse_url_success_and_failure() -> None:
     """Clean and parse URL, fix missing scheme and handle invalid URL."""
     ui = {cf_mod.CONF_URL: "router.example"}
-    await cf_mod._clean_and_parse_url(ui)
+    cf_mod._clean_and_parse_url(ui)
     assert ui[cf_mod.CONF_URL] == "https://router.example"
 
     auth_ui = {cf_mod.CONF_URL: "https://user:pass@router.example:8443"}
-    await cf_mod._clean_and_parse_url(auth_ui)
+    cf_mod._clean_and_parse_url(auth_ui)
     assert auth_ui[cf_mod.CONF_URL] == "https://router.example:8443"
 
     ipv6_ui = {cf_mod.CONF_URL: "https://user:pass@[2001:db8::1]:8443"}
-    await cf_mod._clean_and_parse_url(ipv6_ui)
+    cf_mod._clean_and_parse_url(ipv6_ui)
     assert ipv6_ui[cf_mod.CONF_URL] == "https://[2001:db8::1]:8443"
 
     invalid_port_ui = {cf_mod.CONF_URL: "https://router.example:abc"}
     with pytest.raises(cf_mod.OPNsenseInvalidURL):
-        await cf_mod._clean_and_parse_url(invalid_port_ui)
+        cf_mod._clean_and_parse_url(invalid_port_ui)
 
     # invalid netloc -> raise OPNsenseInvalidURL
     with pytest.raises(cf_mod.OPNsenseInvalidURL):
-        await cf_mod._clean_and_parse_url({cf_mod.CONF_URL: ""})
+        cf_mod._clean_and_parse_url({cf_mod.CONF_URL: ""})
 
     missing_host_ui = {cf_mod.CONF_URL: "https://:8443"}
     with pytest.raises(cf_mod.OPNsenseInvalidURL):
-        await cf_mod._clean_and_parse_url(missing_host_ui)
+        cf_mod._clean_and_parse_url(missing_host_ui)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("input_url", "expected_url"),
     [
@@ -235,18 +233,15 @@ async def test_clean_and_parse_url_success_and_failure() -> None:
         ("https://router.example:443", "https://router.example"),
     ],
 )
-async def test_clean_and_parse_url_with_and_without_scheme(
-    input_url: str, expected_url: str
-) -> None:
+def test_clean_and_parse_url_with_and_without_scheme(input_url: str, expected_url: str) -> None:
     """Normalize URLs that omit a scheme and retain canonical default-port behavior."""
     user_input = {cf_mod.CONF_URL: input_url}
 
-    await cf_mod._clean_and_parse_url(user_input)
+    cf_mod._clean_and_parse_url(user_input)
 
     assert user_input[cf_mod.CONF_URL] == expected_url
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("input_url", "expected_url"),
     [
@@ -256,13 +251,11 @@ async def test_clean_and_parse_url_with_and_without_scheme(
         ("http://router.example:8080", "http://router.example:8080"),
     ],
 )
-async def test_clean_and_parse_url_canonicalizes_default_ports(
-    input_url: str, expected_url: str
-) -> None:
+def test_clean_and_parse_url_canonicalizes_default_ports(input_url: str, expected_url: str) -> None:
     """Normalize default HTTP ports while preserving non-default ports."""
     user_input = {cf_mod.CONF_URL: input_url}
 
-    await cf_mod._clean_and_parse_url(user_input)
+    cf_mod._clean_and_parse_url(user_input)
 
     assert user_input[cf_mod.CONF_URL] == expected_url
 
