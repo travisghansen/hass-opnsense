@@ -158,20 +158,25 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
                 None,
             )
 
-            tracker_device_ids: set[str] = {
-                ent.device_id
+            tracker_entries = [
+                ent
                 for ent in entity_entries
-                if ent.domain == Platform.DEVICE_TRACKER and ent.device_id is not None
+                if getattr(ent, "domain", str(ent.entity_id).split(".", 1)[0])
+                == Platform.DEVICE_TRACKER
+            ]
+            tracker_device_ids: set[str] = {
+                device_id
+                for ent in tracker_entries
+                if (device_id := getattr(ent, "device_id", None)) is not None
             }
-            for ent in entity_entries:
-                if ent.domain == Platform.DEVICE_TRACKER:
-                    _LOGGER.debug(
-                        "[async_update_listener] dissociating "
-                        "device_tracker entity %s from config entry %s",
-                        ent.entity_id,
-                        entry.entry_id,
-                    )
-                    entity_registry.async_remove(ent.entity_id)
+            for ent in tracker_entries:
+                _LOGGER.debug(
+                    "[async_update_listener] dissociating "
+                    "device_tracker entity %s from config entry %s",
+                    ent.entity_id,
+                    entry.entry_id,
+                )
+                entity_registry.async_remove(ent.entity_id)
 
             for device in devices:
                 if device.id not in tracker_device_ids:

@@ -6,7 +6,6 @@ and device info formatting for the integration's device tracker entities.
 
 from collections.abc import Callable, Iterable, MutableMapping
 from datetime import UTC, datetime, timedelta
-import importlib
 from types import MappingProxyType
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, call

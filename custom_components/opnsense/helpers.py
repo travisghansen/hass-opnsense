@@ -11,8 +11,8 @@ from aiopnsense import OPNsenseClient
 from homeassistant.config_entries import ConfigEntries, ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME, CONF_VERIFY_SSL
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceEntry, DeviceRegistry
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from homeassistant.helpers.device_registry import DeviceEntry, DeviceRegistry
 from homeassistant.util import slugify
 
 from .const import CONF_DEVICE_UNIQUE_ID, DEFAULT_VERIFY_SSL, DOMAIN
