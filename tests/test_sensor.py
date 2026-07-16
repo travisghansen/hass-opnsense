@@ -351,6 +351,131 @@ def test_carp_active_responder_unavailable_without_name(
     assert sensor.extra_state_attributes == {}
 
 
+def test_carp_active_responder_unavailable_without_system_info(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """The active responder should fail closed when system information is absent."""
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {}
+    sensor = OPNsenseCarpActiveResponderSensor(
+        config_entry=make_config_entry(data={"entry_type": "carp"}),
+        coordinator=coordinator,
+        entity_description=SensorEntityDescription(key="carp.active_responder"),
+    )
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
+    assert sensor.extra_state_attributes == {}
+
+
+def test_carp_value_normalization_handles_empty_and_conversion_errors() -> None:
+    """CARP normalization should return blanks for absent or unconvertible values."""
+
+    class UnconvertibleValue:
+        """Value whose string conversion fails."""
+
+        def __str__(self) -> str:
+            """Raise a representative conversion error."""
+            raise ValueError
+
+    assert sensor_module._normalize_carp_value(None) == ""
+    assert sensor_module._normalize_carp_value(UnconvertibleValue()) == ""
+
+
+@pytest.mark.parametrize(
+    ("subnet", "expected"),
+    [("  ", ""), ("not an ip", "not_an_ip")],
+)
+def test_carp_vip_subnet_normalization_fallbacks(subnet: str, expected: str) -> None:
+    """CARP subnet normalization should handle blanks and non-IP identifiers."""
+    assert sensor_module._normalize_carp_vip_subnet(subnet) == expected
+
+
+@pytest.mark.parametrize("key", ["carp.vip..192_0_2_1", "carp.vip.1."])
+def test_parse_carp_vip_sensor_key_rejects_blank_components(key: str) -> None:
+    """CARP VIP keys with blank identity components should be rejected."""
+    assert sensor_module._parse_carp_vip_sensor_key(key) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "state",
+    [[], {"carp": {"interfaces": "invalid"}}],
+)
+async def test_compile_carp_vip_sensors_rejects_malformed_containers(
+    state: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP VIP compilation should reject malformed state and interface containers."""
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+
+    assert (
+        await sensor_module._compile_carp_vip_sensors(make_config_entry(), coordinator, state) == []
+    )
+
+
+@pytest.mark.asyncio
+async def test_compile_carp_vip_sensors_skips_bad_rows_and_duplicates(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP VIP compilation should skip malformed, incomplete, and duplicate rows."""
+    valid = {"vhid": "1", "subnet": "192.0.2.1", "status": "MASTER"}
+    state = {
+        "carp": {"interfaces": ["invalid", {"vhid": ""}, {"subnet": "192.0.2.1"}, valid, valid]}
+    }
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+
+    entities = await sensor_module._compile_carp_vip_sensors(
+        make_config_entry(), coordinator, state
+    )
+
+    assert len(entities) == 1
+
+
+def test_carp_vip_sensor_skips_malformed_and_nonmatching_rows(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP VIP updates should ignore unusable rows and fail closed without a match."""
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {
+        "carp": {
+            "interfaces": [
+                "invalid",
+                {"vhid": "", "subnet": "192.0.2.1"},
+                {"vhid": "2", "subnet": "192.0.2.2", "status": "MASTER"},
+            ]
+        }
+    }
+    sensor = OPNsenseCarpVipSensor(
+        config_entry=make_config_entry(data={"entry_type": "carp"}),
+        coordinator=coordinator,
+        entity_description=SensorEntityDescription(key="carp.vip.1.192_0_2_1"),
+    )
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
+
+
+def test_carp_vip_sensor_non_string_status_uses_failure_icon(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP VIP sensors should use the failure icon for non-string states."""
+    sensor = OPNsenseCarpVipSensor(
+        config_entry=make_config_entry(data={"entry_type": "carp"}),
+        coordinator=MagicMock(spec=OPNsenseDataUpdateCoordinator),
+        entity_description=SensorEntityDescription(key="carp.vip.1.192_0_2_1"),
+    )
+    sensor._attr_native_value = 1
+
+    assert sensor.icon == "mdi:close-network-outline"
+
+
 @pytest.mark.asyncio
 async def test_static_key_sensor_cpu_and_boot_and_certificates(
     make_config_entry: Callable[..., MockConfigEntry],

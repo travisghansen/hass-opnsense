@@ -394,6 +394,42 @@ async def test_async_setup_entry_carp_entry_retries_on_transient_validation_fail
 
 
 @pytest.mark.asyncio
+async def test_async_setup_entry_carp_reraises_connection_error_subclass(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP setup must preserve specialized connection failures."""
+
+    class SpecializedConnectionError(OPNsenseConnectionError):
+        """Connection failure carrying more specific client semantics."""
+
+    client = MagicMock()
+    client.validate = AsyncMock(side_effect=SpecializedConnectionError("specialized"))
+    client.async_close = AsyncMock(return_value=True)
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", MagicMock(return_value=client)
+    )
+
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+        },
+        options={},
+    )
+    hass = cast("MagicMock", ph_hass)
+    hass.data = {}
+
+    with pytest.raises(SpecializedConnectionError, match="specialized"):
+        await init_mod.async_setup_entry(hass, entry)
+
+    client.async_close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "initial_data",
     [

@@ -285,6 +285,28 @@ def test_url_conflict_matches_persisted_default_ports(
     assert result["reason"] == "carp_device_url_conflict"
 
 
+def test_url_conflict_skips_invalid_stored_urls_and_continues_scanning() -> None:
+    """Ignore unusable stored URLs and continue until a normalized match is found."""
+    entries = [
+        MagicMock(entry_id="non-string", data={cf_mod.CONF_URL: 123}),
+        MagicMock(entry_id="malformed", data={cf_mod.CONF_URL: "https://"}),
+        MagicMock(entry_id="mismatch", data={cf_mod.CONF_URL: "other.example"}),
+        MagicMock(
+            entry_id="match",
+            data={cf_mod.CONF_URL: "https://router.example", CONF_ENTRY_TYPE: ENTRY_TYPE_CARP},
+        ),
+    ]
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+    flow.hass.config_entries.async_entries.return_value = entries
+
+    result = flow._async_abort_if_url_conflict(url="https://router.example", carp=False)
+
+    assert result is not None
+    assert result["type"] == "abort"
+    assert result["reason"] == "carp_device_url_conflict"
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("exception_factory", "expected"),
@@ -627,6 +649,35 @@ async def test_async_step_carp_validates_without_device_id_and_sets_entry_type(
     assert result["data"].get(cf_mod.CONF_GRANULAR_SYNC_OPTIONS) is None
     client.validate.assert_awaited_once_with(require_device_id=False)
     client.get_device_unique_id.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_async_step_carp_without_input_shows_empty_form() -> None:
+    """Opening CARP setup without input should show the initial empty form."""
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+
+    result = await flow.async_step_carp(None)
+
+    assert result["type"] == "form"
+    assert result["step_id"] == "carp"
+    assert result["errors"] == {}
+    assert result["description_placeholders"]["firmware"] == "Unknown"
+
+
+@pytest.mark.asyncio
+async def test_async_step_import_delegates_to_device_step() -> None:
+    """YAML import should delegate its payload unchanged to the device step."""
+    flow = cf_mod.OPNsenseConfigFlow()
+    user_input = _make_basic_device_input()
+    expected: dict[str, Any] = {"type": "abort", "reason": "test"}
+    device_step = AsyncMock(return_value=expected)
+    object.__setattr__(flow, "async_step_device", device_step)
+
+    result = await flow.async_step_import(user_input)
+
+    assert result == expected
+    device_step.assert_awaited_once_with(user_input)
 
 
 @pytest.mark.asyncio

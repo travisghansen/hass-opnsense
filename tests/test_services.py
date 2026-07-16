@@ -368,6 +368,31 @@ async def test_get_clients_explicit_carp_target_raises_no_target_clients(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "target_kwargs",
+    [
+        pytest.param({"opndevice_id": "carp-device"}, id="device-target"),
+        pytest.param({"opnentity_id": "sensor.carp"}, id="entity-target"),
+    ],
+)
+async def test_get_clients_only_carp_entries_reject_explicit_targets(
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    target_kwargs: dict[str, str],
+) -> None:
+    """Explicit targets fail when runtime state contains only CARP entries."""
+    hass_local = ph_hass
+    carp_client = MagicMock(name="carp")
+    hass_local.data = {DOMAIN: {"carp": carp_client}}
+    _add_entry_for_client(hass_local, make_config_entry, "carp", ENTRY_TYPE_CARP)
+
+    with pytest.raises(ServiceValidationError) as exc_info:
+        await services_mod._get_clients(hass_local, **target_kwargs)
+
+    assert exc_info.value.translation_key == "no_target_clients"
+
+
+@pytest.mark.asyncio
 async def test_get_clients_registry_errors_raise_for_explicit_targets(
     caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
