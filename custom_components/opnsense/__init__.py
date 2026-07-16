@@ -179,7 +179,10 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
                 entity_registry.async_remove(ent.entity_id)
 
             for device in devices:
-                if device.id not in tracker_device_ids:
+                is_current_router_child = (
+                    router_device_id is not None and device.via_device_id == router_device_id
+                )
+                if device.id not in tracker_device_ids and not is_current_router_child:
                     continue
                 from_current_router, replacement_router_id = detach_shared_router_parent(
                     shared_config_entry_id=entry.entry_id,

@@ -1813,6 +1813,64 @@ async def test_async_update_listener_detaches_no_parent_tracker_device(
 
 
 @pytest.mark.asyncio
+async def test_async_update_listener_detaches_tracker_device_without_entity(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Detach a router-linked tracker device after its entity was already removed."""
+    entry = make_config_entry(
+        data={init_mod.CONF_DEVICE_UNIQUE_ID: "router-mac"},
+        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+    )
+    setattr(entry.runtime_data, init_mod.SHOULD_RELOAD, True)
+
+    ph_hass.config_entries.async_reload = AsyncMock()
+    ph_hass.data = {}
+
+    er_reg = MagicMock()
+    monkeypatch.setattr(init_mod.er, "async_get", MagicMock(return_value=er_reg))
+    monkeypatch.setattr(
+        init_mod.er,
+        "async_entries_for_config_entry",
+        MagicMock(return_value=[]),
+    )
+
+    router_device = MagicMock(
+        id="router-device-id",
+        identifiers={(init_mod.DOMAIN, "router-mac")},
+        via_device_id=None,
+    )
+    tracker_without_entity = MagicMock(
+        id="tracker-without-entity",
+        identifiers=set(),
+        via_device_id=router_device.id,
+        config_entries={entry.entry_id},
+    )
+    unrelated_device = MagicMock(
+        id="unrelated-device",
+        identifiers=set(),
+        via_device_id="other-router-id",
+        config_entries={entry.entry_id},
+    )
+    dr_reg = MagicMock()
+    monkeypatch.setattr(init_mod.dr, "async_get", MagicMock(return_value=dr_reg))
+    monkeypatch.setattr(
+        init_mod.dr,
+        "async_entries_for_config_entry",
+        MagicMock(return_value=[router_device, tracker_without_entity, unrelated_device]),
+    )
+
+    await init_mod._async_update_listener(ph_hass, entry)
+
+    dr_reg.async_update_device.assert_called_once_with(
+        tracker_without_entity.id,
+        remove_config_entry_id=entry.entry_id,
+        via_device_id=None,
+    )
+
+
+@pytest.mark.asyncio
 async def test_async_update_listener_reparents_tracker_link_to_remaining_opnsense_router(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
