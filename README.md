@@ -12,7 +12,7 @@
 
 Join `OPNsense` with `Home Assistant`!
 
-`hass-opnsense` uses [`aiopnsense`](https://pypi.org/project/aiopnsense/) as the backend client library to integrate OPNsense with Home Assistant. 
+`hass-opnsense` uses [`aiopnsense`](https://pypi.org/project/aiopnsense/) as the backend client library to integrate OPNsense with Home Assistant.
 
 Source and releases for `aiopnsense`:
 
