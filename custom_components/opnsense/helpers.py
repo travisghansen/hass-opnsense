@@ -41,9 +41,17 @@ def dict_get(data: MutableMapping[str, Any], path: str, default: Any | None = No
     result: Any | None = data
 
     for key in path_list:
+        if isinstance(result, list):
+            if not key.isdecimal():
+                return default
+            index = int(key)
+            if index >= len(result):
+                return default
+            result = result[index]
+            continue
         if key.isnumeric():
             key = int(key)
-        if isinstance(result, MutableMapping | list) and key in result:
+        if isinstance(result, MutableMapping) and key in result:
             result = result[key]
         else:
             result = default

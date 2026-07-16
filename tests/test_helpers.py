@@ -20,6 +20,7 @@ from custom_components.opnsense.helpers import (
     config_entry_identity,
     create_opnsense_client,
     create_opnsense_client_from_config_entry,
+    dict_get,
     firewall_nat_switch_unique_ids_from_payload,
     firewall_rule_id_from_payload,
     firewall_rule_switch_unique_ids_from_payload,
@@ -30,6 +31,21 @@ from custom_components.opnsense.helpers import (
     is_usable_carp_vip,
     normalize_arp_mac,
 )
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        pytest.param("items.1.name", "second", id="valid-index"),
+        pytest.param("items.invalid.name", "missing", id="invalid-segment"),
+        pytest.param("items.2.name", "missing", id="out-of-range-index"),
+    ],
+)
+def test_dict_get_traverses_list_indexes(path: str, expected: str) -> None:
+    """Traverse list indexes safely when resolving dotted paths."""
+    data = {"items": [{"name": "first"}, {"name": "second"}]}
+
+    assert dict_get(data, path, "missing") == expected
 
 
 @pytest.mark.parametrize(

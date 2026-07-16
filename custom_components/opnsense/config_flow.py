@@ -933,30 +933,35 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         """Initialize transient config-flow storage."""
         self._config: dict[str, Any] = {}
 
-    def _async_abort_if_url_conflict(self, *, url: str, carp: bool) -> ConfigFlowResult | None:
-        """Abort when a device and CARP entry reuse the same URL.
+    def _async_abort_if_url_conflict(
+        self, *, url: str, carp: bool, exclude_entry_id: str | None = None
+    ) -> ConfigFlowResult | None:
+        """Abort when another entry reuses the same normalized URL.
 
         Args:
             url: Normalized OPNsense URL being configured.
             carp: Whether the submitted entry is a CARP entry.
+            exclude_entry_id: Config entry to exclude during reconfiguration.
 
         Returns:
             ConfigFlowResult | None: Conflict abort result, if applicable.
         """
         for existing_entry in self.hass.config_entries.async_entries(DOMAIN):
-            if is_carp_entry(existing_entry) == carp:
+            if existing_entry.entry_id == exclude_entry_id:
                 continue
             existing_url = existing_entry.data.get(CONF_URL)
-            if existing_url == url:
-                return self.async_abort(reason="carp_device_url_conflict")
             if not isinstance(existing_url, str):
                 continue
             try:
                 existing_url = _normalize_url(existing_url)
             except OPNsenseInvalidURL, ValueError:
                 continue
-            if existing_url == url:
+            if existing_url != url:
+                continue
+            if is_carp_entry(existing_entry) != carp:
                 return self.async_abort(reason="carp_device_url_conflict")
+            if carp:
+                return self.async_abort(reason="already_configured")
         return None
 
     async def async_step_user(
@@ -1134,6 +1139,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
                         abort = self._async_abort_if_url_conflict(
                             url=self._config[CONF_URL],
                             carp=True,
+                            exclude_entry_id=reconfigure_entry.entry_id,
                         )
                         if abort:
                             return abort
@@ -1156,6 +1162,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
                         abort = self._async_abort_if_url_conflict(
                             url=self._config[CONF_URL],
                             carp=False,
+                            exclude_entry_id=reconfigure_entry.entry_id,
                         )
                         if abort:
                             return abort

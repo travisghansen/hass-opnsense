@@ -79,7 +79,7 @@
       },
       "reconfigure": {
         "data": {
-          "name": "CARP VIP display name",
+          "name": "Display name",
           "url": "URL",
           "username": "API Key",
           "password": "API Secret",

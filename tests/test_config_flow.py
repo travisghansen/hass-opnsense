@@ -522,6 +522,48 @@ async def test_async_step_carp_aborts_on_device_url_conflict(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("stored_url", "normalized_url"),
+    [
+        ("https://router.example:443", "https://router.example"),
+        ("http://router.example:80", "http://router.example"),
+    ],
+)
+async def test_async_step_carp_aborts_on_legacy_default_port_duplicate(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    stored_url: str,
+    normalized_url: str,
+) -> None:
+    """CARP setup should reject canonical duplicates stored with default ports."""
+    client = _CarpFlowClient()
+    patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
+    existing_entry = make_config_entry(
+        data={
+            cf_mod.CONF_URL: stored_url,
+            cf_mod.CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+            cf_mod.CONF_USERNAME: "carp-user",
+            cf_mod.CONF_PASSWORD: "carp-pass",
+        },
+        options={},
+    )
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+    flow.hass.config_entries = MagicMock()
+    flow.hass.config_entries.async_entries = MagicMock(return_value=[existing_entry])
+    abort_match = MagicMock()
+    object.__setattr__(flow, "_async_abort_entries_match", abort_match)
+    user_input = _make_basic_carp_input()
+    user_input[cf_mod.CONF_URL] = normalized_url
+
+    result = await flow.async_step_carp(user_input=user_input)
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "already_configured"
+    abort_match.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_async_step_device_allows_same_url_for_non_carp_entry(
     monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
@@ -2025,6 +2067,120 @@ async def test_reconfigure_carp_aborts_on_normalized_duplicate_url(
 
     abort_match.assert_called_once_with({cf_mod.CONF_URL: "https://carp-router.example"})
     update_and_abort.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("stored_url", "normalized_url"),
+    [
+        ("https://router.example:443", "https://router.example"),
+        ("http://router.example:80", "http://router.example"),
+    ],
+)
+async def test_reconfigure_carp_aborts_on_legacy_default_port_duplicate(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    stored_url: str,
+    normalized_url: str,
+) -> None:
+    """CARP reconfigure should reject another canonical legacy URL duplicate."""
+    config_entry = make_config_entry(
+        entry_id="carp-entry",
+        data={
+            cf_mod.CONF_URL: "https://old.example",
+            cf_mod.CONF_USERNAME: "u",
+            cf_mod.CONF_PASSWORD: "p",
+            cf_mod.CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+            cf_mod.CONF_NAME: "Router CARP VIP",
+        },
+        options={},
+    )
+    duplicate_entry = make_config_entry(
+        data={
+            cf_mod.CONF_URL: stored_url,
+            cf_mod.CONF_USERNAME: "other-user",
+            cf_mod.CONF_PASSWORD: "other-password",
+            cf_mod.CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+        },
+        options={},
+    )
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+    flow.hass.config_entries = MagicMock()
+    flow.hass.config_entries.async_entries = MagicMock(return_value=[config_entry, duplicate_entry])
+    monkeypatch.setattr(cf_mod, "validate_input", AsyncMock(return_value={}))
+    object.__setattr__(flow, "_get_reconfigure_entry", lambda: config_entry)
+    abort_match = MagicMock()
+    object.__setattr__(flow, "_async_abort_entries_match", abort_match)
+    update_and_abort = MagicMock()
+    object.__setattr__(flow, "async_update_and_abort", update_and_abort)
+
+    result = await flow.async_step_reconfigure(
+        user_input={
+            cf_mod.CONF_NAME: "Router CARP VIP",
+            cf_mod.CONF_URL: normalized_url,
+            cf_mod.CONF_USERNAME: "u",
+            cf_mod.CONF_PASSWORD: "p",
+            cf_mod.CONF_VERIFY_SSL: True,
+        }
+    )
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "already_configured"
+    abort_match.assert_not_called()
+    update_and_abort.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("stored_url", "normalized_url"),
+    [
+        ("https://router.example:443", "https://router.example"),
+        ("http://router.example:80", "http://router.example"),
+    ],
+)
+async def test_reconfigure_carp_ignores_own_legacy_default_port_url(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    stored_url: str,
+    normalized_url: str,
+) -> None:
+    """CARP reconfigure should not treat its canonical legacy URL as a duplicate."""
+    config_entry = make_config_entry(
+        entry_id="carp-entry",
+        data={
+            cf_mod.CONF_URL: stored_url,
+            cf_mod.CONF_USERNAME: "u",
+            cf_mod.CONF_PASSWORD: "p",
+            cf_mod.CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+            cf_mod.CONF_NAME: "Router CARP VIP",
+        },
+        options={},
+    )
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+    flow.hass.config_entries = MagicMock()
+    flow.hass.config_entries.async_entries = MagicMock(return_value=[config_entry])
+    monkeypatch.setattr(cf_mod, "validate_input", AsyncMock(return_value={}))
+    object.__setattr__(flow, "_get_reconfigure_entry", lambda: config_entry)
+    abort_match = MagicMock()
+    object.__setattr__(flow, "_async_abort_entries_match", abort_match)
+    update_and_abort = MagicMock(return_value={"type": "abort", "reason": "reconfigure_successful"})
+    object.__setattr__(flow, "async_update_and_abort", update_and_abort)
+
+    result = await flow.async_step_reconfigure(
+        user_input={
+            cf_mod.CONF_NAME: "Router CARP VIP",
+            cf_mod.CONF_URL: normalized_url,
+            cf_mod.CONF_USERNAME: "u",
+            cf_mod.CONF_PASSWORD: "p",
+            cf_mod.CONF_VERIFY_SSL: True,
+        }
+    )
+
+    assert result == {"type": "abort", "reason": "reconfigure_successful"}
+    abort_match.assert_called_once_with({cf_mod.CONF_URL: normalized_url})
+    update_and_abort.assert_called_once()
 
 
 @pytest.mark.asyncio
