@@ -1,4 +1,4 @@
-"""Update aiopnsense dependency pins in manifest and pyproject files."""
+"""Update aiopnsense dependency pins in manifest, pyproject, and prek files."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from urllib.request import urlopen
 
 PYPI_URL = "https://pypi.org/pypi/aiopnsense/json"
 PIN_PREFIX = "aiopnsense=="
-PYPROJECT_PIN_RE = re.compile(r'(?m)^(\s*)"aiopnsense==[^"]+"(,?)\s*$')
+TOML_PIN_RE = re.compile(r'(?m)^(\s*)"aiopnsense==[^"]+"(,?)\s*$')
 PRERELEASE_RE = re.compile(r"(?i)(?:[.\-_]?(?:a|alpha|b|beta|c|pre|preview|rc|dev)\d*)")
 
 
@@ -25,12 +25,14 @@ class UpdateResult:
     Attributes:
         current: Current manifest aiopnsense pin version.
         pyproject_current: Current pyproject aiopnsense pin version.
+        prek_current: Current prek mypy-hook aiopnsense pin version.
         latest: aiopnsense version selected as the update target.
         update_needed: Whether at least one pin should be updated.
     """
 
     current: str
     pyproject_current: str
+    prek_current: str
     latest: str
     update_needed: bool
 
@@ -206,6 +208,46 @@ def _read_pyproject_version(pyproject_path: Path) -> str:
     return pins[0].removeprefix(PIN_PREFIX)
 
 
+def _read_prek_version(prek_path: Path) -> str:
+    """Read the aiopnsense pin from the prek mypy hook dependencies.
+
+    Args:
+        prek_path: Path to prek.toml.
+
+    Returns:
+        Current aiopnsense version used by the isolated mypy hook.
+
+    Raises:
+        ValueError: If the mypy hook does not contain exactly one aiopnsense pin.
+    """
+    prek_config = tomllib.loads(prek_path.read_text())
+    repos = prek_config.get("repos", [])
+    if not isinstance(repos, list):
+        raise TypeError(f"Expected repos list in {prek_path}")
+
+    pins: list[str] = []
+    for repo in repos:
+        if not isinstance(repo, dict):
+            continue
+        hooks = repo.get("hooks", [])
+        if not isinstance(hooks, list):
+            continue
+        for hook in hooks:
+            if not isinstance(hook, dict) or hook.get("id") != "mypy":
+                continue
+            dependencies = hook.get("additional_dependencies", [])
+            if not isinstance(dependencies, list):
+                raise TypeError(f"Expected mypy additional_dependencies list in {prek_path}")
+            pins.extend(dependency for dependency in dependencies if _is_aiopnsense_pin(dependency))
+
+    if len(pins) != 1:
+        raise ValueError(
+            f"Expected exactly one pinned aiopnsense dependency in the mypy hook in {prek_path}; "
+            f"found {len(pins)}"
+        )
+    return pins[0].removeprefix(PIN_PREFIX)
+
+
 def _is_aiopnsense_pin(requirement: object) -> bool:
     """Return whether a dependency entry is an aiopnsense exact pin.
 
@@ -263,7 +305,7 @@ def _write_pyproject_version(pyproject_path: Path, latest_version: str) -> None:
         ValueError: If there is not exactly one pinned aiopnsense dependency line.
     """
     text = pyproject_path.read_text()
-    updated, count = PYPROJECT_PIN_RE.subn(rf'\1"{PIN_PREFIX}{latest_version}"\2', text)
+    updated, count = TOML_PIN_RE.subn(rf'\1"{PIN_PREFIX}{latest_version}"\2', text)
     if count != 1:
         raise ValueError(
             f"Expected to update exactly one aiopnsense pin in {pyproject_path}; updated {count}"
@@ -271,10 +313,30 @@ def _write_pyproject_version(pyproject_path: Path, latest_version: str) -> None:
     pyproject_path.write_text(updated)
 
 
+def _write_prek_version(prek_path: Path, latest_version: str) -> None:
+    """Write the aiopnsense pin into the prek mypy hook dependencies.
+
+    Args:
+        prek_path: Path to prek.toml.
+        latest_version: Version to pin.
+
+    Raises:
+        ValueError: If there is not exactly one aiopnsense dependency line.
+    """
+    text = prek_path.read_text()
+    updated, count = TOML_PIN_RE.subn(rf'\1"{PIN_PREFIX}{latest_version}"\2', text)
+    if count != 1:
+        raise ValueError(
+            f"Expected to update exactly one aiopnsense pin in {prek_path}; updated {count}"
+        )
+    prek_path.write_text(updated)
+
+
 def update_pins(
     *,
     manifest_path: Path,
     pyproject_path: Path,
+    prek_path: Path,
     latest_version: str,
     write: bool = True,
 ) -> UpdateResult:
@@ -283,6 +345,7 @@ def update_pins(
     Args:
         manifest_path: Path to manifest.json.
         pyproject_path: Path to pyproject.toml.
+        prek_path: Path to prek.toml.
         latest_version: Latest aiopnsense version available for evaluation.
         write: Whether to rewrite dependency files when an update is needed.
 
@@ -291,17 +354,22 @@ def update_pins(
     """
     current = _read_manifest_version(manifest_path)
     pyproject_current = _read_pyproject_version(pyproject_path)
+    prek_current = _read_prek_version(prek_path)
     latest_is_newer = _latest_is_newer(current, latest_version)
     target_version = latest_version if latest_is_newer else current
-    update_needed = latest_is_newer or pyproject_current != target_version
+    update_needed = (
+        latest_is_newer or pyproject_current != target_version or prek_current != target_version
+    )
 
     if write and update_needed:
         _write_manifest_version(manifest_path, target_version)
         _write_pyproject_version(pyproject_path, target_version)
+        _write_prek_version(prek_path, target_version)
 
     return UpdateResult(
         current=current,
         pyproject_current=pyproject_current,
+        prek_current=prek_current,
         latest=target_version,
         update_needed=update_needed,
     )
@@ -317,6 +385,7 @@ def _write_github_outputs(result: UpdateResult, output_path: Path) -> None:
     with output_path.open("a") as output_file:
         output_file.write(f"current={result.current}\n")
         output_file.write(f"pyproject_current={result.pyproject_current}\n")
+        output_file.write(f"prek_current={result.prek_current}\n")
         output_file.write(f"latest={result.latest}\n")
         output_file.write(f"update_needed={str(result.update_needed).lower()}\n")
 
@@ -333,6 +402,7 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest-path", type=Path, required=True)
     parser.add_argument("--pyproject-path", type=Path, required=True)
+    parser.add_argument("--prek-path", type=Path, required=True)
     parser.add_argument("--latest-version")
     parser.add_argument("--write", action="store_true")
     parser.add_argument("--github-output", type=Path)
@@ -353,6 +423,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     result = update_pins(
         manifest_path=args.manifest_path,
         pyproject_path=args.pyproject_path,
+        prek_path=args.prek_path,
         latest_version=latest_version,
         write=args.write,
     )
