@@ -10,8 +10,6 @@ import re
 from typing import Any
 from urllib.parse import quote_plus, urlparse
 
-import aiohttp
-from aiohttp import ClientError
 from aiopnsense.exceptions import (
     OPNsenseBelowMinFirmware,
     OPNsenseConnectionError,
@@ -373,8 +371,8 @@ async def validate_input(
             await _validate_client_details(
                 hass=hass, user_input=user_input, expected_id=expected_id
             )
-    except (OPNsenseError, TimeoutError, ClientError) as err:
-        validation_error = _get_connection_error_details(error=err, user_input=user_input)
+    except OPNsenseError as err:
+        validation_error = _get_validation_error_details(error=err, user_input=user_input)
         if validation_error is None:
             raise
         error_key, log_message = validation_error
@@ -433,53 +431,6 @@ def _get_validation_error_details(
                     [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
                 ),
             )
-
-    return None
-
-
-def _get_connection_error_details(
-    error: BaseException,
-    user_input: Mapping[str, Any],
-) -> tuple[str, str] | None:
-    """Map connection-level validation exceptions to config-flow error keys."""
-    if isinstance(error, TimeoutError):
-        return (
-            "connect_timeout",
-            cleanse_sensitive_data(
-                f"Connection TimeoutError. {type(error).__name__}: {error}",
-                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
-            ),
-        )
-
-    if isinstance(error, aiohttp.ClientResponseError) and error.status == 403:
-        return (
-            "privilege_missing",
-            cleanse_sensitive_data(
-                f"aiohttp Error. {type(error).__name__}: {error}",
-                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
-            ),
-        )
-
-    if isinstance(error, aiohttp.ClientSSLError):
-        return (
-            "cannot_connect_ssl",
-            cleanse_sensitive_data(
-                f"aiohttp SSL Error. {type(error).__name__}: {error}",
-                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
-            ),
-        )
-
-    if isinstance(error, aiohttp.ClientError):
-        return (
-            "cannot_connect",
-            cleanse_sensitive_data(
-                f"aiohttp Error. {type(error).__name__}: {error}",
-                [user_input.get(CONF_USERNAME), user_input.get(CONF_PASSWORD)],
-            ),
-        )
-
-    if isinstance(error, OPNsenseError):
-        return _get_validation_error_details(error=error, user_input=user_input)
 
     return None
 
@@ -1446,8 +1397,8 @@ class OPNsenseOptionsFlow(OptionsFlow):
             dt_entries: DeviceEntries = await _get_dt_entries(
                 hass=self.hass, config=self.config_entry.data, selected_devices=selected_devices
             )
-        except (OPNsenseError, ClientError, TimeoutError) as err:
-            validation_error = _get_connection_error_details(error=err, user_input=self._config)
+        except OPNsenseError as err:
+            validation_error = _get_validation_error_details(error=err, user_input=self._config)
             if validation_error is None:
                 raise
             error_key, log_message = validation_error

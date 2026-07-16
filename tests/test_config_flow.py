@@ -8,7 +8,6 @@ from collections.abc import Callable
 from typing import Any, Never
 from unittest.mock import AsyncMock, MagicMock
 
-from aiohttp import ClientError, ClientResponseError, ClientSSLError, ServerTimeoutError
 from aiopnsense import exceptions as aiopnsense_exceptions
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import AbortFlow
@@ -288,48 +287,26 @@ def test_url_conflict_matches_persisted_default_ports(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("exc_key", "expected"),
+    ("exception_factory", "expected"),
     [
-        ("below_min", "below_min_firmware"),
-        ("unknown_fw", "unknown_firmware"),
-        ("missing_id", "missing_device_unique_id"),
-        ("invalid_url", "invalid_url_format"),
-        ("ssl", "cannot_connect_ssl"),
-        ("invalid_auth", "invalid_auth"),
-        ("privilege_missing", "privilege_missing"),
-        ("timeout", "connect_timeout"),
-        ("connection", "cannot_connect"),
-        ("aiohttp_client_error", "cannot_connect"),
+        (aiopnsense_exceptions.OPNsenseBelowMinFirmware, "below_min_firmware"),
+        (aiopnsense_exceptions.OPNsenseUnknownFirmware, "unknown_firmware"),
+        (aiopnsense_exceptions.OPNsenseMissingDeviceUniqueID, "missing_device_unique_id"),
+        (aiopnsense_exceptions.OPNsenseInvalidURL, "invalid_url_format"),
+        (aiopnsense_exceptions.OPNsenseSSLError, "cannot_connect_ssl"),
+        (aiopnsense_exceptions.OPNsenseInvalidAuth, "invalid_auth"),
+        (aiopnsense_exceptions.OPNsensePrivilegeMissing, "privilege_missing"),
+        (aiopnsense_exceptions.OPNsenseTimeoutError, "connect_timeout"),
+        (aiopnsense_exceptions.OPNsenseConnectionError, "cannot_connect"),
     ],
 )
 async def test_validate_input_exception_mapping(
-    monkeypatch: pytest.MonkeyPatch, exc_key: Any, expected: Any
+    monkeypatch: pytest.MonkeyPatch,
+    exception_factory: type[aiopnsense_exceptions.OPNsenseError],
+    expected: str,
 ) -> None:
-    """Ensure validate_input maps various exceptions to the expected error code."""
-    # Build exception object lazily to avoid constructor issues at collection time
-    exc: BaseException
-    if exc_key == "below_min":
-        exc = aiopnsense_exceptions.OPNsenseBelowMinFirmware()
-    elif exc_key == "unknown_fw":
-        exc = aiopnsense_exceptions.OPNsenseUnknownFirmware()
-    elif exc_key == "missing_id":
-        exc = aiopnsense_exceptions.OPNsenseMissingDeviceUniqueID("x")
-    elif exc_key == "invalid_url":
-        exc = cf_mod.OPNsenseInvalidURL("u")
-    elif exc_key == "ssl":
-        exc = aiopnsense_exceptions.OPNsenseSSLError("ssl error")
-    elif exc_key == "invalid_auth":
-        exc = aiopnsense_exceptions.OPNsenseInvalidAuth("auth error")
-    elif exc_key == "privilege_missing":
-        exc = aiopnsense_exceptions.OPNsensePrivilegeMissing("privilege error")
-    elif exc_key == "timeout":
-        exc = aiopnsense_exceptions.OPNsenseTimeoutError("t")
-    elif exc_key == "connection":
-        exc = aiopnsense_exceptions.OPNsenseConnectionError("boom")
-    elif exc_key == "aiohttp_client_error":
-        exc = ClientError("boom")
-    else:
-        exc = OSError("unknown")
+    """Ensure validate_input maps public aiopnsense exceptions to form errors."""
+    exc = exception_factory("boom")
 
     async def _raiser(*args, **kwargs) -> Never:
         """Raise the prepared exception so input error mapping can be validated.
@@ -347,98 +324,6 @@ async def test_validate_input_exception_mapping(
     errors: dict[str, str] = {}
     res = await cf_mod.validate_input(hass=MagicMock(), user_input={}, errors=errors)
     assert res.get("base") == expected
-
-
-@pytest.mark.asyncio
-async def test_validate_input_maps_raw_aiohttp_forbidden_response(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Aiohttp 403 responses should map to privilege_missing."""
-
-    async def _raise(*args: object, **kwargs: object) -> Never:
-        """Raise a fake 403 response error to exercise privilege mapping."""
-        error = ClientResponseError(
-            request_info=MagicMock(real_url="https://x"),
-            history=(),
-            status=403,
-            message="forbidden",
-            headers=MagicMock(),
-        )
-        raise error
-
-    monkeypatch.setattr(cf_mod, "_validate_client_details", _raise)
-    errors: dict[str, str] = {}
-    res = await cf_mod.validate_input(hass=MagicMock(), user_input={}, errors=errors)
-
-    assert res["base"] == "privilege_missing"
-
-
-@pytest.mark.asyncio
-async def test_validate_input_maps_raw_aiohttp_ssl_error(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Aiohttp SSL errors should map to cannot_connect_ssl."""
-
-    async def _raise(*args: object, **kwargs: object) -> Never:
-        """Raise a raw aiohttp SSL error to exercise ssl mapping."""
-        error = ClientSSLError(MagicMock(host="x", port=443, ssl=True), OSError("ssl"))
-        raise error
-
-    monkeypatch.setattr(cf_mod, "_validate_client_details", _raise)
-    errors: dict[str, str] = {}
-    res = await cf_mod.validate_input(hass=MagicMock(), user_input={}, errors=errors)
-
-    assert res["base"] == "cannot_connect_ssl"
-
-
-@pytest.mark.parametrize(
-    (
-        "failing_attribute",
-        "carp",
-    ),
-    [
-        ("get_system_info", False),
-        ("get_device_unique_id", False),
-        ("get_carp", True),
-    ],
-)
-async def test_validate_input_maps_aiohttp_client_error_from_enrichment_calls(
-    monkeypatch: pytest.MonkeyPatch,
-    failing_attribute: str,
-    carp: bool,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Raw aiohttp errors from enrichment calls should map to cannot_connect."""
-    username = "admin"
-    password = "supersecret"
-    client = _CarpFlowClient()
-    setattr(
-        client,
-        failing_attribute,
-        AsyncMock(side_effect=ClientError(f"timeout user={username} pass={password}")),
-    )
-    patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
-
-    user_input = _make_basic_carp_input() if carp else _make_basic_device_input()
-    user_input.update(
-        {
-            cf_mod.CONF_USERNAME: username,
-            cf_mod.CONF_PASSWORD: password,
-        }
-    )
-
-    with caplog.at_level("ERROR"):
-        result = await cf_mod.validate_input(
-            hass=MagicMock(),
-            user_input=user_input,
-            errors={},
-            carp=carp,
-        )
-
-    assert result["base"] == "cannot_connect"
-    assert "[redacted]" in caplog.text
-    assert username not in caplog.text
-    assert password not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -481,32 +366,6 @@ async def test_validate_input_timeout_uses_connect_timeout_error(
         raise aiopnsense_exceptions.OPNsenseTimeoutError(
             f"timed out for user={username} pass={password}"
         )
-
-    monkeypatch.setattr(cf_mod, "_validate_client_details", _raiser)
-    with caplog.at_level("ERROR"):
-        result = await cf_mod.validate_input(
-            hass=MagicMock(),
-            user_input={cf_mod.CONF_USERNAME: username, cf_mod.CONF_PASSWORD: password},
-            errors={},
-        )
-
-    assert result.get("base") == "connect_timeout"
-    assert "[redacted]" in caplog.text
-    assert username not in caplog.text
-    assert password not in caplog.text
-
-
-@pytest.mark.asyncio
-async def test_validate_input_timeout_subclass_of_client_error_still_maps_connect_timeout(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Timeout subclasses that also appear as ClientError map to connect_timeout."""
-    username = "admin"
-    password = "supersecret"
-
-    async def _raiser(*args: object, **kwargs: object) -> Never:
-        """Raise an exception that is both TimeoutError and ClientError."""
-        raise ServerTimeoutError(f"timeout user={username} pass={password}")
 
     monkeypatch.setattr(cf_mod, "_validate_client_details", _raiser)
     with caplog.at_level("ERROR"):
@@ -1667,8 +1526,6 @@ async def test_device_tracker_shows_form_when_no_user_input(
         (cf_mod.OPNsenseSSLError, "cannot_connect_ssl"),
         (aiopnsense_exceptions.OPNsensePrivilegeMissing, "privilege_missing"),
         (aiopnsense_exceptions.OPNsenseTimeoutError, "connect_timeout"),
-        (ServerTimeoutError, "connect_timeout"),
-        (ClientError, "cannot_connect"),
     ],
     ids=[
         "cannot_connect",
@@ -1676,8 +1533,6 @@ async def test_device_tracker_shows_form_when_no_user_input(
         "ssl",
         "privilege_missing",
         "timeout",
-        "server_timeout",
-        "aiohttp",
     ],
 )
 @pytest.mark.asyncio
@@ -1716,58 +1571,6 @@ async def test_device_tracker_handles_arp_lookup_failure(
     assert res["errors"]["base"] == expected_base_error
     validated = res["data_schema"]({})
     assert validated[cf_mod.CONF_DEVICES] == ["aa:bb:cc:dd:ee:ff"]
-
-
-@pytest.mark.asyncio
-async def test_device_tracker_handles_builtin_timeout_lookup_failure(
-    monkeypatch: pytest.MonkeyPatch,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Builtin TimeoutError from ARP lookup should map to connect_timeout."""
-    cfg = make_config_entry(
-        data={cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"},
-        options={cf_mod.CONF_DEVICES: ["AA-BB-CC-DD-EE-FF"]},
-    )
-    flow = _make_options_flow(cfg)
-    flow._config = dict(cfg.data)
-    flow._options = dict(cfg.options)
-
-    async def _raise(*args, **kwargs) -> Never:
-        raise TimeoutError("timed out")
-
-    monkeypatch.setattr(cf_mod, "_get_dt_entries", _raise)
-
-    res = await flow.async_step_device_tracker(user_input=None)
-    assert res["type"] == "form"
-    assert res["errors"]["base"] == "connect_timeout"
-    validated = res["data_schema"]({})
-    assert validated[cf_mod.CONF_DEVICES] == ["aa:bb:cc:dd:ee:ff"]
-
-
-@pytest.mark.asyncio
-async def test_device_tracker_handles_opnsense_timeout_error(
-    monkeypatch: pytest.MonkeyPatch,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """OPNsense timeouts should keep picker rendering with the saved MAC fallback."""
-    cfg = make_config_entry(
-        data={cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"},
-        options={cf_mod.CONF_DEVICES: ["AA-BB-CC-DD-EE-FF"]},
-    )
-    flow = _make_options_flow(cfg)
-    flow._config = dict(cfg.data)
-    flow._options = dict(cfg.options)
-
-    async def _raise_timeout(*args: object, **kwargs: object) -> Never:
-        """Raise an OPNsense timeout to exercise connect_timeout mapping."""
-        raise aiopnsense_exceptions.OPNsenseTimeoutError("request timed out")
-
-    monkeypatch.setattr(cf_mod, "_get_dt_entries", _raise_timeout)
-    res_timeout = await flow.async_step_device_tracker(user_input=None)
-    assert res_timeout["type"] == "form"
-    assert res_timeout["errors"]["base"] == "connect_timeout"
-    validated_timeout = res_timeout["data_schema"]({})
-    assert validated_timeout[cf_mod.CONF_DEVICES] == ["aa:bb:cc:dd:ee:ff"]
 
 
 @pytest.mark.asyncio
