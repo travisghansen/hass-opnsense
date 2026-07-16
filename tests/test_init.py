@@ -22,7 +22,7 @@ from aiopnsense.exceptions import (
 )
 from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME, CONF_VERIFY_SSL, Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.util import slugify
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -4023,6 +4023,140 @@ async def test_async_setup_entry_cleans_up_when_platform_forwarding_fails(
     remove_listener.assert_not_called()
     assert entry.runtime_data is None
     assert entry.entry_id not in hass.data.get(init_mod.DOMAIN, {})
+
+
+@pytest.mark.asyncio
+async def test_reconciliation_incomplete_platform_does_not_finalize_or_clear_marker(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """An unreported forwarded platform retains the marker and skips pruning."""
+    client = _make_valid_setup_client()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
+    )
+    coordinator = _make_setup_coordinator()
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+    marker = {"version": 1, "old_device_id": "old-dev", "new_device_id": "dev1"}
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            init_mod.REPAIR_MARKER_KEY: marker,
+        },
+        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+        unique_id="dev1",
+    )
+    reconciliation = MagicMock()
+    reconciliation.require_platforms_complete.side_effect = init_mod.RepairReconciliationError(
+        "platform discovery incomplete: sensor"
+    )
+    monkeypatch.setattr(init_mod, "RepairReconciliation", lambda *_args: reconciliation)
+    ph_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+    ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
+    ph_hass.data = {}
+
+    result = await init_mod.async_setup_entry(ph_hass, entry)
+
+    assert result is False
+    ph_hass.config_entries.async_forward_entry_setups.assert_awaited_once()
+    reconciliation.prepare.assert_called_once_with()
+    reconciliation.require_platforms_complete.assert_called_once()
+    reconciliation.finalize.assert_not_called()
+    reconciliation.mark_complete.assert_not_called()
+    ph_hass.config_entries.async_update_entry.assert_not_called()
+    assert entry.data[init_mod.REPAIR_MARKER_KEY] == marker
+
+
+@pytest.mark.asyncio
+async def test_reconciliation_marker_clear_false_retains_marker(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """A rejected marker-clear update leaves persisted repair intent retryable."""
+    client = _make_valid_setup_client()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
+    )
+    coordinator = _make_setup_coordinator()
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+    marker = {"version": 1, "old_device_id": "old-dev", "new_device_id": "dev1"}
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            init_mod.REPAIR_MARKER_KEY: marker,
+        },
+        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+        unique_id="dev1",
+    )
+    reconciliation = MagicMock()
+    monkeypatch.setattr(init_mod, "RepairReconciliation", lambda *_args: reconciliation)
+    ph_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+    ph_hass.config_entries.async_update_entry = MagicMock(return_value=False)
+    ph_hass.data = {}
+
+    result = await init_mod.async_setup_entry(ph_hass, entry)
+
+    assert result is False
+    reconciliation.require_platforms_complete.assert_called_once()
+    reconciliation.finalize.assert_called_once_with()
+    ph_hass.config_entries.async_update_entry.assert_called_once()
+    reconciliation.mark_complete.assert_not_called()
+    assert entry.data[init_mod.REPAIR_MARKER_KEY] == marker
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "clear_error",
+    [HomeAssistantError("storage failed"), KeyError("entry removed")],
+)
+async def test_reconciliation_marker_clear_exception_retains_marker(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+    clear_error: BaseException,
+) -> None:
+    """Handled marker-clear failures preserve repair intent for retry."""
+    client = _make_valid_setup_client()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
+    )
+    coordinator = _make_setup_coordinator()
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+    marker = {"version": 1, "old_device_id": "old-dev", "new_device_id": "dev1"}
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            init_mod.REPAIR_MARKER_KEY: marker,
+        },
+        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+        unique_id="dev1",
+    )
+    reconciliation = MagicMock()
+    monkeypatch.setattr(init_mod, "RepairReconciliation", lambda *_args: reconciliation)
+    ph_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+    ph_hass.config_entries.async_update_entry = MagicMock(side_effect=clear_error)
+    ph_hass.data = {}
+
+    result = await init_mod.async_setup_entry(ph_hass, entry)
+
+    assert result is False
+    ph_hass.config_entries.async_forward_entry_setups.assert_awaited_once()
+    reconciliation.require_platforms_complete.assert_called_once()
+    reconciliation.finalize.assert_called_once_with()
+    ph_hass.config_entries.async_update_entry.assert_called_once()
+    reconciliation.mark_complete.assert_not_called()
+    assert entry.data[init_mod.REPAIR_MARKER_KEY] == marker
 
 
 @pytest.mark.asyncio

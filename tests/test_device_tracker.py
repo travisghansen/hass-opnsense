@@ -1138,6 +1138,38 @@ async def test_async_setup_entry_removes_previous_mac(
     assert hass.config_entries.async_update_entry.called
 
 
+@pytest.mark.asyncio
+async def test_async_setup_entry_preserves_previous_device_during_reconciliation(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_reg_factory: Any,
+) -> None:
+    """Active reconciliation owns stale deletion, including tracker devices."""
+    coordinator.data = {"arp_table": []}
+    entry = make_config_entry(
+        data={dt_mod.TRACKED_MACS: ["old:mac:1"], pkg.CONF_DEVICE_UNIQUE_ID: "dev1"},
+        entry_id="e_reconcile",
+    )
+    setattr(entry.runtime_data, dt_mod.DEVICE_TRACKER_COORDINATOR, coordinator)
+    fake = fake_reg_factory(device_exists=True, device_id="dev_to_preserve")
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: fake, raising=False)
+    monkeypatch.setattr(dt_mod, "is_reconciliation_active", lambda _entry: True)
+    cleanup = MagicMock()
+    monkeypatch.setattr(dt_mod, "_cleanup_stale_tracked_devices", cleanup)
+    record = MagicMock()
+    monkeypatch.setattr(dt_mod, "record_desired_entities", record)
+    ph_hass.config_entries.async_update_entry = MagicMock()
+
+    await dt_mod.async_setup_entry(
+        ph_hass, entry, cast("AddEntitiesCallback", lambda _entities: None)
+    )
+
+    cleanup.assert_not_called()
+    record.assert_called_once_with(entry, "device_tracker", [])
+
+
 def test_handle_coordinator_update_expires_positive(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:

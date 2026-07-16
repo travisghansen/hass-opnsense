@@ -237,11 +237,11 @@ The persistent CARP maintenance switch remains on physical-node entries. Enablin
 
 ### Replacing OPNsense Hardware
 
-Hardware replacement is an entity-inventory boundary: interfaces, services, gateways, disks, and other inventory can change even when the connection URL and credentials stay the same. Keeping stale disabled entities is dangerous because they can look valid while referring to hardware that no longer exists.
+Hardware replacement is an entity-inventory boundary: interfaces, services, gateways, disks, and other inventory can change even when the connection URL and credentials stay the same.
 
-When an OPNsense device entry reports a device-ID mismatch, Home Assistant offers a fixable repair. Confirm it only after the replacement hardware is reachable and is the intended node. The repair unloads the entry, removes all current entities and devices for it (including disabled entities), updates the device ID, and schedules a reload to rebuild entities.
+When an OPNsense device entry reports a device-ID mismatch, Home Assistant offers a fixable repair. Confirm it only after the replacement hardware is reachable and is the intended node. The repair selectively reconciles the registry with the replacement's inventory: matching entities and devices retain their registry identity and customizations, inventory absent from the replacement is removed, and new inventory is created.
 
-The repair preserves the URL, credentials, and options. It discards entity registry names, enabled/disabled selections, areas, and other customizations. Recreated entity IDs may differ, so dashboards and automations that reference those IDs may need updates.
+The repair preserves the URL, credentials, and options. A retry marker makes an interrupted repair resumable. Dashboards and automations remain intact for preserved entity IDs; review references to inventory removed during reconciliation.
 
 [commits-shield]: https://img.shields.io/github/last-commit/travisghansen/hass-opnsense?style=for-the-badge
 [commits]: https://github.com/travisghansen/hass-opnsense/commits/main

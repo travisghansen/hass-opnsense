@@ -169,8 +169,8 @@
       "fix_flow": {
         "step": {
           "confirm": {
-            "title": "Rebuild entities for replacement hardware",
-            "description": "This destructive repair will remove all current entities and devices for {entry_title}, including disabled entities, then rebuild entities from device ID {new_device_id}. The URL, credentials, and options will be preserved. Entity registry names, enabled/disabled selections, areas, and other customizations will be discarded. Recreated entity IDs may differ, so dashboards and automations may need updates. The previous device ID was {old_device_id}."
+            "title": "Reconcile replacement hardware inventory",
+            "description": "This repair will reconcile {entry_title} with replacement device ID {new_device_id}. Matching entities and devices retain their registry identity and customizations, inventory absent from the replacement is removed, and new inventory is created. A retry marker makes the repair resumable if interrupted. Dashboards and automations remain intact for preserved entity IDs; review references to removed inventory. The previous device ID was {old_device_id}."
           }
         },
         "abort": {
@@ -179,7 +179,7 @@
           "cannot_connect": "The replacement hardware could not be confirmed. No changes were made.",
           "already_configured": "Another OPNsense device entry already uses the replacement device ID. No changes were made.",
           "cannot_unload": "The OPNsense device entry could not be unloaded safely. No registry changes were made.",
-          "repair_failed": "The replacement hardware repair did not finish. Some registry cleanup may already have occurred; review entities before retrying."
+          "repair_failed": "The replacement hardware repair did not finish. Retry to resume reconciliation from the saved marker."
         }
       }
     }

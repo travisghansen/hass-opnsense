@@ -19,6 +19,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.opnsense import repairs
 from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID, DOMAIN
+from custom_components.opnsense.repair_reconciliation import REPAIR_MARKER_KEY, build_repair_marker
 
 
 def _make_entry(
@@ -82,21 +83,10 @@ def _patch_registries(
     entities: list[Any] | None = None,
     devices: list[Any] | None = None,
 ) -> tuple[MagicMock, MagicMock]:
-    """Patch entity/device registry lookups and return the fake registries."""
+    """Return registry spies proving the confirmation flow does not mutate registries."""
+    del monkeypatch, entities, devices
     entity_registry = MagicMock()
     device_registry = MagicMock()
-    monkeypatch.setattr(repairs.er, "async_get", lambda hass: entity_registry)
-    monkeypatch.setattr(
-        repairs.er,
-        "async_entries_for_config_entry",
-        lambda registry, config_entry_id: entities or [],
-    )
-    monkeypatch.setattr(repairs.dr, "async_get", lambda hass: device_registry)
-    monkeypatch.setattr(
-        repairs.dr,
-        "async_entries_for_config_entry",
-        lambda registry, config_entry_id: devices or [],
-    )
     return entity_registry, device_registry
 
 
@@ -331,10 +321,10 @@ async def test_duplicate_entry_aborts_before_unload_or_registry_mutation(
 
 
 @pytest.mark.asyncio
-async def test_loaded_entry_unloads_before_registry_cleanup(
+async def test_loaded_entry_unloads_before_marker_update_and_reload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A loaded entry must unload before entities or devices are removed."""
+    """A loaded entry unloads before marker persistence and reload."""
     hass = MagicMock()
     entry = _make_entry(state=ConfigEntryState.LOADED)
     events: list[str] = []
@@ -415,11 +405,11 @@ async def test_loaded_entry_unloads_before_registry_cleanup(
         "duplicate_scan",
         "duplicate_check",
         "config_update",
-        "entity",
-        "device",
         "reload",
         "create",
     ]
+    entity_registry.async_remove.assert_not_called()
+    device_registry.async_update_device.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -596,6 +586,8 @@ async def test_entry_removed_during_unload_aborts_before_registry_mutation(
     entity_registry.async_remove.assert_not_called()
     device_registry.async_update_device.assert_not_called()
     hass.config_entries.async_update_entry.assert_not_called()
+    hass.config_entries.async_unload.assert_awaited_once_with(entry.entry_id)
+    hass.config_entries.async_reload.assert_not_awaited()
     hass.config_entries.async_schedule_reload.assert_not_called()
 
 
@@ -703,58 +695,6 @@ async def test_nested_mutable_options_mutation_during_probe_aborts_without_mutat
 
 
 @pytest.mark.asyncio
-async def test_cleanup_removes_disabled_entities_directly(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Entity cleanup should remove all entries, including integration/user-disabled ones."""
-    hass = MagicMock()
-    entry = _make_entry()
-    _configure_hass(hass, entry)
-    entities = [
-        SimpleNamespace(entity_id="sensor.enabled", disabled_by=None),
-        SimpleNamespace(entity_id="sensor.integration_disabled", disabled_by="integration"),
-        SimpleNamespace(entity_id="sensor.user_disabled", disabled_by="user"),
-    ]
-    entity_registry, _ = _patch_registries(monkeypatch, entities=entities)
-    _patch_probe_client(monkeypatch)
-    monkeypatch.setattr(repairs.ir, "async_delete_issue", MagicMock())
-    flow = _make_flow(hass, entry)
-
-    await flow.async_step_confirm({})
-
-    assert [call.args[0] for call in entity_registry.async_remove.call_args_list] == [
-        "sensor.enabled",
-        "sensor.integration_disabled",
-        "sensor.user_disabled",
-    ]
-
-
-@pytest.mark.asyncio
-async def test_cleanup_removes_only_this_config_entry_from_shared_devices(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Shared devices should retain associations with other config entries."""
-    hass = MagicMock()
-    entry = _make_entry()
-    _configure_hass(hass, entry)
-    devices = [
-        SimpleNamespace(id="device-only", config_entries={entry.entry_id}),
-        SimpleNamespace(id="device-shared", config_entries={entry.entry_id, "entry-2"}),
-    ]
-    _, device_registry = _patch_registries(monkeypatch, devices=devices)
-    _patch_probe_client(monkeypatch)
-    monkeypatch.setattr(repairs.ir, "async_delete_issue", MagicMock())
-    flow = _make_flow(hass, entry)
-
-    await flow.async_step_confirm({})
-
-    assert device_registry.async_update_device.call_args_list == [
-        (("device-only",), {"remove_config_entry_id": entry.entry_id}),
-        (("device-shared",), {"remove_config_entry_id": entry.entry_id}),
-    ]
-
-
-@pytest.mark.asyncio
 async def test_update_preserves_connection_and_options_while_replacing_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -771,7 +711,11 @@ async def test_update_preserves_connection_and_options_while_replacing_id(
 
     hass.config_entries.async_update_entry.assert_called_once_with(
         entry,
-        data={**entry.data, CONF_DEVICE_UNIQUE_ID: "other"},
+        data={
+            **entry.data,
+            CONF_DEVICE_UNIQUE_ID: "other",
+            REPAIR_MARKER_KEY: build_repair_marker("dev1", "other"),
+        },
         unique_id="other",
     )
     assert entry.data["url"] == "https://router.example"
@@ -829,7 +773,11 @@ async def test_entry_update_failure_aborts_without_registry_mutation(
     device_registry.async_update_device.assert_not_called()
     hass.config_entries.async_update_entry.assert_called_once_with(
         entry,
-        data={**entry.data, CONF_DEVICE_UNIQUE_ID: "other"},
+        data={
+            **entry.data,
+            CONF_DEVICE_UNIQUE_ID: "other",
+            REPAIR_MARKER_KEY: build_repair_marker("dev1", "other"),
+        },
         unique_id="other",
     )
     issue_delete.assert_not_called()
@@ -862,7 +810,11 @@ async def test_entry_update_false_aborts_before_registry_mutation_and_recovers_l
     device_registry.async_update_device.assert_not_called()
     hass.config_entries.async_update_entry.assert_called_once_with(
         entry,
-        data={**entry.data, CONF_DEVICE_UNIQUE_ID: "other"},
+        data={
+            **entry.data,
+            CONF_DEVICE_UNIQUE_ID: "other",
+            REPAIR_MARKER_KEY: build_repair_marker("dev1", "other"),
+        },
         unique_id="other",
     )
     hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
@@ -895,43 +847,17 @@ async def test_loaded_entry_update_exception_recovers_without_registry_mutation(
 
 
 @pytest.mark.asyncio
-async def test_expected_id_retry_reprobes_before_cleanup(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A retry must not clean registries when the firewall ID no longer matches."""
-    hass = MagicMock()
-    entry = _make_entry(state=ConfigEntryState.LOADED, device_id="other", unique_id="other")
-    _configure_hass(hass, entry)
-    entity_registry, device_registry = _patch_registries(
-        monkeypatch,
-        entities=[SimpleNamespace(entity_id="sensor.old")],
-        devices=[SimpleNamespace(id="device")],
-    )
-    client = _patch_probe_client(monkeypatch, observed_device_id="reverted")
-    flow = _make_flow(hass, entry, old_device_id="dev1", new_device_id="other")
-
-    result = await flow.async_step_confirm({})
-
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "entry_changed"
-    client.validate.assert_awaited_once_with()
-    client.get_device_unique_id.assert_awaited_once_with()
-    client.async_close.assert_awaited_once_with()
-    hass.config_entries.async_unload.assert_not_awaited()
-    entity_registry.async_remove.assert_not_called()
-    device_registry.async_update_device.assert_not_called()
-    hass.config_entries.async_update_entry.assert_not_called()
-    hass.config_entries.async_reload.assert_not_awaited()
-    hass.config_entries.async_schedule_reload.assert_not_called()
-
-
-@pytest.mark.asyncio
 async def test_expected_id_retry_rechecks_snapshot_after_unload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A retry must not clean registries after its entry changes during unload."""
     hass = MagicMock()
     entry = _make_entry(state=ConfigEntryState.LOADED, device_id="other", unique_id="other")
+    object.__setattr__(
+        entry,
+        "data",
+        {**entry.data, REPAIR_MARKER_KEY: build_repair_marker("dev1", "other")},
+    )
     _configure_hass(hass, entry)
     entity_registry, device_registry = _patch_registries(
         monkeypatch,
@@ -958,179 +884,6 @@ async def test_expected_id_retry_rechecks_snapshot_after_unload(
     hass.config_entries.async_update_entry.assert_not_called()
     hass.config_entries.async_reload.assert_not_awaited()
     hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
-
-
-@pytest.mark.asyncio
-async def test_loaded_entry_retry_cleanup_failure_recovers_with_reload(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Loaded retry cleanup failures should schedule a guarded recovery reload."""
-    hass = MagicMock()
-    entry = _make_entry(state=ConfigEntryState.LOADED, device_id="other", unique_id="other")
-    _configure_hass(hass, entry)
-
-    def _unload(entry_id: str) -> bool:
-        """Record unload and transition to an unloaded state."""
-        del entry_id
-        object.__setattr__(entry, "state", ConfigEntryState.NOT_LOADED)
-        return True
-
-    hass.config_entries.async_unload.side_effect = _unload
-    entity_registry, device_registry = _patch_registries(
-        monkeypatch,
-        entities=[SimpleNamespace(entity_id="sensor.old")],
-        devices=[SimpleNamespace(id="device")],
-    )
-
-    def _remove_entity(entity_id: str) -> None:
-        """Fail entity cleanup to exercise retry recovery behavior."""
-        del entity_id
-        raise HomeAssistantError("entity remove")
-
-    entity_registry.async_remove.side_effect = _remove_entity
-    issue_delete = MagicMock()
-    monkeypatch.setattr(repairs.ir, "async_delete_issue", issue_delete)
-    _patch_probe_client(monkeypatch)
-    flow = _make_flow(hass, entry, old_device_id="dev1", new_device_id="other")
-
-    result = await flow.async_step_confirm({})
-
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "repair_failed"
-    assert entry.state is ConfigEntryState.NOT_LOADED
-    assert entry.data == {
-        "url": "https://router.example",
-        "username": "api-user",
-        "password": "api-password",
-        CONF_DEVICE_UNIQUE_ID: "other",
-    }
-    assert entry.unique_id == "other"
-    hass.config_entries.async_unload.assert_awaited_once_with(entry.entry_id)
-    entity_registry.async_remove.assert_called_once_with("sensor.old")
-    device_registry.async_update_device.assert_called_once_with(
-        "device", remove_config_entry_id=entry.entry_id
-    )
-    hass.config_entries.async_update_entry.assert_not_called()
-    hass.config_entries.async_reload.assert_not_awaited()
-    hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
-    issue_delete.assert_not_called()
-
-    entity_registry.async_remove.side_effect = None
-    device_registry.async_update_device.side_effect = None
-    hass.config_entries.async_schedule_reload.reset_mock()
-
-    retry_result = await flow.async_step_confirm({})
-
-    assert retry_result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.state is ConfigEntryState.NOT_LOADED
-    assert entity_registry.async_remove.call_count == 2
-    assert device_registry.async_update_device.call_count == 2
-    assert hass.config_entries.async_reload.await_count == 1
-    hass.config_entries.async_schedule_reload.assert_not_called()
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("failure_point", "cleanup_exception"),
-    [
-        pytest.param("entity", HomeAssistantError, id="entity-homeassistant-error"),
-        pytest.param("entity", ValueError, id="entity-valueerror"),
-        pytest.param("device", HomeAssistantError, id="device-homeassistant-error"),
-        pytest.param("device", ValueError, id="device-valueerror"),
-    ],
-)
-async def test_cleanup_failure_keeps_entry_update_and_recovers_with_reload(
-    monkeypatch: pytest.MonkeyPatch,
-    failure_point: str,
-    cleanup_exception: type[BaseException],
-) -> None:
-    """Cleanup failure keeps replacement ID for a retry that reruns cleanup."""
-    hass = MagicMock()
-    entry = _make_entry()
-    _configure_hass(hass, entry)
-    entity_registry, device_registry = _patch_registries(
-        monkeypatch,
-        entities=[SimpleNamespace(entity_id="sensor.old")],
-        devices=[SimpleNamespace(id="device")],
-    )
-    observed_device_id = "other"
-    client = _patch_probe_client(monkeypatch, observed_device_id=observed_device_id)
-    issue_delete = MagicMock()
-    monkeypatch.setattr(repairs.ir, "async_delete_issue", issue_delete)
-
-    old_data = dict(entry.data)
-
-    def _update_entry(
-        config_entry: MockConfigEntry,
-        *,
-        data: dict[str, Any],
-        unique_id: str,
-    ) -> bool:
-        """Apply the requested entry mutation to the in-memory test object."""
-        del config_entry
-        object.__setattr__(entry, "data", dict(data))
-        object.__setattr__(entry, "unique_id", unique_id)
-        return True
-
-    hass.config_entries.async_update_entry.side_effect = _update_entry
-
-    if failure_point == "entity":
-
-        def _remove(entity_id: str) -> None:
-            """Fail entity cleanup to exercise recovery reload behavior."""
-            del entity_id
-            raise cleanup_exception("entity remove")
-
-        entity_registry.async_remove.side_effect = _remove
-    else:
-
-        def _update_device(device_id: str, **_: Any) -> None:
-            """Fail device cleanup to exercise recovery reload behavior."""
-            del device_id
-            raise cleanup_exception("device update")
-
-        device_registry.async_update_device.side_effect = _update_device
-
-    flow = _make_flow(hass, entry)
-
-    result = await flow.async_step_confirm({})
-
-    expected_updated_data = {**old_data, CONF_DEVICE_UNIQUE_ID: observed_device_id}
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "repair_failed"
-    entity_registry.async_remove.assert_called_once_with("sensor.old")
-    device_registry.async_update_device.assert_called_once_with(
-        "device", remove_config_entry_id=entry.entry_id
-    )
-    assert hass.config_entries.async_update_entry.call_args_list[0].kwargs == {
-        "data": expected_updated_data,
-        "unique_id": observed_device_id,
-    }
-    assert entry.data == expected_updated_data
-    assert entry.unique_id == observed_device_id
-    assert len(hass.config_entries.async_update_entry.call_args_list) == 1
-    issue_delete.assert_not_called()
-    hass.config_entries.async_reload.assert_not_awaited()
-    hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
-
-    hass.config_entries.async_reload.reset_mock()
-    entity_registry.async_remove.side_effect = None
-    device_registry.async_update_device.side_effect = None
-    client.get_device_unique_id.reset_mock()
-    hass.config_entries.async_schedule_reload.reset_mock()
-
-    retry_result = await flow.async_step_confirm({})
-
-    assert retry_result["type"] is FlowResultType.CREATE_ENTRY
-    assert hass.config_entries.async_update_entry.call_args_list[0].kwargs == {
-        "data": expected_updated_data,
-        "unique_id": observed_device_id,
-    }
-    client.get_device_unique_id.assert_awaited_once_with()
-    assert hass.config_entries.async_reload.await_count == 1
-    assert hass.config_entries.async_update_entry.call_count == 1
-    assert entity_registry.async_remove.call_count == 2
-    assert device_registry.async_update_device.call_count == 2
 
 
 @pytest.mark.asyncio
@@ -1183,11 +936,15 @@ async def test_reload_failure_keeps_entry_update_and_keeps_issue(
 
     result = await flow.async_step_confirm({})
 
-    expected_updated_data = {**old_data, CONF_DEVICE_UNIQUE_ID: observed_device_id}
+    expected_updated_data = {
+        **old_data,
+        CONF_DEVICE_UNIQUE_ID: observed_device_id,
+        REPAIR_MARKER_KEY: build_repair_marker("dev1", observed_device_id),
+    }
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "repair_failed"
-    entity_registry.async_remove.assert_called_once_with("sensor.old")
-    device_registry.async_update_device.assert_called_once()
+    entity_registry.async_remove.assert_not_called()
+    device_registry.async_update_device.assert_not_called()
     assert hass.config_entries.async_update_entry.call_args_list[0].kwargs == {
         "data": expected_updated_data,
         "unique_id": observed_device_id,
@@ -1198,189 +955,6 @@ async def test_reload_failure_keeps_entry_update_and_keeps_issue(
     issue_delete.assert_not_called()
     hass.config_entries.async_reload.assert_awaited_once_with(entry.entry_id)
     hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
-
-
-@pytest.mark.asyncio
-async def test_retry_recovers_when_reload_scheduling_failed(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Retry an updated repair by loading the entry and rerunning cleanup."""
-    hass = MagicMock()
-    entry = _make_entry()
-    _configure_hass(hass, entry)
-    entities = [SimpleNamespace(entity_id="sensor.old")]
-    device = SimpleNamespace(id="device")
-    devices = [device]
-    entity_registry, device_registry = _patch_registries(
-        monkeypatch,
-        entities=entities,
-        devices=devices,
-    )
-    entity_scan_calls: list[str] = []
-    device_scan_calls: list[str] = []
-
-    def _entity_scan(registry: Any, config_entry_id: str) -> list[Any]:
-        """Track entity scan attempts across retries."""
-        del registry
-        entity_scan_calls.append(config_entry_id)
-        return entities
-
-    def _device_scan(registry: Any, config_entry_id: str) -> list[Any]:
-        """Track device scan attempts across retries."""
-        del registry
-        device_scan_calls.append(config_entry_id)
-        return devices
-
-    monkeypatch.setattr(repairs.er, "async_entries_for_config_entry", _entity_scan)
-    monkeypatch.setattr(repairs.dr, "async_entries_for_config_entry", _device_scan)
-    client = _patch_probe_client(monkeypatch)
-
-    def _remove_entity(entity_id: str) -> None:
-        """Remove an entity from the fake registry after successful cleanup."""
-        entities[:] = [entity for entity in entities if entity.entity_id != entity_id]
-
-    def _remove_device(device_id: str, **_: Any) -> None:
-        """Remove a device from the fake registry after successful cleanup."""
-        devices[:] = [device for device in devices if device.id != device_id]
-
-    entity_registry.async_remove.side_effect = _remove_entity
-    device_registry.async_update_device.side_effect = _remove_device
-
-    def _update_entry(
-        config_entry: MockConfigEntry,
-        *,
-        data: dict[str, Any],
-        unique_id: str,
-    ) -> bool:
-        """Apply the replacement identity to the in-memory entry."""
-        object.__setattr__(config_entry, "data", dict(data))
-        object.__setattr__(config_entry, "unique_id", unique_id)
-        return True
-
-    hass.config_entries.async_update_entry.side_effect = _update_entry
-    hass.config_entries.async_reload.side_effect = [
-        HomeAssistantError("reload failed"),
-        True,
-    ]
-    hass.config_entries.async_schedule_reload.side_effect = HomeAssistantError("schedule failed")
-    flow = _make_flow(hass, entry)
-
-    first_result = await flow.async_step_confirm({})
-
-    assert first_result["type"] is FlowResultType.ABORT
-    assert first_result["reason"] == "repair_failed"
-    assert entry.data[CONF_DEVICE_UNIQUE_ID] == "other"
-
-    hass.config_entries.async_update_entry.reset_mock()
-    entity_registry.async_remove.reset_mock()
-    device_registry.async_update_device.reset_mock()
-    client.get_device_unique_id.reset_mock()
-
-    retry_result = await flow.async_step_confirm({})
-
-    assert retry_result["type"] is FlowResultType.CREATE_ENTRY
-    hass.config_entries.async_update_entry.assert_not_called()
-    assert entity_scan_calls == [entry.entry_id, entry.entry_id]
-    assert device_scan_calls == [entry.entry_id, entry.entry_id]
-    client.get_device_unique_id.assert_awaited_once_with()
-    assert hass.config_entries.async_reload.await_count == 2
-
-
-@pytest.mark.asyncio
-async def test_retry_repeats_registry_cleanup_after_partial_failure(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A retry should clean up registry entries left after a failed cleanup pass."""
-    hass = MagicMock()
-    entry = _make_entry(state=ConfigEntryState.LOADED)
-    _configure_hass(hass, entry)
-    entities = [SimpleNamespace(entity_id="sensor.old")]
-    device = SimpleNamespace(id="device")
-    devices = [device]
-    entity_registry, device_registry = _patch_registries(
-        monkeypatch,
-        entities=entities,
-        devices=devices,
-    )
-    client = _patch_probe_client(monkeypatch)
-
-    async def _unload(entry_id: str) -> bool:
-        """Unload the entry so each cleanup pass starts at the hardware boundary."""
-        del entry_id
-        object.__setattr__(entry, "state", ConfigEntryState.NOT_LOADED)
-        return True
-
-    hass.config_entries.async_unload.side_effect = _unload
-
-    async def _reload(entry_id: str) -> bool:
-        """Reload the entry after each cleanup attempt."""
-        del entry_id
-        object.__setattr__(entry, "state", ConfigEntryState.LOADED)
-        return True
-
-    hass.config_entries.async_reload.side_effect = _reload
-
-    def _update_entry(
-        config_entry: MockConfigEntry,
-        *,
-        data: dict[str, Any],
-        unique_id: str,
-    ) -> bool:
-        """Apply the replacement identity to the in-memory entry."""
-        object.__setattr__(config_entry, "data", dict(data))
-        object.__setattr__(config_entry, "unique_id", unique_id)
-        return True
-
-    hass.config_entries.async_update_entry.side_effect = _update_entry
-
-    def _remove_entity(entity_id: str) -> None:
-        """Remove an entity from the fake registry."""
-        entities[:] = [entity for entity in entities if entity.entity_id != entity_id]
-
-    entity_registry.async_remove.side_effect = _remove_entity
-
-    def _remove_device(device_id: str, **_: Any) -> None:
-        """Remove a device from the fake registry."""
-        devices[:] = [device for device in devices if device.id != device_id]
-
-    cleanup_attempts = 0
-
-    def _update_device(device_id: str, **kwargs: Any) -> None:
-        """Fail the first device cleanup and allow the retry to finish it."""
-        nonlocal cleanup_attempts
-        cleanup_attempts += 1
-        if cleanup_attempts == 1:
-            raise HomeAssistantError("device update")
-        _remove_device(device_id, **kwargs)
-
-    device_registry.async_update_device.side_effect = _update_device
-    flow = _make_flow(hass, entry)
-
-    first_result = await flow.async_step_confirm({})
-
-    assert first_result["type"] is FlowResultType.ABORT
-    assert first_result["reason"] == "repair_failed"
-    assert entities == []
-    assert devices == [device]
-    assert device_registry.async_update_device.call_count == 1
-    assert hass.config_entries.async_reload.await_count == 0
-
-    hass.config_entries.async_update_entry.reset_mock()
-    entity_registry.async_remove.reset_mock()
-
-    retry_result = await flow.async_step_confirm({})
-
-    assert retry_result["type"] is FlowResultType.CREATE_ENTRY
-    hass.config_entries.async_update_entry.assert_not_called()
-    entity_registry.async_remove.assert_not_called()
-    assert device_registry.async_update_device.call_count == 2
-    device_registry.async_update_device.assert_called_with(
-        "device", remove_config_entry_id=entry.entry_id
-    )
-    assert client.get_device_unique_id.await_count == 2
-    assert hass.config_entries.async_unload.await_count == 1
-    assert hass.config_entries.async_reload.await_count == 1
-    assert devices == []
 
 
 @pytest.mark.asyncio
@@ -1411,10 +985,7 @@ async def test_retry_keeps_issue_when_recovery_reload_fails(
     hass.config_entries.async_update_entry.assert_not_called()
     entity_registry.async_remove.assert_not_called()
     device_registry.async_update_device.assert_not_called()
-    client.factory.assert_called_once_with(hass=hass, config_entry=entry, throw_errors=True)
-    client.validate.assert_awaited_once_with()
-    client.get_device_unique_id.assert_awaited_once_with()
-    client.async_close.assert_awaited_once_with()
+    client.factory.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1523,28 +1094,6 @@ async def test_async_create_device_id_mismatch_issue_ignores_invalid_ids(
 
 
 @pytest.mark.asyncio
-async def test_stored_expected_id_reload_false_retries_recovery_reload(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A loaded entry with matching expected ID should recover when resume reload fails."""
-    hass = MagicMock()
-    entry = _make_entry(state=ConfigEntryState.LOADED)
-    _configure_hass(hass, entry)
-    hass.config_entries.async_reload.return_value = False
-    _patch_registries(monkeypatch)
-    _patch_probe_client(monkeypatch, observed_device_id="dev1")
-    flow = _make_flow(hass, entry, new_device_id="dev1")
-
-    result = await flow.async_step_confirm({})
-
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "repair_failed"
-    hass.config_entries.async_unload.assert_awaited_once_with(entry.entry_id)
-    hass.config_entries.async_reload.assert_awaited_once_with(entry.entry_id)
-    hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
-
-
-@pytest.mark.asyncio
 async def test_stored_expected_id_unloaded_entry_retries_recovery_reload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1571,61 +1120,89 @@ async def test_stored_expected_id_unloaded_entry_retries_recovery_reload(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "reload_error",
-    [HomeAssistantError("reload failed"), KeyError("entry-key")],
-)
-async def test_stored_expected_id_resume_exception_recovers_reloaded_entry(
+async def test_repair_persists_marker_without_registry_mutation(
     monkeypatch: pytest.MonkeyPatch,
-    reload_error: BaseException,
 ) -> None:
-    """Handled exceptions during resume should leave a recovery-reload trace."""
+    """The repair flow persists intent and leaves registry work to setup reconciliation."""
     hass = MagicMock()
-    entry = _make_entry(state=ConfigEntryState.LOADED)
+    entry = _make_entry()
     _configure_hass(hass, entry)
-    hass.config_entries.async_reload.side_effect = reload_error
-    _patch_registries(monkeypatch)
-    _patch_probe_client(monkeypatch, observed_device_id="dev1")
-    flow = _make_flow(hass, entry, new_device_id="dev1")
+    entity_registry, device_registry = _patch_registries(monkeypatch)
+    _patch_probe_client(monkeypatch)
+    flow = _make_flow(hass, entry)
 
     result = await flow.async_step_confirm({})
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "repair_failed"
-    hass.config_entries.async_unload.assert_awaited_once_with(entry.entry_id)
-    hass.config_entries.async_reload.assert_awaited_once_with(entry.entry_id)
-    hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    hass.config_entries.async_update_entry.assert_called_once_with(
+        entry,
+        data={
+            **entry.data,
+            CONF_DEVICE_UNIQUE_ID: "other",
+            REPAIR_MARKER_KEY: build_repair_marker("dev1", "other"),
+        },
+        unique_id="other",
+    )
+    entity_registry.async_remove.assert_not_called()
+    device_registry.async_update_device.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_stored_expected_id_snapshot_change_aborts_before_cleanup(
+async def test_valid_marker_retry_reprobes_and_reloads(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A changed retry entry must abort before destructive registry cleanup."""
+    """A matching persisted marker resumes only after a fresh strict probe."""
     hass = MagicMock()
-    entry = _make_entry(state=ConfigEntryState.NOT_LOADED)
-    updated_entry = _make_entry(
-        entry_id=entry.entry_id,
-        device_id="mutated",
-        unique_id="mutated",
+    entry = _make_entry(device_id="other", unique_id="other")
+    object.__setattr__(
+        entry,
+        "data",
+        {**entry.data, REPAIR_MARKER_KEY: build_repair_marker("dev1", "other")},
     )
     _configure_hass(hass, entry)
-    entity_registry, device_registry = _patch_registries(
-        monkeypatch,
-        entities=[SimpleNamespace(entity_id="sensor.old")],
-        devices=[SimpleNamespace(id="device")],
-    )
-    hass.config_entries.async_get_entry.side_effect = [entry, updated_entry]
-    _patch_probe_client(monkeypatch, observed_device_id="dev1")
-    flow = _make_flow(hass, entry, new_device_id="dev1")
+    client = _patch_probe_client(monkeypatch, observed_device_id="other")
+    flow = _make_flow(hass, entry, old_device_id="dev1", new_device_id="other")
+
+    result = await flow.async_step_confirm({})
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    client.validate.assert_awaited_once_with()
+    client.get_device_unique_id.assert_awaited_once_with()
+    hass.config_entries.async_reload.assert_awaited_once_with(entry.entry_id)
+
+
+@pytest.mark.asyncio
+async def test_completed_retry_without_marker_reloads_without_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An already-completed repair retries reload without reopening the hardware boundary."""
+    hass = MagicMock()
+    entry = _make_entry(device_id="other", unique_id="other")
+    _configure_hass(hass, entry)
+    client = _patch_probe_client(monkeypatch)
+    flow = _make_flow(hass, entry, old_device_id="dev1", new_device_id="other")
+
+    result = await flow.async_step_confirm({})
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    client.factory.assert_not_called()
+    hass.config_entries.async_reload.assert_awaited_once_with(entry.entry_id)
+
+
+@pytest.mark.asyncio
+async def test_retry_rejects_invalid_or_mismatched_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A malformed or stale marker cannot resume a repair flow."""
+    hass = MagicMock()
+    entry = _make_entry(device_id="other", unique_id="other")
+    object.__setattr__(entry, "data", {**entry.data, REPAIR_MARKER_KEY: {"version": 1}})
+    _configure_hass(hass, entry)
+    client = _patch_probe_client(monkeypatch)
+    flow = _make_flow(hass, entry, old_device_id="dev1", new_device_id="other")
 
     result = await flow.async_step_confirm({})
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "entry_changed"
-    entity_registry.async_remove.assert_not_called()
-    device_registry.async_update_device.assert_not_called()
-    hass.config_entries.async_update_entry.assert_not_called()
-    hass.config_entries.async_unload.assert_not_awaited()
-    hass.config_entries.async_reload.assert_not_awaited()
-    hass.config_entries.async_schedule_reload.assert_not_called()
+    client.factory.assert_not_called()

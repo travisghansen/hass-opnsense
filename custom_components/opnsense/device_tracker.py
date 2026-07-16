@@ -43,6 +43,7 @@ from .helpers import (
     get_arp_mac,
     normalize_arp_mac,
 )
+from .repair_reconciliation import is_reconciliation_active, record_desired_entities
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -278,13 +279,14 @@ async def async_setup_entry(
             hostname=device.get("hostname", None),
         )
         entities.append(entity)
-    _cleanup_stale_tracked_devices(
-        hass=hass,
-        config_entry=config_entry,
-        device_registry=dev_reg,
-        previous_mac_addresses=previous_mac_addresses,
-        current_mac_addresses=mac_addresses,
-    )
+    if not is_reconciliation_active(config_entry):
+        _cleanup_stale_tracked_devices(
+            hass=hass,
+            config_entry=config_entry,
+            device_registry=dev_reg,
+            previous_mac_addresses=previous_mac_addresses,
+            current_mac_addresses=mac_addresses,
+        )
 
     if set(mac_addresses) != set(previous_mac_addresses):
         setattr(config_entry.runtime_data, SHOULD_RELOAD, False)
@@ -293,6 +295,7 @@ async def async_setup_entry(
         hass.config_entries.async_update_entry(config_entry, data=new_data)
 
     _LOGGER.debug("[device_tracker async_setup_entry] entities: %s", len(entities))
+    record_desired_entities(config_entry, "device_tracker", entities)
     async_add_entities(entities)
 
 
