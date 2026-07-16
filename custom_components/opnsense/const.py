@@ -2,7 +2,7 @@
 
 from homeassistant.const import Platform, UnitOfTime
 
-VERSION = "v0.7.4"
+VERSION = "v1.0.0"
 DOMAIN = "opnsense"
 # If less than this, some functions may not work but the integration in general should work.
 # Show repair warning.

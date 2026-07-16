@@ -1,7 +1,38 @@
+<a id="v1.0.0"></a>
+# [v1.0.0](https://github.com/travisghansen/hass-opnsense/releases/tag/v1.0.0) - 2026-07-16
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+### This is a major code refactor and fully removes the embedded, legacy pyopnsense and moves to the external aiopnsense library
+
+## Breaking Change for OPNsense Firmware < 26.1.1
+
+For anyone using OPNsense Firmware < 26.1.1, Firewall and NAT Filter switches will be removed and are no longer supported. To regain Firewall and NAT Rule Switches, upgrade your OPNsense to Firmware 26.1.1+ and migrate to the updated Firewall Rules in OPNsense
+
+## What's Changed
+### ✨ New Features
+* Remove bundled pyopnsense backend by [@Snuffy2](https://github.com/Snuffy2) in [#648](https://github.com/travisghansen/hass-opnsense/pull/648)
+### 🐛 Bug Fixes
+* Preserve shared devices during tracker cleanup by [@Snuffy2](https://github.com/Snuffy2) in [#644](https://github.com/travisghansen/hass-opnsense/pull/644)
+* Use public ScannerEntity import by [@Snuffy2](https://github.com/Snuffy2) in [#652](https://github.com/travisghansen/hass-opnsense/pull/652)
+### 🎓 Code Quality
+* Use reusable prek autoupdate workflow by [@Snuffy2](https://github.com/Snuffy2) in [#639](https://github.com/travisghansen/hass-opnsense/pull/639)
+* Run prek cleanup daily by [@Snuffy2](https://github.com/Snuffy2) in [#641](https://github.com/travisghansen/hass-opnsense/pull/641)
+### 🧰 Maintenance
+* Bump aiopnsense to 1.1.0 by [@github-actions](https://github.com/github-actions)[bot] in [#638](https://github.com/travisghansen/hass-opnsense/pull/638)
+* Bump aiopnsense to 1.1.1 by [@github-actions](https://github.com/github-actions)[bot] in [#646](https://github.com/travisghansen/hass-opnsense/pull/646)
+* Bump aiopnsense to 1.1.3 by [@github-actions](https://github.com/github-actions)[bot] in [#650](https://github.com/travisghansen/hass-opnsense/pull/650)
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.7.4...v1.0.0
+
+[Changes][v1.0.0]
+
+
 <a id="v0.7.4"></a>
 # [v0.7.4](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.7.4) - 2026-06-28
 
-<!-- Release notes generated using configuration in .github/release.yml at main -->
+<h3>OPNsense Minimum Firmware Required: 25.1</h3><h4>OPNsense Recommended Firmware: 26.1+</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
 ## What's Changed
 ### 🐛 Bug Fixes
@@ -11,7 +42,7 @@
 * Bump aiopnsense to 1.0.15 by [@github-actions](https://github.com/github-actions)[bot] in [#632](https://github.com/travisghansen/hass-opnsense/pull/632)
 
 
-**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.7.3...v0.7.4
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v0.7.3...v0.7.4<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
 
 [Changes][v0.7.4]
 
@@ -1107,6 +1138,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v1.0.0]: https://github.com/travisghansen/hass-opnsense/compare/v0.7.4...v1.0.0
 [v0.7.4]: https://github.com/travisghansen/hass-opnsense/compare/v0.7.3...v0.7.4
 [v0.7.3]: https://github.com/travisghansen/hass-opnsense/compare/v0.7.1...v0.7.3
 [v0.7.1]: https://github.com/travisghansen/hass-opnsense/compare/v0.7.0...v0.7.1
