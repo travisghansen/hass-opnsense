@@ -49,11 +49,6 @@ from custom_components.opnsense.sensor import (
 )
 
 
-def _carp_entry_sensor_unique_id(entry: MockConfigEntry, key: str) -> str:
-    """Return the repository-normalized unique ID for a CARP entry sensor."""
-    return sensor_module.slugify(f"{entry.entry_id}_{key}")
-
-
 def test_static_sensor_descriptions_live_in_sensor_module() -> None:
     """Static sensor descriptions should be owned by the sensor platform."""
     telemetry_keys = {description.key for description in sensor_module.STATIC_TELEMETRY_SENSORS}
@@ -133,7 +128,9 @@ async def test_carp_entry_setup_has_exact_read_only_vip_inventory(
         sensor_module._build_carp_vip_sensor_key("1", "192.0.2.1"),
         sensor_module._build_carp_vip_sensor_key("2", "198.51.100.1"),
     }
-    expected_unique_ids = {_carp_entry_sensor_unique_id(entry, key) for key in expected_keys}
+    expected_unique_ids = {
+        sensor_module.slugify(f"{entry.entry_id}_{key}") for key in expected_keys
+    }
     assert keys == expected_keys
     assert {entity.unique_id for entity in created} == expected_unique_ids
     descriptions = {entity.entity_description.key: entity.entity_description for entity in created}
