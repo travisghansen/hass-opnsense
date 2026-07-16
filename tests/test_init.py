@@ -669,7 +669,7 @@ async def test_async_setup_entry_does_not_catch_raw_validation_timeout(
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Validation timeout mapping belongs to aiopnsense, not setup-entry cleanup."""
+    """Setup should close the client and re-raise a raw validation timeout."""
     client = MagicMock()
     client.validate = AsyncMock(side_effect=TimeoutError)
     client.async_close = AsyncMock(return_value=True)
@@ -698,7 +698,7 @@ async def test_async_setup_entry_does_not_catch_raw_validation_timeout(
     with pytest.raises(TimeoutError):
         await init_mod.async_setup_entry(hass, entry)
 
-    client.async_close.assert_not_awaited()
+    client.async_close.assert_awaited_once()
 
 
 @pytest.mark.parametrize(

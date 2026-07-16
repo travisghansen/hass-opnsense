@@ -30,7 +30,8 @@ def dict_get(data: MutableMapping[str, Any], path: str, default: Any | None = No
 
     Args:
         data: Mutable mapping containing the value to retrieve.
-        path: Case-insensitive dotted path, including numeric list indexes.
+        path: Dotted path through nested mappings and lists. Numeric segments are
+            converted to integer indexes or keys.
         default: Value returned when any path segment is unavailable.
 
     Returns:
@@ -61,7 +62,7 @@ def normalize_arp_mac(mac: object) -> str:
 def get_arp_mac(entry: Mapping[str, Any]) -> str:
     """Return a normalized MAC address from an ARP payload."""
     mac: object = entry.get("mac")
-    if not isinstance(mac, str):
+    if not isinstance(mac, str) or not mac.strip():
         mac = entry.get("mac-address")
     return normalize_arp_mac(mac)
 
@@ -69,7 +70,7 @@ def get_arp_mac(entry: Mapping[str, Any]) -> str:
 def get_arp_ip(entry: Mapping[str, Any]) -> str:
     """Return an IP address from an ARP payload."""
     ip: object = entry.get("ip")
-    if not isinstance(ip, str):
+    if not isinstance(ip, str) or not ip.strip():
         ip = entry.get("ip-address")
     return ip.strip() if isinstance(ip, str) else ""
 
@@ -363,13 +364,14 @@ def config_entry_identity(config_entry: ConfigEntry) -> str:
 
 
 def is_usable_carp_vip(value: object) -> bool:
-    """Return whether a CARP row has a usable VHID and subnet identity.
+    """Return whether a CARP row has a valid VHID and usable subnet identity.
 
     Args:
         value: Raw CARP VIP row returned by the OPNsense API.
 
     Returns:
-        bool: ``True`` when normalized VHID and subnet values are non-empty.
+        bool: ``True`` when the VHID is numeric and within the CARP range 1 through
+            255, and the normalized subnet is non-empty.
     """
     if not isinstance(value, Mapping):
         return False
@@ -380,7 +382,9 @@ def is_usable_carp_vip(value: object) -> bool:
     normalized_vhid = str(vhid).strip()
     subnet = value.get("subnet")
     normalized_subnet = subnet.strip() if isinstance(subnet, str) else ""
-    return bool(normalized_vhid and normalized_subnet)
+    return bool(
+        normalized_vhid.isdecimal() and 1 <= int(normalized_vhid) <= 255 and normalized_subnet
+    )
 
 
 def coerce_bool(value: Any) -> bool | None:

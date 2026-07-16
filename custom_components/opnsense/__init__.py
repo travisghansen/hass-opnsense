@@ -351,6 +351,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         bool: `True` when setup and initial refresh succeed; otherwise `False`.
 
     Raises:
+        TimeoutError: If client validation raises a raw timeout error.
         ConfigEntryNotReady: If transient connection validation fails and setup should be retried.
         OPNsenseError: Raised when validation cannot complete because of
             authentication, privilege, firmware, or transport failures.
@@ -387,6 +388,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 raise
             raise ConfigEntryNotReady("OPNsense validation could not complete") from err
     except ConfigEntryNotReady:
+        if client is not None:
+            await client.async_close()
+        raise
+    except TimeoutError:
         if client is not None:
             await client.async_close()
         raise

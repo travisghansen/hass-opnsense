@@ -93,6 +93,16 @@ def test_normalize_arp_mac(value: object, expected: str) -> None:
             "aa:bb:cc",
             id="fallback-key",
         ),
+        pytest.param(
+            {"mac": "  ", "mac-address": "AA-BB-CC"},
+            "aa:bb:cc",
+            id="blank-normalized-key-fallback",
+        ),
+        pytest.param(
+            {"mac": "  ", "mac-address": " \t"},
+            "",
+            id="both-keys-blank",
+        ),
     ],
 )
 def test_get_arp_mac(entry: dict[str, Any], expected: str) -> None:
@@ -106,6 +116,16 @@ def test_get_arp_mac(entry: dict[str, Any], expected: str) -> None:
         pytest.param({"ip": " 192.0.2.1 "}, "192.0.2.1", id="normalized-key"),
         pytest.param({"ip-address": " 192.0.2.2 "}, "192.0.2.2", id="raw-key"),
         pytest.param({"ip": 1}, "", id="invalid-value"),
+        pytest.param(
+            {"ip": "  ", "ip-address": " 192.0.2.3 "},
+            "192.0.2.3",
+            id="blank-normalized-key-fallback",
+        ),
+        pytest.param(
+            {"ip": " \t", "ip-address": "  "},
+            "",
+            id="both-keys-blank",
+        ),
     ],
 )
 def test_get_arp_ip(entry: dict[str, Any], expected: str) -> None:
@@ -135,6 +155,7 @@ def test_get_smart_device_name(entry: dict[str, Any], expected: str) -> None:
     "value",
     [
         {"vhid": 1, "subnet": "192.0.2.1"},
+        {"vhid": 255, "subnet": "192.0.2.255"},
         {"vhid": " 2 ", "subnet": " 192.0.2.2 "},
     ],
 )
@@ -154,6 +175,10 @@ def test_is_usable_carp_vip_accepts_normalized_identity_without_interface(
         {"vhid": "", "subnet": "192.0.2.1"},
         {"vhid": 1, "subnet": ""},
         {"vhid": True, "subnet": "192.0.2.1"},
+        {"vhid": 0, "subnet": "192.0.2.1"},
+        {"vhid": -1, "subnet": "192.0.2.1"},
+        {"vhid": 256, "subnet": "192.0.2.1"},
+        {"vhid": "not-a-vhid", "subnet": "192.0.2.1"},
     ],
 )
 def test_is_usable_carp_vip_rejects_missing_or_blank_identity(value: Any) -> None:

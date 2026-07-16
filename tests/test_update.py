@@ -885,12 +885,12 @@ async def test_async_install_handles_masked_polling_response(
 
 
 @pytest.mark.asyncio
-async def test_async_install_propagates_polling_errors(
+async def test_async_install_stops_after_four_invalid_polling_responses(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
 ) -> None:
-    """async_install should not hide errors raised while polling firmware status."""
+    """Stop after four malformed polls without fetching firmware info or rebooting."""
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,
