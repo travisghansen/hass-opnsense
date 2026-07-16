@@ -4493,6 +4493,7 @@ async def test_reconciliation_prepare_failure_recreates_marker_issue_without_unl
         unique_id="dev1",
     )
     reconciliation = MagicMock()
+    reconciliation.marker = init_mod.parse_repair_marker(entry)
     reconciliation.prepare.side_effect = init_mod.RepairReconciliationError("prepare failed")
     monkeypatch.setattr(init_mod, "RepairReconciliation", lambda *_args: reconciliation)
     ph_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)

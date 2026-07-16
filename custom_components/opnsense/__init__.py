@@ -213,11 +213,10 @@ async def _cleanup_reconciliation_failure(
     hass: HomeAssistant,
     entry: ConfigEntry,
     platforms: list[Platform],
-    repair_marker: RepairMarker | None,
+    repair_marker: RepairMarker,
 ) -> bool:
     """Persist marker-backed repair issue and unload any partially loaded platforms."""
-    if repair_marker is not None:
-        _async_create_marker_repair_issue(hass, entry, repair_marker)
+    _async_create_marker_repair_issue(hass, entry, repair_marker)
     return await _unload_setup_platforms_after_reconciliation_failure(hass, entry, platforms)
 
 
@@ -664,8 +663,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "Device-ID reconciliation preflight failed for %s; retaining marker",
                     entry.title,
                 )
-                if repair_marker is not None:
-                    _async_create_marker_repair_issue(hass, entry, repair_marker)
+                _async_create_marker_repair_issue(hass, entry, reconciliation.marker)
                 return False
 
         await hass.config_entries.async_forward_entry_setups(entry, platforms)
@@ -694,7 +692,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         hass,
                         entry,
                         platforms,
-                        repair_marker,
+                        reconciliation.marker,
                     )
                 except HomeAssistantError, KeyError:
                     _LOGGER.exception(
