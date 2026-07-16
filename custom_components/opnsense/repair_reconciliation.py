@@ -2,7 +2,6 @@
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -138,15 +137,9 @@ class RepairReconciliation:
                     old_main.id, new_identifiers=new_identifiers
                 )
             for candidate, target_unique_id in migrations:
-                changes: dict[str, Any] = {"new_unique_id": target_unique_id}
-                if (
-                    old_main is not None
-                    and new_main is not None
-                    and old_main.id != new_main.id
-                    and candidate.device_id == old_main.id
-                ):
-                    changes["device_id"] = new_main.id
-                entity_registry.async_update_entity(candidate.entity_id, **changes)
+                entity_registry.async_update_entity(
+                    candidate.entity_id, new_unique_id=target_unique_id
+                )
         except (
             dr.DeviceIdentifierCollisionError,
             HomeAssistantError,
