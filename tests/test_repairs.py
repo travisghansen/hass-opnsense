@@ -1259,75 +1259,65 @@ async def test_retry_rejects_invalid_or_mismatched_marker(
     client.factory.assert_not_called()
 
 
-@pytest.mark.asyncio
-async def test_entry_matches_snapshot_rejects_tracked_macs_mutation_by_default() -> None:
-    """Tracked-mac mutation must fail strict snapshot matching by default."""
+@pytest.mark.parametrize(
+    ("scenario", "allow_tracked_macs_mutation"),
+    [
+        pytest.param("tracked-macs-reject", False, id="tracked-macs-reject"),
+        pytest.param("tracked-macs-allow", True, id="tracked-macs-allow"),
+        pytest.param("non-tracked-reject", True, id="non-tracked-reject"),
+    ],
+)
+def test_entry_matches_snapshot_invariants(
+    scenario: str,
+    allow_tracked_macs_mutation: bool,
+) -> None:
+    """Snapshot matching is strict by default, lenient only for tracked-MAC recovery checks."""
     entry = _make_entry()
-    baseline = dict(entry.data)
-    baseline_with_tracked_macs = {**baseline, TRACKED_MACS: ["AA:BB:CC:DD"]}
-    object.__setattr__(entry, "data", baseline_with_tracked_macs)
+    entry_options_snapshot = dict(entry.options)
 
+    if scenario == "non-tracked-reject":
+        baseline = dict(entry.data)
+        baseline["some_other_key"] = "original"
+        object.__setattr__(entry, "data", baseline)
+
+        assert repairs._entry_matches_snapshot(
+            entry=entry,
+            entry_id=entry.entry_id,
+            data_snapshot=baseline,
+            options_snapshot=entry_options_snapshot,
+            unique_id_snapshot=entry.unique_id,
+            allow_tracked_macs_mutation=allow_tracked_macs_mutation,
+        )
+
+        mutated = dict(baseline)
+        mutated["some_other_key"] = "mutated"
+        object.__setattr__(entry, "data", mutated)
+
+        assert not repairs._entry_matches_snapshot(
+            entry=entry,
+            entry_id=entry.entry_id,
+            data_snapshot=baseline,
+            options_snapshot=entry_options_snapshot,
+            unique_id_snapshot=entry.unique_id,
+            allow_tracked_macs_mutation=allow_tracked_macs_mutation,
+        )
+        return
+
+    baseline = dict(entry.data)
+    snapshot = {**baseline, TRACKED_MACS: ["AA:BB:CC:DD"]}
     current = {**baseline, TRACKED_MACS: ["11:22:33:44"]}
+    object.__setattr__(entry, "data", snapshot)
     object.__setattr__(entry, "data", current)
-    entry_options_snapshot = dict(entry.options)
 
-    assert not repairs._entry_matches_snapshot(
-        entry=entry,
-        entry_id=entry.entry_id,
-        data_snapshot=baseline_with_tracked_macs,
-        options_snapshot=entry_options_snapshot,
-        unique_id_snapshot=entry.unique_id,
-    )
-
-
-@pytest.mark.asyncio
-async def test_entry_matches_snapshot_allows_only_tracked_macs_mutation_for_recovery() -> None:
-    """Recovery-mode snapshot checks should ignore tracked-MAC drift only."""
-    entry = _make_entry()
-    baseline = dict(entry.data)
-    baseline_with_tracked_macs = {**baseline, TRACKED_MACS: ["AA:BB:CC:DD"]}
-    object.__setattr__(entry, "data", baseline_with_tracked_macs)
-
-    current = {**baseline, TRACKED_MACS: ["11:22:33:44"]}
-    object.__setattr__(entry, "data", current)
-    entry_options_snapshot = dict(entry.options)
-
-    assert repairs._entry_matches_snapshot(
-        entry=entry,
-        entry_id=entry.entry_id,
-        data_snapshot=baseline_with_tracked_macs,
-        options_snapshot=entry_options_snapshot,
-        unique_id_snapshot=entry.unique_id,
-        allow_tracked_macs_mutation=True,
-    )
-
-
-@pytest.mark.asyncio
-async def test_entry_matches_snapshot_rejects_non_tracked_mutations() -> None:
-    """Non-tracked payload mutation must invalidate the repair snapshot."""
-    entry = _make_entry()
-    baseline = dict(entry.data)
-    baseline["some_other_key"] = "original"
-    entry_options_snapshot = dict(entry.options)
-
-    object.__setattr__(entry, "data", baseline)
-    assert repairs._entry_matches_snapshot(
-        entry=entry,
-        entry_id=entry.entry_id,
-        data_snapshot=baseline,
-        options_snapshot=entry_options_snapshot,
-        unique_id_snapshot=entry.unique_id,
-    )
-
-    mutated = dict(baseline)
-    mutated["some_other_key"] = "mutated"
-    object.__setattr__(entry, "data", mutated)
-
-    assert not repairs._entry_matches_snapshot(
-        entry=entry,
-        entry_id=entry.entry_id,
-        data_snapshot=baseline,
-        options_snapshot=entry_options_snapshot,
-        unique_id_snapshot=entry.unique_id,
-        allow_tracked_macs_mutation=True,
+    expected_match = scenario == "tracked-macs-allow"
+    assert (
+        repairs._entry_matches_snapshot(
+            entry=entry,
+            entry_id=entry.entry_id,
+            data_snapshot=snapshot,
+            options_snapshot=entry_options_snapshot,
+            unique_id_snapshot=entry.unique_id,
+            allow_tracked_macs_mutation=allow_tracked_macs_mutation,
+        )
+        == expected_match
     )

@@ -76,7 +76,11 @@ from .repair_reconciliation import (
     has_repair_marker,
     parse_repair_marker,
 )
-from .repairs import async_create_device_id_mismatch_issue, is_valid_device_id
+from .repairs import (
+    async_create_device_id_mismatch_issue,
+    build_device_id_mismatch_issue_id,
+    is_valid_device_id,
+)
 from .services import async_setup_services
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -85,7 +89,6 @@ NATIVE_RULE_ENTITY_TOKENS: tuple[str, ...] = (
     "_firewall_rule_",
     "_firewall_nat_",
 )
-_DEVICE_ID_MISMATCH_ISSUE_SUFFIX = "_device_id_mismatched"
 
 
 @dataclass
@@ -110,11 +113,6 @@ def _align_aiopnsense_log_level() -> None:
     aiopnsense_logger.setLevel(_LOGGER.level)
 
 
-def _build_device_id_mismatch_issue_id(entry_id: str) -> str:
-    """Build the stable mismatch issue ID for a config entry."""
-    return f"{entry_id}{_DEVICE_ID_MISMATCH_ISSUE_SUFFIX}"
-
-
 def _async_delete_device_id_mismatch_issue(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Delete a stale nonpersistent device-id mismatch repair issue.
 
@@ -122,7 +120,7 @@ def _async_delete_device_id_mismatch_issue(hass: HomeAssistant, entry: ConfigEnt
         hass: Home Assistant instance.
         entry: OPNsense config entry owning the mismatch issue.
     """
-    ir.async_delete_issue(hass, DOMAIN, _build_device_id_mismatch_issue_id(entry.entry_id))
+    ir.async_delete_issue(hass, DOMAIN, build_device_id_mismatch_issue_id(entry.entry_id))
 
 
 def _async_create_marker_repair_issue(
@@ -132,7 +130,7 @@ def _async_create_marker_repair_issue(
     ir.async_create_issue(
         hass=hass,
         domain=DOMAIN,
-        issue_id=_build_device_id_mismatch_issue_id(entry.entry_id),
+        issue_id=build_device_id_mismatch_issue_id(entry.entry_id),
         is_fixable=True,
         is_persistent=False,
         severity=ir.IssueSeverity.ERROR,

@@ -16,8 +16,13 @@ from .const import CONF_DEVICE_UNIQUE_ID, DOMAIN, TRACKED_MACS
 from .helpers import create_opnsense_client_from_config_entry
 from .repair_reconciliation import REPAIR_MARKER_KEY, build_repair_marker, parse_repair_marker
 
-_ISSUE_SUFFIX = "_device_id_mismatched"
+_DEVICE_ID_MISMATCH_ISSUE_SUFFIX = "_device_id_mismatched"
 _LOGGER = logging.getLogger(__name__)
+
+
+def build_device_id_mismatch_issue_id(entry_id: str) -> str:
+    """Build the stable mismatch issue ID for a config entry."""
+    return f"{entry_id}{_DEVICE_ID_MISMATCH_ISSUE_SUFFIX}"
 
 
 def is_valid_device_id(device_id: object) -> TypeGuard[str]:
@@ -203,7 +208,7 @@ def async_create_device_id_mismatch_issue(
     ir.async_create_issue(
         hass=hass,
         domain=DOMAIN,
-        issue_id=f"{config_entry.entry_id}{_ISSUE_SUFFIX}",
+        issue_id=build_device_id_mismatch_issue_id(config_entry.entry_id),
         is_fixable=True,
         is_persistent=False,
         severity=ir.IssueSeverity.ERROR,
@@ -598,7 +603,7 @@ async def async_create_fix_flow(
         RepairsFlow: Device-ID repair flow or a generic confirmation flow.
     """
     del hass
-    if not issue_id.endswith(_ISSUE_SUFFIX) or data is None:
+    if not issue_id.endswith(_DEVICE_ID_MISMATCH_ISSUE_SUFFIX) or data is None:
         return ConfirmRepairFlow()
 
     entry_id = data.get("entry_id")
@@ -609,7 +614,7 @@ async def async_create_fix_flow(
         and entry_id
         and is_valid_device_id(old_device_id)
         and is_valid_device_id(new_device_id)
-        and issue_id == f"{entry_id}{_ISSUE_SUFFIX}"
+        and issue_id == build_device_id_mismatch_issue_id(entry_id)
     ):
         return ConfirmRepairFlow()
 
