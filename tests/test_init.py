@@ -4084,13 +4084,14 @@ async def test_reconciliation_incomplete_platform_does_not_finalize_or_clear_mar
     assert entry.data[init_mod.REPAIR_MARKER_KEY] == marker
 
 
-@pytest.mark.asyncio
-async def test_reconciliation_cleanup_unload_false_keeps_runtime_state_for_platforms(
+async def _run_reconciliation_cleanup_unload(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
+    unload_result: bool | BaseException,
+    preserve_runtime: bool,
 ) -> None:
-    """Failure to unload platforms during reconciliation cleanup must preserve runtime state."""
+    """Run a reconciliation cleanup attempt with a configurable unload outcome."""
     client = _make_valid_setup_client()
     monkeypatch.setattr(
         init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
@@ -4122,137 +4123,59 @@ async def test_reconciliation_cleanup_unload_false_keeps_runtime_state_for_platf
     )
     monkeypatch.setattr(init_mod, "RepairReconciliation", lambda *_args: reconciliation)
     ph_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
-    ph_hass.config_entries.async_unload_platforms = AsyncMock(return_value=False)
+    if isinstance(unload_result, BaseException):
+        ph_hass.config_entries.async_unload_platforms = AsyncMock(side_effect=unload_result)
+    else:
+        ph_hass.config_entries.async_unload_platforms = AsyncMock(return_value=unload_result)
     ph_hass.data = {}
 
     result = await init_mod.async_setup_entry(ph_hass, entry)
 
     assert result is False
     ph_hass.config_entries.async_unload_platforms.assert_awaited_once()
-    assert entry.runtime_data is not None
-    assert entry.runtime_data.coordinator is coordinator
-    assert entry.runtime_data.opnsense_client is client
-    assert entry.runtime_data.device_tracker_coordinator is tracker_coordinator
-    assert entry.data[init_mod.REPAIR_MARKER_KEY] == marker
-    coordinator.async_shutdown.assert_not_awaited()
-    tracker_coordinator.async_shutdown.assert_not_awaited()
-    client.async_close.assert_not_awaited()
-    assert ph_hass.data.get(init_mod.DOMAIN, {}).get(entry.entry_id) is client
+    if preserve_runtime:
+        assert entry.runtime_data is not None
+        assert entry.runtime_data.coordinator is coordinator
+        assert entry.runtime_data.opnsense_client is client
+        assert entry.runtime_data.device_tracker_coordinator is tracker_coordinator
+        assert entry.data[init_mod.REPAIR_MARKER_KEY] == marker
+        coordinator.async_shutdown.assert_not_awaited()
+        tracker_coordinator.async_shutdown.assert_not_awaited()
+        client.async_close.assert_not_awaited()
+        assert ph_hass.data.get(init_mod.DOMAIN, {}).get(entry.entry_id) is client
+    else:
+        coordinator.async_shutdown.assert_awaited_once()
+        tracker_coordinator.async_shutdown.assert_awaited_once()
+        client.async_close.assert_awaited_once()
+        assert entry.runtime_data is None
+        assert entry.entry_id not in ph_hass.data.get(init_mod.DOMAIN, {})
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "unload_error",
+    ("unload_result", "preserve_runtime"),
     [
-        pytest.param(HomeAssistantError("unload failed"), id="homeassistant-error"),
-        pytest.param(KeyError("entry key"), id="key-error"),
+        (pytest.param(False, True, id="unload-false-preserves-runtime")),
+        (pytest.param(HomeAssistantError("unload failed"), True, id="homeassistant-error")),
+        (pytest.param(KeyError("entry key"), True, id="key-error")),
+        (pytest.param(True, False, id="unload-success-tears-down-runtime")),
     ],
 )
-async def test_reconciliation_cleanup_unload_exception_keeps_runtime_state_for_platforms(
-    monkeypatch: pytest.MonkeyPatch,
-    ph_hass: Any,
-    make_config_entry: Callable[..., MockConfigEntry],
-    unload_error: BaseException,
-) -> None:
-    """A handled unload exception should preserve reconciliation runtime state."""
-    client = _make_valid_setup_client()
-    monkeypatch.setattr(
-        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
-    )
-    coordinator = _make_setup_coordinator()
-    tracker_coordinator = _make_setup_coordinator()
-    coordinators: list[Any] = [coordinator, tracker_coordinator]
-
-    def _coordinator_factory(**_kwargs: Any) -> Any:
-        """Return the base and tracker coordinators in setup order."""
-        return coordinators.pop(0)
-
-    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", _coordinator_factory)
-    marker = {"version": 1, "old_device_id": "old-dev", "new_device_id": "dev1"}
-    entry = make_config_entry(
-        data={
-            CONF_URL: "http://1.2.3.4",
-            CONF_USERNAME: "u",
-            CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
-            init_mod.REPAIR_MARKER_KEY: marker,
-        },
-        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: True},
-        unique_id="dev1",
-    )
-    reconciliation = MagicMock()
-    reconciliation.require_platforms_complete.side_effect = init_mod.RepairReconciliationError(
-        "platforms still loading"
-    )
-    monkeypatch.setattr(init_mod, "RepairReconciliation", lambda *_args: reconciliation)
-    ph_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
-    ph_hass.config_entries.async_unload_platforms = AsyncMock(side_effect=unload_error)
-    ph_hass.data = {}
-
-    result = await init_mod.async_setup_entry(ph_hass, entry)
-
-    assert result is False
-    ph_hass.config_entries.async_unload_platforms.assert_awaited_once()
-    assert entry.runtime_data is not None
-    assert entry.runtime_data.coordinator is coordinator
-    assert entry.runtime_data.opnsense_client is client
-    assert entry.runtime_data.device_tracker_coordinator is tracker_coordinator
-    assert ph_hass.data.get(init_mod.DOMAIN, {}).get(entry.entry_id) is client
-    coordinator.async_shutdown.assert_not_awaited()
-    tracker_coordinator.async_shutdown.assert_not_awaited()
-    client.async_close.assert_not_awaited()
-
-
 @pytest.mark.asyncio
-async def test_reconciliation_cleanup_unload_success_still_performs_teardown(
+async def test_reconciliation_cleanup_unload_outcomes(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
+    unload_result: bool | BaseException,
+    preserve_runtime: bool,
 ) -> None:
-    """Successful cleanup should return false and still run the normal teardown path."""
-    client = _make_valid_setup_client()
-    monkeypatch.setattr(
-        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
+    """Reconciliation cleanup handles unload outcomes with explicit runtime lifecycle expectations."""
+    await _run_reconciliation_cleanup_unload(
+        monkeypatch=monkeypatch,
+        ph_hass=ph_hass,
+        make_config_entry=make_config_entry,
+        unload_result=unload_result,
+        preserve_runtime=preserve_runtime,
     )
-    coordinator = _make_setup_coordinator()
-    tracker_coordinator = _make_setup_coordinator()
-    coordinators: list[Any] = [coordinator, tracker_coordinator]
-
-    def _coordinator_factory(**_kwargs: Any) -> Any:
-        """Return the base and tracker coordinators in setup order."""
-        return coordinators.pop(0)
-
-    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", _coordinator_factory)
-    marker = {"version": 1, "old_device_id": "old-dev", "new_device_id": "dev1"}
-    entry = make_config_entry(
-        data={
-            CONF_URL: "http://1.2.3.4",
-            CONF_USERNAME: "u",
-            CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
-            init_mod.REPAIR_MARKER_KEY: marker,
-        },
-        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: True},
-        unique_id="dev1",
-    )
-    reconciliation = MagicMock()
-    reconciliation.require_platforms_complete.side_effect = init_mod.RepairReconciliationError(
-        "platforms still loading"
-    )
-    monkeypatch.setattr(init_mod, "RepairReconciliation", lambda *_args: reconciliation)
-    ph_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
-    ph_hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
-    ph_hass.data = {}
-
-    result = await init_mod.async_setup_entry(ph_hass, entry)
-
-    assert result is False
-    ph_hass.config_entries.async_unload_platforms.assert_awaited_once()
-    coordinator.async_shutdown.assert_awaited_once()
-    tracker_coordinator.async_shutdown.assert_awaited_once()
-    client.async_close.assert_awaited_once()
-    assert entry.runtime_data is None
-    assert entry.entry_id not in ph_hass.data.get(init_mod.DOMAIN, {})
 
 
 @pytest.mark.asyncio
