@@ -158,17 +158,20 @@ def async_create_device_id_mismatch_issue(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
     observed_device_id: object,
-) -> None:
+) -> bool:
     """Create a fixable hardware-replacement issue for a normal device entry.
 
     Args:
         hass: Home Assistant instance that owns the issue registry.
         config_entry: Device config entry with the stale identifier.
         observed_device_id: Replacement device identifier observed at runtime.
+
+    Returns:
+        bool: `True` when the issue was created; otherwise `False` for invalid IDs.
     """
     old_device_id = config_entry.data[CONF_DEVICE_UNIQUE_ID]
     if not is_valid_device_id(old_device_id) or not is_valid_device_id(observed_device_id):
-        return
+        return False
     ir.async_create_issue(
         hass=hass,
         domain=DOMAIN,
@@ -188,6 +191,7 @@ def async_create_device_id_mismatch_issue(
             "new_device_id": observed_device_id,
         },
     )
+    return True
 
 
 class DeviceIDMismatchRepairFlow(RepairsFlow):

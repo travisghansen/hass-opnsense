@@ -1461,12 +1461,16 @@ async def test_async_create_device_id_mismatch_issue_ignores_invalid_ids(
 
     monkeypatch.setattr(repairs.ir, "async_create_issue", _capture_issue)
 
-    repairs.async_create_device_id_mismatch_issue(MagicMock(), entry, observed_device_id)
+    issue_created = repairs.async_create_device_id_mismatch_issue(
+        MagicMock(), entry, observed_device_id
+    )
 
     if expect_issue:
         assert called["count"] == 1
+        assert issue_created is True
     else:
         assert called["count"] == 0
+        assert issue_created is False
 
 
 @pytest.mark.asyncio

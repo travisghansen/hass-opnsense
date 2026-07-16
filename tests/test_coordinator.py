@@ -1669,3 +1669,50 @@ async def test_check_device_unique_id_invalid_runtime_id_is_not_counted(
     assert coord._mismatched_count == 0
     assert called["issue"] == 0
     assert called["shutdown"] == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "expected_device_id",
+    [
+        pytest.param("", id="blank"),
+        pytest.param("   ", id="whitespace"),
+        pytest.param(123, id="number"),
+    ],
+)
+async def test_check_device_unique_id_invalid_expected_id_is_not_counted(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+    expected_device_id: object,
+) -> None:
+    """Malformed configured IDs should not count valid observed IDs as mismatches."""
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: expected_device_id})
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=fake_client()(),
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="valid-configured-id",
+        config_entry=entry,
+    )
+    object.__setattr__(coord, "_device_unique_id", expected_device_id)
+    called: dict[str, int] = {"issue": 0, "shutdown": 0}
+    coord._mismatched_count = 2
+
+    async def fake_shutdown() -> None:
+        """Record shutdown calls for invalid configured IDs."""
+        called["shutdown"] += 1
+
+    def fake_async_create_issue(**kwargs: Any) -> None:
+        """Record issue creation calls."""
+        del kwargs
+        called["issue"] += 1
+
+    monkeypatch.setattr(repairs_module.ir, "async_create_issue", fake_async_create_issue)
+    object.__setattr__(coord, "async_shutdown", fake_shutdown)
+    coord._state = {"device_unique_id": "valid-observed-id"}
+
+    assert await coord._check_device_unique_id() is False
+    assert coord._mismatched_count == 0
+    assert called == {"issue": 0, "shutdown": 0}

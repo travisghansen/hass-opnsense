@@ -995,6 +995,48 @@ async def test_async_setup_entry_continues_after_missing_device_unique_id_valida
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    "stored_device_id",
+    [
+        pytest.param("", id="blank"),
+        pytest.param("   ", id="whitespace"),
+        pytest.param(123, id="number"),
+    ],
+)
+async def test_async_setup_entry_rejects_malformed_stored_device_id(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator_capture: Any,
+    fake_coordinator: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+    stored_device_id: object,
+) -> None:
+    """async_setup_entry should reject malformed stored IDs before probing a router."""
+    client = _make_valid_setup_client()
+    client.get_device_unique_id = AsyncMock(return_value="valid-observed-id")
+    create_client = MagicMock(return_value=client)
+    monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", create_client)
+    monkeypatch.setattr(
+        init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
+    )
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: stored_device_id,
+        },
+        options={},
+    )
+
+    assert await init_mod.async_setup_entry(ph_hass, entry) is False
+    create_client.assert_not_called()
+    client.validate.assert_not_awaited()
+    client.get_device_unique_id.assert_not_awaited()
+    assert coordinator_capture.instances == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     ("router_device_id", "should_create_issue"),
     [
         ("other", True),

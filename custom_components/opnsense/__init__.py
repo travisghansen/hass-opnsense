@@ -366,7 +366,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     device_tracker_enabled: bool = options.get(
         CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED
     )
-    config_device_id: str = config[CONF_DEVICE_UNIQUE_ID]
+    config_device_id = config.get(CONF_DEVICE_UNIQUE_ID)
+    if not is_valid_device_id(config_device_id):
+        _LOGGER.error(
+            "OPNsense config entry has a malformed stored device ID. "
+            "Remove and re-add the integration."
+        )
+        return False
 
     client: OPNsenseClient | None = None
     try:
@@ -421,13 +427,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             and is_valid_device_id(router_device_id)
             and router_device_id != config_device_id
         ):
-            async_create_device_id_mismatch_issue(hass, entry, router_device_id)
-            _LOGGER.error(
-                "OPNsense Device ID has changed which indicates new or changed hardware. "
-                "A fixable repair issue is available to rebuild entities for this "
-                "OPNsense device. "
-                "hass-opnsense is shutting down."
-            )
+            if async_create_device_id_mismatch_issue(hass, entry, router_device_id):
+                _LOGGER.error(
+                    "OPNsense Device ID has changed which indicates new or changed hardware. "
+                    "A fixable repair issue is available to rebuild entities for this "
+                    "OPNsense device. "
+                    "hass-opnsense is shutting down."
+                )
             return False
 
         firmware: str | None = await client.get_host_firmware_version()

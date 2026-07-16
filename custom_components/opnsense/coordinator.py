@@ -265,6 +265,10 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         ):
             return True
         runtime_device_id = self._state.get("device_unique_id")
+        if not is_valid_device_id(self._device_unique_id):
+            _LOGGER.warning("Coordinator has a malformed configured OPNsense Router Unique ID")
+            self._mismatched_count = 0
+            return False
         if not is_valid_device_id(runtime_device_id):
             _LOGGER.warning("Coordinator received malformed OPNsense Router Unique ID. Will retry")
             self._mismatched_count = 0
@@ -284,18 +288,20 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             self._mismatched_count += 1
             # Trigger repair task and shutdown if this happens 3 times in a row
             if self._mismatched_count == 3:
-                if self.config_entry is not None:
+                repair_issue_created = self.config_entry is not None and (
                     async_create_device_id_mismatch_issue(
                         self.hass,
                         self.config_entry,
                         runtime_device_id,
                     )
-                _LOGGER.error(
-                    "OPNsense Device ID has changed which indicates new or changed hardware. "
-                    "A fixable repair issue is available to rebuild entities for this "
-                    "OPNsense device. "
-                    "hass-opnsense is shutting down."
                 )
+                if repair_issue_created:
+                    _LOGGER.error(
+                        "OPNsense Device ID has changed which indicates new or changed hardware. "
+                        "A fixable repair issue is available to rebuild entities for this "
+                        "OPNsense device. "
+                        "hass-opnsense is shutting down."
+                    )
                 await self.async_shutdown()
             return False
         self._mismatched_count = 0
