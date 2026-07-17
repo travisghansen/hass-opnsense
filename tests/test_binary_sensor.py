@@ -177,6 +177,35 @@ async def test_async_setup_entry_records_none_or_authoritative_empty_for_invento
 
 
 @pytest.mark.asyncio
+async def test_async_setup_entry_skips_when_coordinator_state_not_mapping(
+    monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Non-mapping coordinator state should skip setup bookkeeping and entity creation."""
+    entry = setup_binary_sensor_reconciliation_entry(
+        make_config_entry,
+        coordinator_data=cast("dict[str, Any]", ["not", "mapping"]),
+        sync_interfaces=True,
+        sync_smart=False,
+        sync_notices=False,
+    )
+    captured = capture_reconciled_desired_entities(monkeypatch)
+    created: list[Any] = []
+
+    def add_entities(ents: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Capture entities."""
+        created.extend(ents)
+
+    await async_setup_entry(
+        MagicMock(),
+        entry,
+        cast("AddEntitiesCallback", add_entities),
+    )
+
+    assert "entities" not in captured
+    assert created == []
+
+
+@pytest.mark.asyncio
 async def test_async_setup_entry_skips_when_disabled(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:

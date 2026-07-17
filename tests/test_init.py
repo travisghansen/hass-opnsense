@@ -4597,6 +4597,175 @@ async def test_async_setup_entry_recreates_marker_issue_on_probe_mismatch_before
 
 
 @pytest.mark.asyncio
+async def test_async_setup_entry_rejects_entry_with_malformed_repair_marker(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Malformed repair marker payloads should abort setup and avoid client creation."""
+    client = _make_valid_setup_client()
+    create_client = MagicMock(return_value=client)
+    monkeypatch.setattr(
+        init_mod,
+        "create_opnsense_client_from_config_entry",
+        create_client,
+    )
+
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            # malformed marker is missing new_device_id (must be string)
+            init_mod.REPAIR_MARKER_KEY: {"version": 1, "old_device_id": "old-dev"},
+        },
+        options={},
+    )
+    forward_entry_setups = AsyncMock(return_value=True)
+    monkeypatch.setattr(
+        ph_hass.config_entries,
+        "async_forward_entry_setups",
+        forward_entry_setups,
+    )
+    monkeypatch.setattr(ph_hass.config_entries, "async_reload", MagicMock())
+    ph_hass.data.clear()
+
+    result = await init_mod.async_setup_entry(ph_hass, entry)
+
+    assert result is False
+    create_client.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("config_device_id", "entry_unique_id", "marker_device_id"),
+    [
+        pytest.param("dev1", "dev1", "dev2", id="config-mismatch"),
+        pytest.param("dev2", "old-dev", "dev2", id="entry-mismatch"),
+    ],
+)
+async def test_async_setup_entry_rejects_entry_when_marker_and_entry_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    config_device_id: str,
+    entry_unique_id: str,
+    marker_device_id: str,
+) -> None:
+    """Repair marker new-device ID must match both stored config and unique id."""
+    client = _make_valid_setup_client()
+    client.get_device_unique_id = AsyncMock(return_value=config_device_id)
+    create_client = MagicMock(return_value=client)
+    monkeypatch.setattr(
+        init_mod,
+        "create_opnsense_client_from_config_entry",
+        create_client,
+    )
+    coordinator = _make_setup_coordinator()
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: config_device_id,
+            init_mod.REPAIR_MARKER_KEY: {
+                "version": 1,
+                "old_device_id": "old-dev",
+                "new_device_id": marker_device_id,
+            },
+        },
+        options={},
+        unique_id=entry_unique_id,
+    )
+    forward_entry_setups = AsyncMock(return_value=True)
+    monkeypatch.setattr(
+        ph_hass.config_entries,
+        "async_forward_entry_setups",
+        forward_entry_setups,
+    )
+    monkeypatch.setattr(ph_hass.config_entries, "async_reload", MagicMock())
+    ph_hass.data.clear()
+
+    result = await init_mod.async_setup_entry(ph_hass, entry)
+
+    assert result is False
+    forward_entry_setups.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cleanup_error", [HomeAssistantError("cleanup"), KeyError("cleanup")])
+async def test_async_setup_entry_keeps_runtime_when_reconciliation_cleanup_raises(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    cleanup_error: HomeAssistantError | KeyError,
+) -> None:
+    """Reconciliation cleanup exceptions should keep runtime state and return False."""
+    client = _make_valid_setup_client()
+    create_client = MagicMock(return_value=client)
+    monkeypatch.setattr(
+        init_mod,
+        "create_opnsense_client_from_config_entry",
+        create_client,
+    )
+    coordinator = _make_setup_coordinator()
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            init_mod.REPAIR_MARKER_KEY: {
+                "version": 1,
+                "old_device_id": "old-dev",
+                "new_device_id": "dev1",
+            },
+        },
+        options={},
+        unique_id="dev1",
+    )
+
+    reconciliation = MagicMock()
+    reconciliation.marker = init_mod.RepairMarker(
+        version=1,
+        old_device_id="old-dev",
+        new_device_id="dev1",
+    )
+    reconciliation.require_platforms_complete = MagicMock(
+        side_effect=init_mod.RepairReconciliationError("platforms incomplete")
+    )
+    monkeypatch.setattr(init_mod, "RepairReconciliation", lambda *_args: reconciliation)
+    monkeypatch.setattr(
+        init_mod,
+        "_cleanup_reconciliation_failure",
+        AsyncMock(side_effect=cleanup_error),
+    )
+    forward_entry_setups = AsyncMock(return_value=True)
+    monkeypatch.setattr(
+        ph_hass.config_entries,
+        "async_forward_entry_setups",
+        forward_entry_setups,
+    )
+    monkeypatch.setattr(ph_hass.config_entries, "async_reload", MagicMock())
+    ph_hass.data.clear()
+
+    result = await init_mod.async_setup_entry(ph_hass, entry)
+
+    assert result is False
+    assert entry.runtime_data is not None
+    assert entry.runtime_data.coordinator is coordinator
+    assert entry.runtime_data.opnsense_client is client
+    assert ph_hass.data[init_mod.DOMAIN][entry.entry_id] is client
+    coordinator.async_shutdown.assert_not_awaited()
+    client.async_close.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_async_setup_entry_registers_update_listener_after_forwarding(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,

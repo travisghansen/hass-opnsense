@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 from aiopnsense.exceptions import (
     OPNsenseBelowMinFirmware,
     OPNsenseConnectionError,
+    OPNsenseError,
     OPNsenseTimeoutError,
     OPNsenseUnknownFirmware,
 )
@@ -357,6 +358,35 @@ async def test_loaded_entry_duplicate_after_unload_schedules_changed_entry_reloa
     entity_registry.async_remove.assert_not_called()
     device_registry.async_update_device.assert_not_called()
     hass.config_entries.async_update_entry.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_observed_duplicate_id_aborts_before_unload_or_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An existing entry with the observed ID should abort before unload."""
+    hass = MagicMock()
+    entry = _make_entry()
+    duplicate = _make_entry(entry_id="entry-2", device_id="other", unique_id="other")
+    _configure_hass(hass, entry)
+    hass.config_entries.async_entries.return_value = [entry, duplicate]
+    entity_registry, device_registry = _patch_registries(
+        monkeypatch,
+        entities=[SimpleNamespace(entity_id="sensor.old")],
+        devices=[SimpleNamespace(id="device")],
+    )
+    _patch_probe_client(monkeypatch, observed_device_id="other")
+    flow = _make_flow(hass, entry)
+
+    result = await flow.async_step_confirm({})
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+    entity_registry.async_remove.assert_not_called()
+    device_registry.async_update_device.assert_not_called()
+    hass.config_entries.async_unload.assert_not_awaited()
+    hass.config_entries.async_update_entry.assert_not_called()
+    hass.config_entries.async_schedule_reload.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1171,6 +1201,89 @@ async def test_stored_expected_id_unloaded_entry_retries_recovery_reload(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "schedule_error",
+    [
+        pytest.param(HomeAssistantError("reload schedule failed"), id="homeassistant-error"),
+        pytest.param(KeyError("entry_id"), id="key-error"),
+    ],
+)
+async def test_schedule_changed_entry_reload_handles_schedule_errors(
+    schedule_error: Exception,
+) -> None:
+    """Recovery scheduling for changed entries should tolerate schedule failures."""
+    hass = MagicMock()
+    entry = _make_entry()
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_get_entry.return_value = entry
+    hass.config_entries.async_schedule_reload.side_effect = schedule_error
+    flow = _make_flow(hass, entry)
+
+    flow._schedule_changed_entry_reload(entry_id=entry.entry_id, entry_title=entry.title)
+
+    hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
+
+
+@pytest.mark.asyncio
+async def test_schedule_recovery_reload_skips_when_snapshot_changes() -> None:
+    """Recovery scheduling should be skipped when entry snapshot checks fail."""
+    hass = MagicMock()
+    entry = _make_entry()
+    entry_data_snapshot = dict(entry.data)
+    entry_options_snapshot = dict(entry.options)
+    current_entry = _make_entry()
+    object.__setattr__(
+        current_entry,
+        "data",
+        {**current_entry.data, "url": "https://changed.example"},
+    )
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_get_entry.return_value = current_entry
+    hass.config_entries.async_schedule_reload = MagicMock()
+    flow = _make_flow(hass, entry)
+
+    flow._schedule_recovery_reload(
+        data_snapshot=entry_data_snapshot,
+        options_snapshot=entry_options_snapshot,
+        unique_id_snapshot=entry.unique_id,
+        entry_id=entry.entry_id,
+        entry_title=entry.title,
+    )
+
+    hass.config_entries.async_schedule_reload.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "schedule_error",
+    [
+        pytest.param(HomeAssistantError("schedule failed"), id="homeassistant-error"),
+        pytest.param(KeyError("entry-id"), id="key-error"),
+    ],
+)
+async def test_schedule_recovery_reload_ignores_schedule_errors(
+    schedule_error: HomeAssistantError | KeyError,
+) -> None:
+    """Failure to schedule recovery should not crash the flow."""
+    hass = MagicMock()
+    entry = _make_entry()
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_get_entry.return_value = entry
+    hass.config_entries.async_schedule_reload.side_effect = schedule_error
+    flow = _make_flow(hass, entry)
+
+    flow._schedule_recovery_reload(
+        data_snapshot=dict(entry.data),
+        options_snapshot=dict(entry.options),
+        unique_id_snapshot=entry.unique_id,
+        entry_id=entry.entry_id,
+        entry_title=entry.title,
+    )
+
+    hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
+
+
+@pytest.mark.asyncio
 async def test_repair_persists_marker_without_registry_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1220,6 +1333,77 @@ async def test_valid_marker_retry_reprobes_and_reloads(
     client.validate.assert_awaited_once_with()
     client.get_device_unique_id.assert_awaited_once_with()
     hass.config_entries.async_reload.assert_awaited_once_with(entry.entry_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("probe_error", "observed_device_id", "expected_reason"),
+    [
+        (OPNsenseConnectionError("transport"), None, "cannot_connect"),
+        (OPNsenseTimeoutError("timeout"), None, "cannot_connect"),
+        (None, "", "cannot_connect"),
+        (None, "dev1", "entry_changed"),
+    ],
+)
+async def test_marker_retry_reprobe_error_and_id_checks_abort_without_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    probe_error: OPNsenseError | None,
+    observed_device_id: Any | None,
+    expected_reason: str,
+) -> None:
+    """Marker retries should abort safely for probe failures and ID mismatches."""
+    hass = MagicMock()
+    entry = _make_entry(device_id="other", unique_id="other")
+    object.__setattr__(
+        entry,
+        "data",
+        {**entry.data, REPAIR_MARKER_KEY: build_repair_marker("dev1", "other")},
+    )
+    _configure_hass(hass, entry)
+    _patch_probe_client(
+        monkeypatch,
+        observed_device_id=observed_device_id,
+        probe_error=probe_error,
+    )
+    _patch_registries(monkeypatch)
+    flow = _make_flow(hass, entry, old_device_id="dev1", new_device_id="other")
+
+    result = await flow.async_step_confirm({})
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == expected_reason
+    hass.config_entries.async_unload.assert_not_awaited()
+    hass.config_entries.async_update_entry.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_marker_retry_reprobe_match_but_cannot_unload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When a marker retry reprobe matches, unload failures must yield cannot_unload."""
+    hass = MagicMock()
+    entry = _make_entry(
+        device_id="other",
+        unique_id="other",
+        state=ConfigEntryState.LOADED,
+    )
+    object.__setattr__(
+        entry,
+        "data",
+        {**entry.data, REPAIR_MARKER_KEY: build_repair_marker("dev1", "other")},
+    )
+    _configure_hass(hass, entry)
+    hass.config_entries.async_unload.return_value = False
+    _patch_probe_client(monkeypatch, observed_device_id="other")
+    _patch_registries(monkeypatch)
+    flow = _make_flow(hass, entry, old_device_id="dev1", new_device_id="other")
+
+    result = await flow.async_step_confirm({})
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "cannot_unload"
+    hass.config_entries.async_unload.assert_awaited_once_with(entry.entry_id)
+    hass.config_entries.async_update_entry.assert_not_called()
 
 
 @pytest.mark.asyncio

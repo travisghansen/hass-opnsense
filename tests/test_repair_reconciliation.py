@@ -1,9 +1,11 @@
 """Tests for restart-safe device-ID repair reconciliation."""
 
+from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import Entity
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -317,6 +319,81 @@ def test_prepare_and_finalize_are_idempotent_after_partial_retry(
         "new_id_second",
     }
     assert registry.removed == []
+
+
+@pytest.mark.parametrize(
+    "failure_factory",
+    [
+        (lambda: HomeAssistantError("migrating entity"), HomeAssistantError),
+        (lambda: KeyError("migrating entity"), KeyError),
+        (lambda: ValueError("migrating entity"), ValueError),
+        (
+            lambda: rr.dr.DeviceIdentifierCollisionError(
+                {("domain", "identifier")}, MagicMock(spec=rr.dr.DeviceEntry)
+            ),
+            rr.dr.DeviceIdentifierCollisionError,
+        ),
+    ],
+)
+def test_prepare_wraps_registry_identifier_migration_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    failure_factory: tuple[Callable[[], Exception], type[Exception]],
+) -> None:
+    """Update errors during identifier migration are wrapped as repair errors."""
+    candidate = _entry("old_id_sensor", entity_id="sensor.old")
+    reconciliation, entity_registry, _ = _subject(monkeypatch, [candidate], [])
+    failure, expected = failure_factory
+    monkeypatch.setattr(
+        entity_registry,
+        "async_update_entity",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(failure()),
+    )
+
+    with pytest.raises(
+        rr.RepairReconciliationError, match="registry identifier migration failed"
+    ) as err:
+        reconciliation.prepare()
+    assert isinstance(err.value.__cause__, expected)
+
+
+def test_finalize_wraps_detach_failure_as_registry_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Finalization surfaces detach failures as a repair reconciliation error."""
+    stale = _entry("old_id_stale", entity_id="sensor.stale")
+    reconciliation, _, device_registry = _subject(
+        monkeypatch,
+        [stale],
+        [
+            _device("main", "new_id"),
+            _device("obsolete", "old", config_entries={"entry-1"}),
+        ],
+    )
+    reconciliation.prepare()
+    monkeypatch.setattr(
+        rr,
+        "detach_shared_router_parent",
+        lambda *args, **kwargs: (_ for _ in ()).throw(KeyError("detach shared tracker")),
+    )
+
+    with pytest.raises(rr.RepairReconciliationError, match="registry finalization failed") as err:
+        reconciliation.finalize()
+    assert isinstance(err.value.__cause__, KeyError)
+    assert device_registry.updates == []
+
+
+def test_mark_complete_deactivates() -> None:
+    """Finishing reconciliation disables active state."""
+    reconciliation = rr.RepairReconciliation(
+        MagicMock(),
+        _other_config_entry("entry-1", "old"),
+        rr.RepairMarker(1, "old", "new"),
+    )
+    assert reconciliation.active is True
+
+    reconciliation.mark_complete()
+
+    assert reconciliation.active is False
 
 
 def test_finalize_reassigns_shared_tracker_parent_to_remaining_router(
