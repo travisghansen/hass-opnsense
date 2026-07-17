@@ -295,6 +295,96 @@ async def test_async_setup_entry_records_none_for_malformed_firewall_nat_invento
 
 
 @pytest.mark.parametrize(
+    ("state", "sync_option", "expected_key"),
+    [
+        (
+            {"services": [None, {"locked": 1}, {"id": "svc", "locked": 0}]},
+            "sync_services",
+            "service.svc.status",
+        ),
+        (
+            {
+                "openvpn": {
+                    "clients": {"bad": {}, "good": {"enabled": False}},
+                    "servers": {},
+                },
+                "wireguard": {"clients": {}, "servers": {}},
+            },
+            "sync_vpn",
+            "openvpn.clients.good",
+        ),
+        (
+            {
+                ATTR_UNBOUND_BLOCKLIST: {
+                    "legacy": {},
+                    "bad": None,
+                    "good": {"description": "Good"},
+                }
+            },
+            "sync_unbound",
+            "unbound_blocklist.switch.good",
+        ),
+        (
+            {
+                "firewall": {
+                    "rules": {
+                        "bad": None,
+                        "good": {"uuid": "good", "%interface": ""},
+                    },
+                    "nat": {"source_nat": {}, "d_nat": {}, "one_to_one": {}, "npt": {}},
+                }
+            },
+            "sync_firewall_and_nat",
+            "firewall.rule.good",
+        ),
+        (
+            {
+                "firewall": {
+                    "rules": {},
+                    "nat": {
+                        "source_nat": {
+                            "bad": {"uuid": "bad", "%interface": ""},
+                            "good": {"uuid": "good", "%interface": "wan"},
+                        },
+                        "d_nat": {},
+                        "one_to_one": {},
+                        "npt": {},
+                    },
+                }
+            },
+            "sync_firewall_and_nat",
+            "firewall.nat.source_nat.good",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_async_setup_entry_marks_malformed_switch_rows_incomplete(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    state: dict[str, Any],
+    sync_option: str,
+    expected_key: str,
+) -> None:
+    """Malformed rows prevent reconciliation while valid sibling rows still compile."""
+    config_entry = setup_switch_reconciliation_entry(
+        make_config_entry,
+        coordinator=make_coord(state),
+        **{sync_option: True},
+    )
+    captured = capture_reconciled_desired_entities(monkeypatch)
+    created: list[Any] = []
+
+    await switch_mod.async_setup_entry(
+        MagicMock(),
+        config_entry,
+        cast("AddEntitiesCallback", lambda entities, _=False: created.extend(entities)),
+    )
+
+    assert captured["entities"] is None
+    assert expected_key in {entity.entity_description.key for entity in created}
+
+
+@pytest.mark.parametrize(
     ("state", "expected_entities"),
     [
         ({}, None),

@@ -1690,6 +1690,42 @@ async def test_async_update_dt_data_uses_shared_device_id_mismatch_policy(
 
 
 @pytest.mark.asyncio
+async def test_check_device_unique_id_mismatch_issue_retries_until_success(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
+    """Retry mismatch issue creation and shut down only after it succeeds."""
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=fake_client()(),
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+    coord._state = {"device_unique_id": "other"}
+    create_issue = MagicMock(side_effect=[False, True])
+    shutdown = AsyncMock()
+
+    monkeypatch.setattr(coordinator_module, "async_create_device_id_mismatch_issue", create_issue)
+    object.__setattr__(coord, "async_shutdown", shutdown)
+
+    assert await coord._check_device_unique_id() is False
+    assert await coord._check_device_unique_id() is False
+    assert await coord._check_device_unique_id() is False
+    assert await coord._check_device_unique_id() is False
+
+    assert coord._mismatched_count == 4
+    assert create_issue.call_args_list == [
+        call(coord.hass, entry, "other"),
+        call(coord.hass, entry, "other"),
+    ]
+    shutdown.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("expected_device_id", "state"),
     [

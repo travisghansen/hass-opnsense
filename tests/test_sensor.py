@@ -3294,6 +3294,109 @@ async def test_async_setup_entry_records_none_for_partial_vpn_inventory(
 
 
 @pytest.mark.parametrize(
+    ("state", "sync_option", "expected_key"),
+    [
+        (
+            {"vnstat": {"interfaces": {None: {}, "wan": {}}}},
+            "sync_vnstat",
+            "vnstat.wan.vnstat_today",
+        ),
+        (
+            {"smart": [None, {"device": ""}, {"device": "nvme0"}], "smart_info": {}},
+            "sync_smart",
+            "smart.nvme0.temperature",
+        ),
+        (
+            {"telemetry": {"filesystems": [None, {"mountpoint": "/"}], "temps": {}}},
+            "sync_telemetry",
+            "telemetry.filesystems.root",
+        ),
+        (
+            {
+                "telemetry": {
+                    "filesystems": [],
+                    "temps": {"bad": None, "cpu": {"temperature": 42}},
+                }
+            },
+            "sync_telemetry",
+            "telemetry.temps.cpu",
+        ),
+        (
+            {"interfaces": {"bad": None, "wan": {"name": "WAN"}}},
+            "sync_interfaces",
+            "interface.wan.status",
+        ),
+        (
+            {"gateways": {"bad": None, "wan": {"status": "online"}}},
+            "sync_gateways",
+            "gateway.wan.status",
+        ),
+        (
+            {"carp": {"interfaces": [None, {"subnet": ""}, {"interface": "wan", "subnet": "1"}]}},
+            "sync_carp",
+            "carp.interface.wan.1",
+        ),
+        (
+            {
+                "openvpn": {"servers": {"bad": None, "good": {"status": "up"}}},
+                "wireguard": {"clients": {}, "servers": {}},
+            },
+            "sync_vpn",
+            "openvpn.servers.good.status",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_async_setup_entry_marks_malformed_sensor_rows_incomplete(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    state: dict[str, Any],
+    sync_option: str,
+    expected_key: str,
+) -> None:
+    """Malformed rows prevent reconciliation while valid sibling rows still compile."""
+    config_entry = setup_sensor_reconciliation_entry(
+        make_config_entry,
+        coordinator_data=state,
+        **{sync_option: True},
+    )
+    captured = capture_reconciled_desired_entities(monkeypatch)
+    created: list[Any] = []
+
+    await async_setup_entry(
+        MagicMock(),
+        config_entry,
+        cast("AddEntitiesCallback", lambda entities, _=False: created.extend(entities)),
+    )
+
+    assert captured["entities"] is None
+    assert expected_key in {entity.entity_description.key for entity in created}
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_ignores_unconsumed_openvpn_client_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """OpenVPN client rows do not affect sensor reconciliation or compilation."""
+    config_entry = setup_sensor_reconciliation_entry(
+        make_config_entry,
+        coordinator_data={
+            "openvpn": {"clients": {"bad": None}, "servers": {}},
+            "wireguard": {"clients": {}, "servers": {}},
+        },
+        sync_vpn=True,
+    )
+    captured = capture_reconciled_desired_entities(monkeypatch)
+
+    await async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", lambda entities, _=False: None)
+    )
+
+    assert captured["entities"] == []
+
+
+@pytest.mark.parametrize(
     (
         "state",
         "sync_telemetry",

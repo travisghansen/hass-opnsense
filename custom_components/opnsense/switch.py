@@ -28,6 +28,51 @@ from .repair_reconciliation import record_desired_entities
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
+def _is_valid_service_row(service: Any) -> bool:
+    """Return whether a service row can be evaluated by the compiler."""
+    return isinstance(service, Mapping)
+
+
+def _is_valid_vpn_switch_row(instance: Any) -> bool:
+    """Return whether a VPN instance row can produce a switch."""
+    return isinstance(instance, MutableMapping) and instance.get("enabled") is not None
+
+
+def _is_valid_unbound_row(dnsbl: Any) -> bool:
+    """Return whether an Unbound blocklist row can produce a switch."""
+    return isinstance(dnsbl, MutableMapping)
+
+
+def _is_valid_firewall_rule_row(rule_key: Any, rule: Any) -> bool:
+    """Return whether a firewall rule row can produce a switch."""
+    if not isinstance(rule, MutableMapping):
+        return False
+    rule_id = firewall_rule_id_from_payload(rule_key, rule)
+    interface = rule.get("%interface", rule.get("interface", ""))
+    return bool(rule_id) and isinstance(interface, str)
+
+
+def _is_valid_nat_rule_row(rule_key: Any, rule: Any) -> bool:
+    """Return whether a NAT rule row can produce a switch."""
+    if not isinstance(rule, MutableMapping):
+        return False
+    rule_id = firewall_rule_id_from_payload(rule_key, rule)
+    interface = rule.get("%interface", rule.get("interface", ""))
+    return bool(rule_id) and isinstance(interface, str) and bool(interface.strip())
+
+
+def _vpn_switch_rows_are_complete(state: MutableMapping[str, Any]) -> bool:
+    """Return whether every VPN row consumed by the switch compiler is valid."""
+    for vpn_type in ("openvpn", "wireguard"):
+        for group in ("clients", "servers"):
+            instances = dict_get(state, f"{vpn_type}.{group}", {}) or {}
+            if not isinstance(instances, MutableMapping) or not all(
+                _is_valid_vpn_switch_row(instance) for instance in instances.values()
+            ):
+                return False
+    return True
+
+
 def _create_switch[EntityT: OPNsenseSwitch](
     entity_cls: type[EntityT],
     config_entry: ConfigEntry,
@@ -232,7 +277,7 @@ async def _compile_service_switches(
 
     entities: list = []
     for service in state.get("services", []):
-        if not isinstance(service, Mapping):
+        if not _is_valid_service_row(service):
             continue
         if service.get("locked", 1) == 1:
             continue
@@ -271,10 +316,7 @@ async def _compile_vpn_switches(
             if not isinstance(vpn_instances, MutableMapping):
                 continue
             for uuid, instance in vpn_instances.items():
-                if (
-                    not isinstance(instance, MutableMapping)
-                    or instance.get("enabled", None) is None
-                ):
+                if not _is_valid_vpn_switch_row(instance):
                     continue
 
                 entities.append(
@@ -340,7 +382,7 @@ async def _compile_unbound_switches(
         return []
 
     entities: list = []
-    if isinstance(unbound_blocklist.get("legacy"), MutableMapping):
+    if _is_valid_unbound_row(unbound_blocklist.get("legacy")):
         entities.append(
             _create_switch(
                 OPNsenseUnboundBlocklistSwitchLegacy,
@@ -353,7 +395,7 @@ async def _compile_unbound_switches(
     for uuid, dnsbl in unbound_blocklist.items():
         if uuid == "legacy":
             continue
-        if not isinstance(dnsbl, MutableMapping):
+        if not _is_valid_unbound_row(dnsbl):
             continue
 
         entities.append(
@@ -389,13 +431,10 @@ async def _compile_firewall_rules_switches(
 
     entities: list = []
     for rule_key, rule in rules.items():
-        if not isinstance(rule, MutableMapping):
+        if not _is_valid_firewall_rule_row(rule_key, rule):
             continue
         rule_id = firewall_rule_id_from_payload(rule_key, rule)
-        if not rule_id:
-            continue
-        interface = rule.get("%interface", rule.get("interface", ""))
-        if not isinstance(interface, str):
+        if not isinstance(rule_id, str) or not rule_id:
             continue
         entities.append(
             _create_switch(
@@ -433,13 +472,10 @@ async def _compile_nat_rule_switches(
 
     entities: list = []
     for rule_key, rule in rules.items():
-        if not isinstance(rule, MutableMapping):
+        if not _is_valid_nat_rule_row(rule_key, rule):
             continue
         rule_id = firewall_rule_id_from_payload(rule_key, rule)
-        if not rule_id:
-            continue
-        interface = rule.get("%interface", rule.get("interface", ""))
-        if not isinstance(interface, str) or not interface.strip():
+        if not isinstance(rule_id, str) or not rule_id:
             continue
         entities.append(
             _create_switch(
@@ -578,11 +614,27 @@ async def async_setup_entry(
                 and isinstance(firewall_nat.get("npt"), MutableMapping)
             ):
                 reconciliation_complete = False
+            else:
+                rule_inventories = (
+                    (firewall["rules"], _is_valid_firewall_rule_row),
+                    (firewall_nat["source_nat"], _is_valid_nat_rule_row),
+                    (firewall_nat["d_nat"], _is_valid_nat_rule_row),
+                    (firewall_nat["one_to_one"], _is_valid_nat_rule_row),
+                    (firewall_nat["npt"], _is_valid_nat_rule_row),
+                )
+                if not all(
+                    all(predicate(rule_key, rule) for rule_key, rule in rules.items())
+                    for rules, predicate in rule_inventories
+                ):
+                    reconciliation_complete = False
         else:
             reconciliation_complete = False
     if config.get(CONF_SYNC_SERVICES, DEFAULT_SYNC_OPTION_VALUE):
-        if "services" in state and isinstance(state.get("services"), list):
+        services = state.get("services")
+        if "services" in state and isinstance(services, list):
             entities.extend(await _compile_service_switches(config_entry, coordinator, state))
+            if not all(_is_valid_service_row(service) for service in services):
+                reconciliation_complete = False
         else:
             reconciliation_complete = False
     if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):
@@ -593,7 +645,11 @@ async def async_setup_entry(
             state.get("wireguard"), MutableMapping
         )
         entities.extend(await _compile_vpn_switches(config_entry, coordinator, state))
-        if not (has_openvpn_inventory and has_wireguard_inventory):
+        if not (
+            has_openvpn_inventory
+            and has_wireguard_inventory
+            and _vpn_switch_rows_are_complete(state)
+        ):
             reconciliation_complete = False
     if config.get(CONF_SYNC_CARP, DEFAULT_SYNC_OPTION_VALUE):
         if not isinstance(dict_get(state, "carp.status_summary"), MutableMapping):
@@ -604,6 +660,10 @@ async def async_setup_entry(
             state.get(ATTR_UNBOUND_BLOCKLIST), MutableMapping
         ):
             entities.extend(await _compile_unbound_switches(config_entry, coordinator, state))
+            if not all(
+                _is_valid_unbound_row(dnsbl) for dnsbl in state[ATTR_UNBOUND_BLOCKLIST].values()
+            ):
+                reconciliation_complete = False
         else:
             reconciliation_complete = False
 

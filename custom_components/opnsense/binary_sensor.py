@@ -29,6 +29,32 @@ from .repair_reconciliation import record_desired_entities
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
+def _is_valid_interface_row(interface_name: Any, interface: Any) -> bool:
+    """Return whether an interface row can produce a binary sensor."""
+    return isinstance(interface_name, str) and isinstance(interface, Mapping)
+
+
+def _is_valid_smart_device_row(smart_device: Any) -> bool:
+    """Return whether a SMART device row can produce a binary sensor."""
+    return (
+        isinstance(smart_device, Mapping)
+        and isinstance(smart_device.get("device"), str)
+        and bool(smart_device["device"].strip())
+    )
+
+
+def _smart_device_slug(device_name: str) -> str:
+    """Return the entity key slug for a SMART device name.
+
+    Args:
+        device_name: SMART device name to normalize.
+
+    Returns:
+        The slugified device name, or ``unknown`` when slugification fails.
+    """
+    return slugify(device_name) or "unknown"
+
+
 def _build_interface_enabled_binary_sensor_description(
     interface_name: str,
     interface: Mapping[str, Any],
@@ -108,7 +134,7 @@ async def _compile_interface_enabled_binary_sensors(
 
     entities: list = []
     for interface_name, interface in interfaces.items():
-        if not isinstance(interface_name, str) or not isinstance(interface, Mapping):
+        if not _is_valid_interface_row(interface_name, interface):
             continue
 
         entities.append(
@@ -147,11 +173,10 @@ async def _compile_smart_status_binary_sensors(
 
     entities: list = []
     for smart_device in smart_devices:
-        if not isinstance(smart_device, Mapping):
+        if not _is_valid_smart_device_row(smart_device):
             continue
-        device_name = get_smart_device_name(smart_device)
-        if not device_name:
-            continue
+        device_name = smart_device["device"]
+        device_name = device_name.strip()
 
         entities.append(
             OPNsenseSmartStatusBinarySensor(
@@ -185,16 +210,24 @@ async def async_setup_entry(
 
     entities: list = []
     if config.get(CONF_SYNC_INTERFACES, DEFAULT_SYNC_OPTION_VALUE):
-        if "interfaces" in state and isinstance(state.get("interfaces"), Mapping):
+        interfaces = state.get("interfaces")
+        if "interfaces" in state and isinstance(interfaces, Mapping):
             entities.extend(
                 await _compile_interface_enabled_binary_sensors(config_entry, coordinator)
             )
+            if not all(
+                _is_valid_interface_row(interface_name, interface)
+                for interface_name, interface in interfaces.items()
+            ):
+                reconciliation_complete = False
         else:
             reconciliation_complete = False
     if config.get(CONF_SYNC_SMART, DEFAULT_SYNC_OPTION_VALUE):
         smart_data = state.get("smart")
         if "smart" in state and isinstance(smart_data, list):
             entities.extend(await _compile_smart_status_binary_sensors(config_entry, coordinator))
+            if not all(_is_valid_smart_device_row(device) for device in smart_data):
+                reconciliation_complete = False
         else:
             reconciliation_complete = False
     if config.get(CONF_SYNC_NOTICES, DEFAULT_SYNC_OPTION_VALUE):

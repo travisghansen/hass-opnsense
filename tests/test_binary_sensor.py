@@ -178,6 +178,53 @@ async def test_async_setup_entry_records_none_or_authoritative_empty_for_invento
     assert captured["entities"] == expected
 
 
+@pytest.mark.parametrize(
+    ("coordinator_data", "sync_interfaces", "sync_smart", "expected_key"),
+    [
+        (
+            {"interfaces": {None: {}, "wan": {"name": "WAN"}}},
+            True,
+            False,
+            "interface.wan.enabled",
+        ),
+        (
+            {"smart": [None, {"device": "  "}, {"device": "nvme0"}]},
+            False,
+            True,
+            "smart.nvme0.status",
+        ),
+    ],
+    ids=["interface", "smart"],
+)
+@pytest.mark.asyncio
+async def test_async_setup_entry_marks_malformed_binary_sensor_rows_incomplete(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    coordinator_data: dict[str, Any],
+    sync_interfaces: bool,
+    sync_smart: bool,
+    expected_key: str,
+) -> None:
+    """Malformed rows keep reconciliation incomplete while valid rows still compile."""
+    entry = setup_binary_sensor_reconciliation_entry(
+        make_config_entry,
+        coordinator_data=coordinator_data,
+        sync_interfaces=sync_interfaces,
+        sync_smart=sync_smart,
+    )
+    captured = capture_reconciled_desired_entities(monkeypatch)
+    created: list[Any] = []
+
+    await async_setup_entry(
+        MagicMock(),
+        entry,
+        cast("AddEntitiesCallback", lambda entities, _=False: created.extend(entities)),
+    )
+
+    assert captured["entities"] is None
+    assert {entity.entity_description.key for entity in created} == {expected_key}
+
+
 @pytest.mark.asyncio
 async def test_async_setup_entry_skips_when_coordinator_state_not_mapping(
     monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]

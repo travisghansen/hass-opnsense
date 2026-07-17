@@ -138,6 +138,21 @@ def _async_create_marker_repair_issue(
     )
 
 
+async def _async_first_refresh_with_marker_issue(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    coordinator: OPNsenseDataUpdateCoordinator,
+    repair_marker: RepairMarker | None,
+) -> None:
+    """Refresh coordinator and recreate a marker-backed issue when setup must retry."""
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    except ConfigEntryNotReady:
+        if repair_marker is not None:
+            _async_create_marker_repair_issue(hass, entry, repair_marker)
+        raise
+
+
 def _resolve_device_id_probe_state(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -606,7 +621,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError:
             _LOGGER.warning("Unable to confirm OPNsense Firmware version")
 
-        await coordinator.async_config_entry_first_refresh()
+        await _async_first_refresh_with_marker_issue(hass, entry, coordinator, repair_marker)
 
         platforms: list[Platform] = PLATFORMS.copy()
         if not device_tracker_enabled and Platform.DEVICE_TRACKER in platforms:

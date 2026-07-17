@@ -294,7 +294,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             )
             self._mismatched_count += 1
             # Trigger repair task and shutdown if this happens 3 times in a row
-            if self._mismatched_count == 3:
+            if self._mismatched_count >= 3:
                 repair_issue_created = self.config_entry is not None and (
                     async_create_device_id_mismatch_issue(
                         self.hass,
@@ -309,7 +309,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                         "OPNsense device. "
                         "hass-opnsense is shutting down."
                     )
-                await self.async_shutdown()
+                    await self.async_shutdown()
             return False
         config_entry = self.config_entry
         if config_entry is not None and not has_repair_marker(config_entry):
