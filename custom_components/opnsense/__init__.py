@@ -104,13 +104,6 @@ class OPNsenseData:
     should_reload: bool = True
 
 
-@dataclass
-class _ReconciliationForwardingState:
-    """Tracks whether marker-backed forwarding requires runtime retention."""
-
-    preserve_runtime: bool = False
-
-
 def _align_aiopnsense_log_level() -> None:
     """Mirror the integration log level onto aiopnsense when it is unset."""
     aiopnsense_logger = logging.getLogger("aiopnsense")
@@ -143,43 +136,6 @@ def _async_create_marker_repair_issue(
             "new_device_id": repair_marker.new_device_id,
         },
     )
-
-
-async def _async_forward_entry_setups(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    platforms: list[Platform],
-    reconciliation: RepairReconciliation | None,
-    state: _ReconciliationForwardingState | None = None,
-) -> None:
-    """Forward entry setups and restore a marker-backed issue on failure.
-
-    Args:
-        hass: Home Assistant instance.
-        entry: OPNsense config entry being set up.
-        platforms: Platforms to forward for setup.
-        reconciliation: Active Device ID reconciliation, if any.
-        state: Optional mutable state used to report whether runtime should be kept
-            after reconciliation forwarding failure.
-    """
-    if reconciliation is None:
-        await hass.config_entries.async_forward_entry_setups(entry, platforms)
-        return
-
-    forward_completed: bool = False
-    try:
-        await hass.config_entries.async_forward_entry_setups(entry, platforms)
-        forward_completed = True
-    finally:
-        if not forward_completed:
-            _async_create_marker_repair_issue(hass, entry, reconciliation.marker)
-            cleanup_ok: bool = await _unload_setup_platforms_after_reconciliation_failure(
-                hass,
-                entry,
-                platforms,
-            )
-            if state is not None:
-                state.preserve_runtime = not cleanup_ok
 
 
 def _resolve_device_id_probe_state(
@@ -706,17 +662,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 _async_create_marker_repair_issue(hass, entry, reconciliation.marker)
                 return False
 
-            reconciliation_state = _ReconciliationForwardingState()
+            forward_completed = False
             try:
-                await _async_forward_entry_setups(
-                    hass,
-                    entry,
-                    platforms,
-                    reconciliation,
-                    reconciliation_state,
-                )
+                await hass.config_entries.async_forward_entry_setups(entry, platforms)
+                forward_completed = True
             finally:
-                keep_reconciliation_runtime = reconciliation_state.preserve_runtime
+                if not forward_completed:
+                    forwarding_cleanup_ok: bool = await _cleanup_reconciliation_failure(
+                        hass,
+                        entry,
+                        platforms,
+                        reconciliation.marker,
+                    )
+                    keep_reconciliation_runtime = not forwarding_cleanup_ok
             try:
                 reconciliation.require_platforms_complete(platforms)
                 reconciliation.finalize()
@@ -753,7 +711,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 keep_reconciliation_runtime = not cleanup_ok
                 return False
         else:
-            await _async_forward_entry_setups(hass, entry, platforms, reconciliation)
+            await hass.config_entries.async_forward_entry_setups(entry, platforms)
 
         entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
