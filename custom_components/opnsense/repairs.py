@@ -284,6 +284,7 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         """
         try:
             if await self.hass.config_entries.async_reload(entry.entry_id):
+                _LOGGER.info("Device-ID repair reload completed for %s", entry.title)
                 return self.async_create_entry(data={})
         except HomeAssistantError, KeyError:
             _LOGGER.exception(
@@ -490,6 +491,7 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
         if entry is None:
             return self.async_abort(reason="entry_not_found")
+        _LOGGER.info("Starting device-ID repair for %s", entry.title)
         entry_data_snapshot = deepcopy(dict(entry.data))
         entry_options_snapshot = deepcopy(dict(entry.options))
         entry_unique_id_snapshot = entry.unique_id
@@ -644,6 +646,12 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
                     entry_title=entry.title,
                 )
             return self.async_abort(reason="repair_failed")
+
+        _LOGGER.info(
+            "Device-ID repair persisted replacement identity for %s; "
+            "reloading for registry reconciliation",
+            entry.title,
+        )
 
         post_update_entry_data_snapshot: dict[str, object] = {
             **entry_data_snapshot,

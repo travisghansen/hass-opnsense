@@ -89,6 +89,20 @@ class _ConfigEntries:
         return self._entries.get(entry_id)
 
 
+class _DesiredTrackerEntity(Entity):
+    """Minimal desired tracker entity carrying a MAC connection identity."""
+
+    def __init__(self, unique_id: str, mac_address: str) -> None:
+        """Initialize the desired tracker identity."""
+        self._attr_unique_id = unique_id
+        self._mac_address = mac_address
+
+    @property
+    def mac_address(self) -> str:
+        """Return the tracker MAC address."""
+        return self._mac_address
+
+
 def _other_config_entry(entry_id: str, unique_id: str) -> MockConfigEntry:
     """Create a config entry carrying OPNsense device unique identifier."""
     entry = MockConfigEntry(
@@ -126,6 +140,7 @@ def _device(
     *,
     config_entries: set[str] | None = None,
     via_device_id: str | None = None,
+    connections: set[tuple[str, str]] | None = None,
 ) -> Any:
     """Create a device-registry stand-in."""
     return SimpleNamespace(
@@ -133,6 +148,7 @@ def _device(
         identifiers={(DOMAIN, identifier)},
         config_entries=set(config_entries or {"entry-1"}),
         via_device_id=via_device_id,
+        connections=set(connections or set()),
     )
 
 
@@ -295,6 +311,42 @@ def test_finalize_removes_only_stale_snapshot_and_preserves_device_associations(
         device_id for device_id, changes in devices.updates if "remove_config_entry_id" in changes
     ]
     assert all(device_id not in {"main", "used"} for device_id in removals)
+
+
+def test_finalize_preserves_desired_disabled_tracker_device_by_mac(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A desired disabled tracker keeps its MAC device without an entity device ID."""
+    tracker = _entry(
+        "old_id_mac_aa_bb_cc_dd_ee_ff",
+        entity_id="device_tracker.disabled_tracker",
+        device_id=None,
+    )
+    main = _device("main", "old_id")
+    tracked_device = _device(
+        "tracked-device",
+        "tracked-client",
+        via_device_id=main.id,
+        connections={("mac", "aa:bb:cc:dd:ee:ff")},
+    )
+    reconciliation, _, devices = _subject(
+        monkeypatch,
+        [tracker],
+        [main, tracked_device],
+    )
+    reconciliation.prepare()
+    desired_tracker = _DesiredTrackerEntity(
+        "new_id_mac_aa_bb_cc_dd_ee_ff",
+        "aa:bb:cc:dd:ee:ff",
+    )
+    reconciliation.record_desired_entities("device_tracker", [desired_tracker])
+
+    reconciliation.finalize()
+
+    assert all(
+        not (device_id == tracked_device.id and changes.get("remove_config_entry_id") == "entry-1")
+        for device_id, changes in devices.updates
+    )
 
 
 def test_prepare_and_finalize_are_idempotent_after_partial_retry(

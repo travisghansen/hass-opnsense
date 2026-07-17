@@ -2,12 +2,14 @@
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC
 from homeassistant.helpers.entity import Entity
 from homeassistant.util import slugify
 
@@ -16,6 +18,7 @@ from .helpers import detach_shared_router_parent
 
 REPAIR_MARKER_KEY: str = "device_id_repair"
 _REPAIR_MARKER_VERSION = 1
+_LOGGER = logging.getLogger(__name__)
 
 type EntityIdentity = tuple[str, str, str]
 type PlatformDomain = Platform | str
@@ -81,6 +84,7 @@ class RepairReconciliation:
     config_entry: ConfigEntry
     marker: RepairMarker
     desired_identities: set[EntityIdentity] = field(default_factory=set)
+    desired_device_connections: set[tuple[str, str]] = field(default_factory=set)
     completed_platform_domains: set[str] = field(default_factory=set)
     active: bool = True
     _candidate_entity_ids: set[str] = field(default_factory=set)
@@ -123,6 +127,7 @@ class RepairReconciliation:
                 raise RepairReconciliationError("primary device identifier target collision")
 
         try:
+            primary_device_migrated = old_main is not None and new_main is None
             if old_main is not None and new_main is None:
                 new_identifiers = {
                     (DOMAIN, self.marker.new_device_id) if domain == DOMAIN else (domain, value)
@@ -140,6 +145,14 @@ class RepairReconciliation:
             ValueError,
         ) as err:
             raise RepairReconciliationError("registry identifier migration failed") from err
+        _LOGGER.debug(
+            "Device-ID reconciliation prepared for %s: candidate_entities=%d, "
+            "migrated_entities=%d, primary_device_migrated=%s",
+            self.config_entry.title,
+            len(candidates),
+            len(migrations),
+            primary_device_migrated,
+        )
 
     def record_desired_entities(
         self, platform_domain: PlatformDomain, entities: Iterable[Entity] | None
@@ -152,10 +165,22 @@ class RepairReconciliation:
         if entities is None:
             return
         domain = _platform_domain_value(platform_domain)
+        desired_entities = list(entities)
         self.completed_platform_domains.add(domain)
-        for entity in entities:
+        for entity in desired_entities:
             if entity.unique_id is not None:
                 self.desired_identities.add((domain, DOMAIN, entity.unique_id))
+            if domain == Platform.DEVICE_TRACKER.value:
+                mac_address = getattr(entity, "mac_address", None)
+                if isinstance(mac_address, str) and mac_address:
+                    self.desired_device_connections.add((CONNECTION_NETWORK_MAC, mac_address))
+        _LOGGER.debug(
+            "Device-ID reconciliation recorded platform discovery for %s: "
+            "platform=%s, desired_entities=%d",
+            self.config_entry.title,
+            domain,
+            len(desired_entities),
+        )
 
     def require_platforms_complete(self, platform_domains: Iterable[PlatformDomain]) -> None:
         """Fail unless every forwarded platform reported its final entity list."""
@@ -172,6 +197,7 @@ class RepairReconciliation:
         entity_registry = er.async_get(self.hass)
         device_registry = dr.async_get(self.hass)
         try:
+            removed_entities = 0
             for entity_id in self._candidate_entity_ids:
                 candidate = entity_registry.async_get(entity_id)
                 if (
@@ -181,6 +207,7 @@ class RepairReconciliation:
                 ):
                     continue
                 entity_registry.async_remove(entity_id)
+                removed_entities += 1
 
             surviving_entities = er.async_entries_for_config_entry(
                 entity_registry, self.config_entry.entry_id
@@ -193,24 +220,40 @@ class RepairReconciliation:
             )
             if main_device is not None:
                 preserved_device_ids.add(main_device.id)
+            preserved_tracker_devices = 0
+            detached_devices = 0
             for device in dr.async_entries_for_config_entry(
                 device_registry, self.config_entry.entry_id
             ):
-                if device.id not in preserved_device_ids:
-                    router_device_id = main_device.id if main_device is not None else None
-                    detach_shared_router_parent(
-                        shared_config_entry_id=self.config_entry.entry_id,
-                        shared_device_entry=device,
-                        router_device_id=router_device_id,
-                        config_entries=self.hass.config_entries,
-                        device_registry=device_registry,
-                    )
+                if device.id in preserved_device_ids:
+                    continue
+                if set(device.connections) & self.desired_device_connections:
+                    preserved_tracker_devices += 1
+                    continue
+                router_device_id = main_device.id if main_device is not None else None
+                detach_shared_router_parent(
+                    shared_config_entry_id=self.config_entry.entry_id,
+                    shared_device_entry=device,
+                    router_device_id=router_device_id,
+                    config_entries=self.hass.config_entries,
+                    device_registry=device_registry,
+                )
+                detached_devices += 1
         except (HomeAssistantError, KeyError, ValueError) as err:
             raise RepairReconciliationError("registry finalization failed") from err
+        _LOGGER.info(
+            "Device-ID reconciliation finalized for %s: removed_entities=%d, "
+            "detached_devices=%d, preserved_disabled_tracker_devices=%d",
+            self.config_entry.title,
+            removed_entities,
+            detached_devices,
+            preserved_tracker_devices,
+        )
 
     def mark_complete(self) -> None:
         """Disable reconciliation-only behavior after persisted marker clearance."""
         self.active = False
+        _LOGGER.info("Device-ID reconciliation completed for %s", self.config_entry.title)
 
 
 def record_desired_entities(
