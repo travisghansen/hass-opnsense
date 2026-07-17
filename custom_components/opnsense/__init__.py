@@ -138,6 +138,33 @@ def _async_create_marker_repair_issue(
     )
 
 
+async def _async_forward_entry_setups(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    platforms: list[Platform],
+    reconciliation: RepairReconciliation | None,
+) -> None:
+    """Forward entry setups and restore a marker-backed issue on failure.
+
+    Args:
+        hass: Home Assistant instance.
+        entry: OPNsense config entry being set up.
+        platforms: Platforms to forward for setup.
+        reconciliation: Active device-ID reconciliation, if any.
+    """
+    if reconciliation is None:
+        await hass.config_entries.async_forward_entry_setups(entry, platforms)
+        return
+
+    forward_completed = False
+    try:
+        await hass.config_entries.async_forward_entry_setups(entry, platforms)
+        forward_completed = True
+    finally:
+        if not forward_completed:
+            _async_create_marker_repair_issue(hass, entry, reconciliation.marker)
+
+
 def _resolve_device_id_probe_state(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -656,7 +683,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 _async_create_marker_repair_issue(hass, entry, reconciliation.marker)
                 return False
 
-        await hass.config_entries.async_forward_entry_setups(entry, platforms)
+        await _async_forward_entry_setups(hass, entry, platforms, reconciliation)
         if reconciliation is not None:
             try:
                 reconciliation.require_platforms_complete(platforms)

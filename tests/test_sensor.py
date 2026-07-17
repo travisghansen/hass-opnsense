@@ -27,6 +27,7 @@ from custom_components.opnsense.const import (
     CONF_SYNC_VNSTAT,
     CONF_SYNC_VPN,
     COORDINATOR,
+    OPNSENSE_CLIENT,
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 from custom_components.opnsense.sensor import (
@@ -3104,6 +3105,7 @@ def setup_sensor_reconciliation_entry(
     sync_dhcp_leases: bool = False,
     sync_vpn: bool = False,
     sync_certificates: bool = False,
+    opnsense_client: object | None = None,
 ) -> MockConfigEntry:
     """Create a sensor test entry with coordinator/runtime pre-wired."""
     entry = make_config_entry(
@@ -3124,6 +3126,8 @@ def setup_sensor_reconciliation_entry(
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coordinator.data = coordinator_data
     setattr(entry.runtime_data, COORDINATOR, coordinator)
+    if opnsense_client is not None:
+        setattr(entry.runtime_data, OPNSENSE_CLIENT, opnsense_client)
     return entry
 
 
@@ -3512,6 +3516,51 @@ async def test_async_setup_entry_records_none_or_authoritative_empty_for_invento
         assert keys == {"dhcp_leases.all"}
         return
     pytest.fail(f"Unhandled expected marker: {expected}")
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_empty_desired_entities_for_smart_without_info_support(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART sync remains complete when client supports `get_smart` but not `get_smart_info`."""
+    client = MagicMock(spec=["get_smart"])
+    client.get_smart = MagicMock()
+    config_entry = setup_sensor_reconciliation_entry(
+        make_config_entry,
+        coordinator_data={"smart": [{"device": "nvme0"}]},
+        sync_smart=True,
+        opnsense_client=client,
+    )
+    captured = capture_reconciled_desired_entities(monkeypatch)
+
+    await async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
+    )
+    assert captured["entities"] == []
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_none_when_smart_info_is_required(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART sync remains incomplete when `get_smart_info` is supported but payload is missing."""
+    client = MagicMock(spec=["get_smart", "get_smart_info"])
+    client.get_smart = MagicMock()
+    client.get_smart_info = MagicMock()
+    config_entry = setup_sensor_reconciliation_entry(
+        make_config_entry,
+        coordinator_data={"smart": [{"device": "nvme0"}]},
+        sync_smart=True,
+        opnsense_client=client,
+    )
+    captured = capture_reconciled_desired_entities(monkeypatch)
+
+    await async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
+    )
+    assert captured["entities"] is None
 
 
 @pytest.mark.parametrize(

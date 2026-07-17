@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call
 
 from aiopnsense.exceptions import (
     OPNsenseBelowMinFirmware,
@@ -236,10 +236,17 @@ async def test_confirmation_reprobes_with_strict_client_and_closes_it(
     result = await flow.async_step_confirm({})
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    client.factory.assert_called_once_with(hass=hass, config_entry=entry, throw_errors=True)
-    client.validate.assert_awaited_once_with()
-    client.get_device_unique_id.assert_awaited_once_with()
-    client.async_close.assert_awaited_once_with()
+    assert client.factory.call_count == 2
+    client.factory.assert_has_calls(
+        [
+            call(hass=hass, config_entry=entry, throw_errors=True),
+            call(hass=hass, config_entry=entry, throw_errors=True),
+        ],
+        any_order=False,
+    )
+    assert client.validate.await_count == 2
+    assert client.get_device_unique_id.await_count == 2
+    assert client.async_close.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -525,6 +532,9 @@ async def test_loaded_entry_unloads_before_marker_update_and_reload(
         "duplicate_scan",
         "duplicate_check",
         "unload",
+        "validate",
+        "probe",
+        "close",
         "duplicate_scan",
         "duplicate_check",
         "config_update",
@@ -533,6 +543,130 @@ async def test_loaded_entry_unloads_before_marker_update_and_reload(
     ]
     entity_registry.async_remove.assert_not_called()
     device_registry.async_update_device.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_loaded_entry_reprobe_after_unload_rejects_router_swap_without_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A router change after unload must be re-probed and must not persist stale IDs."""
+    hass = MagicMock()
+    entry = _make_entry(state=ConfigEntryState.LOADED)
+    _configure_hass(hass, entry)
+    entity_registry, device_registry = _patch_registries(
+        monkeypatch,
+        entities=[SimpleNamespace(entity_id="sensor.old")],
+        devices=[SimpleNamespace(id="device")],
+    )
+    client = _patch_probe_client(monkeypatch)
+    probe_calls: list[int] = []
+
+    async def _probe_then_swap() -> str:
+        """Return a stale ID before unload and a swapped ID after unload."""
+        probe_calls.append(1)
+        if len(probe_calls) == 1:
+            return "other"
+        return "swapped"
+
+    client.get_device_unique_id.side_effect = _probe_then_swap
+    flow = _make_flow(hass, entry)
+
+    result = await flow.async_step_confirm({})
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "entry_changed"
+    assert client.get_device_unique_id.await_count == 2
+    assert client.async_close.await_count == 2
+    assert len(probe_calls) == 2
+    entity_registry.async_remove.assert_not_called()
+    device_registry.async_update_device.assert_not_called()
+    hass.config_entries.async_update_entry.assert_not_called()
+    hass.config_entries.async_unload.assert_awaited_once_with(entry.entry_id)
+    hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
+    hass.config_entries.async_reload.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_loaded_entry_reprobe_after_unload_rejects_probe_failure_without_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A strict re-probe failure after unload must abort and recover without mutation."""
+    hass = MagicMock()
+    entry = _make_entry(state=ConfigEntryState.LOADED)
+    _configure_hass(hass, entry)
+    entity_registry, device_registry = _patch_registries(
+        monkeypatch,
+        entities=[SimpleNamespace(entity_id="sensor.old")],
+        devices=[SimpleNamespace(id="device")],
+    )
+    client = _patch_probe_client(monkeypatch)
+    probe_calls: list[int] = []
+
+    async def _probe_then_fail() -> str:
+        """Return a stale ID before unload and fail on the re-probe."""
+        probe_calls.append(1)
+        if len(probe_calls) == 1:
+            return "other"
+        raise OPNsenseConnectionError("offline")
+
+    client.get_device_unique_id.side_effect = _probe_then_fail
+    flow = _make_flow(hass, entry)
+
+    result = await flow.async_step_confirm({})
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "cannot_connect"
+    assert client.get_device_unique_id.await_count == 2
+    assert client.async_close.await_count == 2
+    assert len(probe_calls) == 2
+    entity_registry.async_remove.assert_not_called()
+    device_registry.async_update_device.assert_not_called()
+    hass.config_entries.async_update_entry.assert_not_called()
+    hass.config_entries.async_unload.assert_awaited_once_with(entry.entry_id)
+    hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
+    hass.config_entries.async_reload.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_entry_swap_reprobe_snapshot_stability_checks_after_unload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An entry that mutates while reprobing must abort before persistence."""
+    hass = MagicMock()
+    entry = _make_entry(state=ConfigEntryState.LOADED)
+    _configure_hass(hass, entry)
+    _patch_registries(
+        monkeypatch,
+        entities=[SimpleNamespace(entity_id="sensor.old")],
+        devices=[SimpleNamespace(id="device")],
+    )
+    client = _patch_probe_client(monkeypatch)
+    probe_calls: list[int] = []
+
+    async def _probe_then_mutate_entry() -> str:
+        """Mutate entry persistence during the second probe cycle."""
+        probe_calls.append(1)
+        if len(probe_calls) == 2:
+            object.__setattr__(
+                entry,
+                "data",
+                {**entry.data, "url": "https://changed.example"},
+            )
+        return "other"
+
+    client.get_device_unique_id.side_effect = _probe_then_mutate_entry
+    flow = _make_flow(hass, entry)
+
+    result = await flow.async_step_confirm({})
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "entry_changed"
+    assert client.get_device_unique_id.await_count == 2
+    assert client.async_close.await_count == 2
+    assert len(probe_calls) == 2
+    hass.config_entries.async_update_entry.assert_not_called()
+    hass.config_entries.async_unload.assert_awaited_once_with(entry.entry_id)
+    hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
 
 
 @pytest.mark.asyncio
@@ -917,7 +1051,7 @@ async def test_entry_update_failure_aborts_without_registry_mutation(
     )
     issue_delete.assert_not_called()
     hass.config_entries.async_schedule_reload.assert_not_called()
-    client.async_close.assert_awaited_once_with()
+    assert client.async_close.await_count == 2
 
 
 @pytest.mark.asyncio

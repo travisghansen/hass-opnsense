@@ -391,6 +391,84 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
             )
         return None
 
+    async def _async_validate_post_unload_reprobe(
+        self,
+        *,
+        entry: ConfigEntry,
+        entry_was_loaded: bool,
+        entry_data_snapshot: dict[str, object],
+        entry_options_snapshot: dict[str, object],
+        entry_unique_id_snapshot: str | None,
+    ) -> tuple[ConfigEntry, str] | str:
+        """Strictly re-probe and validate an entry after it has been unloaded.
+
+        Args:
+            entry: Unloaded OPNsense config entry to re-probe.
+            entry_was_loaded: Whether the entry was loaded before repair preparation.
+            entry_data_snapshot: Original config-entry data mapping.
+            entry_options_snapshot: Original config-entry options mapping.
+            entry_unique_id_snapshot: Original config-entry unique ID.
+
+        Returns:
+            tuple[ConfigEntry, str] | str: Validated entry and device ID, or the
+            repair abort reason.
+        """
+        try:
+            reprobed_device_id = await _async_validate_and_probe_device_id(self.hass, entry)
+        except OPNsenseError:
+            self._schedule_changed_entry_reload_if_needed(
+                entry_was_loaded=entry_was_loaded,
+                entry=entry,
+            )
+            return "cannot_connect"
+
+        if not is_valid_device_id(reprobed_device_id):
+            self._schedule_changed_entry_reload_if_needed(
+                entry_was_loaded=entry_was_loaded,
+                entry=entry,
+            )
+            return "cannot_connect"
+
+        current_entry = self._validate_entry_snapshot(
+            current_entry=self.hass.config_entries.async_get_entry(self._entry_id),
+            entry_was_loaded=entry_was_loaded,
+            entry_data_snapshot=entry_data_snapshot,
+            entry_options_snapshot=entry_options_snapshot,
+            entry_unique_id_snapshot=entry_unique_id_snapshot,
+        )
+        if current_entry is None:
+            return "entry_changed"
+        entry = current_entry
+
+        if abort_reason := _device_id_repair_abort_reason(
+            reprobed_device_id,
+            self._expected_device_id,
+            entry.data.get(CONF_DEVICE_UNIQUE_ID),
+        ):
+            self._schedule_changed_entry_reload_if_needed(
+                entry_was_loaded=entry_was_loaded,
+                entry=entry,
+            )
+            return abort_reason
+
+        duplicate = next(
+            (
+                candidate
+                for candidate in self.hass.config_entries.async_entries(DOMAIN)
+                if candidate.entry_id != entry.entry_id
+                and candidate.unique_id == reprobed_device_id
+            ),
+            None,
+        )
+        if duplicate is not None:
+            self._schedule_changed_entry_reload_if_needed(
+                entry_was_loaded=entry_was_loaded,
+                entry=entry,
+            )
+            return "already_configured"
+
+        return entry, reprobed_device_id
+
     async def async_step_confirm(
         self, user_input: dict[str, str] | None = None
     ) -> RepairsFlowResult:
@@ -514,25 +592,20 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
             return self.async_abort(reason="entry_changed")
         entry = current_entry
 
-        duplicate = next(
-            (
-                candidate
-                for candidate in self.hass.config_entries.async_entries(DOMAIN)
-                if candidate.entry_id != entry.entry_id
-                and candidate.unique_id == observed_device_id
-            ),
-            None,
+        reprobe_result = await self._async_validate_post_unload_reprobe(
+            entry=entry,
+            entry_was_loaded=entry_was_loaded,
+            entry_data_snapshot=entry_data_snapshot,
+            entry_options_snapshot=entry_options_snapshot,
+            entry_unique_id_snapshot=entry_unique_id_snapshot,
         )
-        if duplicate is not None:
-            self._schedule_changed_entry_reload_if_needed(
-                entry_was_loaded=entry_was_loaded,
-                entry=entry,
-            )
-            return self.async_abort(reason="already_configured")
+        if isinstance(reprobe_result, str):
+            return self.async_abort(reason=reprobe_result)
+        entry, reprobed_device_id = reprobe_result
 
         new_data = {
             **entry.data,
-            CONF_DEVICE_UNIQUE_ID: observed_device_id,
+            CONF_DEVICE_UNIQUE_ID: reprobed_device_id,
             REPAIR_MARKER_KEY: expected_repair_marker,
         }
 
@@ -574,10 +647,10 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
 
         post_update_entry_data_snapshot: dict[str, object] = {
             **entry_data_snapshot,
-            CONF_DEVICE_UNIQUE_ID: observed_device_id,
+            CONF_DEVICE_UNIQUE_ID: reprobed_device_id,
             REPAIR_MARKER_KEY: expected_repair_marker,
         }
-        post_update_entry_unique_id_snapshot = observed_device_id
+        post_update_entry_unique_id_snapshot = reprobed_device_id
 
         return await self._async_reload_with_recovery(
             entry,

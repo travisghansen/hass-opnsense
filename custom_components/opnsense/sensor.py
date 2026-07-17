@@ -1618,12 +1618,17 @@ async def async_setup_entry(
         else:
             reconciliation_complete = False
     if config.get(CONF_SYNC_SMART, DEFAULT_SYNC_OPTION_VALUE):
-        has_smart_inventory = (
-            "smart" in state
-            and isinstance(state.get("smart"), list)
-            and "smart_info" in state
-            and isinstance(state.get("smart_info"), Mapping)
-        )
+        client = getattr(config_entry.runtime_data, OPNSENSE_CLIENT, None)
+        client_supports_smart = callable(getattr(client, "get_smart", None))
+        client_supports_smart_info = callable(getattr(client, "get_smart_info", None))
+        has_smart = "smart" in state and isinstance(state.get("smart"), list)
+        has_smart_info = "smart_info" in state and isinstance(state.get("smart_info"), Mapping)
+        if client is None:
+            has_smart_inventory = has_smart and has_smart_info
+        elif client_supports_smart:
+            has_smart_inventory = has_smart and (not client_supports_smart_info or has_smart_info)
+        else:
+            has_smart_inventory = False
         entities.extend(await _compile_smart_sensors(config_entry, coordinator, state))
         if not has_smart_inventory:
             reconciliation_complete = False
