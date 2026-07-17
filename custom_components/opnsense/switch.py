@@ -553,7 +553,9 @@ async def async_setup_entry(
     entities: list = []
 
     if config.get(CONF_SYNC_FIREWALL_AND_NAT, DEFAULT_SYNC_OPTION_VALUE):
-        if "firewall" in state and isinstance(state.get("firewall"), MutableMapping):
+        firewall = state.get("firewall")
+        if "firewall" in state and isinstance(firewall, MutableMapping):
+            firewall_nat = firewall.get("nat")
             entities.extend(
                 await _compile_firewall_rules_switches(config_entry, coordinator, state)
             )
@@ -567,6 +569,15 @@ async def async_setup_entry(
                 await _compile_nat_one_to_one_rules_switches(config_entry, coordinator, state)
             )
             entities.extend(await _compile_nat_npt_rules_switches(config_entry, coordinator, state))
+            if not (
+                isinstance(firewall.get("rules"), MutableMapping)
+                and isinstance(firewall_nat, MutableMapping)
+                and isinstance(firewall_nat.get("source_nat"), MutableMapping)
+                and isinstance(firewall_nat.get("d_nat"), MutableMapping)
+                and isinstance(firewall_nat.get("one_to_one"), MutableMapping)
+                and isinstance(firewall_nat.get("npt"), MutableMapping)
+            ):
+                reconciliation_complete = False
         else:
             reconciliation_complete = False
     if config.get(CONF_SYNC_SERVICES, DEFAULT_SYNC_OPTION_VALUE):
@@ -585,6 +596,8 @@ async def async_setup_entry(
         if not (has_openvpn_inventory and has_wireguard_inventory):
             reconciliation_complete = False
     if config.get(CONF_SYNC_CARP, DEFAULT_SYNC_OPTION_VALUE):
+        if not isinstance(dict_get(state, "carp.status_summary"), MutableMapping):
+            reconciliation_complete = False
         entities.extend(await _compile_carp_maintenance_switch(config_entry, coordinator, state))
     if config.get(CONF_SYNC_UNBOUND, DEFAULT_SYNC_OPTION_VALUE):
         if ATTR_UNBOUND_BLOCKLIST in state and isinstance(

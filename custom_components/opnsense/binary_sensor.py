@@ -193,13 +193,7 @@ async def async_setup_entry(
             reconciliation_complete = False
     if config.get(CONF_SYNC_SMART, DEFAULT_SYNC_OPTION_VALUE):
         smart_data = state.get("smart")
-        smart_info = state.get("smart_info")
-        if (
-            "smart" in state
-            and isinstance(smart_data, list)
-            and "smart_info" in state
-            and isinstance(smart_info, Mapping)
-        ):
+        if "smart" in state and isinstance(smart_data, list):
             entities.extend(await _compile_smart_status_binary_sensors(config_entry, coordinator))
         else:
             reconciliation_complete = False

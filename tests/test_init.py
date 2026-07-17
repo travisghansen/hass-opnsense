@@ -4218,12 +4218,20 @@ async def test_cleanup_reconciliation_failure_returns_platform_unload_result(
 ) -> None:
     """Marker creation should precede unload and the helper should return its unload result."""
     entry = make_config_entry()
+    events: list[str] = []
     repair_marker = MagicMock()
     repair_marker.old_device_id = "old-dev"
     repair_marker.new_device_id = "new-dev"
     issue_create = MagicMock()
+    issue_create.side_effect = lambda *args, **kwargs: events.append("create_issue")
     monkeypatch.setattr(init_mod.ir, "async_create_issue", issue_create)
-    ph_hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
+
+    async def _unload_platforms(*args: Any, **kwargs: Any) -> bool:
+        del args, kwargs
+        events.append("unload_platforms")
+        return True
+
+    ph_hass.config_entries.async_unload_platforms = AsyncMock(side_effect=_unload_platforms)
 
     result = await init_mod._cleanup_reconciliation_failure(
         ph_hass,
@@ -4234,6 +4242,7 @@ async def test_cleanup_reconciliation_failure_returns_platform_unload_result(
 
     assert result is True
     issue_create.assert_called_once()
+    assert events == ["create_issue", "unload_platforms"]
     ph_hass.config_entries.async_unload_platforms.assert_awaited_once()
 
 

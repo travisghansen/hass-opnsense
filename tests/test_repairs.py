@@ -18,7 +18,7 @@ from homeassistant.exceptions import HomeAssistantError
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.opnsense import repairs
+from custom_components.opnsense import repair_reconciliation, repairs
 from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID, DOMAIN, TRACKED_MACS
 from custom_components.opnsense.repair_reconciliation import REPAIR_MARKER_KEY, build_repair_marker
 
@@ -85,9 +85,63 @@ def _patch_registries(
     devices: list[Any] | None = None,
 ) -> tuple[MagicMock, MagicMock]:
     """Return registry spies proving the confirmation flow does not mutate registries."""
-    del monkeypatch, entities, devices
+    entries = list(entities or [])
+    devices = list(devices or [])
     entity_registry = MagicMock()
     device_registry = MagicMock()
+
+    def _get_entry(entity_id: str) -> Any:
+        """Return a matching entity from the provided entity fixture list."""
+        for entry in entries:
+            if getattr(entry, "entity_id", None) == entity_id:
+                return entry
+        return None
+
+    def _get_entity_id(domain: str, platform: str, unique_id: str) -> str | None:
+        """Return the stored entity_id matching domain, platform, and unique_id."""
+        for entity in entries:
+            if (
+                getattr(entity, "domain", None) == domain
+                and getattr(entity, "platform", None) == platform
+                and getattr(entity, "unique_id", None) == unique_id
+            ):
+                return getattr(entity, "entity_id", None)
+        return None
+
+    def _get_device(identifiers: set[tuple[str, str]] | frozenset[tuple[str, str]]) -> Any:
+        """Return a matching device fixture whose identifiers cover the query."""
+        for device in devices:
+            if getattr(device, "identifiers", frozenset()).issuperset(identifiers):
+                return device
+        return None
+
+    def _entities_for_config_entry(_registry: Any, _config_entry_id: Any) -> list[Any]:
+        """Return configured entities for a config-entry-based lookup."""
+        return entries
+
+    def _devices_for_config_entry(_registry: Any, _config_entry_id: Any) -> list[Any]:
+        """Return configured devices for a config-entry-based lookup."""
+        return devices
+
+    entity_registry.async_get = MagicMock(side_effect=_get_entry)
+    entity_registry.async_get_entity_id = MagicMock(side_effect=_get_entity_id)
+    entity_registry.async_update_entity = MagicMock()
+    entity_registry.async_remove = MagicMock()
+    device_registry.async_get_device = MagicMock(side_effect=_get_device)
+    device_registry.async_update_device = MagicMock()
+
+    # Install the registries behind module-level helper accessors used during
+    # repair reconciliation to ensure production call sites consume these
+    # in-memory registries directly.
+    monkeypatch.setattr(repair_reconciliation.er, "async_get", lambda _hass: entity_registry)
+    monkeypatch.setattr(
+        repair_reconciliation.er, "async_entries_for_config_entry", _entities_for_config_entry
+    )
+    monkeypatch.setattr(repair_reconciliation.dr, "async_get", lambda _hass: device_registry)
+    monkeypatch.setattr(
+        repair_reconciliation.dr, "async_entries_for_config_entry", _devices_for_config_entry
+    )
+
     return entity_registry, device_registry
 
 
@@ -1067,6 +1121,8 @@ async def test_retry_keeps_issue_when_recovery_reload_fails(
     entity_registry.async_remove.assert_not_called()
     device_registry.async_update_device.assert_not_called()
     client.factory.assert_not_called()
+    hass.config_entries.async_reload.assert_awaited_once_with(entry.entry_id)
+    hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
 
 
 @pytest.mark.asyncio

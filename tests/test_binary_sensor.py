@@ -139,12 +139,14 @@ async def test_async_setup_entry_creates_entities_when_enabled(
         ({}, True, False, False, None),
         ({"interfaces": {}}, True, False, False, []),
         ({}, False, True, False, None),
+        ({"smart": []}, False, True, False, []),
         ({"smart": [], "smart_info": {}}, False, True, False, []),
     ],
     ids=[
         "missing-interface",
         "empty-interface",
         "missing-smart",
+        "empty-smart-without-smart-info",
         "empty-smart",
     ],
 )

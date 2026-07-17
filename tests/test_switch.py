@@ -141,7 +141,15 @@ def setup_switch_reconciliation_entry(
         ({}, False, True, False, False, None),
         ({"services": []}, False, True, False, False, []),
         ({}, True, False, False, False, None),
-        ({"firewall": {}}, True, False, False, False, []),
+        ({"firewall": {}}, True, False, False, False, None),
+        (
+            {"firewall": {"rules": {"r1": {"uuid": "r1", "description": "r1"}}}},
+            True,
+            False,
+            False,
+            False,
+            None,
+        ),
         ({}, False, False, True, False, None),
         ({"openvpn": {}, "wireguard": {}}, False, False, True, False, []),
         ({}, False, False, False, True, None),
@@ -152,6 +160,7 @@ def setup_switch_reconciliation_entry(
         "empty_service",
         "missing_firewall",
         "empty_firewall",
+        "partial_firewall-without-nat",
         "missing_vpn",
         "empty_vpn",
         "missing_unbound",
@@ -245,6 +254,93 @@ async def test_async_setup_entry_records_none_for_partial_vpn_inventory(
     assert created
     keys = {entity.entity_description.key for entity in created}
     assert keys == {"openvpn.clients.client-uuid"}, description
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_none_for_malformed_firewall_nat_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Missing NAT subsections should force incomplete firewall reconciliation."""
+    state = {
+        "firewall": {
+            "rules": {"r1": {"uuid": "r1", "description": "Rule", "%interface": "wan"}},
+            "nat": {"source_nat": {}, "d_nat": {}, "one_to_one": {}},
+        }
+    }
+    config_entry = setup_switch_reconciliation_entry(
+        make_config_entry,
+        coordinator=make_coord(state),
+        sync_firewall_and_nat=True,
+    )
+    recorded: dict[str, Any] = {}
+    created: list[Any] = []
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture the desired-entity payload sent to reconciliation."""
+        recorded["entities"] = entities
+
+    def add_entities(ents: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Capture switch entities emitted by setup."""
+        created.extend(ents)
+
+    monkeypatch.setattr(switch_mod, "record_desired_entities", capture)
+
+    await switch_mod.async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", add_entities)
+    )
+
+    assert recorded.get("entities") is None
+    assert created
+
+
+@pytest.mark.parametrize(
+    ("state", "expected_entities"),
+    [
+        ({}, None),
+        ({"carp": {}}, None),
+        ({"carp": {"status_summary": []}}, None),
+        ({"carp": {"status_summary": {"maintenance_mode": False, "enabled": True}}}, 1),
+    ],
+)
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_none_for_invalid_carp_summary(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    state: dict[str, Any],
+    expected_entities: int | None,
+) -> None:
+    """CARP reconciliation should be incomplete without a status_summary mapping."""
+    config_entry = setup_switch_reconciliation_entry(
+        make_config_entry,
+        coordinator=make_coord(state),
+        sync_carp=True,
+    )
+    captured: dict[str, Any] = {}
+    created: list[Any] = []
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture the desired-entity payload sent to reconciliation."""
+        captured["entities"] = entities
+
+    def add_entities(ents: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Capture switch entities emitted by setup."""
+        created.extend(ents)
+
+    monkeypatch.setattr(switch_mod, "record_desired_entities", capture)
+
+    await switch_mod.async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", add_entities)
+    )
+
+    assert "entities" in captured
+    if expected_entities is None:
+        assert captured["entities"] is None
+        assert len(created) == 0
+    else:
+        assert isinstance(captured["entities"], list)
+        assert len(captured["entities"]) == expected_entities
+        assert len(created) == 1
 
 
 async def collect_setup_carp_switches(
