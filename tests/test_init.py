@@ -3989,6 +3989,81 @@ async def test_async_setup_entry_cleans_up_when_device_tracker_refresh_fails(
 
 
 @pytest.mark.asyncio
+async def test_async_setup_entry_recreates_marker_issue_when_device_tracker_refresh_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Marker-backed device-tracker setup failures should recreate the mismatch issue."""
+    client = _make_valid_setup_client()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
+    )
+
+    main_coordinator = _make_setup_coordinator()
+    device_tracker_coordinator = _make_setup_coordinator()
+    device_tracker_coordinator.async_config_entry_first_refresh = AsyncMock(
+        side_effect=RuntimeError("device tracker refresh failed")
+    )
+
+    coordinators = [main_coordinator, device_tracker_coordinator]
+
+    def _coordinator_factory(**_kwargs: Any) -> Any:
+        """Return setup coordinators in creation order."""
+        return coordinators.pop(0)
+
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", _coordinator_factory)
+    marker = {"version": 1, "old_device_id": "old-dev", "new_device_id": "dev1"}
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            init_mod.REPAIR_MARKER_KEY: marker,
+        },
+        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: True},
+        unique_id="dev1",
+    )
+    reconciliation = MagicMock()
+    reconciliation.marker = init_mod.RepairMarker(
+        version=1,
+        old_device_id="old-dev",
+        new_device_id="dev1",
+    )
+    monkeypatch.setattr(init_mod, "RepairReconciliation", lambda *_args: reconciliation)
+
+    hass = ph_hass
+    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+    hass.config_entries.async_reload = MagicMock()
+    hass.data = {}
+    create_issue = MagicMock()
+    monkeypatch.setattr(init_mod.ir, "async_create_issue", create_issue)
+
+    with pytest.raises(RuntimeError, match="device tracker refresh failed"):
+        await init_mod.async_setup_entry(hass, entry)
+
+    reconciliation.prepare.assert_not_called()
+    reconciliation.require_platforms_complete.assert_not_called()
+    reconciliation.finalize.assert_not_called()
+    assert create_issue.call_count == 1
+    issue_kwargs = create_issue.call_args.kwargs
+    assert issue_kwargs["issue_id"] == f"{entry.entry_id}_device_id_mismatched"
+    assert issue_kwargs["is_fixable"] is True
+    assert issue_kwargs["is_persistent"] is False
+    assert issue_kwargs["data"] == {
+        "entry_id": entry.entry_id,
+        "old_device_id": "old-dev",
+        "new_device_id": "dev1",
+    }
+    main_coordinator.async_shutdown.assert_awaited_once()
+    device_tracker_coordinator.async_shutdown.assert_awaited_once()
+    client.async_close.assert_awaited_once()
+    assert entry.runtime_data is None
+    assert entry.entry_id not in hass.data.get(init_mod.DOMAIN, {})
+
+
+@pytest.mark.asyncio
 async def test_async_setup_entry_cleans_up_when_platform_forwarding_fails(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
@@ -4093,11 +4168,76 @@ async def test_async_setup_entry_recreates_marker_issue_when_platform_forwarding
         "old_device_id": "old-dev",
         "new_device_id": "dev1",
     }
-    ph_hass.config_entries.async_unload_platforms.assert_not_awaited()
+    ph_hass.config_entries.async_unload_platforms.assert_awaited_once()
     coordinator.async_shutdown.assert_awaited_once()
     client.async_close.assert_awaited_once()
     assert entry.runtime_data is None
     assert entry.entry_id not in ph_hass.data.get(init_mod.DOMAIN, {})
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_recreates_marker_issue_when_platform_forwarding_cleanup_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Marker cleanup failures should keep runtime after forwarding exception."""
+    client = _make_valid_setup_client()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
+    )
+
+    coordinator = _make_setup_coordinator()
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+    marker = {"version": 1, "old_device_id": "old-dev", "new_device_id": "dev1"}
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            init_mod.REPAIR_MARKER_KEY: marker,
+        },
+        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+        unique_id="dev1",
+    )
+    reconciliation = MagicMock()
+    reconciliation.marker = init_mod.RepairMarker(
+        version=1,
+        old_device_id="old-dev",
+        new_device_id="dev1",
+    )
+    monkeypatch.setattr(init_mod, "RepairReconciliation", lambda *_args: reconciliation)
+    ph_hass.config_entries.async_forward_entry_setups = AsyncMock(
+        side_effect=RuntimeError("platform forwarding failed")
+    )
+    ph_hass.config_entries.async_unload_platforms = AsyncMock(return_value=False)
+    ph_hass.config_entries.async_reload = MagicMock()
+    ph_hass.data = {}
+    create_issue = MagicMock()
+    monkeypatch.setattr(init_mod.ir, "async_create_issue", create_issue)
+
+    with pytest.raises(RuntimeError, match="platform forwarding failed"):
+        await init_mod.async_setup_entry(ph_hass, entry)
+
+    reconciliation.prepare.assert_called_once_with()
+    assert ph_hass.config_entries.async_unload_platforms.await_count == 1
+    assert create_issue.call_count == 1
+    issue_kwargs = create_issue.call_args.kwargs
+    assert issue_kwargs["issue_id"] == f"{entry.entry_id}_device_id_mismatched"
+    assert issue_kwargs["is_fixable"] is True
+    assert issue_kwargs["is_persistent"] is False
+    assert issue_kwargs["data"] == {
+        "entry_id": entry.entry_id,
+        "old_device_id": "old-dev",
+        "new_device_id": "dev1",
+    }
+    assert entry.runtime_data is not None
+    assert entry.runtime_data.coordinator is coordinator
+    assert entry.runtime_data.opnsense_client is client
+    coordinator.async_shutdown.assert_not_awaited()
+    client.async_close.assert_not_awaited()
+    assert ph_hass.data[init_mod.DOMAIN][entry.entry_id] is client
 
 
 @pytest.mark.asyncio
