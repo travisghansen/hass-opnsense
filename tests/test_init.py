@@ -176,7 +176,7 @@ async def test_async_setup_entry_validates_client_before_probes(
     client.validate = AsyncMock(side_effect=lambda: probe_calls.append("validate"))
 
     async def _get_device_unique_id(expected_id: str | None = None) -> str:
-        """Return test router device id after recording probe ordering."""
+        """Return test router Device ID after recording probe ordering."""
         probe_calls.append("get_device_unique_id")
         return "dev1"
 
@@ -885,7 +885,7 @@ async def test_async_setup_entry_continues_after_firmware_validation_error(
     client.async_close = AsyncMock(return_value=True)
 
     async def _get_device_unique_id(expected_id: str | None = None) -> str:
-        """Return test router device id after recording probe ordering."""
+        """Return test router Device ID after recording probe ordering."""
         probe_calls.append("get_device_unique_id")
         return "dev1"
 
@@ -943,12 +943,12 @@ async def test_async_setup_entry_continues_after_missing_device_unique_id_valida
     client = MagicMock()
     client.name = "test-router"
     client.validate = AsyncMock(
-        side_effect=init_mod.OPNsenseMissingDeviceUniqueID("unable to determine device id")
+        side_effect=init_mod.OPNsenseMissingDeviceUniqueID("unable to determine Device ID")
     )
     client.async_close = AsyncMock(return_value=True)
 
     async def _get_device_unique_id(expected_id: str | None = None) -> str:
-        """Return test router device id after recording probe ordering."""
+        """Return test router Device ID after recording probe ordering."""
         probe_calls.append("get_device_unique_id")
         return "dev1"
 
@@ -1046,7 +1046,7 @@ async def test_async_setup_entry_device_id_mismatch(
     issue_kwargs: dict[str, Any] = {}
 
     def _capture_issue(**kwargs: Any) -> None:
-        """Capture the startup device-ID repair issue payload."""
+        """Capture the startup Device ID repair issue payload."""
         issue_kwargs.update(kwargs)
 
     monkeypatch.setattr(init_mod.ir, "async_create_issue", _capture_issue)
@@ -2809,7 +2809,7 @@ async def test_async_setup_entry_firmware_below_min(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """async_setup_entry returns False for devices with firmware below minimum supported."""
-    # fake client where device id matches but firmware is below min
+    # fake client where Device ID matches but firmware is below min
     patch_opnsense_client(monkeypatch, init_mod, fake_client(firmware_version="1.0"))
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
@@ -2882,7 +2882,7 @@ async def test_async_setup_entry_firmware_between_min_and_ltd(
 async def test_migrate_2_to_3_missing_device_id(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
-    """_migrate_2_to_3 returns False when the client provides no device id."""
+    """_migrate_2_to_3 returns False when the client provides no Device ID."""
     client = fake_client(device_id=None)()
     cfg = MagicMock()
     cfg.data = {
@@ -2903,7 +2903,7 @@ async def test_migrate_2_to_3_missing_device_id(
 
 @pytest.mark.asyncio
 async def test_migrate_2_to_3_success(monkeypatch: pytest.MonkeyPatch, fake_client: Any) -> None:
-    """_migrate_2_to_3 updates device and entity identifiers when client reports new device id."""
+    """_migrate_2_to_3 updates device and entity identifiers when client reports new Device ID."""
     client = fake_client(device_id="newdev")()
 
     # fake device entries and entity entries
@@ -3051,7 +3051,7 @@ async def test_async_setup_entry_awesomeversion_exception(
 ) -> None:
     """async_setup_entry should continue when AwesomeVersion comparison raises an exception."""
 
-    # fake client where device id matches but awesomeversion comparison raises
+    # fake client where Device ID matches but awesomeversion comparison raises
     # monkeypatch AwesomeVersion to a class that raises on comparison
     class DummyAV:
         """AwesomeVersion replacement that raises on comparisons."""

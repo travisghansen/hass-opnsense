@@ -452,7 +452,7 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
 
     def fake_async_create_issue(**kwargs: Any) -> None:
         # record the kwargs so tests can validate domain and issue_id
-        """Capture the issue payload emitted for a device-ID mismatch.
+        """Capture the issue payload emitted for a Device ID mismatch.
 
         Args:
             **kwargs: Issue fields passed to ``issue_registry.async_create_issue``.
@@ -853,7 +853,7 @@ async def test_async_update_data_reentrancy_and_full_flow(
 
     # full flow: monkeypatch _check_device_unique_id to True and ensure functions called
     async def true_check() -> bool:
-        """Force the device-ID validation step to succeed."""
+        """Force the Device ID validation step to succeed."""
         return True
 
     monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
@@ -946,7 +946,7 @@ async def test_async_update_data_enables_firewall_polling_when_runtime_firmware_
     )
 
     async def true_check() -> bool:
-        """Force the device-id validation step to succeed."""
+        """Force the Device ID validation step to succeed."""
         return True
 
     monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
@@ -1028,7 +1028,7 @@ async def test_build_categories_and_refresh_queue_firewall_for_legacy_firmware(
     assert "firewall" in [category["state_key"] for category in coord._categories]
 
     async def true_check() -> bool:
-        """Force the device-id validation step to succeed."""
+        """Force the Device ID validation step to succeed."""
         return True
 
     monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
@@ -1109,7 +1109,7 @@ async def test_async_update_data_continues_firewall_polling_after_runtime_downgr
     )
 
     async def true_check() -> bool:
-        """Force the device-id validation step to succeed."""
+        """Force the Device ID validation step to succeed."""
         return True
 
     monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
@@ -1195,7 +1195,7 @@ async def test_async_update_data_fetches_firewall_on_first_refresh_if_firmware_i
     )
 
     async def true_check() -> bool:
-        """Force the device-id validation step to succeed."""
+        """Force the Device ID validation step to succeed."""
         return True
 
     monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
@@ -1409,7 +1409,7 @@ async def test_async_update_data_preserves_only_counter_snapshot(
     }
 
     async def true_check() -> bool:
-        """Force device-ID validation to pass for previous-state assertions."""
+        """Force Device ID validation to pass for previous-state assertions."""
         return True
 
     async def noop_calc() -> None:
@@ -1495,10 +1495,10 @@ async def test_async_update_data_returns_empty_when_device_id_check_fails(
     )
 
     async def false_check() -> bool:
-        """Force device-ID validation to fail for the early-return branch."""
+        """Force Device ID validation to fail for the early-return branch."""
         return False
 
-    # make the device id check return False
+    # make the Device ID check return False
     monkeypatch.setattr(coord, "_check_device_unique_id", false_check)
 
     # spy on reset_query_counts
@@ -1628,7 +1628,7 @@ async def test_async_update_dt_data_uses_shared_device_id_mismatch_policy(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """Device-tracker refreshes should use the shared device-ID mismatch policy."""
+    """Device-tracker refreshes should use the shared Device ID mismatch policy."""
     entry = make_config_entry({"device_unique_id": "id"})
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(

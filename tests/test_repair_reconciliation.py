@@ -1,4 +1,4 @@
-"""Tests for restart-safe device-ID repair reconciliation."""
+"""Tests for restart-safe Device ID repair reconciliation."""
 
 from collections.abc import Callable
 from types import SimpleNamespace

@@ -120,7 +120,7 @@ async def _async_validate_and_probe_device_id(
         str | None: Device identifier returned by OPNsense.
 
     Raises:
-        OPNsenseError: If validation or the device-ID probe fails.
+        OPNsenseError: If validation or the Device ID probe fails.
     """
     client = create_opnsense_client_from_config_entry(
         hass=hass,
@@ -155,12 +155,12 @@ async def _async_prepare_entry_for_repair(
             unload_ok = await hass.config_entries.async_unload(config_entry.entry_id)
         except HomeAssistantError, KeyError:
             _LOGGER.exception(
-                "Device-ID repair could not unload %s; aborting repair",
+                "Device ID repair could not unload %s; aborting repair",
                 config_entry.title,
             )
             return False, entry_was_loaded
         if not unload_ok:
-            _LOGGER.debug("Device-ID repair could not unload %s", config_entry.title)
+            _LOGGER.debug("Device ID repair could not unload %s", config_entry.title)
             return False, entry_was_loaded
     return True, entry_was_loaded
 
@@ -284,11 +284,11 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         """
         try:
             if await self.hass.config_entries.async_reload(entry.entry_id):
-                _LOGGER.info("Device-ID repair reload completed for %s", entry.title)
+                _LOGGER.info("Device ID repair reload completed for %s", entry.title)
                 return self.async_create_entry(data={})
         except HomeAssistantError, KeyError:
             _LOGGER.exception(
-                "Device-ID repair did not finish for %s; cannot reload entry",
+                "Device ID repair did not finish for %s; cannot reload entry",
                 entry.title,
             )
         self._schedule_recovery_reload(
@@ -332,7 +332,7 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
             self.hass.config_entries.async_schedule_reload(entry_id)
         except HomeAssistantError, KeyError:
             _LOGGER.exception(
-                "Device-ID repair did not finish for %s; cannot schedule recovery "
+                "Device ID repair did not finish for %s; cannot schedule recovery "
                 "reload after an interrupted repair mutation",
                 entry_title,
             )
@@ -348,7 +348,7 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
             self.hass.config_entries.async_schedule_reload(entry_id)
         except HomeAssistantError, KeyError:
             _LOGGER.exception(
-                "Device-ID repair did not finish for %s; cannot schedule recovery "
+                "Device ID repair did not finish for %s; cannot schedule recovery "
                 "reload after the config entry changed during unload",
                 entry_title,
             )
@@ -491,7 +491,7 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
         if entry is None:
             return self.async_abort(reason="entry_not_found")
-        _LOGGER.info("Starting device-ID repair for %s", entry.title)
+        _LOGGER.info("Starting Device ID repair for %s", entry.title)
         entry_data_snapshot = deepcopy(dict(entry.data))
         entry_options_snapshot = deepcopy(dict(entry.options))
         entry_unique_id_snapshot = entry.unique_id
@@ -619,7 +619,7 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
             )
         except HomeAssistantError, KeyError:
             _LOGGER.exception(
-                "Device-ID repair did not finish for %s; cannot update config entry",
+                "Device ID repair did not finish for %s; cannot update config entry",
                 entry.title,
             )
             if entry_was_loaded:
@@ -634,7 +634,7 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
 
         if not updated:
             _LOGGER.error(
-                "Device-ID repair did not finish for %s; config-entry update made no changes",
+                "Device ID repair did not finish for %s; config-entry update made no changes",
                 entry.title,
             )
             if entry_was_loaded:
@@ -648,7 +648,7 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
             return self.async_abort(reason="repair_failed")
 
         _LOGGER.info(
-            "Device-ID repair persisted replacement identity for %s; "
+            "Device ID repair persisted replacement identity for %s; "
             "reloading for registry reconciliation",
             entry.title,
         )
@@ -673,7 +673,7 @@ async def async_create_fix_flow(
     issue_id: str,
     data: dict[str, str | int | float | None] | None,
 ) -> RepairsFlow:
-    """Create a device-ID replacement flow for a well-formed issue.
+    """Create a Device ID replacement flow for a well-formed issue.
 
     Args:
         hass: Home Assistant instance that owns the repair flow.
@@ -681,7 +681,7 @@ async def async_create_fix_flow(
         data: Issue data containing the entry and device identifiers.
 
     Returns:
-        RepairsFlow: Device-ID repair flow or a generic confirmation flow.
+        RepairsFlow: Device ID repair flow or a generic confirmation flow.
     """
     del hass
     if not issue_id.endswith(_DEVICE_ID_MISMATCH_ISSUE_SUFFIX) or data is None:

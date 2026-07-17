@@ -1,4 +1,4 @@
-"""Tests for the OPNsense device-ID replacement repair flow."""
+"""Tests for the OPNsense Device ID replacement repair flow."""
 
 from types import SimpleNamespace
 from typing import Any
@@ -1316,7 +1316,7 @@ async def test_fix_flow_factory_validates_issue_suffix_and_payload(
     data: dict[str, str | int | float | None],
     expects_replacement_flow: bool,
 ) -> None:
-    """Only well-formed device-ID issues should construct the destructive flow."""
+    """Only well-formed Device ID issues should construct the destructive flow."""
     hass = MagicMock()
     flow = await repairs.async_create_fix_flow(hass, "entry-1_device_id_mismatched", data)
     if expects_replacement_flow:

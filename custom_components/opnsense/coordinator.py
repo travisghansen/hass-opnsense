@@ -282,7 +282,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             return False
         if runtime_device_id != self._device_unique_id:
             _LOGGER.debug(
-                "[Coordinator async_update_data]: config device id: %s, router device id: %s",
+                "[Coordinator async_update_data]: config Device ID: %s, router Device ID: %s",
                 self._device_unique_id,
                 runtime_device_id,
             )

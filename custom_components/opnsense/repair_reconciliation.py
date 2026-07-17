@@ -1,4 +1,4 @@
-"""Restart-safe registry reconciliation for device-ID repairs."""
+"""Restart-safe registry reconciliation for Device ID repairs."""
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
@@ -38,7 +38,7 @@ class RepairMarker:
 
 
 def build_repair_marker(old_device_id: str, new_device_id: str) -> dict[str, object]:
-    """Build the current persisted device-ID repair marker."""
+    """Build the current persisted Device ID repair marker."""
     return {
         "version": _REPAIR_MARKER_VERSION,
         "old_device_id": old_device_id,
@@ -146,7 +146,7 @@ class RepairReconciliation:
         ) as err:
             raise RepairReconciliationError("registry identifier migration failed") from err
         _LOGGER.debug(
-            "Device-ID reconciliation prepared for %s: candidate_entities=%d, "
+            "Device ID reconciliation prepared for %s: candidate_entities=%d, "
             "migrated_entities=%d, primary_device_migrated=%s",
             self.config_entry.title,
             len(candidates),
@@ -175,7 +175,7 @@ class RepairReconciliation:
                 if isinstance(mac_address, str) and mac_address:
                     self.desired_device_connections.add((CONNECTION_NETWORK_MAC, mac_address))
         _LOGGER.debug(
-            "Device-ID reconciliation recorded platform discovery for %s: "
+            "Device ID reconciliation recorded platform discovery for %s: "
             "platform=%s, desired_entities=%d",
             self.config_entry.title,
             domain,
@@ -242,7 +242,7 @@ class RepairReconciliation:
         except (HomeAssistantError, KeyError, ValueError) as err:
             raise RepairReconciliationError("registry finalization failed") from err
         _LOGGER.info(
-            "Device-ID reconciliation finalized for %s: removed_entities=%d, "
+            "Device ID reconciliation finalized for %s: removed_entities=%d, "
             "detached_devices=%d, preserved_disabled_tracker_devices=%d",
             self.config_entry.title,
             removed_entities,
@@ -253,7 +253,7 @@ class RepairReconciliation:
     def mark_complete(self) -> None:
         """Disable reconciliation-only behavior after persisted marker clearance."""
         self.active = False
-        _LOGGER.info("Device-ID reconciliation completed for %s", self.config_entry.title)
+        _LOGGER.info("Device ID reconciliation completed for %s", self.config_entry.title)
 
 
 def record_desired_entities(
@@ -268,6 +268,6 @@ def record_desired_entities(
 
 
 def is_reconciliation_active(config_entry: ConfigEntry) -> bool:
-    """Return whether this setup is performing device-ID reconciliation."""
+    """Return whether this setup is performing Device ID reconciliation."""
     reconciliation = config_entry.runtime_data.repair_reconciliation
     return isinstance(reconciliation, RepairReconciliation) and reconciliation.active

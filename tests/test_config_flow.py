@@ -1166,7 +1166,7 @@ async def test_validate_client_details_closes_client(monkeypatch: pytest.MonkeyP
 async def test_validate_client_details_raises_when_device_id_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """_validate_client_details should reject clients that return no device id."""
+    """_validate_client_details should reject clients that return no Device ID."""
 
     class _Client:
         """Fake client that returns no device ID for validation tests."""
