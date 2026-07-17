@@ -28,12 +28,19 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 import custom_components.opnsense as init_mod
 from custom_components.opnsense import config_flow as cf_mod
+from custom_components.opnsense.config_flow import (
+    CONF_DEVICE_TRACKING_MODE,
+    DEVICE_TRACKING_MODE_SELECTED,
+)
 from custom_components.opnsense.const import (
+    CONF_DEVICE_TRACKER_ENABLED,
     CONF_DEVICE_UNIQUE_ID,
     CONF_DEVICES,
     CONF_GRANULAR_SYNC_OPTIONS,
     CONF_MANUAL_DEVICES,
     CONF_TLS_INSECURE,
+    DOMAIN,
+    SHOULD_RELOAD,
 )
 from tests.utilities import patch_opnsense_client
 
@@ -339,8 +346,8 @@ async def test_e2e_basic_config_flow_and_setup(
     ok = await init_mod.async_setup_entry(hass, entry)
     assert ok is True
     # hass.data should contain stored client under domain/entry_id
-    assert init_mod.DOMAIN in hass.data
-    assert entry.entry_id in hass.data[init_mod.DOMAIN]
+    assert DOMAIN in hass.data
+    assert entry.entry_id in hass.data[DOMAIN]
     # Runtime data should be populated
     assert hasattr(entry, "runtime_data")
     assert getattr(entry.runtime_data, "coordinator", None) is not None
@@ -407,7 +414,7 @@ async def test_e2e_granular_sync_and_options_device_tracker(
     entry.async_on_unload = lambda x: None
 
     # Add to fake hass store so options flow update calls can mutate it
-    hass.data.setdefault(init_mod.DOMAIN, {})
+    hass.data.setdefault(DOMAIN, {})
     # Provide async_get_known_entry for options flow compatibility
     if not hasattr(hass.config_entries, "async_get_known_entry"):
         hass.config_entries._entries = {entry.entry_id: entry}
@@ -434,7 +441,7 @@ async def test_e2e_granular_sync_and_options_device_tracker(
     # initial options step: enable device tracker & granular sync
     opt_init = await opt_flow.async_step_init(
         user_input={
-            cf_mod.CONF_DEVICE_TRACKING_MODE: cf_mod.DEVICE_TRACKING_MODE_SELECTED,
+            CONF_DEVICE_TRACKING_MODE: DEVICE_TRACKING_MODE_SELECTED,
             CONF_GRANULAR_SYNC_OPTIONS: True,
         }
     )
@@ -456,7 +463,7 @@ async def test_e2e_granular_sync_and_options_device_tracker(
     # Options merged list should contain unique MACs (order not strictly enforced)
     devices_set = set(entry.options.get(CONF_DEVICES, []))
     assert {"aa:bb:cc:dd:ee:ff", "11:22:33:44:55:66", "77:88:99:aa:bb:cc"}.issubset(devices_set)
-    assert entry.options.get(cf_mod.CONF_DEVICE_TRACKER_ENABLED) is True
+    assert entry.options.get(CONF_DEVICE_TRACKER_ENABLED) is True
 
     # Patch runtime setup components (client + coordinator) to count device tracker coordinator instantiation
     patch_opnsense_client(
@@ -534,7 +541,7 @@ async def test_e2e_reload_and_unload(
     # Setup
     ok = await init_mod.async_setup_entry(hass, entry)
     assert ok is True
-    assert entry.entry_id in hass.data[init_mod.DOMAIN]
+    assert entry.entry_id in hass.data[DOMAIN]
 
     # Patch registries for update listener (return no entities/devices)
     monkeypatch.setattr(init_mod.er, "async_get", lambda hass: MagicMock())
@@ -547,14 +554,14 @@ async def test_e2e_reload_and_unload(
     )
 
     # Trigger update listener -> should schedule reload
-    setattr(entry.runtime_data, init_mod.SHOULD_RELOAD, True)
+    setattr(entry.runtime_data, SHOULD_RELOAD, True)
     await init_mod._async_update_listener(hass, entry)
     assert hass.config_entries.async_reload.call_count == 1
 
     # Unload
     res_unload = await init_mod.async_unload_entry(hass, entry)
     assert res_unload is True
-    assert entry.entry_id not in hass.data[init_mod.DOMAIN]
+    assert entry.entry_id not in hass.data[DOMAIN]
     assert runtime_client._closed is True
     hass.config_entries.async_unload_platforms.assert_awaited_once()
 
@@ -754,7 +761,7 @@ async def test_e2e_full_migration_chain(
             CONF_URL: "https://router.example",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "oldmacid",
+            CONF_DEVICE_UNIQUE_ID: "oldmacid",
             CONF_TLS_INSECURE: True,
         },
         title="Router",
@@ -774,7 +781,7 @@ async def test_e2e_full_migration_chain(
     assert CONF_TLS_INSECURE not in entry.data
     assert entry.data.get(CONF_VERIFY_SSL) is False
     # v2->3: unique id updated
-    assert entry.data[init_mod.CONF_DEVICE_UNIQUE_ID] == "newmacid"
+    assert entry.data[CONF_DEVICE_UNIQUE_ID] == "newmacid"
     assert entry.unique_id == "newmacid"
     # Device identifiers updated
     main_dev = next(d for d in fake_device_reg._devices if d.id == "dev-main")

@@ -5,28 +5,45 @@ and options flow behaviors such as device tracker handling.
 """
 
 from collections.abc import Callable
+import ipaddress
 from typing import Any, Never
 from unittest.mock import AsyncMock, MagicMock
 
 from aiopnsense import exceptions as aiopnsense_exceptions
+from aiopnsense.exceptions import OPNsenseError, OPNsenseInvalidURL, OPNsenseMissingDeviceUniqueID
+from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_URL, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import AbortFlow
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 import voluptuous as vol
 
-import custom_components.opnsense.config_flow as config_flow_mod
+import custom_components.opnsense.config_flow as cf_mod
+from custom_components.opnsense.config_flow import (
+    CONF_DEVICE_TRACKING_MODE,
+    DEVICE_TRACKING_MODE_ALL,
+    DEVICE_TRACKING_MODE_DISABLED,
+    DEVICE_TRACKING_MODE_SELECTED,
+    OPTIONS_INIT_NUMBER_BOUNDS,
+)
 from custom_components.opnsense.const import (
+    CONF_DEVICE_TRACKER_CONSIDER_HOME,
+    CONF_DEVICE_TRACKER_ENABLED,
+    CONF_DEVICE_TRACKER_SCAN_INTERVAL,
+    CONF_DEVICE_UNIQUE_ID,
+    CONF_DEVICES,
     CONF_ENTRY_TYPE,
+    CONF_FIRMWARE_VERSION,
+    CONF_GRANULAR_SYNC_OPTIONS,
+    CONF_MANUAL_DEVICES,
     CONF_SYNC_FIREWALL_AND_NAT,
     CONF_SYNC_SMART,
     CONF_SYNC_TELEMETRY,
     ENTRY_TYPE_CARP,
     ENTRY_TYPE_DEVICE,
+    GRANULAR_SYNC_ITEMS,
 )
 from tests.utilities import patch_opnsense_client
-
-cf_mod: Any = config_flow_mod
 
 
 def _make_options_flow(config_entry: Any) -> Any:
@@ -136,12 +153,12 @@ def test_device_tracking_mode_helper() -> None:
     """Map stored devices to the expected UI tracking mode."""
     assert (
         cf_mod._get_device_tracking_mode(False, ["aa:bb:cc:dd:ee:ff"])
-        == cf_mod.DEVICE_TRACKING_MODE_DISABLED
+        == DEVICE_TRACKING_MODE_DISABLED
     )
-    assert cf_mod._get_device_tracking_mode(True, []) == cf_mod.DEVICE_TRACKING_MODE_ALL
-    assert cf_mod._get_device_tracking_mode(True, None) == cf_mod.DEVICE_TRACKING_MODE_ALL
+    assert cf_mod._get_device_tracking_mode(True, []) == DEVICE_TRACKING_MODE_ALL
+    assert cf_mod._get_device_tracking_mode(True, None) == DEVICE_TRACKING_MODE_ALL
     assert cf_mod._get_device_tracking_mode(True, ["aa:bb:cc:dd:ee:ff"]) == (
-        cf_mod.DEVICE_TRACKING_MODE_SELECTED
+        DEVICE_TRACKING_MODE_SELECTED
     )
 
 
@@ -192,7 +209,7 @@ def test_device_entry_sort_key_numeric_ip_sorting() -> None:
         "host-d [192.168.1.10 | 33:44:55:66:77:88]",
         ip_by_mac,
     )
-    assert ip_key == (1, (4, int(cf_mod.ipaddress.ip_address("10.0.0.5"))))
+    assert ip_key == (1, (4, int(ipaddress.ip_address("10.0.0.5"))))
     assert label_key == (2, "host-b [11:22:33:44:55:66]")
     assert subnet_key_2 < subnet_key_10
 
@@ -353,7 +370,7 @@ async def test_validate_input_reraises_unmapped_opnsense_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """validate_input should re-raise OPNsense errors without form mappings."""
-    exc = cf_mod.OPNsenseError("unmapped")
+    exc = OPNsenseError("unmapped")
 
     async def _raiser(*args: object, **kwargs: object) -> Never:
         """Raise an unmapped OPNsense error.
@@ -369,7 +386,7 @@ async def test_validate_input_reraises_unmapped_opnsense_error(
 
     monkeypatch.setattr(cf_mod, "_validate_client_details", _raiser)
 
-    with pytest.raises(cf_mod.OPNsenseError) as err:
+    with pytest.raises(OPNsenseError) as err:
         await cf_mod.validate_input(hass=MagicMock(), user_input={}, errors={})
 
     assert err.value is exc
@@ -393,7 +410,7 @@ async def test_validate_input_timeout_uses_connect_timeout_error(
     with caplog.at_level("ERROR"):
         result = await cf_mod.validate_input(
             hass=MagicMock(),
-            user_input={cf_mod.CONF_USERNAME: username, cf_mod.CONF_PASSWORD: password},
+            user_input={CONF_USERNAME: username, CONF_PASSWORD: password},
             errors={},
         )
 
@@ -920,7 +937,7 @@ async def test_get_dt_entries_sorts_and_includes_selected(
     patch_opnsense_client(monkeypatch, cf_mod, client_cls)
 
     hass = MagicMock()
-    config = {cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"}
+    config = {CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"}
     selected = ["aa:bb:cc:00:00:01"]
     res = await cf_mod._get_dt_entries(hass=hass, config=config, selected_devices=selected)
 
@@ -966,7 +983,7 @@ async def test_get_dt_entries_passes_throw_errors_to_client(
 
     await cf_mod._get_dt_entries(
         hass=MagicMock(),
-        config={cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"},
+        config={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
         selected_devices=[],
     )
 
@@ -994,7 +1011,7 @@ async def test_get_dt_entries_preserves_missing_selected_devices(
 
     res = await cf_mod._get_dt_entries(
         hass=MagicMock(),
-        config={cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"},
+        config={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
         selected_devices=["AA-BB-CC-DD-EE-FF"],
     )
     assert res["aa:bb:cc:dd:ee:ff"] == "Not currently detected [aa:bb:cc:dd:ee:ff]"
@@ -1088,7 +1105,7 @@ async def test_get_dt_entries_closes_client(monkeypatch: pytest.MonkeyPatch) -> 
 
     await cf_mod._get_dt_entries(
         hass=MagicMock(),
-        config={cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"},
+        config={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
         selected_devices=[],
     )
     assert _Client.last_instance is not None
@@ -1148,10 +1165,10 @@ async def test_validate_client_details_closes_client(monkeypatch: pytest.MonkeyP
     patch_opnsense_client(monkeypatch, cf_mod, _Client)
 
     user_input = {
-        cf_mod.CONF_URL: "https://router.example",
-        cf_mod.CONF_USERNAME: "u",
-        cf_mod.CONF_PASSWORD: "p",
-        cf_mod.CONF_GRANULAR_SYNC_OPTIONS: False,
+        CONF_URL: "https://router.example",
+        CONF_USERNAME: "u",
+        CONF_PASSWORD: "p",
+        CONF_GRANULAR_SYNC_OPTIONS: False,
     }
     await cf_mod._validate_client_details(
         hass=MagicMock(),
@@ -1203,11 +1220,11 @@ async def test_validate_client_details_raises_when_device_id_missing(
     patch_opnsense_client(monkeypatch, cf_mod, _Client)
 
     user_input = {
-        cf_mod.CONF_URL: "https://router.example",
-        cf_mod.CONF_USERNAME: "u",
-        cf_mod.CONF_PASSWORD: "p",
+        CONF_URL: "https://router.example",
+        CONF_USERNAME: "u",
+        CONF_PASSWORD: "p",
     }
-    with pytest.raises(cf_mod.OPNsenseMissingDeviceUniqueID):
+    with pytest.raises(OPNsenseMissingDeviceUniqueID):
         await cf_mod._validate_client_details(hass=MagicMock(), user_input=user_input)
 
     assert _Client.last_instance is not None
@@ -1220,13 +1237,13 @@ def test_build_user_input_and_granular_and_options_schemas_defaults() -> None:
     # user input schema should provide keys and defaults
     schema = cf_mod._build_user_input_schema(user_input=uis)
     validated = schema({})
-    assert cf_mod.CONF_URL in validated
+    assert CONF_URL in validated
 
     # granular sync schema
     gschema = cf_mod._build_granular_sync_schema(user_input=None)
     gvalidated = gschema({})
     # every granular item should be present (defaults applied)
-    for item in cf_mod.GRANULAR_SYNC_ITEMS:
+    for item in GRANULAR_SYNC_ITEMS:
         assert item in gvalidated
     assert gvalidated[CONF_SYNC_SMART] is True
     assert gvalidated[CONF_SYNC_TELEMETRY] is True
@@ -1236,25 +1253,25 @@ def test_build_user_input_and_granular_and_options_schemas_defaults() -> None:
     # options init schema: test clamping/coercion for scan interval
     oschema = cf_mod._build_options_init_schema(user_input=None)
     out = oschema({})
-    assert cf_mod.CONF_SCAN_INTERVAL in out
-    assert cf_mod.CONF_DEVICE_TRACKING_MODE in out
+    assert CONF_SCAN_INTERVAL in out
+    assert CONF_DEVICE_TRACKING_MODE in out
 
 
 def test_schema_builders_preserve_submitted_values_before_stored_values() -> None:
     """Schema defaults should prefer submitted values, then stored values, then constants."""
     user_schema = cf_mod._build_user_input_schema(
         user_input={
-            cf_mod.CONF_URL: "https://submitted.example",
-            cf_mod.CONF_GRANULAR_SYNC_OPTIONS: False,
+            CONF_URL: "https://submitted.example",
+            CONF_GRANULAR_SYNC_OPTIONS: False,
         },
         stored_values={
-            cf_mod.CONF_URL: "https://stored.example",
-            cf_mod.CONF_GRANULAR_SYNC_OPTIONS: True,
+            CONF_URL: "https://stored.example",
+            CONF_GRANULAR_SYNC_OPTIONS: True,
         },
     )
     user_values = user_schema({})
-    assert user_values[cf_mod.CONF_URL] == "https://submitted.example"
-    assert user_values[cf_mod.CONF_GRANULAR_SYNC_OPTIONS] is False
+    assert user_values[CONF_URL] == "https://submitted.example"
+    assert user_values[CONF_GRANULAR_SYNC_OPTIONS] is False
 
     granular_schema = cf_mod._build_granular_sync_schema(
         user_input={CONF_SYNC_SMART: False},
@@ -1266,20 +1283,20 @@ def test_schema_builders_preserve_submitted_values_before_stored_values() -> Non
 
     options_schema = cf_mod._build_options_init_schema(
         user_input={
-            cf_mod.CONF_SCAN_INTERVAL: 45,
-            cf_mod.CONF_DEVICE_TRACKING_MODE: cf_mod.DEVICE_TRACKING_MODE_SELECTED,
+            CONF_SCAN_INTERVAL: 45,
+            CONF_DEVICE_TRACKING_MODE: DEVICE_TRACKING_MODE_SELECTED,
         },
-        stored_config={cf_mod.CONF_GRANULAR_SYNC_OPTIONS: True},
+        stored_config={CONF_GRANULAR_SYNC_OPTIONS: True},
         stored_options={
-            cf_mod.CONF_SCAN_INTERVAL: 120,
-            cf_mod.CONF_DEVICE_TRACKER_ENABLED: True,
-            cf_mod.CONF_DEVICES: [],
+            CONF_SCAN_INTERVAL: 120,
+            CONF_DEVICE_TRACKER_ENABLED: True,
+            CONF_DEVICES: [],
         },
     )
     options_values = options_schema({})
-    assert options_values[cf_mod.CONF_SCAN_INTERVAL] == 45
-    assert options_values[cf_mod.CONF_DEVICE_TRACKING_MODE] == cf_mod.DEVICE_TRACKING_MODE_SELECTED
-    assert options_values[cf_mod.CONF_GRANULAR_SYNC_OPTIONS] is True
+    assert options_values[CONF_SCAN_INTERVAL] == 45
+    assert options_values[CONF_DEVICE_TRACKING_MODE] == DEVICE_TRACKING_MODE_SELECTED
+    assert options_values[CONF_GRANULAR_SYNC_OPTIONS] is True
 
 
 @pytest.mark.parametrize(
@@ -1294,8 +1311,8 @@ def test_options_scan_interval_accepts_native_selector_range(
     """_build_options_init_schema should accept CONF_SCAN_INTERVAL values in range."""
     oschema = cf_mod._build_options_init_schema(user_input=None)
     # pass a dict with the scan interval set to the test value
-    validated = oschema({cf_mod.CONF_SCAN_INTERVAL: input_value})
-    assert validated.get(cf_mod.CONF_SCAN_INTERVAL) == expected
+    validated = oschema({CONF_SCAN_INTERVAL: input_value})
+    assert validated.get(CONF_SCAN_INTERVAL) == expected
 
 
 @pytest.mark.parametrize("input_value", [5, 1000])
@@ -1304,25 +1321,25 @@ def test_options_scan_interval_rejects_values_outside_selector_range(input_value
     oschema = cf_mod._build_options_init_schema(user_input=None)
 
     with pytest.raises(vol.Invalid):
-        oschema({cf_mod.CONF_SCAN_INTERVAL: input_value})
+        oschema({CONF_SCAN_INTERVAL: input_value})
 
 
 @pytest.mark.parametrize(
     ("stored_options", "field", "expected"),
     [
         (
-            {cf_mod.CONF_SCAN_INTERVAL: 1000},
-            cf_mod.CONF_SCAN_INTERVAL,
+            {CONF_SCAN_INTERVAL: 1000},
+            CONF_SCAN_INTERVAL,
             300,
         ),
         (
-            {cf_mod.CONF_DEVICE_TRACKER_SCAN_INTERVAL: 5},
-            cf_mod.CONF_DEVICE_TRACKER_SCAN_INTERVAL,
+            {CONF_DEVICE_TRACKER_SCAN_INTERVAL: 5},
+            CONF_DEVICE_TRACKER_SCAN_INTERVAL,
             30,
         ),
         (
-            {cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME: 5000},
-            cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME,
+            {CONF_DEVICE_TRACKER_CONSIDER_HOME: 5000},
+            CONF_DEVICE_TRACKER_CONSIDER_HOME,
             3600,
         ),
     ],
@@ -1342,12 +1359,12 @@ def test_options_schema_clamps_legacy_stored_defaults(
 
 @pytest.mark.parametrize(
     "option_key",
-    list(cf_mod.OPTIONS_INIT_NUMBER_BOUNDS),
+    list(OPTIONS_INIT_NUMBER_BOUNDS),
 )
 def test_options_init_schema_boundaries_match_keyed_lookup(option_key: str) -> None:
     """Selector bounds for options should come from keyed bounds lookup values."""
     oschema = cf_mod._build_options_init_schema(user_input=None)
-    minimum, maximum = cf_mod.OPTIONS_INIT_NUMBER_BOUNDS[option_key]
+    minimum, maximum = OPTIONS_INIT_NUMBER_BOUNDS[option_key]
 
     assert oschema({option_key: minimum}).get(option_key) == minimum
     assert oschema({option_key: maximum}).get(option_key) == maximum
@@ -1384,8 +1401,8 @@ def test_options_device_tracker_consider_home_accepts_native_selector_range(
     """_build_options_init_schema should accept consider_home values in range."""
     oschema = cf_mod._build_options_init_schema(user_input=None)
     # pass a dict with the consider_home value set to the test value
-    validated = oschema({cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME: input_value})
-    assert validated.get(cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME) == expected
+    validated = oschema({CONF_DEVICE_TRACKER_CONSIDER_HOME: input_value})
+    assert validated.get(CONF_DEVICE_TRACKER_CONSIDER_HOME) == expected
 
 
 @pytest.mark.parametrize("input_value", [-10, 5000])
@@ -1396,7 +1413,7 @@ def test_options_device_tracker_consider_home_rejects_values_outside_selector_ra
     oschema = cf_mod._build_options_init_schema(user_input=None)
 
     with pytest.raises(vol.Invalid):
-        oschema({cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME: input_value})
+        oschema({CONF_DEVICE_TRACKER_CONSIDER_HOME: input_value})
 
 
 def test_async_get_options_flow_returns_options_flow() -> None:
@@ -1472,8 +1489,8 @@ async def test_options_flow_init_for_carp_entry_saves_scan_interval(
 async def test_options_flow_init_with_user_triggers_update() -> None:
     """Submitting user input to async_step_init should update entry and create entry."""
     cfg = MagicMock()
-    cfg.data = {cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"}
-    cfg.options = {cf_mod.CONF_DEVICE_TRACKER_ENABLED: False}
+    cfg.data = {CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"}
+    cfg.options = {CONF_DEVICE_TRACKER_ENABLED: False}
 
     flow = _make_options_flow(cfg)
 
@@ -1481,14 +1498,14 @@ async def test_options_flow_init_with_user_triggers_update() -> None:
     flow._config = dict(cfg.data)
     flow._options = dict(cfg.options)
 
-    user_input = {cf_mod.CONF_SCAN_INTERVAL: 30}
+    user_input = {CONF_SCAN_INTERVAL: 30}
     res = await flow.async_step_init(user_input=user_input)
 
     # should have called update_entry and returned create_entry
     flow.hass.config_entries.async_update_entry.assert_called()
     assert res["type"] == "create_entry"
-    assert flow._options.get(cf_mod.CONF_SCAN_INTERVAL) == 30
-    assert isinstance(flow._options.get(cf_mod.CONF_SCAN_INTERVAL), int)
+    assert flow._options.get(CONF_SCAN_INTERVAL) == 30
+    assert isinstance(flow._options.get(CONF_SCAN_INTERVAL), int)
 
 
 @pytest.mark.asyncio
@@ -1517,16 +1534,16 @@ async def test_options_flow_init_for_device_shows_resolved_description_scope(
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        (cf_mod.CONF_SCAN_INTERVAL, 30.0),
-        (cf_mod.CONF_DEVICE_TRACKER_SCAN_INTERVAL, 150.0),
-        (cf_mod.CONF_DEVICE_TRACKER_CONSIDER_HOME, 120.0),
+        (CONF_SCAN_INTERVAL, 30.0),
+        (CONF_DEVICE_TRACKER_SCAN_INTERVAL, 150.0),
+        (CONF_DEVICE_TRACKER_CONSIDER_HOME, 120.0),
     ],
 )
 async def test_options_flow_init_normalizes_numeric_values(field: str, value: float) -> None:
     """Submitting numeric options should persist integer values."""
     cfg = MagicMock()
-    cfg.data = {cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"}
-    cfg.options = {cf_mod.CONF_DEVICE_TRACKER_ENABLED: False}
+    cfg.data = {CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"}
+    cfg.options = {CONF_DEVICE_TRACKER_ENABLED: False}
 
     flow = _make_options_flow(cfg)
     flow._config = dict(cfg.data)
@@ -1546,8 +1563,8 @@ async def test_options_flow_granular_sync_calls_validate_and_updates(
 ) -> None:
     """async_step_granular_sync should call validate_input and update entry when no errors."""
     cfg = MagicMock()
-    cfg.data = {cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"}
-    cfg.options = {cf_mod.CONF_DEVICE_TRACKER_ENABLED: False}
+    cfg.data = {CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"}
+    cfg.options = {CONF_DEVICE_TRACKER_ENABLED: False}
 
     flow = _make_options_flow(cfg)
 
@@ -1566,7 +1583,7 @@ async def test_options_flow_granular_sync_calls_validate_and_updates(
     monkeypatch.setattr(cf_mod, "validate_input", fake_validate)
 
     # use an actual granular sync key present in the module
-    gkey = next(iter(cf_mod.GRANULAR_SYNC_ITEMS))
+    gkey = next(iter(GRANULAR_SYNC_ITEMS))
     # populate internals so the flow method doesn't access Home Assistant internals
     flow._config = dict(cfg.data)
     flow._options = dict(cfg.options)
@@ -1582,8 +1599,8 @@ async def test_device_tracker_shows_form_when_no_user_input(
 ) -> None:
     """async_step_device_tracker should show form containing data_schema when called without user_input."""
     cfg = make_config_entry(
-        data={cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"},
-        options={cf_mod.CONF_DEVICES: ["11:22:33:44:55:66"]},
+        data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
+        options={CONF_DEVICES: ["11:22:33:44:55:66"]},
     )
 
     flow = _make_options_flow(cfg)
@@ -1608,7 +1625,7 @@ async def test_device_tracker_shows_form_when_no_user_input(
     assert res["type"] == "form"
     assert "data_schema" in res
     validated = res["data_schema"]({})
-    assert cf_mod.CONF_DEVICES in validated
+    assert CONF_DEVICES in validated
 
 
 @pytest.mark.parametrize(
@@ -1638,8 +1655,8 @@ async def test_device_tracker_handles_arp_lookup_failure(
     """ARP lookup failures should not abort device tracker form rendering."""
     exc = exception_factory("boom")
     cfg = make_config_entry(
-        data={cf_mod.CONF_URL: "https://x", cf_mod.CONF_USERNAME: "u", cf_mod.CONF_PASSWORD: "p"},
-        options={cf_mod.CONF_DEVICES: ["AA-BB-CC-DD-EE-FF"]},
+        data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
+        options={CONF_DEVICES: ["AA-BB-CC-DD-EE-FF"]},
     )
     flow = _make_options_flow(cfg)
     flow._config = dict(cfg.data)
@@ -1663,7 +1680,33 @@ async def test_device_tracker_handles_arp_lookup_failure(
     assert res["type"] == "form"
     assert res["errors"]["base"] == expected_base_error
     validated = res["data_schema"]({})
-    assert validated[cf_mod.CONF_DEVICES] == ["aa:bb:cc:dd:ee:ff"]
+    assert validated[CONF_DEVICES] == ["aa:bb:cc:dd:ee:ff"]
+
+
+@pytest.mark.asyncio
+async def test_device_tracker_handles_opnsense_timeout_error(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """OPNsense timeouts should keep picker rendering with the saved MAC fallback."""
+    cfg = make_config_entry(
+        data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
+        options={CONF_DEVICES: ["AA-BB-CC-DD-EE-FF"]},
+    )
+    flow = _make_options_flow(cfg)
+    flow._config = dict(cfg.data)
+    flow._options = dict(cfg.options)
+
+    async def _raise_timeout(*args: object, **kwargs: object) -> Never:
+        """Raise an OPNsense timeout to exercise connect_timeout mapping."""
+        raise aiopnsense_exceptions.OPNsenseTimeoutError("request timed out")
+
+    monkeypatch.setattr(cf_mod, "_get_dt_entries", _raise_timeout)
+    res_timeout = await flow.async_step_device_tracker(user_input=None)
+    assert res_timeout["type"] == "form"
+    assert res_timeout["errors"]["base"] == "connect_timeout"
+    validated_timeout = res_timeout["data_schema"]({})
+    assert validated_timeout[CONF_DEVICES] == ["aa:bb:cc:dd:ee:ff"]
 
 
 @pytest.mark.asyncio
@@ -1674,11 +1717,11 @@ async def test_options_flow_device_tracker_user_input(
     # Build a fake config_entry using shared factory
     config_entry = make_config_entry(
         data={
-            cf_mod.CONF_URL: "https://x",
-            cf_mod.CONF_USERNAME: "u",
-            cf_mod.CONF_PASSWORD: "p",
+            CONF_URL: "https://x",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
         },
-        options={cf_mod.CONF_DEVICE_TRACKER_ENABLED: True, cf_mod.CONF_DEVICES: []},
+        options={CONF_DEVICE_TRACKER_ENABLED: True, CONF_DEVICES: []},
     )
 
     flow = _make_options_flow(config_entry)
@@ -1688,8 +1731,8 @@ async def test_options_flow_device_tracker_user_input(
     flow._options = dict(config_entry.options)
 
     user_input = {
-        cf_mod.CONF_MANUAL_DEVICES: "aa:bb:cc:dd:ee:ff\nbad\n11:22:33:44:55:66",
-        cf_mod.CONF_DEVICES: ["11:22:33:44:55:66"],
+        CONF_MANUAL_DEVICES: "aa:bb:cc:dd:ee:ff\nbad\n11:22:33:44:55:66",
+        CONF_DEVICES: ["11:22:33:44:55:66"],
     }
 
     result = await flow.async_step_device_tracker(user_input=user_input)
@@ -1698,10 +1741,10 @@ async def test_options_flow_device_tracker_user_input(
     assert result["type"] == "create_entry"
 
     # The flow should have parsed manual devices into _options
-    assert cf_mod.CONF_DEVICES in flow._options
-    assert "aa:bb:cc:dd:ee:ff" in flow._options[cf_mod.CONF_DEVICES]
-    assert "11:22:33:44:55:66" in flow._options[cf_mod.CONF_DEVICES]
-    assert flow._options[cf_mod.CONF_DEVICES] == ["11:22:33:44:55:66", "aa:bb:cc:dd:ee:ff"]
+    assert CONF_DEVICES in flow._options
+    assert "aa:bb:cc:dd:ee:ff" in flow._options[CONF_DEVICES]
+    assert "11:22:33:44:55:66" in flow._options[CONF_DEVICES]
+    assert flow._options[CONF_DEVICES] == ["11:22:33:44:55:66", "aa:bb:cc:dd:ee:ff"]
 
 
 @pytest.mark.asyncio
@@ -1711,13 +1754,13 @@ async def test_options_flow_device_tracker_track_all_clears_device_list(
     """Track-all mode from init should persist the legacy empty-device-list behavior."""
     config_entry = make_config_entry(
         data={
-            cf_mod.CONF_URL: "https://x",
-            cf_mod.CONF_USERNAME: "u",
-            cf_mod.CONF_PASSWORD: "p",
+            CONF_URL: "https://x",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
         },
         options={
-            cf_mod.CONF_DEVICE_TRACKER_ENABLED: True,
-            cf_mod.CONF_DEVICES: ["aa:bb:cc:dd:ee:ff"],
+            CONF_DEVICE_TRACKER_ENABLED: True,
+            CONF_DEVICES: ["aa:bb:cc:dd:ee:ff"],
         },
     )
 
@@ -1727,13 +1770,13 @@ async def test_options_flow_device_tracker_track_all_clears_device_list(
 
     result = await flow.async_step_init(
         user_input={
-            cf_mod.CONF_DEVICE_TRACKING_MODE: cf_mod.DEVICE_TRACKING_MODE_ALL,
-            cf_mod.CONF_GRANULAR_SYNC_OPTIONS: False,
+            CONF_DEVICE_TRACKING_MODE: DEVICE_TRACKING_MODE_ALL,
+            CONF_GRANULAR_SYNC_OPTIONS: False,
         }
     )
 
     assert result["type"] == "create_entry"
-    assert flow._options[cf_mod.CONF_DEVICES] == []
+    assert flow._options[CONF_DEVICES] == []
 
 
 @pytest.mark.asyncio
@@ -1743,19 +1786,19 @@ async def test_options_flow_init_selected_mode_shows_picker_step(
     """Selected-only mode should continue to the device picker step."""
     config_entry = make_config_entry(
         data={
-            cf_mod.CONF_URL: "https://x",
-            cf_mod.CONF_USERNAME: "u",
-            cf_mod.CONF_PASSWORD: "p",
+            CONF_URL: "https://x",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
         },
-        options={cf_mod.CONF_DEVICE_TRACKER_ENABLED: False, cf_mod.CONF_DEVICES: []},
+        options={CONF_DEVICE_TRACKER_ENABLED: False, CONF_DEVICES: []},
     )
     flow = _make_options_flow(config_entry)
     monkeypatch.setattr(cf_mod, "_get_dt_entries", AsyncMock(return_value={}))
 
     result = await flow.async_step_init(
         user_input={
-            cf_mod.CONF_DEVICE_TRACKING_MODE: cf_mod.DEVICE_TRACKING_MODE_SELECTED,
-            cf_mod.CONF_GRANULAR_SYNC_OPTIONS: False,
+            CONF_DEVICE_TRACKING_MODE: DEVICE_TRACKING_MODE_SELECTED,
+            CONF_GRANULAR_SYNC_OPTIONS: False,
         }
     )
     assert result["type"] == "form"
@@ -1769,10 +1812,10 @@ async def test_reconfigure_updates_entry_when_validation_succeeds(
     """Successful reconfigure submissions should update and abort the flow."""
     config_entry = make_config_entry(
         data={
-            cf_mod.CONF_URL: "https://x",
-            cf_mod.CONF_USERNAME: "u",
-            cf_mod.CONF_PASSWORD: "p",
-            cf_mod.CONF_DEVICE_UNIQUE_ID: "device-1",
+            CONF_URL: "https://x",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            CONF_DEVICE_UNIQUE_ID: "device-1",
         },
         options={},
         unique_id="device-1",
@@ -1791,9 +1834,9 @@ async def test_reconfigure_updates_entry_when_validation_succeeds(
 
     result = await flow.async_step_reconfigure(
         user_input={
-            cf_mod.CONF_URL: "https://router.example",
-            cf_mod.CONF_USERNAME: "u",
-            cf_mod.CONF_PASSWORD: "p",
+            CONF_URL: "https://router.example",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
         }
     )
 
@@ -1806,10 +1849,10 @@ async def test_reconfigure_updates_entry_when_validation_succeeds(
     update_and_abort.assert_called_once_with(
         entry=config_entry,
         data={
-            cf_mod.CONF_URL: "https://router.example",
-            cf_mod.CONF_USERNAME: "u",
-            cf_mod.CONF_PASSWORD: "p",
-            cf_mod.CONF_DEVICE_UNIQUE_ID: "device-1",
+            CONF_URL: "https://router.example",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            CONF_DEVICE_UNIQUE_ID: "device-1",
         },
     )
 
@@ -2317,10 +2360,10 @@ async def test_validate_input_granular_sync_uses_native_validation_only(
     monkeypatch.setattr(cf_mod, "create_opnsense_client", lambda **_kwargs: client)
 
     user_input = {
-        cf_mod.CONF_URL: "https://host.example",
-        cf_mod.CONF_USERNAME: "user",
-        cf_mod.CONF_PASSWORD: "pass",
-        cf_mod.CONF_GRANULAR_SYNC_OPTIONS: True,
+        CONF_URL: "https://host.example",
+        CONF_USERNAME: "user",
+        CONF_PASSWORD: "pass",
+        CONF_GRANULAR_SYNC_OPTIONS: True,
         CONF_SYNC_FIREWALL_AND_NAT: True,
     }
     errors: dict[str, Any] = {}
@@ -2332,7 +2375,7 @@ async def test_validate_input_granular_sync_uses_native_validation_only(
     )
 
     assert res == {}
-    assert user_input[cf_mod.CONF_FIRMWARE_VERSION] == "25.1"
+    assert user_input[CONF_FIRMWARE_VERSION] == "25.1"
     client.validate.assert_awaited_once()
     client.is_plugin_installed.assert_not_awaited()
     client.set_use_snake_case.assert_not_awaited()

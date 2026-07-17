@@ -13,13 +13,16 @@ from unittest.mock import ANY, AsyncMock, MagicMock, call
 from aiopnsense.exceptions import (
     OPNsenseBelowMinFirmware,
     OPNsenseConnectionError,
+    OPNsenseError,
     OPNsenseInvalidAuth,
     OPNsenseInvalidURL,
+    OPNsenseMissingDeviceUniqueID,
     OPNsensePrivilegeMissing,
     OPNsenseSSLError,
     OPNsenseTimeoutError,
     OPNsenseUnknownFirmware,
 )
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME, CONF_VERIFY_SSL, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
@@ -27,17 +30,29 @@ from homeassistant.util import slugify
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-import custom_components.opnsense as opnsense_mod
+import custom_components.opnsense as init_mod
 from custom_components.opnsense.const import (
+    CONF_DEVICE_TRACKER_ENABLED,
+    CONF_DEVICE_UNIQUE_ID,
     CONF_ENTRY_TYPE,
     CONF_GRANULAR_SYNC_OPTIONS,
     CONF_SYNC_FIREWALL_AND_NAT,
     CONF_TLS_INSECURE,
+    DOMAIN,
     ENTRY_TYPE_CARP,
+    GRANULAR_SYNC_PREFIX,
+    LOADED_PLATFORMS,
+    OPNSENSE_CLIENT,
+    OPNSENSE_LTD_FIRMWARE,
+    OPNSENSE_MIN_FIRMWARE,
+    SHOULD_RELOAD,
+)
+from custom_components.opnsense.repair_reconciliation import (
+    REPAIR_MARKER_KEY,
+    RepairMarker,
+    RepairReconciliationError,
 )
 from tests.utilities import patch_opnsense_client
-
-init_mod: Any = opnsense_mod
 
 
 @dataclass(slots=True)
@@ -143,7 +158,7 @@ async def test_async_setup_entry_success(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
         },
         options={},
     )
@@ -158,7 +173,7 @@ async def test_async_setup_entry_success(
 
     res = await init_mod.async_setup_entry(hass, entry)
     assert res is True
-    assert init_mod.DOMAIN in hass.data and entry.entry_id in hass.data[init_mod.DOMAIN]
+    assert DOMAIN in hass.data and entry.entry_id in hass.data[DOMAIN]
 
 
 @pytest.mark.asyncio
@@ -203,7 +218,7 @@ async def test_async_setup_entry_validates_client_before_probes(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
         },
         options={},
     )
@@ -661,13 +676,20 @@ async def test_async_setup_entry_carp_registers_update_listener_after_forwarding
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(OPNsenseError("boom"), id="generic"),
+        pytest.param(OPNsenseTimeoutError("timed out"), id="timeout"),
+    ],
+)
 async def test_async_setup_entry_closes_client_when_validation_fails(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
+    error: OPNsenseError,
 ) -> None:
     """async_setup_entry should close a constructed client when validation fails."""
-    error = init_mod.OPNsenseError("boom")
     client = MagicMock()
     client.validate = AsyncMock(side_effect=error)
     client.async_close = AsyncMock(return_value=True)
@@ -683,7 +705,7 @@ async def test_async_setup_entry_closes_client_when_validation_fails(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
         },
         options={},
     )
@@ -847,7 +869,7 @@ async def test_async_setup_entry_reraises_client_creation_error(
 
     def _create_client(**kwargs: Any) -> Any:
         """Raise a backend error before a client instance exists."""
-        raise init_mod.OPNsenseError("boom")
+        raise OPNsenseError("boom")
 
     monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", _create_client)
     entry = make_config_entry(
@@ -855,7 +877,7 @@ async def test_async_setup_entry_reraises_client_creation_error(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
         },
         options={},
     )
@@ -865,7 +887,7 @@ async def test_async_setup_entry_reraises_client_creation_error(
     hass.config_entries.async_reload = AsyncMock()
     hass.data = {}
 
-    with pytest.raises(init_mod.OPNsenseError):
+    with pytest.raises(OPNsenseError):
         await init_mod.async_setup_entry(hass, entry)
 
 
@@ -881,7 +903,7 @@ async def test_async_setup_entry_continues_after_firmware_validation_error(
     probe_calls: list[str] = []
     client = MagicMock()
     client.name = "test-router"
-    client.validate = AsyncMock(side_effect=init_mod.OPNsenseBelowMinFirmware("boom"))
+    client.validate = AsyncMock(side_effect=OPNsenseBelowMinFirmware("boom"))
     client.async_close = AsyncMock(return_value=True)
 
     async def _get_device_unique_id(expected_id: str | None = None) -> str:
@@ -911,7 +933,7 @@ async def test_async_setup_entry_continues_after_firmware_validation_error(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
         },
         options={},
     )
@@ -943,7 +965,7 @@ async def test_async_setup_entry_continues_after_missing_device_unique_id_valida
     client = MagicMock()
     client.name = "test-router"
     client.validate = AsyncMock(
-        side_effect=init_mod.OPNsenseMissingDeviceUniqueID("unable to determine Device ID")
+        side_effect=OPNsenseMissingDeviceUniqueID("unable to determine Device ID")
     )
     client.async_close = AsyncMock(return_value=True)
 
@@ -974,7 +996,7 @@ async def test_async_setup_entry_continues_after_missing_device_unique_id_valida
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
         },
         options={},
     )
@@ -1034,7 +1056,7 @@ async def test_async_setup_entry_device_id_mismatch(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: stored_device_id,
+            CONF_DEVICE_UNIQUE_ID: stored_device_id,
         },
         options={},
     )
@@ -1091,7 +1113,7 @@ async def test_async_update_listener_not_reload(
     """_async_update_listener should set SHOULD_RELOAD True and not call reload when flag False."""
     entry = make_config_entry(entry_id="e", unique_id="u")
     # ensure runtime_data exists and set SHOULD_RELOAD to False
-    setattr(entry.runtime_data, init_mod.SHOULD_RELOAD, False)
+    setattr(entry.runtime_data, SHOULD_RELOAD, False)
 
     # hass with config_entries.async_reload not called
     hass = MagicMock(spec=HomeAssistant)
@@ -1100,7 +1122,7 @@ async def test_async_update_listener_not_reload(
 
     # should set SHOULD_RELOAD back to True and not call reload
     await init_mod._async_update_listener(hass, entry)
-    assert getattr(entry.runtime_data, init_mod.SHOULD_RELOAD) is True
+    assert getattr(entry.runtime_data, SHOULD_RELOAD) is True
     hass.config_entries.async_reload.assert_not_called()
 
 
@@ -1112,7 +1134,7 @@ async def test_async_remove_config_entry_device_branches(
     device = MagicMock()
     device.via_device_id = True
     device.id = "d1"
-    res = await init_mod.async_remove_config_entry_device(hass, None, device)
+    res = await init_mod.async_remove_config_entry_device(hass, MagicMock(spec=ConfigEntry), device)
     assert res is False
 
     # device_entry with linked entity -> False
@@ -1149,7 +1171,9 @@ async def test_async_remove_config_entry_device_no_linked_entities(
     )
 
     # call the removal helper with a dummy config entry
-    res = await init_mod.async_remove_config_entry_device(None, MagicMock(entry_id="x"), device)
+    res = await init_mod.async_remove_config_entry_device(
+        MagicMock(spec=HomeAssistant), MagicMock(entry_id="x"), device
+    )
     assert res is True
 
 
@@ -1161,17 +1185,17 @@ async def test_async_unload_entry_and_pop(
     entry = make_config_entry(entry_id="e_unload")
     entry.as_dict = lambda: {"id": "x"}
     # use the constant names used by the integration
-    setattr(entry.runtime_data, init_mod.LOADED_PLATFORMS, ["p1"])
+    setattr(entry.runtime_data, LOADED_PLATFORMS, ["p1"])
     fake_client = MagicMock()
     fake_client.async_close = AsyncMock()
-    setattr(entry.runtime_data, init_mod.OPNSENSE_CLIENT, fake_client)
+    setattr(entry.runtime_data, OPNSENSE_CLIENT, fake_client)
 
     hass = ph_hass
     hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
-    hass.data = {init_mod.DOMAIN: {entry.entry_id: fake_client}}
+    hass.data = {DOMAIN: {entry.entry_id: fake_client}}
     res = await init_mod.async_unload_entry(hass, entry)
     assert res is True
-    assert entry.entry_id not in hass.data[init_mod.DOMAIN]
+    assert entry.entry_id not in hass.data[DOMAIN]
     fake_client.async_close.assert_awaited_once()
 
 
@@ -1244,9 +1268,9 @@ async def test_async_migrate_entry_uses_throw_errors_for_migration_client(
     """Migration should create the OPNsense client with throw_errors enabled."""
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
     entry = MockConfigEntry(
-        domain=init_mod.DOMAIN,
+        domain=DOMAIN,
         data={
-            init_mod.CONF_DEVICE_UNIQUE_ID: "device-id",
+            CONF_DEVICE_UNIQUE_ID: "device-id",
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
@@ -1285,9 +1309,9 @@ async def test_migrate_4_to_5_removes_rule_switch_entities(
     slugified_prefix: str = slugify("router unit")
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
     entry = MockConfigEntry(
-        domain=init_mod.DOMAIN,
+        domain=DOMAIN,
         data={
-            init_mod.CONF_DEVICE_UNIQUE_ID: "router unit",
+            CONF_DEVICE_UNIQUE_ID: "router unit",
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
@@ -1362,9 +1386,9 @@ async def test_migrate_4_to_5_uses_rule_key_when_uuid_is_missing(
     """_migrate_4_to_5 should keep non-uuid rules by mapping key."""
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
     entry = MockConfigEntry(
-        domain=init_mod.DOMAIN,
+        domain=DOMAIN,
         data={
-            init_mod.CONF_DEVICE_UNIQUE_ID: "deviceid",
+            CONF_DEVICE_UNIQUE_ID: "deviceid",
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
@@ -1423,14 +1447,14 @@ async def test_migrate_4_to_5_sync_disabled_skips_firewall_fetch_removes_native_
     """_migrate_4_to_5 should remove native firewall and NAT rules when sync is disabled."""
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
     data: dict[str, Any] = {
-        init_mod.CONF_DEVICE_UNIQUE_ID: "deviceid",
+        CONF_DEVICE_UNIQUE_ID: "deviceid",
         CONF_URL: "http://1.2.3.4",
         CONF_USERNAME: "u",
         CONF_PASSWORD: "p",
     }
     data[CONF_SYNC_FIREWALL_AND_NAT] = False
     entry = MockConfigEntry(
-        domain=init_mod.DOMAIN,
+        domain=DOMAIN,
         data=data,
         version=4,
     )
@@ -1496,9 +1520,9 @@ async def test_migrate_4_to_5_granular_entry_defaults_missing_category_key_to_en
     update_entry = MagicMock(return_value=True)
     monkeypatch.setattr(ph_hass.config_entries, "async_update_entry", update_entry)
     entry = MockConfigEntry(
-        domain=init_mod.DOMAIN,
+        domain=DOMAIN,
         data={
-            init_mod.CONF_DEVICE_UNIQUE_ID: "deviceid",
+            CONF_DEVICE_UNIQUE_ID: "deviceid",
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
@@ -1547,9 +1571,9 @@ async def test_migrate_4_to_5_non_granular_entry_missing_category_key_preserves_
     update_entry = MagicMock(return_value=True)
     monkeypatch.setattr(ph_hass.config_entries, "async_update_entry", update_entry)
     entry = MockConfigEntry(
-        domain=init_mod.DOMAIN,
+        domain=DOMAIN,
         data={
-            init_mod.CONF_DEVICE_UNIQUE_ID: "deviceid",
+            CONF_DEVICE_UNIQUE_ID: "deviceid",
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
@@ -1681,10 +1705,10 @@ async def test_migrate_4_to_5_defers_when_device_unique_id_is_missing(
     if not sync_firewall_and_nat:
         entry_data[CONF_SYNC_FIREWALL_AND_NAT] = False
     if device_unique_id is not None:
-        entry_data[init_mod.CONF_DEVICE_UNIQUE_ID] = device_unique_id
+        entry_data[CONF_DEVICE_UNIQUE_ID] = device_unique_id
     entry_prefix = slugify("device-id")
     entry = MockConfigEntry(
-        domain=init_mod.DOMAIN,
+        domain=DOMAIN,
         data=entry_data,
         version=4,
     )
@@ -1723,7 +1747,7 @@ async def test_migrate_4_to_5_defers_when_device_unique_id_is_missing(
 @pytest.mark.parametrize(
     "firewall_result",
     [
-        pytest.param(init_mod.OPNsenseError("unavailable"), id="fetch-error"),
+        pytest.param(OPNsenseError("unavailable"), id="fetch-error"),
     ],
 )
 async def test_migrate_4_to_5_defers_when_firewall_rules_unavailable(
@@ -1732,9 +1756,9 @@ async def test_migrate_4_to_5_defers_when_firewall_rules_unavailable(
     """_migrate_4_to_5 should not version-bump when firewall rules cannot be fetched."""
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
     entry = MockConfigEntry(
-        domain=init_mod.DOMAIN,
+        domain=DOMAIN,
         data={
-            init_mod.CONF_DEVICE_UNIQUE_ID: "device-id",
+            CONF_DEVICE_UNIQUE_ID: "device-id",
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
@@ -1743,7 +1767,7 @@ async def test_migrate_4_to_5_defers_when_firewall_rules_unavailable(
     )
     entry.add_to_hass(ph_hass)
     client = MagicMock()
-    if isinstance(firewall_result, init_mod.OPNsenseError):
+    if isinstance(firewall_result, OPNsenseError):
         client.get_firewall = AsyncMock(side_effect=firewall_result)
     else:
         client.get_firewall = AsyncMock(return_value=firewall_result)
@@ -1786,9 +1810,9 @@ async def test_migrate_4_to_5_skips_native_pruning_when_rules_payload_unavailabl
     update_entry = MagicMock(return_value=True)
     monkeypatch.setattr(ph_hass.config_entries, "async_update_entry", update_entry)
     entry = MockConfigEntry(
-        domain=init_mod.DOMAIN,
+        domain=DOMAIN,
         data={
-            init_mod.CONF_DEVICE_UNIQUE_ID: "device-id",
+            CONF_DEVICE_UNIQUE_ID: "device-id",
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
@@ -1840,9 +1864,9 @@ async def test_migrate_4_to_5_legacy_entity_remove_failure_aborts_migration(
     """_migrate_4_to_5 returns False when entity removal raises handled exceptions."""
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
     entry = MockConfigEntry(
-        domain=init_mod.DOMAIN,
+        domain=DOMAIN,
         data={
-            init_mod.CONF_DEVICE_UNIQUE_ID: "device-id",
+            CONF_DEVICE_UNIQUE_ID: "device-id",
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
@@ -1885,9 +1909,9 @@ async def test_migrate_4_to_5_sync_enabled_prunes_stale_native_nat_rule_entities
     update_entry = MagicMock(return_value=True)
     monkeypatch.setattr(ph_hass.config_entries, "async_update_entry", update_entry)
     entry = MockConfigEntry(
-        domain=init_mod.DOMAIN,
+        domain=DOMAIN,
         data={
-            init_mod.CONF_DEVICE_UNIQUE_ID: "deviceid",
+            CONF_DEVICE_UNIQUE_ID: "deviceid",
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
@@ -1996,9 +2020,9 @@ async def test_migrate_4_to_5_version_bump_failure_aborts_migration(
     """_migrate_4_to_5 returns False when async_update_entry fails."""
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=False)
     entry = MockConfigEntry(
-        domain=init_mod.DOMAIN,
+        domain=DOMAIN,
         data={
-            init_mod.CONF_DEVICE_UNIQUE_ID: "device-id",
+            CONF_DEVICE_UNIQUE_ID: "device-id",
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
@@ -2096,7 +2120,7 @@ async def test_async_update_listener_reload_and_remove(
         data=entry_data,
         unique_id=entry_unique_id,
     )
-    setattr(entry.runtime_data, init_mod.SHOULD_RELOAD, True)
+    setattr(entry.runtime_data, SHOULD_RELOAD, True)
     # config entries and hass async reload stub
     # use migration fixture which provides config_entries and async helpers
     hass = ph_hass
@@ -2111,10 +2135,10 @@ async def test_async_update_listener_reload_and_remove(
             """Store the entity and unique IDs used by the update-listener test."""
             self.entity_id = entity_id
             self.unique_id = unique_id
-            self.domain = init_mod.Platform.SENSOR
+            self.domain = Platform.SENSOR
 
     # explicitly use the 'sync_telemetry' prefix so the test targets the intended sync item
-    prefix = list(init_mod.GRANULAR_SYNC_PREFIX["sync_telemetry"])
+    prefix = list(GRANULAR_SYNC_PREFIX["sync_telemetry"])
     pre = prefix[0]
     ent = Ent("sensor.x", f"{entity_unique_id_prefix}_{pre}_suffix")
 
@@ -2157,12 +2181,12 @@ async def test_async_update_listener_handles_native_firewall_entities_by_sync_st
     """Remove native firewall entities only when Firewall/NAT sync is disabled."""
     entry = make_config_entry(
         data={
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
             CONF_SYNC_FIREWALL_AND_NAT: sync_enabled,
         },
         unique_id="unit two",
     )
-    setattr(entry.runtime_data, init_mod.SHOULD_RELOAD, True)
+    setattr(entry.runtime_data, SHOULD_RELOAD, True)
 
     hass = ph_hass
     hass.config_entries.async_reload = AsyncMock()
@@ -2178,7 +2202,7 @@ async def test_async_update_listener_handles_native_firewall_entities_by_sync_st
 
     ent = Ent(
         "switch.native_firewall",
-        f"{slugify(entry.data[init_mod.CONF_DEVICE_UNIQUE_ID])}_firewall_rule_rule1",
+        f"{slugify(entry.data[CONF_DEVICE_UNIQUE_ID])}_firewall_rule_rule1",
     )
 
     entity_registry = MagicMock()
@@ -2216,12 +2240,12 @@ async def test_async_update_listener_skips_native_firewall_entities_when_firewal
     """Native entities should remain when sync is enabled for this entry."""
     entry = make_config_entry(
         data={
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
             CONF_SYNC_FIREWALL_AND_NAT: True,
         },
         unique_id="unit two",
     )
-    setattr(entry.runtime_data, init_mod.SHOULD_RELOAD, True)
+    setattr(entry.runtime_data, SHOULD_RELOAD, True)
 
     hass = ph_hass
     hass.config_entries.async_reload = AsyncMock()
@@ -2237,7 +2261,7 @@ async def test_async_update_listener_skips_native_firewall_entities_when_firewal
 
     ent = Ent(
         "switch.native_firewall",
-        f"{slugify(entry.data[init_mod.CONF_DEVICE_UNIQUE_ID])}_firewall_rule_rule1",
+        f"{slugify(entry.data[CONF_DEVICE_UNIQUE_ID])}_firewall_rule_rule1",
     )
 
     entity_registry = MagicMock()
@@ -2271,20 +2295,20 @@ async def test_async_update_listener_uses_shared_default_for_smart_entity_prunin
 ) -> None:
     """Missing SMART sync config should preserve registered SMART entities."""
     entry = make_config_entry(
-        data={init_mod.CONF_DEVICE_UNIQUE_ID: "dev1"},
+        data={CONF_DEVICE_UNIQUE_ID: "dev1"},
         unique_id="u123",
     )
-    setattr(entry.runtime_data, init_mod.SHOULD_RELOAD, True)
+    setattr(entry.runtime_data, SHOULD_RELOAD, True)
     hass = ph_hass
     hass.config_entries.async_reload = AsyncMock()
     hass.data = {}
 
     smart_entity = MagicMock()
     smart_entity.entity_id = "binary_sensor.opnsense_smart_nvme0_status"
-    smart_entity.unique_id = f"{entry.data[init_mod.CONF_DEVICE_UNIQUE_ID]}_smart_nvme0_status"
+    smart_entity.unique_id = f"{entry.data[CONF_DEVICE_UNIQUE_ID]}_smart_nvme0_status"
     telemetry_entity = MagicMock()
     telemetry_entity.entity_id = "sensor.opnsense_cpu"
-    telemetry_entity.unique_id = f"{entry.data[init_mod.CONF_DEVICE_UNIQUE_ID]}_telemetry_cpu"
+    telemetry_entity.unique_id = f"{entry.data[CONF_DEVICE_UNIQUE_ID]}_telemetry_cpu"
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock()
@@ -2331,10 +2355,10 @@ async def test_async_update_listener_device_removal_param(
     """Remove only this config entry from tracked devices when tracking is disabled."""
     # create an entry with the device tracker option set per parameter
     entry = make_config_entry(
-        data={init_mod.CONF_DEVICE_UNIQUE_ID: "dev1"},
-        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: dt_enabled},
+        data={CONF_DEVICE_UNIQUE_ID: "dev1"},
+        options={CONF_DEVICE_TRACKER_ENABLED: dt_enabled},
     )
-    setattr(entry.runtime_data, init_mod.SHOULD_RELOAD, True)
+    setattr(entry.runtime_data, SHOULD_RELOAD, True)
 
     hass = ph_hass
     hass.config_entries.async_reload = AsyncMock()
@@ -2348,7 +2372,7 @@ async def test_async_update_listener_device_removal_param(
     if tracker_device_id is not None:
         dt_ent = MagicMock(
             entity_id=f"device_tracker.{tracker_device_id}",
-            domain=init_mod.Platform.DEVICE_TRACKER,
+            domain=Platform.DEVICE_TRACKER,
             unique_id=f"{entry.unique_id}_{tracker_device_id}",
             device_id=tracker_device_id,
         )
@@ -2400,10 +2424,10 @@ async def test_async_update_listener_detaches_no_parent_tracker_device(
 ) -> None:
     """Trackers with no parent remain detached from removed config entry."""
     entry = make_config_entry(
-        data={init_mod.CONF_DEVICE_UNIQUE_ID: "router-mac"},
-        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+        data={CONF_DEVICE_UNIQUE_ID: "router-mac"},
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
     )
-    setattr(entry.runtime_data, init_mod.SHOULD_RELOAD, True)
+    setattr(entry.runtime_data, SHOULD_RELOAD, True)
 
     ph_hass.config_entries.async_reload = AsyncMock()
     ph_hass.data = {}
@@ -2412,13 +2436,13 @@ async def test_async_update_listener_detaches_no_parent_tracker_device(
 
     dt_ent = MagicMock(
         entity_id="device_tracker.tracked_device",
-        domain=init_mod.Platform.DEVICE_TRACKER,
+        domain=Platform.DEVICE_TRACKER,
         unique_id=f"{entry.unique_id}_mac_aabbccddeeff",
         device_id="tracker-device-no-parent",
     )
     sensor_ent = MagicMock(
         entity_id="sensor.system_uptime",
-        domain=init_mod.Platform.SENSOR,
+        domain=Platform.SENSOR,
         unique_id=f"{entry.unique_id}_system_uptime",
     )
     er_reg = MagicMock()
@@ -2469,10 +2493,10 @@ async def test_async_update_listener_detaches_tracker_device_without_entity(
 ) -> None:
     """Detach a router-linked tracker device after its entity was already removed."""
     entry = make_config_entry(
-        data={init_mod.CONF_DEVICE_UNIQUE_ID: "router-mac"},
-        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+        data={CONF_DEVICE_UNIQUE_ID: "router-mac"},
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
     )
-    setattr(entry.runtime_data, init_mod.SHOULD_RELOAD, True)
+    setattr(entry.runtime_data, SHOULD_RELOAD, True)
 
     ph_hass.config_entries.async_reload = AsyncMock()
     ph_hass.data = {}
@@ -2487,7 +2511,7 @@ async def test_async_update_listener_detaches_tracker_device_without_entity(
 
     router_device = MagicMock(
         id="router-device-id",
-        identifiers={(init_mod.DOMAIN, "router-mac")},
+        identifiers={(DOMAIN, "router-mac")},
         via_device_id=None,
     )
     tracker_without_entity = MagicMock(
@@ -2527,10 +2551,10 @@ async def test_async_update_listener_detaches_tracker_when_router_and_entity_are
 ) -> None:
     """Detach a MAC tracker whose removed router remains as a stale parent."""
     entry = make_config_entry(
-        data={init_mod.CONF_DEVICE_UNIQUE_ID: "router-mac"},
-        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+        data={CONF_DEVICE_UNIQUE_ID: "router-mac"},
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
     )
-    setattr(entry.runtime_data, init_mod.SHOULD_RELOAD, True)
+    setattr(entry.runtime_data, SHOULD_RELOAD, True)
 
     ph_hass.config_entries.async_reload = AsyncMock()
     ph_hass.data = {}
@@ -2583,10 +2607,10 @@ async def test_async_update_listener_preserves_existing_tracker_parent_when_pare
 ) -> None:
     """Keep a shared tracker parent when disabling tracking if that parent still exists."""
     entry = make_config_entry(
-        data={init_mod.CONF_DEVICE_UNIQUE_ID: "router-mac"},
-        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+        data={CONF_DEVICE_UNIQUE_ID: "router-mac"},
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
     )
-    setattr(entry.runtime_data, init_mod.SHOULD_RELOAD, True)
+    setattr(entry.runtime_data, SHOULD_RELOAD, True)
 
     ph_hass.config_entries.async_reload = AsyncMock()
     ph_hass.data = {}
@@ -2595,7 +2619,7 @@ async def test_async_update_listener_preserves_existing_tracker_parent_when_pare
 
     dt_ent = MagicMock(
         entity_id="device_tracker.shared_tracker",
-        domain=init_mod.Platform.DEVICE_TRACKER,
+        domain=Platform.DEVICE_TRACKER,
         unique_id=f"{entry.unique_id}_mac_aabbccddeeff",
         device_id="shared-device",
     )
@@ -2645,10 +2669,10 @@ async def test_async_update_listener_reparents_tracker_link_to_remaining_opnsens
 ) -> None:
     """Disabling tracking reassigns shared tracker parent to surviving OPNsense router."""
     entry = make_config_entry(
-        data={init_mod.CONF_DEVICE_UNIQUE_ID: "router-mac"},
-        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+        data={CONF_DEVICE_UNIQUE_ID: "router-mac"},
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
     )
-    setattr(entry.runtime_data, init_mod.SHOULD_RELOAD, True)
+    setattr(entry.runtime_data, SHOULD_RELOAD, True)
 
     ph_hass.config_entries.async_reload = AsyncMock()
     ph_hass.data = {}
@@ -2657,19 +2681,19 @@ async def test_async_update_listener_reparents_tracker_link_to_remaining_opnsens
 
     dt_ent = MagicMock(
         entity_id="device_tracker.living_room_device",
-        domain=init_mod.Platform.DEVICE_TRACKER,
+        domain=Platform.DEVICE_TRACKER,
         unique_id=f"{entry.unique_id}_mac_aabbccddeeff",
         device_id="shared-device",
     )
     dt_ent_non_router = MagicMock(
         entity_id="device_tracker.kitchen_device",
-        domain=init_mod.Platform.DEVICE_TRACKER,
+        domain=Platform.DEVICE_TRACKER,
         unique_id=f"{entry.unique_id}_mac_cdddeeff0011",
         device_id="nonopnsense-device",
     )
     sensor_ent = MagicMock(
         entity_id="sensor.system_uptime",
-        domain=init_mod.Platform.SENSOR,
+        domain=Platform.SENSOR,
         unique_id=f"{entry.unique_id}_system_uptime",
     )
     er_reg = MagicMock()
@@ -2682,23 +2706,23 @@ async def test_async_update_listener_reparents_tracker_link_to_remaining_opnsens
 
     router_device = MagicMock(
         id="router-device-id",
-        identifiers={(init_mod.DOMAIN, "router-mac")},
+        identifiers={(DOMAIN, "router-mac")},
         via_device_id=None,
     )
     surviving_opnsense_a = MagicMock(
         entry_id="survive-entry-b",
-        domain=init_mod.DOMAIN,
-        data={init_mod.CONF_DEVICE_UNIQUE_ID: "survive-b"},
+        domain=DOMAIN,
+        data={CONF_DEVICE_UNIQUE_ID: "survive-b"},
     )
     surviving_opnsense_b = MagicMock(
         entry_id="survive-entry-a",
-        domain=init_mod.DOMAIN,
-        data={init_mod.CONF_DEVICE_UNIQUE_ID: "survive-a"},
+        domain=DOMAIN,
+        data={CONF_DEVICE_UNIQUE_ID: "survive-a"},
     )
     non_opnsense_entry = MagicMock(
         entry_id="non-opnsense-entry",
         domain="other",
-        data={init_mod.CONF_DEVICE_UNIQUE_ID: "non-opnsense"},
+        data={CONF_DEVICE_UNIQUE_ID: "non-opnsense"},
     )
     shared_router_b = MagicMock(id="survivor-b-router")
     shared_router_a = MagicMock(id="survivor-a-router")
@@ -2727,9 +2751,9 @@ async def test_async_update_listener_reparents_tracker_link_to_remaining_opnsens
     }
     ph_hass.config_entries.async_get_entry = MagicMock(side_effect=async_get_entry_map.get)
     identifier_router_map = {
-        (init_mod.DOMAIN, "router-mac"): router_device,
-        (init_mod.DOMAIN, "survive-b"): shared_router_b,
-        (init_mod.DOMAIN, "survive-a"): shared_router_a,
+        (DOMAIN, "router-mac"): router_device,
+        (DOMAIN, "survive-b"): shared_router_b,
+        (DOMAIN, "survive-a"): shared_router_a,
     }
     dr_reg = MagicMock()
 
@@ -2820,7 +2844,7 @@ async def test_async_setup_entry_firmware_below_min(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
         }
     )
     # use hass fixture for aiohttp helpers
@@ -2856,7 +2880,7 @@ async def test_async_setup_entry_firmware_between_min_and_ltd(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
         }
     )
     hass = ph_hass
@@ -2872,8 +2896,10 @@ async def test_async_setup_entry_firmware_between_min_and_ltd(
     )
     call_args = create_issue_mock.call_args
     # args: (hass, domain, issue_id, ...)
-    assert call_args[0][1] == init_mod.DOMAIN
-    expected_issue_id = f"{entry.data[init_mod.CONF_DEVICE_UNIQUE_ID]}_opnsense_below_ltd_firmware_{init_mod.OPNSENSE_LTD_FIRMWARE}"
+    assert call_args[0][1] == DOMAIN
+    expected_issue_id = (
+        f"{entry.data[CONF_DEVICE_UNIQUE_ID]}_opnsense_below_ltd_firmware_{OPNSENSE_LTD_FIRMWARE}"
+    )
     assert call_args[0][2] == expected_issue_id
     assert call_args[1].get("severity") == init_mod.ir.IssueSeverity.WARNING
 
@@ -2956,7 +2982,7 @@ async def test_migrate_2_to_3_success(monkeypatch: pytest.MonkeyPatch, fake_clie
     kwargs = hass.config_entries.async_update_entry.call_args.kwargs
     assert kwargs["version"] == 3
     assert kwargs["unique_id"] == "newdev"
-    assert kwargs["data"][init_mod.CONF_DEVICE_UNIQUE_ID] == "newdev"
+    assert kwargs["data"][CONF_DEVICE_UNIQUE_ID] == "newdev"
 
 
 @pytest.mark.asyncio
@@ -3074,7 +3100,7 @@ async def test_async_setup_entry_awesomeversion_exception(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
         }
     )
     hass = ph_hass
@@ -3092,19 +3118,19 @@ async def test_async_unload_entry_unload_fails(
     """async_unload_entry returns False and keeps runtime resources when unload fails."""
     entry = make_config_entry(entry_id="e_unload_fail")
     entry.as_dict = lambda: {"id": "x"}
-    setattr(entry.runtime_data, init_mod.LOADED_PLATFORMS, ["p1"])
+    setattr(entry.runtime_data, LOADED_PLATFORMS, ["p1"])
     fake_client = MagicMock()
     fake_client.async_close = AsyncMock()
-    setattr(entry.runtime_data, init_mod.OPNSENSE_CLIENT, fake_client)
+    setattr(entry.runtime_data, OPNSENSE_CLIENT, fake_client)
 
     hass = ph_hass
     # unload_platforms returns False
     hass.config_entries.async_unload_platforms = AsyncMock(return_value=False)
-    hass.data = {init_mod.DOMAIN: {entry.entry_id: fake_client}}
+    hass.data = {DOMAIN: {entry.entry_id: fake_client}}
     res = await init_mod.async_unload_entry(hass, entry)
     assert res is False
     # hass.data should still have the entry
-    assert entry.entry_id in hass.data[init_mod.DOMAIN]
+    assert entry.entry_id in hass.data[DOMAIN]
     fake_client.async_close.assert_not_awaited()
 
 
@@ -3619,9 +3645,7 @@ async def test_async_migrate_entry_returns_false_when_submigration_fails(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "exc", [OPNsenseTimeoutError, OPNsenseConnectionError, init_mod.OPNsenseError]
-)
+@pytest.mark.parametrize("exc", [OPNsenseTimeoutError, OPNsenseConnectionError, OPNsenseError])
 async def test_async_migrate_entry_defers_when_migration_client_raises_opnsense_error(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any, exc: type[BaseException]
 ) -> None:
@@ -3648,9 +3672,7 @@ async def test_async_migrate_entry_defers_when_migration_client_raises_opnsense_
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "exc", [OPNsenseTimeoutError, OPNsenseConnectionError, init_mod.OPNsenseError]
-)
+@pytest.mark.parametrize("exc", [OPNsenseTimeoutError, OPNsenseConnectionError, OPNsenseError])
 async def test_async_migrate_entry_defers_when_v2_to_3_fails_with_opnsense_error(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any, exc: type[BaseException]
 ) -> None:
@@ -3680,9 +3702,7 @@ async def test_async_migrate_entry_defers_when_v2_to_3_fails_with_opnsense_error
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "exc", [OPNsenseTimeoutError, OPNsenseConnectionError, init_mod.OPNsenseError]
-)
+@pytest.mark.parametrize("exc", [OPNsenseTimeoutError, OPNsenseConnectionError, OPNsenseError])
 async def test_async_migrate_entry_defers_when_v3_to_4_fails_with_opnsense_error(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any, exc: type[BaseException]
 ) -> None:
@@ -3746,7 +3766,7 @@ async def test_async_setup_entry_firmware_above_ltd_calls_delete(
 ) -> None:
     """async_setup_entry deletes previous issues when firmware is at or above LTD."""
     patch_opnsense_client(
-        monkeypatch, init_mod, fake_client(firmware_version=init_mod.OPNSENSE_LTD_FIRMWARE)
+        monkeypatch, init_mod, fake_client(firmware_version=OPNSENSE_LTD_FIRMWARE)
     )
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
@@ -3759,7 +3779,7 @@ async def test_async_setup_entry_firmware_above_ltd_calls_delete(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
         }
     )
     hass = ph_hass
@@ -3781,7 +3801,7 @@ async def test_async_setup_entry_firmware_at_or_above_ltd_deletes_previous_issue
 ) -> None:
     """async_setup_entry cleans up previous firmware-related issues for LTD and min thresholds."""
     patch_opnsense_client(
-        monkeypatch, init_mod, fake_client(firmware_version=init_mod.OPNSENSE_LTD_FIRMWARE)
+        monkeypatch, init_mod, fake_client(firmware_version=OPNSENSE_LTD_FIRMWARE)
     )
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
@@ -3796,7 +3816,7 @@ async def test_async_setup_entry_firmware_at_or_above_ltd_deletes_previous_issue
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
         }
     )
     hass = ph_hass
@@ -3808,8 +3828,12 @@ async def test_async_setup_entry_firmware_at_or_above_ltd_deletes_previous_issue
     # Expect delete_issue to be called for the previous below-min and below-ltd issue ids
     assert delete_issue_mock.called, "async_delete_issue should have been called"
     called_issue_ids = [call[0][2] for call in delete_issue_mock.call_args_list if len(call[0]) > 2]
-    expected_min = f"{entry.data[init_mod.CONF_DEVICE_UNIQUE_ID]}_opnsense_below_min_firmware_{init_mod.OPNSENSE_MIN_FIRMWARE}"
-    expected_ltd = f"{entry.data[init_mod.CONF_DEVICE_UNIQUE_ID]}_opnsense_below_ltd_firmware_{init_mod.OPNSENSE_LTD_FIRMWARE}"
+    expected_min = (
+        f"{entry.data[CONF_DEVICE_UNIQUE_ID]}_opnsense_below_min_firmware_{OPNSENSE_MIN_FIRMWARE}"
+    )
+    expected_ltd = (
+        f"{entry.data[CONF_DEVICE_UNIQUE_ID]}_opnsense_below_ltd_firmware_{OPNSENSE_LTD_FIRMWARE}"
+    )
     assert expected_min in called_issue_ids
     assert expected_ltd in called_issue_ids
 
@@ -3838,7 +3862,7 @@ async def test_async_setup_entry_delete_uses_actual_firmware_string(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
         }
     )
     hass = ph_hass
@@ -3848,8 +3872,12 @@ async def test_async_setup_entry_delete_uses_actual_firmware_string(
     assert res is True
 
     # Confirm delete_issue was called for the expected issue ids
-    expected_min = f"{entry.data[init_mod.CONF_DEVICE_UNIQUE_ID]}_opnsense_below_min_firmware_{init_mod.OPNSENSE_MIN_FIRMWARE}"
-    expected_ltd = f"{entry.data[init_mod.CONF_DEVICE_UNIQUE_ID]}_opnsense_below_ltd_firmware_{init_mod.OPNSENSE_LTD_FIRMWARE}"
+    expected_min = (
+        f"{entry.data[CONF_DEVICE_UNIQUE_ID]}_opnsense_below_min_firmware_{OPNSENSE_MIN_FIRMWARE}"
+    )
+    expected_ltd = (
+        f"{entry.data[CONF_DEVICE_UNIQUE_ID]}_opnsense_below_ltd_firmware_{OPNSENSE_LTD_FIRMWARE}"
+    )
     assert calls.called, "async_delete_issue should have been called"
     issue_ids = [call[0][2] for call in calls.call_args_list if len(call[0]) > 2]
     assert expected_min in issue_ids
@@ -3879,7 +3907,7 @@ async def test_async_setup_entry_delete_not_called_for_between_min_and_ltd(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
         }
     )
     hass = ph_hass
@@ -3894,12 +3922,12 @@ async def test_async_setup_entry_delete_not_called_for_between_min_and_ltd(
     assert issue_ids
     assert f"{entry.entry_id}_device_id_mismatched" in issue_ids
     assert (
-        f"{entry.data[init_mod.CONF_DEVICE_UNIQUE_ID]}_opnsense_below_min_firmware_"
-        f"{init_mod.OPNSENSE_MIN_FIRMWARE}" not in issue_ids
+        f"{entry.data[CONF_DEVICE_UNIQUE_ID]}_opnsense_below_min_firmware_"
+        f"{OPNSENSE_MIN_FIRMWARE}" not in issue_ids
     )
     assert (
-        f"{entry.data[init_mod.CONF_DEVICE_UNIQUE_ID]}_opnsense_below_ltd_firmware_"
-        f"{init_mod.OPNSENSE_LTD_FIRMWARE}" not in issue_ids
+        f"{entry.data[CONF_DEVICE_UNIQUE_ID]}_opnsense_below_ltd_firmware_"
+        f"{OPNSENSE_LTD_FIRMWARE}" not in issue_ids
     )
 
 
@@ -3923,9 +3951,9 @@ async def test_async_setup_entry_with_device_tracker_enabled(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
         },
-        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: True},
+        options={CONF_DEVICE_TRACKER_ENABLED: True},
     )
 
     hass = ph_hass
@@ -3969,9 +3997,9 @@ async def test_async_setup_entry_cleans_up_when_device_tracker_refresh_fails(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
         },
-        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: True},
+        options={CONF_DEVICE_TRACKER_ENABLED: True},
     )
 
     hass = ph_hass
@@ -3985,7 +4013,7 @@ async def test_async_setup_entry_cleans_up_when_device_tracker_refresh_fails(
     main_coordinator.async_shutdown.assert_awaited_once()
     device_tracker_coordinator.async_shutdown.assert_awaited_once()
     client.async_close.assert_awaited_once()
-    assert entry.entry_id not in hass.data.get(init_mod.DOMAIN, {})
+    assert entry.entry_id not in hass.data.get(DOMAIN, {})
 
 
 @pytest.mark.asyncio
@@ -4019,14 +4047,14 @@ async def test_async_setup_entry_recreates_marker_issue_when_device_tracker_refr
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
-            init_mod.REPAIR_MARKER_KEY: marker,
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            REPAIR_MARKER_KEY: marker,
         },
-        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: True},
+        options={CONF_DEVICE_TRACKER_ENABLED: True},
         unique_id="dev1",
     )
     reconciliation = MagicMock()
-    reconciliation.marker = init_mod.RepairMarker(
+    reconciliation.marker = RepairMarker(
         version=1,
         old_device_id="old-dev",
         new_device_id="dev1",
@@ -4060,7 +4088,7 @@ async def test_async_setup_entry_recreates_marker_issue_when_device_tracker_refr
     device_tracker_coordinator.async_shutdown.assert_awaited_once()
     client.async_close.assert_awaited_once()
     assert entry.runtime_data is None
-    assert entry.entry_id not in hass.data.get(init_mod.DOMAIN, {})
+    assert entry.entry_id not in hass.data.get(DOMAIN, {})
 
 
 @pytest.mark.asyncio
@@ -4083,9 +4111,9 @@ async def test_async_setup_entry_cleans_up_when_platform_forwarding_fails(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
         },
-        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
     )
     remove_listener = MagicMock()
     entry.add_update_listener = MagicMock(return_value=remove_listener)
@@ -4107,7 +4135,7 @@ async def test_async_setup_entry_cleans_up_when_platform_forwarding_fails(
     entry.async_on_unload.assert_not_called()
     remove_listener.assert_not_called()
     assert entry.runtime_data is None
-    assert entry.entry_id not in hass.data.get(init_mod.DOMAIN, {})
+    assert entry.entry_id not in hass.data.get(DOMAIN, {})
 
 
 @pytest.mark.asyncio
@@ -4130,14 +4158,14 @@ async def test_async_setup_entry_recreates_marker_issue_when_platform_forwarding
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
-            init_mod.REPAIR_MARKER_KEY: marker,
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            REPAIR_MARKER_KEY: marker,
         },
-        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
         unique_id="dev1",
     )
     reconciliation = MagicMock()
-    reconciliation.marker = init_mod.RepairMarker(
+    reconciliation.marker = RepairMarker(
         version=1,
         old_device_id="old-dev",
         new_device_id="dev1",
@@ -4172,7 +4200,7 @@ async def test_async_setup_entry_recreates_marker_issue_when_platform_forwarding
     coordinator.async_shutdown.assert_awaited_once()
     client.async_close.assert_awaited_once()
     assert entry.runtime_data is None
-    assert entry.entry_id not in ph_hass.data.get(init_mod.DOMAIN, {})
+    assert entry.entry_id not in ph_hass.data.get(DOMAIN, {})
 
 
 @pytest.mark.asyncio
@@ -4195,14 +4223,14 @@ async def test_async_setup_entry_recreates_marker_issue_when_platform_forwarding
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
-            init_mod.REPAIR_MARKER_KEY: marker,
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            REPAIR_MARKER_KEY: marker,
         },
-        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
         unique_id="dev1",
     )
     reconciliation = MagicMock()
-    reconciliation.marker = init_mod.RepairMarker(
+    reconciliation.marker = RepairMarker(
         version=1,
         old_device_id="old-dev",
         new_device_id="dev1",
@@ -4237,7 +4265,7 @@ async def test_async_setup_entry_recreates_marker_issue_when_platform_forwarding
     assert entry.runtime_data.opnsense_client is client
     coordinator.async_shutdown.assert_not_awaited()
     client.async_close.assert_not_awaited()
-    assert ph_hass.data[init_mod.DOMAIN][entry.entry_id] is client
+    assert ph_hass.data[DOMAIN][entry.entry_id] is client
 
 
 @pytest.mark.asyncio
@@ -4259,14 +4287,14 @@ async def test_reconciliation_incomplete_platform_does_not_finalize_or_clear_mar
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
-            init_mod.REPAIR_MARKER_KEY: marker,
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            REPAIR_MARKER_KEY: marker,
         },
-        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
         unique_id="dev1",
     )
     reconciliation = MagicMock()
-    reconciliation.require_platforms_complete.side_effect = init_mod.RepairReconciliationError(
+    reconciliation.require_platforms_complete.side_effect = RepairReconciliationError(
         "platform discovery incomplete: sensor"
     )
     monkeypatch.setattr(init_mod, "RepairReconciliation", lambda *_args: reconciliation)
@@ -4286,7 +4314,7 @@ async def test_reconciliation_incomplete_platform_does_not_finalize_or_clear_mar
     ph_hass.config_entries.async_unload_platforms.assert_awaited_once()
     assert ph_hass.config_entries.async_unload_platforms.await_args.args[0] is entry
     ph_hass.config_entries.async_update_entry.assert_not_called()
-    assert entry.data[init_mod.REPAIR_MARKER_KEY] == marker
+    assert entry.data[REPAIR_MARKER_KEY] == marker
 
 
 async def _run_reconciliation_cleanup_unload(
@@ -4316,14 +4344,14 @@ async def _run_reconciliation_cleanup_unload(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
-            init_mod.REPAIR_MARKER_KEY: marker,
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            REPAIR_MARKER_KEY: marker,
         },
-        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: True},
+        options={CONF_DEVICE_TRACKER_ENABLED: True},
         unique_id="dev1",
     )
     reconciliation = MagicMock()
-    reconciliation.require_platforms_complete.side_effect = init_mod.RepairReconciliationError(
+    reconciliation.require_platforms_complete.side_effect = RepairReconciliationError(
         "platforms still loading"
     )
     monkeypatch.setattr(init_mod, "RepairReconciliation", lambda *_args: reconciliation)
@@ -4343,17 +4371,17 @@ async def _run_reconciliation_cleanup_unload(
         assert entry.runtime_data.coordinator is coordinator
         assert entry.runtime_data.opnsense_client is client
         assert entry.runtime_data.device_tracker_coordinator is tracker_coordinator
-        assert entry.data[init_mod.REPAIR_MARKER_KEY] == marker
+        assert entry.data[REPAIR_MARKER_KEY] == marker
         coordinator.async_shutdown.assert_not_awaited()
         tracker_coordinator.async_shutdown.assert_not_awaited()
         client.async_close.assert_not_awaited()
-        assert ph_hass.data.get(init_mod.DOMAIN, {}).get(entry.entry_id) is client
+        assert ph_hass.data.get(DOMAIN, {}).get(entry.entry_id) is client
     else:
         coordinator.async_shutdown.assert_awaited_once()
         tracker_coordinator.async_shutdown.assert_awaited_once()
         client.async_close.assert_awaited_once()
         assert entry.runtime_data is None
-        assert entry.entry_id not in ph_hass.data.get(init_mod.DOMAIN, {})
+        assert entry.entry_id not in ph_hass.data.get(DOMAIN, {})
 
 
 @pytest.mark.parametrize(
@@ -4393,7 +4421,7 @@ async def test_unload_setup_platforms_after_reconciliation_failure_returns_false
     ph_hass.config_entries.async_unload_platforms = AsyncMock(return_value=False)
 
     result = await init_mod._unload_setup_platforms_after_reconciliation_failure(
-        ph_hass, entry, ["sensor"]
+        ph_hass, entry, [Platform.SENSOR]
     )
     assert result is False
 
@@ -4410,7 +4438,7 @@ async def test_unload_setup_platforms_after_reconciliation_failure_returns_false
     )
 
     result = await init_mod._unload_setup_platforms_after_reconciliation_failure(
-        ph_hass, entry, ["sensor"]
+        ph_hass, entry, [Platform.SENSOR]
     )
     assert result is False
 
@@ -4441,7 +4469,7 @@ async def test_cleanup_reconciliation_failure_returns_platform_unload_result(
     result = await init_mod._cleanup_reconciliation_failure(
         ph_hass,
         entry,
-        ["sensor"],
+        [Platform.SENSOR],
         repair_marker,
     )
 
@@ -4470,10 +4498,10 @@ async def test_reconciliation_marker_clear_false_retains_marker(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
-            init_mod.REPAIR_MARKER_KEY: marker,
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            REPAIR_MARKER_KEY: marker,
         },
-        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
         unique_id="dev1",
     )
     reconciliation = MagicMock()
@@ -4489,7 +4517,7 @@ async def test_reconciliation_marker_clear_false_retains_marker(
     reconciliation.finalize.assert_called_once_with()
     ph_hass.config_entries.async_update_entry.assert_called_once()
     reconciliation.mark_complete.assert_not_called()
-    assert entry.data[init_mod.REPAIR_MARKER_KEY] == marker
+    assert entry.data[REPAIR_MARKER_KEY] == marker
 
 
 @pytest.mark.asyncio
@@ -4516,10 +4544,10 @@ async def test_reconciliation_marker_clear_exception_retains_marker(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
-            init_mod.REPAIR_MARKER_KEY: marker,
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            REPAIR_MARKER_KEY: marker,
         },
-        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
         unique_id="dev1",
     )
     reconciliation = MagicMock()
@@ -4536,7 +4564,7 @@ async def test_reconciliation_marker_clear_exception_retains_marker(
     reconciliation.finalize.assert_called_once_with()
     ph_hass.config_entries.async_update_entry.assert_called_once()
     reconciliation.mark_complete.assert_not_called()
-    assert entry.data[init_mod.REPAIR_MARKER_KEY] == marker
+    assert entry.data[REPAIR_MARKER_KEY] == marker
 
 
 @pytest.mark.asyncio
@@ -4558,9 +4586,9 @@ async def test_async_setup_entry_deletes_stale_device_id_mismatch_issue(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
         },
-        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
     )
     ph_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
     ph_hass.config_entries.async_reload = AsyncMock()
@@ -4595,10 +4623,10 @@ async def test_async_setup_entry_preserves_marker_and_skips_stale_issue_delete(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
-            init_mod.REPAIR_MARKER_KEY: marker,
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            REPAIR_MARKER_KEY: marker,
         },
-        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
         unique_id="dev1",
     )
     reconciliation = MagicMock()
@@ -4616,12 +4644,12 @@ async def test_async_setup_entry_preserves_marker_and_skips_stale_issue_delete(
     delete_issue_ids = [call[0][2] for call in delete_issue.call_args_list if len(call[0]) > 2]
     assert f"{entry.entry_id}_device_id_mismatched" not in delete_issue_ids
     assert (
-        f"{entry.data[init_mod.CONF_DEVICE_UNIQUE_ID]}_opnsense_below_min_firmware_"
-        f"{init_mod.OPNSENSE_MIN_FIRMWARE}" in delete_issue_ids
+        f"{entry.data[CONF_DEVICE_UNIQUE_ID]}_opnsense_below_min_firmware_"
+        f"{OPNSENSE_MIN_FIRMWARE}" in delete_issue_ids
     )
     assert (
-        f"{entry.data[init_mod.CONF_DEVICE_UNIQUE_ID]}_opnsense_below_ltd_firmware_"
-        f"{init_mod.OPNSENSE_LTD_FIRMWARE}" in delete_issue_ids
+        f"{entry.data[CONF_DEVICE_UNIQUE_ID]}_opnsense_below_ltd_firmware_"
+        f"{OPNSENSE_LTD_FIRMWARE}" in delete_issue_ids
     )
     ph_hass.config_entries.async_forward_entry_setups.assert_awaited_once()
     ph_hass.config_entries.async_update_entry.assert_called_once()
@@ -4660,9 +4688,9 @@ async def test_async_setup_entry_deletes_stale_mismatch_issue_only_on_matching_v
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
         },
-        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
     )
     ph_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
     ph_hass.config_entries.async_reload = AsyncMock()
@@ -4700,15 +4728,15 @@ async def test_reconciliation_prepare_failure_recreates_marker_issue_without_unl
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
-            init_mod.REPAIR_MARKER_KEY: marker,
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            REPAIR_MARKER_KEY: marker,
         },
-        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
         unique_id="dev1",
     )
     reconciliation = MagicMock()
     reconciliation.marker = init_mod.parse_repair_marker(entry)
-    reconciliation.prepare.side_effect = init_mod.RepairReconciliationError("prepare failed")
+    reconciliation.prepare.side_effect = RepairReconciliationError("prepare failed")
     monkeypatch.setattr(init_mod, "RepairReconciliation", lambda *_args: reconciliation)
     ph_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
     ph_hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
@@ -4773,10 +4801,10 @@ async def test_async_setup_entry_recreates_marker_issue_on_probe_mismatch_before
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
-            init_mod.REPAIR_MARKER_KEY: marker,
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            REPAIR_MARKER_KEY: marker,
         },
-        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
         unique_id="dev1",
     )
     ph_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
@@ -4830,9 +4858,9 @@ async def test_async_setup_entry_rejects_entry_with_malformed_repair_marker(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
             # malformed marker is missing new_device_id (must be string)
-            init_mod.REPAIR_MARKER_KEY: {"version": 1, "old_device_id": "old-dev"},
+            REPAIR_MARKER_KEY: {"version": 1, "old_device_id": "old-dev"},
         },
         options={},
     )
@@ -4884,8 +4912,8 @@ async def test_async_setup_entry_rejects_entry_when_marker_and_entry_mismatch(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: config_device_id,
-            init_mod.REPAIR_MARKER_KEY: {
+            CONF_DEVICE_UNIQUE_ID: config_device_id,
+            REPAIR_MARKER_KEY: {
                 "version": 1,
                 "old_device_id": "old-dev",
                 "new_device_id": marker_device_id,
@@ -4933,8 +4961,8 @@ async def test_async_setup_entry_keeps_runtime_when_reconciliation_cleanup_raise
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
-            init_mod.REPAIR_MARKER_KEY: {
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            REPAIR_MARKER_KEY: {
                 "version": 1,
                 "old_device_id": "old-dev",
                 "new_device_id": "dev1",
@@ -4945,13 +4973,13 @@ async def test_async_setup_entry_keeps_runtime_when_reconciliation_cleanup_raise
     )
 
     reconciliation = MagicMock()
-    reconciliation.marker = init_mod.RepairMarker(
+    reconciliation.marker = RepairMarker(
         version=1,
         old_device_id="old-dev",
         new_device_id="dev1",
     )
     reconciliation.require_platforms_complete = MagicMock(
-        side_effect=init_mod.RepairReconciliationError("platforms incomplete")
+        side_effect=RepairReconciliationError("platforms incomplete")
     )
     monkeypatch.setattr(init_mod, "RepairReconciliation", lambda *_args: reconciliation)
     monkeypatch.setattr(
@@ -4974,7 +5002,7 @@ async def test_async_setup_entry_keeps_runtime_when_reconciliation_cleanup_raise
     assert entry.runtime_data is not None
     assert entry.runtime_data.coordinator is coordinator
     assert entry.runtime_data.opnsense_client is client
-    assert ph_hass.data[init_mod.DOMAIN][entry.entry_id] is client
+    assert ph_hass.data[DOMAIN][entry.entry_id] is client
     coordinator.async_shutdown.assert_not_awaited()
     client.async_close.assert_not_awaited()
 
@@ -5001,9 +5029,9 @@ async def test_async_setup_entry_registers_update_listener_after_forwarding(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
         },
-        options={init_mod.CONF_DEVICE_TRACKER_ENABLED: False},
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
     )
     remove_listener = MagicMock()
 
@@ -5079,7 +5107,7 @@ async def test_migrate_2_to_3_handles_identifier_collision(
         def async_update_device(self, *a, **k) -> Never:
             # DeviceIdentifierCollisionError requires an existing_device argument
             """Raise the collision error expected by the registry migration test."""
-            raise init_mod.dr.DeviceIdentifierCollisionError("collision", MagicMock(id="other"))
+            raise init_mod.dr.DeviceIdentifierCollisionError(dev.identifiers, MagicMock(id="other"))
 
     monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: DeviceRegistry())
     monkeypatch.setattr(

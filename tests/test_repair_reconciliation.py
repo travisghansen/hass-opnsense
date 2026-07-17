@@ -12,6 +12,17 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.opnsense import repair_reconciliation as rr
 from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID, DOMAIN
+from custom_components.opnsense.repair_reconciliation import (
+    REPAIR_MARKER_KEY,
+    RepairMarker,
+    RepairReconciliation,
+    RepairReconciliationError,
+    build_repair_marker,
+    has_repair_marker,
+    is_reconciliation_active,
+    parse_repair_marker,
+    record_desired_entities,
+)
 
 
 class _EntityRegistry:
@@ -157,7 +168,7 @@ def _subject(
     entities: list[Any],
     devices: list[Any],
     extra_config_entries: dict[str, MockConfigEntry] | None = None,
-) -> tuple[rr.RepairReconciliation, _EntityRegistry, _DeviceRegistry]:
+) -> tuple[RepairReconciliation, _EntityRegistry, _DeviceRegistry]:
     """Create reconciliation with patched mutable registries."""
     entity_registry = _EntityRegistry(entities)
     device_registry = _DeviceRegistry(devices)
@@ -184,7 +195,7 @@ def _subject(
         config_entry_map.update(extra_config_entries)
     hass = MagicMock()
     hass.config_entries = _ConfigEntries(config_entry_map)
-    reconciliation = rr.RepairReconciliation(hass, entry, rr.RepairMarker(1, "old_id", "new_id"))
+    reconciliation = RepairReconciliation(hass, entry, RepairMarker(1, "old_id", "new_id"))
     return reconciliation, entity_registry, device_registry
 
 
@@ -203,20 +214,20 @@ def _subject(
 )
 def test_parse_repair_marker_rejects_invalid_values(value: object) -> None:
     """Malformed markers must never start reconciliation."""
-    entry = MockConfigEntry(domain=DOMAIN, data={rr.REPAIR_MARKER_KEY: value})
+    entry = MockConfigEntry(domain=DOMAIN, data={REPAIR_MARKER_KEY: value})
 
-    assert rr.has_repair_marker(entry)
-    assert rr.parse_repair_marker(entry) is None
+    assert has_repair_marker(entry)
+    assert parse_repair_marker(entry) is None
 
 
 def test_parse_repair_marker_accepts_current_marker() -> None:
     """A current complete marker is parsed exactly."""
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={rr.REPAIR_MARKER_KEY: rr.build_repair_marker("old", "new")},
+        data={REPAIR_MARKER_KEY: build_repair_marker("old", "new")},
     )
 
-    assert rr.parse_repair_marker(entry) == rr.RepairMarker(1, "old", "new")
+    assert parse_repair_marker(entry) == RepairMarker(1, "old", "new")
 
 
 def test_prepare_migrates_exact_prefix_in_place_and_preserves_metadata(
@@ -251,7 +262,7 @@ def test_prepare_rejects_full_identity_collision(monkeypatch: pytest.MonkeyPatch
     collision = _entry("new_id_status", entity_id="sensor.other")
     reconciliation, _, _ = _subject(monkeypatch, [candidate, collision], [])
 
-    with pytest.raises(rr.RepairReconciliationError, match="entity target collision"):
+    with pytest.raises(RepairReconciliationError, match="entity target collision"):
         reconciliation.prepare()
 
 
@@ -272,12 +283,12 @@ def test_prepare_migrates_primary_device_or_rejects_foreign_collision(
 
     foreign = _device("foreign", "new_id", config_entries={"entry-2"})
     reconciliation, _, _ = _subject(monkeypatch, [], [foreign])
-    with pytest.raises(rr.RepairReconciliationError, match="primary device"):
+    with pytest.raises(RepairReconciliationError, match="primary device"):
         reconciliation.prepare()
 
     simultaneous = _device("target", "new_id")
     reconciliation, _, _ = _subject(monkeypatch, [], [_device("source", "old_id"), simultaneous])
-    with pytest.raises(rr.RepairReconciliationError, match="primary device"):
+    with pytest.raises(RepairReconciliationError, match="primary device"):
         reconciliation.prepare()
 
 
@@ -404,7 +415,7 @@ def test_prepare_wraps_registry_identifier_migration_failure(
     )
 
     with pytest.raises(
-        rr.RepairReconciliationError, match="registry identifier migration failed"
+        RepairReconciliationError, match="registry identifier migration failed"
     ) as err:
         reconciliation.prepare()
     assert isinstance(err.value.__cause__, expected)
@@ -430,7 +441,7 @@ def test_finalize_wraps_detach_failure_as_registry_error(
         lambda *args, **kwargs: (_ for _ in ()).throw(KeyError("detach shared tracker")),
     )
 
-    with pytest.raises(rr.RepairReconciliationError, match="registry finalization failed") as err:
+    with pytest.raises(RepairReconciliationError, match="registry finalization failed") as err:
         reconciliation.finalize()
     assert isinstance(err.value.__cause__, KeyError)
     assert device_registry.updates == []
@@ -438,10 +449,10 @@ def test_finalize_wraps_detach_failure_as_registry_error(
 
 def test_mark_complete_deactivates() -> None:
     """Finishing reconciliation disables active state."""
-    reconciliation = rr.RepairReconciliation(
+    reconciliation = RepairReconciliation(
         MagicMock(),
         _other_config_entry("entry-1", "old"),
-        rr.RepairMarker(1, "old", "new"),
+        RepairMarker(1, "old", "new"),
     )
     assert reconciliation.active is True
 
@@ -503,9 +514,7 @@ def test_finalize_clears_parent_from_shared_tracker_when_no_replacement_exists(
 
 def test_records_all_final_platform_lists_including_disabled_entities() -> None:
     """Every forwarded platform contributes its complete final identity list."""
-    reconciliation = rr.RepairReconciliation(
-        MagicMock(), MagicMock(), rr.RepairMarker(1, "old", "new")
-    )
+    reconciliation = RepairReconciliation(MagicMock(), MagicMock(), RepairMarker(1, "old", "new"))
     for platform in ("binary_sensor", "sensor", "switch", "update", "device_tracker"):
         entity = Entity()
         entity._attr_unique_id = f"new_{platform}"
@@ -522,23 +531,19 @@ def test_records_all_final_platform_lists_including_disabled_entities() -> None:
 
 def test_incomplete_platform_lists_block_finalization() -> None:
     """Missing a forwarded platform completion is a hard reconciliation failure."""
-    reconciliation = rr.RepairReconciliation(
-        MagicMock(), MagicMock(), rr.RepairMarker(1, "old", "new")
-    )
+    reconciliation = RepairReconciliation(MagicMock(), MagicMock(), RepairMarker(1, "old", "new"))
     reconciliation.record_desired_entities("sensor", [])
 
-    with pytest.raises(rr.RepairReconciliationError, match="binary_sensor"):
+    with pytest.raises(RepairReconciliationError, match="binary_sensor"):
         reconciliation.require_platforms_complete(("sensor", "binary_sensor"))
 
 
 def test_none_authenticates_as_incomplete_platform_discovery() -> None:
     """Missing or malformed payloads keep a platform from being marked complete."""
-    reconciliation = rr.RepairReconciliation(
-        MagicMock(), MagicMock(), rr.RepairMarker(1, "old", "new")
-    )
+    reconciliation = RepairReconciliation(MagicMock(), MagicMock(), RepairMarker(1, "old", "new"))
     reconciliation.record_desired_entities("sensor", None)
 
-    with pytest.raises(rr.RepairReconciliationError, match="sensor"):
+    with pytest.raises(RepairReconciliationError, match="sensor"):
         reconciliation.require_platforms_complete(("sensor",))
 
 
@@ -548,8 +553,8 @@ def test_record_desired_entities_and_is_reconciliation_active_handle_none_marker
     entity = Entity()
     entity._attr_unique_id = "new_sensor"
 
-    rr.record_desired_entities(entry, "sensor", [entity])
-    assert rr.is_reconciliation_active(entry) is False
+    record_desired_entities(entry, "sensor", [entity])
+    assert is_reconciliation_active(entry) is False
 
 
 def test_record_desired_entities_requires_runtime_marker_attribute() -> None:
@@ -559,20 +564,20 @@ def test_record_desired_entities_requires_runtime_marker_attribute() -> None:
     entity._attr_unique_id = "new_sensor"
 
     with pytest.raises(AttributeError):
-        rr.record_desired_entities(entry, "sensor", [entity])
+        record_desired_entities(entry, "sensor", [entity])
 
 
 def test_record_desired_entities_uses_active_reconciliation_state() -> None:
     """Active reconciliation keeps desired identities and returns active state."""
     entry = _config_entry_with_runtime_data(SimpleNamespace())
-    entry.runtime_data.repair_reconciliation = rr.RepairReconciliation(
-        MagicMock(), entry, rr.RepairMarker(1, "old", "new")
+    entry.runtime_data.repair_reconciliation = RepairReconciliation(
+        MagicMock(), entry, RepairMarker(1, "old", "new")
     )
     entity = Entity()
     entity._attr_unique_id = "new_sensor"
 
-    rr.record_desired_entities(entry, "sensor", [entity])
-    assert rr.is_reconciliation_active(entry) is True
+    record_desired_entities(entry, "sensor", [entity])
+    assert is_reconciliation_active(entry) is True
     assert "new_sensor" in {
         identity[2] for identity in entry.runtime_data.repair_reconciliation.desired_identities
     }

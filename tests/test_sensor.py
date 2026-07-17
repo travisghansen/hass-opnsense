@@ -9,6 +9,7 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
+from homeassistant.const import PERCENTAGE, UnitOfDataRate, UnitOfInformation, UnitOfTemperature
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -4368,7 +4369,7 @@ async def test_generated_sensor_entity_contract(
     expected_contracts: dict[str, dict[str, Any]] = {
         "telemetry.filesystems.root": {
             "name": "Filesystem Used Percentage root",
-            "native_unit_of_measurement": sensor_module.PERCENTAGE,
+            "native_unit_of_measurement": PERCENTAGE,
             "device_class": None,
             "state_class": SensorStateClass.MEASUREMENT,
             "entity_registry_enabled_default": True,
@@ -4377,32 +4378,32 @@ async def test_generated_sensor_entity_contract(
             "name": "vnStat: WAN: Today",
             "device_class": SensorDeviceClass.DATA_SIZE,
             "state_class": SensorStateClass.TOTAL_INCREASING,
-            "suggested_unit_of_measurement": sensor_module.UnitOfInformation.GIBIBYTES,
+            "suggested_unit_of_measurement": UnitOfInformation.GIBIBYTES,
             "suggested_display_precision": 1,
             "entity_registry_enabled_default": False,
         },
         "speedtest.last.download": {
             "name": "Speedtest Last Download",
-            "native_unit_of_measurement": sensor_module.UnitOfDataRate.MEGABITS_PER_SECOND,
+            "native_unit_of_measurement": UnitOfDataRate.MEGABITS_PER_SECOND,
             "device_class": SensorDeviceClass.DATA_RATE,
             "state_class": SensorStateClass.MEASUREMENT,
             "entity_registry_enabled_default": False,
         },
         "smart.nvme0.temperature": {
             "name": "SMART nvme0 Temperature",
-            "native_unit_of_measurement": sensor_module.UnitOfTemperature.CELSIUS,
+            "native_unit_of_measurement": UnitOfTemperature.CELSIUS,
             "device_class": SensorDeviceClass.TEMPERATURE,
             "state_class": SensorStateClass.MEASUREMENT,
-            "suggested_unit_of_measurement": sensor_module.UnitOfTemperature.CELSIUS,
+            "suggested_unit_of_measurement": UnitOfTemperature.CELSIUS,
             "suggested_display_precision": 1,
             "entity_registry_enabled_default": False,
         },
         "interface.wan.inbytes": {
             "name": "Interface WAN inbytes",
-            "native_unit_of_measurement": sensor_module.UnitOfInformation.BYTES,
+            "native_unit_of_measurement": UnitOfInformation.BYTES,
             "device_class": SensorDeviceClass.DATA_SIZE,
             "state_class": SensorStateClass.TOTAL_INCREASING,
-            "suggested_unit_of_measurement": sensor_module.UnitOfInformation.GIGABYTES,
+            "suggested_unit_of_measurement": UnitOfInformation.GIGABYTES,
             "suggested_display_precision": 1,
             "entity_registry_enabled_default": False,
         },

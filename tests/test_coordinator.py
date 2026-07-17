@@ -17,7 +17,7 @@ from homeassistant.config_entries import ConfigEntry
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.opnsense import coordinator as coordinator_module, repairs as repairs_module
+from custom_components.opnsense import coordinator as coordinator_module
 from custom_components.opnsense.const import (
     ATTR_UNBOUND_BLOCKLIST,
     CONF_DEVICE_UNIQUE_ID,
@@ -38,6 +38,7 @@ from custom_components.opnsense.const import (
     CONF_SYNC_UNBOUND,
     CONF_SYNC_VNSTAT,
     CONF_SYNC_VPN,
+    DOMAIN,
     ENTRY_TYPE_CARP,
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
@@ -472,7 +473,7 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
     assert called["shutdown"] == 1
     # validate the issue was created for the integration domain and expected id
     assert isinstance(called["issue_kwargs"], MutableMapping)
-    assert called["issue_kwargs"].get("domain") == repairs_module.DOMAIN
+    assert called["issue_kwargs"].get("domain") == DOMAIN
     assert called["issue_kwargs"].get("issue_id") == f"{entry.entry_id}_device_id_mismatched"
     assert called["issue_kwargs"].get("is_fixable") is True
     assert called["issue_kwargs"].get("data") == {
@@ -522,7 +523,7 @@ async def test_check_device_unique_id_clears_stale_issue_without_repair_marker(
     build_issue_id.assert_called_once_with(entry.entry_id)
     create_issue_delete.assert_called_once_with(
         coord.hass,
-        coordinator_module.DOMAIN,
+        DOMAIN,
         "stable-issue-id",
     )
 
