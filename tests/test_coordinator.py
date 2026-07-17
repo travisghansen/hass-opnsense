@@ -509,14 +509,21 @@ async def test_check_device_unique_id_clears_stale_issue_without_repair_marker(
     coord._state = {"device_unique_id": "expected"}
     create_issue_delete = MagicMock()
     monkeypatch.setattr(coordinator_module.ir, "async_delete_issue", create_issue_delete)
+    build_issue_id = MagicMock(return_value="stable-issue-id")
+    monkeypatch.setattr(
+        coordinator_module,
+        "build_device_id_mismatch_issue_id",
+        build_issue_id,
+    )
 
     res = await coord._check_device_unique_id()
 
     assert res is True
+    build_issue_id.assert_called_once_with(entry.entry_id)
     create_issue_delete.assert_called_once_with(
         coord.hass,
         coordinator_module.DOMAIN,
-        f"{entry.entry_id}_device_id_mismatched",
+        "stable-issue-id",
     )
 
 

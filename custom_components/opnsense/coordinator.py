@@ -34,7 +34,11 @@ from .const import (
 )
 from .helpers import dict_get, get_smart_device_name, is_carp_entry
 from .repair_reconciliation import has_repair_marker
-from .repairs import async_create_device_id_mismatch_issue, is_valid_device_id
+from .repairs import (
+    async_create_device_id_mismatch_issue,
+    build_device_id_mismatch_issue_id,
+    is_valid_device_id,
+)
 
 if TYPE_CHECKING:
     from aiopnsense import OPNsenseClient
@@ -312,7 +316,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             ir.async_delete_issue(
                 self.hass,
                 DOMAIN,
-                f"{config_entry.entry_id}_device_id_mismatched",
+                build_device_id_mismatch_issue_id(config_entry.entry_id),
             )
         self._mismatched_count = 0
         return True
