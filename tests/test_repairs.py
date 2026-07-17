@@ -1680,7 +1680,6 @@ def test_entry_matches_snapshot_invariants(
     baseline = dict(entry.data)
     snapshot = {**baseline, TRACKED_MACS: ["AA:BB:CC:DD"]}
     current = {**baseline, TRACKED_MACS: ["11:22:33:44"]}
-    object.__setattr__(entry, "data", snapshot)
     object.__setattr__(entry, "data", current)
 
     expected_match = scenario == "tracked-macs-allow"

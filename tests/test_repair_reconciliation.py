@@ -194,6 +194,8 @@ def _subject(
         None,
         {},
         {"version": 2, "old_device_id": "old", "new_device_id": "new"},
+        {"version": True, "old_device_id": "old", "new_device_id": "new"},
+        {"version": 1.0, "old_device_id": "old", "new_device_id": "new"},
         {"version": 1, "old_device_id": "", "new_device_id": "new"},
         {"version": 1, "old_device_id": "same", "new_device_id": "same"},
         {"version": 1, "old_device_id": 1, "new_device_id": "new"},

@@ -60,7 +60,8 @@ def parse_repair_marker(entry: ConfigEntry) -> RepairMarker | None:
     old_device_id = value.get("old_device_id")
     new_device_id = value.get("new_device_id")
     if (
-        version != _REPAIR_MARKER_VERSION
+        type(version) is not int
+        or version != _REPAIR_MARKER_VERSION
         or not isinstance(old_device_id, str)
         or not old_device_id.strip()
         or not isinstance(new_device_id, str)
