@@ -1,7 +1,7 @@
 """Tests for the OPNsense Device ID replacement repair flow."""
 
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, ClassVar
 from unittest.mock import AsyncMock, MagicMock, call
 
 from aiopnsense.exceptions import (
@@ -19,7 +19,13 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.opnsense import repair_reconciliation, repairs
-from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID, DOMAIN, TRACKED_MACS
+from custom_components.opnsense.const import (
+    CONF_DEVICE_UNIQUE_ID,
+    CONF_ENTRY_TYPE,
+    DOMAIN,
+    ENTRY_TYPE_CARP,
+    TRACKED_MACS,
+)
 from custom_components.opnsense.repair_reconciliation import REPAIR_MARKER_KEY, build_repair_marker
 
 
@@ -43,6 +49,21 @@ def _make_entry(
     object.__setattr__(entry, "unique_id", unique_id)
     object.__setattr__(entry, "state", state)
     object.__setattr__(entry, "options", options or {"scan_interval": 30})
+    return entry
+
+
+def _make_carp_entry(*, entry_id: str = "carp-entry", unique_id: str = "other") -> MockConfigEntry:
+    """Build a device-ID-less CARP config entry for repair boundary tests."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "url": "https://carp.example",
+            CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+        },
+        title="OPNsense CARP VIP",
+        unique_id=unique_id,
+    )
+    object.__setattr__(entry, "entry_id", entry_id)
     return entry
 
 
@@ -451,6 +472,26 @@ async def test_observed_duplicate_id_aborts_before_unload_or_mutation(
 
 
 @pytest.mark.asyncio
+async def test_carp_entry_with_matching_unique_id_is_not_device_duplicate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A CARP entry identity must not block a physical-device ID repair."""
+    hass = MagicMock()
+    entry = _make_entry()
+    carp_entry = _make_carp_entry()
+    _configure_hass(hass, entry)
+    hass.config_entries.async_entries.return_value = [entry, carp_entry]
+    _patch_registries(monkeypatch)
+    _patch_probe_client(monkeypatch, observed_device_id="other")
+    flow = _make_flow(hass, entry)
+
+    result = await flow.async_step_confirm({})
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    hass.config_entries.async_update_entry.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_loaded_entry_unloads_before_marker_update_and_reload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -469,6 +510,7 @@ async def test_loaded_entry_unloads_before_marker_update_and_reload(
         """Duplicate-scan candidate whose ID access is observable."""
 
         entry_id = "entry-2"
+        data: ClassVar[dict[str, Any]] = {}
 
         @property
         def unique_id(self) -> str:
@@ -1328,6 +1370,25 @@ async def test_fix_flow_factory_validates_issue_suffix_and_payload(
 
 
 @pytest.mark.asyncio
+async def test_fix_flow_factory_rejects_carp_entry() -> None:
+    """Device ID repair issues cannot target device-ID-less CARP entries."""
+    hass = MagicMock()
+    hass.config_entries.async_get_entry.return_value = _make_carp_entry()
+
+    flow = await repairs.async_create_fix_flow(
+        hass,
+        "carp-entry_device_id_mismatched",
+        {
+            "entry_id": "carp-entry",
+            "old_device_id": "dev1",
+            "new_device_id": "other",
+        },
+    )
+
+    assert isinstance(flow, ConfirmRepairFlow)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("entry_device_id", "observed_device_id", "expect_issue"),
     [
@@ -1362,6 +1423,21 @@ async def test_async_create_device_id_mismatch_issue_ignores_invalid_ids(
     else:
         assert called["count"] == 0
         assert issue_created is False
+
+
+def test_async_create_device_id_mismatch_issue_ignores_carp_entry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CARP entries do not participate in physical Device ID mismatch repairs."""
+    issue_create = MagicMock()
+    monkeypatch.setattr(repairs.ir, "async_create_issue", issue_create)
+
+    issue_created = repairs.async_create_device_id_mismatch_issue(
+        MagicMock(), _make_carp_entry(), "other"
+    )
+
+    assert issue_created is False
+    issue_create.assert_not_called()
 
 
 @pytest.mark.asyncio

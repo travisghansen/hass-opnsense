@@ -13,7 +13,7 @@ from homeassistant.helpers import issue_registry as ir
 import voluptuous as vol
 
 from .const import CONF_DEVICE_UNIQUE_ID, DOMAIN, TRACKED_MACS
-from .helpers import create_opnsense_client_from_config_entry
+from .helpers import create_opnsense_client_from_config_entry, is_carp_entry
 from .repair_reconciliation import REPAIR_MARKER_KEY, build_repair_marker, parse_repair_marker
 
 _DEVICE_ID_MISMATCH_ISSUE_SUFFIX = "_device_id_mismatched"
@@ -202,7 +202,9 @@ def async_create_device_id_mismatch_issue(
     Returns:
         bool: `True` when the issue was created; otherwise `False` for invalid IDs.
     """
-    old_device_id = config_entry.data[CONF_DEVICE_UNIQUE_ID]
+    if is_carp_entry(config_entry):
+        return False
+    old_device_id = config_entry.data.get(CONF_DEVICE_UNIQUE_ID)
     if not is_valid_device_id(old_device_id) or not is_valid_device_id(observed_device_id):
         return False
     ir.async_create_issue(
@@ -457,6 +459,7 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
                 candidate
                 for candidate in self.hass.config_entries.async_entries(DOMAIN)
                 if candidate.entry_id != entry.entry_id
+                and not is_carp_entry(candidate)
                 and candidate.unique_id == reprobed_device_id
             ),
             None,
@@ -491,6 +494,8 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
         if entry is None:
             return self.async_abort(reason="entry_not_found")
+        if is_carp_entry(entry):
+            return self.async_abort(reason="entry_changed")
         _LOGGER.info("Starting Device ID repair for %s", entry.title)
         entry_data_snapshot = deepcopy(dict(entry.data))
         entry_options_snapshot = deepcopy(dict(entry.options))
@@ -572,6 +577,7 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
                 candidate
                 for candidate in self.hass.config_entries.async_entries(DOMAIN)
                 if candidate.entry_id != entry.entry_id
+                and not is_carp_entry(candidate)
                 and candidate.unique_id == observed_device_id
             ),
             None,
@@ -683,7 +689,6 @@ async def async_create_fix_flow(
     Returns:
         RepairsFlow: Device ID repair flow or a generic confirmation flow.
     """
-    del hass
     if not issue_id.endswith(_DEVICE_ID_MISMATCH_ISSUE_SUFFIX) or data is None:
         return ConfirmRepairFlow()
 
@@ -697,6 +702,10 @@ async def async_create_fix_flow(
         and is_valid_device_id(new_device_id)
         and issue_id == build_device_id_mismatch_issue_id(entry_id)
     ):
+        return ConfirmRepairFlow()
+
+    entry = hass.config_entries.async_get_entry(entry_id)
+    if entry is not None and is_carp_entry(entry):
         return ConfirmRepairFlow()
 
     return DeviceIDMismatchRepairFlow(
