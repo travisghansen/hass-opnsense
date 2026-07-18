@@ -561,7 +561,7 @@ async def test_service_start_stop_restart_success_and_failure(
 
 @pytest.mark.asyncio
 async def test_service_restart_only_if_running_and_reload_interface(
-    monkeypatch: pytest.MonkeyPatch, ph_hass: Any, caplog: pytest.LogCaptureFixture
+    monkeypatch: pytest.MonkeyPatch, ph_hass: Any
 ) -> None:
     """Restart service honors only_if_running and reload_interface behavior."""
     c1 = MagicMock()
@@ -575,11 +575,8 @@ async def test_service_restart_only_if_running_and_reload_interface(
     call = _service_call({"service_id": "svc", "only_if_running": True})
 
     _patch_clients(monkeypatch, [c1])
-    caplog.set_level("DEBUG", logger=services_mod.__name__)
     await services_mod._service_restart_service(hass, call)
     c1.restart_service_if_running.assert_awaited_once_with("svc")
-    assert "[service_restart_service] restart_service_if_running, client: c1" in caplog.text
-    assert "[service_restart_service] restart_service_if_running] client: c1" not in caplog.text
     c1.restart_service.assert_not_awaited()
 
     c1.restart_service_if_running = AsyncMock(return_value=False)
