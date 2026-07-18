@@ -10,7 +10,7 @@ from typing import Any, Never
 from unittest.mock import AsyncMock, MagicMock
 
 from aiopnsense import exceptions as aiopnsense_exceptions
-from aiopnsense.exceptions import OPNsenseError, OPNsenseInvalidURL, OPNsenseMissingDeviceUniqueID
+from aiopnsense.exceptions import OPNsenseError, OPNsenseMissingDeviceUniqueID
 from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_URL, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import AbortFlow
@@ -298,6 +298,7 @@ def test_url_conflict_matches_persisted_default_ports(
 
     result = flow._async_abort_if_url_conflict(url=normalized_url, carp=False)
 
+    assert result is not None
     assert result["type"] == "abort"
     assert result["reason"] == "carp_device_url_conflict"
 
@@ -679,6 +680,7 @@ async def test_async_step_carp_without_input_shows_empty_form() -> None:
     assert result["type"] == "form"
     assert result["step_id"] == "carp"
     assert result["errors"] == {}
+    assert result["description_placeholders"] is not None
     assert result["description_placeholders"]["firmware"] == "Unknown"
 
 
@@ -727,6 +729,7 @@ async def test_async_step_carp_rejects_malformed_or_blank_vip_rows(
     result = await flow.async_step_carp(user_input=_make_basic_carp_input())
 
     assert result["type"] == "form"
+    assert result["errors"] is not None
     assert result["errors"]["base"] == "carp_not_configured"
     client.get_device_unique_id.assert_not_awaited()
 
@@ -777,6 +780,7 @@ async def test_async_step_carp_rejects_missing_or_blank_responder_name(
     result = await flow.async_step_carp(user_input=_make_basic_carp_input())
 
     assert result["type"] == "form"
+    assert result["errors"] is not None
     assert result["errors"]["base"] == "carp_responder_unavailable"
 
 
@@ -797,6 +801,7 @@ async def test_async_step_carp_custom_name_does_not_waive_responder_validation(
     result = await flow.async_step_carp(user_input=user_input)
 
     assert result["type"] == "form"
+    assert result["errors"] is not None
     assert result["errors"]["base"] == "carp_responder_unavailable"
 
 
@@ -828,6 +833,7 @@ async def test_async_step_carp_rejects_below_min_firmware(
     result = await flow.async_step_carp(user_input=_make_basic_carp_input())
 
     assert result["type"] == "form"
+    assert result["errors"] is not None
     assert result["errors"]["base"] == "below_min_firmware"
 
 

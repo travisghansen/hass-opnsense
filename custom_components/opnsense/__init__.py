@@ -466,6 +466,45 @@ async def _async_setup_carp_entry(hass: HomeAssistant, entry: ConfigEntry) -> bo
                 await client.async_close()
 
 
+async def _async_create_validated_client(hass: HomeAssistant, entry: ConfigEntry) -> OPNsenseClient:
+    """Create and validate a client, closing it when validation fails.
+
+    Args:
+        hass: Home Assistant instance.
+        entry: Config entry containing OPNsense connection credentials.
+
+    Returns:
+        OPNsenseClient: A validated client ready for coordinator setup.
+
+    Raises:
+        ConfigEntryNotReady: If a transient connection failure prevents validation.
+        OPNsenseError: If validation fails with a non-retryable client error.
+        TimeoutError: If validation raises a raw timeout.
+    """
+    client = create_opnsense_client_from_config_entry(hass=hass, config_entry=entry)
+    try:
+        try:
+            await client.validate()
+        except OPNsenseMissingDeviceUniqueID:
+            _LOGGER.debug(
+                "Client validation reported missing Device ID; continuing to Device ID probes"
+            )
+        except OPNsenseBelowMinFirmware, OPNsenseUnknownFirmware:
+            _LOGGER.debug(
+                "Client validation reported firmware issues; continuing to firmware probes"
+            )
+        except OPNsenseTimeoutError as err:
+            raise ConfigEntryNotReady("OPNsense validation timed out") from err
+        except OPNsenseConnectionError as err:
+            if type(err) is not OPNsenseConnectionError:
+                raise
+            raise ConfigEntryNotReady("OPNsense validation could not complete") from err
+    except ConfigEntryNotReady, TimeoutError, OPNsenseError:
+        await client.async_close()
+        raise
+    return client
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up an OPNsense config entry and its runtime resources.
 
@@ -514,29 +553,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if repair_marker is not None:
         _async_create_marker_repair_issue(hass, entry, repair_marker)
 
-    client: OPNsenseClient | None = None
-    try:
-        client = create_opnsense_client_from_config_entry(hass=hass, config_entry=entry)
-        try:
-            await client.validate()
-        except OPNsenseMissingDeviceUniqueID:
-            _LOGGER.debug(
-                "Client validation reported missing Device ID; continuing to Device ID probes"
-            )
-        except OPNsenseBelowMinFirmware, OPNsenseUnknownFirmware:
-            _LOGGER.debug(
-                "Client validation reported firmware issues; continuing to firmware probes"
-            )
-        except OPNsenseTimeoutError as err:
-            raise ConfigEntryNotReady("OPNsense validation timed out") from err
-        except OPNsenseConnectionError as err:
-            if type(err) is not OPNsenseConnectionError:
-                raise
-            raise ConfigEntryNotReady("OPNsense validation could not complete") from err
-    except ConfigEntryNotReady, TimeoutError, OPNsenseError:
-        if client is not None:
-            await client.async_close()
-        raise
+    client = await _async_create_validated_client(hass, entry)
 
     scan_interval: int = options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     _LOGGER.info("Starting hass-opnsense %s", VERSION)

@@ -36,11 +36,7 @@ def _is_valid_interface_row(interface_name: Any, interface: Any) -> bool:
 
 def _is_valid_smart_device_row(smart_device: Any) -> bool:
     """Return whether a SMART device row can produce a binary sensor."""
-    return (
-        isinstance(smart_device, Mapping)
-        and isinstance(smart_device.get("device"), str)
-        and bool(smart_device["device"].strip())
-    )
+    return isinstance(smart_device, Mapping) and bool(get_smart_device_name(smart_device))
 
 
 def _smart_device_slug(device_name: str) -> str:
@@ -175,8 +171,7 @@ async def _compile_smart_status_binary_sensors(
     for smart_device in smart_devices:
         if not _is_valid_smart_device_row(smart_device):
             continue
-        device_name = smart_device["device"]
-        device_name = device_name.strip()
+        device_name = get_smart_device_name(smart_device)
 
         entities.append(
             OPNsenseSmartStatusBinarySensor(

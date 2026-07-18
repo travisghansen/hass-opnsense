@@ -93,7 +93,6 @@ _CARP_STATUS_ICONS: Final[Mapping[str, str]] = {
 }
 
 
-
 def _is_valid_vnstat_interface_row(interface_name: Any) -> TypeIs[str]:
     """Return whether a vnStat interface key can produce sensors."""
     return isinstance(interface_name, str)
@@ -101,11 +100,7 @@ def _is_valid_vnstat_interface_row(interface_name: Any) -> TypeIs[str]:
 
 def _is_valid_smart_device_row(smart_device: Any) -> bool:
     """Return whether a SMART device row can produce a sensor."""
-    return (
-        isinstance(smart_device, Mapping)
-        and isinstance(smart_device.get("device"), str)
-        and bool(smart_device["device"].strip())
-    )
+    return isinstance(smart_device, Mapping) and bool(get_smart_device_name(smart_device))
 
 
 def _is_valid_filesystem_row(filesystem: Any) -> bool:
@@ -1092,8 +1087,7 @@ async def _compile_smart_sensors(
     for smart_device in smart_devices:
         if not _is_valid_smart_device_row(smart_device):
             continue
-        device_name = smart_device["device"]
-        device_name = device_name.strip()
+        device_name = get_smart_device_name(smart_device)
         entities.append(
             _create_sensor(
                 OPNsenseSmartSensor,

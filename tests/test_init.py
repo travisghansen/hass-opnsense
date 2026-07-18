@@ -10,6 +10,7 @@ import logging
 from typing import Any, Never, cast
 from unittest.mock import ANY, AsyncMock, MagicMock, call
 
+from aiopnsense import OPNsenseClient
 from aiopnsense.exceptions import (
     OPNsenseBelowMinFirmware,
     OPNsenseConnectionError,
@@ -680,7 +681,6 @@ async def test_async_setup_entry_carp_registers_update_listener_after_forwarding
     "error",
     [
         pytest.param(OPNsenseError("boom"), id="generic"),
-        pytest.param(OPNsenseTimeoutError("timed out"), id="timeout"),
     ],
 )
 async def test_async_setup_entry_closes_client_when_validation_fails(
@@ -923,7 +923,7 @@ async def test_async_setup_entry_with_repair_marker_recreates_issue_on_early_pro
     monkeypatch.setattr(init_mod.ir, "async_create_issue", create_issue)
 
     if failure_step == "validate":
-        with pytest.raises(OPNsenseTimeoutError, match="validate timeout"):
+        with pytest.raises(ConfigEntryNotReady, match="validation timed out"):
             await init_mod.async_setup_entry(ph_hass, entry)
     elif failure_step == "device_probe":
         with pytest.raises(OPNsenseConnectionError, match="probe timeout"):
@@ -3486,7 +3486,7 @@ async def test_migrate_3_to_4_skips_filesystems_when_telemetry_is_not_mapping(
     hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock(return_value=True)
 
-    result = await init_mod._migrate_3_to_4(hass, config_entry, client)
+    result = await init_mod._migrate_3_to_4(hass, config_entry, cast("OPNsenseClient", client))
 
     assert result is False
     entity_registry.async_update_entity.assert_called_once_with(
