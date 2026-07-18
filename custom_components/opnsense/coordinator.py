@@ -32,7 +32,7 @@ from .const import (
     DEFAULT_SYNC_OPTION_VALUE,
     DOMAIN,
 )
-from .helpers import dict_get
+from .helpers import dict_get, get_smart_device_name, is_carp_entry
 
 if TYPE_CHECKING:
     from aiopnsense import OPNsenseClient
@@ -56,7 +56,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         client: OPNsenseClient,
         name: str,
         update_interval: timedelta,
-        device_unique_id: str,
+        device_unique_id: str | None,
         config_entry: ConfigEntry,
         device_tracker_coordinator: bool = False,
     ) -> None:
@@ -84,7 +84,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         self._state: dict[str, Any] = {}
         self._device_tracker_coordinator: bool = device_tracker_coordinator
         self._mismatched_count = 0
-        self._device_unique_id: str = device_unique_id
+        self._device_unique_id: str | None = device_unique_id
         self._updating: bool = False
         super().__init__(
             hass=hass,
@@ -141,12 +141,11 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                         for smart_device in smart_devices:
                             if not isinstance(smart_device, Mapping):
                                 continue
-                            device_name = smart_device.get("device")
-                            if not isinstance(device_name, str) or not device_name.strip():
+                            device_name = get_smart_device_name(smart_device)
+                            if not device_name:
                                 continue
-                            normalized_device_name = device_name.strip()
-                            smart_info[normalized_device_name] = await method(
-                                device=normalized_device_name,
+                            smart_info[device_name] = await method(
+                                device=device_name,
                                 info_type=cat.get("info_type", "A"),
                             )
                     state[cat.get("state_key")] = smart_info
@@ -175,6 +174,12 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         if not self.config_entry:
             _LOGGER.error("Coordinator build_categories failed. No config entry found.")
             return []
+        if is_carp_entry(self.config_entry):
+            return [
+                {"function": "get_system_info", "state_key": "system_info"},
+                {"function": "get_carp", "state_key": "carp"},
+            ]
+
         config: Mapping[str, Any] = self.config_entry.data
         categories: list[dict[str, str]] = [
             {"function": "get_device_unique_id", "state_key": "device_unique_id"},
@@ -254,6 +259,12 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         Returns:
             bool: `True` when IDs match; otherwise `False` after mismatch handling.
         """
+        if (
+            self._device_unique_id is None
+            and self.config_entry
+            and is_carp_entry(self.config_entry)
+        ):
+            return True
         if self._state.get("device_unique_id") is None:
             _LOGGER.warning("Coordinator failed to confirm OPNsense Router Unique ID. Will retry")
             self._mismatched_count = 0

@@ -45,6 +45,7 @@ jobs:
           python .github/scripts/update_aiopnsense_pins.py \
             --manifest-path custom_components/opnsense/manifest.json \
             --pyproject-path pyproject.toml \
+            --prek-path prek.toml \
             --github-output "$GITHUB_OUTPUT"
 
       - name: Update aiopnsense dependency pins
@@ -57,6 +58,7 @@ jobs:
           python .github/scripts/update_aiopnsense_pins.py \
             --manifest-path custom_components/opnsense/manifest.json \
             --pyproject-path pyproject.toml \
+            --prek-path prek.toml \
             --latest-version "$LATEST_VERSION" \
             --write
 
@@ -66,6 +68,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           CURRENT_VERSION: ${{ steps.versions.outputs.current }}
           PYPROJECT_CURRENT_VERSION: ${{ steps.versions.outputs.pyproject_current }}
+          PREK_CURRENT_VERSION: ${{ steps.versions.outputs.prek_current }}
           LATEST_VERSION: ${{ steps.versions.outputs.latest }}
           REPO_OWNER: ${{ github.event.inputs.aiopnsense_release_owner || vars.AIOPNSENSE_RELEASE_OWNER || 'Snuffy2' }}
           REPO_NAME: ${{ github.event.inputs.aiopnsense_release_repo || vars.AIOPNSENSE_RELEASE_REPO || 'aiopnsense' }}
@@ -75,6 +78,7 @@ jobs:
           python .github/scripts/build_aiopnsense_release_notes.py \
             --current-version "$CURRENT_VERSION" \
             --pyproject-current-version "$PYPROJECT_CURRENT_VERSION" \
+            --prek-current-version "$PREK_CURRENT_VERSION" \
             --latest-version "$LATEST_VERSION" \
             --release-owner "$REPO_OWNER" \
             --release-repo "$REPO_NAME" \
@@ -95,6 +99,7 @@ jobs:
           add-paths: |
             custom_components/opnsense/manifest.json
             pyproject.toml
+            prek.toml
 
       - name: Close extra auto-generated PRs
         if: steps.versions.outputs.update_needed == 'true' && steps.cpr.outputs.pull-request-number != ''

@@ -142,6 +142,7 @@ def write_pr_body(
     releases: Sequence[Mapping[str, object]],
     current_version: str,
     pyproject_current_version: str,
+    prek_current_version: str,
     latest_version: str,
 ) -> None:
     """Write the generated aiopnsense update PR body.
@@ -151,6 +152,7 @@ def write_pr_body(
         releases: GitHub releases from the aiopnsense repository.
         current_version: Currently pinned manifest version.
         pyproject_current_version: Currently pinned pyproject version.
+        prek_current_version: Currently pinned prek mypy-hook version.
         latest_version: Target aiopnsense version.
     """
     release_notes = build_release_notes(
@@ -165,6 +167,7 @@ def write_pr_body(
                 "",
                 f"- Previous manifest pinned version: `aiopnsense=={current_version}`",
                 f"- Previous pyproject pinned version: `aiopnsense=={pyproject_current_version}`",
+                f"- Previous prek mypy pin: `aiopnsense=={prek_current_version}`",
                 f"- Updated pinned version: `aiopnsense=={latest_version}`",
                 "",
                 "## aiopnsense release notes in range",
@@ -248,6 +251,7 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--current-version", required=True)
     parser.add_argument("--pyproject-current-version", required=True)
+    parser.add_argument("--prek-current-version", required=True)
     parser.add_argument("--latest-version", required=True)
     parser.add_argument("--release-owner", required=True)
     parser.add_argument("--release-repo", required=True)
@@ -291,6 +295,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         releases=releases,
         current_version=args.current_version,
         pyproject_current_version=args.pyproject_current_version,
+        prek_current_version=args.prek_current_version,
         latest_version=args.latest_version,
     )
     return 0

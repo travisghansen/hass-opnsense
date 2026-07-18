@@ -7,21 +7,33 @@ and removal/unload behaviors for the hass-opnsense integration.
 from collections.abc import Callable
 from dataclasses import dataclass
 import logging
-from typing import Any, Never
+from typing import Any, Never, cast
 from unittest.mock import ANY, AsyncMock, MagicMock, call
 
-from aiopnsense.exceptions import OPNsenseConnectionError, OPNsenseTimeoutError
-from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME, CONF_VERIFY_SSL
+from aiopnsense.exceptions import (
+    OPNsenseBelowMinFirmware,
+    OPNsenseConnectionError,
+    OPNsenseInvalidAuth,
+    OPNsenseInvalidURL,
+    OPNsensePrivilegeMissing,
+    OPNsenseSSLError,
+    OPNsenseTimeoutError,
+    OPNsenseUnknownFirmware,
+)
+from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME, CONF_VERIFY_SSL, Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.util import slugify
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 import custom_components.opnsense as opnsense_mod
 from custom_components.opnsense.const import (
+    CONF_ENTRY_TYPE,
     CONF_GRANULAR_SYNC_OPTIONS,
     CONF_SYNC_FIREWALL_AND_NAT,
     CONF_TLS_INSECURE,
+    ENTRY_TYPE_CARP,
 )
 from tests.utilities import patch_opnsense_client
 
@@ -78,39 +90,31 @@ def test_align_aiopnsense_log_level_mirrors_opnsense_when_unset() -> None:
         aiopnsense_helper_logger.setLevel(original_aiopnsense_helper_level)
 
 
-def test_align_aiopnsense_log_level_keeps_explicit_aiopnsense_level() -> None:
-    """aiopnsense-specific logger configuration should remain authoritative."""
+@pytest.mark.parametrize(
+    ("opnsense_level", "aiopnsense_level", "expected_level"),
+    [
+        pytest.param(logging.DEBUG, logging.WARNING, logging.WARNING, id="explicit-aiopnsense"),
+        pytest.param(logging.NOTSET, logging.NOTSET, logging.NOTSET, id="both-unset"),
+    ],
+)
+def test_align_aiopnsense_log_level_preserves_setting(
+    opnsense_level: int,
+    aiopnsense_level: int,
+    expected_level: int,
+) -> None:
+    """Aiopnsense logger settings should remain authoritative when already set."""
     opnsense_logger = logging.getLogger("custom_components.opnsense")
     aiopnsense_logger = logging.getLogger("aiopnsense")
     original_opnsense_level = opnsense_logger.level
     original_aiopnsense_level = aiopnsense_logger.level
 
     try:
-        opnsense_logger.setLevel(logging.DEBUG)
-        aiopnsense_logger.setLevel(logging.WARNING)
+        opnsense_logger.setLevel(opnsense_level)
+        aiopnsense_logger.setLevel(aiopnsense_level)
 
         init_mod._align_aiopnsense_log_level()
 
-        assert aiopnsense_logger.level == logging.WARNING
-    finally:
-        opnsense_logger.setLevel(original_opnsense_level)
-        aiopnsense_logger.setLevel(original_aiopnsense_level)
-
-
-def test_align_aiopnsense_log_level_leaves_both_loggers_unset() -> None:
-    """Unset loggers should continue to inherit the root logger level."""
-    opnsense_logger = logging.getLogger("custom_components.opnsense")
-    aiopnsense_logger = logging.getLogger("aiopnsense")
-    original_opnsense_level = opnsense_logger.level
-    original_aiopnsense_level = aiopnsense_logger.level
-
-    try:
-        opnsense_logger.setLevel(logging.NOTSET)
-        aiopnsense_logger.setLevel(logging.NOTSET)
-
-        init_mod._align_aiopnsense_log_level()
-
-        assert aiopnsense_logger.level == logging.NOTSET
+        assert aiopnsense_logger.level == expected_level
     finally:
         opnsense_logger.setLevel(original_opnsense_level)
         aiopnsense_logger.setLevel(original_aiopnsense_level)
@@ -145,9 +149,9 @@ async def test_async_setup_entry_success(
     )
 
     # use migration fixture which may wrap the real hass or provide a MagicMock
-    hass = ph_hass
-    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
-    hass.config_entries.async_reload = AsyncMock()
+    hass = cast("MagicMock", ph_hass)
+    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)  # type: ignore[method-assign]
+    hass.config_entries.async_reload = AsyncMock()  # type: ignore[method-assign]
 
     # ensure hass.data is a real dict for the integration to populate
     hass.data = {}
@@ -204,7 +208,7 @@ async def test_async_setup_entry_validates_client_before_probes(
         options={},
     )
 
-    hass = ph_hass
+    hass = cast("MagicMock", ph_hass)
     hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
     hass.config_entries.async_reload = AsyncMock()
     hass.data = {}
@@ -216,23 +220,454 @@ async def test_async_setup_entry_validates_client_before_probes(
         "get_device_unique_id",
         "get_host_firmware_version",
     ]
+    assert entry.runtime_data.device_unique_id == "dev1"
+    expected_platforms = [Platform.SENSOR, Platform.SWITCH, Platform.BINARY_SENSOR, Platform.UPDATE]
+    assert entry.runtime_data.loaded_platforms == expected_platforms
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_carp_entry_uses_identity_less_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP entries use identity-less coordinator state and Sensor-only platform setup."""
+    validate_calls: list[dict[str, Any]] = []
+    create_calls: dict[str, Any] = {}
+    client = MagicMock()
+    client.get_host_firmware_version = AsyncMock(return_value="99.0")
+
+    async def _validate(**kwargs: Any) -> bool:
+        """Record setup validation kwargs and return successful validation."""
+        validate_calls.append(kwargs)
+        return True
+
+    client.validate = _validate
+    client.get_device_unique_id = AsyncMock(return_value="ignore-me")
+    client.async_close = AsyncMock(return_value=True)
+
+    def _create_client(**kwargs: Any) -> Any:
+        """Record how the client factory is called and return the fake client."""
+        create_calls.update(kwargs)
+        return client
+
+    monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", _create_client)
+
+    captured = {}
+
+    class _CarpCoordinator:
+        """Fake coordinator used to exercise CARP setup without polling."""
+
+        def __init__(self, **kwargs: Any) -> None:
+            """Capture coordinator construction kwargs for CARP assertions."""
+            captured.update(kwargs)
+            self.data = {"carp": {"interfaces": [{"vhid": 1, "subnet": "192.0.2.1"}]}}
+
+        async def async_config_entry_first_refresh(self) -> bool:
+            """Complete the coordinator's initial refresh protocol."""
+            return True
+
+        async def async_shutdown(self) -> bool:
+            """Complete the coordinator's shutdown protocol."""
+            return True
+
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", _CarpCoordinator)
+
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+        },
+        options={},
+    )
+
+    hass = cast("MagicMock", ph_hass)
+    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)  # type: ignore[method-assign]
+    hass.config_entries.async_reload = MagicMock()  # type: ignore[method-assign]
+    hass.data = {}
+
+    res = await init_mod.async_setup_entry(hass, entry)
+    assert res is True
+    assert create_calls.get("hass") is hass
+    assert create_calls.get("config_entry") is entry
+    assert create_calls.get("throw_errors", False) is False
+    assert captured["device_unique_id"] is None
+    assert captured["config_entry"] is entry
+    assert validate_calls == [{"require_device_id": False}]
+    client.get_device_unique_id.assert_not_awaited()
+    client.get_host_firmware_version.assert_not_awaited()
+
+    assert entry.runtime_data.device_unique_id is None
+    assert entry.runtime_data.loaded_platforms == init_mod.CARP_PLATFORMS
+    assert entry.runtime_data.device_tracker_coordinator is None
+    assert hass.config_entries.async_forward_entry_setups.await_count == 1  # type: ignore[union-attr]
+    hass.config_entries.async_forward_entry_setups.assert_awaited_with(entry, [Platform.SENSOR])  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("exc", [OPNsenseBelowMinFirmware, OPNsenseUnknownFirmware])
+async def test_async_setup_entry_carp_validation_firmware_errors_fail_setup(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+    exc: type[Exception],
+) -> None:
+    """CARP setup must fail fast on firmware validation exceptions."""
+    coordinator = AsyncMock()
+    coordinator.async_config_entry_first_refresh = AsyncMock(return_value=True)
+    coordinator.async_shutdown = AsyncMock(return_value=True)
+    coordinator.data = {"carp": {"interfaces": [{"vhid": 1, "subnet": "192.0.2.1"}]}}
+    coordinator_factory = MagicMock(return_value=coordinator)
+    client = MagicMock()
+    client.validate = AsyncMock(side_effect=exc("firmware"))
+    client.async_close = AsyncMock(return_value=True)
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
+    )
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", coordinator_factory)
+
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+        },
+        options={},
+    )
+
+    hass = ph_hass
+    hass.data = {}
+    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+
+    with pytest.raises(exc):
+        await init_mod.async_setup_entry(hass, entry)
+
+    coordinator_factory.assert_not_called()
+    hass.config_entries.async_forward_entry_setups.assert_not_awaited()
+    client.async_close.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [OPNsenseTimeoutError, OPNsenseConnectionError],
+    ids=["timeout", "connection"],
+)
+@pytest.mark.asyncio
+async def test_async_setup_entry_carp_entry_retries_on_transient_validation_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    exc: type[BaseException],
+) -> None:
+    """CARP setup should retry on transient validation transport failures."""
+    client = MagicMock()
+    client.validate = AsyncMock(side_effect=exc("transient"))
+    client.async_close = AsyncMock(return_value=True)
+
+    create_client = MagicMock(return_value=client)
+    coordinator_factory = MagicMock()
+    monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", create_client)
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", coordinator_factory)
+
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+        },
+        options={},
+    )
+
+    hass = cast("MagicMock", ph_hass)
+    hass.data = {}
+
+    with pytest.raises(ConfigEntryNotReady):
+        await init_mod.async_setup_entry(hass, entry)
+
+    coordinator_factory.assert_not_called()
+    create_client.assert_called_once()
+    client.async_close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_carp_reraises_connection_error_subclass(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP setup must preserve specialized connection failures."""
+
+    class SpecializedConnectionError(OPNsenseConnectionError):
+        """Connection failure carrying more specific client semantics."""
+
+    client = MagicMock()
+    client.validate = AsyncMock(side_effect=SpecializedConnectionError("specialized"))
+    client.async_close = AsyncMock(return_value=True)
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", MagicMock(return_value=client)
+    )
+
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+        },
+        options={},
+    )
+    hass = cast("MagicMock", ph_hass)
+    hass.data = {}
+
+    with pytest.raises(SpecializedConnectionError, match="specialized"):
+        await init_mod.async_setup_entry(hass, entry)
+
+    client.async_close.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "error",
+    "initial_data",
     [
-        pytest.param(init_mod.OPNsenseError("boom"), id="generic"),
-        pytest.param(OPNsenseTimeoutError("timed out"), id="timeout"),
+        {},
+        {"carp": {}},
+        {"carp": {"interfaces": []}},
+        {"carp": {"interfaces": [{}]}},
     ],
 )
+async def test_async_setup_entry_carp_requires_usable_initial_vip_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+    initial_data: dict[str, Any],
+) -> None:
+    """CARP setup should retry when the first refresh has no usable VIP inventory."""
+    client = _make_valid_setup_client()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
+    )
+    coordinator = _make_setup_coordinator()
+    coordinator.data = initial_data
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+        },
+        options={},
+    )
+    hass = ph_hass
+    hass.data = {init_mod.DOMAIN: {entry.entry_id: client}}
+    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+
+    with pytest.raises(ConfigEntryNotReady, match="usable CARP VIP"):
+        await init_mod.async_setup_entry(hass, entry)
+
+    coordinator.async_shutdown.assert_awaited_once()
+    client.async_close.assert_awaited_once()
+    assert entry.entry_id not in hass.data.get(init_mod.DOMAIN, {})
+    hass.config_entries.async_forward_entry_setups.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "interface",
+    [
+        {"vhid": 1, "subnet": "192.0.2.1"},
+        {"vhid": " 2 ", "subnet": " 192.0.2.2 "},
+    ],
+)
+async def test_async_setup_entry_carp_accepts_usable_initial_vip_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+    interface: dict[str, Any],
+) -> None:
+    """CARP setup should forward platforms when the first inventory has a usable VIP."""
+    client = _make_valid_setup_client()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
+    )
+    coordinator = _make_setup_coordinator()
+    coordinator.data = {"carp": {"interfaces": [interface]}}
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+        },
+        options={},
+    )
+    hass = ph_hass
+    hass.data = {}
+    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+
+    assert await init_mod.async_setup_entry(hass, entry) is True
+
+    coordinator.async_shutdown.assert_not_awaited()
+    client.async_close.assert_not_awaited()
+    hass.config_entries.async_forward_entry_setups.assert_awaited_once_with(
+        entry, [Platform.SENSOR]
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_carp_first_refresh_failure_cleans_up(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP setup should stop its coordinator, close the client, and remove hass data."""
+    client = _make_valid_setup_client()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
+    )
+    coordinator = _make_setup_coordinator()
+    coordinator.async_config_entry_first_refresh.side_effect = RuntimeError("refresh failed")
+    coordinator.data = {"carp": {"interfaces": [{"vhid": 1, "subnet": "192.0.2.1"}]}}
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+        },
+        options={},
+    )
+    hass = ph_hass
+    hass.data = {init_mod.DOMAIN: {entry.entry_id: client}}
+    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+
+    with pytest.raises(RuntimeError, match="refresh failed"):
+        await init_mod.async_setup_entry(hass, entry)
+
+    coordinator.async_shutdown.assert_awaited_once()
+    client.async_close.assert_awaited_once()
+    assert entry.entry_id not in hass.data.get(init_mod.DOMAIN, {})
+    hass.config_entries.async_forward_entry_setups.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_carp_platform_forward_failure_cleans_up(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP platform-forward failures should clean up runtime state and the client."""
+    client = _make_valid_setup_client()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
+    )
+    coordinator = _make_setup_coordinator()
+    coordinator.data = {"carp": {"interfaces": [{"vhid": 1, "subnet": "192.0.2.1"}]}}
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+        },
+        options={},
+    )
+    remove_listener = MagicMock()
+    entry.add_update_listener = MagicMock(return_value=remove_listener)
+    entry.async_on_unload = MagicMock(return_value=None)
+    hass = ph_hass
+    hass.data = {}
+    hass.config_entries.async_forward_entry_setups = AsyncMock(
+        side_effect=RuntimeError("CARP platform forwarding failed")
+    )
+
+    with pytest.raises(RuntimeError, match="CARP platform forwarding failed"):
+        await init_mod.async_setup_entry(hass, entry)
+
+    coordinator.async_shutdown.assert_awaited_once()
+    client.async_close.assert_awaited_once()
+    entry.add_update_listener.assert_not_called()
+    entry.async_on_unload.assert_not_called()
+    remove_listener.assert_not_called()
+    assert entry.entry_id not in hass.data.get(init_mod.DOMAIN, {})
+    assert entry.runtime_data is None
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_carp_registers_update_listener_after_forwarding(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP update-listener registration should follow platform forwarding."""
+    call_order: list[str] = []
+    client = _make_valid_setup_client()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
+    )
+    coordinator = _make_setup_coordinator()
+    coordinator.data = {"carp": {"interfaces": [{"vhid": 1, "subnet": "192.0.2.1"}]}}
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+        },
+        options={},
+    )
+    remove_listener = MagicMock()
+
+    def _add_update_listener(listener: Any) -> MagicMock:
+        """Record listener registration and return its removal callback."""
+        call_order.append("add_listener")
+        return remove_listener
+
+    def _async_on_unload(unregister: MagicMock) -> None:
+        """Record unload-callback registration."""
+        call_order.append("async_on_unload")
+
+    entry.add_update_listener = MagicMock(side_effect=_add_update_listener)
+    entry.async_on_unload = MagicMock(side_effect=_async_on_unload)
+
+    async def _forward_entry_setups(*_args: Any, **_kwargs: Any) -> bool:
+        """Record CARP platform forwarding and report success."""
+        call_order.append("forward")
+        return True
+
+    hass = ph_hass
+    hass.data = {}
+    hass.config_entries.async_forward_entry_setups = AsyncMock(side_effect=_forward_entry_setups)
+
+    assert await init_mod.async_setup_entry(hass, entry) is True
+
+    assert call_order == ["forward", "add_listener", "async_on_unload"]
+    entry.add_update_listener.assert_called_once_with(init_mod._async_update_listener)
+    entry.async_on_unload.assert_called_once_with(remove_listener)
+    remove_listener.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_async_setup_entry_closes_client_when_validation_fails(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
-    error: init_mod.OPNsenseError,
 ) -> None:
     """async_setup_entry should close a constructed client when validation fails."""
+    error = init_mod.OPNsenseError("boom")
     client = MagicMock()
     client.validate = AsyncMock(side_effect=error)
     client.async_close = AsyncMock(return_value=True)
@@ -259,6 +694,144 @@ async def test_async_setup_entry_closes_client_when_validation_fails(
     hass.data = {}
 
     with pytest.raises(type(error), match=str(error)):
+        await init_mod.async_setup_entry(hass, entry)
+
+    client.async_close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_does_not_catch_raw_validation_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Setup should close the client and re-raise a raw validation timeout."""
+    client = MagicMock()
+    client.validate = AsyncMock(side_effect=TimeoutError)
+    client.async_close = AsyncMock(return_value=True)
+
+    def _create_client(**kwargs: Any) -> Any:
+        """Return the timeout-raising client for this setup-entry test."""
+        return client
+
+    monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", _create_client)
+
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+        },
+        options={},
+    )
+
+    hass = ph_hass
+    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+    hass.config_entries.async_reload = AsyncMock()
+    hass.data = {}
+
+    with pytest.raises(TimeoutError):
+        await init_mod.async_setup_entry(hass, entry)
+
+    client.async_close.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "exc", [OPNsenseTimeoutError, OPNsenseConnectionError], ids=["timeout", "connection"]
+)
+@pytest.mark.asyncio
+async def test_async_setup_entry_retries_on_transient_validation_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    exc: type[BaseException],
+) -> None:
+    """Transient validation connection failures should trigger ConfigEntryNotReady."""
+    client = MagicMock()
+    client.validate = AsyncMock(side_effect=exc("timed out"))
+    client.async_close = AsyncMock(return_value=True)
+
+    def _create_client(**kwargs: Any) -> Any:
+        """Return the timeout-raising client for this setup-entry test."""
+        return client
+
+    monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", _create_client)
+
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+        },
+        options={},
+    )
+
+    hass = ph_hass
+    monkeypatch.setattr(
+        hass.config_entries, "async_forward_entry_setups", AsyncMock(return_value=True)
+    )
+    monkeypatch.setattr(hass.config_entries, "async_reload", AsyncMock())
+    hass.data.clear()
+
+    with pytest.raises(ConfigEntryNotReady):
+        await init_mod.async_setup_entry(hass, entry)
+
+    client.async_close.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        OPNsenseInvalidAuth,
+        OPNsensePrivilegeMissing,
+        OPNsenseSSLError,
+        OPNsenseInvalidURL,
+    ],
+    ids=[
+        "invalid_auth",
+        "privilege_missing",
+        "ssl_error",
+        "invalid_url",
+    ],
+)
+@pytest.mark.asyncio
+async def test_async_setup_entry_does_not_retry_non_transient_validation_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    exc: type[BaseException],
+) -> None:
+    """Non-transient validation failures should bubble as hard errors."""
+    client = MagicMock()
+    client.validate = AsyncMock(side_effect=exc("invalid"))
+    client.async_close = AsyncMock(return_value=True)
+
+    def _create_client(**kwargs: Any) -> Any:
+        """Return the auth-failing client for this setup-entry test."""
+        return client
+
+    monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", _create_client)
+
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+        },
+        options={},
+    )
+
+    hass = ph_hass
+    monkeypatch.setattr(
+        hass.config_entries, "async_forward_entry_setups", AsyncMock(return_value=True)
+    )
+    monkeypatch.setattr(hass.config_entries, "async_reload", AsyncMock())
+    hass.data.clear()
+
+    with pytest.raises(exc):
         await init_mod.async_setup_entry(hass, entry)
 
     client.async_close.assert_awaited_once()
@@ -1438,19 +2011,38 @@ async def test_async_setup_calls_services_and_handles_exceptions(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("entry_id", "entry_data", "entry_unique_id", "entity_unique_id_prefix"),
+    [
+        (
+            "device-entry",
+            {init_mod.CONF_DEVICE_UNIQUE_ID: "dev1", "sync_telemetry": False},
+            "stale-device-id",
+            "dev1",
+        ),
+        (
+            "carp-entry",
+            {CONF_ENTRY_TYPE: ENTRY_TYPE_CARP, "sync_telemetry": False},
+            None,
+            "carp_entry",
+        ),
+    ],
+)
 async def test_async_update_listener_reload_and_remove(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
+    entry_id: str,
+    entry_data: dict[str, Any],
+    entry_unique_id: str | None,
+    entity_unique_id_prefix: str,
 ) -> None:
-    """When SHOULD_RELOAD True and sync disabled, update listener schedules reload and removes entities."""
+    """Remove disabled entities using the same identity prefix as entity creation."""
     # Prepare entry with SHOULD_RELOAD True and granular sync option disabled to force removal_prefixes
     entry = make_config_entry(
-        data={
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
-            "sync_telemetry": False,
-        },
-        unique_id="unit one",
+        entry_id=entry_id,
+        data=entry_data,
+        unique_id=entry_unique_id,
     )
     setattr(entry.runtime_data, init_mod.SHOULD_RELOAD, True)
     # config entries and hass async reload stub
@@ -1461,6 +2053,8 @@ async def test_async_update_listener_reload_and_remove(
 
     # construct an entity that should be removed by unique_id prefix
     class Ent:
+        """Minimal entity registry entry used by listener cleanup tests."""
+
         def __init__(self, entity_id: Any, unique_id: Any) -> None:
             """Store the entity and unique IDs used by the update-listener test."""
             self.entity_id = entity_id
@@ -1470,10 +2064,7 @@ async def test_async_update_listener_reload_and_remove(
     # explicitly use the 'sync_telemetry' prefix so the test targets the intended sync item
     prefix = list(init_mod.GRANULAR_SYNC_PREFIX["sync_telemetry"])
     pre = prefix[0]
-    ent = Ent(
-        "sensor.x",
-        f"{slugify(entry.data[init_mod.CONF_DEVICE_UNIQUE_ID])}_{pre}_suffix",
-    )
+    ent = Ent("sensor.x", f"{entity_unique_id_prefix}_{pre}_suffix")
 
     # monkeypatch entity registry functions
     er_reg = MagicMock()
@@ -1503,16 +2094,19 @@ async def test_async_update_listener_reload_and_remove(
 
 
 @pytest.mark.asyncio
-async def test_async_update_listener_removes_native_firewall_entities(
+@pytest.mark.parametrize(("sync_enabled", "expect_removed"), [(False, True), (True, False)])
+async def test_async_update_listener_handles_native_firewall_entities_by_sync_state(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
+    sync_enabled: bool,
+    expect_removed: bool,
 ) -> None:
-    """Update listener should remove native firewall entities when sync is disabled."""
+    """Remove native firewall entities only when Firewall/NAT sync is disabled."""
     entry = make_config_entry(
         data={
             init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
-            CONF_SYNC_FIREWALL_AND_NAT: False,
+            CONF_SYNC_FIREWALL_AND_NAT: sync_enabled,
         },
         unique_id="unit two",
     )
@@ -1555,7 +2149,10 @@ async def test_async_update_listener_removes_native_firewall_entities(
 
     await init_mod._async_update_listener(hass, entry)
 
-    entity_registry.async_remove.assert_called_once_with(ent.entity_id)
+    if expect_removed:
+        entity_registry.async_remove.assert_called_once_with(ent.entity_id)
+    else:
+        entity_registry.async_remove.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -2405,6 +3002,8 @@ async def test_async_setup_entry_awesomeversion_exception(
     # fake client where device id matches but awesomeversion comparison raises
     # monkeypatch AwesomeVersion to a class that raises on comparison
     class DummyAV:
+        """AwesomeVersion replacement that raises on comparisons."""
+
         def __init__(self, v: Any) -> None:
             """Store the version string used by the comparison stub."""
             self.v = v
@@ -2675,6 +3274,8 @@ async def test_migrate_3_to_4_skips_filesystems_when_telemetry_is_not_mapping(
     """_migrate_3_to_4 should defer filesystem remaps when telemetry is invalid."""
 
     class Client:
+        """Fake client returning invalid telemetry during migration."""
+
         async def get_telemetry(self) -> None:
             """Return an invalid telemetry payload for migration hardening."""
             return
@@ -3401,16 +4002,38 @@ async def test_async_setup_entry_registers_update_listener_after_forwarding(
     remove_listener = MagicMock()
 
     def _add_update_listener(listener: Any) -> MagicMock:
+        """Record listener registration and return the removal callback.
+
+        Args:
+            listener: Update listener registered on the config entry.
+
+        Returns:
+            MagicMock: Callback used to unregister the listener.
+        """
         call_order.append("add_listener")
         return remove_listener
 
     def _async_on_unload(unregister: MagicMock) -> None:
+        """Record when Home Assistant registers the unload callback.
+
+        Args:
+            unregister: Unload callback passed by the config entry.
+        """
         call_order.append("async_on_unload")
 
     entry.add_update_listener = MagicMock(side_effect=_add_update_listener)
     entry.async_on_unload = MagicMock(side_effect=_async_on_unload)
 
     async def _forward_entry_setups(*_args: Any, **_kwargs: Any) -> bool:
+        """Record platform forwarding and report success.
+
+        Args:
+            *_args: Positional setup arguments ignored by the stub.
+            **_kwargs: Keyword setup arguments ignored by the stub.
+
+        Returns:
+            bool: Always ``True`` for the test setup path.
+        """
         call_order.append("forward")
         return True
 
@@ -3442,6 +4065,8 @@ async def test_migrate_2_to_3_handles_identifier_collision(
     dev.identifiers = {("opnsense", "old")}
 
     class DeviceRegistry:
+        """Fake device registry that raises identifier collisions."""
+
         def __init__(self) -> None:
             """Provide a fake device registry object for the collision test."""
 

@@ -4,7 +4,7 @@ requires-python = ">=3.14"
 dynamic = ["version"]
 
 [build-system]
-requires = ["setuptools>=62.0"]
+requires = ["setuptools>=77.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
@@ -42,7 +42,6 @@ lint = [
 pytest = [
     { include-group = "ha" },
     "aiohttp",
-    "aiopnsense",
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
@@ -63,10 +62,6 @@ namespace_packages = true
 pretty = true
 show_error_codes = true
 warn_unused_configs = true
-
-[[tool.mypy.overrides]]
-module = ["aiopnsense.*"]
-ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["pytest_homeassistant_custom_component.*"]

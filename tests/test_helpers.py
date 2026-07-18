@@ -1,5 +1,6 @@
 """Unit tests for shared OPNsense integration helpers."""
 
+from collections.abc import Callable
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -8,15 +9,43 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.opnsense import helpers as helpers_mod
-from custom_components.opnsense.const import DEFAULT_VERIFY_SSL
+from custom_components.opnsense.const import (
+    CONF_DEVICE_UNIQUE_ID,
+    CONF_ENTRY_TYPE,
+    DEFAULT_VERIFY_SSL,
+    ENTRY_TYPE_CARP,
+)
 from custom_components.opnsense.helpers import (
     coerce_bool,
+    config_entry_identity,
     create_opnsense_client,
     create_opnsense_client_from_config_entry,
+    dict_get,
     firewall_nat_switch_unique_ids_from_payload,
     firewall_rule_id_from_payload,
     firewall_rule_switch_unique_ids_from_payload,
+    get_arp_ip,
+    get_arp_mac,
+    get_smart_device_name,
+    is_carp_entry,
+    is_usable_carp_vip,
+    normalize_arp_mac,
 )
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        pytest.param("items.1.name", "second", id="valid-index"),
+        pytest.param("items.invalid.name", "missing", id="invalid-segment"),
+        pytest.param("items.2.name", "missing", id="out-of-range-index"),
+    ],
+)
+def test_dict_get_traverses_list_indexes(path: str, expected: str) -> None:
+    """Traverse list indexes safely when resolving dotted paths."""
+    data = {"items": [{"name": "first"}, {"name": "second"}]}
+
+    assert dict_get(data, path, "missing") == expected
 
 
 @pytest.mark.parametrize(
@@ -58,6 +87,122 @@ def test_coerce_bool_returns_none_for_unknown_values(value: Any) -> None:
 
 
 @pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        pytest.param("AA:BB:CC", "aa:bb:cc", id="colon-separated"),
+        pytest.param(" AA-BB-CC ", "aa:bb:cc", id="hyphen-separated"),
+        pytest.param(None, "", id="non-string"),
+    ],
+)
+def test_normalize_arp_mac(value: object, expected: str) -> None:
+    """Normalize ARP MAC values into the shared representation."""
+    assert normalize_arp_mac(value) == expected
+
+
+@pytest.mark.parametrize(
+    ("entry", "expected"),
+    [
+        pytest.param({"mac": "AA:BB:CC"}, "aa:bb:cc", id="normalized-key"),
+        pytest.param({"mac-address": "AA-BB-CC"}, "aa:bb:cc", id="raw-key"),
+        pytest.param(
+            {"mac": 1, "mac-address": "AA-BB-CC"},
+            "aa:bb:cc",
+            id="fallback-key",
+        ),
+        pytest.param(
+            {"mac": "  ", "mac-address": "AA-BB-CC"},
+            "aa:bb:cc",
+            id="blank-normalized-key-fallback",
+        ),
+        pytest.param(
+            {"mac": "  ", "mac-address": " \t"},
+            "",
+            id="both-keys-blank",
+        ),
+    ],
+)
+def test_get_arp_mac(entry: dict[str, Any], expected: str) -> None:
+    """Read normalized and raw ARP MAC keys through one helper."""
+    assert get_arp_mac(entry) == expected
+
+
+@pytest.mark.parametrize(
+    ("entry", "expected"),
+    [
+        pytest.param({"ip": " 192.0.2.1 "}, "192.0.2.1", id="normalized-key"),
+        pytest.param({"ip-address": " 192.0.2.2 "}, "192.0.2.2", id="raw-key"),
+        pytest.param({"ip": 1}, "", id="invalid-value"),
+        pytest.param(
+            {"ip": "  ", "ip-address": " 192.0.2.3 "},
+            "192.0.2.3",
+            id="blank-normalized-key-fallback",
+        ),
+        pytest.param(
+            {"ip": " \t", "ip-address": "  "},
+            "",
+            id="both-keys-blank",
+        ),
+    ],
+)
+def test_get_arp_ip(entry: dict[str, Any], expected: str) -> None:
+    """Read and strip normalized and raw ARP IP keys through one helper."""
+    assert get_arp_ip(entry) == expected
+
+
+@pytest.mark.parametrize(
+    ("entry", "expected"),
+    [
+        pytest.param({"device": " nvme0 "}, "nvme0", id="device"),
+        pytest.param({"ident": " SERIAL-ONLY "}, "SERIAL-ONLY", id="ident-fallback"),
+        pytest.param(
+            {"device": "", "ident": "serial-only"},
+            "serial-only",
+            id="blank-device",
+        ),
+        pytest.param({"device": 1}, "", id="invalid-values"),
+    ],
+)
+def test_get_smart_device_name(entry: dict[str, Any], expected: str) -> None:
+    """Read SMART device identifiers from the shared helper."""
+    assert get_smart_device_name(entry) == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        {"vhid": 1, "subnet": "192.0.2.1"},
+        {"vhid": 255, "subnet": "192.0.2.255"},
+        {"vhid": " 2 ", "subnet": " 192.0.2.2 "},
+    ],
+)
+def test_is_usable_carp_vip_accepts_normalized_identity_without_interface(
+    value: dict[str, Any],
+) -> None:
+    """CARP VIP usability should accept integer/string VHIDs without interface names."""
+    assert is_usable_carp_vip(value) is True
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        None,
+        {},
+        [],
+        {"vhid": "", "subnet": "192.0.2.1"},
+        {"vhid": 1, "subnet": ""},
+        {"vhid": True, "subnet": "192.0.2.1"},
+        {"vhid": 0, "subnet": "192.0.2.1"},
+        {"vhid": -1, "subnet": "192.0.2.1"},
+        {"vhid": 256, "subnet": "192.0.2.1"},
+        {"vhid": "not-a-vhid", "subnet": "192.0.2.1"},
+    ],
+)
+def test_is_usable_carp_vip_rejects_missing_or_blank_identity(value: Any) -> None:
+    """CARP VIP usability should reject malformed or blank identity rows."""
+    assert is_usable_carp_vip(value) is False
+
+
+@pytest.mark.parametrize(
     (
         "throw_errors",
         "name",
@@ -89,6 +234,8 @@ def test_create_opnsense_client_builds_client_with_expected_options(
         return MagicMock()
 
     class _CookieJar:
+        """Fake aiohttp cookie jar that records its safety setting."""
+
         def __init__(self, *, unsafe: bool) -> None:
             """Capture the unsafe flag without requiring a running event loop."""
             self._unsafe = unsafe
@@ -243,3 +390,35 @@ def test_firewall_nat_switch_unique_ids_from_payload_builds_nat_ids() -> None:
         "deviceid_firewall_nat_source_nat_uuid_2",
         "deviceid_firewall_nat_source_nat_r4",
     }
+
+
+def test_entry_type_and_identity_helpers(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Validate config entry identity rules for device and CARP entries."""
+    device_entry = make_config_entry(
+        entry_id="device-entry",
+        data={CONF_DEVICE_UNIQUE_ID: "aa_bb_cc_dd_ee_ff"},
+    )
+    carp_entry = make_config_entry(
+        entry_id="carp-entry",
+        data={
+            CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
+            CONF_DEVICE_UNIQUE_ID: "stale-device-id",
+        },
+    )
+    blank_device_entry = make_config_entry(
+        entry_id="blank-device-entry",
+        data={CONF_DEVICE_UNIQUE_ID: "  \t"},
+    )
+    padded_device_entry = make_config_entry(
+        entry_id="padded-device-entry",
+        data={CONF_DEVICE_UNIQUE_ID: "  padded-device-id  "},
+    )
+
+    assert is_carp_entry(device_entry) is False
+    assert config_entry_identity(device_entry) == "aa_bb_cc_dd_ee_ff"
+    assert is_carp_entry(carp_entry) is True
+    assert config_entry_identity(carp_entry) == "carp-entry"
+    assert config_entry_identity(blank_device_entry) == "blank-device-entry"
+    assert config_entry_identity(padded_device_entry) == "padded-device-id"

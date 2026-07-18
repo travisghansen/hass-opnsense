@@ -4,7 +4,11 @@ from collections.abc import Callable, Iterable
 from typing import Any, Never, cast
 from unittest.mock import MagicMock
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntityDescription,
+    SensorStateClass,
+)
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -25,8 +29,10 @@ from custom_components.opnsense.const import (
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 from custom_components.opnsense.sensor import (
+    OPNsenseCarpActiveResponderSensor,
     OPNsenseCarpInterfaceSensor,
     OPNsenseCarpStatusSensor,
+    OPNsenseCarpVipSensor,
     OPNsenseDHCPLeasesSensor,
     OPNsenseFilesystemSensor,
     OPNsenseGatewaySensor,
@@ -77,6 +83,397 @@ async def test_async_setup_entry_invalid_state(
 
     await async_setup_entry(MagicMock(), config_entry, cast("AddEntitiesCallback", add_entities))
     assert called is False
+
+
+@pytest.mark.asyncio
+async def test_carp_entry_setup_has_exact_read_only_vip_inventory(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP entries should expose only the responder, summary, and VIP sensors."""
+    entry = make_config_entry(
+        data={"entry_type": "carp"},
+        entry_id="carp-entry",
+        title="CARP VIP",
+    )
+    state: dict[str, Any] = {
+        "system_info": {"name": "node-a"},
+        "carp": {
+            "interfaces": [
+                {"vhid": 1, "subnet": "192.0.2.1", "interface": "igc0", "status": "BACKUP"},
+                {
+                    "vhid": "2",
+                    "subnet": "198.51.100.1",
+                    "interface": "igc1",
+                    "status": "MASTER",
+                },
+            ],
+            "status_summary": {"state": "healthy"},
+        },
+    }
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+    setattr(entry.runtime_data, COORDINATOR, coordinator)
+    created: list[Any] = []
+
+    def add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Collect entities created by the sensor platform."""
+        created.extend(entities)
+
+    await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
+
+    keys = {entity.entity_description.key for entity in created}
+    expected_keys = {
+        "carp.active_responder",
+        "carp.status_summary",
+        sensor_module._build_carp_vip_sensor_key("1", "192.0.2.1"),
+        sensor_module._build_carp_vip_sensor_key("2", "198.51.100.1"),
+    }
+    expected_unique_ids = {
+        sensor_module.slugify(f"{entry.entry_id}_{key}") for key in expected_keys
+    }
+    assert keys == expected_keys
+    assert {entity.unique_id for entity in created} == expected_unique_ids
+    descriptions = {entity.entity_description.key: entity.entity_description for entity in created}
+    assert descriptions["carp.active_responder"].translation_key == "carp_active_responder"
+    assert descriptions["carp.status_summary"].translation_key == "carp_status_summary"
+    vip_descriptions = [
+        description for key, description in descriptions.items() if key.startswith("carp.vip.")
+    ]
+    assert {description.translation_key for description in vip_descriptions} == {"carp_vip"}
+    assert all(
+        set(description.translation_placeholders or {}) == {"subnet", "vhid"}
+        for description in vip_descriptions
+    )
+    assert all(
+        entity.entity_description.entity_registry_enabled_default is False
+        for entity in created
+        if entity.entity_description.key.startswith("carp.vip.")
+    )
+    assert isinstance(
+        next(
+            entity for entity in created if entity.entity_description.key == "carp.active_responder"
+        ),
+        OPNsenseCarpActiveResponderSensor,
+    )
+    assert all(
+        isinstance(entity, OPNsenseCarpVipSensor)
+        for entity in created
+        if entity.entity_description.key.startswith("carp.vip.")
+    )
+    assert all(entity.entity_description.key.startswith("carp.") for entity in created)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("entry_data", "expected_translation_key"),
+    [
+        ({}, None),
+        ({"entry_type": "carp"}, "carp_status_summary"),
+    ],
+)
+async def test_carp_status_description_preserves_entry_mode_naming(
+    entry_data: dict[str, Any],
+    expected_translation_key: str | None,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP status should keep legacy device naming and translated CARP naming."""
+    entry = make_config_entry(data=entry_data)
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {"carp": {"status_summary": {"state": "healthy"}}}
+
+    entities = await sensor_module._compile_carp_status_sensor(entry, coordinator, coordinator.data)
+
+    assert len(entities) == 1
+    sensor = entities[0]
+    assert sensor.entity_description.translation_key == expected_translation_key
+    if expected_translation_key is None:
+        assert sensor.name == "CARP Status"
+
+
+@pytest.mark.asyncio
+async def test_carp_entry_failover_keeps_vip_identity_and_updates_responder(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP failover should update the responder while retaining each VIP entity."""
+    entry = make_config_entry(
+        data={"entry_type": "carp"},
+        entry_id="carp-entry",
+        title="CARP VIP",
+    )
+    state: dict[str, Any] = {
+        "system_info": {"name": "node-a"},
+        "carp": {
+            "interfaces": [
+                {
+                    "vhid": 1,
+                    "subnet": "192.0.2.1",
+                    "interface": "igc0",
+                    "status": "BACKUP",
+                    "advskew": 100,
+                    "advbase": 1,
+                    "subnet_bits": 24,
+                    "descr": "Primary VIP",
+                    "mode": "carp",
+                }
+            ],
+            "status_summary": {"state": "healthy"},
+        },
+    }
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+    setattr(entry.runtime_data, COORDINATOR, coordinator)
+    created: list[Any] = []
+
+    def add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Collect entities created by the sensor platform."""
+        created.extend(entities)
+
+    await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
+    responder = next(
+        entity for entity in created if entity.entity_description.key == "carp.active_responder"
+    )
+    vip = next(
+        entity for entity in created if entity.entity_description.key.startswith("carp.vip.")
+    )
+    initial_unique_id = vip.unique_id
+    for entity in (responder, vip):
+        entity.hass = MagicMock()
+        object.__setattr__(entity, "async_write_ha_state", lambda: None)
+        entity._handle_coordinator_update()
+
+    assert responder.native_value == "node-a"
+    assert responder.extra_state_attributes == {}
+    assert vip.available is True
+    assert vip.native_value == "BACKUP"
+    assert vip.icon == "mdi:backup-restore"
+
+    state["system_info"]["name"] = "node-b"
+    state["carp"]["interfaces"][0]["interface"] = "ix0"
+    state["carp"]["interfaces"][0]["status"] = "MASTER"
+    responder._handle_coordinator_update()
+    vip._handle_coordinator_update()
+
+    assert responder.native_value == "node-b"
+    assert vip.available is True
+    assert vip.native_value == "MASTER"
+    assert vip.icon == "mdi:check-network"
+    assert vip.unique_id == initial_unique_id
+    assert vip.extra_state_attributes is not None
+    assert vip.extra_state_attributes == {
+        "interface": "ix0",
+        "vhid": 1,
+        "advskew": 100,
+        "advbase": 1,
+        "subnet_bits": 24,
+        "subnet": "192.0.2.1",
+        "descr": "Primary VIP",
+        "mode": "carp",
+    }
+
+
+@pytest.mark.parametrize(
+    "unavailable_scenario",
+    ["malformed_key", "disappeared_vip", "missing_status"],
+)
+def test_carp_vip_sensor_clears_attributes_when_becoming_unavailable(
+    unavailable_scenario: str,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """A CARP VIP should not retain attributes after its payload becomes unusable."""
+    entry = make_config_entry(data={"entry_type": "carp"}, entry_id="carp-entry")
+    interface = {
+        "vhid": 1,
+        "subnet": "192.0.2.1",
+        "interface": "igc0",
+        "status": "MASTER",
+    }
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {"carp": {"interfaces": [interface]}}
+    description = MagicMock(spec=SensorEntityDescription)
+    description.key = sensor_module._build_carp_vip_sensor_key("1", "192.0.2.1")
+    description.name = "CARP VIP 192.0.2.1 (VHID 1)"
+    description.translation_key = "carp_vip"
+    sensor = OPNsenseCarpVipSensor(
+        config_entry=entry,
+        coordinator=coordinator,
+        entity_description=description,
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.carp_vip"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+
+    sensor._handle_coordinator_update()
+    assert sensor.available is True
+    assert sensor.extra_state_attributes == {
+        "interface": "igc0",
+        "vhid": 1,
+        "subnet": "192.0.2.1",
+    }
+
+    if unavailable_scenario == "malformed_key":
+        description.key = "carp.vip.invalid"
+    elif unavailable_scenario == "disappeared_vip":
+        coordinator.data["carp"]["interfaces"] = []
+    else:
+        interface.pop("status")
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
+    assert sensor.extra_state_attributes == {}
+
+
+@pytest.mark.parametrize("system_info", [{}, {"name": None}, {"name": ""}, {"name": "  "}])
+def test_carp_active_responder_unavailable_without_name(
+    system_info: dict[str, Any],
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """The active responder sensor should fail closed for missing or blank names."""
+    entry = make_config_entry(data={"entry_type": "carp"}, entry_id="carp-entry")
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {"system_info": system_info}
+    sensor = OPNsenseCarpActiveResponderSensor(
+        config_entry=entry,
+        coordinator=coordinator,
+        entity_description=SensorEntityDescription(
+            key="carp.active_responder",
+            name="Active CARP Responder",
+            translation_key="carp_active_responder",
+        ),
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.carp_active_responder_unavailable"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
+    assert sensor.extra_state_attributes == {}
+
+
+def test_carp_active_responder_unavailable_without_system_info(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """The active responder should fail closed when system information is absent."""
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {}
+    sensor = OPNsenseCarpActiveResponderSensor(
+        config_entry=make_config_entry(data={"entry_type": "carp"}),
+        coordinator=coordinator,
+        entity_description=SensorEntityDescription(key="carp.active_responder"),
+    )
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
+    assert sensor.extra_state_attributes == {}
+
+
+def test_carp_value_normalization_handles_empty_and_conversion_errors() -> None:
+    """CARP normalization should return blanks for absent or unconvertible values."""
+
+    class UnconvertibleValue:
+        """Value whose string conversion fails."""
+
+        def __str__(self) -> str:
+            """Raise a representative conversion error."""
+            raise ValueError
+
+    assert sensor_module._normalize_carp_value(None) == ""
+    assert sensor_module._normalize_carp_value(UnconvertibleValue()) == ""
+
+
+@pytest.mark.parametrize(
+    ("subnet", "expected"),
+    [("  ", ""), ("not an ip", "not_an_ip")],
+)
+def test_carp_vip_subnet_normalization_fallbacks(subnet: str, expected: str) -> None:
+    """CARP subnet normalization should handle blanks and non-IP identifiers."""
+    assert sensor_module._normalize_carp_vip_subnet(subnet) == expected
+
+
+@pytest.mark.parametrize("key", ["carp.vip..192_0_2_1", "carp.vip.1."])
+def test_parse_carp_vip_sensor_key_rejects_blank_components(key: str) -> None:
+    """CARP VIP keys with blank identity components should be rejected."""
+    assert sensor_module._parse_carp_vip_sensor_key(key) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "state",
+    [[], {"carp": {"interfaces": "invalid"}}],
+)
+async def test_compile_carp_vip_sensors_rejects_malformed_containers(
+    state: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP VIP compilation should reject malformed state and interface containers."""
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+
+    assert (
+        await sensor_module._compile_carp_vip_sensors(make_config_entry(), coordinator, state) == []
+    )
+
+
+@pytest.mark.asyncio
+async def test_compile_carp_vip_sensors_skips_bad_rows_and_duplicates(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP VIP compilation should skip malformed, incomplete, and duplicate rows."""
+    valid = {"vhid": "1", "subnet": "192.0.2.1", "status": "MASTER"}
+    state = {
+        "carp": {"interfaces": ["invalid", {"vhid": ""}, {"subnet": "192.0.2.1"}, valid, valid]}
+    }
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+
+    entities = await sensor_module._compile_carp_vip_sensors(
+        make_config_entry(), coordinator, state
+    )
+
+    assert len(entities) == 1
+
+
+def test_carp_vip_sensor_skips_malformed_and_nonmatching_rows(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP VIP updates should ignore unusable rows and fail closed without a match."""
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {
+        "carp": {
+            "interfaces": [
+                "invalid",
+                {"vhid": "", "subnet": "192.0.2.1"},
+                {"vhid": "2", "subnet": "192.0.2.2", "status": "MASTER"},
+            ]
+        }
+    }
+    sensor = OPNsenseCarpVipSensor(
+        config_entry=make_config_entry(data={"entry_type": "carp"}),
+        coordinator=coordinator,
+        entity_description=SensorEntityDescription(key="carp.vip.1.192_0_2_1"),
+    )
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
+
+
+def test_carp_vip_sensor_non_string_status_uses_failure_icon(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """CARP VIP sensors should use the failure icon for non-string states."""
+    sensor = OPNsenseCarpVipSensor(
+        config_entry=make_config_entry(data={"entry_type": "carp"}),
+        coordinator=MagicMock(spec=OPNsenseDataUpdateCoordinator),
+        entity_description=SensorEntityDescription(key="carp.vip.1.192_0_2_1"),
+    )
+    sensor._attr_native_value = 1
+
+    assert sensor.icon == "mdi:close-network-outline"
 
 
 @pytest.mark.asyncio
@@ -906,6 +1303,96 @@ def test_build_carp_interface_sensor_key(
 
 
 @pytest.mark.parametrize(
+    ("subnet", "equivalent_subnet"),
+    [
+        ("192.0.2.1/32", "192.0.2.1"),
+        (
+            "2001:db8::1/128",
+            "2001:0db8:0000:0000:0000:0000:0000:0001",
+        ),
+    ],
+)
+def test_build_carp_vip_sensor_key_normalizes_equivalent_subnet_text(
+    subnet: str,
+    equivalent_subnet: str,
+) -> None:
+    """Equivalent subnet text forms should map to the same CARP VIP key."""
+    assert sensor_module._build_carp_vip_sensor_key(
+        "7", subnet
+    ) == sensor_module._build_carp_vip_sensor_key("7", equivalent_subnet)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("initial_subnet", "updated_subnet"),
+    [
+        ("192.0.2.1/32", "192.0.2.1"),
+        (
+            "2001:DB8::0001",
+            "2001:db8::1",
+        ),
+    ],
+)
+async def test_carp_vip_sensor_matches_canonicalized_subnet_identity_on_updates(
+    make_config_entry: Callable[..., MockConfigEntry],
+    initial_subnet: str,
+    updated_subnet: str,
+) -> None:
+    """CARP VIP updates should match across textual subnet variants."""
+    entry = make_config_entry(
+        data={"entry_type": "carp"},
+        entry_id="carp-entry",
+        title="CARP VIP",
+    )
+    state: dict[str, Any] = {
+        "carp": {
+            "interfaces": [
+                {
+                    "vhid": "1",
+                    "subnet": initial_subnet,
+                    "status": "BACKUP",
+                    "interface": "igc0",
+                }
+            ],
+            "status_summary": {"state": "healthy"},
+        }
+    }
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+    setattr(entry.runtime_data, COORDINATOR, coordinator)
+    created: list[Any] = []
+
+    def add_entities(entities: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Collect entities created by async_setup_entry."""
+        created.extend(entities)
+
+    await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
+    vip = next(
+        entity for entity in created if entity.entity_description.key.startswith("carp.vip.")
+    )
+    initial_unique_id = vip.unique_id
+    object.__setattr__(vip, "hass", MagicMock())
+    object.__setattr__(vip, "async_write_ha_state", lambda: None)
+
+    vip._handle_coordinator_update()
+    assert vip.native_value == "BACKUP"
+    assert vip.extra_state_attributes is not None
+    assert vip.extra_state_attributes["subnet"] == initial_subnet
+
+    state["carp"]["interfaces"][0]["subnet"] = updated_subnet
+    state["carp"]["interfaces"][0]["status"] = "MASTER"
+    vip._handle_coordinator_update()
+
+    assert vip.unique_id == initial_unique_id
+    assert vip.native_value == "MASTER"
+    assert vip.extra_state_attributes is not None
+    assert vip.extra_state_attributes["subnet"] == updated_subnet
+    assert vip.entity_description.key == sensor_module._build_carp_vip_sensor_key(
+        "1", updated_subnet
+    )
+
+
+@pytest.mark.parametrize(
     ("key", "expected"),
     [
         ("carp.interface.wan.203_0_113_10", ("wan", "203_0_113_10")),
@@ -1312,6 +1799,8 @@ def test_vpn_sensor_handles_exceptions_from_instance_get(
     """
 
     class BrokenInstance(dict):
+        """Mapping that raises from ``get`` for sensor error-path testing."""
+
         def __init__(self, exc: type[Exception]) -> None:
             """Initialize BrokenInstance.
 
@@ -1456,42 +1945,29 @@ def test_temp_sensor_basic_variants(
             assert attrs.get("device_id") == "dev0"
 
 
-def test_temp_sensor_key_malformed_key_marked_unavailable(
+@pytest.mark.parametrize(
+    "description_key",
+    [
+        pytest.param("telemetry.temps", id="missing-sensor-key"),
+        pytest.param("foo.bar.sensor1", id="wrong-prefix"),
+    ],
+)
+def test_temp_sensor_invalid_description_key_marked_unavailable(
+    description_key: str,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Malformed temp sensor keys should fail closed to unavailable instead of raising."""
+    """Invalid temp sensor keys should fail closed to unavailable instead of raising."""
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord.data = {"telemetry": {"temps": {"sensor1": {"temperature": 55, "device_id": "dev0"}}}}
     entry = make_config_entry()
 
     desc = MagicMock()
-    desc.key = "telemetry.temps"
-    desc.name = "Malformed Temp Key"
+    desc.key = description_key
+    desc.name = "Invalid Temp Key"
 
     s = OPNsenseTempSensor(config_entry=entry, coordinator=coord, entity_description=desc)
     s.hass = MagicMock()
-    s.entity_id = "sensor.temp_malformed_key"
-    object.__setattr__(s, "async_write_ha_state", lambda: None)
-    s._handle_coordinator_update()
-
-    assert s.available is False
-
-
-def test_temp_sensor_key_wrong_prefix_marked_unavailable(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Wrong key prefix should fail closed even when matching telemetry value exists."""
-    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = {"telemetry": {"temps": {"sensor1": {"temperature": 55, "device_id": "dev0"}}}}
-    entry = make_config_entry()
-
-    desc = MagicMock()
-    desc.key = "foo.bar.sensor1"
-    desc.name = "Wrong Prefix Temp Key"
-
-    s = OPNsenseTempSensor(config_entry=entry, coordinator=coord, entity_description=desc)
-    s.hass = MagicMock()
-    s.entity_id = "sensor.temp_wrong_prefix_key"
+    s.entity_id = "sensor.temp_invalid_key"
     object.__setattr__(s, "async_write_ha_state", lambda: None)
     s._handle_coordinator_update()
 
@@ -1533,6 +2009,8 @@ def test_temp_sensor_handles_index_exceptions(
     """Temp sensor should mark itself unavailable when indexing temp raises exceptions."""
 
     class BrokenTemp:
+        """Value object that raises when indexed by the temperature sensor."""
+
         def __init__(self, exc: type[Exception]) -> None:
             """Initialize BrokenTemp.
 
@@ -2312,6 +2790,8 @@ def test_dhcp_leases_handles_exceptions(
     """
 
     class BrokenLease:
+        """Lease mapping that raises from ``get`` for error-path testing."""
+
         def __init__(self, exc: type[Exception]) -> None:
             """Initialize BrokenLease.
 
@@ -2361,6 +2841,8 @@ def test_dhcp_lease_interfaces_items_raises(
     """Ensure exceptions raised by lease_interfaces.items() are caught and sensor becomes unavailable."""
 
     class BrokenLeaseInterfaces(dict):
+        """Lease-interface mapping that raises while iterating items."""
+
         def items(self) -> Never:
             """Raise the parametrized exception when lease interfaces are iterated.
 
@@ -2398,6 +2880,8 @@ def test_dhcp_leases_iterable_raises_on_iter(
     """Ensure exceptions raised while iterating the leases list are caught and sensor becomes unavailable."""
 
     class BrokenLeaseList(list):
+        """Lease list that raises when the sensor begins iteration."""
+
         def __iter__(self) -> Never:
             """Raise the parametrized exception when the lease list is iterated.
 
@@ -2438,6 +2922,8 @@ def test_dhcp_leases_inner_except_writes_unavailable(
     """
 
     class BrokenLease:
+        """Lease mapping that raises during the inner aggregation loop."""
+
         def get(self, *args, **kwargs) -> Never:
             """Raise ``KeyError`` when the sensor reads the lease mapping.
 
@@ -2486,6 +2972,8 @@ def test_dhcp_leases_items_except_writes_unavailable(
     """Verify exceptions from lease_interfaces.items() cause unavailable state and write."""
 
     class BrokenLeaseInterfaces(dict):
+        """Lease-interface mapping that raises during item iteration."""
+
         def items(self) -> Never:
             """Raise ``KeyError`` when interface items are requested.
 
@@ -2535,6 +3023,8 @@ def test_dhcp_leases_per_interface_handles_exceptions(
     """
 
     class BrokenLease(dict):
+        """Lease mapping that raises while reading per-interface data."""
+
         def __init__(self, exc: type[Exception]) -> None:
             """Initialize BrokenLease.
 
@@ -2762,6 +3252,7 @@ class _BadDHCPLeaseInterfaces(dict):
     """Mapping that raises when items() is queried."""
 
     def items(self) -> Never:  # type: ignore[override]
+        """Raise when the compiler queries interface items."""
         raise RuntimeError("items failure for test")
 
 
@@ -3812,6 +4303,43 @@ async def test_async_setup_entry_creates_smart_disk_sensors_by_default(
 
 
 @pytest.mark.asyncio
+async def test_async_setup_entry_creates_smart_disk_sensors_from_ident_only_rows(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART temperature sensors should be compiled when rows provide `ident` only."""
+    smart_entities = await _async_setup_smart_entities(
+        make_config_entry,
+        {
+            CONF_SYNC_TELEMETRY: False,
+            CONF_SYNC_VNSTAT: False,
+            CONF_SYNC_CERTIFICATES: False,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_GATEWAYS: False,
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_DHCP_LEASES: False,
+            CONF_SYNC_SPEEDTEST: False,
+            CONF_SYNC_SMART: True,
+        },
+        {
+            "smart": [{"ident": "SERIAL-ONLY"}],
+            "smart_info": {"SERIAL-ONLY": {"temperature": {"current": 58}}},
+        },
+    )
+
+    assert {entity.entity_description.key for entity in smart_entities} == {
+        "smart.serial_only.temperature",
+    }
+    entity = smart_entities[0]
+    _prepare_smart_sensor(entity)
+    entity._handle_coordinator_update()
+
+    assert entity.available is True
+    assert entity.native_value == 58
+    assert entity.extra_state_attributes == {"ident": "SERIAL-ONLY"}
+
+
+@pytest.mark.asyncio
 async def test_async_setup_entry_creates_smart_temperature_sensors_from_smart_info(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
@@ -4090,6 +4618,26 @@ def test_smart_sensor_strips_device_name_before_smart_info_lookup(
 
     assert sensor.available is True
     assert sensor.native_value == 37
+
+
+def test_smart_sensor_uses_ident_when_device_missing(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART sensors should identify rows using `ident` when `device` is absent."""
+    sensor = _build_smart_sensor(
+        make_config_entry,
+        {
+            "smart": [{"ident": "SERIAL-ONLY"}],
+            "smart_info": {"SERIAL-ONLY": {"temperature": {"current": 58}}},
+        },
+        "smart.serial_only.temperature",
+    )
+    _prepare_smart_sensor(sensor, "sensor.smart_serial_only_temperature")
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is True
+    assert sensor.native_value == 58
+    assert sensor.extra_state_attributes == {"ident": "SERIAL-ONLY"}
 
 
 @pytest.mark.parametrize(

@@ -83,11 +83,13 @@ def _write_pin_files(
     *,
     manifest_version: str,
     pyproject_version: str | None = None,
+    prek_version: str | None = None,
     pyproject_text: str | None = None,
-) -> tuple[Path, Path]:
-    """Write temporary manifest and pyproject files with aiopnsense pins."""
+) -> tuple[Path, Path, Path]:
+    """Write temporary manifest, pyproject, and prek files with aiopnsense pins."""
     manifest_path = tmp_path / "manifest.json"
     pyproject_path = tmp_path / "pyproject.toml"
+    prek_path = tmp_path / "prek.toml"
     manifest_path.write_text(
         json.dumps(
             {
@@ -106,7 +108,19 @@ ha = [
 ]
 """
     pyproject_path.write_text(pyproject_text)
-    return manifest_path, pyproject_path
+    prek_path.write_text(
+        f"""[[repos]]
+repo = "https://github.com/pre-commit/mirrors-mypy"
+
+[[repos.hooks]]
+id = "mypy"
+additional_dependencies = [
+  "aiopnsense=={prek_version or pyproject_version or manifest_version}",
+  "homeassistant-stubs"
+]
+"""
+    )
+    return manifest_path, pyproject_path, prek_path
 
 
 @pytest.fixture
@@ -146,7 +160,10 @@ def _load_script(module_name: str, script_path: Path) -> ModuleType:
         ("Automated update of aiopnsense dependency pins.", "describes generated PRs"),
         ("custom_components/opnsense/manifest.json", "updates the integration manifest"),
         ("pyproject.toml", "updates the local dependency pin"),
+        ("prek.toml", "updates the isolated mypy-hook dependency pin"),
         ("pyproject_current", "reports pyproject drift in PR metadata"),
+        ("prek_current", "reports prek mypy-hook drift in PR metadata"),
+        ("--prek-path prek.toml", "passes the prek configuration to the updater"),
         (str(SCRIPT_PATH), "runs the checked-in updater helper"),
         (str(RELEASE_NOTES_SCRIPT_PATH), "runs the checked-in release-note helper"),
         (str(CLEANUP_SCRIPT_PATH), "runs the checked-in cleanup helper"),
@@ -204,7 +221,7 @@ def test_updater_script_pin_update_scenarios(
     expected_target: str,
 ) -> None:
     """Updater script should handle stable, prerelease, and drift pin scenarios."""
-    manifest_path, pyproject_path = _write_pin_files(
+    manifest_path, pyproject_path, prek_path = _write_pin_files(
         tmp_path,
         manifest_version=manifest_version,
         pyproject_version=pyproject_version,
@@ -213,22 +230,25 @@ def test_updater_script_pin_update_scenarios(
     result = updater_script.update_pins(
         manifest_path=manifest_path,
         pyproject_path=pyproject_path,
+        prek_path=prek_path,
         latest_version=latest_version,
     )
 
     assert result.current == manifest_version
     assert result.pyproject_current == pyproject_version
+    assert result.prek_current == pyproject_version
     assert result.latest == expected_target
     assert result.update_needed is expected_update_needed
     assert f"aiopnsense=={expected_target}" in manifest_path.read_text()
     assert f'    "aiopnsense=={expected_target}",' in pyproject_path.read_text()
+    assert f'  "aiopnsense=={expected_target}",' in prek_path.read_text()
 
 
 def test_updater_script_updates_pyproject_pin_without_trailing_comma(
     tmp_path: Path, updater_script: ModuleType
 ) -> None:
     """Updater script should preserve valid TOML dependency-list formatting."""
-    manifest_path, pyproject_path = _write_pin_files(
+    manifest_path, pyproject_path, prek_path = _write_pin_files(
         tmp_path,
         manifest_version="1.0.8",
         pyproject_text="""[dependency-groups]
@@ -242,11 +262,63 @@ ha = [
     result = updater_script.update_pins(
         manifest_path=manifest_path,
         pyproject_path=pyproject_path,
+        prek_path=prek_path,
         latest_version="1.0.9",
     )
 
     assert result.update_needed is True
     assert '    "aiopnsense==1.0.9"\n' in pyproject_path.read_text()
+
+
+def test_updater_script_repairs_prek_mypy_pin_drift(
+    tmp_path: Path, updater_script: ModuleType
+) -> None:
+    """Updater should synchronize a stale isolated mypy-hook dependency pin."""
+    manifest_path, pyproject_path, prek_path = _write_pin_files(
+        tmp_path,
+        manifest_version="1.1.3",
+        pyproject_version="1.1.3",
+        prek_version="1.1.2",
+    )
+
+    result = updater_script.update_pins(
+        manifest_path=manifest_path,
+        pyproject_path=pyproject_path,
+        prek_path=prek_path,
+        latest_version="1.1.3",
+    )
+
+    assert result.prek_current == "1.1.2"
+    assert result.latest == "1.1.3"
+    assert result.update_needed is True
+    assert '  "aiopnsense==1.1.3",' in prek_path.read_text()
+
+
+def test_updater_script_rejects_missing_prek_mypy_pin(
+    tmp_path: Path, updater_script: ModuleType
+) -> None:
+    """Updater should fail when prek cannot install aiopnsense for mypy."""
+    manifest_path, pyproject_path, prek_path = _write_pin_files(
+        tmp_path,
+        manifest_version="1.1.3",
+    )
+    prek_path.write_text(
+        """[[repos]]
+repo = "https://github.com/pre-commit/mirrors-mypy"
+
+[[repos.hooks]]
+id = "mypy"
+additional_dependencies = ["homeassistant-stubs"]
+"""
+    )
+
+    with pytest.raises(ValueError, match="mypy hook"):
+        updater_script.update_pins(
+            manifest_path=manifest_path,
+            pyproject_path=pyproject_path,
+            prek_path=prek_path,
+            latest_version="1.1.3",
+        )
 
 
 @pytest.mark.parametrize(
@@ -293,7 +365,7 @@ def test_updater_script_rejects_duplicate_pyproject_pins(
     updater_script: ModuleType,
 ) -> None:
     """Updater script should fail clearly when pyproject has ambiguous pins."""
-    manifest_path, pyproject_path = _write_pin_files(
+    manifest_path, pyproject_path, prek_path = _write_pin_files(
         tmp_path,
         manifest_version="1.0.8",
         pyproject_text="""[dependency-groups]
@@ -308,6 +380,7 @@ ha = [
         updater_script.update_pins(
             manifest_path=manifest_path,
             pyproject_path=pyproject_path,
+            prek_path=prek_path,
             latest_version="1.0.10",
         )
 
@@ -344,12 +417,14 @@ def test_release_note_script_builds_sanitized_pr_body(
         releases=releases,
         current_version="1.0.8",
         pyproject_current_version="1.0.8",
+        prek_current_version="1.0.8",
         latest_version="1.0.9",
     )
 
     body = body_path.read_text()
     assert "Automated update of aiopnsense dependency pins." in body
     assert "Updated pinned version: `aiopnsense==1.0.9`" in body
+    assert "Previous prek mypy pin: `aiopnsense==1.0.8`" in body
     assert "### Fixes @<!-- -->someone (1.0.9)" in body
     assert "fixes \\#123 and thanks helper" in body
     assert "Ignored current" not in body
@@ -374,6 +449,8 @@ def test_release_note_script_handles_url_errors(
             "--current-version",
             "1.0.8",
             "--pyproject-current-version",
+            "1.0.8",
+            "--prek-current-version",
             "1.0.8",
             "--latest-version",
             "1.0.9",

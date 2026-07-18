@@ -6,9 +6,15 @@ from unittest.mock import MagicMock
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID, DOMAIN
+from custom_components.opnsense.const import (
+    CONF_DEVICE_UNIQUE_ID,
+    CONF_ENTRY_TYPE,
+    DOMAIN,
+    ENTRY_TYPE_CARP,
+)
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 from custom_components.opnsense.entity import OPNsenseBaseEntity, OPNsenseEntity
+from custom_components.opnsense.helpers import config_entry_identity
 
 
 def test_payload_display_name_uses_scalar_fallback() -> None:
@@ -20,6 +26,7 @@ class _BadStrValue:
     """Value object that raises when converted to a string."""
 
     def __str__(self) -> str:
+        """Raise when the display-name helper converts this value to text."""
         raise ValueError("string conversion failure")
 
 
@@ -41,20 +48,55 @@ class _FaultyPayload(Mapping[str, object]):
     """Payload whose get() raises for a target field."""
 
     def __init__(self, values: dict[str, object]) -> None:
+        """Store payload values used by mapping protocol tests.
+
+        Args:
+            values: Values returned by the mapping methods.
+        """
         self._values = values
 
     def get(self, key: str, default: object | None = None) -> object | None:
+        """Return a value or raise for the deliberately broken key.
+
+        Args:
+            key: Mapping key to read.
+            default: Value returned when the key is absent.
+
+        Returns:
+            object | None: Stored value or the supplied default.
+
+        Raises:
+            ValueError: If ``key`` is the simulated broken field.
+        """
         if key == "broken_get":
             raise ValueError("payload get failed")
         return self._values.get(key, default)
 
     def __getitem__(self, key: str) -> object:
+        """Return the stored value for a required mapping key.
+
+        Args:
+            key: Mapping key to read.
+
+        Returns:
+            object: Stored mapping value.
+        """
         return self._values[key]
 
     def __iter__(self) -> Iterator[str]:
+        """Iterate over stored mapping keys.
+
+        Returns:
+            Iterator[str]: Iterator over the payload keys.
+        """
         return iter(self._values)
 
     def __len__(self) -> int:
+        """Return the number of stored mapping values.
+
+        Returns:
+            int: Number of payload values.
+        """
         return len(self._values)
 
 
@@ -95,6 +137,18 @@ def test_init_sets_unique_and_name_suffixes(
     assert ent.unique_id == "dev_123_suf"
     assert ent.has_entity_name is True
     assert ent.name == "Name"
+
+    carp_entry = make_config_entry(
+        entry_id="carp-entry",
+        data={CONF_ENTRY_TYPE: ENTRY_TYPE_CARP},
+        title="CARP VIP",
+    )
+    carp_ent = OPNsenseBaseEntity(
+        config_entry=carp_entry, coordinator=dummy_coordinator, unique_id_suffix="test"
+    )
+    assert config_entry_identity(carp_entry) == "carp-entry"
+    assert carp_ent._device_unique_id == "carp-entry"
+    assert carp_ent.unique_id == "carp_entry_test"
 
 
 def test_available_property_toggle(

@@ -2,6 +2,7 @@
 
 from collections.abc import Iterable, Mapping, MutableMapping
 import inspect
+import ipaddress
 import logging
 import re
 from typing import Any, Final
@@ -45,7 +46,7 @@ from .const import (
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity
-from .helpers import coerce_bool, dict_get
+from .helpers import coerce_bool, dict_get, get_smart_device_name, is_carp_entry
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -75,6 +76,21 @@ _VPN_TRAFFIC_PROPERTIES: tuple[str, ...] = (
 _VPN_SERVER_PROPERTIES: tuple[str, ...] = ("status", "connected_clients")
 _VPN_WIREGUARD_CLIENT_PROPERTIES: tuple[str, ...] = ("connected_servers",)
 _ICON_MEMORY: Final[str] = "mdi:memory"
+_CARP_INTERFACE_ATTRIBUTES: Final[tuple[str, ...]] = (
+    "interface",
+    "vhid",
+    "advskew",
+    "advbase",
+    "subnet_bits",
+    "subnet",
+    "descr",
+    "mode",
+)
+_CARP_STATUS_ICONS: Final[Mapping[str, str]] = {
+    "MASTER": "mdi:check-network",
+    "BACKUP": "mdi:backup-restore",
+}
+
 
 STATIC_TELEMETRY_SENSORS: Final[tuple[SensorEntityDescription, ...]] = (
     # pfstate
@@ -305,6 +321,7 @@ def _create_sensor[SensorT: OPNsenseSensor](
         coordinator: Coordinator providing the OPNsense data for the entity.
         entity_description: Metadata describing the sensor entity.
 
+
     Returns:
         SensorT: Instantiated sensor entity.
     """
@@ -331,6 +348,7 @@ def _create_sensors[SensorT: OPNsenseSensor](
 
     Returns:
         list[SensorT]: Instantiated sensor entities in description order.
+
     """
     return [
         _create_sensor(entity_cls, config_entry, coordinator, entity_description)
@@ -444,6 +462,7 @@ def _build_vnstat_sensor_description(
 
     Returns:
         SensorEntityDescription: Description for the vnStat sensor entity.
+
     """
     return SensorEntityDescription(
         key=f"vnstat.{interface_name}.{metric_name}",
@@ -474,6 +493,7 @@ def _build_speedtest_sensor_description(
 
     Returns:
         SensorEntityDescription: Description for the speedtest sensor entity.
+
     """
     return SensorEntityDescription(
         key=key,
@@ -494,9 +514,10 @@ def _build_smart_sensor_description(device_name: str) -> SensorEntityDescription
 
     Returns:
         SensorEntityDescription: Description for the SMART temperature sensor.
+
     """
     return SensorEntityDescription(
-        key=f"smart.{_smart_device_slug(device_name)}.temperature",
+        key=f"smart.{slugify(device_name) or 'unknown'}.temperature",
         name=f"SMART {device_name} Temperature",
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
@@ -516,6 +537,7 @@ def _build_filesystem_sensor_description(filesystem: Mapping[str, Any]) -> Senso
 
     Returns:
         SensorEntityDescription: Description for the filesystem usage sensor.
+
     """
     mountpoint = filesystem["mountpoint"]
     filesystem_slug = slugify_filesystem_mountpoint(mountpoint)
@@ -545,6 +567,7 @@ def _build_interface_sensor_description(
 
     Returns:
         SensorEntityDescription: Description for the interface sensor.
+
     """
     state_class: SensorStateClass | None = SensorStateClass.MEASUREMENT
     native_unit_of_measurement = None
@@ -607,12 +630,13 @@ def _build_gateway_sensor_description(
     """Build a gateway sensor description.
 
     Args:
-        gateway_key: OPNsense gateway key used in the entity key.
-        gateway_name: User-facing gateway name used in the entity name.
+        gateway_key: Stable gateway identifier used in the entity key.
+        gateway_name: Human-readable gateway name used in the entity label.
         prop_name: Gateway property represented by the sensor.
 
     Returns:
         SensorEntityDescription: Description for the gateway sensor.
+
     """
     native_unit_of_measurement = None
     device_class: SensorDeviceClass | None = None
@@ -655,6 +679,7 @@ def _build_temperature_sensor_description(
 
     Returns:
         SensorEntityDescription: Description for the temperature sensor.
+
     """
     return SensorEntityDescription(
         key=f"telemetry.temps.{temp_device}",
@@ -681,6 +706,7 @@ def _build_dhcp_leases_sensor_description(
 
     Returns:
         SensorEntityDescription: Description for the interface lease sensor.
+
     """
     return SensorEntityDescription(
         key=f"dhcp_leases.{interface}",
@@ -698,6 +724,7 @@ def _build_dhcp_leases_total_sensor_description() -> SensorEntityDescription:
 
     Returns:
         SensorEntityDescription: Description for the aggregate lease sensor.
+
     """
     return SensorEntityDescription(
         key="dhcp_leases.all",
@@ -728,6 +755,7 @@ def _build_vpn_sensor_description(
 
     Returns:
         SensorEntityDescription: Description for the VPN sensor entity.
+
     """
     state_class: SensorStateClass | None = None
     native_unit_of_measurement: UnitOfDataRate | UnitOfInformation | None = None
@@ -788,6 +816,9 @@ async def _compile_static_telemetry_sensors(
     Args:
         config_entry: Config entry being exercised by the helper or test.
         coordinator: Data update coordinator that caches OPNsense state for entities.
+
+    Returns:
+        list: Compiled static telemetry sensor entities.
     """
     return _create_sensors(
         OPNsenseStaticKeySensor,
@@ -806,6 +837,9 @@ async def _compile_static_certificate_sensors(
     Args:
         config_entry: Config entry being exercised by the helper or test.
         coordinator: Data update coordinator that caches OPNsense state for entities.
+
+    Returns:
+        list: Compiled static certificate sensor entities.
     """
     return _create_sensors(
         OPNsenseStaticKeySensor,
@@ -820,7 +854,16 @@ async def _compile_vnstat_sensors(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
-    """Compile per-interface vnStat sensors."""
+    """Compile per-interface vnStat sensors.
+
+    Args:
+        config_entry: Config entry owning the sensors.
+        coordinator: Data update coordinator supplying state.
+        state: Coordinator state snapshot containing vnStat interfaces.
+
+    Returns:
+        list: Compiled vnStat sensor entities.
+    """
     if not isinstance(state, MutableMapping):
         return []
     vnstat_interfaces = dict_get(state, "vnstat.interfaces", {}) or {}
@@ -878,7 +921,16 @@ async def _compile_speedtest_sensors(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
-    """Compile speedtest sensors from normalized coordinator state."""
+    """Compile speedtest sensors from normalized coordinator state.
+
+    Args:
+        config_entry: Config entry owning the sensors.
+        coordinator: Data update coordinator supplying state.
+        state: Coordinator state snapshot containing speedtest instances.
+
+    Returns:
+        list: Compiled speedtest sensor entities.
+    """
     if not isinstance(state, MutableMapping):
         return []
     speedtest = state.get("speedtest")
@@ -934,19 +986,6 @@ async def _compile_speedtest_sensors(
     )
 
 
-def _smart_device_slug(device_name: str) -> str:
-    """Return the entity key slug for a SMART device name.
-
-    Args:
-        device_name: SMART device name, such as ``nvme0`` or ``ada0``.
-
-    Returns:
-        str: Slug suitable for a SMART sensor entity description key.
-    """
-    device_slug = slugify(device_name)
-    return device_slug or "unknown"
-
-
 async def _compile_smart_sensors(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
@@ -973,11 +1012,9 @@ async def _compile_smart_sensors(
     for smart_device in smart_devices:
         if not isinstance(smart_device, Mapping):
             continue
-        device_name = smart_device.get("device")
-        if not isinstance(device_name, str) or not device_name.strip():
+        device_name = get_smart_device_name(smart_device)
+        if not device_name:
             continue
-        device_name = device_name.strip()
-
         entities.append(
             _create_sensor(
                 OPNsenseSmartSensor,
@@ -1000,6 +1037,9 @@ async def _compile_filesystem_sensors(
         config_entry: Config entry being exercised by the helper or test.
         coordinator: Data update coordinator that caches OPNsense state for entities.
         state: Coordinator state snapshot that contains filesystem telemetry data.
+
+    Returns:
+        list: Compiled filesystem sensor entities.
     """
     if not isinstance(state, MutableMapping):
         return []
@@ -1031,6 +1071,9 @@ async def _compile_carp_interface_sensors(
         config_entry: Config entry being exercised by the helper or test.
         coordinator: Data update coordinator that caches OPNsense state for entities.
         state: Coordinator state snapshot that contains CARP interface status data.
+
+    Returns:
+        list: Compiled CARP interface sensor entities.
     """
     if not isinstance(state, MutableMapping):
         return []
@@ -1119,6 +1162,127 @@ def _parse_carp_interface_sensor_key(key: str) -> tuple[str, str] | None:
     return (interface_slug, subnet_slug)
 
 
+def _normalize_carp_value(value: Any) -> str:
+    """Normalize a CARP identifier or subnet value for matching.
+
+    Args:
+        value: Raw CARP value, which may be a number or string.
+
+    Returns:
+        str: Trimmed value, or an empty string when it cannot be normalized.
+    """
+    if value is None:
+        return ""
+    try:
+        return str(value).strip()
+    except AttributeError, RuntimeError, TypeError, ValueError:
+        return ""
+
+
+def _normalize_carp_vip_subnet(subnet: str) -> str:
+    """Return a stable CARP subnet identity for entity matching and key generation.
+
+    Args:
+        subnet: CARP subnet or address value to normalize.
+
+    Returns:
+        str: Slugified IP identity, or the normalized raw subnet when parsing fails.
+    """
+    raw_subnet = subnet.strip()
+    if not raw_subnet:
+        return ""
+    try:
+        return slugify(str(ipaddress.ip_interface(raw_subnet).ip))
+    except ValueError, TypeError:
+        return slugify(raw_subnet)
+
+
+def _build_carp_vip_sensor_key(vhid: str, subnet: str) -> str:
+    """Build a node-independent CARP VIP key from synchronized values.
+
+    Args:
+        vhid: CARP virtual host ID.
+        subnet: CARP virtual IP or subnet value.
+
+    Returns:
+        str: Stable CARP VIP sensor key.
+    """
+    return f"carp.vip.{slugify(vhid.strip())}.{_normalize_carp_vip_subnet(subnet)}"
+
+
+def _parse_carp_vip_sensor_key(key: str) -> tuple[str, str] | None:
+    """Parse a CARP VIP key into its VHID and subnet slugs.
+
+    Args:
+        key: Sensor description key to parse.
+
+    Returns:
+        tuple[str, str] | None: VHID and subnet slugs when the key is valid.
+    """
+    key_parts = key.split(".")
+    if len(key_parts) != 4 or key_parts[:2] != ["carp", "vip"]:
+        return None
+    vhid_slug, subnet_slug = (part.strip() for part in key_parts[2:])
+    if not vhid_slug or not subnet_slug:
+        return None
+    return vhid_slug, subnet_slug
+
+
+async def _compile_carp_vip_sensors(
+    config_entry: ConfigEntry,
+    coordinator: OPNsenseDataUpdateCoordinator,
+    state: MutableMapping[str, Any],
+) -> list:
+    """Compile stable, read-only CARP VIP sensors.
+
+    Args:
+        config_entry: CARP config entry being exercised by the helper or test.
+        coordinator: Data update coordinator that caches CARP state.
+        state: Coordinator state snapshot that contains CARP interface rows.
+
+    Returns:
+        list: CARP VIP sensors disabled by default.
+    """
+    if not isinstance(state, MutableMapping):
+        return []
+    carp_interfaces = dict_get(state, "carp.interfaces", []) or []
+    if not isinstance(carp_interfaces, list):
+        return []
+
+    entities: list[OPNsenseCarpVipSensor] = []
+    seen_keys: set[str] = set()
+    for interface in carp_interfaces:
+        if not isinstance(interface, Mapping):
+            continue
+        vhid = _normalize_carp_value(interface.get("vhid"))
+        subnet = _normalize_carp_value(interface.get("subnet"))
+        if not vhid or not subnet:
+            continue
+        key = _build_carp_vip_sensor_key(vhid, subnet)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        entities.append(
+            _create_sensor(
+                OPNsenseCarpVipSensor,
+                config_entry,
+                coordinator,
+                SensorEntityDescription(
+                    key=key,
+                    name=f"CARP VIP {subnet} (VHID {vhid})",
+                    translation_key="carp_vip",
+                    translation_placeholders={"subnet": subnet, "vhid": vhid},
+                    native_unit_of_measurement=None,
+                    device_class=None,
+                    icon="mdi:ip-network",
+                    state_class=None,
+                    entity_registry_enabled_default=False,
+                ),
+            )
+        )
+    return entities
+
+
 async def _compile_carp_status_sensor(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
@@ -1130,6 +1294,9 @@ async def _compile_carp_status_sensor(
         config_entry: Config entry being exercised by the helper or test.
         coordinator: Data update coordinator that caches OPNsense state for entities.
         state: Coordinator state snapshot that contains CARP summary status data.
+
+    Returns:
+        list: Compiled aggregate CARP status sensor entities.
     """
     if not isinstance(state, MutableMapping):
         return []
@@ -1141,6 +1308,7 @@ async def _compile_carp_status_sensor(
             SensorEntityDescription(
                 key="carp.status_summary",
                 name="CARP Status",
+                translation_key=("carp_status_summary" if is_carp_entry(config_entry) else None),
                 native_unit_of_measurement=None,
                 device_class=None,
                 icon="mdi:gauge",
@@ -1162,6 +1330,9 @@ async def _compile_interface_sensors(
         config_entry: Config entry being exercised by the helper or test.
         coordinator: Data update coordinator that caches OPNsense state for entities.
         state: Coordinator state snapshot that contains network interface statistics.
+
+    Returns:
+        list: Compiled interface sensor entities.
     """
     if not isinstance(state, MutableMapping):
         return []
@@ -1198,6 +1369,9 @@ async def _compile_gateway_sensors(
         config_entry: Config entry being exercised by the helper or test.
         coordinator: Data update coordinator that caches OPNsense state for entities.
         state: Coordinator state snapshot that contains gateway latency, loss, and status data.
+
+    Returns:
+        list: Compiled gateway sensor entities.
     """
     if not isinstance(state, MutableMapping):
         return []
@@ -1237,6 +1411,9 @@ async def _compile_temperature_sensors(
         config_entry: Config entry being exercised by the helper or test.
         coordinator: Data update coordinator that caches OPNsense state for entities.
         state: Coordinator state snapshot that contains hardware temperature telemetry.
+
+    Returns:
+        list: Compiled temperature sensor entities.
     """
     if not isinstance(state, MutableMapping):
         return []
@@ -1271,6 +1448,9 @@ async def _compile_dhcp_leases_sensors(
         config_entry: Config entry being exercised by the helper or test.
         coordinator: Data update coordinator that caches OPNsense state for entities.
         state: Coordinator state snapshot that contains DHCP lease counts per interface.
+
+    Returns:
+        list: Compiled DHCP lease sensor entities.
     """
     if not isinstance(state, MutableMapping):
         return []
@@ -1318,6 +1498,9 @@ async def _compile_vpn_sensors(
         config_entry: Config entry being exercised by the helper or test.
         coordinator: Data update coordinator that caches OPNsense state for entities.
         state: Coordinator state snapshot that contains OpenVPN and WireGuard metrics.
+
+    Returns:
+        list: Compiled VPN sensor entities.
     """
     if not isinstance(state, MutableMapping):
         return []
@@ -1367,15 +1550,40 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the OPNsense sensors."""
+    """Set up the OPNsense sensors.
+
+    Args:
+        hass: Home Assistant instance receiving the entities.
+        config_entry: Config entry whose sensors are being set up.
+        async_add_entities: Callback used to register compiled entities.
+    """
     coordinator: OPNsenseDataUpdateCoordinator = getattr(config_entry.runtime_data, COORDINATOR)
     state: dict[str, Any] = coordinator.data
     if not isinstance(state, MutableMapping):
         _LOGGER.error("Missing state data in sensor async_setup_entry")
         return
     config: Mapping[str, Any] = config_entry.data
-
     entities: list = []
+
+    if is_carp_entry(config_entry):
+        entities = [
+            _create_sensor(
+                OPNsenseCarpActiveResponderSensor,
+                config_entry,
+                coordinator,
+                SensorEntityDescription(
+                    key="carp.active_responder",
+                    name="Active CARP Responder",
+                    translation_key="carp_active_responder",
+                    icon="mdi:server-network",
+                    entity_registry_enabled_default=True,
+                ),
+            )
+        ]
+        entities.extend(await _compile_carp_status_sensor(config_entry, coordinator, state))
+        entities.extend(await _compile_carp_vip_sensors(config_entry, coordinator, state))
+        async_add_entities(entities)
+        return
 
     if config.get(CONF_SYNC_TELEMETRY, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_static_telemetry_sensors(config_entry, coordinator))
@@ -1406,7 +1614,14 @@ async def async_setup_entry(
 
 
 def slugify_filesystem_mountpoint(mountpoint: str) -> str:
-    """Slugify the mountpoint."""
+    """Slugify a filesystem mountpoint for use in an entity key.
+
+    Args:
+        mountpoint: Filesystem mountpoint to normalize.
+
+    Returns:
+        str: Stable mountpoint slug.
+    """
     if not mountpoint:
         return ""
     if mountpoint == "/":
@@ -1415,7 +1630,14 @@ def slugify_filesystem_mountpoint(mountpoint: str) -> str:
 
 
 def normalize_filesystem_mountpoint(mountpoint: str) -> str:
-    """Normalize the mountpoint."""
+    """Normalize a filesystem mountpoint for display.
+
+    Args:
+        mountpoint: Filesystem mountpoint to normalize.
+
+    Returns:
+        str: Display-friendly mountpoint.
+    """
     if not mountpoint:
         return ""
     if mountpoint == "/":
@@ -1433,9 +1655,19 @@ class OPNsenseSensor(OPNsenseEntity, SensorEntity):
         entity_description: SensorEntityDescription,
         unique_id_suffix: str | None = None,
     ) -> None:
-        """Initialize the sensor."""
+        """Initialize the sensor.
+
+        Args:
+            config_entry: Config entry owning the sensor.
+            coordinator: Data update coordinator supplying sensor state.
+            entity_description: Description of the sensor entity.
+            unique_id_suffix: Optional stable suffix for the entity unique ID.
+        """
         name_suffix: str | None = (
-            entity_description.name if isinstance(entity_description.name, str) else None
+            entity_description.name
+            if isinstance(entity_description.name, str)
+            and entity_description.translation_key is None
+            else None
         )
         if unique_id_suffix is None:
             unique_id_suffix = (
@@ -1615,10 +1847,10 @@ class OPNsenseSmartSensor(OPNsenseSensor):
         for candidate in smart_devices:
             if not isinstance(candidate, Mapping):
                 continue
-            device_name = candidate.get("device")
-            if not isinstance(device_name, str) or not device_name.strip():
+            device_name = get_smart_device_name(candidate)
+            if not device_name:
                 continue
-            if _smart_device_slug(device_name.strip()) == expected_device_slug:
+            if (slugify(device_name.strip()) or "unknown") == expected_device_slug:
                 smart_device = candidate
                 break
 
@@ -1626,12 +1858,9 @@ class OPNsenseSmartSensor(OPNsenseSensor):
             self._mark_unavailable()
             return
 
-        device_name = smart_device.get("device")
+        device_name = get_smart_device_name(smart_device)
         smart_info = state.get("smart_info")
-        normalized_device_name = device_name.strip() if isinstance(device_name, str) else ""
-        device_info = (
-            smart_info.get(normalized_device_name) if isinstance(smart_info, Mapping) else None
-        )
+        device_info = smart_info.get(device_name) if isinstance(smart_info, Mapping) else None
         if not isinstance(device_info, Mapping):
             self._mark_unavailable()
             return
@@ -1769,7 +1998,11 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
 
     @property
     def icon(self) -> str | None:
-        """Return the icon for the sensor."""
+        """Return the icon for the sensor.
+
+        Returns:
+            str | None: Icon identifier, or the inherited icon.
+        """
         key_parts = self.entity_description.key.rsplit(".", 1)
         if len(key_parts) != 2:
             return super().icon
@@ -1777,6 +2010,28 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
         if prop_name == "status" and self.native_value != "up":
             return "mdi:close-network-outline"
         return super().icon
+
+
+class OPNsenseCarpActiveResponderSensor(OPNsenseSensor):
+    """Class for the active OPNsense node observed by a CARP endpoint."""
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle coordinator updates for the active CARP responder."""
+        system_info = self._mapping_at("system_info")
+        if system_info is None:
+            self._mark_unavailable(clear_attributes=True)
+            return
+
+        responder_name = system_info.get("name")
+        if not isinstance(responder_name, str) or not responder_name.strip():
+            self._mark_unavailable(clear_attributes=True)
+            return
+
+        self._available = True
+        self._attr_native_value = responder_name.strip()
+        self._attr_extra_state_attributes = {}
+        self.async_write_ha_state()
 
 
 class OPNsenseCarpInterfaceSensor(OPNsenseSensor):
@@ -1830,31 +2085,21 @@ class OPNsenseCarpInterfaceSensor(OPNsenseSensor):
             return
         self._available = True
         self._attr_extra_state_attributes = {}
-        for attr in (
-            "interface",
-            "vhid",
-            "advskew",
-            "advbase",
-            "subnet_bits",
-            "subnet",
-            "descr",
-            "mode",
-        ):
+        for attr in _CARP_INTERFACE_ATTRIBUTES:
             if attr in carp_interface:
                 self._attr_extra_state_attributes[attr] = carp_interface[attr]
         self.async_write_ha_state()
 
     @property
     def icon(self) -> str | None:
-        """Return the icon for the sensor."""
-        if not self.native_value or not isinstance(self.native_value, str):
+        """Return the icon for the sensor.
+
+        Returns:
+            str | None: Icon identifier, or the inherited icon.
+        """
+        if not isinstance(self.native_value, str):
             return "mdi:close-network-outline"
-        status = self.native_value.upper()
-        if status == "MASTER":
-            return "mdi:check-network"
-        if status == "BACKUP":
-            return "mdi:backup-restore"
-        return "mdi:close-network-outline"
+        return _CARP_STATUS_ICONS.get(self.native_value.upper(), "mdi:close-network-outline")
 
 
 class OPNsenseCarpStatusSensor(OPNsenseSensor):
@@ -1896,7 +2141,11 @@ class OPNsenseCarpStatusSensor(OPNsenseSensor):
 
     @property
     def icon(self) -> str | None:
-        """Return the icon for the sensor."""
+        """Return the icon for the sensor.
+
+        Returns:
+            str | None: Icon identifier, or the inherited icon.
+        """
         state_value = str(self.native_value).lower().strip().replace(" ", "_")
         if state_value == "healthy":
             return "mdi:check-network"
@@ -1905,6 +2154,64 @@ class OPNsenseCarpStatusSensor(OPNsenseSensor):
         if state_value in {"degraded", "disabled"}:
             return "mdi:close-network-outline"
         return super().icon
+
+
+class OPNsenseCarpVipSensor(OPNsenseSensor):
+    """Class for an individual read-only CARP virtual IP sensor."""
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle coordinator updates for a CARP virtual IP."""
+        key_data = _parse_carp_vip_sensor_key(self.entity_description.key)
+        carp_interfaces = self._list_at("carp.interfaces")
+        if key_data is None or carp_interfaces is None:
+            self._mark_unavailable(clear_attributes=True)
+            return
+
+        expected_vhid_slug, expected_subnet_slug = key_data
+        carp_vip: dict[str, Any] = {}
+        for interface in carp_interfaces:
+            if not isinstance(interface, Mapping):
+                continue
+            vhid = _normalize_carp_value(interface.get("vhid"))
+            subnet = _normalize_carp_value(interface.get("subnet"))
+            if not vhid or not subnet:
+                continue
+            if (
+                slugify(vhid) != expected_vhid_slug
+                or _normalize_carp_vip_subnet(subnet) != expected_subnet_slug
+            ):
+                continue
+            carp_vip = dict(interface)
+            break
+
+        if not carp_vip:
+            self._mark_unavailable(clear_attributes=True)
+            return
+
+        status = carp_vip.get("status")
+        if status is None:
+            self._mark_unavailable(clear_attributes=True)
+            return
+
+        self._available = True
+        self._attr_native_value = status
+        self._attr_extra_state_attributes = {}
+        for attr in _CARP_INTERFACE_ATTRIBUTES:
+            if attr in carp_vip:
+                self._attr_extra_state_attributes[attr] = carp_vip[attr]
+        self.async_write_ha_state()
+
+    @property
+    def icon(self) -> str | None:
+        """Return an icon based on the current CARP VIP status.
+
+        Returns:
+            str | None: Icon identifier for the current CARP VIP status.
+        """
+        if not isinstance(self.native_value, str):
+            return "mdi:close-network-outline"
+        return _CARP_STATUS_ICONS.get(self.native_value.upper(), "mdi:close-network-outline")
 
 
 class OPNsenseGatewaySensor(OPNsenseSensor):
@@ -1919,6 +2226,7 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
         Returns:
             dict[str, Any]: Matching gateway payload, or an empty dictionary when
                 no matching gateway is available.
+
         """
         gateways = self._mapping_at("gateways")
         if gateways is None:
@@ -1974,7 +2282,11 @@ class OPNsenseGatewaySensor(OPNsenseSensor):
 
     @property
     def icon(self) -> str | None:
-        """Return the icon for the sensor."""
+        """Return the icon for the sensor.
+
+        Returns:
+            str | None: Icon identifier, or the inherited icon.
+        """
         key_parts = self.entity_description.key.rsplit(".", 1)
         if len(key_parts) != 2:
             return super().icon
@@ -2116,7 +2428,11 @@ class OPNsenseVPNSensor(OPNsenseSensor):
 
     @property
     def icon(self) -> str | None:
-        """Return the icon for the sensor."""
+        """Return the icon for the sensor.
+
+        Returns:
+            str | None: Icon identifier, or the inherited icon.
+        """
         key_parts = self.entity_description.key.split(".")
         if len(key_parts) != 4:
             return super().icon
@@ -2174,6 +2490,7 @@ def _count_active_dhcp_leases(leases: Iterable[Any]) -> int | None:
     Returns:
         int | None: Number of rows with a non-empty ``address``, or ``None`` when
             any row is not a mutable mapping.
+
     """
     lease_count = 0
     for lease in leases:

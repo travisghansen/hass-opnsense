@@ -3,6 +3,7 @@
   "config": {
     "abort": {
       "already_configured": "Device is already configured",
+      "carp_device_url_conflict": "A CARP entry and a device entry cannot use the same URL. Use the actual firewall IP address or hostname for the device entry and the CARP VIP IP address or hostname for the CARP entry.",
       "reconfigure_successful": "OPNsense integration reconfigured"
     },
     "error": {
@@ -16,10 +17,19 @@
       "url_redirect": "Incorrect URL (redirect)",
       "missing_device_unique_id": "Unable to get MAC addresses from OPNsense to use as Device Unique ID",
       "below_min_firmware": "OPNsense Firmware of {firmware} is below the minimum supported version of {min_firmware}",
+      "carp_not_configured": "No CARP VIP interfaces are configured on the selected OPNsense host",
+      "carp_responder_unavailable": "Unable to determine the active CARP responder from the selected OPNsense host",
       "unknown_firmware": "Unable to get OPNsense Firmware version"
     },
     "step": {
       "user": {
+        "title": "Add a hass-opnsense instance",
+        "menu_options": {
+          "device": "OPNsense device entry",
+          "carp": "CARP VIP entry"
+        }
+      },
+      "device": {
         "data": {
           "url": "URL",
           "username": "API Key",
@@ -28,7 +38,24 @@
           "verify_ssl": "Verify SSL certificate",
           "granular_sync_options": "Enable Granular Sync Options"
         },
-        "title": "Connect to the OPNsense firewall / router"
+        "title": "Connect to the OPNsense firewall / router",
+        "data_description": {
+          "url": "Use the actual OPNsense device URL. Do not use a CARP virtual URL."
+        }
+      },
+      "carp": {
+        "description": "CARP VIP entries are read-only. Configure each physical node with its own management address in a separate OPNsense device entry.",
+        "data": {
+          "url": "URL",
+          "username": "API Key",
+          "password": "API Secret",
+          "name": "CARP VIP display name",
+          "verify_ssl": "Verify SSL certificate"
+        },
+        "title": "Connect to the OPNsense CARP VIP entry",
+        "data_description": {
+          "url": "Use the CARP virtual URL; individual physical nodes must also be configured separately via their management addresses."
+        }
       },
       "granular_sync": {
         "data": {
@@ -52,6 +79,7 @@
       },
       "reconfigure": {
         "data": {
+          "name": "Display name",
           "url": "URL",
           "username": "API Key",
           "password": "API Secret",
@@ -75,8 +103,10 @@
           "device_tracker_consider_home": "Device Tracker Consider Home",
           "granular_sync_options": "Enable Granular Sync Options"
         },
+        "description": "This screen exposes {options_scope}.",
         "data_description": {
-          "device_tracking_mode": "For `Track only selected devices`, a next step lets you pick devices from recent ARP detections and add MAC addresses manually"
+          "device_tracking_mode": "For `Track only selected devices`, a next step lets you pick devices from recent ARP detections and add MAC addresses manually",
+          "scan_interval": "Scan interval controls how often this entry polls its source."
         }
       },
       "granular_sync": {
@@ -109,6 +139,19 @@
           "devices": "Only recently detected devices appear here. Previously selected devices that are not currently detected stay available in the list.",
           "manual_devices": "Enter MAC addresses separated by commas or new lines. Invalid MAC addresses are ignored. Example: 00:00:00:00:00:00"
         }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "carp_active_responder": {
+        "name": "Active responder"
+      },
+      "carp_status_summary": {
+        "name": "CARP VIP status"
+      },
+      "carp_vip": {
+        "name": "CARP VIP {subnet} (VHID {vhid})"
       }
     }
   },

@@ -36,9 +36,30 @@ from .const import (
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseBaseEntity
-from .helpers import detach_shared_router_parent, dict_get
+from .helpers import (
+    detach_shared_router_parent,
+    dict_get,
+    get_arp_ip,
+    get_arp_mac,
+    normalize_arp_mac,
+)
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+
+
+def _normalize_mac_for_device_tracker(mac_address: str) -> str:
+    """Normalize a user-facing or payload MAC with canonical fallback.
+
+    Args:
+        mac_address: A raw MAC-like input.
+
+    Returns:
+        Canonical MAC when possible, otherwise permissive lower-case normalized value.
+    """
+    normalized_mac = normalize_mac_address(mac_address)
+    if normalized_mac is not None:
+        return normalized_mac
+    return normalize_arp_mac(mac_address)
 
 
 def _device_data_from_arp_entry(
@@ -60,24 +81,11 @@ def _device_data_from_arp_entry(
     if hostname is not None:
         device["hostname"] = hostname
 
-    manufacturer = _non_empty_string(arp_entry.get("manufacturer"))
-    if manufacturer is not None:
+    manufacturer = arp_entry.get("manufacturer")
+    if isinstance(manufacturer, str) and manufacturer:
         device["manufacturer"] = manufacturer
 
     return device
-
-
-def _mac_matches(mac_a: object, mac_b: object) -> bool:
-    """Compare MAC addresses case-insensitively and normalize known formats."""
-    if not isinstance(mac_a, str) or not isinstance(mac_b, str):
-        return False
-
-    mac_a_normalized = normalize_mac_address(mac_a)
-    mac_b_normalized = normalize_mac_address(mac_b)
-    if mac_a_normalized is not None and mac_b_normalized is not None:
-        return mac_a_normalized == mac_b_normalized
-
-    return mac_a.lower() == mac_b.lower()
 
 
 def _device_from_arp_entry(mac_address: str, arp_entries: list[Any]) -> dict[str, Any]:
@@ -91,10 +99,12 @@ def _device_from_arp_entry(mac_address: str, arp_entries: list[Any]) -> dict[str
         A device dictionary for the matching ARP entry, or a MAC-only fallback.
     """
     device: dict[str, Any] = {"mac": mac_address}
+    normalized_mac = _normalize_mac_for_device_tracker(mac_address)
     for arp_entry in arp_entries:
         if not isinstance(arp_entry, MutableMapping):
             continue
-        if not _mac_matches(mac_address, arp_entry.get("mac")):
+        arp_mac = get_arp_mac(arp_entry)
+        if not arp_mac or _normalize_mac_for_device_tracker(arp_mac) != normalized_mac:
             continue
         device.update(_device_data_from_arp_entry(mac_address, arp_entry))
         break
@@ -116,29 +126,16 @@ def _devices_from_arp_entries(arp_entries: list[Any]) -> tuple[list[dict[str, An
     for arp_entry in arp_entries:
         if not isinstance(arp_entry, MutableMapping):
             continue
-        mac_address = arp_entry.get("mac")
-        if not isinstance(mac_address, str):
+        mac_address = get_arp_mac(arp_entry)
+        if not mac_address:
             continue
-        normalized_mac = normalize_mac_address(mac_address)
-        mac = normalized_mac or mac_address.lower().strip()
-        if not mac or mac in mac_addresses:
+        normalized_mac = _normalize_mac_for_device_tracker(mac_address)
+        if not normalized_mac or normalized_mac in mac_addresses:
             continue
-        mac_addresses.append(mac)
-        devices.append(_device_data_from_arp_entry(mac, arp_entry))
+        mac_addresses.append(normalized_mac)
+        devices.append(_device_data_from_arp_entry(normalized_mac, arp_entry))
 
     return devices, mac_addresses
-
-
-def _non_empty_string(value: object) -> str | None:
-    """Return a non-empty string value, if available.
-
-    Args:
-        value: Candidate value to inspect.
-
-    Returns:
-        The input string when it is non-empty, otherwise ``None``.
-    """
-    return value if isinstance(value, str) and value else None
 
 
 def _hostname_from_arp_entry(entry: MutableMapping[str, Any]) -> str | None:
@@ -215,15 +212,15 @@ def _compile_tracked_devices(
     if not config_entry.options.get(CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED):
         return [], [], False
 
-    configured_mac_addresses = []
+    configured_mac_addresses: list[str] = []
     for mac_address in config_entry.options.get(CONF_DEVICES, []):
         if not isinstance(mac_address, str):
             continue
-        normalized_mac = normalize_mac_address(mac_address)
-        normalized_mac = normalized_mac or mac_address.lower().strip()
+        normalized_mac = _normalize_mac_for_device_tracker(mac_address)
         if not normalized_mac or normalized_mac in configured_mac_addresses:
             continue
         configured_mac_addresses.append(normalized_mac)
+
     if configured_mac_addresses:
         _LOGGER.debug(
             "[device_tracker async_setup_entry] configured_mac_addresses: %s",
@@ -375,7 +372,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         config_entry: ConfigEntry,
         coordinator: OPNsenseDataUpdateCoordinator,
         enabled_default: bool,
-        mac: str | None,
+        mac: str,
         mac_vendor: str | None,
         hostname: str | None,
     ) -> None:
@@ -385,7 +382,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             config_entry: Config entry owning the entity.
             coordinator: Shared OPNsense data coordinator.
             enabled_default: Whether the entity is enabled by default.
-            mac: MAC address tracked by the entity, or ``None`` when unavailable.
+            mac: MAC address tracked by the entity.
             mac_vendor: Vendor name reported for the MAC address.
             hostname: Hostname reported by OPNsense.
         """
@@ -433,7 +430,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
 
     @property
     def unique_id(self) -> str | None:
-        """Return the unique id.
+        """Return a stable object-id hint when linking to an existing device.
 
         Returns:
             The Home Assistant entity unique ID.
@@ -483,12 +480,17 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         for arp_entry in arp_table:
             if not isinstance(arp_entry, MutableMapping):
                 continue
-            if _mac_matches(self._attr_mac_address, arp_entry.get("mac")):
+            arp_mac = get_arp_mac(arp_entry)
+            if (
+                isinstance(self._attr_mac_address, str)
+                and self._attr_mac_address.lower() == arp_mac
+            ):
                 entry = arp_entry
                 break
         if not entry:
             entry = {}
-        self._attr_ip_address = _non_empty_string(entry.get("ip"))
+        ip_address = get_arp_ip(entry)
+        self._attr_ip_address = ip_address if isinstance(ip_address, str) and ip_address else None
 
         if self._attr_ip_address:
             self._last_known_ip = self._attr_ip_address

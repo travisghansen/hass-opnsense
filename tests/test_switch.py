@@ -3218,10 +3218,10 @@ async def test_vpn_entries_skip_non_mapping_and_missing_enabled(
     assert ents == []
 
 
-def test_service_helper_methods(
+def test_service_switch_initializes_property_name(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Service switch helper methods extract property and service id correctly."""
+    """Service switches extract the property name from their entity key."""
     desc = SwitchEntityDescription(key="service.svcx.status", name="SvcX")
     config_entry_srv = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry_srv.runtime_data, COORDINATOR, coordinator)
@@ -3230,8 +3230,7 @@ def test_service_helper_methods(
         coordinator=coordinator,
         entity_description=desc,
     )
-    assert ent._opnsense_get_property_name() == "status"
-    assert ent._opnsense_get_service_id() == "svcx"
+    assert ent._prop_name == "status"
 
 
 def test_vpn_instance_key_parsing(
