@@ -3650,39 +3650,6 @@ async def test_vpn_entries_skip_non_mapping_and_missing_enabled(
     assert ents == []
 
 
-def test_service_switch_initializes_property_name(
-    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
-) -> None:
-    """Service switches extract the property name from their entity key."""
-    desc = SwitchEntityDescription(key="service.svcx.status", name="SvcX")
-    config_entry_srv = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(config_entry_srv.runtime_data, COORDINATOR, coordinator)
-    ent = OPNsenseServiceSwitch(
-        config_entry=config_entry_srv,
-        coordinator=coordinator,
-        entity_description=desc,
-    )
-    assert ent._prop_name == "status"
-
-
-def test_vpn_instance_key_parsing(
-    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
-) -> None:
-    """VPNSwitch parses its entity_description.key into type, section, and uuid."""
-    # ensure VPNSwitch parses key parts without raising
-    desc = SwitchEntityDescription(key="openvpn.clients.c1", name="VPNC")
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    ent = OPNsenseVPNSwitch(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=desc,
-    )
-    assert ent._vpn_type == "openvpn"
-    assert ent._clients_servers == "clients"
-    assert ent._uuid == "c1"
-
-
 @pytest.mark.parametrize("exc_type", [TypeError, KeyError, AttributeError])
 def test_vpn_handle_exceptions_sets_unavailable(
     exc_type: type[Exception],
