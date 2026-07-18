@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, call
 from aiopnsense.exceptions import (
     OPNsenseBelowMinFirmware,
     OPNsenseConnectionError,
-    OPNsenseError,
     OPNsenseMissingDeviceUniqueID,
     OPNsenseTimeoutError,
     OPNsenseUnknownFirmware,
@@ -782,6 +781,7 @@ async def test_entry_swap_reprobe_snapshot_stability_checks_after_unload(
     [
         pytest.param(OPNsenseConnectionError("transport"), None, id="connection-error"),
         pytest.param(OPNsenseTimeoutError("timeout"), None, id="timeout-error"),
+        pytest.param(TimeoutError("raw timeout"), None, id="raw-timeout-error"),
         pytest.param(None, None, id="missing-device-id"),
         pytest.param(None, "", id="blank-device-id"),
         pytest.param(None, "   ", id="whitespace-device-id"),
@@ -817,6 +817,7 @@ async def test_invalid_probe_result_aborts_without_mutations(
     entity_registry.async_remove.assert_not_called()
     device_registry.async_update_device.assert_not_called()
     hass.config_entries.async_unload.assert_not_awaited()
+    hass.config_entries.async_reload.assert_not_awaited()
     hass.config_entries.async_update_entry.assert_not_called()
     hass.config_entries.async_schedule_reload.assert_not_called()
 
@@ -1698,13 +1699,14 @@ async def test_valid_marker_retry_reprobes_and_reloads(
     [
         (OPNsenseConnectionError("transport"), None, "cannot_connect"),
         (OPNsenseTimeoutError("timeout"), None, "cannot_connect"),
+        (TimeoutError("raw timeout"), None, "cannot_connect"),
         (None, "", "cannot_connect"),
         (None, "dev1", "entry_changed"),
     ],
 )
 async def test_marker_retry_reprobe_error_and_id_checks_abort_without_mutation(
     monkeypatch: pytest.MonkeyPatch,
-    probe_error: OPNsenseError | None,
+    probe_error: BaseException | None,
     observed_device_id: Any | None,
     expected_reason: str,
 ) -> None:
@@ -1730,7 +1732,9 @@ async def test_marker_retry_reprobe_error_and_id_checks_abort_without_mutation(
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == expected_reason
     hass.config_entries.async_unload.assert_not_awaited()
+    hass.config_entries.async_reload.assert_not_awaited()
     hass.config_entries.async_update_entry.assert_not_called()
+    hass.config_entries.async_schedule_reload.assert_not_called()
 
 
 @pytest.mark.asyncio

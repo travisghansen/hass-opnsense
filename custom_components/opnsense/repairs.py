@@ -529,7 +529,7 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
                 return self.async_abort(reason="entry_changed")
             try:
                 observed_device_id = await _async_validate_and_probe_device_id(self.hass, entry)
-            except OPNsenseError:
+            except OPNsenseError, TimeoutError:
                 return self.async_abort(reason="cannot_connect")
             if not is_valid_device_id(observed_device_id):
                 return self.async_abort(reason="cannot_connect")
@@ -558,7 +558,7 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
 
         try:
             observed_device_id = await _async_validate_and_probe_device_id(self.hass, entry)
-        except OPNsenseError:
+        except OPNsenseError, TimeoutError:
             return self.async_abort(reason="cannot_connect")
 
         current_entry = _get_entry_matching_snapshot(

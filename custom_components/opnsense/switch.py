@@ -30,7 +30,24 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 def _is_valid_service_row(service: Any) -> bool:
     """Return whether a service row can be evaluated by the compiler."""
-    return isinstance(service, Mapping)
+    return isinstance(service, Mapping) and _service_identity(service) is not None
+
+
+def _service_identity(service: Mapping[str, Any]) -> str | None:
+    """Return a stable service identity from a row when available."""
+    service_id = service.get("id")
+    if isinstance(service_id, str):
+        service_id = service_id.strip()
+        if service_id:
+            return service_id
+
+    service_name = service.get("name")
+    if isinstance(service_name, str):
+        service_name = service_name.strip()
+        if service_name:
+            return service_name
+
+    return None
 
 
 def _is_valid_vpn_switch_row(instance: Any) -> bool:
@@ -107,7 +124,7 @@ def _build_service_switch_description(service: Mapping[str, Any]) -> SwitchEntit
         A switch entity description for the service status toggle.
     """
     prop_name = "status"
-    service_id = service.get("id", service.get("name", "unknown"))
+    service_id = _service_identity(service) or "unknown"
     service_name = service.get("description", service.get("name", "Unknown"))
     return SwitchEntityDescription(
         key=f"service.{service_id}.{prop_name}",

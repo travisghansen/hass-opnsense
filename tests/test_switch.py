@@ -4260,3 +4260,50 @@ async def test_compile_new_api_empty_state(
 
     ents = await _compile_nat_source_rules_switches(config_entry, coordinator, state)
     assert ents == []
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_none_for_malformed_service_identity_row(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Service identity must be stable even if some rows are malformed."""
+    coordinator = make_coord(
+        {
+            "services": [
+                {"id": "locked", "name": "Locked", "locked": 1},
+                {},
+                {"id": "svc", "name": "svc", "locked": 0, "status": True},
+            ]
+        }
+    )
+    config_entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_FIREWALL_AND_NAT: False,
+            CONF_SYNC_SERVICES: True,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_UNBOUND: False,
+        }
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    recorded: dict[str, Any] = {}
+    created: list[Any] = []
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture desired entities input for reconciliation."""
+        recorded["entities"] = entities
+
+    def add_entities(ents: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Capture compiled switch entities."""
+        created.extend(ents)
+
+    monkeypatch.setattr(switch_mod, "record_desired_entities", capture)
+
+    await switch_mod.async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", add_entities)
+    )
+    assert recorded["entities"] is None
+    assert [entity.entity_description.key for entity in created] == ["service.svc.status"]
