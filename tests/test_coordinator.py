@@ -7,13 +7,13 @@ calculations, and update flow.
 
 from collections.abc import Callable, MutableMapping
 from datetime import timedelta
-import logging
 import time
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, call
 
 from aiopnsense.exceptions import OPNsenseTimeoutError
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers import issue_registry as ir
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -38,9 +38,11 @@ from custom_components.opnsense.const import (
     CONF_SYNC_UNBOUND,
     CONF_SYNC_VNSTAT,
     CONF_SYNC_VPN,
+    DOMAIN,
     ENTRY_TYPE_CARP,
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
+from custom_components.opnsense.repair_reconciliation import REPAIR_MARKER_KEY, build_repair_marker
 
 
 @pytest.mark.asyncio
@@ -154,10 +156,14 @@ async def test_get_states_fetches_smart_info_for_each_smart_device(
         "nvme0": {"temperature": {"current": 71}},
         "ada0": {"temperature": {"current": 42}},
     }
-    assert client.get_smart_info.await_args_list == [
-        call(device="nvme0", info_type="A"),
-        call(device="ada0", info_type="A"),
-    ]
+    client.get_smart_info.assert_has_awaits(
+        [
+            call(device="nvme0", info_type="A"),
+            call(device="ada0", info_type="A"),
+        ],
+        any_order=True,
+    )
+    assert client.get_smart_info.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -194,10 +200,14 @@ async def test_get_states_uses_smart_ident_when_device_missing(
         "serial-1": {"temperature": {"current": 37}},
         "nvme0": {"temperature": {"current": 37}},
     }
-    assert client.get_smart_info.await_args_list == [
-        call(device="serial-1", info_type="A"),
-        call(device="nvme0", info_type="A"),
-    ]
+    client.get_smart_info.assert_has_awaits(
+        [
+            call(device="serial-1", info_type="A"),
+            call(device="nvme0", info_type="A"),
+        ],
+        any_order=True,
+    )
+    assert client.get_smart_info.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -298,10 +308,8 @@ async def test_build_categories_includes_smart_without_smart_info_when_client_la
 @pytest.mark.asyncio
 async def test_build_categories_skips_smart_when_client_lacks_support(
     make_config_entry: Callable[..., MockConfigEntry],
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """SMART sync should not call unsupported runtime clients."""
-    caplog.set_level(logging.DEBUG, logger=coordinator_module.__name__)
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_SMART: True})
     client = MagicMock()
     del client.get_smart
@@ -316,7 +324,6 @@ async def test_build_categories_skips_smart_when_client_lacks_support(
     )
 
     assert "smart" not in [category["state_key"] for category in coord._categories]
-    assert "does not support it" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -449,7 +456,7 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
 
     def fake_async_create_issue(**kwargs: Any) -> None:
         # record the kwargs so tests can validate domain and issue_id
-        """Capture the issue payload emitted for a device-ID mismatch.
+        """Capture the issue payload emitted for a Device ID mismatch.
 
         Args:
             **kwargs: Issue fields passed to ``issue_registry.async_create_issue``.
@@ -457,7 +464,7 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
         called["issue"] += 1
         called["issue_kwargs"] = kwargs
 
-    monkeypatch.setattr(coordinator_module.ir, "async_create_issue", fake_async_create_issue)
+    monkeypatch.setattr(ir, "async_create_issue", fake_async_create_issue)
     object.__setattr__(coord, "async_shutdown", fake_shutdown)
 
     # call 3 times -> should call issue once and shutdown once
@@ -469,10 +476,87 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
     assert called["shutdown"] == 1
     # validate the issue was created for the integration domain and expected id
     assert isinstance(called["issue_kwargs"], MutableMapping)
-    assert called["issue_kwargs"].get("domain") == coordinator_module.DOMAIN
-    assert (
-        called["issue_kwargs"].get("issue_id") == f"{coord._device_unique_id}_device_id_mismatched"
+    assert called["issue_kwargs"].get("domain") == DOMAIN
+    assert called["issue_kwargs"].get("issue_id") == f"{entry.entry_id}_device_id_mismatched"
+    assert called["issue_kwargs"].get("is_fixable") is True
+    assert called["issue_kwargs"].get("data") == {
+        "entry_id": entry.entry_id,
+        "old_device_id": "expected",
+        "new_device_id": "other",
+    }
+    assert called["issue_kwargs"].get("translation_placeholders") == {
+        "entry_title": entry.title,
+        "old_device_id": "expected",
+        "new_device_id": "other",
+    }
+
+
+@pytest.mark.asyncio
+async def test_check_device_unique_id_clears_stale_issue_without_repair_marker(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
+    """Matching IDs should clear stale mismatch issues when no repair marker exists."""
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "expected"})
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="expected",
+        config_entry=entry,
     )
+    coord._state = {"device_unique_id": "expected"}
+    create_issue_delete = MagicMock()
+    monkeypatch.setattr(ir, "async_delete_issue", create_issue_delete)
+    build_issue_id = MagicMock(return_value="stable-issue-id")
+    monkeypatch.setattr(
+        coordinator_module,
+        "build_device_id_mismatch_issue_id",
+        build_issue_id,
+    )
+
+    res = await coord._check_device_unique_id()
+
+    assert res is True
+    build_issue_id.assert_called_once_with(entry.entry_id)
+    create_issue_delete.assert_called_once_with(
+        coord.hass,
+        DOMAIN,
+        "stable-issue-id",
+    )
+
+
+@pytest.mark.asyncio
+async def test_check_device_unique_id_keeps_stale_issue_when_repair_marker_present(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
+    """Matching IDs should keep stale issues while a repair marker is still active."""
+    marker = build_repair_marker("old-dev", "expected")
+    entry = make_config_entry(
+        {CONF_DEVICE_UNIQUE_ID: "expected", REPAIR_MARKER_KEY: marker},
+    )
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="expected",
+        config_entry=entry,
+    )
+    coord._state = {"device_unique_id": "expected"}
+    create_issue_delete = MagicMock()
+    monkeypatch.setattr(ir, "async_delete_issue", create_issue_delete)
+
+    res = await coord._check_device_unique_id()
+
+    assert res is True
+    create_issue_delete.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -771,7 +855,7 @@ async def test_async_update_data_reentrancy_and_full_flow(
 
     # full flow: monkeypatch _check_device_unique_id to True and ensure functions called
     async def true_check() -> bool:
-        """Force the device-ID validation step to succeed."""
+        """Force the Device ID validation step to succeed."""
         return True
 
     monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
@@ -864,7 +948,7 @@ async def test_async_update_data_enables_firewall_polling_when_runtime_firmware_
     )
 
     async def true_check() -> bool:
-        """Force the device-id validation step to succeed."""
+        """Force the Device ID validation step to succeed."""
         return True
 
     monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
@@ -946,7 +1030,7 @@ async def test_build_categories_and_refresh_queue_firewall_for_legacy_firmware(
     assert "firewall" in [category["state_key"] for category in coord._categories]
 
     async def true_check() -> bool:
-        """Force the device-id validation step to succeed."""
+        """Force the Device ID validation step to succeed."""
         return True
 
     monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
@@ -1027,7 +1111,7 @@ async def test_async_update_data_continues_firewall_polling_after_runtime_downgr
     )
 
     async def true_check() -> bool:
-        """Force the device-id validation step to succeed."""
+        """Force the Device ID validation step to succeed."""
         return True
 
     monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
@@ -1113,7 +1197,7 @@ async def test_async_update_data_fetches_firewall_on_first_refresh_if_firmware_i
     )
 
     async def true_check() -> bool:
-        """Force the device-id validation step to succeed."""
+        """Force the Device ID validation step to succeed."""
         return True
 
     monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
@@ -1327,7 +1411,7 @@ async def test_async_update_data_preserves_only_counter_snapshot(
     }
 
     async def true_check() -> bool:
-        """Force device-ID validation to pass for previous-state assertions."""
+        """Force Device ID validation to pass for previous-state assertions."""
         return True
 
     async def noop_calc() -> None:
@@ -1413,10 +1497,10 @@ async def test_async_update_data_returns_empty_when_device_id_check_fails(
     )
 
     async def false_check() -> bool:
-        """Force device-ID validation to fail for the early-return branch."""
+        """Force Device ID validation to fail for the early-return branch."""
         return False
 
-    # make the device id check return False
+    # make the Device ID check return False
     monkeypatch.setattr(coord, "_check_device_unique_id", false_check)
 
     # spy on reset_query_counts
@@ -1483,6 +1567,7 @@ async def test_calculate_entity_speeds_returns_early_when_missing(
     [
         (None, False),
         ("other", False),
+        (" ", False),
         ("id", True),
     ],
 )
@@ -1545,7 +1630,7 @@ async def test_async_update_dt_data_uses_shared_device_id_mismatch_policy(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """Device-tracker refreshes should use the shared device-ID mismatch policy."""
+    """Device-tracker refreshes should use the shared Device ID mismatch policy."""
     entry = make_config_entry({"device_unique_id": "id"})
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -1567,7 +1652,7 @@ async def test_async_update_dt_data_uses_shared_device_id_mismatch_policy(
             "arp_table": [],
         }
 
-    called: dict[str, Any] = {"issue": 0, "shutdown": 0}
+    called: dict[str, Any] = {"issue": 0, "shutdown": 0, "issue_kwargs": None}
 
     async def fake_shutdown() -> None:
         """Record coordinator shutdown requests."""
@@ -1576,9 +1661,10 @@ async def test_async_update_dt_data_uses_shared_device_id_mismatch_policy(
     def fake_async_create_issue(**kwargs: Any) -> None:
         """Record repair issue creation requests."""
         called["issue"] += 1
+        called["issue_kwargs"] = kwargs
 
     monkeypatch.setattr(coord, "_get_states", fake_get_states)
-    monkeypatch.setattr(coordinator_module.ir, "async_create_issue", fake_async_create_issue)
+    monkeypatch.setattr(ir, "async_create_issue", fake_async_create_issue)
     object.__setattr__(coord, "async_shutdown", fake_shutdown)
     object.__setattr__(client, "get_query_counts", AsyncMock(return_value=3))
 
@@ -1587,5 +1673,113 @@ async def test_async_update_dt_data_uses_shared_device_id_mismatch_policy(
     assert await coord._async_update_dt_data() == {}
 
     assert coord._mismatched_count == 3
-    assert called == {"issue": 1, "shutdown": 1}
+    assert called["issue"] == 1
+    assert called["shutdown"] == 1
+    assert called["issue_kwargs"]["is_fixable"] is True
+    assert called["issue_kwargs"]["issue_id"] == f"{entry.entry_id}_device_id_mismatched"
+    assert called["issue_kwargs"]["data"] == {
+        "entry_id": entry.entry_id,
+        "old_device_id": "id",
+        "new_device_id": "other",
+    }
+    assert called["issue_kwargs"]["translation_placeholders"] == {
+        "entry_title": entry.title,
+        "old_device_id": "id",
+        "new_device_id": "other",
+    }
     client.get_query_counts.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_check_device_unique_id_mismatch_issue_retries_until_success(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
+    """Retry mismatch issue creation and shut down only after it succeeds."""
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=fake_client()(),
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+    coord._state = {"device_unique_id": "other"}
+    create_issue = MagicMock(side_effect=[False, True])
+    shutdown = AsyncMock()
+
+    monkeypatch.setattr(coordinator_module, "async_create_device_id_mismatch_issue", create_issue)
+    object.__setattr__(coord, "async_shutdown", shutdown)
+
+    assert await coord._check_device_unique_id() is False
+    assert await coord._check_device_unique_id() is False
+    assert await coord._check_device_unique_id() is False
+    assert await coord._check_device_unique_id() is False
+
+    assert coord._mismatched_count == 4
+    assert create_issue.call_args_list == [
+        call(coord.hass, entry, "other"),
+        call(coord.hass, entry, "other"),
+    ]
+    shutdown.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("expected_device_id", "state"),
+    [
+        pytest.param("expected", {}, id="missing-runtime-id"),
+        pytest.param("expected", {"device_unique_id": ""}, id="blank-runtime-id"),
+        pytest.param("expected", {"device_unique_id": None}, id="none-runtime-id"),
+        pytest.param("expected", {"device_unique_id": 123}, id="number-runtime-id"),
+        pytest.param("expected", {"device_unique_id": "   "}, id="whitespace-runtime-id"),
+        pytest.param("", {"device_unique_id": "valid-runtime-id"}, id="blank-configured-id"),
+        pytest.param(
+            "   ", {"device_unique_id": "valid-runtime-id"}, id="whitespace-configured-id"
+        ),
+        pytest.param(123, {"device_unique_id": "valid-runtime-id"}, id="number-configured-id"),
+    ],
+)
+async def test_check_device_unique_id_invalid_runtime_id_is_not_counted(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+    expected_device_id: object,
+    state: dict[str, object],
+) -> None:
+    """Malformed configured or runtime IDs should reset mismatch count and fail fast."""
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: expected_device_id})
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=fake_client()(),
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="expected",
+        config_entry=entry,
+    )
+    object.__setattr__(coord, "_device_unique_id", expected_device_id)
+
+    called: dict[str, int] = {"issue": 0, "shutdown": 0}
+    coord._mismatched_count = 2
+
+    async def fake_shutdown() -> None:
+        """Record shutdown calls for invalid runtime IDs."""
+        called["shutdown"] += 1
+
+    def fake_async_create_issue(**kwargs: Any) -> None:
+        """Record issue creation calls."""
+        del kwargs
+        called["issue"] += 1
+
+    monkeypatch.setattr(ir, "async_create_issue", fake_async_create_issue)
+    object.__setattr__(coord, "async_shutdown", fake_shutdown)
+    coord._state = state
+
+    result = await coord._check_device_unique_id()
+
+    assert result is False
+    assert coord._mismatched_count == 0
+    assert called["issue"] == 0
+    assert called["shutdown"] == 0

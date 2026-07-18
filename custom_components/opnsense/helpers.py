@@ -257,7 +257,7 @@ def find_replacement_router_device_id(
     config_entries: ConfigEntries,
     device_registry: DeviceRegistry,
 ) -> str | None:
-    """Find a replacement OPNsense router device id for a shared tracked device.
+    """Find a replacement OPNsense router Device ID for a shared tracked device.
 
     Args:
         shared_config_entry_id: The config entry currently being detached.

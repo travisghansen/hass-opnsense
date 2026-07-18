@@ -11,6 +11,7 @@ import contextlib
 from typing import Any
 from unittest.mock import MagicMock
 
+import aiohttp
 from homeassistant.core import HomeAssistant
 import homeassistant.helpers.aiohttp_client as _ha_aiohttp_client
 import pytest
@@ -112,7 +113,7 @@ def _patch_async_create_clientsession(monkeypatch: pytest.MonkeyPatch) -> None:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             """Ignore args and return a usable object for patch coverage."""
 
-    monkeypatch.setattr(_helpers_mod.aiohttp, "CookieJar", _FakeCookieJar, raising=True)
+    monkeypatch.setattr(aiohttp, "CookieJar", _FakeCookieJar, raising=True)
 
 
 @pytest.fixture

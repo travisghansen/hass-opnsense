@@ -43,6 +43,7 @@ from .helpers import (
     get_arp_mac,
     normalize_arp_mac,
 )
+from .repair_reconciliation import is_reconciliation_active, record_desired_entities
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -136,6 +137,32 @@ def _devices_from_arp_entries(arp_entries: list[Any]) -> tuple[list[dict[str, An
         devices.append(_device_data_from_arp_entry(normalized_mac, arp_entry))
 
     return devices, mac_addresses
+
+
+def _track_all_arp_entries_are_complete(arp_entries: list[Any]) -> bool:
+    """Return whether every non-entity ARP row is skippable in track-all mode.
+
+    Args:
+        arp_entries: Raw ARP entries returned by OPNsense.
+
+    Returns:
+        ``True`` when every row is a mapping and any row with a normalizable MAC
+        contributes a unique MAC address.
+    """
+    seen_macs: set[str] = set()
+    for arp_entry in arp_entries:
+        if not isinstance(arp_entry, MutableMapping):
+            return False
+        mac_address = get_arp_mac(arp_entry)
+        if not mac_address:
+            continue
+        normalized_mac = _normalize_mac_for_device_tracker(mac_address)
+        if not normalized_mac:
+            continue
+        if normalized_mac in seen_macs:
+            continue
+        seen_macs.add(normalized_mac)
+    return True
 
 
 def _hostname_from_arp_entry(entry: MutableMapping[str, Any]) -> str | None:
@@ -258,11 +285,23 @@ async def async_setup_entry(
     if not isinstance(state, MutableMapping):
         _LOGGER.error("Missing state data in device tracker async_setup_entry")
         return
+    reconciliation_complete = True
     entities: list = []
 
     arp_entries = dict_get(state, "arp_table")
+    configured_macs = config_entry.options.get(CONF_DEVICES, [])
+    has_configured_macs = bool(
+        isinstance(configured_macs, list)
+        and any(
+            isinstance(mac_address, str) and mac_address.strip() for mac_address in configured_macs
+        )
+    )
     if not isinstance(arp_entries, list):
+        if not has_configured_macs:
+            reconciliation_complete = False
         arp_entries = []
+    elif not has_configured_macs:
+        reconciliation_complete = _track_all_arp_entries_are_complete(arp_entries)
     devices, mac_addresses, enabled_default = _compile_tracked_devices(config_entry, arp_entries)
 
     for device in devices:
@@ -278,13 +317,14 @@ async def async_setup_entry(
             hostname=device.get("hostname", None),
         )
         entities.append(entity)
-    _cleanup_stale_tracked_devices(
-        hass=hass,
-        config_entry=config_entry,
-        device_registry=dev_reg,
-        previous_mac_addresses=previous_mac_addresses,
-        current_mac_addresses=mac_addresses,
-    )
+    if not is_reconciliation_active(config_entry):
+        _cleanup_stale_tracked_devices(
+            hass=hass,
+            config_entry=config_entry,
+            device_registry=dev_reg,
+            previous_mac_addresses=previous_mac_addresses,
+            current_mac_addresses=mac_addresses,
+        )
 
     if set(mac_addresses) != set(previous_mac_addresses):
         setattr(config_entry.runtime_data, SHOULD_RELOAD, False)
@@ -293,6 +333,9 @@ async def async_setup_entry(
         hass.config_entries.async_update_entry(config_entry, data=new_data)
 
     _LOGGER.debug("[device_tracker async_setup_entry] entities: %s", len(entities))
+    record_desired_entities(
+        config_entry, "device_tracker", entities if reconciliation_complete else None
+    )
     async_add_entities(entities)
 
 

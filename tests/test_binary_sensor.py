@@ -16,6 +16,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+import custom_components.opnsense.binary_sensor as binary_sensor_module
 from custom_components.opnsense.binary_sensor import (
     OPNsenseInterfaceEnabledBinarySensor,
     OPNsensePendingNoticesPresentBinarySensor,
@@ -36,6 +37,47 @@ from custom_components.opnsense.const import (
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 from tests.utilities import stub_async_write_ha_state
+
+
+def capture_reconciled_desired_entities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, Any]:
+    """Capture reconciliation desired entities during setup."""
+    captured: dict[str, Any] = {}
+
+    def capture(
+        _entry: MockConfigEntry,
+        _platform: str,
+        entities: Any | None = None,
+    ) -> None:
+        """Capture entities passed to ``record_desired_entities``."""
+        captured["entities"] = entities
+
+    monkeypatch.setattr(binary_sensor_module, "record_desired_entities", capture)
+    return captured
+
+
+def setup_binary_sensor_reconciliation_entry(
+    make_config_entry: Callable[..., MockConfigEntry],
+    *,
+    coordinator_data: dict[str, Any],
+    sync_interfaces: bool = False,
+    sync_smart: bool = False,
+    sync_notices: bool = False,
+) -> MockConfigEntry:
+    """Create a binary-sensor test entry with coordinator/runtime pre-wired."""
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_INTERFACES: sync_interfaces,
+            CONF_SYNC_SMART: sync_smart,
+            CONF_SYNC_NOTICES: sync_notices,
+        }
+    )
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = coordinator_data
+    setattr(entry.runtime_data, COORDINATOR, coordinator)
+    return entry
 
 
 def test_binary_sensor_description_builders_preserve_entity_contract() -> None:
@@ -88,6 +130,128 @@ async def test_async_setup_entry_creates_entities_when_enabled(
     await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
     assert len(created) == 1
     assert isinstance(created[0], OPNsensePendingNoticesPresentBinarySensor)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("coordinator_data", "sync_interfaces", "sync_smart", "sync_notices", "expected"),
+    [
+        ({}, True, False, False, None),
+        ({"interfaces": {}}, True, False, False, []),
+        ({}, False, True, False, None),
+        ({"smart": []}, False, True, False, []),
+        ({"smart": [], "smart_info": {}}, False, True, False, []),
+    ],
+    ids=[
+        "missing-interface",
+        "empty-interface",
+        "missing-smart",
+        "empty-smart-without-smart-info",
+        "empty-smart",
+    ],
+)
+async def test_async_setup_entry_records_none_or_authoritative_empty_for_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    coordinator_data: dict[str, Any],
+    sync_interfaces: bool,
+    sync_smart: bool,
+    sync_notices: bool,
+    expected: Any,
+) -> None:
+    """Track missing and authoritative-empty reconciliation inventories."""
+    entry = setup_binary_sensor_reconciliation_entry(
+        make_config_entry,
+        coordinator_data=coordinator_data,
+        sync_interfaces=sync_interfaces,
+        sync_smart=sync_smart,
+        sync_notices=sync_notices,
+    )
+    captured = capture_reconciled_desired_entities(monkeypatch)
+
+    await async_setup_entry(
+        MagicMock(),
+        entry,
+        cast("AddEntitiesCallback", lambda ents, _=False: None),
+    )
+    assert "entities" in captured
+    assert captured["entities"] == expected
+
+
+@pytest.mark.parametrize(
+    ("coordinator_data", "sync_interfaces", "sync_smart", "expected_key"),
+    [
+        (
+            {"interfaces": {None: {}, "wan": {"name": "WAN"}}},
+            True,
+            False,
+            "interface.wan.enabled",
+        ),
+        (
+            {"smart": [None, {"device": "  "}, {"device": "nvme0"}]},
+            False,
+            True,
+            "smart.nvme0.status",
+        ),
+    ],
+    ids=["interface", "smart"],
+)
+@pytest.mark.asyncio
+async def test_async_setup_entry_marks_malformed_binary_sensor_rows_incomplete(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    coordinator_data: dict[str, Any],
+    sync_interfaces: bool,
+    sync_smart: bool,
+    expected_key: str,
+) -> None:
+    """Malformed rows keep reconciliation incomplete while valid rows still compile."""
+    entry = setup_binary_sensor_reconciliation_entry(
+        make_config_entry,
+        coordinator_data=coordinator_data,
+        sync_interfaces=sync_interfaces,
+        sync_smart=sync_smart,
+    )
+    captured = capture_reconciled_desired_entities(monkeypatch)
+    created: list[Any] = []
+
+    await async_setup_entry(
+        MagicMock(),
+        entry,
+        cast("AddEntitiesCallback", lambda entities, _=False: created.extend(entities)),
+    )
+
+    assert captured["entities"] is None
+    assert {entity.entity_description.key for entity in created} == {expected_key}
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_skips_when_coordinator_state_not_mapping(
+    monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Non-mapping coordinator state should skip setup bookkeeping and entity creation."""
+    entry = setup_binary_sensor_reconciliation_entry(
+        make_config_entry,
+        coordinator_data=cast("dict[str, Any]", ["not", "mapping"]),
+        sync_interfaces=True,
+        sync_smart=False,
+        sync_notices=False,
+    )
+    captured = capture_reconciled_desired_entities(monkeypatch)
+    created: list[Any] = []
+
+    def add_entities(ents: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Capture entities."""
+        created.extend(ents)
+
+    await async_setup_entry(
+        MagicMock(),
+        entry,
+        cast("AddEntitiesCallback", add_entities),
+    )
+
+    assert "entities" not in captured
+    assert created == []
 
 
 @pytest.mark.asyncio

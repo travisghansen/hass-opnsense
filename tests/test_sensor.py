@@ -9,12 +9,15 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
+from homeassistant.const import PERCENTAGE, UnitOfDataRate, UnitOfInformation, UnitOfTemperature
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import slugify
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.opnsense import const as const_module, sensor as sensor_module
 from custom_components.opnsense.const import (
+    CONF_DEVICE_UNIQUE_ID,
     CONF_SYNC_CARP,
     CONF_SYNC_CERTIFICATES,
     CONF_SYNC_DHCP_LEASES,
@@ -26,6 +29,7 @@ from custom_components.opnsense.const import (
     CONF_SYNC_VNSTAT,
     CONF_SYNC_VPN,
     COORDINATOR,
+    OPNSENSE_CLIENT,
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 from custom_components.opnsense.sensor import (
@@ -128,9 +132,7 @@ async def test_carp_entry_setup_has_exact_read_only_vip_inventory(
         sensor_module._build_carp_vip_sensor_key("1", "192.0.2.1"),
         sensor_module._build_carp_vip_sensor_key("2", "198.51.100.1"),
     }
-    expected_unique_ids = {
-        sensor_module.slugify(f"{entry.entry_id}_{key}") for key in expected_keys
-    }
+    expected_unique_ids = {slugify(f"{entry.entry_id}_{key}") for key in expected_keys}
     assert keys == expected_keys
     assert {entity.unique_id for entity in created} == expected_unique_ids
     descriptions = {entity.entity_description.key: entity.entity_description for entity in created}
@@ -569,10 +571,10 @@ async def test_compile_gateway_sensors_keeps_gateway_id_in_entity_key(
         entity for entity in entities if entity.entity_description.key == "gateway.wan.status"
     )
     assert address_entity.entity_description.name == "Gateway WAN_GW address"
-    assert address_entity._attr_unique_id == sensor_module.slugify(
+    assert address_entity._attr_unique_id == slugify(
         f"{entry.data['device_unique_id']}_gateway.WAN_GW.address"
     )
-    assert status_entity._attr_unique_id == sensor_module.slugify(
+    assert status_entity._attr_unique_id == slugify(
         f"{entry.data['device_unique_id']}_gateway.WAN_GW.status"
     )
 
@@ -594,7 +596,7 @@ def test_carp_sensor_unavailable_variants(
     entry = make_config_entry()
 
     desc = MagicMock()
-    desc.key = f"carp.interface.lan0.{sensor_module.slugify(desc_subnet)}"
+    desc.key = f"carp.interface.lan0.{slugify(desc_subnet)}"
     desc.name = "CARP"
 
     s = OPNsenseCarpInterfaceSensor(config_entry=entry, coordinator=coord, entity_description=desc)
@@ -612,7 +614,7 @@ def test_carp_sensor_state_wrong_type(make_config_entry: Callable[..., MockConfi
     entry = make_config_entry()
 
     desc = MagicMock()
-    desc.key = f"carp.interface.wan.{sensor_module.slugify('10.10.10.10')}"
+    desc.key = f"carp.interface.wan.{slugify('10.10.10.10')}"
     desc.name = "CARP WrongType"
 
     s = OPNsenseCarpInterfaceSensor(config_entry=entry, coordinator=coord, entity_description=desc)
@@ -1033,8 +1035,8 @@ def test_carp_sensor_attributes_and_icon(
     desc = MagicMock()
     desc.key = (
         f"carp.interface."
-        f"{sensor_module.slugify(carp_entry.get('interface', 'unknown'))}."
-        f"{sensor_module.slugify(carp_entry['subnet'])}"
+        f"{slugify(carp_entry.get('interface', 'unknown'))}."
+        f"{slugify(carp_entry['subnet'])}"
     )
     desc.name = "CARP Test"
 
@@ -1529,7 +1531,7 @@ def test_carp_interface_sensor_disambiguates_same_subnet_by_interface(
     ("desc_key", "cls", "main_check", "extra_check"),
     [
         (
-            f"carp.interface.{sensor_module.slugify('lan0')}.{sensor_module.slugify('10.0.0.1')}",
+            f"carp.interface.{slugify('lan0')}.{slugify('10.0.0.1')}",
             OPNsenseCarpInterfaceSensor,
             lambda s: s.native_value == "MASTER",
             lambda s: s.icon == "mdi:check-network",
@@ -1836,27 +1838,6 @@ def test_vpn_sensor_handles_exceptions_from_instance_get(
     s.hass = MagicMock()
     s.entity_id = "sensor.vpn_broken"
     object.__setattr__(s, "async_write_ha_state", lambda: None)
-    s._handle_coordinator_update()
-
-    assert s.available is False
-
-
-def test_vpn_sensor_fails_closed_for_malformed_instance_collection(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """VPN sensor should mark unavailable when the instance collection is malformed."""
-    entry = make_config_entry()
-    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = {"openvpn": {"servers": "not-a-mapping"}}
-    desc = MagicMock()
-    desc.key = "openvpn.servers.uuid1.status"
-    desc.name = "VPN Malformed"
-
-    s = OPNsenseVPNSensor(config_entry=entry, coordinator=coord, entity_description=desc)
-    s.hass = MagicMock()
-    s.entity_id = "sensor.vpn_malformed"
-    object.__setattr__(s, "async_write_ha_state", lambda: None)
-
     s._handle_coordinator_update()
 
     assert s.available is False
@@ -3071,6 +3052,64 @@ def test_dhcp_leases_per_interface_handles_exceptions(
     assert any(w is False for w in writes), f"expected a False write captured, got {writes}"
 
 
+def capture_reconciled_desired_entities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, Any]:
+    """Capture reconciliation desired entities during setup."""
+    captured: dict[str, Any] = {}
+
+    def capture(
+        _entry: MockConfigEntry,
+        _platform: str,
+        entities: Any | None = None,
+    ) -> None:
+        """Capture entities passed to ``record_desired_entities``."""
+        captured["entities"] = entities
+
+    monkeypatch.setattr(sensor_module, "record_desired_entities", capture)
+    return captured
+
+
+def setup_sensor_reconciliation_entry(
+    make_config_entry: Callable[..., MockConfigEntry],
+    coordinator_data: dict[str, Any],
+    *,
+    sync_telemetry: bool = False,
+    sync_vnstat: bool = False,
+    sync_speedtest: bool = False,
+    sync_smart: bool = False,
+    sync_gateways: bool = False,
+    sync_interfaces: bool = False,
+    sync_carp: bool = False,
+    sync_dhcp_leases: bool = False,
+    sync_vpn: bool = False,
+    sync_certificates: bool = False,
+    opnsense_client: object | None = None,
+) -> MockConfigEntry:
+    """Create a sensor test entry with coordinator/runtime pre-wired."""
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_TELEMETRY: sync_telemetry,
+            CONF_SYNC_VNSTAT: sync_vnstat,
+            CONF_SYNC_SPEEDTEST: sync_speedtest,
+            CONF_SYNC_SMART: sync_smart,
+            CONF_SYNC_GATEWAYS: sync_gateways,
+            CONF_SYNC_INTERFACES: sync_interfaces,
+            CONF_SYNC_CARP: sync_carp,
+            CONF_SYNC_DHCP_LEASES: sync_dhcp_leases,
+            CONF_SYNC_VPN: sync_vpn,
+            CONF_SYNC_CERTIFICATES: sync_certificates,
+        }
+    )
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = coordinator_data
+    setattr(entry.runtime_data, COORDINATOR, coordinator)
+    if opnsense_client is not None:
+        setattr(entry.runtime_data, OPNSENSE_CLIENT, opnsense_client)
+    return entry
+
+
 def _setup_entry_with_all_syncs(
     state: dict, make_config_entry: Callable[..., MockConfigEntry]
 ) -> Any:
@@ -3181,6 +3220,469 @@ async def test_async_setup_entry_handles_partial_or_malformed_dynamic_sensor_pay
         assert matched.entity_description.name == expected_name
     for entity_class in absent_classes:
         assert not any(isinstance(entity, entity_class) for entity in created)
+
+
+@pytest.mark.parametrize(
+    ("state", "description"),
+    [
+        ({"openvpn": {}}, "Missing wireguard inventory"),
+        ({"wireguard": {}, "openvpn": "bad"}, "Malformed wireguard inventory"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_none_for_partial_vpn_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    state: dict[str, Any],
+    description: str,
+) -> None:
+    """A valid VPN side alone must not mark sensor reconciliation complete."""
+    config_entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_TELEMETRY: False,
+            CONF_SYNC_VNSTAT: False,
+            CONF_SYNC_SPEEDTEST: False,
+            CONF_SYNC_SMART: False,
+            CONF_SYNC_GATEWAYS: False,
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_DHCP_LEASES: False,
+            CONF_SYNC_VPN: True,
+            CONF_SYNC_CERTIFICATES: False,
+        }
+    )
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    recorded: dict[str, Any] = {}
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture the desired-entity payload sent to reconciliation."""
+        recorded["entities"] = entities
+
+    monkeypatch.setattr(sensor_module, "record_desired_entities", capture)
+
+    await async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
+    )
+    assert "entities" in recorded, description
+    assert recorded["entities"] is None, description
+
+
+def test_vnstat_rows_are_complete_defaults_and_rejects_falsy_rows() -> None:
+    """VnStat inventories should treat missing keys as empty and falsy payloads as incomplete."""
+    assert sensor_module._vnstat_rows_are_complete({}) is True
+    assert sensor_module._vnstat_rows_are_complete({"vnstat": {"interfaces": {}}}) is True
+    assert sensor_module._vnstat_rows_are_complete({"vnstat": {"interfaces": False}}) is False
+    assert sensor_module._vnstat_rows_are_complete({"vnstat": {"interfaces": 0}}) is False
+    assert sensor_module._vnstat_rows_are_complete({"vnstat": {"interfaces": []}}) is False
+
+
+def test_vpn_sensor_rows_are_complete_defaults_and_rejects_falsy_rows() -> None:
+    """VPN inventories should default missing client/server groups to {} and reject falsy groups."""
+    assert (
+        sensor_module._vpn_sensor_rows_are_complete(
+            {
+                "openvpn": {"clients": {}, "servers": {}},
+                "wireguard": {"clients": {}, "servers": {}},
+            }
+        )
+        is True
+    )
+    assert (
+        sensor_module._vpn_sensor_rows_are_complete(
+            {
+                "openvpn": {"clients": {}, "servers": {}},
+                "wireguard": {"clients": [], "servers": {}},
+            }
+        )
+        is False
+    )
+    assert (
+        sensor_module._vpn_sensor_rows_are_complete(
+            {
+                "openvpn": {"clients": {}, "servers": {}},
+                "wireguard": {"clients": {}, "servers": False},
+            }
+        )
+        is False
+    )
+
+
+@pytest.mark.parametrize(
+    ("state", "sync_option", "expected_key"),
+    [
+        (
+            {"vnstat": {"interfaces": {None: {}, "wan": {}}}},
+            "sync_vnstat",
+            "vnstat.wan.vnstat_today",
+        ),
+        (
+            {"smart": [None, {"device": ""}, {"device": "nvme0"}], "smart_info": {}},
+            "sync_smart",
+            "smart.nvme0.temperature",
+        ),
+        (
+            {"telemetry": {"filesystems": [None, {"mountpoint": "/"}], "temps": {}}},
+            "sync_telemetry",
+            "telemetry.filesystems.root",
+        ),
+        (
+            {
+                "telemetry": {
+                    "filesystems": [],
+                    "temps": {"bad": None, "cpu": {"temperature": 42}},
+                }
+            },
+            "sync_telemetry",
+            "telemetry.temps.cpu",
+        ),
+        (
+            {"interfaces": {"bad": None, "wan": {"name": "WAN"}}},
+            "sync_interfaces",
+            "interface.wan.status",
+        ),
+        (
+            {"gateways": {"bad": None, "wan": {"status": "online"}}},
+            "sync_gateways",
+            "gateway.wan.status",
+        ),
+        (
+            {"carp": {"interfaces": [None, {"subnet": ""}, {"interface": "wan", "subnet": "1"}]}},
+            "sync_carp",
+            "carp.interface.wan.1",
+        ),
+        (
+            {
+                "openvpn": {"servers": {"bad": None, "good": {"status": "up"}}},
+                "wireguard": {"clients": {}, "servers": {}},
+            },
+            "sync_vpn",
+            "openvpn.servers.good.status",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_async_setup_entry_marks_malformed_sensor_rows_incomplete(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    state: dict[str, Any],
+    sync_option: str,
+    expected_key: str,
+) -> None:
+    """Malformed rows prevent reconciliation while valid sibling rows still compile."""
+    config_entry = setup_sensor_reconciliation_entry(
+        make_config_entry,
+        coordinator_data=state,
+        **{sync_option: True},
+    )
+    captured = capture_reconciled_desired_entities(monkeypatch)
+    created: list[Any] = []
+
+    await async_setup_entry(
+        MagicMock(),
+        config_entry,
+        cast("AddEntitiesCallback", lambda entities, _=False: created.extend(entities)),
+    )
+
+    assert captured["entities"] is None
+    assert expected_key in {entity.entity_description.key for entity in created}
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_ignores_unconsumed_openvpn_client_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """OpenVPN client rows do not affect sensor reconciliation or compilation."""
+    config_entry = setup_sensor_reconciliation_entry(
+        make_config_entry,
+        coordinator_data={
+            "openvpn": {"clients": {"bad": None}, "servers": {}},
+            "wireguard": {"clients": {}, "servers": {}},
+        },
+        sync_vpn=True,
+    )
+    captured = capture_reconciled_desired_entities(monkeypatch)
+
+    await async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", lambda entities, _=False: None)
+    )
+
+    assert captured["entities"] == []
+
+
+@pytest.mark.parametrize(
+    (
+        "state",
+        "sync_telemetry",
+        "sync_vnstat",
+        "sync_speedtest",
+        "sync_smart",
+        "sync_gateways",
+        "sync_interfaces",
+        "sync_carp",
+        "sync_dhcp_leases",
+        "sync_vpn",
+        "expected",
+    ),
+    [
+        # Gateway
+        ({}, False, False, False, False, True, False, False, False, False, None),
+        ({"gateways": {}}, False, False, False, False, True, False, False, False, False, []),
+        # VPN
+        ({}, False, False, False, False, False, False, False, False, True, None),
+        (
+            {"openvpn": {}, "wireguard": {}},
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            True,
+            [],
+        ),
+        # vnStat
+        ({}, False, True, False, False, False, False, False, False, False, None),
+        ({"vnstat": {}}, False, True, False, False, False, False, False, False, False, []),
+        # Speedtest
+        ({}, False, False, True, False, False, False, False, False, False, None),
+        ({"speedtest": {}}, False, False, True, False, False, False, False, False, False, []),
+        # Telemetry
+        ({}, True, False, False, False, False, False, False, False, False, None),
+        (
+            {
+                "telemetry": {"filesystems": [], "temps": {}},
+                "interfaces": {},
+                "gateways": {},
+                "openvpn": {"servers": {}},
+            },
+            True,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            "telemetry_authoritative_empty",
+        ),
+        # SMART
+        ({"smart": []}, False, False, False, True, False, False, False, False, False, None),
+        (
+            {"smart": [], "smart_info": "bad"},
+            False,
+            False,
+            False,
+            True,
+            False,
+            False,
+            False,
+            False,
+            False,
+            None,
+        ),
+        (
+            {"smart": [], "smart_info": {}},
+            False,
+            False,
+            False,
+            True,
+            False,
+            False,
+            False,
+            False,
+            False,
+            [],
+        ),
+        # CARP
+        (
+            {"carp": {"interfaces": "bad"}},
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            True,
+            False,
+            False,
+            None,
+        ),
+        ({}, False, False, False, False, False, False, True, False, False, None),
+        (
+            {"carp": {"interfaces": []}},
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            True,
+            False,
+            False,
+            "carp_authoritative_empty",
+        ),
+        # DHCP leases
+        (
+            {
+                "dhcp_leases": {"leases": {"lan": []}},
+            },
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            True,
+            False,
+            None,
+        ),
+        ({"dhcp_leases": {}}, False, False, False, False, False, False, False, True, False, None),
+        (
+            {"dhcp_leases": {"leases": {}, "lease_interfaces": {}}},
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            True,
+            False,
+            "dhcp_authoritative_empty",
+        ),
+    ],
+    ids=[
+        "missing_gateway_inventory",
+        "empty_gateway_inventory",
+        "missing_vpn_inventory",
+        "empty_vpn_inventory",
+        "missing_vnstat_inventory",
+        "empty_vnstat_inventory",
+        "missing_speedtest_inventory",
+        "empty_speedtest_inventory",
+        "missing_telemetry_inventory",
+        "empty_telemetry_inventory",
+        "incomplete_smart_inventory_missing_smart_info",
+        "incomplete_smart_inventory_bad_smart_info",
+        "empty_smart_inventory",
+        "incomplete_carp_inventory_bad_interfaces",
+        "missing_carp_inventory",
+        "empty_carp_inventory",
+        "incomplete_dhcp_lease_inventory_missing_leases",
+        "incomplete_dhcp_lease_inventory_missing_dhcp_block",
+        "empty_dhcp_lease_inventory",
+    ],
+)
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_none_or_authoritative_empty_for_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    state: dict[str, Any],
+    sync_telemetry: bool,
+    sync_vnstat: bool,
+    sync_speedtest: bool,
+    sync_smart: bool,
+    sync_gateways: bool,
+    sync_interfaces: bool,
+    sync_carp: bool,
+    sync_dhcp_leases: bool,
+    sync_vpn: bool,
+    expected: str | list[Any] | None,
+) -> None:
+    """Track missing vs authoritative-empty inventories across sensor sync payloads."""
+    config_entry = setup_sensor_reconciliation_entry(
+        make_config_entry,
+        coordinator_data=state,
+        sync_telemetry=sync_telemetry,
+        sync_vnstat=sync_vnstat,
+        sync_speedtest=sync_speedtest,
+        sync_smart=sync_smart,
+        sync_gateways=sync_gateways,
+        sync_interfaces=sync_interfaces,
+        sync_carp=sync_carp,
+        sync_dhcp_leases=sync_dhcp_leases,
+        sync_vpn=sync_vpn,
+    )
+    captured = capture_reconciled_desired_entities(monkeypatch)
+
+    await async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
+    )
+    assert "entities" in captured
+    entities = captured["entities"]
+    if expected is None or expected == []:
+        assert entities == expected
+        return
+
+    assert isinstance(entities, list)
+    keys = {entity.entity_description.key for entity in entities}
+    if expected == "telemetry_authoritative_empty":
+        assert "telemetry.cpu.usage_total" in keys
+        assert "telemetry.pfstate.used" in keys
+        assert not any(key.startswith("telemetry.filesystems.") for key in keys)
+        assert not any(key.startswith("telemetry.temps.") for key in keys)
+        return
+    if expected == "carp_authoritative_empty":
+        assert keys == {"carp.status_summary"}
+        return
+    if expected == "dhcp_authoritative_empty":
+        assert keys == {"dhcp_leases.all"}
+        return
+    pytest.fail(f"Unhandled expected marker: {expected}")
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_empty_desired_entities_for_smart_without_info_support(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART sync remains complete when client supports `get_smart` but not `get_smart_info`."""
+    client = MagicMock(spec=["get_smart"])
+    client.get_smart = MagicMock()
+    config_entry = setup_sensor_reconciliation_entry(
+        make_config_entry,
+        coordinator_data={"smart": [{"device": "nvme0"}]},
+        sync_smart=True,
+        opnsense_client=client,
+    )
+    captured = capture_reconciled_desired_entities(monkeypatch)
+
+    await async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
+    )
+    assert captured["entities"] == []
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_none_when_smart_info_is_required(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """SMART sync remains incomplete when `get_smart_info` is supported but payload is missing."""
+    client = MagicMock(spec=["get_smart", "get_smart_info"])
+    client.get_smart = MagicMock()
+    client.get_smart_info = MagicMock()
+    config_entry = setup_sensor_reconciliation_entry(
+        make_config_entry,
+        coordinator_data={"smart": [{"device": "nvme0"}]},
+        sync_smart=True,
+        opnsense_client=client,
+    )
+    captured = capture_reconciled_desired_entities(monkeypatch)
+
+    await async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
+    )
+    assert captured["entities"] is None
 
 
 @pytest.mark.parametrize(
@@ -3988,7 +4490,7 @@ async def test_generated_sensor_entity_contract(
     expected_contracts: dict[str, dict[str, Any]] = {
         "telemetry.filesystems.root": {
             "name": "Filesystem Used Percentage root",
-            "native_unit_of_measurement": sensor_module.PERCENTAGE,
+            "native_unit_of_measurement": PERCENTAGE,
             "device_class": None,
             "state_class": SensorStateClass.MEASUREMENT,
             "entity_registry_enabled_default": True,
@@ -3997,32 +4499,32 @@ async def test_generated_sensor_entity_contract(
             "name": "vnStat: WAN: Today",
             "device_class": SensorDeviceClass.DATA_SIZE,
             "state_class": SensorStateClass.TOTAL_INCREASING,
-            "suggested_unit_of_measurement": sensor_module.UnitOfInformation.GIBIBYTES,
+            "suggested_unit_of_measurement": UnitOfInformation.GIBIBYTES,
             "suggested_display_precision": 1,
             "entity_registry_enabled_default": False,
         },
         "speedtest.last.download": {
             "name": "Speedtest Last Download",
-            "native_unit_of_measurement": sensor_module.UnitOfDataRate.MEGABITS_PER_SECOND,
+            "native_unit_of_measurement": UnitOfDataRate.MEGABITS_PER_SECOND,
             "device_class": SensorDeviceClass.DATA_RATE,
             "state_class": SensorStateClass.MEASUREMENT,
             "entity_registry_enabled_default": False,
         },
         "smart.nvme0.temperature": {
             "name": "SMART nvme0 Temperature",
-            "native_unit_of_measurement": sensor_module.UnitOfTemperature.CELSIUS,
+            "native_unit_of_measurement": UnitOfTemperature.CELSIUS,
             "device_class": SensorDeviceClass.TEMPERATURE,
             "state_class": SensorStateClass.MEASUREMENT,
-            "suggested_unit_of_measurement": sensor_module.UnitOfTemperature.CELSIUS,
+            "suggested_unit_of_measurement": UnitOfTemperature.CELSIUS,
             "suggested_display_precision": 1,
             "entity_registry_enabled_default": False,
         },
         "interface.wan.inbytes": {
             "name": "Interface WAN inbytes",
-            "native_unit_of_measurement": sensor_module.UnitOfInformation.BYTES,
+            "native_unit_of_measurement": UnitOfInformation.BYTES,
             "device_class": SensorDeviceClass.DATA_SIZE,
             "state_class": SensorStateClass.TOTAL_INCREASING,
-            "suggested_unit_of_measurement": sensor_module.UnitOfInformation.GIGABYTES,
+            "suggested_unit_of_measurement": UnitOfInformation.GIGABYTES,
             "suggested_display_precision": 1,
             "entity_registry_enabled_default": False,
         },

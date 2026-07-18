@@ -17,6 +17,7 @@ from .const import CONF_SYNC_FIRMWARE_UPDATES, COORDINATOR, DEFAULT_SYNC_OPTION_
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity
 from .helpers import dict_get
+from .repair_reconciliation import record_desired_entities
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -119,6 +120,7 @@ async def async_setup_entry(
             )
         )
 
+    record_desired_entities(config_entry, "update", entities)
     async_add_entities(entities)
 
 

@@ -5,7 +5,7 @@ import inspect
 import ipaddress
 import logging
 import re
-from typing import Any, Final
+from typing import Any, Final, TypeIs
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -47,6 +47,7 @@ from .const import (
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity
 from .helpers import coerce_bool, dict_get, get_smart_device_name, is_carp_entry
+from .repair_reconciliation import record_desired_entities
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -90,6 +91,80 @@ _CARP_STATUS_ICONS: Final[Mapping[str, str]] = {
     "MASTER": "mdi:check-network",
     "BACKUP": "mdi:backup-restore",
 }
+
+
+def _is_valid_vnstat_interface_row(interface_name: Any) -> TypeIs[str]:
+    """Return whether a vnStat interface key can produce sensors."""
+    return isinstance(interface_name, str)
+
+
+def _is_valid_smart_device_row(smart_device: Any) -> bool:
+    """Return whether a SMART device row can produce a sensor."""
+    return isinstance(smart_device, Mapping) and bool(get_smart_device_name(smart_device))
+
+
+def _is_valid_filesystem_row(filesystem: Any) -> bool:
+    """Return whether a filesystem row can produce a sensor."""
+    return (
+        isinstance(filesystem, Mapping)
+        and isinstance(filesystem.get("mountpoint"), str)
+        and bool(filesystem["mountpoint"].strip())
+    )
+
+
+def _is_valid_carp_interface_row(interface: Any) -> bool:
+    """Return whether a CARP interface row can produce a sensor."""
+    return (
+        isinstance(interface, MutableMapping)
+        and isinstance(interface.get("subnet"), str)
+        and bool(interface["subnet"].strip())
+    )
+
+
+def _is_valid_mutable_mapping_row(row: Any) -> bool:
+    """Return whether a dynamic inventory row is a mutable mapping."""
+    return isinstance(row, MutableMapping)
+
+
+def _is_valid_vpn_sensor_row(instance: Any) -> bool:
+    """Return whether a VPN instance row can produce sensors."""
+    return isinstance(instance, MutableMapping) and len(instance) > 0
+
+
+def _vnstat_rows_are_complete(state: MutableMapping[str, Any]) -> bool:
+    """Return whether every consumed vnStat interface row is valid."""
+    interfaces = dict_get(state, "vnstat.interfaces", {})
+    return isinstance(interfaces, MutableMapping) and all(
+        _is_valid_vnstat_interface_row(interface_name) for interface_name in interfaces
+    )
+
+
+def _vpn_sensor_rows_are_complete(state: MutableMapping[str, Any]) -> bool:
+    """Return whether every VPN row consumed by the sensor compiler is valid."""
+    for vpn_type, groups in (
+        ("openvpn", ("servers",)),
+        ("wireguard", ("clients", "servers")),
+    ):
+        for group in groups:
+            instances = dict_get(state, f"{vpn_type}.{group}", {})
+            if not isinstance(instances, MutableMapping) or not all(
+                _is_valid_vpn_sensor_row(instance) for instance in instances.values()
+            ):
+                return False
+    return True
+
+
+def _telemetry_rows_are_complete(telemetry: Any) -> bool:
+    """Return whether telemetry inventories and all consumed rows are valid."""
+    return (
+        isinstance(telemetry, MutableMapping)
+        and "filesystems" in telemetry
+        and isinstance(telemetry.get("filesystems"), list)
+        and all(_is_valid_filesystem_row(row) for row in telemetry["filesystems"])
+        and "temps" in telemetry
+        and isinstance(telemetry.get("temps"), MutableMapping)
+        and all(_is_valid_mutable_mapping_row(row) for row in telemetry["temps"].values())
+    )
 
 
 STATIC_TELEMETRY_SENSORS: Final[tuple[SensorEntityDescription, ...]] = (
@@ -896,7 +971,7 @@ async def _compile_vnstat_sensors(
 
     entities: list = []
     for interface_name in vnstat_interfaces:
-        if not isinstance(interface_name, str):
+        if not _is_valid_vnstat_interface_row(interface_name):
             continue
         interface_display_name = interface_descriptions.get(interface_name, interface_name)
         for metric_name, metric_def in metric_defs.items():
@@ -1010,11 +1085,9 @@ async def _compile_smart_sensors(
         return []
     entities: list = []
     for smart_device in smart_devices:
-        if not isinstance(smart_device, Mapping):
+        if not _is_valid_smart_device_row(smart_device):
             continue
         device_name = get_smart_device_name(smart_device)
-        if not device_name:
-            continue
         entities.append(
             _create_sensor(
                 OPNsenseSmartSensor,
@@ -1053,9 +1126,7 @@ async def _compile_filesystem_sensors(
         [
             _build_filesystem_sensor_description(filesystem)
             for filesystem in filesystems
-            if isinstance(filesystem, Mapping)
-            and isinstance(filesystem.get("mountpoint"), str)
-            and filesystem["mountpoint"].strip()
+            if _is_valid_filesystem_row(filesystem)
         ],
     )
 
@@ -1084,18 +1155,14 @@ async def _compile_carp_interface_sensors(
     )
     carp_interfaces = dict_get(state, "carp.interfaces", []) or []
     for interface in carp_interfaces:
-        if not isinstance(interface, MutableMapping):
+        if not _is_valid_carp_interface_row(interface):
             _LOGGER.debug(
-                "Skipping malformed CARP interface entry that is not a mapping: %r",
+                "Skipping malformed CARP interface entry: %r",
                 interface,
             )
             continue
         try:
-            subnet = interface.get("subnet")
-            if not isinstance(subnet, str) or not subnet.strip():
-                _LOGGER.debug("Skipping CARP interface entry with invalid subnet: %r", interface)
-                continue
-            subnet = subnet.strip()
+            subnet = interface["subnet"].strip()
 
             interface_name = interface.get("interface")
             interface_label = str(interface_name).strip() if interface_name is not None else ""
@@ -1343,7 +1410,7 @@ async def _compile_interface_sensors(
         return []
 
     for interface_name, interface in interfaces.items():
-        if not isinstance(interface, MutableMapping):
+        if not _is_valid_mutable_mapping_row(interface):
             continue
         entities.extend(
             _create_sensor(
@@ -1382,7 +1449,7 @@ async def _compile_gateway_sensors(
         return []
 
     for gateway_key, gateway in gateways.items():
-        if not isinstance(gateway, MutableMapping):
+        if not _is_valid_mutable_mapping_row(gateway):
             continue
         gateway_name = OPNsenseEntity.payload_display_name(gateway, str(gateway_key), "name")
         entities.extend(
@@ -1424,7 +1491,7 @@ async def _compile_temperature_sensors(
         return []
 
     for temp_device, temp in temps.items():
-        if not isinstance(temp, MutableMapping):
+        if not _is_valid_mutable_mapping_row(temp):
             continue
         entities.append(
             _create_sensor(
@@ -1513,7 +1580,7 @@ async def _compile_vpn_sensors(
             if not isinstance(vpn_instances, MutableMapping):
                 continue
             for uuid, instance in vpn_instances.items():
-                if not isinstance(instance, MutableMapping) or len(instance) == 0:
+                if not _is_valid_vpn_sensor_row(instance):
                     continue
                 instance_name = OPNsenseEntity.payload_display_name(
                     instance,
@@ -1585,31 +1652,106 @@ async def async_setup_entry(
         async_add_entities(entities)
         return
 
+    reconciliation_complete = True
+
     if config.get(CONF_SYNC_TELEMETRY, DEFAULT_SYNC_OPTION_VALUE):
+        telemetry = state.get("telemetry")
         entities.extend(await _compile_static_telemetry_sensors(config_entry, coordinator))
         entities.extend(await _compile_filesystem_sensors(config_entry, coordinator, state))
         entities.extend(await _compile_temperature_sensors(config_entry, coordinator, state))
+        if "telemetry" not in state or not _telemetry_rows_are_complete(telemetry):
+            reconciliation_complete = False
     if config.get(CONF_SYNC_VNSTAT, DEFAULT_SYNC_OPTION_VALUE):
-        entities.extend(await _compile_vnstat_sensors(config_entry, coordinator, state))
+        if "vnstat" in state and isinstance(state.get("vnstat"), MutableMapping):
+            entities.extend(await _compile_vnstat_sensors(config_entry, coordinator, state))
+            reconciliation_complete &= _vnstat_rows_are_complete(state)
+        else:
+            reconciliation_complete = False
     if config.get(CONF_SYNC_SPEEDTEST, DEFAULT_SYNC_OPTION_VALUE):
-        entities.extend(await _compile_speedtest_sensors(config_entry, coordinator, state))
+        if "speedtest" in state and isinstance(state.get("speedtest"), MutableMapping):
+            entities.extend(await _compile_speedtest_sensors(config_entry, coordinator, state))
+        else:
+            reconciliation_complete = False
     if config.get(CONF_SYNC_SMART, DEFAULT_SYNC_OPTION_VALUE):
+        client = getattr(config_entry.runtime_data, OPNSENSE_CLIENT, None)
+        client_supports_smart = callable(getattr(client, "get_smart", None))
+        client_supports_smart_info = callable(getattr(client, "get_smart_info", None))
+        has_smart = "smart" in state and isinstance(state.get("smart"), list)
+        has_smart_info = "smart_info" in state and isinstance(state.get("smart_info"), Mapping)
+        if client is None:
+            has_smart_inventory = has_smart and has_smart_info
+        elif client_supports_smart:
+            has_smart_inventory = has_smart and (not client_supports_smart_info or has_smart_info)
+        else:
+            has_smart_inventory = False
+        has_smart_inventory = has_smart_inventory and all(
+            _is_valid_smart_device_row(device) for device in state["smart"]
+        )
         entities.extend(await _compile_smart_sensors(config_entry, coordinator, state))
+        if not has_smart_inventory:
+            reconciliation_complete = False
     if config.get(CONF_SYNC_CERTIFICATES, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_static_certificate_sensors(config_entry, coordinator))
     if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):
+        has_openvpn_inventory = "openvpn" in state and isinstance(
+            state.get("openvpn"), MutableMapping
+        )
+        has_wireguard_inventory = "wireguard" in state and isinstance(
+            state.get("wireguard"), MutableMapping
+        )
         entities.extend(await _compile_vpn_sensors(config_entry, coordinator, state))
+        if not (
+            has_openvpn_inventory
+            and has_wireguard_inventory
+            and _vpn_sensor_rows_are_complete(state)
+        ):
+            reconciliation_complete = False
     if config.get(CONF_SYNC_GATEWAYS, DEFAULT_SYNC_OPTION_VALUE):
-        entities.extend(await _compile_gateway_sensors(config_entry, coordinator, state))
+        gateways = state.get("gateways")
+        if "gateways" in state and isinstance(gateways, MutableMapping):
+            entities.extend(await _compile_gateway_sensors(config_entry, coordinator, state))
+            reconciliation_complete &= all(
+                _is_valid_mutable_mapping_row(row) for row in gateways.values()
+            )
+        else:
+            reconciliation_complete = False
     if config.get(CONF_SYNC_INTERFACES, DEFAULT_SYNC_OPTION_VALUE):
-        entities.extend(await _compile_interface_sensors(config_entry, coordinator, state))
+        interfaces = state.get("interfaces")
+        if "interfaces" in state and isinstance(interfaces, MutableMapping):
+            entities.extend(await _compile_interface_sensors(config_entry, coordinator, state))
+            reconciliation_complete &= all(
+                _is_valid_mutable_mapping_row(row) for row in interfaces.values()
+            )
+        else:
+            reconciliation_complete = False
     if config.get(CONF_SYNC_CARP, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_carp_status_sensor(config_entry, coordinator, state))
-        entities.extend(await _compile_carp_interface_sensors(config_entry, coordinator, state))
+        carp = state.get("carp")
+        if (
+            "carp" in state
+            and isinstance(carp, MutableMapping)
+            and "interfaces" in carp
+            and isinstance(carp.get("interfaces"), list)
+        ):
+            entities.extend(await _compile_carp_interface_sensors(config_entry, coordinator, state))
+            reconciliation_complete &= all(
+                _is_valid_carp_interface_row(interface) for interface in carp["interfaces"]
+            )
+        else:
+            reconciliation_complete = False
     if config.get(CONF_SYNC_DHCP_LEASES, DEFAULT_SYNC_OPTION_VALUE):
         entities.extend(await _compile_dhcp_leases_sensors(config_entry, coordinator, state))
+        dhcp_leases = state.get("dhcp_leases")
+        if not (
+            "dhcp_leases" in state
+            and isinstance(dhcp_leases, MutableMapping)
+            and "lease_interfaces" in dhcp_leases
+            and isinstance(dhcp_leases.get("lease_interfaces"), MutableMapping)
+        ):
+            reconciliation_complete = False
 
     _LOGGER.debug("[sensor async_setup_entry] entities: %s", len(entities))
+    record_desired_entities(config_entry, "sensor", entities if reconciliation_complete else None)
     async_add_entities(entities)
 
 

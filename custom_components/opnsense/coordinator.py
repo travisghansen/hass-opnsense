@@ -33,6 +33,12 @@ from .const import (
     DOMAIN,
 )
 from .helpers import dict_get, get_smart_device_name, is_carp_entry
+from .repair_reconciliation import has_repair_marker
+from .repairs import (
+    async_create_device_id_mismatch_issue,
+    build_device_id_mismatch_issue_id,
+    is_valid_device_id,
+)
 
 if TYPE_CHECKING:
     from aiopnsense import OPNsenseClient
@@ -265,42 +271,53 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             and is_carp_entry(self.config_entry)
         ):
             return True
-        if self._state.get("device_unique_id") is None:
-            _LOGGER.warning("Coordinator failed to confirm OPNsense Router Unique ID. Will retry")
+        runtime_device_id = self._state.get("device_unique_id")
+        if not is_valid_device_id(self._device_unique_id):
+            _LOGGER.warning("Coordinator has a malformed configured OPNsense Router Unique ID")
             self._mismatched_count = 0
             return False
-        if self._state.get("device_unique_id") != self._device_unique_id:
+        if not is_valid_device_id(runtime_device_id):
+            _LOGGER.warning("Coordinator received malformed OPNsense Router Unique ID. Will retry")
+            self._mismatched_count = 0
+            return False
+        if runtime_device_id != self._device_unique_id:
             _LOGGER.debug(
-                "[Coordinator async_update_data]: config device id: %s, router device id: %s",
+                "[Coordinator async_update_data]: config Device ID: %s, router Device ID: %s",
                 self._device_unique_id,
-                self._state.get("device_unique_id"),
+                runtime_device_id,
             )
             _LOGGER.error(
                 "Coordinator error. "
                 "OPNsense Router Device ID (%s) differs from the one saved in hass-opnsense (%s)",
-                self._state.get("device_unique_id"),
+                runtime_device_id,
                 self._device_unique_id,
             )
             self._mismatched_count += 1
             # Trigger repair task and shutdown if this happens 3 times in a row
-            if self._mismatched_count == 3:
-                ir.async_create_issue(
-                    hass=self.hass,
-                    domain=DOMAIN,
-                    issue_id=f"{self._device_unique_id}_device_id_mismatched",
-                    is_fixable=False,
-                    is_persistent=False,
-                    severity=ir.IssueSeverity.ERROR,
-                    translation_key="device_id_mismatched",
+            if self._mismatched_count >= 3:
+                repair_issue_created = self.config_entry is not None and (
+                    async_create_device_id_mismatch_issue(
+                        self.hass,
+                        self.config_entry,
+                        runtime_device_id,
+                    )
                 )
-                _LOGGER.error(
-                    "OPNsense Device ID has changed which indicates new or changed hardware. "
-                    "In order to accommodate this, hass-opnsense needs to be removed and "
-                    "reinstalled for this router. "
-                    "hass-opnsense is shutting down."
-                )
-                await self.async_shutdown()
+                if repair_issue_created:
+                    _LOGGER.error(
+                        "OPNsense Device ID has changed which indicates new or changed hardware. "
+                        "A fixable repair issue is available to rebuild entities for this "
+                        "OPNsense device. "
+                        "hass-opnsense is shutting down."
+                    )
+                    await self.async_shutdown()
             return False
+        config_entry = self.config_entry
+        if config_entry is not None and not has_repair_marker(config_entry):
+            ir.async_delete_issue(
+                self.hass,
+                DOMAIN,
+                build_device_id_mismatch_issue_id(config_entry.entry_id),
+            )
         self._mismatched_count = 0
         return True
 

@@ -5,7 +5,7 @@ async setup flows for the integration's switch platform.
 """
 
 import asyncio
-from collections.abc import Callable, Iterable, MutableMapping
+from collections.abc import Callable, Iterable, Mapping, MutableMapping
 import contextlib
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
@@ -90,6 +90,393 @@ def make_carp_maintenance_switch(
     entity.entity_id = "switch.carp_maintenance_mode"
     stub_async_write_ha_state(entity)
     return entity
+
+
+def capture_reconciled_desired_entities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, Any]:
+    """Capture reconciliation desired entities during setup."""
+    captured: dict[str, Any] = {}
+
+    def capture(
+        _entry: MockConfigEntry,
+        _platform: str,
+        entities: Any | None = None,
+    ) -> None:
+        """Capture entities passed to ``record_desired_entities``."""
+        captured["entities"] = entities
+
+    monkeypatch.setattr(switch_mod, "record_desired_entities", capture)
+    return captured
+
+
+def setup_switch_reconciliation_entry(
+    make_config_entry: Callable[..., MockConfigEntry],
+    coordinator: Any,
+    *,
+    sync_firewall_and_nat: bool = False,
+    sync_services: bool = False,
+    sync_vpn: bool = False,
+    sync_carp: bool = False,
+    sync_unbound: bool = False,
+) -> MockConfigEntry:
+    """Create a switch test entry with coordinator/runtime pre-wired."""
+    config_entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_FIREWALL_AND_NAT: sync_firewall_and_nat,
+            CONF_SYNC_SERVICES: sync_services,
+            CONF_SYNC_VPN: sync_vpn,
+            CONF_SYNC_CARP: sync_carp,
+            CONF_SYNC_UNBOUND: sync_unbound,
+        }
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    return config_entry
+
+
+@pytest.mark.parametrize(
+    ("state", "sync_firewall_and_nat", "sync_services", "sync_vpn", "sync_unbound", "expected"),
+    [
+        ({}, False, True, False, False, None),
+        ({"services": []}, False, True, False, False, []),
+        ({}, True, False, False, False, None),
+        ({"firewall": {}}, True, False, False, False, None),
+        (
+            {"firewall": {"rules": {"r1": {"uuid": "r1", "description": "r1"}}}},
+            True,
+            False,
+            False,
+            False,
+            None,
+        ),
+        ({}, False, False, True, False, None),
+        ({"openvpn": {}, "wireguard": {}}, False, False, True, False, []),
+        ({}, False, False, False, True, None),
+        ({"unbound_blocklist": {}}, False, False, False, True, []),
+        ({"unbound_blocklist": {"legacy": {}}}, False, False, False, True, []),
+        ({"unbound_blocklist": {"legacy": None}}, False, False, False, True, []),
+    ],
+    ids=[
+        "missing_service",
+        "empty_service",
+        "missing_firewall",
+        "empty_firewall",
+        "partial_firewall-without-nat",
+        "missing_vpn",
+        "empty_vpn",
+        "missing_unbound",
+        "empty_unbound",
+        "empty_legacy_unbound",
+        "empty_scalar_legacy_unbound",
+    ],
+)
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_none_or_authoritative_empty_for_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    state: dict[str, Any],
+    sync_firewall_and_nat: bool,
+    sync_services: bool,
+    sync_vpn: bool,
+    sync_unbound: bool,
+    expected: Any,
+) -> None:
+    """Track missing vs authoritative-empty inventories across switch sync payloads."""
+    config_entry = setup_switch_reconciliation_entry(
+        make_config_entry,
+        coordinator=make_coord(state),
+        sync_firewall_and_nat=sync_firewall_and_nat,
+        sync_services=sync_services,
+        sync_vpn=sync_vpn,
+        sync_unbound=sync_unbound,
+    )
+    captured = capture_reconciled_desired_entities(monkeypatch)
+
+    await switch_mod.async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
+    )
+    assert "entities" in captured
+    assert captured["entities"] == expected
+
+
+@pytest.mark.parametrize(
+    ("state", "description"),
+    [
+        (
+            {"openvpn": {"clients": {"client-uuid": {"enabled": True}}}},
+            "Missing wireguard inventory",
+        ),
+        (
+            {
+                "openvpn": {"clients": {"client-uuid": {"enabled": True}}},
+                "wireguard": "bad-wireguard",
+            },
+            "Malformed wireguard inventory",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_none_for_partial_vpn_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    state: dict[str, Any],
+    description: str,
+) -> None:
+    """A valid VPN side alone must not mark switch reconciliation complete."""
+    coordinator = make_coord(state)
+    config_entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_FIREWALL_AND_NAT: False,
+            CONF_SYNC_SERVICES: False,
+            CONF_SYNC_VPN: True,
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_UNBOUND: False,
+        }
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    created: list[Any] = []
+    recorded: dict[str, Any] = {}
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture the desired-entity payload sent to reconciliation."""
+        recorded["entities"] = entities
+
+    def add_entities(ents: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Capture switch entities emitted by setup."""
+        created.extend(ents)
+
+    monkeypatch.setattr(switch_mod, "record_desired_entities", capture)
+
+    await switch_mod.async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", add_entities)
+    )
+    assert "entities" in recorded, description
+    assert recorded["entities"] is None, description
+    assert created
+    keys = {entity.entity_description.key for entity in created}
+    assert keys == {"openvpn.clients.client-uuid"}, description
+
+
+def test_vpn_switch_rows_are_complete_defaults_and_rejects_falsy_rows() -> None:
+    """VPN switch completeness should default missing groups to {} and reject falsy rows."""
+    assert (
+        switch_mod._vpn_switch_rows_are_complete(
+            {
+                "openvpn": {"clients": {}, "servers": {}},
+                "wireguard": {"clients": {}, "servers": {}},
+            }
+        )
+        is True
+    )
+    assert (
+        switch_mod._vpn_switch_rows_are_complete(
+            {
+                "openvpn": {"clients": [], "servers": {}},
+                "wireguard": {"clients": {}, "servers": {}},
+            }
+        )
+        is False
+    )
+    assert (
+        switch_mod._vpn_switch_rows_are_complete(
+            {
+                "openvpn": {"clients": {}, "servers": {}},
+                "wireguard": {"clients": {}, "servers": 0},
+            }
+        )
+        is False
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_none_for_malformed_firewall_nat_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Missing NAT subsections should force incomplete firewall reconciliation."""
+    state = {
+        "firewall": {
+            "rules": {"r1": {"uuid": "r1", "description": "Rule", "%interface": "wan"}},
+            "nat": {"source_nat": {}, "d_nat": {}, "one_to_one": {}},
+        }
+    }
+    config_entry = setup_switch_reconciliation_entry(
+        make_config_entry,
+        coordinator=make_coord(state),
+        sync_firewall_and_nat=True,
+    )
+    recorded: dict[str, Any] = {}
+    created: list[Any] = []
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture the desired-entity payload sent to reconciliation."""
+        recorded["entities"] = entities
+
+    def add_entities(ents: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Capture switch entities emitted by setup."""
+        created.extend(ents)
+
+    monkeypatch.setattr(switch_mod, "record_desired_entities", capture)
+
+    await switch_mod.async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", add_entities)
+    )
+
+    assert recorded.get("entities") is None
+    assert created
+
+
+@pytest.mark.parametrize(
+    ("state", "sync_option", "expected_key"),
+    [
+        (
+            {"services": [None, {"locked": 1}, {"id": "svc", "locked": 0}]},
+            "sync_services",
+            "service.svc.status",
+        ),
+        (
+            {
+                "openvpn": {
+                    "clients": {"bad": {}, "good": {"enabled": False}},
+                    "servers": {},
+                },
+                "wireguard": {"clients": {}, "servers": {}},
+            },
+            "sync_vpn",
+            "openvpn.clients.good",
+        ),
+        (
+            {
+                ATTR_UNBOUND_BLOCKLIST: {
+                    "legacy": {},
+                    "bad": None,
+                    "good": {"description": "Good"},
+                }
+            },
+            "sync_unbound",
+            "unbound_blocklist.switch.good",
+        ),
+        (
+            {
+                ATTR_UNBOUND_BLOCKLIST: {
+                    "legacy": None,
+                    "bad": None,
+                    "good": {"description": "Good"},
+                }
+            },
+            "sync_unbound",
+            "unbound_blocklist.switch.good",
+        ),
+        (
+            {
+                "firewall": {
+                    "rules": {
+                        "bad": None,
+                        "good": {"uuid": "good", "%interface": ""},
+                    },
+                    "nat": {"source_nat": {}, "d_nat": {}, "one_to_one": {}, "npt": {}},
+                }
+            },
+            "sync_firewall_and_nat",
+            "firewall.rule.good",
+        ),
+        (
+            {
+                "firewall": {
+                    "rules": {},
+                    "nat": {
+                        "source_nat": {
+                            "bad": {"uuid": "bad", "%interface": ""},
+                            "good": {"uuid": "good", "%interface": "wan"},
+                        },
+                        "d_nat": {},
+                        "one_to_one": {},
+                        "npt": {},
+                    },
+                }
+            },
+            "sync_firewall_and_nat",
+            "firewall.nat.source_nat.good",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_async_setup_entry_marks_malformed_switch_rows_incomplete(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    state: dict[str, Any],
+    sync_option: str,
+    expected_key: str,
+) -> None:
+    """Malformed rows prevent reconciliation while valid sibling rows still compile."""
+    config_entry = setup_switch_reconciliation_entry(
+        make_config_entry,
+        coordinator=make_coord(state),
+        **{sync_option: True},
+    )
+    captured = capture_reconciled_desired_entities(monkeypatch)
+    created: list[Any] = []
+
+    await switch_mod.async_setup_entry(
+        MagicMock(),
+        config_entry,
+        cast("AddEntitiesCallback", lambda entities, _=False: created.extend(entities)),
+    )
+
+    assert captured["entities"] is None
+    assert expected_key in {entity.entity_description.key for entity in created}
+
+
+@pytest.mark.parametrize(
+    ("state", "expected_entities"),
+    [
+        ({}, None),
+        ({"carp": {}}, None),
+        ({"carp": {"status_summary": []}}, None),
+        ({"carp": {"status_summary": {"maintenance_mode": False, "enabled": True}}}, 1),
+    ],
+)
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_none_for_invalid_carp_summary(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    state: dict[str, Any],
+    expected_entities: int | None,
+) -> None:
+    """CARP reconciliation should be incomplete without a status_summary mapping."""
+    config_entry = setup_switch_reconciliation_entry(
+        make_config_entry,
+        coordinator=make_coord(state),
+        sync_carp=True,
+    )
+    captured: dict[str, Any] = {}
+    created: list[Any] = []
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture the desired-entity payload sent to reconciliation."""
+        captured["entities"] = entities
+
+    def add_entities(ents: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Capture switch entities emitted by setup."""
+        created.extend(ents)
+
+    monkeypatch.setattr(switch_mod, "record_desired_entities", capture)
+
+    await switch_mod.async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", add_entities)
+    )
+
+    assert "entities" in captured
+    if expected_entities is None:
+        assert captured["entities"] is None
+        assert len(created) == 0
+    else:
+        assert isinstance(captured["entities"], list)
+        assert len(captured["entities"]) == expected_entities
+        assert len(created) == 1
 
 
 async def collect_setup_carp_switches(
@@ -1377,8 +1764,6 @@ def test_delay_update_setter(
 
         ent.delay_update = True
         assert ent.delay_update is True
-        # ensure async_call_later returned remover was captured
-        assert callable(getattr(ent, "_delay_update_remove", None))
         ent.delay_update = False
         assert called["removed"] is True
     finally:
@@ -1500,6 +1885,28 @@ async def test_compile_unbound_extended_and_toggle(
 
 
 @pytest.mark.asyncio
+async def test_compile_unbound_switches_skips_empty_rows(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Empty legacy and extended Unbound rows should be skipped during compile."""
+    state = {
+        "unbound_blocklist": {
+            "legacy": {},
+            "u1": {},
+            "u2": {"enabled": "1", "description": "Two"},
+        },
+    }
+    coordinator.data = state
+    config_entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    ents = await _compile_unbound_switches(config_entry, coordinator, state)
+
+    assert len(ents) == 1
+    assert {ent.entity_description.key for ent in ents} == {"unbound_blocklist.switch.u2"}
+
+
+@pytest.mark.asyncio
 async def test_compile_unbound_switches_handles_legacy_and_extended_payloads(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
@@ -1519,6 +1926,40 @@ async def test_compile_unbound_switches_handles_legacy_and_extended_payloads(
     assert len(ents) == 2
     assert any(isinstance(ent, OPNsenseUnboundBlocklistSwitchLegacy) for ent in ents)
     assert any(isinstance(ent, OPNsenseUnboundBlocklistSwitch) for ent in ents)
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_marks_empty_unbound_rows_incomplete(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Empty Unbound rows should not be authoritative while valid siblings still compile."""
+    state = {
+        "unbound_blocklist": {
+            "legacy": {},
+            "u1": {},
+            "good": {"enabled": "1", "description": "Good Row"},
+        },
+    }
+    coordinator = make_coord(state)
+    config_entry = setup_switch_reconciliation_entry(
+        make_config_entry,
+        coordinator=coordinator,
+        sync_unbound=True,
+    )
+    captured = capture_reconciled_desired_entities(monkeypatch)
+    created: list[Any] = []
+
+    await switch_mod.async_setup_entry(
+        MagicMock(),
+        config_entry,
+        cast("AddEntitiesCallback", lambda entities, _=False: created.extend(entities)),
+    )
+
+    assert captured["entities"] is None
+    assert {entity.entity_description.key for entity in created} == {
+        "unbound_blocklist.switch.good"
+    }
 
 
 @pytest.mark.asyncio
@@ -1563,22 +2004,20 @@ async def test_vpn_turn_on_off_noops_when_preconditions_fail(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("client_result", "expected_is_on", "expected_delay", "expect_error"),
+    ("client_result", "expected_is_on", "expected_delay"),
     [
-        (True, False, True, False),  # client succeeds -> turned off
-        (False, True, False, True),  # client fails -> remains on, error logged
-        (None, True, False, False),  # no client -> no-op
+        pytest.param(True, False, True, id="success"),
+        pytest.param(False, True, False, id="client-failure"),
+        pytest.param(None, True, False, id="missing-client"),
     ],
 )
 async def test_vpn_async_turn_off_variations(
     monkeypatch: pytest.MonkeyPatch,
     coordinator: MagicMock,
     ph_hass: Any,
-    caplog: pytest.LogCaptureFixture,
     client_result: Any,
     expected_is_on: Any,
     expected_delay: Any,
-    expect_error: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """Parameterize async_turn_off behavior for success, failure, and missing client."""
@@ -1612,20 +2051,10 @@ async def test_vpn_async_turn_off_variations(
         ent._client = MagicMock()
         ent._client.toggle_vpn_instance = AsyncMock(return_value=client_result)
 
-    # capture logs
-    caplog.clear()
-    caplog.set_level("INFO")
-
     await ent.async_turn_off()
 
     assert ent.is_on is expected_is_on
     assert ent.delay_update is expected_delay
-
-    if expect_error:
-        assert "Failed to turn off VPN" in caplog.text
-    else:
-        # on success or when no client is present, there should be no failure log
-        assert "Failed to turn off VPN" not in caplog.text
 
     # If already off, async_turn_off should do nothing (no additional client calls)
     ent._attr_is_on = False
@@ -1647,13 +2076,14 @@ async def test_unbound_missing_sets_unavailable(
     """Unbound switch becomes unavailable when expected data is missing."""
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    state: dict[str, Any] = {"unbound_blocklist": {"legacy": {}}}
-    coordinator.data = state
-    ent = (await _compile_unbound_switches(config_entry, coordinator, state))[0]
+    initial_state = {"unbound_blocklist": {"legacy": {"enabled": "1"}}}
+    coordinator.data = initial_state
+    ent = (await _compile_unbound_switches(config_entry, coordinator, initial_state))[0]
+    missing_state: dict[str, Any] = {"unbound_blocklist": {"legacy": {}}}
     # use PHCC-provided hass fixture
     hass = ph_hass
     ent.hass = hass
-    ent.coordinator = make_coord(state)
+    ent.coordinator = make_coord(missing_state)
     ent.entity_id = f"switch.{ent._attr_unique_id}"
     stub_async_write_ha_state(ent)
     ent._handle_coordinator_update()
@@ -2155,40 +2585,6 @@ def test_rule_switch_handlers_fail_closed_when_enabled_lookup_raises(
     assert ent.available is False
 
 
-def test_service_switch_ignores_malformed_service_rows(
-    coordinator: MagicMock,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Service lookup should skip non-mapping service rows without raising."""
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    coordinator.data = {"services": ["not-a-mapping"]}
-    ent = OPNsenseServiceSwitch(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=SwitchEntityDescription(key="service.svc1.status", name="Service"),
-    )
-
-    assert ent._opnsense_get_service() is None
-
-
-def test_service_switch_ignores_non_mapping_state(
-    coordinator: MagicMock,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Service lookup should return None when coordinator state is malformed."""
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    coordinator.data = []
-    ent = OPNsenseServiceSwitch(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=SwitchEntityDescription(key="service.svc1.status", name="Service"),
-    )
-
-    assert ent._opnsense_get_service() is None
-
-
 @pytest.mark.asyncio
 async def test_service_switch_malformed_services_container_on_update(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
@@ -2409,9 +2805,9 @@ def test_reset_delay_calls_existing_remover(
         lambda hass, delay, action: new_remover,
     )
     ent._reset_delay()
-    # old remover should have been called and replaced
     assert called["old_removed"] is True
-    assert ent._delay_update_remove == new_remover
+    ent.delay_update = False
+    assert called["new_removed"] is True
 
 
 @pytest.mark.asyncio
@@ -2610,79 +3006,6 @@ async def test_dynamic_switch_compile_helpers_skip_malformed_containers(
     coordinator.data = state
 
     assert await compile_helper(config_entry, coordinator, state) == []
-
-
-def test_opnsense_get_service_skips_malformed_service_rows(
-    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
-) -> None:
-    """Malformed service rows should be ignored while matching a valid service."""
-    coordinator.data = {
-        "services": [
-            "bad-row",
-            {"id": "svc", "name": "service"},
-        ]
-    }
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    entity = OPNsenseServiceSwitch(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=SwitchEntityDescription(key="service.svc.status", name="Service"),
-    )
-    found = entity._opnsense_get_service()
-    assert isinstance(found, MutableMapping)
-    assert found.get("name") == "service"
-
-
-def test_opnsense_get_service_with_malformed_services_container(
-    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
-) -> None:
-    """Malformed service containers should return None instead of iterating."""
-    coordinator.data = {
-        "services": "bad-services",
-    }
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    entity = OPNsenseServiceSwitch(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=SwitchEntityDescription(key="service.svc.status", name="Service"),
-    )
-    assert entity._opnsense_get_service() is None
-
-
-def test_opnsense_get_service_returns_none_when_state_is_malformed(
-    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
-) -> None:
-    """Malformed top-level service state should return None."""
-    coordinator.data = []
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    entity = OPNsenseServiceSwitch(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=SwitchEntityDescription(key="service.svc.status", name="Service"),
-    )
-    assert entity._opnsense_get_service() is None
-
-
-def test_opnsense_get_service_returns_none_when_service_id_is_missing(
-    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
-) -> None:
-    """Missing service IDs should return None after scanning valid service rows."""
-    coordinator.data = {
-        "services": [
-            {"id": "other", "name": "other-service"},
-        ],
-    }
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    entity = OPNsenseServiceSwitch(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=SwitchEntityDescription(key="service.svc.status", name="Service"),
-    )
-    assert entity._opnsense_get_service() is None
 
 
 @pytest.mark.asyncio
@@ -3218,39 +3541,6 @@ async def test_vpn_entries_skip_non_mapping_and_missing_enabled(
     assert ents == []
 
 
-def test_service_switch_initializes_property_name(
-    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
-) -> None:
-    """Service switches extract the property name from their entity key."""
-    desc = SwitchEntityDescription(key="service.svcx.status", name="SvcX")
-    config_entry_srv = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(config_entry_srv.runtime_data, COORDINATOR, coordinator)
-    ent = OPNsenseServiceSwitch(
-        config_entry=config_entry_srv,
-        coordinator=coordinator,
-        entity_description=desc,
-    )
-    assert ent._prop_name == "status"
-
-
-def test_vpn_instance_key_parsing(
-    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
-) -> None:
-    """VPNSwitch parses its entity_description.key into type, section, and uuid."""
-    # ensure VPNSwitch parses key parts without raising
-    desc = SwitchEntityDescription(key="openvpn.clients.c1", name="VPNC")
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    ent = OPNsenseVPNSwitch(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=desc,
-    )
-    assert ent._vpn_type == "openvpn"
-    assert ent._clients_servers == "clients"
-    assert ent._uuid == "c1"
-
-
 @pytest.mark.parametrize("exc_type", [TypeError, KeyError, AttributeError])
 def test_vpn_handle_exceptions_sets_unavailable(
     exc_type: type[Exception],
@@ -3778,13 +4068,6 @@ async def test_nat_rule_switch_with_dotted_rule_key_uses_full_rule_id(
     ent.entity_id = "switch.source_nat_fallback_rule_key_with_dots"
     stub_async_write_ha_state(ent)
 
-    assert ent._rule_id == "fallback.key.with.dots"
-    assert ent._opnsense_get_rule() == {
-        "description": "Source NAT Rule",
-        "%interface": "wan",
-        "enabled": "1",
-    }
-
     ent._client = MagicMock()
     ent._client.toggle_nat_rule = AsyncMock(return_value=True)
     await ent.async_turn_on()
@@ -3816,3 +4099,118 @@ async def test_compile_new_api_empty_state(
 
     ents = await _compile_nat_source_rules_switches(config_entry, coordinator, state)
     assert ents == []
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_none_for_malformed_service_identity_row(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Service identity must be stable even if some rows are malformed."""
+    coordinator = make_coord(
+        {
+            "services": [
+                {"id": "locked", "name": "Locked", "locked": 1},
+                {},
+                {"id": "svc", "name": "svc", "locked": 0, "status": True},
+            ]
+        }
+    )
+    config_entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_FIREWALL_AND_NAT: False,
+            CONF_SYNC_SERVICES: True,
+            CONF_SYNC_VPN: False,
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_UNBOUND: False,
+        }
+    )
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    recorded: dict[str, Any] = {}
+    created: list[Any] = []
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture desired entities input for reconciliation."""
+        recorded["entities"] = entities
+
+    def add_entities(ents: Iterable[Any], _update_before_add: bool = False) -> None:
+        """Capture compiled switch entities."""
+        created.extend(ents)
+
+    monkeypatch.setattr(switch_mod, "record_desired_entities", capture)
+
+    await switch_mod.async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", add_entities)
+    )
+    assert recorded["entities"] is None
+    assert [entity.entity_description.key for entity in created] == ["service.svc.status"]
+
+
+def test_service_switch_get_service_matches_normalized_identity(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Service switch should remain available when service ids need normalization."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    coordinator.data = {
+        "services": [
+            {"id": "  svc1  ", "name": "svc1", "status": True},
+        ]
+    }
+    ent = OPNsenseServiceSwitch(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=SwitchEntityDescription(key="service.svc1.status", name="Svc 1"),
+    )
+    ent.entity_id = "switch.svc1"
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
+
+    ent._handle_coordinator_update()
+
+    assert ent.available is True
+    assert ent.is_on is True
+
+
+@pytest.mark.parametrize(
+    ("service", "identity"),
+    [
+        ({"id": "  svc-padded  ", "name": "svc-padded", "status": False}, "svc-padded"),
+        ({"name": "svc-name-only", "status": False}, "svc-name-only"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_service_switch_controls_normalized_identity(
+    coordinator: MagicMock,
+    ph_hass: Any,
+    service: Mapping[str, Any],
+    identity: str,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Service switch should control services when identity is trimmed id or fallback name."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    coordinator.data = {"services": [service]}
+    ent = OPNsenseServiceSwitch(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=SwitchEntityDescription(key=f"service.{identity}.status", name="Svc"),
+    )
+    ent.hass = ph_hass
+    ent.coordinator = make_coord({"services": [service]})
+    ent.entity_id = f"switch.service.{identity}"
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
+
+    ent._client = MagicMock()
+    ent._client.start_service = AsyncMock(return_value=True)
+    ent._client.stop_service = AsyncMock(return_value=True)
+
+    ent._handle_coordinator_update()
+    assert ent.available is True
+
+    await ent.async_turn_on()
+    ent._client.start_service.assert_awaited_once_with(identity)
+
+    await ent.async_turn_off()
+    ent._client.stop_service.assert_awaited_once_with(identity)

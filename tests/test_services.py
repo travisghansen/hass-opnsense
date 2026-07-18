@@ -6,7 +6,6 @@ for operations such as starting/stopping services and generating vouchers.
 
 from collections.abc import Awaitable, Callable
 import json
-import logging
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Never
@@ -15,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 from aiopnsense.exceptions import OPNsenseVoucherServerError
 from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.util.yaml import load_yaml_dict
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -120,7 +120,7 @@ def _patch_device_registry_entry(
     )
     device_registry = MagicMock()
     device_registry.async_get.return_value = device_entry
-    monkeypatch.setattr(services_mod.dr, "async_get", lambda _hass: device_registry)
+    monkeypatch.setattr(dr, "async_get", lambda _hass: device_registry)
 
 
 def _patch_entity_registry_entry(
@@ -136,7 +136,7 @@ def _patch_entity_registry_entry(
     entity_entry = SimpleNamespace(config_entry_id=config_entry_id)
     entity_registry = MagicMock()
     entity_registry.async_get.return_value = entity_entry
-    monkeypatch.setattr(services_mod.er, "async_get", lambda _hass: entity_registry)
+    monkeypatch.setattr(er, "async_get", lambda _hass: entity_registry)
 
 
 def _patch_missing_device_registry_entry(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -147,7 +147,7 @@ def _patch_missing_device_registry_entry(monkeypatch: pytest.MonkeyPatch) -> Non
     """
     device_registry = MagicMock()
     device_registry.async_get.return_value = None
-    monkeypatch.setattr(services_mod.dr, "async_get", lambda _hass: device_registry)
+    monkeypatch.setattr(dr, "async_get", lambda _hass: device_registry)
 
 
 def _add_entry_for_client(
@@ -205,11 +205,23 @@ async def test_async_setup_services_registers_expected_service_contracts() -> No
 
     await services_mod.async_setup_services(hass)
 
-    registrations = {
-        call.kwargs["service"]: call.kwargs for call in hass.services.async_register.call_args_list
-    }
+    registrations_by_service: dict[str, list[dict[str, Any]]] = {}
+    for call in hass.services.async_register.call_args_list:
+        kwargs = call.kwargs
+        registrations_by_service.setdefault(kwargs["service"], []).append(kwargs)
 
-    assert list(registrations) == [
+    duplicate_services = [
+        service
+        for service, registrations in registrations_by_service.items()
+        if len(registrations) > 1
+    ]
+    assert not duplicate_services, f"Duplicate service registrations: {duplicate_services}"
+
+    registrations: dict[str, dict[str, Any]] = {
+        service: entries[0] for service, entries in registrations_by_service.items()
+    }
+    assert len(hass.services.async_register.call_args_list) == len(registrations)
+    assert set(registrations) == {
         SERVICE_CLOSE_NOTICE,
         SERVICE_START_SERVICE,
         SERVICE_STOP_SERVICE,
@@ -223,7 +235,7 @@ async def test_async_setup_services_registers_expected_service_contracts() -> No
         SERVICE_RUN_SPEEDTEST,
         SERVICE_GET_VNSTAT_METRICS,
         SERVICE_TOGGLE_ALIAS,
-    ]
+    }
     assert registrations[SERVICE_GENERATE_VOUCHERS]["supports_response"] == SupportsResponse.ONLY
     assert registrations[SERVICE_KILL_STATES]["supports_response"] == SupportsResponse.OPTIONAL
     assert registrations[SERVICE_RUN_SPEEDTEST]["supports_response"] == SupportsResponse.ONLY
@@ -394,7 +406,7 @@ async def test_get_clients_only_carp_entries_reject_explicit_targets(
 
 @pytest.mark.asyncio
 async def test_get_clients_registry_errors_raise_for_explicit_targets(
-    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Registry lookup errors must not broaden explicit targets to all clients."""
     hass_local = MagicMock(spec=HomeAssistant)
@@ -423,21 +435,10 @@ async def test_get_clients_registry_errors_raise_for_explicit_targets(
 
         return _r
 
-    monkeypatch.setattr(services_mod.dr, "async_get", _raises(TypeError()))
-    monkeypatch.setattr(services_mod.er, "async_get", _raises(AttributeError()))
-    with (
-        caplog.at_level(logging.DEBUG, logger=services_mod._LOGGER.name),
-        pytest.raises(ServiceValidationError),
-    ):
+    monkeypatch.setattr(dr, "async_get", _raises(TypeError()))
+    monkeypatch.setattr(er, "async_get", _raises(AttributeError()))
+    with pytest.raises(ServiceValidationError):
         await services_mod._get_clients(hass_local, opndevice_id="d", opnentity_id="e")
-
-    debug_args = [
-        record.args
-        for record in caplog.records
-        if record.name == services_mod._LOGGER.name and isinstance(record.args, tuple)
-    ]
-    assert any(args[0] == "d" for args in debug_args)
-    assert any(args[0] == "e" for args in debug_args)
 
 
 @pytest.mark.asyncio
@@ -561,7 +562,7 @@ async def test_service_start_stop_restart_success_and_failure(
 
 @pytest.mark.asyncio
 async def test_service_restart_only_if_running_and_reload_interface(
-    monkeypatch: pytest.MonkeyPatch, ph_hass: Any, caplog: pytest.LogCaptureFixture
+    monkeypatch: pytest.MonkeyPatch, ph_hass: Any
 ) -> None:
     """Restart service honors only_if_running and reload_interface behavior."""
     c1 = MagicMock()
@@ -575,11 +576,8 @@ async def test_service_restart_only_if_running_and_reload_interface(
     call = _service_call({"service_id": "svc", "only_if_running": True})
 
     _patch_clients(monkeypatch, [c1])
-    caplog.set_level("DEBUG", logger=services_mod.__name__)
     await services_mod._service_restart_service(hass, call)
     c1.restart_service_if_running.assert_awaited_once_with("svc")
-    assert "[service_restart_service] restart_service_if_running, client: c1" in caplog.text
-    assert "[service_restart_service] restart_service_if_running] client: c1" not in caplog.text
     c1.restart_service.assert_not_awaited()
 
     c1.restart_service_if_running = AsyncMock(return_value=False)

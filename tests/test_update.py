@@ -14,9 +14,16 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.opnsense import update as update_module
-from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID, CONF_SYNC_FIRMWARE_UPDATES
-from custom_components.opnsense.update import OPNsenseFirmwareUpdatesAvailableUpdate
+from custom_components.opnsense.const import (
+    CONF_DEVICE_UNIQUE_ID,
+    CONF_SYNC_FIRMWARE_UPDATES,
+    COORDINATOR,
+)
+from custom_components.opnsense.update import (
+    OPNsenseFirmwareUpdatesAvailableUpdate,
+    _affected_package_count,
+    async_setup_entry,
+)
 
 
 def _firmware_update_state(
@@ -137,7 +144,7 @@ async def test_async_setup_entry_adds_firmware_update_entity_contract(
             CONF_SYNC_FIRMWARE_UPDATES: True,
         }
     )
-    setattr(entry.runtime_data, update_module.COORDINATOR, dummy_coordinator)
+    setattr(entry.runtime_data, COORDINATOR, dummy_coordinator)
     added_entities: list[OPNsenseFirmwareUpdatesAvailableUpdate] = []
 
     def async_add_entities(
@@ -147,9 +154,7 @@ async def test_async_setup_entry_adds_firmware_update_entity_contract(
         """Capture entities added by the platform setup callback."""
         added_entities.extend(entities)
 
-    await update_module.async_setup_entry(
-        hass, entry, cast("AddEntitiesCallback", async_add_entities)
-    )
+    await async_setup_entry(hass, entry, cast("AddEntitiesCallback", async_add_entities))
 
     assert len(added_entities) == 1
     entity = added_entities[0]
@@ -177,7 +182,7 @@ async def test_async_setup_entry_skips_disabled_firmware_update_sync(
             CONF_SYNC_FIRMWARE_UPDATES: False,
         }
     )
-    setattr(entry.runtime_data, update_module.COORDINATOR, dummy_coordinator)
+    setattr(entry.runtime_data, COORDINATOR, dummy_coordinator)
     added_entities: list[OPNsenseFirmwareUpdatesAvailableUpdate] = []
 
     def async_add_entities(
@@ -187,9 +192,7 @@ async def test_async_setup_entry_skips_disabled_firmware_update_sync(
         """Capture entities added by the platform setup callback."""
         added_entities.extend(entities)
 
-    await update_module.async_setup_entry(
-        hass, entry, cast("AddEntitiesCallback", async_add_entities)
-    )
+    await async_setup_entry(hass, entry, cast("AddEntitiesCallback", async_add_entities))
 
     assert added_entities == []
 
@@ -265,7 +268,7 @@ def test_is_update_available_true_for_valid_status(
 
 def test_affected_package_count_counts_lists() -> None:
     """Affected package count should count list-shaped package collections."""
-    assert update_module._affected_package_count(["base", "kernel"]) == 2
+    assert _affected_package_count(["base", "kernel"]) == 2
 
 
 @pytest.mark.parametrize(
@@ -925,12 +928,21 @@ async def test_async_install_stops_after_four_invalid_polling_responses(
 
 
 @pytest.mark.asyncio
-async def test_async_install_timeout_polling_error_raises(
+@pytest.mark.parametrize(
+    ("error_type", "message"),
+    [
+        pytest.param(OPNsenseTimeoutError, "fail", id="timeout"),
+        pytest.param(OPNsenseError, "unexpected", id="generic"),
+    ],
+)
+async def test_async_install_polling_error_raises(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
+    error_type: type[OPNsenseError],
+    message: str,
 ) -> None:
-    """async_install should not hide timeout errors raised by aiopnsense."""
+    """async_install should not hide errors raised by aiopnsense while polling."""
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,
@@ -940,37 +952,12 @@ async def test_async_install_timeout_polling_error_raises(
         ),
     )
 
-    bad: Any = _FirmwareInstallClient(status_error=OPNsenseTimeoutError("fail"))
+    bad: Any = _FirmwareInstallClient(status_error=error_type(message))
     object.__setattr__(ent, "_client", bad)
     ent.coordinator.data = {"firmware_update_info": {"status": "update"}}
     monkeypatch.setattr(asyncio, "sleep", AsyncMock(return_value=None))
 
-    with pytest.raises(OPNsenseTimeoutError, match="fail"):
-        await ent.async_install()
-
-
-@pytest.mark.asyncio
-async def test_async_install_generic_opnsense_polling_error_raises(
-    monkeypatch: pytest.MonkeyPatch,
-    make_config_entry: Callable[..., MockConfigEntry],
-    dummy_coordinator: MagicMock,
-) -> None:
-    """async_install should not hide generic errors raised by aiopnsense."""
-    entry = make_config_entry()
-    ent = OPNsenseFirmwareUpdatesAvailableUpdate(
-        config_entry=entry,
-        coordinator=dummy_coordinator,
-        entity_description=UpdateEntityDescription(
-            key="firmware.update_available", name="Firmware"
-        ),
-    )
-
-    bad: Any = _FirmwareInstallClient(status_error=OPNsenseError("unexpected"))
-    object.__setattr__(ent, "_client", bad)
-    ent.coordinator.data = {"firmware_update_info": {"status": "update"}}
-    monkeypatch.setattr(asyncio, "sleep", AsyncMock(return_value=None))
-
-    with pytest.raises(OPNsenseError, match="unexpected"):
+    with pytest.raises(error_type, match=message):
         await ent.async_install()
 
 
