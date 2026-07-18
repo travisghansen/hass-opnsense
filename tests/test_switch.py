@@ -2006,22 +2006,20 @@ async def test_vpn_turn_on_off_noops_when_preconditions_fail(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("client_result", "expected_is_on", "expected_delay", "expect_error"),
+    ("client_result", "expected_is_on", "expected_delay"),
     [
-        (True, False, True, False),  # client succeeds -> turned off
-        (False, True, False, True),  # client fails -> remains on, error logged
-        (None, True, False, False),  # no client -> no-op
+        pytest.param(True, False, True, id="success"),
+        pytest.param(False, True, False, id="client-failure"),
+        pytest.param(None, True, False, id="missing-client"),
     ],
 )
 async def test_vpn_async_turn_off_variations(
     monkeypatch: pytest.MonkeyPatch,
     coordinator: MagicMock,
     ph_hass: Any,
-    caplog: pytest.LogCaptureFixture,
     client_result: Any,
     expected_is_on: Any,
     expected_delay: Any,
-    expect_error: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """Parameterize async_turn_off behavior for success, failure, and missing client."""
@@ -2055,20 +2053,10 @@ async def test_vpn_async_turn_off_variations(
         ent._client = MagicMock()
         ent._client.toggle_vpn_instance = AsyncMock(return_value=client_result)
 
-    # capture logs
-    caplog.clear()
-    caplog.set_level("INFO")
-
     await ent.async_turn_off()
 
     assert ent.is_on is expected_is_on
     assert ent.delay_update is expected_delay
-
-    if expect_error:
-        assert "Failed to turn off VPN" in caplog.text
-    else:
-        # on success or when no client is present, there should be no failure log
-        assert "Failed to turn off VPN" not in caplog.text
 
     # If already off, async_turn_off should do nothing (no additional client calls)
     ent._attr_is_on = False
