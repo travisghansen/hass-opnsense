@@ -199,7 +199,7 @@ async def _unload_setup_platforms_after_reconciliation_failure(
     """Unload forwarded setup platforms when reconciliation aborts."""
     try:
         unloaded: bool = await hass.config_entries.async_unload_platforms(entry, platforms)
-    except HomeAssistantError, KeyError:
+    except HomeAssistantError, KeyError, TimeoutError:
         _LOGGER.exception(
             "Device ID reconciliation cleanup failed for %s; cannot unload entry platforms",
             entry.title,

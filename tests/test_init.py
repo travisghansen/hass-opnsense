@@ -4492,6 +4492,7 @@ async def _run_reconciliation_cleanup_unload(
         (pytest.param(False, True, id="unload-false-preserves-runtime")),
         (pytest.param(HomeAssistantError("unload failed"), True, id="homeassistant-error")),
         (pytest.param(KeyError("entry key"), True, id="key-error")),
+        (pytest.param(TimeoutError("unload timed out"), True, id="timeout-error")),
         (pytest.param(True, False, id="unload-success-tears-down-runtime")),
     ],
 )
