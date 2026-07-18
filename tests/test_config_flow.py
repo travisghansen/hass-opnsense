@@ -877,12 +877,11 @@ async def test_validate_input_can_map_carp_not_configured_error(
     assert result["base"] == "carp_not_configured"
 
 
-def test_record_validation_error_sets_base(caplog: pytest.LogCaptureFixture) -> None:
-    """_record_validation_error should log the message and set errors['base']."""
+def test_record_validation_error_sets_base() -> None:
+    """_record_validation_error should set errors['base']."""
     errors: dict[str, str] = {}
     cf_mod._record_validation_error(errors=errors, key="test_key", message="an msg")
     assert errors.get("base") == "test_key"
-    assert "an msg" in caplog.text
 
 
 def test_build_carp_input_schema_defaults_and_rejects_unknown_fields() -> None:

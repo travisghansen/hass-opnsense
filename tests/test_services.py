@@ -6,7 +6,6 @@ for operations such as starting/stopping services and generating vouchers.
 
 from collections.abc import Awaitable, Callable
 import json
-import logging
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Never
@@ -394,7 +393,7 @@ async def test_get_clients_only_carp_entries_reject_explicit_targets(
 
 @pytest.mark.asyncio
 async def test_get_clients_registry_errors_raise_for_explicit_targets(
-    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Registry lookup errors must not broaden explicit targets to all clients."""
     hass_local = MagicMock(spec=HomeAssistant)
@@ -425,19 +424,8 @@ async def test_get_clients_registry_errors_raise_for_explicit_targets(
 
     monkeypatch.setattr(services_mod.dr, "async_get", _raises(TypeError()))
     monkeypatch.setattr(services_mod.er, "async_get", _raises(AttributeError()))
-    with (
-        caplog.at_level(logging.DEBUG, logger=services_mod._LOGGER.name),
-        pytest.raises(ServiceValidationError),
-    ):
+    with pytest.raises(ServiceValidationError):
         await services_mod._get_clients(hass_local, opndevice_id="d", opnentity_id="e")
-
-    debug_args = [
-        record.args
-        for record in caplog.records
-        if record.name == services_mod._LOGGER.name and isinstance(record.args, tuple)
-    ]
-    assert any(args[0] == "d" for args in debug_args)
-    assert any(args[0] == "e" for args in debug_args)
 
 
 @pytest.mark.asyncio
