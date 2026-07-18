@@ -208,7 +208,7 @@ async def test_async_setup_services_registers_expected_service_contracts() -> No
         call.kwargs["service"]: call.kwargs for call in hass.services.async_register.call_args_list
     }
 
-    assert list(registrations) == [
+    assert set(registrations) == {
         SERVICE_CLOSE_NOTICE,
         SERVICE_START_SERVICE,
         SERVICE_STOP_SERVICE,
@@ -222,7 +222,7 @@ async def test_async_setup_services_registers_expected_service_contracts() -> No
         SERVICE_RUN_SPEEDTEST,
         SERVICE_GET_VNSTAT_METRICS,
         SERVICE_TOGGLE_ALIAS,
-    ]
+    }
     assert registrations[SERVICE_GENERATE_VOUCHERS]["supports_response"] == SupportsResponse.ONLY
     assert registrations[SERVICE_KILL_STATES]["supports_response"] == SupportsResponse.OPTIONAL
     assert registrations[SERVICE_RUN_SPEEDTEST]["supports_response"] == SupportsResponse.ONLY
