@@ -140,22 +140,25 @@ def _devices_from_arp_entries(arp_entries: list[Any]) -> tuple[list[dict[str, An
 
 
 def _track_all_arp_entries_are_complete(arp_entries: list[Any]) -> bool:
-    """Return whether every ARP row can produce at least one tracked MAC in track-all mode.
+    """Return whether every non-entity ARP row is skippable in track-all mode.
 
     Args:
         arp_entries: Raw ARP entries returned by OPNsense.
 
     Returns:
-        ``True`` when each row is a mapping with a usable MAC address.
+        ``True`` when every row is a mapping and any row with a normalizable MAC
+        contributes a unique MAC address.
     """
     seen_macs: list[str] = []
     for arp_entry in arp_entries:
         if not isinstance(arp_entry, MutableMapping):
             return False
         mac_address = get_arp_mac(arp_entry)
-        normalized_mac = _normalize_mac_for_device_tracker(mac_address) if mac_address else None
-        if not mac_address or not normalized_mac:
-            return False
+        if not mac_address:
+            continue
+        normalized_mac = _normalize_mac_for_device_tracker(mac_address)
+        if not normalized_mac:
+            continue
         if normalized_mac in seen_macs:
             continue
         seen_macs.append(normalized_mac)
