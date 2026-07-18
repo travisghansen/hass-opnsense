@@ -1865,3 +1865,26 @@ def test_entry_matches_snapshot_invariants(
         )
         == expected_match
     )
+
+
+@pytest.mark.asyncio
+async def test_confirmation_cannot_unload_timeout_aborts_with_cannot_unload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """TimeoutError from async_unload should abort repair as cannot_unload."""
+    hass = MagicMock()
+    entry = _make_entry(state=ConfigEntryState.LOADED)
+    _configure_hass(hass, entry)
+    hass.config_entries.async_unload.side_effect = TimeoutError("timed out")
+    _patch_registries(monkeypatch)
+    _patch_probe_client(monkeypatch)
+    flow = _make_flow(hass, entry)
+
+    result = await flow.async_step_confirm({})
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "cannot_unload"
+    hass.config_entries.async_unload.assert_awaited_once_with(entry.entry_id)
+    hass.config_entries.async_update_entry.assert_not_called()
+    hass.config_entries.async_reload.assert_not_called()
+    hass.config_entries.async_schedule_reload.assert_not_called()
