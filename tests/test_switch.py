@@ -1841,6 +1841,28 @@ async def test_compile_unbound_extended_and_toggle(
 
 
 @pytest.mark.asyncio
+async def test_compile_unbound_switches_skips_empty_rows(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Empty legacy and extended Unbound rows should be skipped during compile."""
+    state = {
+        "unbound_blocklist": {
+            "legacy": {},
+            "u1": {},
+            "u2": {"enabled": "1", "description": "Two"},
+        },
+    }
+    coordinator.data = state
+    config_entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+
+    ents = await _compile_unbound_switches(config_entry, coordinator, state)
+
+    assert len(ents) == 1
+    assert {ent.entity_description.key for ent in ents} == {"unbound_blocklist.switch.u2"}
+
+
+@pytest.mark.asyncio
 async def test_compile_unbound_switches_handles_legacy_and_extended_payloads(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
@@ -1860,6 +1882,40 @@ async def test_compile_unbound_switches_handles_legacy_and_extended_payloads(
     assert len(ents) == 2
     assert any(isinstance(ent, OPNsenseUnboundBlocklistSwitchLegacy) for ent in ents)
     assert any(isinstance(ent, OPNsenseUnboundBlocklistSwitch) for ent in ents)
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_marks_empty_unbound_rows_incomplete(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Empty Unbound rows should not be authoritative while valid siblings still compile."""
+    state = {
+        "unbound_blocklist": {
+            "legacy": {},
+            "u1": {},
+            "good": {"enabled": "1", "description": "Good Row"},
+        },
+    }
+    coordinator = make_coord(state)
+    config_entry = setup_switch_reconciliation_entry(
+        make_config_entry,
+        coordinator=coordinator,
+        sync_unbound=True,
+    )
+    captured = capture_reconciled_desired_entities(monkeypatch)
+    created: list[Any] = []
+
+    await switch_mod.async_setup_entry(
+        MagicMock(),
+        config_entry,
+        cast("AddEntitiesCallback", lambda entities, _=False: created.extend(entities)),
+    )
+
+    assert captured["entities"] is None
+    assert {entity.entity_description.key for entity in created} == {
+        "unbound_blocklist.switch.good"
+    }
 
 
 @pytest.mark.asyncio
@@ -1988,13 +2044,14 @@ async def test_unbound_missing_sets_unavailable(
     """Unbound switch becomes unavailable when expected data is missing."""
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    state: dict[str, Any] = {"unbound_blocklist": {"legacy": {}}}
-    coordinator.data = state
-    ent = (await _compile_unbound_switches(config_entry, coordinator, state))[0]
+    initial_state = {"unbound_blocklist": {"legacy": {"enabled": "1"}}}
+    coordinator.data = initial_state
+    ent = (await _compile_unbound_switches(config_entry, coordinator, initial_state))[0]
+    missing_state: dict[str, Any] = {"unbound_blocklist": {"legacy": {}}}
     # use PHCC-provided hass fixture
     hass = ph_hass
     ent.hass = hass
-    ent.coordinator = make_coord(state)
+    ent.coordinator = make_coord(missing_state)
     ent.entity_id = f"switch.{ent._attr_unique_id}"
     stub_async_write_ha_state(ent)
     ent._handle_coordinator_update()

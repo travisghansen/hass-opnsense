@@ -40,7 +40,7 @@ def _is_valid_vpn_switch_row(instance: Any) -> bool:
 
 def _is_valid_unbound_row(dnsbl: Any) -> bool:
     """Return whether an Unbound blocklist row can produce a switch."""
-    return isinstance(dnsbl, MutableMapping)
+    return isinstance(dnsbl, MutableMapping) and bool(dnsbl)
 
 
 def _is_valid_firewall_rule_row(rule_key: Any, rule: Any) -> bool:

@@ -860,6 +860,106 @@ async def test_async_setup_entry_does_not_retry_non_transient_validation_failure
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure_step",
+    [
+        "validate",
+        "device_probe",
+        "firmware_probe",
+    ],
+)
+async def test_async_setup_entry_with_repair_marker_recreates_issue_on_early_probe_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+    failure_step: str,
+) -> None:
+    """A valid repair marker should create its mismatch issue before probe failures."""
+    create_client = _make_valid_setup_client()
+    if failure_step == "validate":
+        create_client.validate = AsyncMock(side_effect=OPNsenseTimeoutError("validate timeout"))
+    elif failure_step == "device_probe":
+        create_client.get_device_unique_id = AsyncMock(
+            side_effect=OPNsenseConnectionError("probe timeout")
+        )
+    else:
+        create_client.get_host_firmware_version = AsyncMock(
+            side_effect=OPNsenseConnectionError("firmware check timeout")
+        )
+
+    def _create_client(**kwargs: Any) -> Any:
+        """Return the marker-aware client used by this setup failure test."""
+        del kwargs
+        return create_client
+
+    coordinator = _make_setup_coordinator()
+    monkeypatch.setattr(
+        init_mod,
+        "create_opnsense_client_from_config_entry",
+        _create_client,
+    )
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            REPAIR_MARKER_KEY: {
+                "version": 1,
+                "old_device_id": "old-dev",
+                "new_device_id": "dev1",
+            },
+        },
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
+        unique_id="dev1",
+    )
+
+    ph_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+    ph_hass.config_entries.async_reload = MagicMock()
+    ph_hass.data = {}
+    create_issue = MagicMock()
+    monkeypatch.setattr(init_mod.ir, "async_create_issue", create_issue)
+
+    if failure_step == "validate":
+        with pytest.raises(OPNsenseTimeoutError, match="validate timeout"):
+            await init_mod.async_setup_entry(ph_hass, entry)
+    elif failure_step == "device_probe":
+        with pytest.raises(OPNsenseConnectionError, match="probe timeout"):
+            await init_mod.async_setup_entry(ph_hass, entry)
+    else:
+        with pytest.raises(OPNsenseConnectionError, match="firmware check timeout"):
+            await init_mod.async_setup_entry(ph_hass, entry)
+
+    ph_hass.config_entries.async_forward_entry_setups.assert_not_awaited()
+    assert create_issue.call_count >= 1
+    issue_kwargs = create_issue.call_args_list[0].kwargs
+    assert issue_kwargs["issue_id"] == f"{entry.entry_id}_device_id_mismatched"
+    assert issue_kwargs["is_fixable"] is True
+    assert issue_kwargs["is_persistent"] is False
+    assert issue_kwargs["translation_key"] == "device_id_mismatched"
+    assert issue_kwargs["translation_placeholders"] == {
+        "entry_title": entry.title,
+        "old_device_id": "old-dev",
+        "new_device_id": "dev1",
+    }
+    assert issue_kwargs["data"] == {
+        "entry_id": entry.entry_id,
+        "old_device_id": "old-dev",
+        "new_device_id": "dev1",
+    }
+    assert entry.entry_id not in ph_hass.data.get(DOMAIN, {})
+    if failure_step == "validate":
+        coordinator.async_shutdown.assert_not_awaited()
+        assert entry.runtime_data is not None
+    else:
+        assert entry.runtime_data is None
+        coordinator.async_shutdown.assert_awaited_once()
+    create_client.async_close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_async_setup_entry_reraises_client_creation_error(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
@@ -4008,8 +4108,8 @@ async def test_async_setup_entry_recreates_marker_issue_when_main_refresh_fails(
         await init_mod.async_setup_entry(hass, entry)
 
     hass.config_entries.async_forward_entry_setups.assert_not_awaited()
-    create_issue.assert_called_once()
-    issue_kwargs = create_issue.call_args.kwargs
+    assert create_issue.call_count >= 2
+    issue_kwargs = create_issue.call_args_list[0].kwargs
     assert issue_kwargs["issue_id"] == f"{entry.entry_id}_device_id_mismatched"
     assert issue_kwargs["is_fixable"] is True
     assert issue_kwargs["is_persistent"] is False
@@ -4138,8 +4238,8 @@ async def test_async_setup_entry_recreates_marker_issue_when_device_tracker_refr
     reconciliation.prepare.assert_not_called()
     reconciliation.require_platforms_complete.assert_not_called()
     reconciliation.finalize.assert_not_called()
-    assert create_issue.call_count == 1
-    issue_kwargs = create_issue.call_args.kwargs
+    assert create_issue.call_count >= 2
+    issue_kwargs = create_issue.call_args_list[0].kwargs
     assert issue_kwargs["issue_id"] == f"{entry.entry_id}_device_id_mismatched"
     assert issue_kwargs["is_fixable"] is True
     assert issue_kwargs["is_persistent"] is False
@@ -4250,8 +4350,8 @@ async def test_async_setup_entry_recreates_marker_issue_when_platform_forwarding
     reconciliation.prepare.assert_called_once_with()
     reconciliation.require_platforms_complete.assert_not_called()
     reconciliation.finalize.assert_not_called()
-    assert create_issue.call_count == 1
-    issue_kwargs = create_issue.call_args.kwargs
+    assert create_issue.call_count >= 2
+    issue_kwargs = create_issue.call_args_list[0].kwargs
     assert issue_kwargs["issue_id"] == f"{entry.entry_id}_device_id_mismatched"
     assert issue_kwargs["is_fixable"] is True
     assert issue_kwargs["is_persistent"] is False
@@ -4314,8 +4414,8 @@ async def test_async_setup_entry_recreates_marker_issue_when_platform_forwarding
 
     reconciliation.prepare.assert_called_once_with()
     assert ph_hass.config_entries.async_unload_platforms.await_count == 1
-    assert create_issue.call_count == 1
-    issue_kwargs = create_issue.call_args.kwargs
+    assert create_issue.call_count >= 2
+    issue_kwargs = create_issue.call_args_list[0].kwargs
     assert issue_kwargs["issue_id"] == f"{entry.entry_id}_device_id_mismatched"
     assert issue_kwargs["is_fixable"] is True
     assert issue_kwargs["is_persistent"] is False
@@ -4814,8 +4914,8 @@ async def test_reconciliation_prepare_failure_recreates_marker_issue_without_unl
 
     assert result is False
     expected_issue_id = f"{entry.entry_id}_device_id_mismatched"
-    issue_kwargs = create_issue.call_args.kwargs
-    assert create_issue.call_count == 1
+    issue_kwargs = create_issue.call_args_list[0].kwargs
+    assert create_issue.call_count >= 2
     assert issue_kwargs["issue_id"] == expected_issue_id
     assert issue_kwargs["is_fixable"] is True
     assert issue_kwargs["is_persistent"] is False
@@ -4882,8 +4982,8 @@ async def test_async_setup_entry_recreates_marker_issue_on_probe_mismatch_before
     assert result is False
     assert ph_hass.config_entries.async_forward_entry_setups.await_count == 0
     assert ph_hass.config_entries.async_unload_platforms.await_count == 0
-    assert create_issue.call_count == 1
-    issue_kwargs = create_issue.call_args.kwargs
+    assert create_issue.call_count >= 2
+    issue_kwargs = create_issue.call_args_list[0].kwargs
     assert issue_kwargs["issue_id"] == f"{entry.entry_id}_device_id_mismatched"
     assert issue_kwargs["is_fixable"] is True
     assert issue_kwargs["is_persistent"] is False

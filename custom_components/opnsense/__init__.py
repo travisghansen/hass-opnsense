@@ -499,15 +499,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         return False
     repair_marker = parse_repair_marker(entry)
-    if has_repair_marker(entry) and repair_marker is None:
-        _LOGGER.error("OPNsense config entry has a malformed Device ID repair marker")
-        return False
-    if repair_marker is not None and (
-        config_device_id != repair_marker.new_device_id
+    if has_repair_marker(entry) and (
+        repair_marker is None
+        or config_device_id != repair_marker.new_device_id
         or entry.unique_id != repair_marker.new_device_id
     ):
-        _LOGGER.error("OPNsense config entry does not match its Device ID repair marker")
+        marker_error = (
+            "OPNsense config entry has a malformed Device ID repair marker"
+            if repair_marker is None
+            else "OPNsense config entry does not match its Device ID repair marker"
+        )
+        _LOGGER.error("%s", marker_error)
         return False
+    if repair_marker is not None:
+        _async_create_marker_repair_issue(hass, entry, repair_marker)
 
     client: OPNsenseClient | None = None
     try:
