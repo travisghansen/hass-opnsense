@@ -241,7 +241,7 @@ def test_create_opnsense_client_builds_client_with_expected_options(
             created["cookie_jar_unsafe"] = unsafe
 
     monkeypatch.setattr(helpers_mod, "async_create_clientsession", _async_create_clientsession)
-    monkeypatch.setattr(helpers_mod.aiohttp, "CookieJar", _CookieJar)
+    monkeypatch.setattr(aiohttp, "CookieJar", _CookieJar)
     monkeypatch.setattr(helpers_mod, "OPNsenseClient", _client)
 
     password = "pass"

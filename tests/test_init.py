@@ -23,16 +23,19 @@ from aiopnsense.exceptions import (
     OPNsenseTimeoutError,
     OPNsenseUnknownFirmware,
 )
+import awesomeversion
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME, CONF_VERIFY_SSL, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
+from homeassistant.helpers import device_registry as dr, entity_registry as er, issue_registry as ir
 from homeassistant.util import slugify
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 import custom_components.opnsense as init_mod
 from custom_components.opnsense.const import (
+    CARP_PLATFORMS,
     CONF_DEVICE_TRACKER_ENABLED,
     CONF_DEVICE_UNIQUE_ID,
     CONF_ENTRY_TYPE,
@@ -48,10 +51,17 @@ from custom_components.opnsense.const import (
     OPNSENSE_MIN_FIRMWARE,
     SHOULD_RELOAD,
 )
+from custom_components.opnsense.migrate import (
+    _is_firewall_sync_enabled,
+    _migrate_1_to_2,
+    _migrate_2_to_3,
+    _migrate_3_to_4,
+)
 from custom_components.opnsense.repair_reconciliation import (
     REPAIR_MARKER_KEY,
     RepairMarker,
     RepairReconciliationError,
+    parse_repair_marker,
 )
 from tests.utilities import patch_opnsense_client
 
@@ -316,7 +326,7 @@ async def test_async_setup_entry_carp_entry_uses_identity_less_runtime(
     client.get_host_firmware_version.assert_not_awaited()
 
     assert entry.runtime_data.device_unique_id is None
-    assert entry.runtime_data.loaded_platforms == init_mod.CARP_PLATFORMS
+    assert entry.runtime_data.loaded_platforms == CARP_PLATFORMS
     assert entry.runtime_data.device_tracker_coordinator is None
     assert hass.config_entries.async_forward_entry_setups.await_count == 1  # type: ignore[union-attr]
     hass.config_entries.async_forward_entry_setups.assert_awaited_with(entry, [Platform.SENSOR])  # type: ignore[union-attr]
@@ -480,7 +490,7 @@ async def test_async_setup_entry_carp_requires_usable_initial_vip_inventory(
         options={},
     )
     hass = ph_hass
-    hass.data = {init_mod.DOMAIN: {entry.entry_id: client}}
+    hass.data = {DOMAIN: {entry.entry_id: client}}
     hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
 
     with pytest.raises(ConfigEntryNotReady, match="usable CARP VIP"):
@@ -488,7 +498,7 @@ async def test_async_setup_entry_carp_requires_usable_initial_vip_inventory(
 
     coordinator.async_shutdown.assert_awaited_once()
     client.async_close.assert_awaited_once()
-    assert entry.entry_id not in hass.data.get(init_mod.DOMAIN, {})
+    assert entry.entry_id not in hass.data.get(DOMAIN, {})
     hass.config_entries.async_forward_entry_setups.assert_not_awaited()
 
 
@@ -563,7 +573,7 @@ async def test_async_setup_entry_carp_first_refresh_failure_cleans_up(
         options={},
     )
     hass = ph_hass
-    hass.data = {init_mod.DOMAIN: {entry.entry_id: client}}
+    hass.data = {DOMAIN: {entry.entry_id: client}}
     hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
 
     with pytest.raises(RuntimeError, match="refresh failed"):
@@ -571,7 +581,7 @@ async def test_async_setup_entry_carp_first_refresh_failure_cleans_up(
 
     coordinator.async_shutdown.assert_awaited_once()
     client.async_close.assert_awaited_once()
-    assert entry.entry_id not in hass.data.get(init_mod.DOMAIN, {})
+    assert entry.entry_id not in hass.data.get(DOMAIN, {})
     hass.config_entries.async_forward_entry_setups.assert_not_awaited()
 
 
@@ -616,7 +626,7 @@ async def test_async_setup_entry_carp_platform_forward_failure_cleans_up(
     entry.add_update_listener.assert_not_called()
     entry.async_on_unload.assert_not_called()
     remove_listener.assert_not_called()
-    assert entry.entry_id not in hass.data.get(init_mod.DOMAIN, {})
+    assert entry.entry_id not in hass.data.get(DOMAIN, {})
     assert entry.runtime_data is None
 
 
@@ -743,7 +753,7 @@ async def test_async_setup_entry_does_not_catch_raw_validation_timeout(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
         },
         options={},
     )
@@ -785,7 +795,7 @@ async def test_async_setup_entry_retries_on_transient_validation_failures(
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
         },
         options={},
     )
@@ -841,7 +851,7 @@ async def test_async_setup_entry_does_not_retry_non_transient_validation_failure
             CONF_URL: "http://1.2.3.4",
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
-            init_mod.CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
         },
         options={},
     )
@@ -920,7 +930,7 @@ async def test_async_setup_entry_with_repair_marker_recreates_issue_on_early_pro
     ph_hass.config_entries.async_reload = MagicMock()
     ph_hass.data = {}
     create_issue = MagicMock()
-    monkeypatch.setattr(init_mod.ir, "async_create_issue", create_issue)
+    monkeypatch.setattr(ir, "async_create_issue", create_issue)
 
     if failure_step == "validate":
         with pytest.raises(ConfigEntryNotReady, match="validation timed out"):
@@ -1119,7 +1129,7 @@ async def test_async_setup_entry_device_id_mismatch(
         """Capture the startup Device ID repair issue payload."""
         issue_kwargs.update(kwargs)
 
-    monkeypatch.setattr(init_mod.ir, "async_create_issue", _capture_issue)
+    monkeypatch.setattr(ir, "async_create_issue", _capture_issue)
 
     res = await init_mod.async_setup_entry(hass, entry)
     if should_create_issue:
@@ -1191,9 +1201,9 @@ async def test_async_remove_config_entry_device_branches(
     # fake registry that returns one entity with matching device_id
     ent = MagicMock()
     ent.device_id = "d2"
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: object())
+    monkeypatch.setattr(er, "async_get", lambda hass: object())
     monkeypatch.setattr(
-        init_mod.er, "async_entries_for_config_entry", lambda registry, config_entry_id: [ent]
+        er, "async_entries_for_config_entry", lambda registry, config_entry_id: [ent]
     )
     res = await init_mod.async_remove_config_entry_device(hass, MagicMock(entry_id="x"), device)
     assert res is False
@@ -1211,10 +1221,8 @@ async def test_async_remove_config_entry_device_no_linked_entities(
 
     # fake entity registry returns no entities for the config entry
     er_reg = MagicMock()
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: er_reg)
-    monkeypatch.setattr(
-        init_mod.er, "async_entries_for_config_entry", lambda registry, config_entry_id: []
-    )
+    monkeypatch.setattr(er, "async_get", lambda hass: er_reg)
+    monkeypatch.setattr(er, "async_entries_for_config_entry", lambda registry, config_entry_id: [])
 
     # call the removal helper with a dummy config entry
     res = await init_mod.async_remove_config_entry_device(
@@ -1255,7 +1263,7 @@ async def test_migrate_1_to_2_updates_entry(ph_hass: Any) -> None:
     # mock async_update_entry
     hass = ph_hass
     hass.config_entries.async_update_entry = MagicMock(return_value=True)
-    res = await init_mod._migrate_1_to_2(hass, cfg)
+    res = await _migrate_1_to_2(hass, cfg)
     assert res is True
     # verify async_update_entry was called with the migrated data: tls_insecure removed
     # and verify_ssl derived as not tls_insecure, and version set to 2
@@ -1270,7 +1278,7 @@ async def test_migrate_1_to_2_updates_entry(ph_hass: Any) -> None:
     cfg2.version = 1
     # reset mock
     hass.config_entries.async_update_entry = MagicMock(return_value=True)
-    res2 = await init_mod._migrate_1_to_2(hass, cfg2)
+    res2 = await _migrate_1_to_2(hass, cfg2)
     assert res2 is True
     expected_data2 = {CONF_VERIFY_SSL: True}
     hass.config_entries.async_update_entry.assert_called_once_with(
@@ -1331,9 +1339,9 @@ async def test_async_migrate_entry_uses_throw_errors_for_migration_client(
     client.async_close = AsyncMock()
     create_client = MagicMock(return_value=client)
     monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", create_client)
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: MagicMock())
+    monkeypatch.setattr(er, "async_get", lambda hass: MagicMock())
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: [],
     )
@@ -1389,9 +1397,9 @@ async def test_migrate_4_to_5_removes_rule_switch_entities(
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock()
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(er, "async_get", lambda hass: entity_registry)
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: [
             legacy_filter,
@@ -1459,9 +1467,9 @@ async def test_migrate_4_to_5_uses_rule_key_when_uuid_is_missing(
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock()
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(er, "async_get", lambda hass: entity_registry)
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: [
             legacy_filter,
@@ -1522,9 +1530,9 @@ async def test_migrate_4_to_5_sync_disabled_skips_firewall_fetch_removes_native_
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock()
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(er, "async_get", lambda hass: entity_registry)
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: [
             legacy_filter,
@@ -1592,9 +1600,9 @@ async def test_migrate_4_to_5_granular_entry_defaults_missing_category_key_to_en
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock()
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(er, "async_get", lambda hass: entity_registry)
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: [stale_native_firewall],
     )
@@ -1659,9 +1667,9 @@ async def test_migrate_4_to_5_non_granular_entry_missing_category_key_preserves_
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock()
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(er, "async_get", lambda hass: entity_registry)
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: [
             legacy_filter,
@@ -1719,7 +1727,7 @@ def test_is_firewall_sync_enabled_uses_category_then_default(
     entry = MagicMock()
     entry.data = data
 
-    assert init_mod._is_firewall_sync_enabled(entry) is expected
+    assert _is_firewall_sync_enabled(entry) is expected
 
 
 @pytest.mark.asyncio
@@ -1768,9 +1776,9 @@ async def test_migrate_4_to_5_defers_when_device_unique_id_is_missing(
     legacy_filter = _RegistryEntity("switch.filter", f"{entry_prefix}_filter_123")
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock()
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(er, "async_get", lambda hass: entity_registry)
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: [legacy_filter],
     )
@@ -1827,9 +1835,9 @@ async def test_migrate_4_to_5_defers_when_firewall_rules_unavailable(
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock()
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(er, "async_get", lambda hass: entity_registry)
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: [legacy_filter],
     )
@@ -1884,9 +1892,9 @@ async def test_migrate_4_to_5_skips_native_pruning_when_rules_payload_unavailabl
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock()
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(er, "async_get", lambda hass: entity_registry)
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: [legacy_filter, stale_native_firewall, stale_native_nat],
     )
@@ -1933,9 +1941,9 @@ async def test_migrate_4_to_5_legacy_entity_remove_failure_aborts_migration(
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock(side_effect=[exc, None])
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(er, "async_get", lambda hass: entity_registry)
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: [broken_ent, ok_ent],
     )
@@ -2020,9 +2028,9 @@ async def test_migrate_4_to_5_sync_enabled_prunes_stale_native_nat_rule_entities
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock()
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(er, "async_get", lambda hass: entity_registry)
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: [
             stale_native_firewall,
@@ -2087,9 +2095,9 @@ async def test_migrate_4_to_5_version_bump_failure_aborts_migration(
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock()
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(er, "async_get", lambda hass: entity_registry)
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: [legacy_filter],
     )
@@ -2138,7 +2146,7 @@ async def test_async_setup_calls_services_and_handles_exceptions(
     [
         (
             "device-entry",
-            {init_mod.CONF_DEVICE_UNIQUE_ID: "dev1", "sync_telemetry": False},
+            {CONF_DEVICE_UNIQUE_ID: "dev1", "sync_telemetry": False},
             "stale-device-id",
             "dev1",
         ),
@@ -2191,17 +2199,15 @@ async def test_async_update_listener_reload_and_remove(
     # monkeypatch entity registry functions
     er_reg = MagicMock()
     er_reg.async_remove = MagicMock()
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: er_reg)
+    monkeypatch.setattr(er, "async_get", lambda hass: er_reg)
     monkeypatch.setattr(
-        init_mod.er, "async_entries_for_config_entry", lambda registry, config_entry_id: [ent]
+        er, "async_entries_for_config_entry", lambda registry, config_entry_id: [ent]
     )
     # patch device registry to return no devices and provide async_remove_device
     dr_reg = MagicMock()
     dr_reg.async_remove_device = MagicMock()
-    monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: dr_reg)
-    monkeypatch.setattr(
-        init_mod.dr, "async_entries_for_config_entry", lambda registry, config_entry_id: []
-    )
+    monkeypatch.setattr(dr, "async_get", lambda hass: dr_reg)
+    monkeypatch.setattr(dr, "async_entries_for_config_entry", lambda registry, config_entry_id: [])
 
     # config option already provided via factory; no mutation needed
 
@@ -2253,18 +2259,18 @@ async def test_async_update_listener_handles_native_firewall_entities_by_sync_st
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock()
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(er, "async_get", lambda hass: entity_registry)
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: [ent],
     )
 
     device_registry = MagicMock()
     device_registry.async_remove_device = MagicMock()
-    monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: device_registry)
+    monkeypatch.setattr(dr, "async_get", lambda hass: device_registry)
     monkeypatch.setattr(
-        init_mod.dr,
+        dr,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: [],
     )
@@ -2312,18 +2318,18 @@ async def test_async_update_listener_skips_native_firewall_entities_when_firewal
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock()
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(er, "async_get", lambda hass: entity_registry)
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: [ent],
     )
 
     device_registry = MagicMock()
     device_registry.async_remove_device = MagicMock()
-    monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: device_registry)
+    monkeypatch.setattr(dr, "async_get", lambda hass: device_registry)
     monkeypatch.setattr(
-        init_mod.dr,
+        dr,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: [],
     )
@@ -2358,18 +2364,18 @@ async def test_async_update_listener_uses_shared_default_for_smart_entity_prunin
 
     entity_registry = MagicMock()
     entity_registry.async_remove = MagicMock()
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(er, "async_get", lambda hass: entity_registry)
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: [smart_entity, telemetry_entity],
     )
 
     device_registry = MagicMock()
     device_registry.async_remove_device = MagicMock()
-    monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: device_registry)
+    monkeypatch.setattr(dr, "async_get", lambda hass: device_registry)
     monkeypatch.setattr(
-        init_mod.dr,
+        dr,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: [],
     )
@@ -2432,9 +2438,9 @@ async def test_async_update_listener_device_removal_param(
     dr_reg = MagicMock()
     dr_reg.async_remove_device = MagicMock()
     dr_reg.async_update_device = MagicMock()
-    monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: dr_reg)
+    monkeypatch.setattr(dr, "async_get", lambda hass: dr_reg)
     monkeypatch.setattr(
-        init_mod.dr,
+        dr,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: [device],
     )
@@ -2442,9 +2448,9 @@ async def test_async_update_listener_device_removal_param(
     # ensure no entity registry removals interfere
     er_reg = MagicMock()
     er_reg.async_remove = MagicMock()
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: er_reg)
+    monkeypatch.setattr(er, "async_get", lambda hass: er_reg)
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: [dt_ent] if dt_ent is not None else [],
     )
@@ -2492,9 +2498,9 @@ async def test_async_update_listener_detaches_no_parent_tracker_device(
         unique_id=f"{entry.unique_id}_system_uptime",
     )
     er_reg = MagicMock()
-    monkeypatch.setattr(init_mod.er, "async_get", MagicMock(return_value=er_reg))
+    monkeypatch.setattr(er, "async_get", MagicMock(return_value=er_reg))
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         MagicMock(return_value=[dt_ent, sensor_ent]),
     )
@@ -2503,9 +2509,9 @@ async def test_async_update_listener_detaches_no_parent_tracker_device(
     non_tracker_no_parent = MagicMock(id="nontracker-no-parent-device", via_device_id=None)
     dr_reg = MagicMock()
     dr_reg.async_update_device = MagicMock()
-    monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: dr_reg)
+    monkeypatch.setattr(dr, "async_get", lambda hass: dr_reg)
     monkeypatch.setattr(
-        init_mod.dr,
+        dr,
         "async_entries_for_config_entry",
         MagicMock(return_value=[tracker_without_parent, non_tracker_no_parent]),
     )
@@ -2548,9 +2554,9 @@ async def test_async_update_listener_detaches_tracker_device_without_entity(
     ph_hass.data = {}
 
     er_reg = MagicMock()
-    monkeypatch.setattr(init_mod.er, "async_get", MagicMock(return_value=er_reg))
+    monkeypatch.setattr(er, "async_get", MagicMock(return_value=er_reg))
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         MagicMock(return_value=[]),
     )
@@ -2573,9 +2579,9 @@ async def test_async_update_listener_detaches_tracker_device_without_entity(
         config_entries={entry.entry_id},
     )
     dr_reg = MagicMock()
-    monkeypatch.setattr(init_mod.dr, "async_get", MagicMock(return_value=dr_reg))
+    monkeypatch.setattr(dr, "async_get", MagicMock(return_value=dr_reg))
     monkeypatch.setattr(
-        init_mod.dr,
+        dr,
         "async_entries_for_config_entry",
         MagicMock(return_value=[router_device, tracker_without_entity, unrelated_device]),
     )
@@ -2606,9 +2612,9 @@ async def test_async_update_listener_detaches_tracker_when_router_and_entity_are
     ph_hass.data = {}
 
     er_reg = MagicMock()
-    monkeypatch.setattr(init_mod.er, "async_get", MagicMock(return_value=er_reg))
+    monkeypatch.setattr(er, "async_get", MagicMock(return_value=er_reg))
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         MagicMock(return_value=[]),
     )
@@ -2616,7 +2622,7 @@ async def test_async_update_listener_detaches_tracker_when_router_and_entity_are
     tracker_without_router_or_entity = MagicMock(
         id="tracker-without-router-or-entity",
         identifiers=set(),
-        connections={(init_mod.dr.CONNECTION_NETWORK_MAC, "aa:bb:cc:dd:ee:ff")},
+        connections={(dr.CONNECTION_NETWORK_MAC, "aa:bb:cc:dd:ee:ff")},
         via_device_id="removed-router-device-id",
         config_entries={entry.entry_id},
     )
@@ -2629,9 +2635,9 @@ async def test_async_update_listener_detaches_tracker_when_router_and_entity_are
     )
     dr_reg = MagicMock()
     dr_reg.async_get = MagicMock(return_value=None)
-    monkeypatch.setattr(init_mod.dr, "async_get", MagicMock(return_value=dr_reg))
+    monkeypatch.setattr(dr, "async_get", MagicMock(return_value=dr_reg))
     monkeypatch.setattr(
-        init_mod.dr,
+        dr,
         "async_entries_for_config_entry",
         MagicMock(return_value=[tracker_without_router_or_entity, unrelated_device]),
     )
@@ -2670,9 +2676,9 @@ async def test_async_update_listener_preserves_existing_tracker_parent_when_pare
         device_id="shared-device",
     )
     er_reg = MagicMock()
-    monkeypatch.setattr(init_mod.er, "async_get", MagicMock(return_value=er_reg))
+    monkeypatch.setattr(er, "async_get", MagicMock(return_value=er_reg))
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         MagicMock(return_value=[dt_ent]),
     )
@@ -2687,9 +2693,9 @@ async def test_async_update_listener_preserves_existing_tracker_parent_when_pare
     dr_reg = MagicMock()
     dr_reg.async_update_device = MagicMock()
     dr_reg.async_get = MagicMock(return_value=shared_parent)
-    monkeypatch.setattr(init_mod.dr, "async_get", MagicMock(return_value=dr_reg))
+    monkeypatch.setattr(dr, "async_get", MagicMock(return_value=dr_reg))
     monkeypatch.setattr(
-        init_mod.dr,
+        dr,
         "async_entries_for_config_entry",
         MagicMock(return_value=[shared_tracker]),
     )
@@ -2743,9 +2749,9 @@ async def test_async_update_listener_reparents_tracker_link_to_remaining_opnsens
         unique_id=f"{entry.unique_id}_system_uptime",
     )
     er_reg = MagicMock()
-    monkeypatch.setattr(init_mod.er, "async_get", MagicMock(return_value=er_reg))
+    monkeypatch.setattr(er, "async_get", MagicMock(return_value=er_reg))
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         MagicMock(return_value=[dt_ent, dt_ent_non_router, sensor_ent]),
     )
@@ -2814,9 +2820,9 @@ async def test_async_update_listener_reparents_tracker_link_to_remaining_opnsens
         return identifier_router_map.get(key)
 
     dr_reg.async_get_device = MagicMock(side_effect=get_device)
-    monkeypatch.setattr(init_mod.dr, "async_get", MagicMock(return_value=dr_reg))
+    monkeypatch.setattr(dr, "async_get", MagicMock(return_value=dr_reg))
     monkeypatch.setattr(
-        init_mod.dr,
+        dr,
         "async_entries_for_config_entry",
         MagicMock(
             return_value=[
@@ -2919,7 +2925,7 @@ async def test_async_setup_entry_firmware_between_min_and_ltd(
     )
     # capture calls to the issue registry to assert a warning issue is created
     create_issue_mock = MagicMock()
-    monkeypatch.setattr(init_mod.ir, "async_create_issue", create_issue_mock)
+    monkeypatch.setattr(ir, "async_create_issue", create_issue_mock)
 
     entry = make_config_entry(
         data={
@@ -2947,7 +2953,7 @@ async def test_async_setup_entry_firmware_between_min_and_ltd(
         f"{entry.data[CONF_DEVICE_UNIQUE_ID]}_opnsense_below_ltd_firmware_{OPNSENSE_LTD_FIRMWARE}"
     )
     assert call_args[0][2] == expected_issue_id
-    assert call_args[1].get("severity") == init_mod.ir.IssueSeverity.WARNING
+    assert call_args[1].get("severity") == ir.IssueSeverity.WARNING
 
 
 @pytest.mark.asyncio
@@ -2967,9 +2973,9 @@ async def test_migrate_2_to_3_missing_device_id(
     hass = MagicMock(spec=HomeAssistant)
     hass.data = {}
     # avoid touching real entity/device registry and aiohttp helpers
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: MagicMock())
-    monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: MagicMock())
-    res = await init_mod._migrate_2_to_3(hass, cfg, client)
+    monkeypatch.setattr(er, "async_get", lambda hass: MagicMock())
+    monkeypatch.setattr(dr, "async_get", lambda hass: MagicMock())
+    res = await _migrate_2_to_3(hass, cfg, client)
     assert res is False
 
 
@@ -2992,18 +2998,18 @@ async def test_migrate_2_to_3_success(monkeypatch: pytest.MonkeyPatch, fake_clie
     er_reg.async_update_entity = MagicMock(
         return_value=MagicMock(entity_id=ent.entity_id, unique_id="new")
     )
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: er_reg)
+    monkeypatch.setattr(er, "async_get", lambda hass: er_reg)
     monkeypatch.setattr(
-        init_mod.er, "async_entries_for_config_entry", lambda registry, config_entry_id: [ent]
+        er, "async_entries_for_config_entry", lambda registry, config_entry_id: [ent]
     )
 
     dr_reg = MagicMock()
     dr_reg.async_update_device = MagicMock(
         return_value=MagicMock(id=dev.id, identifiers={("opnsense", "newdev")})
     )
-    monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: dr_reg)
+    monkeypatch.setattr(dr, "async_get", lambda hass: dr_reg)
     monkeypatch.setattr(
-        init_mod.dr, "async_entries_for_config_entry", lambda registry, config_entry_id: [dev]
+        dr, "async_entries_for_config_entry", lambda registry, config_entry_id: [dev]
     )
 
     cfg = MagicMock()
@@ -3020,7 +3026,7 @@ async def test_migrate_2_to_3_success(monkeypatch: pytest.MonkeyPatch, fake_clie
     hass.data = {}
     hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock(return_value=True)
-    res = await init_mod._migrate_2_to_3(hass, cfg, client)
+    res = await _migrate_2_to_3(hass, cfg, client)
     assert res is True
     assert dr_reg.async_update_device.called, "device identifiers should be updated"
     assert er_reg.async_update_entity.called, "entity unique_ids should be updated"
@@ -3045,15 +3051,13 @@ async def test_migrate_2_to_3_normalizes_legacy_entity_unique_ids_with_slugify(
     er_reg.async_update_entity = MagicMock(
         return_value=MagicMock(entity_id=ent.entity_id, unique_id="updated")
     )
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: er_reg)
+    monkeypatch.setattr(er, "async_get", lambda hass: er_reg)
     monkeypatch.setattr(
-        init_mod.er, "async_entries_for_config_entry", lambda registry, config_entry_id: [ent]
+        er, "async_entries_for_config_entry", lambda registry, config_entry_id: [ent]
     )
 
-    monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: MagicMock())
-    monkeypatch.setattr(
-        init_mod.dr, "async_entries_for_config_entry", lambda registry, config_entry_id: []
-    )
+    monkeypatch.setattr(dr, "async_get", lambda hass: MagicMock())
+    monkeypatch.setattr(dr, "async_entries_for_config_entry", lambda registry, config_entry_id: [])
 
     cfg = MagicMock()
     cfg.data = {
@@ -3070,7 +3074,7 @@ async def test_migrate_2_to_3_normalizes_legacy_entity_unique_ids_with_slugify(
     hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock(return_value=True)
 
-    await init_mod._migrate_2_to_3(hass, cfg, client)
+    await _migrate_2_to_3(hass, cfg, client)
     expected_unique_id = slugify("newdev_mac_AA:BB:CC")
     er_reg.async_update_entity.assert_called_once_with(
         ent.entity_id, new_unique_id=expected_unique_id
@@ -3084,14 +3088,10 @@ async def test_migrate_2_to_3_returns_false_when_update_entry_fails(
     """_migrate_2_to_3 should fail when config entry update returns False."""
     client = fake_client(device_id="newdev")()
 
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: MagicMock())
-    monkeypatch.setattr(
-        init_mod.er, "async_entries_for_config_entry", lambda registry, config_entry_id: []
-    )
-    monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: MagicMock())
-    monkeypatch.setattr(
-        init_mod.dr, "async_entries_for_config_entry", lambda registry, config_entry_id: []
-    )
+    monkeypatch.setattr(er, "async_get", lambda hass: MagicMock())
+    monkeypatch.setattr(er, "async_entries_for_config_entry", lambda registry, config_entry_id: [])
+    monkeypatch.setattr(dr, "async_get", lambda hass: MagicMock())
+    monkeypatch.setattr(dr, "async_entries_for_config_entry", lambda registry, config_entry_id: [])
 
     cfg = MagicMock()
     cfg.data = {
@@ -3108,7 +3108,7 @@ async def test_migrate_2_to_3_returns_false_when_update_entry_fails(
     hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock(return_value=False)
 
-    res = await init_mod._migrate_2_to_3(hass, cfg, client)
+    res = await _migrate_2_to_3(hass, cfg, client)
     assert res is False
 
 
@@ -3134,13 +3134,13 @@ async def test_async_setup_entry_awesomeversion_exception(
 
         def __lt__(self, other: Any) -> None:
             """Raise a compare exception so setup falls back to the safe path."""
-            raise init_mod.awesomeversion.exceptions.AwesomeVersionCompareException
+            raise awesomeversion.exceptions.AwesomeVersionCompareException
 
     patch_opnsense_client(monkeypatch, init_mod, fake_client())
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
     )
-    monkeypatch.setattr(init_mod.awesomeversion, "AwesomeVersion", DummyAV)
+    monkeypatch.setattr(awesomeversion, "AwesomeVersion", DummyAV)
     entry = make_config_entry(
         data={
             CONF_URL: "http://1.2.3.4",
@@ -3201,9 +3201,9 @@ async def test_migrate_3_to_4_filesystem_and_remove(
         return_value=MagicMock(entity_id=e1.entity_id, unique_id="updated")
     )
     er_reg.async_remove = MagicMock()
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: er_reg)
+    monkeypatch.setattr(er, "async_get", lambda hass: er_reg)
     monkeypatch.setattr(
-        init_mod.er, "async_entries_for_config_entry", lambda registry, config_entry_id: [e1, e2]
+        er, "async_entries_for_config_entry", lambda registry, config_entry_id: [e1, e2]
     )
 
     cfg = MagicMock()
@@ -3220,7 +3220,7 @@ async def test_migrate_3_to_4_filesystem_and_remove(
     hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock(return_value=True)
     # avoid aiohttp connector creation
-    res = await init_mod._migrate_3_to_4(hass, cfg, client)
+    res = await _migrate_3_to_4(hass, cfg, client)
     assert res is True
     # Ensure the connected_client_count entity was removed (called with entity_id)
     er_reg.async_remove.assert_called_once_with(e2.entity_id)
@@ -3255,9 +3255,9 @@ async def test_migrate_3_to_4_preserves_mixed_marker_precedence(
     entity_registry.async_update_entity = MagicMock(
         return_value=MagicMock(entity_id=gateway_entity.entity_id, unique_id="updated")
     )
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(er, "async_get", lambda hass: entity_registry)
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: [gateway_entity, connected_entity, openvpn_entity],
     )
@@ -3267,7 +3267,7 @@ async def test_migrate_3_to_4_preserves_mixed_marker_precedence(
     hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock(return_value=True)
 
-    result = await init_mod._migrate_3_to_4(hass, config_entry, client)
+    result = await _migrate_3_to_4(hass, config_entry, client)
 
     assert result is True
     assert entity_registry.async_update_entity.call_args_list == [
@@ -3296,9 +3296,9 @@ async def test_migrate_3_to_4_filesystem_preserves_unique_id_prefix(
         return_value=MagicMock(entity_id=e1.entity_id, unique_id="updated")
     )
     er_reg.async_remove = MagicMock()
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: er_reg)
+    monkeypatch.setattr(er, "async_get", lambda hass: er_reg)
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: [e1],
     )
@@ -3317,7 +3317,7 @@ async def test_migrate_3_to_4_filesystem_preserves_unique_id_prefix(
     hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock(return_value=True)
 
-    res = await init_mod._migrate_3_to_4(hass, cfg, client)
+    res = await _migrate_3_to_4(hass, cfg, client)
     assert res is True
     er_reg.async_update_entity.assert_called_once_with(
         e1.entity_id,
@@ -3357,9 +3357,9 @@ async def test_migrate_3_to_4_filesystem_skips_and_non_root_mountpoint(
     er_reg.async_update_entity = MagicMock(
         return_value=MagicMock(entity_id=matched.entity_id, unique_id="updated")
     )
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: er_reg)
+    monkeypatch.setattr(er, "async_get", lambda hass: er_reg)
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: [
             matched,
@@ -3383,7 +3383,7 @@ async def test_migrate_3_to_4_filesystem_skips_and_non_root_mountpoint(
     hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock(return_value=True)
 
-    res = await init_mod._migrate_3_to_4(hass, cfg, client)
+    res = await _migrate_3_to_4(hass, cfg, client)
 
     assert res is True
     er_reg.async_update_entity.assert_called_once_with(
@@ -3417,9 +3417,9 @@ async def test_migrate_3_to_4_skips_filesystems_when_telemetry_is_not_mapping(
     entity_registry.async_update_entity = MagicMock(
         return_value=MagicMock(entity_id=interface_entity.entity_id, unique_id="updated")
     )
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(er, "async_get", lambda hass: entity_registry)
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: [interface_entity, filesystem_entity],
     )
@@ -3432,7 +3432,7 @@ async def test_migrate_3_to_4_skips_filesystems_when_telemetry_is_not_mapping(
     hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock(return_value=True)
 
-    result = await init_mod._migrate_3_to_4(hass, config_entry, cast("OPNsenseClient", client))
+    result = await _migrate_3_to_4(hass, config_entry, cast("OPNsenseClient", client))
 
     assert result is False
     entity_registry.async_update_entity.assert_called_once_with(
@@ -3474,9 +3474,9 @@ async def test_migrate_3_to_4_defers_filesystems_when_payload_is_invalid(
     entity_registry.async_update_entity = MagicMock(
         return_value=MagicMock(entity_id=filesystem_entity.entity_id, unique_id="updated")
     )
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(er, "async_get", lambda hass: entity_registry)
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: [filesystem_entity],
     )
@@ -3489,7 +3489,7 @@ async def test_migrate_3_to_4_defers_filesystems_when_payload_is_invalid(
     hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock(return_value=True)
 
-    result = await init_mod._migrate_3_to_4(hass, config_entry, client)
+    result = await _migrate_3_to_4(hass, config_entry, client)
 
     assert result is False
     entity_registry.async_update_entity.assert_not_called()
@@ -3502,10 +3502,8 @@ async def test_migrate_3_to_4_returns_false_when_update_entry_fails(
 ) -> None:
     """_migrate_3_to_4 should fail when config entry update returns False."""
     client = fake_client(telemetry={})()
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: MagicMock())
-    monkeypatch.setattr(
-        init_mod.er, "async_entries_for_config_entry", lambda registry, config_entry_id: []
-    )
+    monkeypatch.setattr(er, "async_get", lambda hass: MagicMock())
+    monkeypatch.setattr(er, "async_entries_for_config_entry", lambda registry, config_entry_id: [])
 
     cfg = MagicMock()
     cfg.data = {
@@ -3521,7 +3519,7 @@ async def test_migrate_3_to_4_returns_false_when_update_entry_fails(
     hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock(return_value=False)
 
-    res = await init_mod._migrate_3_to_4(hass, cfg, client)
+    res = await _migrate_3_to_4(hass, cfg, client)
 
     assert res is False
 
@@ -3540,16 +3538,14 @@ async def test_migrate_2_to_3_handles_entity_update_value_error(
 
     er_reg = MagicMock()
     er_reg.async_update_entity = MagicMock(side_effect=ValueError("bad entity"))
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: er_reg)
+    monkeypatch.setattr(er, "async_get", lambda hass: er_reg)
     monkeypatch.setattr(
-        init_mod.er, "async_entries_for_config_entry", lambda registry, config_entry_id: [ent]
+        er, "async_entries_for_config_entry", lambda registry, config_entry_id: [ent]
     )
 
     # no devices to update
-    monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: MagicMock())
-    monkeypatch.setattr(
-        init_mod.dr, "async_entries_for_config_entry", lambda registry, config_entry_id: []
-    )
+    monkeypatch.setattr(dr, "async_get", lambda hass: MagicMock())
+    monkeypatch.setattr(dr, "async_entries_for_config_entry", lambda registry, config_entry_id: [])
 
     cfg = MagicMock()
     cfg.data = {
@@ -3566,7 +3562,7 @@ async def test_migrate_2_to_3_handles_entity_update_value_error(
     hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock(return_value=True)
 
-    res = await init_mod._migrate_2_to_3(hass, cfg, client)
+    res = await _migrate_2_to_3(hass, cfg, client)
     assert res is True
     # ensure we attempted to update the entity (which raised) and migration completed
     er_reg.async_update_entity.assert_called_once_with(ent.entity_id, new_unique_id=ANY)
@@ -3587,10 +3583,8 @@ async def test_migrate_3_to_4_handles_remove_exceptions(
 
     er_reg = MagicMock()
     er_reg.async_remove = MagicMock(side_effect=exc)
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: er_reg)
-    monkeypatch.setattr(
-        init_mod.er, "async_entries_for_config_entry", lambda registry, config_entry_id: [e]
-    )
+    monkeypatch.setattr(er, "async_get", lambda hass: er_reg)
+    monkeypatch.setattr(er, "async_entries_for_config_entry", lambda registry, config_entry_id: [e])
 
     cfg = MagicMock()
     cfg.data = {
@@ -3606,7 +3600,7 @@ async def test_migrate_3_to_4_handles_remove_exceptions(
     hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock(return_value=True)
 
-    res = await init_mod._migrate_3_to_4(hass, cfg, client)
+    res = await _migrate_3_to_4(hass, cfg, client)
     assert res is False
     er_reg.async_remove.assert_called_once_with(e.entity_id)
     hass.config_entries.async_update_entry.assert_not_called()
@@ -3625,10 +3619,8 @@ async def test_migrate_3_to_4_handles_update_value_error(
 
     er_reg = MagicMock()
     er_reg.async_update_entity = MagicMock(side_effect=ValueError("bad update"))
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: er_reg)
-    monkeypatch.setattr(
-        init_mod.er, "async_entries_for_config_entry", lambda registry, config_entry_id: [e]
-    )
+    monkeypatch.setattr(er, "async_get", lambda hass: er_reg)
+    monkeypatch.setattr(er, "async_entries_for_config_entry", lambda registry, config_entry_id: [e])
 
     cfg = MagicMock()
     cfg.data = {
@@ -3644,7 +3636,7 @@ async def test_migrate_3_to_4_handles_update_value_error(
     hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock(return_value=True)
 
-    res = await init_mod._migrate_3_to_4(hass, cfg, client)
+    res = await _migrate_3_to_4(hass, cfg, client)
     assert res is False
     er_reg.async_update_entity.assert_called_once()
     hass.config_entries.async_update_entry.assert_not_called()
@@ -3818,7 +3810,7 @@ async def test_async_setup_entry_firmware_above_ltd_calls_delete(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
     )
     called = []
-    monkeypatch.setattr(init_mod.ir, "async_delete_issue", lambda *a, **k: called.append(True))
+    monkeypatch.setattr(ir, "async_delete_issue", lambda *a, **k: called.append(True))
 
     entry = make_config_entry(
         data={
@@ -3855,7 +3847,7 @@ async def test_async_setup_entry_firmware_at_or_above_ltd_deletes_previous_issue
 
     # capture delete_issue calls
     delete_issue_mock = MagicMock()
-    monkeypatch.setattr(init_mod.ir, "async_delete_issue", delete_issue_mock)
+    monkeypatch.setattr(ir, "async_delete_issue", delete_issue_mock)
 
     entry = make_config_entry(
         data={
@@ -3901,7 +3893,7 @@ async def test_async_setup_entry_delete_uses_actual_firmware_string(
     )
 
     calls = MagicMock()
-    monkeypatch.setattr(init_mod.ir, "async_delete_issue", calls)
+    monkeypatch.setattr(ir, "async_delete_issue", calls)
 
     entry = make_config_entry(
         data={
@@ -3946,7 +3938,7 @@ async def test_async_setup_entry_delete_not_called_for_between_min_and_ltd(
     )
 
     delete_issue_mock = MagicMock()
-    monkeypatch.setattr(init_mod.ir, "async_delete_issue", delete_issue_mock)
+    monkeypatch.setattr(ir, "async_delete_issue", delete_issue_mock)
 
     entry = make_config_entry(
         data={
@@ -4048,7 +4040,7 @@ async def test_async_setup_entry_recreates_marker_issue_when_main_refresh_fails(
     hass.config_entries.async_reload = MagicMock()
     hass.data = {}
     create_issue = MagicMock()
-    monkeypatch.setattr(init_mod.ir, "async_create_issue", create_issue)
+    monkeypatch.setattr(ir, "async_create_issue", create_issue)
 
     with pytest.raises(ConfigEntryNotReady, match="main refresh failed"):
         await init_mod.async_setup_entry(hass, entry)
@@ -4176,7 +4168,7 @@ async def test_async_setup_entry_recreates_marker_issue_when_device_tracker_refr
     hass.config_entries.async_reload = MagicMock()
     hass.data = {}
     create_issue = MagicMock()
-    monkeypatch.setattr(init_mod.ir, "async_create_issue", create_issue)
+    monkeypatch.setattr(ir, "async_create_issue", create_issue)
 
     with pytest.raises(RuntimeError, match="device tracker refresh failed"):
         await init_mod.async_setup_entry(hass, entry)
@@ -4288,7 +4280,7 @@ async def test_async_setup_entry_recreates_marker_issue_when_platform_forwarding
     ph_hass.config_entries.async_reload = MagicMock()
     ph_hass.data = {}
     create_issue = MagicMock()
-    monkeypatch.setattr(init_mod.ir, "async_create_issue", create_issue)
+    monkeypatch.setattr(ir, "async_create_issue", create_issue)
 
     with pytest.raises(RuntimeError, match="platform forwarding failed"):
         await init_mod.async_setup_entry(ph_hass, entry)
@@ -4353,7 +4345,7 @@ async def test_async_setup_entry_recreates_marker_issue_when_platform_forwarding
     ph_hass.config_entries.async_reload = MagicMock()
     ph_hass.data = {}
     create_issue = MagicMock()
-    monkeypatch.setattr(init_mod.ir, "async_create_issue", create_issue)
+    monkeypatch.setattr(ir, "async_create_issue", create_issue)
 
     with pytest.raises(RuntimeError, match="platform forwarding failed"):
         await init_mod.async_setup_entry(ph_hass, entry)
@@ -4567,7 +4559,7 @@ async def test_cleanup_reconciliation_failure_returns_platform_unload_result(
     repair_marker.new_device_id = "new-dev"
     issue_create = MagicMock()
     issue_create.side_effect = lambda *args, **kwargs: events.append("create_issue")
-    monkeypatch.setattr(init_mod.ir, "async_create_issue", issue_create)
+    monkeypatch.setattr(ir, "async_create_issue", issue_create)
 
     async def _unload_platforms(*args: Any, **kwargs: Any) -> bool:
         del args, kwargs
@@ -4703,7 +4695,7 @@ async def test_async_setup_entry_deletes_stale_device_id_mismatch_issue(
     ph_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
     ph_hass.config_entries.async_reload = AsyncMock()
     delete_issue = MagicMock()
-    monkeypatch.setattr(init_mod.ir, "async_delete_issue", delete_issue)
+    monkeypatch.setattr(ir, "async_delete_issue", delete_issue)
     ph_hass.data = {}
 
     result = await init_mod.async_setup_entry(ph_hass, entry)
@@ -4745,7 +4737,7 @@ async def test_async_setup_entry_preserves_marker_and_skips_stale_issue_delete(
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
     ph_hass.config_entries.async_reload = AsyncMock()
     delete_issue = MagicMock()
-    monkeypatch.setattr(init_mod.ir, "async_delete_issue", delete_issue)
+    monkeypatch.setattr(ir, "async_delete_issue", delete_issue)
     ph_hass.data = {}
 
     result = await init_mod.async_setup_entry(ph_hass, entry)
@@ -4805,7 +4797,7 @@ async def test_async_setup_entry_deletes_stale_mismatch_issue_only_on_matching_v
     ph_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
     ph_hass.config_entries.async_reload = AsyncMock()
     delete_issue = MagicMock()
-    monkeypatch.setattr(init_mod.ir, "async_delete_issue", delete_issue)
+    monkeypatch.setattr(ir, "async_delete_issue", delete_issue)
     ph_hass.data = {}
 
     result = await init_mod.async_setup_entry(ph_hass, entry)
@@ -4845,7 +4837,7 @@ async def test_reconciliation_prepare_failure_recreates_marker_issue_without_unl
         unique_id="dev1",
     )
     reconciliation = MagicMock()
-    reconciliation.marker = init_mod.parse_repair_marker(entry)
+    reconciliation.marker = parse_repair_marker(entry)
     reconciliation.prepare.side_effect = RepairReconciliationError("prepare failed")
     monkeypatch.setattr(init_mod, "RepairReconciliation", lambda *_args: reconciliation)
     ph_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
@@ -4853,7 +4845,7 @@ async def test_reconciliation_prepare_failure_recreates_marker_issue_without_unl
     ph_hass.config_entries.async_reload = AsyncMock()
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
     create_issue = MagicMock()
-    monkeypatch.setattr(init_mod.ir, "async_create_issue", create_issue)
+    monkeypatch.setattr(ir, "async_create_issue", create_issue)
     ph_hass.data = {}
 
     result = await init_mod.async_setup_entry(ph_hass, entry)
@@ -4921,7 +4913,7 @@ async def test_async_setup_entry_recreates_marker_issue_on_probe_mismatch_before
     ph_hass.config_entries.async_unload_platforms = AsyncMock()
     ph_hass.config_entries.async_reload = MagicMock()
     create_issue = MagicMock()
-    monkeypatch.setattr(init_mod.ir, "async_create_issue", create_issue)
+    monkeypatch.setattr(ir, "async_create_issue", create_issue)
 
     result = await init_mod.async_setup_entry(ph_hass, entry)
 
@@ -5217,16 +5209,14 @@ async def test_migrate_2_to_3_handles_identifier_collision(
         def async_update_device(self, *a, **k) -> Never:
             # DeviceIdentifierCollisionError requires an existing_device argument
             """Raise the collision error expected by the registry migration test."""
-            raise init_mod.dr.DeviceIdentifierCollisionError(dev.identifiers, MagicMock(id="other"))
+            raise dr.DeviceIdentifierCollisionError(dev.identifiers, MagicMock(id="other"))
 
-    monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: DeviceRegistry())
+    monkeypatch.setattr(dr, "async_get", lambda hass: DeviceRegistry())
     monkeypatch.setattr(
-        init_mod.dr, "async_entries_for_config_entry", lambda registry, config_entry_id: [dev]
+        dr, "async_entries_for_config_entry", lambda registry, config_entry_id: [dev]
     )
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: MagicMock())
-    monkeypatch.setattr(
-        init_mod.er, "async_entries_for_config_entry", lambda registry, config_entry_id: []
-    )
+    monkeypatch.setattr(er, "async_get", lambda hass: MagicMock())
+    monkeypatch.setattr(er, "async_entries_for_config_entry", lambda registry, config_entry_id: [])
     cfg = MagicMock()
     cfg.data = {
         CONF_URL: "http://1.2.3.4",
@@ -5242,7 +5232,7 @@ async def test_migrate_2_to_3_handles_identifier_collision(
     hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock(return_value=True)
 
-    res = await init_mod._migrate_2_to_3(hass, cfg, client)
+    res = await _migrate_2_to_3(hass, cfg, client)
     assert res is True
 
 
@@ -5284,14 +5274,14 @@ async def test_migrate_3_to_4_defers_without_updating_entities_when_later_filesy
         second_filesystem_entity,
     ]
     entity_registry.async_update_entity = MagicMock()
-    monkeypatch.setattr(init_mod.er, "async_get", lambda _hass: entity_registry)
+    monkeypatch.setattr(er, "async_get", lambda _hass: entity_registry)
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         entity_registry.async_entries_for_config_entry,
     )
 
-    res = await init_mod._migrate_3_to_4(hass, migration_entry, client)
+    res = await _migrate_3_to_4(hass, migration_entry, client)
 
     assert res is False
     entity_registry.async_update_entity.assert_not_called()

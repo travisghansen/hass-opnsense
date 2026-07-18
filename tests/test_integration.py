@@ -23,14 +23,22 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 from homeassistant.const import CONF_NAME, CONF_PASSWORD, CONF_URL, CONF_USERNAME, CONF_VERIFY_SSL
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 import custom_components.opnsense as init_mod
-from custom_components.opnsense import config_flow as cf_mod
+from custom_components.opnsense import (
+    _async_update_listener,
+    async_migrate_entry,
+    async_setup_entry,
+    async_unload_entry,
+    config_flow as cf_mod,
+)
 from custom_components.opnsense.config_flow import (
     CONF_DEVICE_TRACKING_MODE,
     DEVICE_TRACKING_MODE_SELECTED,
+    OPNsenseConfigFlow,
 )
 from custom_components.opnsense.const import (
     CONF_DEVICE_TRACKER_ENABLED,
@@ -299,7 +307,7 @@ async def test_e2e_basic_config_flow_and_setup(
         cf_mod, "async_create_clientsession", lambda **k: MagicMock(), raising=False
     )
 
-    flow = cf_mod.OPNsenseConfigFlow()
+    flow = OPNsenseConfigFlow()
     hass = _build_mock_hass()
     flow.hass = hass
 
@@ -343,7 +351,7 @@ async def test_e2e_basic_config_flow_and_setup(
     entry.async_on_unload = lambda x: None
     hass.data = {}
 
-    ok = await init_mod.async_setup_entry(hass, entry)
+    ok = await async_setup_entry(hass, entry)
     assert ok is True
     # hass.data should contain stored client under domain/entry_id
     assert DOMAIN in hass.data
@@ -374,7 +382,7 @@ async def test_e2e_granular_sync_and_options_device_tracker(
         cf_mod, "async_create_clientsession", lambda **k: MagicMock(), raising=False
     )
 
-    flow = cf_mod.OPNsenseConfigFlow()
+    flow = OPNsenseConfigFlow()
     hass = _build_mock_hass()
     flow.hass = hass
 
@@ -433,9 +441,7 @@ async def test_e2e_granular_sync_and_options_device_tracker(
         hass.config_entries.async_get_known_entry = _get_known_entry
 
     # Options flow path
-    opt_flow = cf_mod.OPNsenseConfigFlow.async_get_options_flow(
-        entry
-    )  # returns OPNsenseOptionsFlow
+    opt_flow = OPNsenseConfigFlow.async_get_options_flow(entry)  # returns OPNsenseOptionsFlow
     opt_flow.hass = hass
     opt_flow.handler = entry.entry_id
     # initial options step: enable device tracker & granular sync
@@ -473,7 +479,7 @@ async def test_e2e_granular_sync_and_options_device_tracker(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(_FakeCoordinator)
     )
 
-    ok = await init_mod.async_setup_entry(hass, entry)
+    ok = await async_setup_entry(hass, entry)
     assert ok is True
     # Expect two coordinators: main + device tracker
     assert len(coordinator_capture.instances) == 2
@@ -499,7 +505,7 @@ async def test_e2e_reload_and_unload(
         cf_mod, "async_create_clientsession", lambda **k: MagicMock(), raising=False
     )
 
-    flow = cf_mod.OPNsenseConfigFlow()
+    flow = OPNsenseConfigFlow()
     hass = _build_mock_hass()
     flow.hass = hass
 
@@ -539,27 +545,23 @@ async def test_e2e_reload_and_unload(
     entry.async_on_unload = lambda x: None
 
     # Setup
-    ok = await init_mod.async_setup_entry(hass, entry)
+    ok = await async_setup_entry(hass, entry)
     assert ok is True
     assert entry.entry_id in hass.data[DOMAIN]
 
     # Patch registries for update listener (return no entities/devices)
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: MagicMock())
-    monkeypatch.setattr(
-        init_mod.er, "async_entries_for_config_entry", lambda registry, config_entry_id: []
-    )
-    monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: MagicMock())
-    monkeypatch.setattr(
-        init_mod.dr, "async_entries_for_config_entry", lambda registry, config_entry_id: []
-    )
+    monkeypatch.setattr(er, "async_get", lambda hass: MagicMock())
+    monkeypatch.setattr(er, "async_entries_for_config_entry", lambda registry, config_entry_id: [])
+    monkeypatch.setattr(dr, "async_get", lambda hass: MagicMock())
+    monkeypatch.setattr(dr, "async_entries_for_config_entry", lambda registry, config_entry_id: [])
 
     # Trigger update listener -> should schedule reload
     setattr(entry.runtime_data, SHOULD_RELOAD, True)
-    await init_mod._async_update_listener(hass, entry)
+    await _async_update_listener(hass, entry)
     assert hass.config_entries.async_reload.call_count == 1
 
     # Unload
-    res_unload = await init_mod.async_unload_entry(hass, entry)
+    res_unload = await async_unload_entry(hass, entry)
     assert res_unload is True
     assert entry.entry_id not in hass.data[DOMAIN]
     assert runtime_client._closed is True
@@ -706,15 +708,15 @@ async def test_e2e_full_migration_chain(
     fake_entity_reg = FakeEntityRegistry()
 
     # Monkeypatch registry access/functions used in migration helpers
-    monkeypatch.setattr(init_mod.dr, "async_get", lambda hass: fake_device_reg)
-    monkeypatch.setattr(init_mod.er, "async_get", lambda hass: fake_entity_reg)
+    monkeypatch.setattr(dr, "async_get", lambda hass: fake_device_reg)
+    monkeypatch.setattr(er, "async_get", lambda hass: fake_entity_reg)
     monkeypatch.setattr(
-        init_mod.dr,
+        dr,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: list(fake_device_reg._devices),
     )
     monkeypatch.setattr(
-        init_mod.er,
+        er,
         "async_entries_for_config_entry",
         lambda registry, config_entry_id: list(fake_entity_reg._entities.values()),
     )
@@ -772,7 +774,7 @@ async def test_e2e_full_migration_chain(
     )
 
     # Run full migration
-    ok = await init_mod.async_migrate_entry(hass, entry)
+    ok = await async_migrate_entry(hass, entry)
     assert ok is True
     assert entry.version == 5
     assert len(migration_clients) == 1

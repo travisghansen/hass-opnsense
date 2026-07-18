@@ -6,6 +6,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.entity import Entity
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -172,17 +173,17 @@ def _subject(
     """Create reconciliation with patched mutable registries."""
     entity_registry = _EntityRegistry(entities)
     device_registry = _DeviceRegistry(devices)
-    monkeypatch.setattr(rr.er, "async_get", lambda _hass: entity_registry)
+    monkeypatch.setattr(er, "async_get", lambda _hass: entity_registry)
     monkeypatch.setattr(
-        rr.er,
+        er,
         "async_entries_for_config_entry",
         lambda registry, entry_id: [
             item for item in registry.entries if item.config_entry_id == entry_id
         ],
     )
-    monkeypatch.setattr(rr.dr, "async_get", lambda _hass: device_registry)
+    monkeypatch.setattr(dr, "async_get", lambda _hass: device_registry)
     monkeypatch.setattr(
-        rr.dr,
+        dr,
         "async_entries_for_config_entry",
         lambda registry, entry_id: [
             item for item in registry.devices if entry_id in item.config_entries
@@ -428,10 +429,10 @@ def test_prepare_and_finalize_are_idempotent_after_partial_retry(
         (lambda: KeyError("migrating entity"), KeyError),
         (lambda: ValueError("migrating entity"), ValueError),
         (
-            lambda: rr.dr.DeviceIdentifierCollisionError(
-                {("domain", "identifier")}, MagicMock(spec=rr.dr.DeviceEntry)
+            lambda: dr.DeviceIdentifierCollisionError(
+                {("domain", "identifier")}, MagicMock(spec=dr.DeviceEntry)
             ),
-            rr.dr.DeviceIdentifierCollisionError,
+            dr.DeviceIdentifierCollisionError,
         ),
     ],
 )

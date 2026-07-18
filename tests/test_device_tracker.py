@@ -1543,7 +1543,7 @@ async def test_async_setup_entry_removes_stale_tracker_entities_and_reparents_sh
         return entity_ids.get(unique_id)
 
     entity_registry.async_get_entity_id.side_effect = get_entity_id
-    monkeypatch.setattr(dt_mod.er, "async_get", MagicMock(return_value=entity_registry))
+    monkeypatch.setattr(er, "async_get", MagicMock(return_value=entity_registry))
 
     router_device = MagicMock(
         id="router-device-id",
@@ -1683,7 +1683,7 @@ async def test_async_setup_entry_removes_stale_tracker_entities_clears_missing_p
 
     entity_registry = MagicMock()
     entity_registry.async_get_entity_id = MagicMock(return_value=None)
-    monkeypatch.setattr(dt_mod.er, "async_get", MagicMock(return_value=entity_registry))
+    monkeypatch.setattr(er, "async_get", MagicMock(return_value=entity_registry))
 
     missing_parent_id = "missing-router-device-id"
     stale_device = MagicMock(

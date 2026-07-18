@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, call
 
 from aiopnsense.exceptions import OPNsenseTimeoutError
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers import issue_registry as ir
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -463,7 +464,7 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
         called["issue"] += 1
         called["issue_kwargs"] = kwargs
 
-    monkeypatch.setattr(coordinator_module.ir, "async_create_issue", fake_async_create_issue)
+    monkeypatch.setattr(ir, "async_create_issue", fake_async_create_issue)
     object.__setattr__(coord, "async_shutdown", fake_shutdown)
 
     # call 3 times -> should call issue once and shutdown once
@@ -509,7 +510,7 @@ async def test_check_device_unique_id_clears_stale_issue_without_repair_marker(
     )
     coord._state = {"device_unique_id": "expected"}
     create_issue_delete = MagicMock()
-    monkeypatch.setattr(coordinator_module.ir, "async_delete_issue", create_issue_delete)
+    monkeypatch.setattr(ir, "async_delete_issue", create_issue_delete)
     build_issue_id = MagicMock(return_value="stable-issue-id")
     monkeypatch.setattr(
         coordinator_module,
@@ -550,7 +551,7 @@ async def test_check_device_unique_id_keeps_stale_issue_when_repair_marker_prese
     )
     coord._state = {"device_unique_id": "expected"}
     create_issue_delete = MagicMock()
-    monkeypatch.setattr(coordinator_module.ir, "async_delete_issue", create_issue_delete)
+    monkeypatch.setattr(ir, "async_delete_issue", create_issue_delete)
 
     res = await coord._check_device_unique_id()
 
@@ -1663,7 +1664,7 @@ async def test_async_update_dt_data_uses_shared_device_id_mismatch_policy(
         called["issue_kwargs"] = kwargs
 
     monkeypatch.setattr(coord, "_get_states", fake_get_states)
-    monkeypatch.setattr(coordinator_module.ir, "async_create_issue", fake_async_create_issue)
+    monkeypatch.setattr(ir, "async_create_issue", fake_async_create_issue)
     object.__setattr__(coord, "async_shutdown", fake_shutdown)
     object.__setattr__(client, "get_query_counts", AsyncMock(return_value=3))
 
@@ -1772,7 +1773,7 @@ async def test_check_device_unique_id_invalid_runtime_id_is_not_counted(
         del kwargs
         called["issue"] += 1
 
-    monkeypatch.setattr(coordinator_module.ir, "async_create_issue", fake_async_create_issue)
+    monkeypatch.setattr(ir, "async_create_issue", fake_async_create_issue)
     object.__setattr__(coord, "async_shutdown", fake_shutdown)
     coord._state = state
 

@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 from aiopnsense.exceptions import OPNsenseVoucherServerError
 from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.util.yaml import load_yaml_dict
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -119,7 +120,7 @@ def _patch_device_registry_entry(
     )
     device_registry = MagicMock()
     device_registry.async_get.return_value = device_entry
-    monkeypatch.setattr(services_mod.dr, "async_get", lambda _hass: device_registry)
+    monkeypatch.setattr(dr, "async_get", lambda _hass: device_registry)
 
 
 def _patch_entity_registry_entry(
@@ -135,7 +136,7 @@ def _patch_entity_registry_entry(
     entity_entry = SimpleNamespace(config_entry_id=config_entry_id)
     entity_registry = MagicMock()
     entity_registry.async_get.return_value = entity_entry
-    monkeypatch.setattr(services_mod.er, "async_get", lambda _hass: entity_registry)
+    monkeypatch.setattr(er, "async_get", lambda _hass: entity_registry)
 
 
 def _patch_missing_device_registry_entry(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -146,7 +147,7 @@ def _patch_missing_device_registry_entry(monkeypatch: pytest.MonkeyPatch) -> Non
     """
     device_registry = MagicMock()
     device_registry.async_get.return_value = None
-    monkeypatch.setattr(services_mod.dr, "async_get", lambda _hass: device_registry)
+    monkeypatch.setattr(dr, "async_get", lambda _hass: device_registry)
 
 
 def _add_entry_for_client(
@@ -422,8 +423,8 @@ async def test_get_clients_registry_errors_raise_for_explicit_targets(
 
         return _r
 
-    monkeypatch.setattr(services_mod.dr, "async_get", _raises(TypeError()))
-    monkeypatch.setattr(services_mod.er, "async_get", _raises(AttributeError()))
+    monkeypatch.setattr(dr, "async_get", _raises(TypeError()))
+    monkeypatch.setattr(er, "async_get", _raises(AttributeError()))
     with pytest.raises(ServiceValidationError):
         await services_mod._get_clients(hass_local, opndevice_id="d", opnentity_id="e")
 

@@ -11,6 +11,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import PERCENTAGE, UnitOfDataRate, UnitOfInformation, UnitOfTemperature
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import slugify
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -131,9 +132,7 @@ async def test_carp_entry_setup_has_exact_read_only_vip_inventory(
         sensor_module._build_carp_vip_sensor_key("1", "192.0.2.1"),
         sensor_module._build_carp_vip_sensor_key("2", "198.51.100.1"),
     }
-    expected_unique_ids = {
-        sensor_module.slugify(f"{entry.entry_id}_{key}") for key in expected_keys
-    }
+    expected_unique_ids = {slugify(f"{entry.entry_id}_{key}") for key in expected_keys}
     assert keys == expected_keys
     assert {entity.unique_id for entity in created} == expected_unique_ids
     descriptions = {entity.entity_description.key: entity.entity_description for entity in created}
@@ -572,10 +571,10 @@ async def test_compile_gateway_sensors_keeps_gateway_id_in_entity_key(
         entity for entity in entities if entity.entity_description.key == "gateway.wan.status"
     )
     assert address_entity.entity_description.name == "Gateway WAN_GW address"
-    assert address_entity._attr_unique_id == sensor_module.slugify(
+    assert address_entity._attr_unique_id == slugify(
         f"{entry.data['device_unique_id']}_gateway.WAN_GW.address"
     )
-    assert status_entity._attr_unique_id == sensor_module.slugify(
+    assert status_entity._attr_unique_id == slugify(
         f"{entry.data['device_unique_id']}_gateway.WAN_GW.status"
     )
 
@@ -597,7 +596,7 @@ def test_carp_sensor_unavailable_variants(
     entry = make_config_entry()
 
     desc = MagicMock()
-    desc.key = f"carp.interface.lan0.{sensor_module.slugify(desc_subnet)}"
+    desc.key = f"carp.interface.lan0.{slugify(desc_subnet)}"
     desc.name = "CARP"
 
     s = OPNsenseCarpInterfaceSensor(config_entry=entry, coordinator=coord, entity_description=desc)
@@ -615,7 +614,7 @@ def test_carp_sensor_state_wrong_type(make_config_entry: Callable[..., MockConfi
     entry = make_config_entry()
 
     desc = MagicMock()
-    desc.key = f"carp.interface.wan.{sensor_module.slugify('10.10.10.10')}"
+    desc.key = f"carp.interface.wan.{slugify('10.10.10.10')}"
     desc.name = "CARP WrongType"
 
     s = OPNsenseCarpInterfaceSensor(config_entry=entry, coordinator=coord, entity_description=desc)
@@ -1036,8 +1035,8 @@ def test_carp_sensor_attributes_and_icon(
     desc = MagicMock()
     desc.key = (
         f"carp.interface."
-        f"{sensor_module.slugify(carp_entry.get('interface', 'unknown'))}."
-        f"{sensor_module.slugify(carp_entry['subnet'])}"
+        f"{slugify(carp_entry.get('interface', 'unknown'))}."
+        f"{slugify(carp_entry['subnet'])}"
     )
     desc.name = "CARP Test"
 
@@ -1532,7 +1531,7 @@ def test_carp_interface_sensor_disambiguates_same_subnet_by_interface(
     ("desc_key", "cls", "main_check", "extra_check"),
     [
         (
-            f"carp.interface.{sensor_module.slugify('lan0')}.{sensor_module.slugify('10.0.0.1')}",
+            f"carp.interface.{slugify('lan0')}.{slugify('10.0.0.1')}",
             OPNsenseCarpInterfaceSensor,
             lambda s: s.native_value == "MASTER",
             lambda s: s.icon == "mdi:check-network",
