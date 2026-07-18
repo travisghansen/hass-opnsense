@@ -4,7 +4,7 @@ from copy import deepcopy
 import logging
 from typing import TypeGuard
 
-from aiopnsense.exceptions import OPNsenseError
+from aiopnsense.exceptions import OPNsenseError, OPNsenseMissingDeviceUniqueID
 from homeassistant.components.repairs import ConfirmRepairFlow, RepairsFlow, RepairsFlowResult
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant
@@ -128,7 +128,12 @@ async def _async_validate_and_probe_device_id(
         throw_errors=True,
     )
     try:
-        await client.validate()
+        try:
+            await client.validate()
+        except OPNsenseMissingDeviceUniqueID:
+            _LOGGER.debug(
+                "Device validation could not return the current unique ID; probing directly"
+            )
         return await client.get_device_unique_id()
     finally:
         await client.async_close()
@@ -418,7 +423,7 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         """
         try:
             reprobed_device_id = await _async_validate_and_probe_device_id(self.hass, entry)
-        except OPNsenseError:
+        except OPNsenseError, TimeoutError:
             self._schedule_changed_entry_reload_if_needed(
                 entry_was_loaded=entry_was_loaded,
                 entry=entry,
@@ -506,6 +511,8 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
             self._expected_device_id,
         )
         if stored_device_id == self._expected_device_id:
+            if entry.unique_id != self._expected_device_id:
+                return self.async_abort(reason="entry_changed")
             if REPAIR_MARKER_KEY not in entry.data:
                 return await self._async_reload_with_recovery(
                     entry,

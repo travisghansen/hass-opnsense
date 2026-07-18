@@ -139,6 +139,27 @@ def _devices_from_arp_entries(arp_entries: list[Any]) -> tuple[list[dict[str, An
     return devices, mac_addresses
 
 
+def _track_all_arp_entries_are_complete(arp_entries: list[Any]) -> bool:
+    """Return whether every ARP row can produce at least one tracked MAC in track-all mode.
+
+    Args:
+        arp_entries: Raw ARP entries returned by OPNsense.
+
+    Returns:
+        ``True`` when each row is a mapping with a usable MAC address.
+    """
+    seen_macs: list[str] = []
+    for arp_entry in arp_entries:
+        if not isinstance(arp_entry, MutableMapping):
+            return False
+        mac_address = get_arp_mac(arp_entry)
+        normalized_mac = _normalize_mac_for_device_tracker(mac_address) if mac_address else None
+        if not mac_address or not normalized_mac or normalized_mac in seen_macs:
+            return False
+        seen_macs.append(normalized_mac)
+    return True
+
+
 def _hostname_from_arp_entry(entry: MutableMapping[str, Any]) -> str | None:
     """Return the normalized hostname from an ARP entry.
 
@@ -274,6 +295,8 @@ async def async_setup_entry(
         if not has_configured_macs:
             reconciliation_complete = False
         arp_entries = []
+    elif not has_configured_macs:
+        reconciliation_complete = _track_all_arp_entries_are_complete(arp_entries)
     devices, mac_addresses, enabled_default = _compile_tracked_devices(config_entry, arp_entries)
 
     for device in devices:

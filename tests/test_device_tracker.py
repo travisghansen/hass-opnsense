@@ -1190,6 +1190,131 @@ async def test_async_setup_entry_records_empty_authoritative_arp_inventory(
 
 
 @pytest.mark.asyncio
+async def test_async_setup_entry_records_none_for_malformed_arp_rows_in_track_all(
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Track-all mode should fail reconciliation if any ARP row cannot compile."""
+    coordinator.data = {
+        "arp_table": [
+            "not-an-arp-row",
+            {},
+            {"mac": "", "hostname": "malformed"},
+            {"mac": "AA-BB-CC-DD-EE-FF", "hostname": "good"},
+        ]
+    }
+    entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1"},
+        options={CONF_DEVICE_TRACKER_ENABLED: True},
+    )
+    setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
+    recorded: dict[str, Any] = {}
+    added: list[Any] = []
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture the desired-entity payload sent to reconciliation."""
+        recorded["entities"] = entities
+
+    monkeypatch.setattr(dt_mod, "record_desired_entities", capture)
+
+    await dt_mod.async_setup_entry(
+        MagicMock(),
+        entry,
+        cast("AddEntitiesCallback", lambda entities, _=False: added.extend(entities)),
+    )
+
+    assert "entities" in recorded
+    assert recorded["entities"] is None
+    assert len(added) == 1
+    assert added[0].mac_address == "aa:bb:cc:dd:ee:ff"
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_none_for_duplicate_macs_in_track_all(
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Track-all mode should fail reconciliation if duplicate normalized MAC rows exist."""
+    coordinator.data = {
+        "arp_table": [
+            {"mac": "AA-BB-CC-DD-EE-FF", "hostname": "first"},
+            {"mac": "aa:bb:cc:dd:ee:ff", "hostname": "duplicate"},
+            {"mac": "11:22:33:44:55:66", "hostname": "good"},
+        ]
+    }
+    entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1"},
+        options={CONF_DEVICE_TRACKER_ENABLED: True},
+    )
+    setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
+    recorded: dict[str, Any] = {}
+    added: list[Any] = []
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture the desired-entity payload sent to reconciliation."""
+        recorded["entities"] = entities
+
+    monkeypatch.setattr(dt_mod, "record_desired_entities", capture)
+
+    await dt_mod.async_setup_entry(
+        MagicMock(),
+        entry,
+        cast("AddEntitiesCallback", lambda entities, _=False: added.extend(entities)),
+    )
+
+    assert "entities" in recorded
+    assert recorded["entities"] is None
+    assert len(added) == 2
+    assert added[0].mac_address == "aa:bb:cc:dd:ee:ff"
+    assert added[1].mac_address == "11:22:33:44:55:66"
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_track_all_completeness_ignored_in_explicit_mac_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Explicit configured-MAC mode should ignore track-all completeness failures."""
+    coordinator.data = {
+        "arp_table": [
+            "not-an-arp-row",
+            {"mac": "", "hostname": "malformed"},
+            {"mac": "AA-BB-CC-DD-EE-FF", "hostname": "good"},
+        ]
+    }
+    entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1"},
+        options={
+            CONF_DEVICE_TRACKER_ENABLED: True,
+            CONF_DEVICES: ["aa:bb:cc:dd:ee:ff"],
+        },
+    )
+    setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
+    recorded: dict[str, Any] = {}
+    added: list[Any] = []
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture the desired-entity payload sent to reconciliation."""
+        recorded["entities"] = entities
+
+    monkeypatch.setattr(dt_mod, "record_desired_entities", capture)
+
+    await dt_mod.async_setup_entry(
+        MagicMock(),
+        entry,
+        cast("AddEntitiesCallback", lambda entities, _=False: added.extend(entities)),
+    )
+
+    assert "entities" in recorded
+    assert isinstance(recorded["entities"], list)
+    assert len(added) == 1
+    assert added[0].mac_address == "aa:bb:cc:dd:ee:ff"
+
+
+@pytest.mark.asyncio
 async def test_async_setup_entry_removes_previous_mac(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,

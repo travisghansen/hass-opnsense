@@ -65,7 +65,7 @@ def _vpn_switch_rows_are_complete(state: MutableMapping[str, Any]) -> bool:
     """Return whether every VPN row consumed by the switch compiler is valid."""
     for vpn_type in ("openvpn", "wireguard"):
         for group in ("clients", "servers"):
-            instances = dict_get(state, f"{vpn_type}.{group}", {}) or {}
+            instances = dict_get(state, f"{vpn_type}.{group}", {})
             if not isinstance(instances, MutableMapping) or not all(
                 _is_valid_vpn_switch_row(instance) for instance in instances.values()
             ):
@@ -661,7 +661,9 @@ async def async_setup_entry(
         ):
             entities.extend(await _compile_unbound_switches(config_entry, coordinator, state))
             if not all(
-                _is_valid_unbound_row(dnsbl) for dnsbl in state[ATTR_UNBOUND_BLOCKLIST].values()
+                _is_valid_unbound_row(dnsbl)
+                for key, dnsbl in state[ATTR_UNBOUND_BLOCKLIST].items()
+                if key != "legacy"
             ):
                 reconciliation_complete = False
         else:

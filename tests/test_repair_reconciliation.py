@@ -292,6 +292,41 @@ def test_prepare_migrates_primary_device_or_rejects_foreign_collision(
         reconciliation.prepare()
 
 
+def test_prepare_keeps_all_identifiers_except_old_domain_on_main_device(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Preserve unrelated identifiers when the target already has both old and new IDs."""
+    main_device = _device(
+        "main",
+        "old_id",
+        config_entries={"entry-1"},
+    )
+    main_device.identifiers.add((DOMAIN, "new_id"))
+    main_device.identifiers.add((DOMAIN, "other-domain-id"))
+    main_device.identifiers.add(("other", "unrelated"))
+    reconciliation, _, devices = _subject(monkeypatch, [], [main_device])
+
+    reconciliation.prepare()
+
+    assert main_device.identifiers == {
+        (DOMAIN, "new_id"),
+        (DOMAIN, "other-domain-id"),
+        ("other", "unrelated"),
+    }
+    assert devices.updates == [
+        (
+            "main",
+            {
+                "new_identifiers": {
+                    (DOMAIN, "new_id"),
+                    (DOMAIN, "other-domain-id"),
+                    ("other", "unrelated"),
+                }
+            },
+        )
+    ]
+
+
 def test_finalize_removes_only_stale_snapshot_and_preserves_device_associations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -154,6 +154,8 @@ def setup_switch_reconciliation_entry(
         ({"openvpn": {}, "wireguard": {}}, False, False, True, False, []),
         ({}, False, False, False, True, None),
         ({"unbound_blocklist": {}}, False, False, False, True, []),
+        ({"unbound_blocklist": {"legacy": {}}}, False, False, False, True, []),
+        ({"unbound_blocklist": {"legacy": None}}, False, False, False, True, []),
     ],
     ids=[
         "missing_service",
@@ -165,6 +167,8 @@ def setup_switch_reconciliation_entry(
         "empty_vpn",
         "missing_unbound",
         "empty_unbound",
+        "empty_legacy_unbound",
+        "empty_scalar_legacy_unbound",
     ],
 )
 @pytest.mark.asyncio
@@ -256,6 +260,37 @@ async def test_async_setup_entry_records_none_for_partial_vpn_inventory(
     assert keys == {"openvpn.clients.client-uuid"}, description
 
 
+def test_vpn_switch_rows_are_complete_defaults_and_rejects_falsy_rows() -> None:
+    """VPN switch completeness should default missing groups to {} and reject falsy rows."""
+    assert (
+        switch_mod._vpn_switch_rows_are_complete(
+            {
+                "openvpn": {"clients": {}, "servers": {}},
+                "wireguard": {"clients": {}, "servers": {}},
+            }
+        )
+        is True
+    )
+    assert (
+        switch_mod._vpn_switch_rows_are_complete(
+            {
+                "openvpn": {"clients": [], "servers": {}},
+                "wireguard": {"clients": {}, "servers": {}},
+            }
+        )
+        is False
+    )
+    assert (
+        switch_mod._vpn_switch_rows_are_complete(
+            {
+                "openvpn": {"clients": {}, "servers": {}},
+                "wireguard": {"clients": {}, "servers": 0},
+            }
+        )
+        is False
+    )
+
+
 @pytest.mark.asyncio
 async def test_async_setup_entry_records_none_for_malformed_firewall_nat_inventory(
     monkeypatch: pytest.MonkeyPatch,
@@ -317,6 +352,17 @@ async def test_async_setup_entry_records_none_for_malformed_firewall_nat_invento
             {
                 ATTR_UNBOUND_BLOCKLIST: {
                     "legacy": {},
+                    "bad": None,
+                    "good": {"description": "Good"},
+                }
+            },
+            "sync_unbound",
+            "unbound_blocklist.switch.good",
+        ),
+        (
+            {
+                ATTR_UNBOUND_BLOCKLIST: {
+                    "legacy": None,
                     "bad": None,
                     "good": {"description": "Good"},
                 }

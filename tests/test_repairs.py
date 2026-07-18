@@ -8,6 +8,7 @@ from aiopnsense.exceptions import (
     OPNsenseBelowMinFirmware,
     OPNsenseConnectionError,
     OPNsenseError,
+    OPNsenseMissingDeviceUniqueID,
     OPNsenseTimeoutError,
     OPNsenseUnknownFirmware,
 )
@@ -184,6 +185,7 @@ def _patch_probe_client(
     monkeypatch: pytest.MonkeyPatch,
     *,
     observed_device_id: Any = "other",
+    validate_error: BaseException | None = None,
     probe_error: BaseException | None = None,
     events: list[str] | None = None,
 ) -> MagicMock:
@@ -209,7 +211,9 @@ def _patch_probe_client(
     client.get_device_unique_id = AsyncMock(
         side_effect=probe_error if probe_error is not None else _probe
     )
-    client.validate = AsyncMock(side_effect=_validate)
+    client.validate = AsyncMock(
+        side_effect=validate_error if validate_error is not None else _validate
+    )
     client.async_close = AsyncMock(side_effect=_close)
     factory = MagicMock(return_value=client)
     client.factory = factory
@@ -268,6 +272,27 @@ async def test_confirmation_reprobes_with_strict_client_and_closes_it(
     assert client.validate.await_count == 2
     assert client.get_device_unique_id.await_count == 2
     assert client.async_close.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_async_validate_and_probe_ignores_missing_device_unique_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A missing Device ID from validate should still allow a direct probe call."""
+    hass = MagicMock()
+    entry = _make_entry()
+    client = _patch_probe_client(
+        monkeypatch,
+        observed_device_id="other",
+        validate_error=OPNsenseMissingDeviceUniqueID("device-id unavailable"),
+    )
+
+    observed_device_id = await repairs._async_validate_and_probe_device_id(hass, entry)
+
+    assert observed_device_id == "other"
+    client.validate.assert_awaited_once_with()
+    client.get_device_unique_id.assert_awaited_once_with()
+    client.async_close.assert_awaited_once_with()
 
 
 @pytest.mark.asyncio
@@ -652,6 +677,46 @@ async def test_loaded_entry_reprobe_after_unload_rejects_probe_failure_without_m
         raise OPNsenseConnectionError("offline")
 
     client.get_device_unique_id.side_effect = _probe_then_fail
+    flow = _make_flow(hass, entry)
+
+    result = await flow.async_step_confirm({})
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "cannot_connect"
+    assert client.get_device_unique_id.await_count == 2
+    assert client.async_close.await_count == 2
+    assert len(probe_calls) == 2
+    entity_registry.async_remove.assert_not_called()
+    device_registry.async_update_device.assert_not_called()
+    hass.config_entries.async_update_entry.assert_not_called()
+    hass.config_entries.async_unload.assert_awaited_once_with(entry.entry_id)
+    hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
+    hass.config_entries.async_reload.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_loaded_entry_reprobe_after_unload_rejects_raw_timeout_without_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A raw timeout on reprobe after unload should recover and return cannot_connect."""
+    hass = MagicMock()
+    entry = _make_entry(state=ConfigEntryState.LOADED)
+    _configure_hass(hass, entry)
+    entity_registry, device_registry = _patch_registries(
+        monkeypatch,
+        entities=[SimpleNamespace(entity_id="sensor.old")],
+        devices=[SimpleNamespace(id="device")],
+    )
+    client = _patch_probe_client(monkeypatch)
+    probe_calls: list[int] = []
+
+    async def _probe_then_timeout() -> str:
+        probe_calls.append(1)
+        if len(probe_calls) == 1:
+            return "other"
+        raise TimeoutError("probe timed out")
+
+    client.get_device_unique_id.side_effect = _probe_then_timeout
     flow = _make_flow(hass, entry)
 
     result = await flow.async_step_confirm({})
@@ -1464,6 +1529,32 @@ async def test_stored_expected_id_unloaded_entry_retries_recovery_reload(
     hass.config_entries.async_unload.assert_not_awaited()
     hass.config_entries.async_reload.assert_awaited_once_with(entry.entry_id)
     hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
+
+
+@pytest.mark.asyncio
+async def test_markerless_retry_requires_entry_unique_id_match(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Markerless retry must validate both stored and unique IDs before reloading."""
+    hass = MagicMock()
+    entry = _make_entry(
+        state=ConfigEntryState.NOT_LOADED,
+        device_id="other",
+        unique_id="not-matching-unique",
+    )
+    _configure_hass(hass, entry)
+    _patch_registries(monkeypatch)
+    client = _patch_probe_client(monkeypatch, observed_device_id="other")
+    flow = _make_flow(hass, entry, new_device_id="other")
+
+    result = await flow.async_step_confirm({})
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "entry_changed"
+    client.factory.assert_not_called()
+    hass.config_entries.async_unload.assert_not_awaited()
+    hass.config_entries.async_reload.assert_not_awaited()
+    hass.config_entries.async_schedule_reload.assert_not_called()
 
 
 @pytest.mark.asyncio

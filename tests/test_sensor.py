@@ -3293,6 +3293,46 @@ async def test_async_setup_entry_records_none_for_partial_vpn_inventory(
     assert recorded["entities"] is None, description
 
 
+def test_vnstat_rows_are_complete_defaults_and_rejects_falsy_rows() -> None:
+    """VnStat inventories should treat missing keys as empty and falsy payloads as incomplete."""
+    assert sensor_module._vnstat_rows_are_complete({}) is True
+    assert sensor_module._vnstat_rows_are_complete({"vnstat": {"interfaces": {}}}) is True
+    assert sensor_module._vnstat_rows_are_complete({"vnstat": {"interfaces": False}}) is False
+    assert sensor_module._vnstat_rows_are_complete({"vnstat": {"interfaces": 0}}) is False
+    assert sensor_module._vnstat_rows_are_complete({"vnstat": {"interfaces": []}}) is False
+
+
+def test_vpn_sensor_rows_are_complete_defaults_and_rejects_falsy_rows() -> None:
+    """VPN inventories should default missing client/server groups to {} and reject falsy groups."""
+    assert (
+        sensor_module._vpn_sensor_rows_are_complete(
+            {
+                "openvpn": {"clients": {}, "servers": {}},
+                "wireguard": {"clients": {}, "servers": {}},
+            }
+        )
+        is True
+    )
+    assert (
+        sensor_module._vpn_sensor_rows_are_complete(
+            {
+                "openvpn": {"clients": {}, "servers": {}},
+                "wireguard": {"clients": [], "servers": {}},
+            }
+        )
+        is False
+    )
+    assert (
+        sensor_module._vpn_sensor_rows_are_complete(
+            {
+                "openvpn": {"clients": {}, "servers": {}},
+                "wireguard": {"clients": {}, "servers": False},
+            }
+        )
+        is False
+    )
+
+
 @pytest.mark.parametrize(
     ("state", "sync_option", "expected_key"),
     [

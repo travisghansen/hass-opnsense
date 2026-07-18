@@ -133,7 +133,7 @@ def _is_valid_vpn_sensor_row(instance: Any) -> bool:
 
 def _vnstat_rows_are_complete(state: MutableMapping[str, Any]) -> bool:
     """Return whether every consumed vnStat interface row is valid."""
-    interfaces = dict_get(state, "vnstat.interfaces", {}) or {}
+    interfaces = dict_get(state, "vnstat.interfaces", {})
     return isinstance(interfaces, MutableMapping) and all(
         _is_valid_vnstat_interface_row(interface_name) for interface_name in interfaces
     )
@@ -146,7 +146,7 @@ def _vpn_sensor_rows_are_complete(state: MutableMapping[str, Any]) -> bool:
         ("wireguard", ("clients", "servers")),
     ):
         for group in groups:
-            instances = dict_get(state, f"{vpn_type}.{group}", {}) or {}
+            instances = dict_get(state, f"{vpn_type}.{group}", {})
             if not isinstance(instances, MutableMapping) or not all(
                 _is_valid_vpn_sensor_row(instance) for instance in instances.values()
             ):

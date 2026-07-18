@@ -130,7 +130,7 @@ At minimum, the following permissions are required:
 | API Key | ✅ | | The API key of the OPNsense user created previously |
 | API Secret | ✅ | | The API secret of the API key |
 | Firewall Name | | Uses the `OPNsense hostname` | A custom name to be used for device and entity naming |
-| Enable Granular Sync Options | | False | See [Granular Sync Options](#granular-sync-options) |
+| Enable Granular Sync Options | | False | See [Granular Sync Options](#granular-sync) |
 
 ### Options
 

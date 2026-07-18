@@ -129,12 +129,17 @@ class RepairReconciliation:
 
         try:
             primary_device_migrated = old_main is not None and new_main is None
-            if old_main is not None and new_main is None:
+            if old_main is not None and (new_main is None or new_main.id == old_main.id):
+                old_identifier = (DOMAIN, self.marker.old_device_id)
+                new_identifier = (DOMAIN, self.marker.new_device_id)
                 new_identifiers = {
-                    (DOMAIN, self.marker.new_device_id) if domain == DOMAIN else (domain, value)
-                    for domain, value in old_main.identifiers
+                    new_identifier if identity == old_identifier else identity
+                    for identity in old_main.identifiers
                 }
-                device_registry.async_update_device(old_main.id, new_identifiers=new_identifiers)
+                if old_identifier in old_main.identifiers:
+                    device_registry.async_update_device(
+                        old_main.id, new_identifiers=new_identifiers
+                    )
             for candidate, target_unique_id in migrations:
                 entity_registry.async_update_entity(
                     candidate.entity_id, new_unique_id=target_unique_id
