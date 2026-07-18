@@ -1270,6 +1270,7 @@ async def test_expected_id_retry_rechecks_snapshot_after_unload(
         pytest.param(False, id="false-result"),
         pytest.param(HomeAssistantError("entry removed"), id="homeassistant-error"),
         pytest.param(KeyError("entry key"), id="key-error"),
+        pytest.param(TimeoutError("raw timeout"), id="raw-timeout-error"),
     ],
 )
 async def test_reload_failure_keeps_entry_update_and_keeps_issue(
@@ -1337,7 +1338,12 @@ async def test_reload_failure_keeps_entry_update_and_keeps_issue(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "reload_result",
-    [False, HomeAssistantError("reload failed"), KeyError("entry key")],
+    [
+        pytest.param(False, id="false-result"),
+        pytest.param(HomeAssistantError("reload failed"), id="homeassistant-error"),
+        pytest.param(KeyError("entry key"), id="key-error"),
+        pytest.param(TimeoutError("raw timeout"), id="raw-timeout-error"),
+    ],
 )
 async def test_retry_keeps_issue_when_recovery_reload_fails(
     monkeypatch: pytest.MonkeyPatch,
@@ -1507,8 +1513,13 @@ def test_async_create_device_id_mismatch_issue_ignores_carp_entry(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "reload_result",
+    [False, TimeoutError("raw timeout")],
+)
 async def test_stored_expected_id_unloaded_entry_retries_recovery_reload(
     monkeypatch: pytest.MonkeyPatch,
+    reload_result: bool | Exception,
 ) -> None:
     """An unloaded expected-ID retry should still keep recovery reload on failure."""
     hass = MagicMock()
@@ -1518,7 +1529,10 @@ async def test_stored_expected_id_unloaded_entry_retries_recovery_reload(
         unique_id="dev1",
     )
     _configure_hass(hass, entry)
-    hass.config_entries.async_reload.return_value = False
+    if isinstance(reload_result, bool):
+        hass.config_entries.async_reload.return_value = reload_result
+    else:
+        hass.config_entries.async_reload.side_effect = reload_result
     _patch_registries(monkeypatch)
     _patch_probe_client(monkeypatch, observed_device_id="dev1")
     flow = _make_flow(hass, entry, new_device_id="dev1")

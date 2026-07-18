@@ -293,7 +293,7 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
             if await self.hass.config_entries.async_reload(entry.entry_id):
                 _LOGGER.info("Device ID repair reload completed for %s", entry.title)
                 return self.async_create_entry(data={})
-        except HomeAssistantError, KeyError:
+        except HomeAssistantError, TimeoutError, KeyError:
             _LOGGER.exception(
                 "Device ID repair did not finish for %s; cannot reload entry",
                 entry.title,
