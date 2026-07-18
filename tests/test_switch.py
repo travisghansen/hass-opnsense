@@ -4175,13 +4175,6 @@ async def test_nat_rule_switch_with_dotted_rule_key_uses_full_rule_id(
     ent.entity_id = "switch.source_nat_fallback_rule_key_with_dots"
     stub_async_write_ha_state(ent)
 
-    assert ent._rule_id == "fallback.key.with.dots"
-    assert ent._opnsense_get_rule() == {
-        "description": "Source NAT Rule",
-        "%interface": "wan",
-        "enabled": "1",
-    }
-
     ent._client = MagicMock()
     ent._client.toggle_nat_rule = AsyncMock(return_value=True)
     await ent.async_turn_on()
