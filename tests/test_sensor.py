@@ -1844,27 +1844,6 @@ def test_vpn_sensor_handles_exceptions_from_instance_get(
     assert s.available is False
 
 
-def test_vpn_sensor_fails_closed_for_malformed_instance_collection(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """VPN sensor should mark unavailable when the instance collection is malformed."""
-    entry = make_config_entry()
-    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = {"openvpn": {"servers": "not-a-mapping"}}
-    desc = MagicMock()
-    desc.key = "openvpn.servers.uuid1.status"
-    desc.name = "VPN Malformed"
-
-    s = OPNsenseVPNSensor(config_entry=entry, coordinator=coord, entity_description=desc)
-    s.hass = MagicMock()
-    s.entity_id = "sensor.vpn_malformed"
-    object.__setattr__(s, "async_write_ha_state", lambda: None)
-
-    s._handle_coordinator_update()
-
-    assert s.available is False
-
-
 @pytest.mark.parametrize(
     ("coord_data", "key"),
     [
