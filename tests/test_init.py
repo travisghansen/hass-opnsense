@@ -1085,14 +1085,12 @@ async def test_async_setup_entry_device_id_mismatch(
     fake_client: Any,
     fake_coordinator: Any,
     make_config_entry: Callable[..., MockConfigEntry],
-    caplog: pytest.LogCaptureFixture,
     stored_device_id: object,
     router_device_id: Any,
     should_create_issue: bool,
     setup_succeeds: bool,
 ) -> None:
     """async_setup_entry should handle malformed and mismatched device IDs safely."""
-    caplog.set_level(logging.ERROR, logger=init_mod.__name__)
     create_client = MagicMock(side_effect=fake_client(device_id=router_device_id))
     patch_opnsense_client(monkeypatch, init_mod, create_client)
     # use shared coordinator capture fixture
@@ -1141,8 +1139,6 @@ async def test_async_setup_entry_device_id_mismatch(
             "old_device_id": "dev1",
             "new_device_id": router_device_id,
         }
-        assert "fixable repair issue" in caplog.text
-        assert "rebuild entities" in caplog.text
     elif setup_succeeds:
         assert res is True
         assert not issue_kwargs

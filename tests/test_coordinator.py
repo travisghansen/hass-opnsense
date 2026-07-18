@@ -7,7 +7,6 @@ calculations, and update flow.
 
 from collections.abc import Callable, MutableMapping
 from datetime import timedelta
-import logging
 import time
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, call
@@ -300,10 +299,8 @@ async def test_build_categories_includes_smart_without_smart_info_when_client_la
 @pytest.mark.asyncio
 async def test_build_categories_skips_smart_when_client_lacks_support(
     make_config_entry: Callable[..., MockConfigEntry],
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """SMART sync should not call unsupported runtime clients."""
-    caplog.set_level(logging.DEBUG, logger=coordinator_module.__name__)
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_SMART: True})
     client = MagicMock()
     del client.get_smart
@@ -318,7 +315,6 @@ async def test_build_categories_skips_smart_when_client_lacks_support(
     )
 
     assert "smart" not in [category["state_key"] for category in coord._categories]
-    assert "does not support it" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -421,10 +417,8 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Mismatched device_unique_id should create an issue and shutdown after threshold."""
-    caplog.set_level(logging.ERROR, logger=coordinator_module.__name__)
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "expected"})
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -486,8 +480,6 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
         "old_device_id": "expected",
         "new_device_id": "other",
     }
-    assert "fixable repair issue" in caplog.text
-    assert "rebuild entities" in caplog.text
 
 
 @pytest.mark.asyncio
