@@ -1231,12 +1231,12 @@ async def test_async_setup_entry_records_none_for_malformed_arp_rows_in_track_al
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_records_none_for_duplicate_macs_in_track_all(
+async def test_async_setup_entry_records_entities_for_duplicate_macs_in_track_all(
     monkeypatch: pytest.MonkeyPatch,
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Track-all mode should fail reconciliation if duplicate normalized MAC rows exist."""
+    """Track-all mode should treat duplicate normalized MAC rows as authoritative."""
     coordinator.data = {
         "arp_table": [
             {"mac": "AA-BB-CC-DD-EE-FF", "hostname": "first"},
@@ -1265,7 +1265,11 @@ async def test_async_setup_entry_records_none_for_duplicate_macs_in_track_all(
     )
 
     assert "entities" in recorded
-    assert recorded["entities"] is None
+    assert isinstance(recorded["entities"], list)
+    assert [entity.mac_address for entity in recorded["entities"]] == [
+        "aa:bb:cc:dd:ee:ff",
+        "11:22:33:44:55:66",
+    ]
     assert len(added) == 2
     assert added[0].mac_address == "aa:bb:cc:dd:ee:ff"
     assert added[1].mac_address == "11:22:33:44:55:66"

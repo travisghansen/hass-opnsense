@@ -154,8 +154,10 @@ def _track_all_arp_entries_are_complete(arp_entries: list[Any]) -> bool:
             return False
         mac_address = get_arp_mac(arp_entry)
         normalized_mac = _normalize_mac_for_device_tracker(mac_address) if mac_address else None
-        if not mac_address or not normalized_mac or normalized_mac in seen_macs:
+        if not mac_address or not normalized_mac:
             return False
+        if normalized_mac in seen_macs:
+            continue
         seen_macs.append(normalized_mac)
     return True
 
