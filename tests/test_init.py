@@ -992,18 +992,31 @@ async def test_async_setup_entry_reraises_client_creation_error(
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_continues_after_firmware_validation_error(
+@pytest.mark.parametrize(
+    ("error_type", "message"),
+    [
+        pytest.param(OPNsenseBelowMinFirmware, "boom", id="below-minimum-firmware"),
+        pytest.param(
+            OPNsenseMissingDeviceUniqueID,
+            "unable to determine Device ID",
+            id="missing-device-id",
+        ),
+    ],
+)
+async def test_async_setup_entry_continues_after_ignored_validation_error(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     coordinator_capture: Any,
     fake_coordinator: Any,
     make_config_entry: Callable[..., MockConfigEntry],
+    error_type: type[OPNsenseError],
+    message: str,
 ) -> None:
-    """async_setup_entry should keep probing after firmware validation exceptions."""
+    """async_setup_entry should keep probing after ignored validation exceptions."""
     probe_calls: list[str] = []
     client = MagicMock()
     client.name = "test-router"
-    client.validate = AsyncMock(side_effect=OPNsenseBelowMinFirmware("boom"))
+    client.validate = AsyncMock(side_effect=error_type(message))
     client.async_close = AsyncMock(return_value=True)
 
     async def _get_device_unique_id(expected_id: str | None = None) -> str:
@@ -1021,69 +1034,6 @@ async def test_async_setup_entry_continues_after_firmware_validation_error(
 
     def _create_client(**kwargs: Any) -> Any:
         """Return the firmware-failing client for this setup-entry test."""
-        return client
-
-    monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", _create_client)
-    monkeypatch.setattr(
-        init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
-    )
-
-    entry = make_config_entry(
-        data={
-            CONF_URL: "http://1.2.3.4",
-            CONF_USERNAME: "u",
-            CONF_PASSWORD: "p",
-            CONF_DEVICE_UNIQUE_ID: "dev1",
-        },
-        options={},
-    )
-
-    hass = ph_hass
-    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
-    hass.config_entries.async_reload = AsyncMock()
-    hass.data = {}
-
-    res = await init_mod.async_setup_entry(hass, entry)
-    assert res is True
-    assert probe_calls == [
-        "get_device_unique_id",
-        "get_host_firmware_version",
-    ]
-    client.async_close.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_async_setup_entry_continues_after_missing_device_unique_id_validation(
-    monkeypatch: pytest.MonkeyPatch,
-    ph_hass: Any,
-    coordinator_capture: Any,
-    fake_coordinator: Any,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """async_setup_entry should continue when unique-id validation is unavailable."""
-    probe_calls: list[str] = []
-    client = MagicMock()
-    client.name = "test-router"
-    client.validate = AsyncMock(
-        side_effect=OPNsenseMissingDeviceUniqueID("unable to determine Device ID")
-    )
-    client.async_close = AsyncMock(return_value=True)
-
-    async def _get_device_unique_id(expected_id: str | None = None) -> str:
-        """Return test router Device ID after recording probe ordering."""
-        probe_calls.append("get_device_unique_id")
-        return "dev1"
-
-    async def _get_host_firmware_version() -> str:
-        """Return test firmware after recording probe ordering."""
-        probe_calls.append("get_host_firmware_version")
-        return "99.0"
-
-    client.get_device_unique_id = _get_device_unique_id
-    client.get_host_firmware_version = _get_host_firmware_version
-
-    def _create_client(**kwargs: Any) -> Any:
-        """Return the unique-id-missing client for this setup-entry test."""
         return client
 
     monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", _create_client)
