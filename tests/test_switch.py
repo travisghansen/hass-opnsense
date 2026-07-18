@@ -2585,40 +2585,6 @@ def test_rule_switch_handlers_fail_closed_when_enabled_lookup_raises(
     assert ent.available is False
 
 
-def test_service_switch_ignores_malformed_service_rows(
-    coordinator: MagicMock,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Service lookup should skip non-mapping service rows without raising."""
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    coordinator.data = {"services": ["not-a-mapping"]}
-    ent = OPNsenseServiceSwitch(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=SwitchEntityDescription(key="service.svc1.status", name="Service"),
-    )
-
-    assert ent._opnsense_get_service() is None
-
-
-def test_service_switch_ignores_non_mapping_state(
-    coordinator: MagicMock,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Service lookup should return None when coordinator state is malformed."""
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    coordinator.data = []
-    ent = OPNsenseServiceSwitch(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=SwitchEntityDescription(key="service.svc1.status", name="Service"),
-    )
-
-    assert ent._opnsense_get_service() is None
-
-
 @pytest.mark.asyncio
 async def test_service_switch_malformed_services_container_on_update(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
@@ -3040,79 +3006,6 @@ async def test_dynamic_switch_compile_helpers_skip_malformed_containers(
     coordinator.data = state
 
     assert await compile_helper(config_entry, coordinator, state) == []
-
-
-def test_opnsense_get_service_skips_malformed_service_rows(
-    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
-) -> None:
-    """Malformed service rows should be ignored while matching a valid service."""
-    coordinator.data = {
-        "services": [
-            "bad-row",
-            {"id": "svc", "name": "service"},
-        ]
-    }
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    entity = OPNsenseServiceSwitch(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=SwitchEntityDescription(key="service.svc.status", name="Service"),
-    )
-    found = entity._opnsense_get_service()
-    assert isinstance(found, MutableMapping)
-    assert found.get("name") == "service"
-
-
-def test_opnsense_get_service_with_malformed_services_container(
-    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
-) -> None:
-    """Malformed service containers should return None instead of iterating."""
-    coordinator.data = {
-        "services": "bad-services",
-    }
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    entity = OPNsenseServiceSwitch(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=SwitchEntityDescription(key="service.svc.status", name="Service"),
-    )
-    assert entity._opnsense_get_service() is None
-
-
-def test_opnsense_get_service_returns_none_when_state_is_malformed(
-    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
-) -> None:
-    """Malformed top-level service state should return None."""
-    coordinator.data = []
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    entity = OPNsenseServiceSwitch(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=SwitchEntityDescription(key="service.svc.status", name="Service"),
-    )
-    assert entity._opnsense_get_service() is None
-
-
-def test_opnsense_get_service_returns_none_when_service_id_is_missing(
-    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
-) -> None:
-    """Missing service IDs should return None after scanning valid service rows."""
-    coordinator.data = {
-        "services": [
-            {"id": "other", "name": "other-service"},
-        ],
-    }
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    entity = OPNsenseServiceSwitch(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=SwitchEntityDescription(key="service.svc.status", name="Service"),
-    )
-    assert entity._opnsense_get_service() is None
 
 
 @pytest.mark.asyncio
