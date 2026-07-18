@@ -4007,9 +4007,9 @@ async def test_async_setup_entry_with_device_tracker_enabled(
     hass.config_entries.async_reload = MagicMock()
     res = await init_mod.async_setup_entry(hass, entry)
     assert res is True
-    # ensure a device-tracker coordinator was created and its initial refresh ran
-    assert any(getattr(inst, "_is_device_tracker", False) for inst in coordinator_capture.instances)
-    assert any(getattr(inst, "refreshed", False) for inst in coordinator_capture.instances)
+    device_tracker_coordinator = entry.runtime_data.device_tracker_coordinator
+    assert device_tracker_coordinator in coordinator_capture.instances
+    assert device_tracker_coordinator.refreshed is True
 
 
 @pytest.mark.asyncio

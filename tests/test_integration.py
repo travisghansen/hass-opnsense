@@ -477,7 +477,7 @@ async def test_e2e_granular_sync_and_options_device_tracker(
     assert ok is True
     # Expect two coordinators: main + device tracker
     assert len(coordinator_capture.instances) == 2
-    assert any(c._device_tracker for c in coordinator_capture.instances)
+    assert entry.runtime_data.device_tracker_coordinator in coordinator_capture.instances
 
 
 @pytest.mark.asyncio
