@@ -238,7 +238,7 @@ def test_create_opnsense_client_builds_client_with_expected_options(
 
         def __init__(self, *, unsafe: bool) -> None:
             """Capture the unsafe flag without requiring a running event loop."""
-            self._unsafe = unsafe
+            created["cookie_jar_unsafe"] = unsafe
 
     monkeypatch.setattr(helpers_mod, "async_create_clientsession", _async_create_clientsession)
     monkeypatch.setattr(helpers_mod.aiohttp, "CookieJar", _CookieJar)
@@ -258,7 +258,7 @@ def test_create_opnsense_client_builds_client_with_expected_options(
     assert isinstance(client, MagicMock)
     assert created["hass"] is hass
     assert created["session_kwargs"]["raise_for_status"] is False
-    assert created["session_kwargs"]["cookie_jar"]._unsafe is True
+    assert created["cookie_jar_unsafe"] is True
     expected_client_kwargs = {
         "url": "http://10.0.0.1",
         "username": "user",
