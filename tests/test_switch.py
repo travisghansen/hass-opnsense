@@ -5,7 +5,7 @@ async setup flows for the integration's switch platform.
 """
 
 import asyncio
-from collections.abc import Callable, Iterable, MutableMapping
+from collections.abc import Callable, Iterable, Mapping, MutableMapping
 import contextlib
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
@@ -4146,3 +4146,71 @@ async def test_async_setup_entry_records_none_for_malformed_service_identity_row
     )
     assert recorded["entities"] is None
     assert [entity.entity_description.key for entity in created] == ["service.svc.status"]
+
+
+def test_service_switch_get_service_matches_normalized_identity(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Service switch should remain available when service ids need normalization."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    coordinator.data = {
+        "services": [
+            {"id": "  svc1  ", "name": "svc1", "status": True},
+        ]
+    }
+    ent = OPNsenseServiceSwitch(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=SwitchEntityDescription(key="service.svc1.status", name="Svc 1"),
+    )
+    ent.entity_id = "switch.svc1"
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
+
+    ent._handle_coordinator_update()
+
+    assert ent.available is True
+    assert ent.is_on is True
+
+
+@pytest.mark.parametrize(
+    ("service", "identity"),
+    [
+        ({"id": "  svc-padded  ", "name": "svc-padded", "status": False}, "svc-padded"),
+        ({"name": "svc-name-only", "status": False}, "svc-name-only"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_service_switch_controls_normalized_identity(
+    coordinator: MagicMock,
+    ph_hass: Any,
+    service: Mapping[str, Any],
+    identity: str,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Service switch should control services when identity is trimmed id or fallback name."""
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    coordinator.data = {"services": [service]}
+    ent = OPNsenseServiceSwitch(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=SwitchEntityDescription(key=f"service.{identity}.status", name="Svc"),
+    )
+    ent.hass = ph_hass
+    ent.coordinator = make_coord({"services": [service]})
+    ent.entity_id = f"switch.service.{identity}"
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
+
+    ent._client = MagicMock()
+    ent._client.start_service = AsyncMock(return_value=True)
+    ent._client.stop_service = AsyncMock(return_value=True)
+
+    ent._handle_coordinator_update()
+    assert ent.available is True
+
+    await ent.async_turn_on()
+    ent._client.start_service.assert_awaited_once_with(identity)
+
+    await ent.async_turn_off()
+    ent._client.stop_service.assert_awaited_once_with(identity)

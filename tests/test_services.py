@@ -205,10 +205,22 @@ async def test_async_setup_services_registers_expected_service_contracts() -> No
 
     await services_mod.async_setup_services(hass)
 
-    registrations = {
-        call.kwargs["service"]: call.kwargs for call in hass.services.async_register.call_args_list
-    }
+    registrations_by_service: dict[str, list[dict[str, Any]]] = {}
+    for call in hass.services.async_register.call_args_list:
+        kwargs = call.kwargs
+        registrations_by_service.setdefault(kwargs["service"], []).append(kwargs)
 
+    duplicate_services = [
+        service
+        for service, registrations in registrations_by_service.items()
+        if len(registrations) > 1
+    ]
+    assert not duplicate_services, f"Duplicate service registrations: {duplicate_services}"
+
+    registrations: dict[str, dict[str, Any]] = {
+        service: entries[0] for service, entries in registrations_by_service.items()
+    }
+    assert len(hass.services.async_register.call_args_list) == len(registrations)
     assert set(registrations) == {
         SERVICE_CLOSE_NOTICE,
         SERVICE_START_SERVICE,

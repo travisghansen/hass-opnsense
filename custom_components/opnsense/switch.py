@@ -1246,7 +1246,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         for service in services:
             if not isinstance(service, MutableMapping):
                 continue
-            if service.get("id", None) == service_id:
+            if _service_identity(service) == service_id:
                 return service
         return None
 
@@ -1282,9 +1282,11 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         if not isinstance(self._service, MutableMapping) or not self._client:
             return
 
-        result: bool = await self._client.start_service(
-            self._service.get("id", self._service.get("name", None))
-        )
+        service_id = _service_identity(self._service)
+        if service_id is None:
+            return
+
+        result: bool = await self._client.start_service(service_id)
         if result:
             _LOGGER.info("Turned on service: %s", self.name)
             self._attr_is_on = True
@@ -1302,9 +1304,11 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         if not isinstance(self._service, MutableMapping) or not self._client:
             return
 
-        result: bool = await self._client.stop_service(
-            self._service.get("id", self._service.get("name", None))
-        )
+        service_id = _service_identity(self._service)
+        if service_id is None:
+            return
+
+        result: bool = await self._client.stop_service(service_id)
         if result:
             _LOGGER.info("Turned off service: %s", self.name)
             self._attr_is_on = False
