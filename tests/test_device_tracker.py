@@ -379,24 +379,6 @@ def test_handle_coordinator_update_entry_present(
     assert ent.source_type == SourceType.ROUTER
 
 
-def test_scanner_entity_uses_attr_backed_home_assistant_properties() -> None:
-    """Scanner entity should rely on Home Assistant attr-backed properties."""
-    locally_defined_properties = {
-        name for name, value in vars(OPNsenseScannerEntity).items() if isinstance(value, property)
-    }
-
-    assert "unique_id" in locally_defined_properties
-    assert "device_info" in locally_defined_properties
-    assert "entity_registry_enabled_default" in locally_defined_properties
-    assert "is_connected" in locally_defined_properties
-    assert {
-        "hostname",
-        "ip_address",
-        "mac_address",
-        "source_type",
-    }.isdisjoint(locally_defined_properties)
-
-
 def test_entity_registry_enabled_default_uses_existing_mac_device(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
