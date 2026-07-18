@@ -418,52 +418,37 @@ def test_entity_registry_enabled_default_uses_existing_mac_device(
     assert ent.device_info is None
 
 
-def test_suggested_object_id_prefers_hostname_when_matching_enabled_mac_device(
+@pytest.mark.parametrize(
+    ("hostname", "expected_object_id"),
+    [
+        pytest.param("MyDevice", "MyDevice", id="hostname"),
+        pytest.param(None, "aa:bb:cc", id="mac-fallback"),
+    ],
+)
+def test_suggested_object_id_for_matching_enabled_mac_device(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
     fake_reg_factory: Any,
+    hostname: str | None,
+    expected_object_id: str,
 ) -> None:
-    """Hostnames should drive suggested_object_id for existing enabled MAC matches."""
+    """Suggested object IDs should prefer hostnames and otherwise use the MAC."""
     ent = OPNsenseScannerEntity(
         config_entry=make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"}),
         coordinator=coordinator,
         enabled_default=False,
         mac="aa:bb:cc",
         mac_vendor=None,
-        hostname="MyDevice",
+        hostname=hostname,
     )
     ent.hass = ph_hass
     device_reg = fake_reg_factory(device_exists=True, device_id="existing-device")
     monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: device_reg)
 
     assert ent.device_info is None
-    assert ent.suggested_object_id == "MyDevice"
-
-
-def test_suggested_object_id_falls_back_to_mac_for_existing_enabled_mac_match(
-    monkeypatch: pytest.MonkeyPatch,
-    ph_hass: Any,
-    coordinator: MagicMock,
-    make_config_entry: Callable[..., MockConfigEntry],
-    fake_reg_factory: Any,
-) -> None:
-    """Use MAC as suggested_object_id when hostname is unavailable."""
-    ent = OPNsenseScannerEntity(
-        config_entry=make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"}),
-        coordinator=coordinator,
-        enabled_default=False,
-        mac="aa:bb:cc",
-        mac_vendor=None,
-        hostname=None,
-    )
-    ent.hass = ph_hass
-    device_reg = fake_reg_factory(device_exists=True, device_id="existing-device")
-    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: device_reg)
-
-    assert ent.device_info is None
-    assert ent.suggested_object_id == "aa:bb:cc"
+    assert ent.suggested_object_id == expected_object_id
 
 
 def test_entity_registry_enabled_default_respects_configured_enabled_default(
