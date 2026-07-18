@@ -1764,8 +1764,6 @@ def test_delay_update_setter(
 
         ent.delay_update = True
         assert ent.delay_update is True
-        # ensure async_call_later returned remover was captured
-        assert callable(getattr(ent, "_delay_update_remove", None))
         ent.delay_update = False
         assert called["removed"] is True
     finally:
@@ -2841,9 +2839,9 @@ def test_reset_delay_calls_existing_remover(
         lambda hass, delay, action: new_remover,
     )
     ent._reset_delay()
-    # old remover should have been called and replaced
     assert called["old_removed"] is True
-    assert ent._delay_update_remove == new_remover
+    ent.delay_update = False
+    assert called["new_removed"] is True
 
 
 @pytest.mark.asyncio
