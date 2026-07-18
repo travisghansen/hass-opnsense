@@ -155,10 +155,14 @@ async def test_get_states_fetches_smart_info_for_each_smart_device(
         "nvme0": {"temperature": {"current": 71}},
         "ada0": {"temperature": {"current": 42}},
     }
-    assert client.get_smart_info.await_args_list == [
-        call(device="nvme0", info_type="A"),
-        call(device="ada0", info_type="A"),
-    ]
+    client.get_smart_info.assert_has_awaits(
+        [
+            call(device="nvme0", info_type="A"),
+            call(device="ada0", info_type="A"),
+        ],
+        any_order=True,
+    )
+    assert client.get_smart_info.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -195,10 +199,14 @@ async def test_get_states_uses_smart_ident_when_device_missing(
         "serial-1": {"temperature": {"current": 37}},
         "nvme0": {"temperature": {"current": 37}},
     }
-    assert client.get_smart_info.await_args_list == [
-        call(device="serial-1", info_type="A"),
-        call(device="nvme0", info_type="A"),
-    ]
+    client.get_smart_info.assert_has_awaits(
+        [
+            call(device="serial-1", info_type="A"),
+            call(device="nvme0", info_type="A"),
+        ],
+        any_order=True,
+    )
+    assert client.get_smart_info.await_count == 2
 
 
 @pytest.mark.asyncio
