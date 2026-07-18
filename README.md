@@ -30,18 +30,14 @@ A Discord server to discuss the integration is available. Click the Discord badg
 ## Table of Contents
 
 * [Installation](#installation)
-  * [Home Assistant Integration](#home-assistant-integration)
-    * [HACS Installation](#hacs-installation)
-
 * [Configuration](#configuration)
   * [OPNsense Device Entry](#opnsense-device-entry)
   * [CARP VIP Entry](#carp-vip-entry)
   * [Recommended CARP Topology](#recommended-carp-topology)
   * [OPNsense User](#opnsense-user)
-    * [Granular Sync Options](#granular-sync-options)
+  * [Granular Sync](#granular-sync)
   * [Basic Configuration](#basic-configuration)
   * [Options](#options)
-
 * [Entities](#entities)
   * [Binary Sensor](#binary-sensor)
   * [Sensor](#sensor)
@@ -50,7 +46,6 @@ A Discord server to discuss the integration is available. Click the Discord badg
   * [CARP VIP Entities and Limitations](#carp-vip-entities-and-limitations)
 
 * [Actions](#actions-services)
-
 * [Replacing OPNsense Hardware](#replacing-opnsense-hardware)
 
 ## Installation
@@ -58,10 +53,6 @@ A Discord server to discuss the integration is available. Click the Discord badg
 This integration **replaces** the built-in OPNsense integration which only provides `device_tracker` functionality. Be sure to remove any associated configuration for the built-in integration **before** installing this replacement.
 
 The deprecated OPNsense Home Assistant plugin is no longer supported or used by hass-opnsense.
-
-### Home Assistant Integration
-
-#### HACS Installation
 
 In HACS, add this as a custom repository: 
 `https://github.com/travisghansen/hass-opnsense`.
@@ -82,7 +73,7 @@ Once the integration is installed be sure to restart Home Assistant. Restart opt
 | ![image](https://github.com/user-attachments/assets/95c324e5-73cb-42f9-8cd2-c4acc35c9711) | ![image](https://github.com/user-attachments/assets/bbb0ac00-1709-4206-9d59-eb47ca40390b) |
 
 <details>
-<summary><h4>Manual Installation</h4></summary>
+<summary><h3>Manual Installation</h3></summary>
 
 Copy the contents of the custom_components folder to the Home Assistant config/custom_components folder and restart Home Assistant.
 
@@ -90,7 +81,7 @@ Copy the contents of the custom_components folder to the Home Assistant config/c
 
 ## Configuration
 
-Configuration is managed entirely from the Home Assistant UI. Simply go to `Configuration -> Integrations -> Add Integration` and search for <ins>OPNsense</ins> in the search box. If it isn't in the list (well-known HA issue), do a 'hard-refresh' of the browser (ctrl-F5) then open the list again.
+Configuration is managed entirely from the Home Assistant UI. Simply go to `Configuration -> Integrations -> Add Integration` and search for <ins>OPNsense</ins> in the search box.
 
 ### OPNsense Device Entry
 
@@ -118,7 +109,7 @@ The official and simplest recommendation is that the service user to be created 
 
 In <ins>OPNsense</ins>, create a new admin role user (or choose an existing admin user) and create an API key associated to the user. When creating the API key, <ins>OPNsense</ins> will download the file containing the API key and API secret to the computer. It will be in the download folder.
 
-### Granular Sync Options
+### Granular Sync
 
 Either at the time of install or in the integration options, Granular Sync Options can be enabled. There, choose the categories to sync with HA as desired. If enabled, the <ins>OPNsense</ins> user can have more narrow permissions.
 
@@ -182,8 +173,8 @@ Many entities are created by `hass-opnsense` for statistics etc. Due to the volu
 
 **All switches are disabled by default**
 
-* Firewall Rules - enable/disable rules (requires OPNsense Firmware 26.1.1+)
-* NAT Rules - enable/disable rules (requires OPNsense Firmware 26.1.1+)
+* Firewall Rules - enable/disable rules *(requires OPNsense Firmware 26.1.1+)*
+* NAT Rules - enable/disable rules *(requires OPNsense Firmware 26.1.1+)*
 * Services - start/stop services
 * VPN Servers and Clients - enable/disable instances
 * Unbound blocklists - enable/disable blocklists
