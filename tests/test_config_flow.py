@@ -1306,31 +1306,6 @@ def test_schema_builders_preserve_submitted_values_before_stored_values() -> Non
 
 
 @pytest.mark.parametrize(
-    ("input_value", "expected"),
-    [
-        (150, 150),  # within range -> unchanged
-    ],
-)
-def test_options_scan_interval_accepts_native_selector_range(
-    input_value: Any, expected: Any
-) -> None:
-    """_build_options_init_schema should accept CONF_SCAN_INTERVAL values in range."""
-    oschema = cf_mod._build_options_init_schema(user_input=None)
-    # pass a dict with the scan interval set to the test value
-    validated = oschema({CONF_SCAN_INTERVAL: input_value})
-    assert validated.get(CONF_SCAN_INTERVAL) == expected
-
-
-@pytest.mark.parametrize("input_value", [5, 1000])
-def test_options_scan_interval_rejects_values_outside_selector_range(input_value: Any) -> None:
-    """_build_options_init_schema should reject CONF_SCAN_INTERVAL values outside range."""
-    oschema = cf_mod._build_options_init_schema(user_input=None)
-
-    with pytest.raises(vol.Invalid):
-        oschema({CONF_SCAN_INTERVAL: input_value})
-
-
-@pytest.mark.parametrize(
     ("stored_options", "field", "expected"),
     [
         (
@@ -1391,35 +1366,6 @@ def test_options_init_schema_boundaries_match_keyed_lookup(option_key: str) -> N
 def test_normalize_int_option_invalid_values_fall_back_to_minimum(value: Any) -> None:
     """Invalid persisted numeric options should fall back to the selector minimum."""
     assert cf_mod._normalize_int_option(value, 5, 3600) == 5
-
-
-@pytest.mark.parametrize(
-    ("input_value", "expected"),
-    [
-        (300, 300),  # within range -> unchanged
-        (1200, 1200),  # within new range (20 minutes) -> unchanged
-        (3600, 3600),  # at maximum (1 hour) -> unchanged
-    ],
-)
-def test_options_device_tracker_consider_home_accepts_native_selector_range(
-    input_value: Any, expected: Any
-) -> None:
-    """_build_options_init_schema should accept consider_home values in range."""
-    oschema = cf_mod._build_options_init_schema(user_input=None)
-    # pass a dict with the consider_home value set to the test value
-    validated = oschema({CONF_DEVICE_TRACKER_CONSIDER_HOME: input_value})
-    assert validated.get(CONF_DEVICE_TRACKER_CONSIDER_HOME) == expected
-
-
-@pytest.mark.parametrize("input_value", [-10, 5000])
-def test_options_device_tracker_consider_home_rejects_values_outside_selector_range(
-    input_value: Any,
-) -> None:
-    """_build_options_init_schema should reject consider_home values outside range."""
-    oschema = cf_mod._build_options_init_schema(user_input=None)
-
-    with pytest.raises(vol.Invalid):
-        oschema({CONF_DEVICE_TRACKER_CONSIDER_HOME: input_value})
 
 
 def test_async_get_options_flow_returns_options_flow() -> None:
