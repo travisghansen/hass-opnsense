@@ -149,7 +149,7 @@ def _track_all_arp_entries_are_complete(arp_entries: list[Any]) -> bool:
         ``True`` when every row is a mapping and any row with a normalizable MAC
         contributes a unique MAC address.
     """
-    seen_macs: list[str] = []
+    seen_macs: set[str] = set()
     for arp_entry in arp_entries:
         if not isinstance(arp_entry, MutableMapping):
             return False
@@ -161,7 +161,7 @@ def _track_all_arp_entries_are_complete(arp_entries: list[Any]) -> bool:
             continue
         if normalized_mac in seen_macs:
             continue
-        seen_macs.append(normalized_mac)
+        seen_macs.add(normalized_mac)
     return True
 
 
