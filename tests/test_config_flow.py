@@ -395,11 +395,12 @@ async def test_validate_input_reraises_unmapped_opnsense_error(
 
 @pytest.mark.asyncio
 async def test_validate_input_timeout_uses_connect_timeout_error(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """OPNsense timeout should map to connect_timeout and redact credentials in logs."""
     username = "admin"
     password = "supersecret"
+    log_error = MagicMock()
 
     async def _raiser(*args: object, **kwargs: object) -> Never:
         """Raise an OPNsense timeout that includes secrets in the message."""
@@ -408,17 +409,20 @@ async def test_validate_input_timeout_uses_connect_timeout_error(
         )
 
     monkeypatch.setattr(cf_mod, "_validate_client_details", _raiser)
-    with caplog.at_level("ERROR"):
-        result = await cf_mod.validate_input(
-            hass=MagicMock(),
-            user_input={CONF_USERNAME: username, CONF_PASSWORD: password},
-            errors={},
-        )
+    monkeypatch.setattr(cf_mod._LOGGER, "error", log_error)
+    result = await cf_mod.validate_input(
+        hass=MagicMock(),
+        user_input={CONF_USERNAME: username, CONF_PASSWORD: password},
+        errors={},
+    )
 
     assert result.get("base") == "connect_timeout"
-    assert "[redacted]" in caplog.text
-    assert username not in caplog.text
-    assert password not in caplog.text
+    log_error.assert_called_once()
+    log_message = log_error.call_args.args[0]
+    assert isinstance(log_message, str)
+    assert "[redacted]" in log_message
+    assert username not in log_message
+    assert password not in log_message
 
 
 @pytest.mark.asyncio
