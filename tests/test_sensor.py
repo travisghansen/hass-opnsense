@@ -4267,14 +4267,19 @@ async def test_compile_nut_sensors_for_setup_reports_inventory_completeness(
             {"nut_ups_status": {"status": {"ups.status": "OL", "ups.load": "20"}}},
             id="missing-raw-metric",
         ),
+        pytest.param(
+            "nut.battery_charge",
+            {"nut_ups_status": {"status": {"battery.charge": "unknown"}}},
+            id="non-numeric-conversion-failure",
+        ),
     ],
 )
-def test_nut_sensor_update_marked_unavailable_for_invalid_status_or_key(
+def test_nut_sensor_update_marked_unavailable_for_invalid_payload(
     make_config_entry: Callable[..., MockConfigEntry],
     description_key: str,
     state: dict[str, Any],
 ) -> None:
-    """Verify invalid NUT status data or keys make a sensor unavailable.
+    """Verify invalid NUT sensor payloads make the sensor unavailable.
 
     Args:
         make_config_entry: Fixture that creates Home Assistant config entries.
@@ -4284,51 +4289,13 @@ def test_nut_sensor_update_marked_unavailable_for_invalid_status_or_key(
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coordinator.data = state
-    description = next(
-        (
-            description
-            for description in sensor_module.STATIC_NUT_SENSORS
-            if description.key == description_key
-        ),
-        None,
+    description = SensorEntityDescription(
+        key=description_key,
+        name="NUT Sensor",
     )
-    if description is None:
-        description = MagicMock()
-        description.key = description_key
-        description.name = "NUT Sensor"
     sensor = OPNsenseNUTSensor(entry, coordinator, description)
     sensor.hass = MagicMock()
     sensor.entity_id = "sensor.ups_nut"
-    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
-
-    sensor._handle_coordinator_update()
-
-    assert sensor.available is False
-
-
-def test_nut_numeric_sensor_becomes_unavailable_for_non_numeric_value(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Verify numeric NUT sensors reject non-numeric metric values.
-
-    Args:
-        make_config_entry: Fixture that creates Home Assistant config entries.
-    """
-    state = {"nut_ups_status": {"status": {"battery.charge": "unknown"}}}
-    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
-    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coordinator.data = state
-    sensor = OPNsenseNUTSensor(
-        entry,
-        coordinator,
-        next(
-            description
-            for description in sensor_module.STATIC_NUT_SENSORS
-            if description.key == "nut.battery_charge"
-        ),
-    )
-    sensor.hass = MagicMock()
-    sensor.entity_id = "sensor.ups_battery_charge"
     object.__setattr__(sensor, "async_write_ha_state", lambda: None)
 
     sensor._handle_coordinator_update()
