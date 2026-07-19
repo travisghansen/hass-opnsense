@@ -24,6 +24,7 @@ from custom_components.opnsense.const import (
     CONF_SYNC_GATEWAYS,
     CONF_SYNC_INTERFACES,
     CONF_SYNC_LIVE_TRAFFIC,
+    CONF_SYNC_NUT,
     CONF_SYNC_SMART,
     CONF_SYNC_SPEEDTEST,
     CONF_SYNC_TELEMETRY,
@@ -43,6 +44,7 @@ from custom_components.opnsense.sensor import (
     OPNsenseGatewaySensor,
     OPNsenseInterfaceSensor,
     OPNsenseLiveTrafficSensor,
+    OPNsenseNUTSensor,
     OPNsenseSmartSensor,
     OPNsenseSpeedtestSensor,
     OPNsenseStaticKeySensor,
@@ -60,11 +62,13 @@ def test_static_sensor_descriptions_live_in_sensor_module() -> None:
     """Static sensor descriptions should be owned by the sensor platform."""
     telemetry_keys = {description.key for description in sensor_module.STATIC_TELEMETRY_SENSORS}
     certificate_keys = {description.key for description in sensor_module.STATIC_CERTIFICATE_SENSORS}
+    nut_keys = {description.key for description in sensor_module.STATIC_NUT_SENSORS}
 
     assert not hasattr(const_module, "STATIC_TELEMETRY_SENSORS")
     assert not hasattr(const_module, "STATIC_CERTIFICATE_SENSORS")
     assert "telemetry.cpu.usage_total" in telemetry_keys
     assert "certificates" in certificate_keys
+    assert nut_keys == {"nut.ups_status", "nut.battery_charge", "nut.ups_load"}
 
 
 @pytest.mark.asyncio
@@ -3104,6 +3108,7 @@ def setup_sensor_reconciliation_entry(
     sync_telemetry: bool = False,
     sync_vnstat: bool = False,
     sync_speedtest: bool = False,
+    sync_nut: bool = False,
     sync_smart: bool = False,
     sync_gateways: bool = False,
     sync_interfaces: bool = False,
@@ -3113,13 +3118,34 @@ def setup_sensor_reconciliation_entry(
     sync_certificates: bool = False,
     opnsense_client: object | None = None,
 ) -> MockConfigEntry:
-    """Create a sensor test entry with coordinator/runtime pre-wired."""
+    """Create a sensor test entry with coordinator runtime data preconfigured.
+
+    Args:
+        make_config_entry: Fixture that creates Home Assistant config entries.
+        coordinator_data: Coordinator state exposed to the sensor platform.
+        sync_telemetry: Whether telemetry sensor synchronization is enabled.
+        sync_vnstat: Whether vnStat sensor synchronization is enabled.
+        sync_speedtest: Whether speed-test sensor synchronization is enabled.
+        sync_nut: Whether NUT UPS sensor synchronization is enabled.
+        sync_smart: Whether SMART sensor synchronization is enabled.
+        sync_gateways: Whether gateway sensor synchronization is enabled.
+        sync_interfaces: Whether interface sensor synchronization is enabled.
+        sync_carp: Whether CARP sensor synchronization is enabled.
+        sync_dhcp_leases: Whether DHCP lease sensor synchronization is enabled.
+        sync_vpn: Whether VPN sensor synchronization is enabled.
+        sync_certificates: Whether certificate sensor synchronization is enabled.
+        opnsense_client: Optional client exposed through the config entry runtime data.
+
+    Returns:
+        MockConfigEntry: Config entry with coordinator and optional client runtime data.
+    """
     entry = make_config_entry(
         {
             CONF_DEVICE_UNIQUE_ID: "id",
             CONF_SYNC_TELEMETRY: sync_telemetry,
             CONF_SYNC_VNSTAT: sync_vnstat,
             CONF_SYNC_SPEEDTEST: sync_speedtest,
+            CONF_SYNC_NUT: sync_nut,
             CONF_SYNC_SMART: sync_smart,
             CONF_SYNC_GATEWAYS: sync_gateways,
             CONF_SYNC_INTERFACES: sync_interfaces,
@@ -3140,11 +3166,14 @@ def setup_sensor_reconciliation_entry(
 def _setup_entry_with_all_syncs(
     state: dict, make_config_entry: Callable[..., MockConfigEntry]
 ) -> Any:
-    """Setup entry with all syncs.
+    """Set up a config entry with every sensor synchronization option enabled.
 
     Args:
         state: Dictionary containing the initial coordinator state for the entry.
         make_config_entry: Fixture that builds config entries tailored for the test scenario.
+
+    Returns:
+        Any: Tuple containing the configured entry and its coordinator mock.
     """
     entry = make_config_entry()
     base = dict(entry.data)
@@ -3153,6 +3182,7 @@ def _setup_entry_with_all_syncs(
             CONF_SYNC_TELEMETRY: True,
             CONF_SYNC_VNSTAT: True,
             CONF_SYNC_SPEEDTEST: True,
+            CONF_SYNC_NUT: True,
             CONF_SYNC_SMART: True,
             CONF_SYNC_CERTIFICATES: True,
             CONF_SYNC_VPN: True,
@@ -3667,14 +3697,32 @@ async def test_async_setup_entry_records_none_or_authoritative_empty_for_invento
     pytest.fail(f"Unhandled expected marker: {expected}")
 
 
+@pytest.mark.parametrize(
+    ("client_methods", "expected"),
+    [
+        pytest.param(("get_smart",), [], id="supports_get_smart"),
+        pytest.param((), None, id="missing_get_smart"),
+    ],
+)
 @pytest.mark.asyncio
-async def test_async_setup_entry_records_empty_desired_entities_for_smart_without_info_support(
+async def test_async_setup_entry_reconciles_smart_inventory_by_client_capability(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
+    client_methods: tuple[str, ...],
+    expected: list[Any] | None,
 ) -> None:
-    """SMART sync remains complete when client supports `get_smart` but not `get_smart_info`."""
-    client = MagicMock(spec=["get_smart"])
-    client.get_smart = MagicMock()
+    """SMART desired-entity reconciliation should reflect client smart capability.
+
+    If the client supports ``get_smart``, smart entities reconcile as empty.
+    If the client lacks ``get_smart``, smart entities reconcile as ``None``.
+
+    Args:
+        monkeypatch: Monkeypatch fixture for capturing desired-entity calls.
+        make_config_entry: Fixture that creates a typed mock config entry.
+        client_methods: Client method names exposed by ``spec`` on the mock.
+        expected: Expected reconciled desired entities value from setup.
+    """
+    client = MagicMock(spec=list(client_methods))
     config_entry = setup_sensor_reconciliation_entry(
         make_config_entry,
         coordinator_data={"smart": [{"device": "nvme0"}]},
@@ -3686,7 +3734,10 @@ async def test_async_setup_entry_records_empty_desired_entities_for_smart_withou
     await async_setup_entry(
         MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
     )
-    assert captured["entities"] == []
+    if expected is None:
+        assert captured["entities"] is None
+    else:
+        assert captured["entities"] == expected
 
 
 @pytest.mark.asyncio
@@ -3724,6 +3775,7 @@ async def test_async_setup_entry_records_none_when_smart_info_is_required(
         (sensor_module._compile_temperature_sensors, []),
         (sensor_module._compile_temperature_sensors, {"telemetry": {"temps": "bad"}}),
         (sensor_module._compile_dhcp_leases_sensors, []),
+        (sensor_module._compile_vnstat_sensors, []),
     ],
 )
 async def test_dynamic_sensor_compile_helpers_skip_malformed_containers(
@@ -4094,6 +4146,161 @@ async def test_async_setup_entry_creates_entities(
     await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
     assert created, "no entities created"
     assert any(isinstance(e, OPNsenseStaticKeySensor) for e in created)
+
+
+@pytest.mark.asyncio
+async def test_compile_nut_sensors_for_setup_exposes_core_metrics_and_status_attributes(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Verify NUT compilation exposes core metrics and raw status attributes.
+
+    Args:
+        make_config_entry: Fixture that creates Home Assistant config entries.
+    """
+    state = {
+        "nut_ups_status": {
+            "status": {
+                "ups.status": "OL",
+                "battery.charge": "100",
+                "ups.load": "12.5",
+                "ups.model": "Example UPS",
+            }
+        }
+    }
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_NUT: True})
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+
+    entities, nut_complete = await sensor_module._compile_nut_sensors_for_setup(
+        entry, coordinator, state
+    )
+
+    assert nut_complete is True
+
+    assert len(entities) == 3
+    assert all(isinstance(entity, OPNsenseNUTSensor) for entity in entities)
+    assert all(
+        entity.entity_description.entity_registry_enabled_default is False for entity in entities
+    )
+    entities_by_key = {entity.entity_description.key: entity for entity in entities}
+    for entity in entities:
+        entity.hass = MagicMock()
+        entity.entity_id = f"sensor.{entity.entity_description.key.replace('.', '_')}"
+        object.__setattr__(entity, "async_write_ha_state", lambda: None)
+        entity._handle_coordinator_update()
+
+    assert entities_by_key["nut.ups_status"].native_value == "OL"
+    assert (
+        entities_by_key["nut.ups_status"].extra_state_attributes
+        == state["nut_ups_status"]["status"]
+    )
+    assert entities_by_key["nut.battery_charge"].native_value == 100.0
+    assert entities_by_key["nut.ups_load"].native_value == 12.5
+    assert all(entity.available for entity in entities)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("state", "expected_count", "expected_complete"),
+    [
+        pytest.param({}, 0, False, id="missing-nut-payload"),
+        pytest.param({"nut_ups_status": "bad"}, 0, False, id="non-mapping-payload"),
+        pytest.param({"nut_ups_status": {"status": "bad"}}, 0, False, id="non-mapping-status"),
+        pytest.param({"nut_ups_status": {"foo": "bar"}}, 0, False, id="missing-status"),
+        pytest.param({"nut_ups_status": {}}, 0, True, id="empty-payload-complete"),
+        pytest.param({"nut_ups_status": {"status": {}}}, 0, True, id="empty-status-complete"),
+        pytest.param(
+            {
+                "nut_ups_status": {
+                    "status": {
+                        "ups.status": "OL",
+                        "battery.charge": "100",
+                        "ups.load": "20",
+                    }
+                }
+            },
+            3,
+            True,
+            id="valid-status-maps-to-nut-sensors",
+        ),
+    ],
+)
+async def test_compile_nut_sensors_for_setup_reports_inventory_completeness(
+    make_config_entry: Callable[..., MockConfigEntry],
+    state: dict[str, Any],
+    expected_count: int,
+    expected_complete: bool,
+) -> None:
+    """Verify NUT setup reports inventory completeness for each payload shape.
+
+    Args:
+        make_config_entry: Fixture that creates Home Assistant config entries.
+        state: NUT coordinator state under test.
+        expected_count: Number of sensor entities expected from ``state``.
+        expected_complete: Whether ``state`` is authoritative for reconciliation.
+    """
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_NUT: True})
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+
+    entities, nut_complete = await sensor_module._compile_nut_sensors_for_setup(
+        entry, coordinator, state
+    )
+
+    assert nut_complete is expected_complete
+    assert len(entities) == expected_count
+    if expected_count:
+        assert all(isinstance(entity, OPNsenseNUTSensor) for entity in entities)
+
+
+@pytest.mark.parametrize(
+    ("description_key", "state"),
+    [
+        pytest.param("nut.ups_status", {"nut_ups_status": "bad"}, id="malformed-status-mapping"),
+        pytest.param(
+            "nut.unknown",
+            {"nut_ups_status": {"status": {"ups.status": "OL", "ups.load": "20"}}},
+            id="unmapped-description-key",
+        ),
+        pytest.param(
+            "nut.battery_charge",
+            {"nut_ups_status": {"status": {"ups.status": "OL", "ups.load": "20"}}},
+            id="missing-raw-metric",
+        ),
+        pytest.param(
+            "nut.battery_charge",
+            {"nut_ups_status": {"status": {"battery.charge": "unknown"}}},
+            id="non-numeric-conversion-failure",
+        ),
+    ],
+)
+def test_nut_sensor_update_marked_unavailable_for_invalid_payload(
+    make_config_entry: Callable[..., MockConfigEntry],
+    description_key: str,
+    state: dict[str, Any],
+) -> None:
+    """Verify invalid NUT sensor payloads make the sensor unavailable.
+
+    Args:
+        make_config_entry: Fixture that creates Home Assistant config entries.
+        description_key: Sensor description key under test.
+        state: NUT coordinator state supplied to the sensor.
+    """
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+    description = SensorEntityDescription(
+        key=description_key,
+        name="NUT Sensor",
+    )
+    sensor = OPNsenseNUTSensor(entry, coordinator, description)
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.ups_nut"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
 
 
 @pytest.mark.asyncio

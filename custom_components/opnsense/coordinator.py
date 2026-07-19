@@ -22,6 +22,7 @@ from .const import (
     CONF_SYNC_GATEWAYS,
     CONF_SYNC_INTERFACES,
     CONF_SYNC_NOTICES,
+    CONF_SYNC_NUT,
     CONF_SYNC_SERVICES,
     CONF_SYNC_SMART,
     CONF_SYNC_SPEEDTEST,
@@ -202,19 +203,17 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             categories.append({"function": "get_vnstat", "state_key": "vnstat"})
         if config.get(CONF_SYNC_SPEEDTEST, DEFAULT_SYNC_OPTION_VALUE):
             categories.append({"function": "get_speedtest", "state_key": "speedtest"})
+        if config.get(CONF_SYNC_NUT, DEFAULT_SYNC_OPTION_VALUE):
+            categories.append({"function": "get_nut_ups_status", "state_key": "nut_ups_status"})
         if config.get(CONF_SYNC_SMART, DEFAULT_SYNC_OPTION_VALUE):
-            if hasattr(self._client, "get_smart"):
-                categories.append({"function": "get_smart", "state_key": "smart"})
-                if hasattr(self._client, "get_smart_info"):
-                    categories.append(
-                        {
-                            "function": "get_smart_info",
-                            "state_key": "smart_info",
-                            "info_type": "A",
-                        }
-                    )
-            else:
-                _LOGGER.debug("SMART sync requested, but this OPNsense client does not support it")
+            categories.append({"function": "get_smart", "state_key": "smart"})
+            categories.append(
+                {
+                    "function": "get_smart_info",
+                    "state_key": "smart_info",
+                    "info_type": "A",
+                }
+            )
         if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):
             categories.extend(
                 [

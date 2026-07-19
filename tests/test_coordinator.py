@@ -32,6 +32,7 @@ from custom_components.opnsense.const import (
     CONF_SYNC_INTERFACES,
     CONF_SYNC_LIVE_TRAFFIC,
     CONF_SYNC_NOTICES,
+    CONF_SYNC_NUT,
     CONF_SYNC_SERVICES,
     CONF_SYNC_SMART,
     CONF_SYNC_SPEEDTEST,
@@ -276,55 +277,6 @@ async def test_get_states_skips_smart_info_when_smart_devices_missing(
 
     assert state["smart_info"] == {}
     client.get_smart_info.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_build_categories_includes_smart_without_smart_info_when_client_lacks_method(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """SMART sync should still collect status when attribute data is unsupported."""
-
-    class ClientWithoutSmartInfo:
-        """Client that supports SMART status but not SMART attributes."""
-
-        async def get_smart(self) -> list[Any]:
-            """Return empty SMART status rows."""
-            return []
-
-    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_SMART: True})
-    coordinator = OPNsenseDataUpdateCoordinator(
-        hass=MagicMock(),
-        client=cast("Any", ClientWithoutSmartInfo()),
-        name="n",
-        update_interval=timedelta(seconds=1),
-        device_unique_id="id",
-        config_entry=entry,
-    )
-
-    state_keys = [category["state_key"] for category in coordinator._categories]
-    assert "smart" in state_keys
-    assert "smart_info" not in state_keys
-
-
-@pytest.mark.asyncio
-async def test_build_categories_skips_smart_when_client_lacks_support(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """SMART sync should not call unsupported runtime clients."""
-    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_SMART: True})
-    client = MagicMock()
-    del client.get_smart
-
-    coord = OPNsenseDataUpdateCoordinator(
-        hass=MagicMock(),
-        client=client,
-        name="n",
-        update_interval=timedelta(seconds=1),
-        device_unique_id="id",
-        config_entry=entry,
-    )
-
-    assert "smart" not in [category["state_key"] for category in coord._categories]
 
 
 @pytest.mark.asyncio
@@ -1324,6 +1276,7 @@ def test_build_categories_returns_empty_when_no_config(
         (CONF_SYNC_TELEMETRY, ["telemetry"]),
         (CONF_SYNC_VNSTAT, ["vnstat"]),
         (CONF_SYNC_SPEEDTEST, ["speedtest"]),
+        (CONF_SYNC_NUT, ["nut_ups_status"]),
         (CONF_SYNC_SMART, ["smart", "smart_info"]),
         (CONF_SYNC_VPN, ["openvpn", "wireguard"]),
         (CONF_SYNC_FIRMWARE_UPDATES, ["firmware_update_info"]),
@@ -1343,7 +1296,14 @@ async def test_build_categories_flag_true_and_false(
     flag: Any,
     expected_keys: Any,
 ) -> None:
-    """Verify categories include keys when flag True and exclude when False."""
+    """Verify a sync flag includes or excludes its coordinator state keys.
+
+    Args:
+        make_config_entry: Fixture that creates Home Assistant config entries.
+        fake_client: Fixture that creates fake OPNsense client classes.
+        flag: Sync option under test.
+        expected_keys: Coordinator state keys controlled by ``flag``.
+    """
     # When flag is True -> expected keys present
     entry_true = make_config_entry(
         {

@@ -35,6 +35,7 @@ from .const import (
     CONF_SYNC_GATEWAYS,
     CONF_SYNC_INTERFACES,
     CONF_SYNC_LIVE_TRAFFIC,
+    CONF_SYNC_NUT,
     CONF_SYNC_SMART,
     CONF_SYNC_SPEEDTEST,
     CONF_SYNC_TELEMETRY,
@@ -417,6 +418,32 @@ STATIC_CERTIFICATE_SENSORS: Final[tuple[SensorEntityDescription, ...]] = (
         state_class=None,
         entity_registry_enabled_default=False,
         # entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+)
+
+STATIC_NUT_SENSORS: Final[tuple[SensorEntityDescription, ...]] = (
+    SensorEntityDescription(
+        key="nut.ups_status",
+        name="UPS Status",
+        icon="mdi:power-plug-battery",
+        entity_registry_enabled_default=False,
+    ),
+    SensorEntityDescription(
+        key="nut.battery_charge",
+        name="UPS Battery Charge",
+        native_unit_of_measurement=PERCENTAGE,
+        device_class=SensorDeviceClass.BATTERY,
+        icon="mdi:battery",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    SensorEntityDescription(
+        key="nut.ups_load",
+        name="UPS Load",
+        native_unit_of_measurement=PERCENTAGE,
+        icon="mdi:gauge",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
     ),
 )
 
@@ -959,6 +986,45 @@ async def _compile_static_certificate_sensors(
         config_entry,
         coordinator,
         STATIC_CERTIFICATE_SENSORS,
+    )
+
+
+async def _compile_nut_sensors_for_setup(
+    config_entry: ConfigEntry,
+    coordinator: OPNsenseDataUpdateCoordinator,
+    state: MutableMapping[str, Any],
+) -> tuple[list, bool]:
+    """Compile NUT sensors and report whether the inventory is authoritative.
+
+    Args:
+        config_entry: Config entry owning the sensors.
+        coordinator: Data update coordinator supplying state.
+        state: Coordinator state snapshot containing NUT UPS status data.
+
+    Returns:
+        tuple[list, bool]: Compiled NUT sensor entities and whether the NUT
+            inventory is complete enough for entity reconciliation.
+    """
+    if "nut_ups_status" not in state:
+        return [], False
+    nut_payload = state.get("nut_ups_status")
+    if not isinstance(nut_payload, Mapping):
+        return [], False
+    if not nut_payload:
+        return [], True
+    status = nut_payload.get("status")
+    if not isinstance(status, Mapping):
+        return [], False
+    if not status:
+        return [], True
+    return (
+        _create_sensors(
+            OPNsenseNUTSensor,
+            config_entry,
+            coordinator,
+            STATIC_NUT_SENSORS,
+        ),
+        True,
     )
 
 
@@ -1728,6 +1794,12 @@ async def async_setup_entry(
             entities.extend(await _compile_speedtest_sensors(config_entry, coordinator, state))
         else:
             reconciliation_complete = False
+    if config.get(CONF_SYNC_NUT, DEFAULT_SYNC_OPTION_VALUE):
+        nut_entities, nut_inventory_complete = await _compile_nut_sensors_for_setup(
+            config_entry, coordinator, state
+        )
+        entities.extend(nut_entities)
+        reconciliation_complete &= nut_inventory_complete
     if config.get(CONF_SYNC_SMART, DEFAULT_SYNC_OPTION_VALUE):
         client = getattr(config_entry.runtime_data, OPNSENSE_CLIENT, None)
         client_supports_smart = callable(getattr(client, "get_smart", None))
@@ -1930,6 +2002,45 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
             if isinstance(certs, MutableMapping):
                 self._attr_extra_state_attributes = dict(certs)
 
+        self.async_write_ha_state()
+
+
+class OPNsenseNUTSensor(OPNsenseSensor):
+    """Represent a Network UPS Tools metric from coordinator status data."""
+
+    _VALUE_KEYS: Final[Mapping[str, str]] = {
+        "nut.ups_status": "ups.status",
+        "nut.battery_charge": "battery.charge",
+        "nut.ups_load": "ups.load",
+    }
+    _NUMERIC_KEYS: Final[frozenset[str]] = frozenset({"nut.battery_charge", "nut.ups_load"})
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Refresh the metric from the latest NUT UPS status payload."""
+        nut_payload = self._get_opnsense_state_value("nut_ups_status")
+        status = nut_payload.get("status") if isinstance(nut_payload, Mapping) else None
+        raw_key = self._VALUE_KEYS.get(self.entity_description.key)
+        if not isinstance(status, Mapping) or raw_key is None:
+            self._mark_unavailable()
+            return
+        value = status.get(raw_key)
+        if value is None:
+            self._mark_unavailable()
+            return
+
+        if self.entity_description.key in self._NUMERIC_KEYS:
+            try:
+                value = float(value)
+            except TypeError, ValueError:
+                self._mark_unavailable()
+                return
+
+        self._available = True
+        self._attr_native_value = value
+        self._attr_extra_state_attributes = (
+            dict(status) if self.entity_description.key == "nut.ups_status" else {}
+        )
         self.async_write_ha_state()
 
 

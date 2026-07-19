@@ -246,6 +246,9 @@ def fake_client() -> Any:
 
     The returned factory can be used to override the device identifier,
     firmware version, telemetry payload, and close result for a test case.
+
+    Returns:
+        Any: Factory that builds a configured fake OPNsense client class.
     """
 
     def _make(
@@ -261,6 +264,9 @@ def fake_client() -> Any:
             firmware_version: Firmware version returned by the fake client.
             telemetry: Telemetry payload returned by ``get_telemetry``.
             close_result: Result returned by ``async_close``.
+
+        Returns:
+            Any: Fake OPNsense client class with deterministic responses.
         """
 
         class FakeClient:
@@ -326,6 +332,10 @@ def fake_client() -> Any:
             async def get_smart(self) -> Any:
                 """Return an empty SMART payload for coordinator tests."""
                 return []
+
+            async def get_nut_ups_status(self) -> Any:
+                """Return an empty NUT UPS status mapping for coordinator tests."""
+                return {}
 
             async def get_smart_info(self, device: str, info_type: str = "a") -> dict[str, Any]:
                 """Return an empty SMART info payload for coordinator tests.

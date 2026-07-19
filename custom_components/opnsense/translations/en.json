@@ -74,7 +74,8 @@
           "sync_certificates": "Security certificate information",
           "sync_vnstat": "vnStat bandwidth usage",
           "sync_speedtest": "Speedtest results",
-          "sync_smart": "SMART disk information"
+          "sync_smart": "SMART disk information",
+          "sync_nut": "NUT UPS status"
         },
         "title": "Choose what items to sync"
       },
@@ -117,6 +118,7 @@
           "sync_speedtest": "Speedtest results",
           "sync_live_traffic": "Live interface traffic",
           "sync_smart": "SMART disk information",
+          "sync_nut": "NUT UPS status",
           "sync_vpn": "VPN information and switches",
           "sync_firmware_updates": "Firmware updates",
           "sync_carp": "CARP information",
