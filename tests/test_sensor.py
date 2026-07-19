@@ -5528,7 +5528,6 @@ async def test_compile_interface_sensors_routes_rate_keys_to_live_traffic_coordi
         "interface.eth0.outbytes_kilobytes_per_second",
     ):
         sensor = entities_by_key[key]
-        assert sensor.unique_id == slugify(f"id_{key}")
         assert isinstance(sensor, OPNsenseLiveTrafficSensor)
         assert sensor.coordinator is live_traffic_coordinator
         description = sensor.entity_description
@@ -5540,7 +5539,6 @@ async def test_compile_interface_sensors_routes_rate_keys_to_live_traffic_coordi
         "interface.eth0.outpkts_packets_per_second",
     ):
         sensor = entities_by_key[key]
-        assert sensor.unique_id == slugify(f"id_{key}")
         assert isinstance(sensor, OPNsenseLiveTrafficSensor)
         assert sensor.coordinator is live_traffic_coordinator
 

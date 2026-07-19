@@ -269,17 +269,8 @@ async def test_live_traffic_coordinator_records_update_error_on_missing_payload(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """No valid stream payload should mark coordinator update as failed."""
-    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_LIVE_TRAFFIC: True})
-    main_coordinator = MagicMock()
-    main_coordinator.data = {"interfaces": {"wan": {"name": "WAN"}}}
     client = _FakeStreamClient(payloads=[])
-
-    coordinator = OPNsenseLiveTrafficCoordinator(
-        hass=MagicMock(),
-        config_entry=entry,
-        coordinator=main_coordinator,
-        client=client,
-    )
+    coordinator, _ = _build_test_coordinator(make_config_entry, client=client)
 
     has_sample = await coordinator._consume_stream()
 
@@ -480,9 +471,6 @@ async def test_live_traffic_run_reconnects_after_finite_valid_stream(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """A finite valid stream should mark unavailable and schedule minimum backoff."""
-    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_LIVE_TRAFFIC: True})
-    main_coordinator = MagicMock()
-    main_coordinator.data = {"interfaces": {"wan": {"name": "WAN"}}}
     client = _FakeStreamClient(
         [
             {
@@ -494,13 +482,7 @@ async def test_live_traffic_run_reconnects_after_finite_valid_stream(
             }
         ]
     )
-
-    coordinator = OPNsenseLiveTrafficCoordinator(
-        hass=MagicMock(),
-        config_entry=entry,
-        coordinator=main_coordinator,
-        client=client,
-    )
+    coordinator, _ = _build_test_coordinator(make_config_entry, client=client)
 
     sleep_calls: list[int] = []
 
@@ -525,17 +507,8 @@ def test_live_traffic_retry_delay_caps_at_max_interval(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """Retry delay should grow through backoff values and then cap."""
-    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_LIVE_TRAFFIC: True})
-    main_coordinator = MagicMock()
-    main_coordinator.data = {"interfaces": {"wan": {"name": "WAN"}}}
     client = _FakeStreamClient(payloads=[])
-
-    coordinator = OPNsenseLiveTrafficCoordinator(
-        hass=MagicMock(),
-        config_entry=entry,
-        coordinator=main_coordinator,
-        client=client,
-    )
+    coordinator, _ = _build_test_coordinator(make_config_entry, client=client)
 
     assert coordinator._get_retry_delay() == 5
     coordinator._failure_count = 1
@@ -556,17 +529,8 @@ async def test_live_traffic_run_applies_and_caps_backoff_sequence(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """The retry loop should walk the full backoff sequence and cap at the maximum."""
-    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_LIVE_TRAFFIC: True})
-    main_coordinator = MagicMock()
-    main_coordinator.data = {"interfaces": {"wan": {"name": "WAN"}}}
     client = _FakeStreamClient(payloads=[])
-
-    coordinator = OPNsenseLiveTrafficCoordinator(
-        hass=MagicMock(),
-        config_entry=entry,
-        coordinator=main_coordinator,
-        client=client,
-    )
+    coordinator, _ = _build_test_coordinator(make_config_entry, client=client)
 
     sleep_calls: list[int] = []
 
