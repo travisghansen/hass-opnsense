@@ -241,6 +241,9 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             merged_interfaces[interface_name] = merged_interface
 
         if not merged_interfaces:
+            self.async_set_update_error(
+                RuntimeError("Live traffic payload has no usable interface rows")
+            )
             return False
 
         merged_data: dict[str, Any] = {"interfaces": merged_interfaces}

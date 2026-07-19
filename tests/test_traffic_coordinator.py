@@ -147,6 +147,27 @@ def test_live_traffic_coordinator_recovers_when_main_state_returns(
     assert coordinator.data["interfaces"]["wan"]["inbytes_kilobytes_per_second"] == 2.0
 
 
+def test_live_traffic_coordinator_all_skipped_payload_marks_failed_and_preserves_previous_data(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Skipped stream rows should fail the update while preserving prior live data."""
+    coordinator, _ = _build_test_coordinator(
+        make_config_entry,
+        main_coordinator_data={"interfaces": {"wan": {"name": "WAN"}}},
+    )
+
+    previous_data = {"interfaces": {"wan": {"name": "WAN", "inbytes_kilobytes_per_second": 1.0}}}
+    coordinator._async_publish_data(previous_data)
+    assert coordinator.last_update_success is True
+
+    assert (
+        coordinator._consume_payload({"interfaces": {"missing": {"rx_bytes_per_second": 1000}}})
+        is False
+    )
+    assert coordinator.last_update_success is False
+    assert coordinator.data is previous_data
+
+
 def test_live_traffic_coordinator_aggregates_sample_logging(
     caplog: pytest.LogCaptureFixture,
     make_config_entry: Callable[..., MockConfigEntry],
