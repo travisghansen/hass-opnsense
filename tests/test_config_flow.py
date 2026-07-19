@@ -49,6 +49,7 @@ from custom_components.opnsense.const import (
     CONF_GRANULAR_SYNC_OPTIONS,
     CONF_MANUAL_DEVICES,
     CONF_SYNC_FIREWALL_AND_NAT,
+    CONF_SYNC_LIVE_TRAFFIC,
     CONF_SYNC_SMART,
     CONF_SYNC_TELEMETRY,
     DEFAULT_SCAN_INTERVAL,
@@ -1268,9 +1269,13 @@ def test_build_user_input_and_granular_and_options_schemas_defaults() -> None:
     # every granular item should be present (defaults applied)
     for item in GRANULAR_SYNC_ITEMS:
         assert item in gvalidated
+    assert gvalidated[CONF_SYNC_LIVE_TRAFFIC] is True
     assert gvalidated[CONF_SYNC_SMART] is True
     assert gvalidated[CONF_SYNC_TELEMETRY] is True
-    gvalidated = gschema({CONF_SYNC_SMART: False})
+    gvalidated = gschema(
+        {CONF_SYNC_LIVE_TRAFFIC: False, CONF_SYNC_SMART: False},
+    )
+    assert gvalidated[CONF_SYNC_LIVE_TRAFFIC] is False
     assert gvalidated[CONF_SYNC_SMART] is False
 
     # options init schema: test clamping/coercion for scan interval
@@ -1297,11 +1302,16 @@ def test_schema_builders_preserve_submitted_values_before_stored_values() -> Non
     assert user_values[CONF_GRANULAR_SYNC_OPTIONS] is False
 
     granular_schema = cf_mod._build_granular_sync_schema(
-        user_input={CONF_SYNC_SMART: False},
-        stored_values={CONF_SYNC_SMART: True, CONF_SYNC_TELEMETRY: False},
+        user_input={CONF_SYNC_SMART: False, CONF_SYNC_LIVE_TRAFFIC: False},
+        stored_values={
+            CONF_SYNC_SMART: True,
+            CONF_SYNC_LIVE_TRAFFIC: True,
+            CONF_SYNC_TELEMETRY: False,
+        },
     )
     granular_values = granular_schema({})
     assert granular_values[CONF_SYNC_SMART] is False
+    assert granular_values[CONF_SYNC_LIVE_TRAFFIC] is False
     assert granular_values[CONF_SYNC_TELEMETRY] is False
 
     options_schema = cf_mod._build_options_init_schema(

@@ -23,6 +23,7 @@ from custom_components.opnsense.const import (
     CONF_SYNC_DHCP_LEASES,
     CONF_SYNC_GATEWAYS,
     CONF_SYNC_INTERFACES,
+    CONF_SYNC_LIVE_TRAFFIC,
     CONF_SYNC_SMART,
     CONF_SYNC_SPEEDTEST,
     CONF_SYNC_TELEMETRY,
@@ -41,6 +42,7 @@ from custom_components.opnsense.sensor import (
     OPNsenseFilesystemSensor,
     OPNsenseGatewaySensor,
     OPNsenseInterfaceSensor,
+    OPNsenseLiveTrafficSensor,
     OPNsenseSmartSensor,
     OPNsenseSpeedtestSensor,
     OPNsenseStaticKeySensor,
@@ -51,6 +53,7 @@ from custom_components.opnsense.sensor import (
     normalize_filesystem_mountpoint,
     slugify_filesystem_mountpoint,
 )
+from custom_components.opnsense.traffic_coordinator import OPNsenseLiveTrafficCoordinator
 
 
 def test_static_sensor_descriptions_live_in_sensor_module() -> None:
@@ -2179,6 +2182,30 @@ def test_build_vpn_sensor_description_uses_gauge_icon_for_generic_properties() -
     )
 
     assert description.icon == "mdi:gauge"
+
+
+@pytest.mark.parametrize(
+    "prop_name",
+    [
+        "total_bytes_recv_kilobytes_per_second",
+        "total_bytes_sent_kilobytes_per_second",
+    ],
+)
+def test_build_vpn_rate_sensor_description_suggests_megabits_per_second(
+    prop_name: str,
+) -> None:
+    """VPN byte-rate sensors should prefer megabits per second for display."""
+    description = sensor_module._build_vpn_sensor_description(
+        "wireguard",
+        "clients",
+        "uuid1",
+        "wg0",
+        prop_name,
+    )
+
+    assert description.native_unit_of_measurement == UnitOfDataRate.KILOBYTES_PER_SECOND
+    assert description.suggested_unit_of_measurement == UnitOfDataRate.MEGABITS_PER_SECOND
+    assert description.device_class == SensorDeviceClass.DATA_RATE
 
 
 def test_sensor_module_import() -> None:
@@ -4520,7 +4547,7 @@ async def test_generated_sensor_entity_contract(
             "entity_registry_enabled_default": False,
         },
         "interface.wan.inbytes": {
-            "name": "Interface WAN inbytes",
+            "name": "Interface WAN Traffic In Total",
             "native_unit_of_measurement": UnitOfInformation.BYTES,
             "device_class": SensorDeviceClass.DATA_SIZE,
             "state_class": SensorStateClass.TOTAL_INCREASING,
@@ -5400,3 +5427,289 @@ async def test_compile_interface_sensors_values_end(
     kb._handle_coordinator_update()
     assert kb.available is True
     assert kb.native_value == 123
+
+
+@pytest.mark.asyncio
+async def test_compile_interface_sensors_routes_rate_keys_to_live_traffic_coordinator_when_enabled(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Rate interface sensors should read from the live traffic coordinator when enabled."""
+    main_state = {
+        "interfaces": {
+            "eth0": {
+                "name": "WAN",
+                "status": "up",
+            }
+        }
+    }
+    live_state = {
+        "interfaces": {
+            "eth0": {
+                "name": "WAN",
+                "inbytes_kilobytes_per_second": 1.5,
+                "outbytes_kilobytes_per_second": 2.5,
+                "inpkts_packets_per_second": 3,
+                "outpkts_packets_per_second": 4,
+            }
+        }
+    }
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_INTERFACES: True,
+            CONF_SYNC_LIVE_TRAFFIC: True,
+        }
+    )
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = main_state
+    live_traffic_coordinator = MagicMock(spec=OPNsenseLiveTrafficCoordinator)
+    live_traffic_coordinator.data = live_state
+    setattr(entry.runtime_data, COORDINATOR, coordinator)
+    entry.runtime_data.live_traffic_coordinator = live_traffic_coordinator
+
+    entities = await sensor_module._compile_interface_sensors(entry, coordinator, main_state)
+
+    entities_by_key = {entity.entity_description.key: entity for entity in entities}
+
+    traffic_sensor_contracts = {
+        "interface.eth0.inerrs": (
+            "Interface WAN Errors In Total",
+            "interface_wan_errors_in_total",
+        ),
+        "interface.eth0.outerrs": (
+            "Interface WAN Errors Out Total",
+            "interface_wan_errors_out_total",
+        ),
+        "interface.eth0.collisions": (
+            "Interface WAN Collisions Total",
+            "interface_wan_collisions_total",
+        ),
+        "interface.eth0.inbytes": (
+            "Interface WAN Traffic In Total",
+            "interface_wan_traffic_in_total",
+        ),
+        "interface.eth0.inbytes_kilobytes_per_second": (
+            "Interface WAN Traffic In Rate",
+            "interface_wan_traffic_in_rate",
+        ),
+        "interface.eth0.outbytes": (
+            "Interface WAN Traffic Out Total",
+            "interface_wan_traffic_out_total",
+        ),
+        "interface.eth0.outbytes_kilobytes_per_second": (
+            "Interface WAN Traffic Out Rate",
+            "interface_wan_traffic_out_rate",
+        ),
+        "interface.eth0.inpkts": (
+            "Interface WAN Packets In Total",
+            "interface_wan_packets_in_total",
+        ),
+        "interface.eth0.inpkts_packets_per_second": (
+            "Interface WAN Packets In Rate",
+            "interface_wan_packets_in_rate",
+        ),
+        "interface.eth0.outpkts": (
+            "Interface WAN Packets Out Total",
+            "interface_wan_packets_out_total",
+        ),
+        "interface.eth0.outpkts_packets_per_second": (
+            "Interface WAN Packets Out Rate",
+            "interface_wan_packets_out_rate",
+        ),
+    }
+    for key, (expected_name, expected_object_id) in traffic_sensor_contracts.items():
+        sensor = entities_by_key[key]
+        assert sensor.entity_description.name == expected_name
+        assert slugify(expected_name) == expected_object_id
+        assert sensor.unique_id == slugify(f"id_{key}")
+
+    for key in (
+        "interface.eth0.inbytes_kilobytes_per_second",
+        "interface.eth0.outbytes_kilobytes_per_second",
+    ):
+        sensor = entities_by_key[key]
+        assert isinstance(sensor, OPNsenseLiveTrafficSensor)
+        assert sensor.coordinator is live_traffic_coordinator
+        description = sensor.entity_description
+        assert description.native_unit_of_measurement == UnitOfDataRate.KILOBYTES_PER_SECOND
+        assert description.suggested_unit_of_measurement == UnitOfDataRate.MEGABITS_PER_SECOND
+
+    for key in (
+        "interface.eth0.inpkts_packets_per_second",
+        "interface.eth0.outpkts_packets_per_second",
+    ):
+        sensor = entities_by_key[key]
+        assert isinstance(sensor, OPNsenseLiveTrafficSensor)
+        assert sensor.coordinator is live_traffic_coordinator
+
+    for key in (
+        "interface.eth0.status",
+        "interface.eth0.inbytes",
+        "interface.eth0.inpkts",
+        "interface.eth0.outbytes",
+        "interface.eth0.outpkts",
+    ):
+        sensor = entities_by_key[key]
+        assert isinstance(sensor, OPNsenseInterfaceSensor)
+        assert sensor.coordinator is coordinator
+
+
+@pytest.mark.asyncio
+async def test_compile_interface_sensors_routes_rate_keys_to_main_coordinator_when_live_disabled(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Rate interface sensors should stay on the main coordinator when live traffic is disabled."""
+    state = {
+        "interfaces": {
+            "eth0": {
+                "name": "WAN",
+                "status": "up",
+            }
+        }
+    }
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_INTERFACES: True,
+            CONF_SYNC_LIVE_TRAFFIC: False,
+        }
+    )
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+    live_traffic_coordinator = MagicMock(spec=OPNsenseLiveTrafficCoordinator)
+    live_traffic_coordinator.data = {"interfaces": {"eth0": {"inbytes_kilobytes_per_second": 1}}}
+    setattr(entry.runtime_data, COORDINATOR, coordinator)
+    entry.runtime_data.live_traffic_coordinator = live_traffic_coordinator
+
+    entities = await sensor_module._compile_interface_sensors(entry, coordinator, state)
+    entities_by_key = {entity.entity_description.key: entity for entity in entities}
+
+    for key in (
+        "interface.eth0.inbytes_kilobytes_per_second",
+        "interface.eth0.outbytes_kilobytes_per_second",
+        "interface.eth0.inpkts_packets_per_second",
+        "interface.eth0.outpkts_packets_per_second",
+    ):
+        sensor = entities_by_key[key]
+        assert isinstance(sensor, OPNsenseInterfaceSensor)
+        assert sensor.coordinator is coordinator
+
+
+@pytest.mark.asyncio
+async def test_compile_dotted_interface_rate_sensor_prefers_live_traffic_data_when_available(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Rate sensors for dotted interface names should read from live traffic when usable."""
+    main_state = {
+        "interfaces": {
+            "wan.vlan.100": {
+                "name": "WAN VLAN 100",
+                "status": "up",
+                "inbytes_kilobytes_per_second": 10,
+            }
+        }
+    }
+    live_state = {
+        "interfaces": {
+            "wan.vlan.100": {
+                "inbytes_kilobytes_per_second": 50,
+            }
+        }
+    }
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_INTERFACES: True,
+            CONF_SYNC_LIVE_TRAFFIC: True,
+        }
+    )
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = main_state
+    live_traffic_coordinator = MagicMock(spec=OPNsenseLiveTrafficCoordinator)
+    live_traffic_coordinator.data = live_state
+    live_traffic_coordinator.last_update_success = True
+    setattr(entry.runtime_data, COORDINATOR, coordinator)
+    entry.runtime_data.live_traffic_coordinator = live_traffic_coordinator
+
+    entities = await sensor_module._compile_interface_sensors(entry, coordinator, main_state)
+    rate_sensor = next(
+        entity
+        for entity in entities
+        if entity.entity_description.key == "interface.wan.vlan.100.inbytes_kilobytes_per_second"
+    )
+    assert isinstance(rate_sensor, OPNsenseLiveTrafficSensor)
+    assert rate_sensor.coordinator is live_traffic_coordinator
+
+    rate_sensor.hass = MagicMock()
+    rate_sensor.entity_id = "sensor.wan_vlan_100_inbytes_kilobytes_per_second"
+    object.__setattr__(rate_sensor, "async_write_ha_state", lambda: None)
+    rate_sensor._handle_coordinator_update()
+
+    assert rate_sensor.available is True
+    assert rate_sensor.native_value == 50
+
+
+@pytest.mark.asyncio
+async def test_interface_rate_sensor_falls_back_when_live_traffic_is_unavailable(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Interface rate sensors should fall back to polling when live traffic fails."""
+    state = {
+        "interfaces": {
+            "eth0": {
+                "name": "WAN",
+                "inbytes_kilobytes_per_second": 10,
+                "inbytes": 2048,
+                "status": "up",
+                "interface": "eth0",
+                "device": "igc0",
+            }
+        }
+    }
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_INTERFACES: True,
+        }
+    )
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+    live_traffic_coordinator = MagicMock(spec=OPNsenseLiveTrafficCoordinator)
+    live_traffic_coordinator.data = {"interfaces": {"eth0": {"inbytes_kilobytes_per_second": 20}}}
+    live_traffic_coordinator.last_update_success = False
+    setattr(entry.runtime_data, COORDINATOR, coordinator)
+    entry.runtime_data.live_traffic_coordinator = live_traffic_coordinator
+
+    entities = await sensor_module._compile_interface_sensors(entry, coordinator, state)
+    rate_sensor = next(
+        entity
+        for entity in entities
+        if entity.entity_description.key == "interface.eth0.inbytes_kilobytes_per_second"
+    )
+    assert isinstance(rate_sensor, OPNsenseLiveTrafficSensor)
+    non_rate_sensor = next(
+        entity for entity in entities if entity.entity_description.key == "interface.eth0.status"
+    )
+    assert isinstance(non_rate_sensor, OPNsenseInterfaceSensor)
+
+    rate_sensor.hass = MagicMock()
+    rate_sensor.entity_id = "sensor.eth0_inbytes_kilobytes_per_second"
+    object.__setattr__(rate_sensor, "async_write_ha_state", lambda: None)
+    non_rate_sensor.hass = MagicMock()
+    non_rate_sensor.entity_id = "sensor.eth0_status"
+    object.__setattr__(non_rate_sensor, "async_write_ha_state", lambda: None)
+
+    rate_sensor._handle_coordinator_update()
+    assert rate_sensor.available is True
+    assert rate_sensor.native_value == 10
+    non_rate_sensor._handle_coordinator_update()
+    assert non_rate_sensor.available is True
+
+    live_traffic_coordinator.last_update_success = True
+    rate_sensor._handle_coordinator_update()
+    assert rate_sensor.available is True
+    assert rate_sensor.native_value == 20
+
+    setattr(entry.runtime_data, OPNSENSE_CLIENT, MagicMock())
+    await rate_sensor.async_added_to_hass()
+    coordinator.async_add_listener.assert_called_once_with(rate_sensor._handle_coordinator_update)

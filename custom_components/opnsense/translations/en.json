@@ -61,6 +61,7 @@
         "data": {
           "sync_telemetry": "Basic telemetry data",
           "sync_interfaces": "Interface information",
+          "sync_live_traffic": "Live interface traffic",
           "sync_dhcp_leases": "DHCP leases",
           "sync_gateways": "Gateway information",
           "sync_firmware_updates": "Firmware updates",
@@ -114,6 +115,7 @@
           "sync_telemetry": "Basic telemetry data",
           "sync_vnstat": "vnStat bandwidth usage",
           "sync_speedtest": "Speedtest results",
+          "sync_live_traffic": "Live interface traffic",
           "sync_smart": "SMART disk information",
           "sync_vpn": "VPN information and switches",
           "sync_firmware_updates": "Firmware updates",

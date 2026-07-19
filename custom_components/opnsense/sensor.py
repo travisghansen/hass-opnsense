@@ -1,5 +1,7 @@
 """Provides sensors to track various status aspects of OPNsense."""
 
+from __future__ import annotations
+
 from collections.abc import Iterable, Mapping, MutableMapping
 import inspect
 import ipaddress
@@ -32,6 +34,7 @@ from .const import (
     CONF_SYNC_DHCP_LEASES,
     CONF_SYNC_GATEWAYS,
     CONF_SYNC_INTERFACES,
+    CONF_SYNC_LIVE_TRAFFIC,
     CONF_SYNC_SMART,
     CONF_SYNC_SPEEDTEST,
     CONF_SYNC_TELEMETRY,
@@ -45,9 +48,10 @@ from .const import (
     OPNSENSE_CLIENT,
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
-from .entity import OPNsenseEntity
+from .entity import OPNsenseEntity, OPNsenseEntityCoordinator
 from .helpers import coerce_bool, dict_get, get_smart_device_name, is_carp_entry
 from .repair_reconciliation import record_desired_entities
+from .traffic_coordinator import OPNsenseLiveTrafficCoordinator
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -66,6 +70,25 @@ _INTERFACE_SENSOR_PROPERTIES: tuple[str, ...] = (
     "outpkts",
     "outpkts_packets_per_second",
 )
+_INTERFACE_RATE_SENSOR_PROPERTIES: tuple[str, ...] = (
+    "inbytes_kilobytes_per_second",
+    "outbytes_kilobytes_per_second",
+    "inpkts_packets_per_second",
+    "outpkts_packets_per_second",
+)
+_INTERFACE_TRAFFIC_SENSOR_NAMES: dict[str, str] = {
+    "inerrs": "Errors In Total",
+    "outerrs": "Errors Out Total",
+    "collisions": "Collisions Total",
+    "inbytes": "Traffic In Total",
+    "inbytes_kilobytes_per_second": "Traffic In Rate",
+    "outbytes": "Traffic Out Total",
+    "outbytes_kilobytes_per_second": "Traffic Out Rate",
+    "inpkts": "Packets In Total",
+    "inpkts_packets_per_second": "Packets In Rate",
+    "outpkts": "Packets Out Total",
+    "outpkts_packets_per_second": "Packets Out Rate",
+}
 
 _GATEWAY_SENSOR_PROPERTIES: tuple[str, ...] = ("status", "delay", "stddev", "loss", "address")
 _VPN_TRAFFIC_PROPERTIES: tuple[str, ...] = (
@@ -110,6 +133,22 @@ def _is_valid_filesystem_row(filesystem: Any) -> bool:
         and isinstance(filesystem.get("mountpoint"), str)
         and bool(filesystem["mountpoint"].strip())
     )
+
+
+def _get_runtime_live_traffic_coordinator(
+    config_entry: ConfigEntry,
+) -> OPNsenseLiveTrafficCoordinator | None:
+    """Return the live traffic coordinator attached to runtime data.
+
+    Args:
+        config_entry: Config entry to inspect for runtime state.
+
+    Returns:
+        OPNsenseLiveTrafficCoordinator | None: Coordinator when present, else ``None``.
+    """
+    runtime_data = getattr(config_entry, "runtime_data", None)
+    coordinator = getattr(runtime_data, "live_traffic_coordinator", None)
+    return coordinator if isinstance(coordinator, OPNsenseLiveTrafficCoordinator) else None
 
 
 def _is_valid_carp_interface_row(interface: Any) -> bool:
@@ -385,7 +424,7 @@ STATIC_CERTIFICATE_SENSORS: Final[tuple[SensorEntityDescription, ...]] = (
 def _create_sensor[SensorT: OPNsenseSensor](
     entity_cls: type[SensorT],
     config_entry: ConfigEntry,
-    coordinator: OPNsenseDataUpdateCoordinator,
+    coordinator: OPNsenseEntityCoordinator,
     entity_description: SensorEntityDescription,
 ) -> SensorT:
     """Create one sensor entity from shared compile context.
@@ -395,7 +434,6 @@ def _create_sensor[SensorT: OPNsenseSensor](
         config_entry: Home Assistant config entry for the integration.
         coordinator: Coordinator providing the OPNsense data for the entity.
         entity_description: Metadata describing the sensor entity.
-
 
     Returns:
         SensorT: Instantiated sensor entity.
@@ -410,7 +448,7 @@ def _create_sensor[SensorT: OPNsenseSensor](
 def _create_sensors[SensorT: OPNsenseSensor](
     entity_cls: type[SensorT],
     config_entry: ConfigEntry,
-    coordinator: OPNsenseDataUpdateCoordinator,
+    coordinator: OPNsenseEntityCoordinator,
     entity_descriptions: Iterable[SensorEntityDescription],
 ) -> list[SensorT]:
     """Create sensor entities from shared compile context.
@@ -423,7 +461,6 @@ def _create_sensors[SensorT: OPNsenseSensor](
 
     Returns:
         list[SensorT]: Instantiated sensor entities in description order.
-
     """
     return [
         _create_sensor(entity_cls, config_entry, coordinator, entity_description)
@@ -642,7 +679,6 @@ def _build_interface_sensor_description(
 
     Returns:
         SensorEntityDescription: Description for the interface sensor.
-
     """
     state_class: SensorStateClass | None = SensorStateClass.MEASUREMENT
     native_unit_of_measurement = None
@@ -653,7 +689,7 @@ def _build_interface_sensor_description(
         "outbytes_kilobytes_per_second",
     }
     suggested_display_precision = None
-    suggested_unit_of_measurement = None
+    suggested_unit_of_measurement: UnitOfDataRate | UnitOfInformation | None = None
 
     if "_packets_per_second" in prop_name:
         native_unit_of_measurement = DATA_RATE_PACKETS_PER_SECOND
@@ -661,6 +697,7 @@ def _build_interface_sensor_description(
     if "_kilobytes_per_second" in prop_name:
         native_unit_of_measurement = UnitOfDataRate.KILOBYTES_PER_SECOND
         device_class = SensorDeviceClass.DATA_RATE
+        suggested_unit_of_measurement = UnitOfDataRate.MEGABITS_PER_SECOND
 
     if native_unit_of_measurement is None:
         if "bytes" in prop_name:
@@ -684,9 +721,10 @@ def _build_interface_sensor_description(
     else:
         icon = "mdi:gauge"
 
+    property_name = _INTERFACE_TRAFFIC_SENSOR_NAMES.get(prop_name, prop_name)
     return SensorEntityDescription(
         key=f"interface.{interface_name}.{prop_name}",
-        name=f"Interface {interface.get('name', interface_name)} {prop_name}",
+        name=f"Interface {interface.get('name', interface_name)} {property_name}",
         native_unit_of_measurement=native_unit_of_measurement,
         device_class=device_class,
         icon=icon,
@@ -830,19 +868,19 @@ def _build_vpn_sensor_description(
 
     Returns:
         SensorEntityDescription: Description for the VPN sensor entity.
-
     """
     state_class: SensorStateClass | None = None
     native_unit_of_measurement: UnitOfDataRate | UnitOfInformation | None = None
     device_class: SensorDeviceClass | None = None
     enabled_default = False
     suggested_display_precision = None
-    suggested_unit_of_measurement = None
+    suggested_unit_of_measurement: UnitOfDataRate | UnitOfInformation | None = None
 
     if "_kilobytes_per_second" in prop_name:
         native_unit_of_measurement = UnitOfDataRate.KILOBYTES_PER_SECOND
         device_class = SensorDeviceClass.DATA_RATE
         state_class = SensorStateClass.MEASUREMENT
+        suggested_unit_of_measurement = UnitOfDataRate.MEGABITS_PER_SECOND
 
     if native_unit_of_measurement is None and "bytes" in prop_name:
         native_unit_of_measurement = UnitOfInformation.BYTES
@@ -1399,10 +1437,18 @@ async def _compile_interface_sensors(
         state: Coordinator state snapshot that contains network interface statistics.
 
     Returns:
-        list: Compiled interface sensor entities.
+        list[OPNsenseInterfaceSensor]: Compiled interface sensors; rate properties use
+            ``OPNsenseLiveTrafficSensor`` when live traffic is configured and available.
     """
     if not isinstance(state, MutableMapping):
         return []
+    config: Mapping[str, Any] = getattr(config_entry, "data", {})
+    sync_interfaces: bool = config.get(CONF_SYNC_INTERFACES, DEFAULT_SYNC_OPTION_VALUE)
+    sync_live_traffic: bool = config.get(CONF_SYNC_LIVE_TRAFFIC, DEFAULT_SYNC_OPTION_VALUE)
+    live_traffic_coordinator: OPNsenseLiveTrafficCoordinator | None = None
+    if sync_interfaces and sync_live_traffic:
+        live_traffic_coordinator = _get_runtime_live_traffic_coordinator(config_entry)
+
     entities: list[OPNsenseInterfaceSensor] = []
 
     interfaces = dict_get(state, "interfaces", {}) or {}
@@ -1414,9 +1460,19 @@ async def _compile_interface_sensors(
             continue
         entities.extend(
             _create_sensor(
-                OPNsenseInterfaceSensor,
+                (
+                    OPNsenseLiveTrafficSensor
+                    if prop_name in _INTERFACE_RATE_SENSOR_PROPERTIES
+                    and live_traffic_coordinator is not None
+                    else OPNsenseInterfaceSensor
+                ),
                 config_entry,
-                coordinator,
+                (
+                    live_traffic_coordinator
+                    if prop_name in _INTERFACE_RATE_SENSOR_PROPERTIES
+                    and live_traffic_coordinator is not None
+                    else coordinator
+                ),
                 _build_interface_sensor_description(interface_name, interface, prop_name),
             )
             for prop_name in _INTERFACE_SENSOR_PROPERTIES
@@ -1793,7 +1849,7 @@ class OPNsenseSensor(OPNsenseEntity, SensorEntity):
     def __init__(
         self,
         config_entry: ConfigEntry,
-        coordinator: OPNsenseDataUpdateCoordinator,
+        coordinator: OPNsenseEntityCoordinator,
         entity_description: SensorEntityDescription,
         unique_id_suffix: str | None = None,
     ) -> None:
@@ -2152,6 +2208,85 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
         if prop_name == "status" and self.native_value != "up":
             return "mdi:close-network-outline"
         return super().icon
+
+
+class OPNsenseLiveTrafficSensor(OPNsenseInterfaceSensor):
+    """Sensor class that prefers live interface rates with a polling fallback."""
+
+    def __init__(
+        self,
+        config_entry: ConfigEntry,
+        coordinator: OPNsenseEntityCoordinator,
+        entity_description: SensorEntityDescription,
+        unique_id_suffix: str | None = None,
+    ) -> None:
+        """Initialize a live traffic sensor and retain its polling coordinator.
+
+        Args:
+            config_entry: Config entry that owns this entity.
+            coordinator: Live traffic coordinator providing push updates.
+            entity_description: Metadata describing the interface rate sensor.
+            unique_id_suffix: Optional stable suffix for the entity unique ID.
+        """
+        super().__init__(
+            config_entry,
+            coordinator,
+            entity_description,
+            unique_id_suffix,
+        )
+        polling_coordinator = getattr(config_entry.runtime_data, COORDINATOR, None)
+        self._polling_coordinator: OPNsenseDataUpdateCoordinator | None = (
+            polling_coordinator
+            if isinstance(polling_coordinator, OPNsenseDataUpdateCoordinator)
+            else None
+        )
+
+    def _coordinator_mapping(self) -> MutableMapping[str, Any] | None:
+        """Return live data when usable, otherwise polling-derived interface rates.
+
+        Returns:
+            MutableMapping[str, Any] | None: Coordinator data containing this sensor's
+                rate, preferring the live stream over the polling coordinator.
+        """
+        live_state = super()._coordinator_mapping()
+        key_parts = self.entity_description.key.split(".", 1)
+        if len(key_parts) != 2:
+            polling_state = getattr(self._polling_coordinator, "data", None)
+            return polling_state if isinstance(polling_state, MutableMapping) else None
+        interface_and_property = key_parts[1]
+        interface_parts = interface_and_property.rsplit(".", 1)
+        if len(interface_parts) != 2:
+            polling_state = getattr(self._polling_coordinator, "data", None)
+            return polling_state if isinstance(polling_state, MutableMapping) else None
+        interface_name, property_name = interface_parts
+        if not isinstance(live_state, MutableMapping):
+            polling_state = getattr(self._polling_coordinator, "data", None)
+            return polling_state if isinstance(polling_state, MutableMapping) else None
+        live_interfaces = dict_get(live_state, "interfaces")
+        if (
+            self.coordinator.last_update_success
+            and live_state is not None
+            and isinstance(live_interfaces, MutableMapping)
+            and interface_name in live_interfaces
+            and isinstance(live_interfaces[interface_name], MutableMapping)
+            and property_name in live_interfaces[interface_name]
+        ):
+            return live_state
+        polling_state = getattr(self._polling_coordinator, "data", None)
+        return polling_state if isinstance(polling_state, MutableMapping) else None
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to polling updates so fallback rates continue to refresh."""
+        await super().async_added_to_hass()
+        if self._polling_coordinator is not None:
+            self.async_on_remove(
+                self._polling_coordinator.async_add_listener(self._handle_coordinator_update)
+            )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle live or polling coordinator updates for interface rates."""
+        super()._handle_coordinator_update()
 
 
 class OPNsenseCarpActiveResponderSensor(OPNsenseSensor):

@@ -30,6 +30,7 @@ from custom_components.opnsense.const import (
     CONF_SYNC_FIRMWARE_UPDATES,
     CONF_SYNC_GATEWAYS,
     CONF_SYNC_INTERFACES,
+    CONF_SYNC_LIVE_TRAFFIC,
     CONF_SYNC_NOTICES,
     CONF_SYNC_SERVICES,
     CONF_SYNC_SMART,
@@ -598,7 +599,12 @@ async def test_calculate_entity_speeds_applies_calculations(
 ) -> None:
     """Entity speed calculations should add correct rate keys to state."""
     entry = make_config_entry(
-        {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_INTERFACES: True,
+            CONF_SYNC_VPN: True,
+            CONF_SYNC_LIVE_TRAFFIC: False,
+        }
     )
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -641,10 +647,10 @@ async def test_calculate_entity_speeds_applies_calculations(
     # Compute expected rounded values
     # inbytes: change = 100 B/s -> 100 / 2 = 50 B/s -> 50 / 1000 = 0.05 KB/s -> round = 0
     # outbytes: change = 50 B/s -> 25 B/s -> 0.025 KB/s -> round = 0
-    assert eth0["inbytes_kilobytes_per_second"] == pytest.approx(0.5, abs=0.5)
-    assert eth0["outbytes_kilobytes_per_second"] == pytest.approx(0.5, abs=0.5)
-    assert eth0["inpkts_packets_per_second"] == pytest.approx(100, abs=0.5)
-    assert eth0["outpkts_packets_per_second"] == pytest.approx(50, abs=0.5)
+    assert eth0["inbytes_kilobytes_per_second"] == 0
+    assert eth0["outbytes_kilobytes_per_second"] == 0
+    assert eth0["inpkts_packets_per_second"] == 100
+    assert eth0["outpkts_packets_per_second"] == 50
 
     # openvpn server s1 expected rates (kilobytes_per_second, rounded)
     assert "openvpn" in coord._state
@@ -654,8 +660,57 @@ async def test_calculate_entity_speeds_applies_calculations(
     assert "total_bytes_sent_kilobytes_per_second" in s1
     # total_bytes_recv: (1000-500)/2 = 250 B/s -> 0.25 KB/s -> round = 0
     # total_bytes_sent: (2000-1000)/2 = 500 B/s -> 0.5 KB/s -> round = 0
-    assert s1["total_bytes_recv_kilobytes_per_second"] == pytest.approx(0.5, abs=0.5)
-    assert s1["total_bytes_sent_kilobytes_per_second"] == pytest.approx(0.5, abs=0.5)
+    assert s1["total_bytes_recv_kilobytes_per_second"] == 0
+    assert s1["total_bytes_sent_kilobytes_per_second"] == 0
+
+
+@pytest.mark.asyncio
+async def test_calculate_entity_speeds_preserves_polling_rates_when_live_traffic_enabled(
+    make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
+) -> None:
+    """Preserve polling interface rates as a fallback when live traffic is enabled."""
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_INTERFACES: True,
+            CONF_SYNC_VPN: True,
+        }
+    )
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    now = time.time()
+    coord._state = {
+        "interfaces": {"eth0": {"inbytes": 200, "outbytes": 100, "inpkts": 300, "outpkts": 150}},
+        "openvpn": {"servers": {"s1": {"total_bytes_recv": 1000, "total_bytes_sent": 2000}}},
+        "previous_state": {
+            "interfaces": {"eth0": {"inbytes": 100, "outbytes": 50, "inpkts": 100, "outpkts": 50}},
+            "openvpn": {"servers": {"s1": {"total_bytes_recv": 500, "total_bytes_sent": 1000}}},
+            "update_time": now - 2,
+        },
+        "update_time": now,
+    }
+
+    await coord._calculate_entity_speeds()
+
+    eth0 = coord._state["interfaces"]["eth0"]
+    assert eth0["inbytes_kilobytes_per_second"] == 0
+    assert eth0["outbytes_kilobytes_per_second"] == 0
+    assert eth0["inpkts_packets_per_second"] == 100
+    assert eth0["outpkts_packets_per_second"] == 50
+
+    s1 = coord._state["openvpn"]["servers"]["s1"]
+    assert "total_bytes_recv_kilobytes_per_second" in s1
+    assert "total_bytes_sent_kilobytes_per_second" in s1
+    assert s1["total_bytes_recv_kilobytes_per_second"] == 0
+    assert s1["total_bytes_sent_kilobytes_per_second"] == 0
 
 
 @pytest.mark.asyncio
@@ -664,7 +719,12 @@ async def test_calculate_entity_speeds_treats_counter_decrease_as_reset(
 ) -> None:
     """Counter resets should not be reported as traffic spikes."""
     entry = make_config_entry(
-        {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_INTERFACES: True,
+            CONF_SYNC_VPN: True,
+            CONF_SYNC_LIVE_TRAFFIC: False,
+        }
     )
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -710,7 +770,12 @@ async def test_calculate_entity_speeds_skips_missing_counter_values(
 ) -> None:
     """Missing counter values should not abort a coordinator refresh."""
     entry = make_config_entry(
-        {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_INTERFACES: True,
+            CONF_SYNC_VPN: True,
+            CONF_SYNC_LIVE_TRAFFIC: False,
+        }
     )
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -1229,7 +1294,7 @@ async def test_calculate_speed_bytes_case() -> None:
     )
     assert new_prop == "inbytes_kilobytes_per_second"
     assert isinstance(value, int)
-    assert value == pytest.approx(0.5, abs=0.5)  # 500 B/s -> 0.5 KB/s, allow ±0.5 tolerance
+    assert value == 0  # 500 B/s -> 0.5 KB/s, round() to 0
 
 
 def test_build_categories_returns_empty_when_no_config(

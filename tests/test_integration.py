@@ -161,6 +161,27 @@ class _FakeRuntimeClient:
         return {"name": "sys"}
 
 
+class _FakeLiveTrafficCoordinator:
+    """No-op live traffic coordinator for the lightweight integration harness."""
+
+    def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+        """Initialize empty live traffic state for entry setup tests."""
+        self.data: dict[str, Any] = {"interfaces": {}}
+        self.last_update_success: bool = False
+
+    async def async_start(self) -> None:
+        """Satisfy live traffic startup without creating a background task."""
+
+    async def async_shutdown(self) -> None:
+        """Satisfy live traffic shutdown without a background task."""
+
+
+@pytest.fixture(autouse=True)
+def _patch_live_traffic_coordinator(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Use a no-op stream coordinator with this module's lightweight fake hass."""
+    monkeypatch.setattr(init_mod, "OPNsenseLiveTrafficCoordinator", _FakeLiveTrafficCoordinator)
+
+
 class _FakeCoordinator:
     """Minimal coordinator stand‑in used for async_setup_entry tests."""
 

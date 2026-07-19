@@ -26,6 +26,14 @@
 | ----- | ----- |
 | Status: Interfaces | /api/interfaces/overview/export |
 
+## Live interface traffic
+
+| OPNsense Permission | API Endpoints |
+| ----- | ----- |
+| Reporting: Traffic | /api/diagnostics/traffic/stream/1 |
+
+This option depends on "Interface information". If disabled, interface traffic rates are calculated from coordinator polling instead of the live stream.
+
 ## DHCP leases
 
 | OPNsense Permission | API Endpoints |

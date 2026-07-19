@@ -41,6 +41,8 @@ from custom_components.opnsense.const import (
     CONF_ENTRY_TYPE,
     CONF_GRANULAR_SYNC_OPTIONS,
     CONF_SYNC_FIREWALL_AND_NAT,
+    CONF_SYNC_INTERFACES,
+    CONF_SYNC_LIVE_TRAFFIC,
     CONF_TLS_INSECURE,
     DOMAIN,
     ENTRY_TYPE_CARP,
@@ -249,6 +251,186 @@ async def test_async_setup_entry_validates_client_before_probes(
     assert entry.runtime_data.device_unique_id == "dev1"
     expected_platforms = [Platform.SENSOR, Platform.SWITCH, Platform.BINARY_SENSOR, Platform.UPDATE]
     assert entry.runtime_data.loaded_platforms == expected_platforms
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("sync_live_traffic", "sync_interfaces", "should_start"),
+    [
+        pytest.param(True, True, True, id="enabled"),
+        pytest.param(None, True, True, id="enabled-default-live-traffic"),
+        pytest.param(False, True, False, id="disabled-live-traffic-flag"),
+        pytest.param(True, False, False, id="disabled-missing-interfaces"),
+    ],
+)
+async def test_async_setup_entry_live_traffic_coordinator_startup_cases(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator_capture: Any,
+    fake_client: Any,
+    fake_coordinator: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+    sync_live_traffic: bool | None,
+    sync_interfaces: bool,
+    should_start: bool,
+) -> None:
+    """Live traffic coordinator creation/launch should honor live and interface toggles."""
+    patch_opnsense_client(monkeypatch, init_mod, fake_client())
+    monkeypatch.setattr(
+        init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
+    )
+
+    live_traffic_instances: list[Any] = []
+
+    def _live_factory(**_kwargs: Any) -> Any:
+        """Create and return a fake live-traffic coordinator.
+
+        Args:
+            **_kwargs: Unused constructor args forwarded from setup code.
+
+        Returns:
+            Any: A fake coordinator with `async_start` and `async_shutdown` mocks.
+        """
+        live = MagicMock()
+        live.async_start = AsyncMock(return_value=True)
+        live.async_shutdown = AsyncMock(return_value=True)
+        live_traffic_instances.append(live)
+        return live
+
+    monkeypatch.setattr(init_mod, "OPNsenseLiveTrafficCoordinator", _live_factory)
+
+    entry_data = {
+        CONF_URL: "http://1.2.3.4",
+        CONF_USERNAME: "u",
+        CONF_PASSWORD: "p",
+        CONF_DEVICE_UNIQUE_ID: "dev1",
+        CONF_SYNC_INTERFACES: sync_interfaces,
+    }
+    if sync_live_traffic is not None:
+        entry_data[CONF_SYNC_LIVE_TRAFFIC] = sync_live_traffic
+
+    entry = make_config_entry(
+        data=entry_data,
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
+    )
+
+    hass = cast("MagicMock", ph_hass)
+    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+    hass.config_entries.async_reload = MagicMock()
+
+    hass.data = {}
+
+    res = await init_mod.async_setup_entry(hass, entry)
+    assert res is True
+    if should_start:
+        assert len(live_traffic_instances) == 1
+        assert entry.runtime_data.live_traffic_coordinator is live_traffic_instances[0]
+        live_traffic_instances[0].async_start.assert_awaited_once()
+    else:
+        assert not live_traffic_instances
+        assert entry.runtime_data.live_traffic_coordinator is None
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_shuts_down_live_traffic_coordinator_when_forwarding_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    fake_client: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Live coordinator should be started after first refresh and shutdown on setup failure."""
+    patch_opnsense_client(monkeypatch, init_mod, fake_client())
+    live_traffic_setup_events: list[str] = []
+
+    coordinator = _make_setup_coordinator()
+
+    async def _main_first_refresh() -> bool:
+        """Simulate a successful first refresh of the main coordinator.
+
+        Returns:
+            bool: ``True`` when the first refresh is successful.
+        """
+        live_traffic_setup_events.append("main_refresh")
+        return True
+
+    coordinator.async_config_entry_first_refresh = AsyncMock(side_effect=_main_first_refresh)
+
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+
+    def _live_factory(**_kwargs: Any) -> Any:
+        """Create and return a fake live-traffic coordinator.
+
+        Args:
+            **_kwargs: Unused constructor args forwarded from setup code.
+
+        Returns:
+            Any: A fake coordinator with `async_start` and `async_shutdown` mocks.
+        """
+        live = MagicMock()
+
+        async def _start() -> None:
+            """Record that live traffic startup was invoked."""
+            live_traffic_setup_events.append("live_start")
+
+        async def _shutdown() -> None:
+            """Record that live traffic shutdown was invoked."""
+            live_traffic_setup_events.append("live_shutdown")
+
+        live.async_start = AsyncMock(side_effect=_start)
+        live.async_shutdown = AsyncMock(side_effect=_shutdown)
+        return live
+
+    monkeypatch.setattr(init_mod, "OPNsenseLiveTrafficCoordinator", _live_factory)
+
+    async def _platform_forward_failure(*_args: Any, **_kwargs: Any) -> None:
+        """Raise an error to emulate platform forwarding failures.
+
+        Args:
+            *_args: Positional args forwarded by HA setup flow.
+            **_kwargs: Keyword args forwarded by HA setup flow.
+
+        Raises:
+            RuntimeError: Simulated platform forwarding failure.
+        """
+        live_traffic_setup_events.append("platform_forward")
+        raise RuntimeError("platform forwarding failed")
+
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_SYNC_INTERFACES: True,
+            CONF_SYNC_LIVE_TRAFFIC: True,
+        },
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
+    )
+
+    hass = cast("MagicMock", ph_hass)
+    hass.config_entries.async_forward_entry_setups = AsyncMock(
+        side_effect=_platform_forward_failure
+    )
+    hass.config_entries.async_reload = MagicMock()
+    hass.data = {}
+    client = fake_client()()
+    client.async_close = AsyncMock(
+        side_effect=lambda: live_traffic_setup_events.append("client_close")
+    )
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
+    )
+
+    with pytest.raises(RuntimeError, match="platform forwarding failed"):
+        await init_mod.async_setup_entry(hass, entry)
+
+    assert live_traffic_setup_events == [
+        "main_refresh",
+        "live_start",
+        "platform_forward",
+        "live_shutdown",
+        "client_close",
+    ]
 
 
 @pytest.mark.asyncio
@@ -1240,17 +1422,37 @@ async def test_async_unload_entry_and_pop(
     entry.as_dict = lambda: {"id": "x"}
     # use the constant names used by the integration
     setattr(entry.runtime_data, LOADED_PLATFORMS, ["p1"])
+    unload_order: list[str] = []
+
+    def _record_client_close() -> None:
+        """Record client shutdown order."""
+        unload_order.append("client_close")
+
+    def _record_live_shutdown() -> None:
+        """Record live traffic shutdown order."""
+        unload_order.append("live_shutdown")
+
+    def _record_platform_unload(_entry: Any, _platforms: Any) -> bool:
+        """Record platform unload order and return success."""
+        unload_order.append("platforms_unloaded")
+        return True
+
     fake_client = MagicMock()
-    fake_client.async_close = AsyncMock()
+    fake_client.async_close = AsyncMock(side_effect=_record_client_close)
+    fake_live_traffic = MagicMock()
+    fake_live_traffic.async_shutdown = AsyncMock(side_effect=_record_live_shutdown)
     setattr(entry.runtime_data, OPNSENSE_CLIENT, fake_client)
+    entry.runtime_data.live_traffic_coordinator = fake_live_traffic
 
     hass = ph_hass
-    hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
+    hass.config_entries.async_unload_platforms = AsyncMock(side_effect=_record_platform_unload)
     hass.data = {DOMAIN: {entry.entry_id: fake_client}}
     res = await init_mod.async_unload_entry(hass, entry)
     assert res is True
     assert entry.entry_id not in hass.data[DOMAIN]
+    assert unload_order == ["platforms_unloaded", "live_shutdown", "client_close"]
     fake_client.async_close.assert_awaited_once()
+    fake_live_traffic.async_shutdown.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -3167,7 +3369,10 @@ async def test_async_unload_entry_unload_fails(
     setattr(entry.runtime_data, LOADED_PLATFORMS, ["p1"])
     fake_client = MagicMock()
     fake_client.async_close = AsyncMock()
+    fake_live_traffic = MagicMock()
+    fake_live_traffic.async_shutdown = AsyncMock()
     setattr(entry.runtime_data, OPNSENSE_CLIENT, fake_client)
+    entry.runtime_data.live_traffic_coordinator = fake_live_traffic
 
     hass = ph_hass
     # unload_platforms returns False
@@ -3178,6 +3383,7 @@ async def test_async_unload_entry_unload_fails(
     # hass.data should still have the entry
     assert entry.entry_id in hass.data[DOMAIN]
     fake_client.async_close.assert_not_awaited()
+    fake_live_traffic.async_shutdown.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -4214,6 +4420,7 @@ async def test_async_setup_entry_cleans_up_when_platform_forwarding_fails(
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
             CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_SYNC_INTERFACES: False,
         },
         options={CONF_DEVICE_TRACKER_ENABLED: False},
     )
@@ -4690,6 +4897,7 @@ async def test_async_setup_entry_deletes_stale_device_id_mismatch_issue(
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
             CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_SYNC_INTERFACES: False,
         },
         options={CONF_DEVICE_TRACKER_ENABLED: False},
     )
@@ -4792,6 +5000,7 @@ async def test_async_setup_entry_deletes_stale_mismatch_issue_only_on_matching_v
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
             CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_SYNC_INTERFACES: False,
         },
         options={CONF_DEVICE_TRACKER_ENABLED: False},
     )
@@ -5133,6 +5342,7 @@ async def test_async_setup_entry_registers_update_listener_after_forwarding(
             CONF_USERNAME: "u",
             CONF_PASSWORD: "p",
             CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_SYNC_INTERFACES: False,
         },
         options={CONF_DEVICE_TRACKER_ENABLED: False},
     )

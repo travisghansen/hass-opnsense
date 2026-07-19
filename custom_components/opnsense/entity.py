@@ -12,14 +12,17 @@ from homeassistant.util import slugify
 from .const import DOMAIN, OPNSENSE_CLIENT
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .helpers import config_entry_identity, dict_get
+from .traffic_coordinator import OPNsenseLiveTrafficCoordinator
 
 if TYPE_CHECKING:
     from aiopnsense import OPNsenseClient
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
+type OPNsenseEntityCoordinator = OPNsenseDataUpdateCoordinator | OPNsenseLiveTrafficCoordinator
 
-class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
+
+class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseEntityCoordinator]):
     """Base entity for OPNsense."""
 
     _attr_has_entity_name = True
@@ -71,7 +74,7 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
     def __init__(
         self,
         config_entry: ConfigEntry,
-        coordinator: OPNsenseDataUpdateCoordinator,
+        coordinator: OPNsenseEntityCoordinator,
         unique_id_suffix: str | None = None,
         name_suffix: str | None = None,
     ) -> None:
@@ -84,7 +87,7 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseDataUpdateCoordinator]):
             name_suffix: Optional display-name suffix shown in Home Assistant.
         """
         self.config_entry: ConfigEntry = config_entry
-        self.coordinator: OPNsenseDataUpdateCoordinator = coordinator
+        self.coordinator: OPNsenseEntityCoordinator = coordinator
         # Keep the existing attribute name for compatibility; this is now the
         # identity prefix for both device and CARP config entry modes.
         self._device_unique_id: str = config_entry_identity(config_entry)
