@@ -685,7 +685,7 @@ def _build_interface_sensor_description(
         "outbytes_kilobytes_per_second",
     }
     suggested_display_precision = None
-    suggested_unit_of_measurement = None
+    suggested_unit_of_measurement: UnitOfDataRate | UnitOfInformation | None = None
 
     if "_packets_per_second" in prop_name:
         native_unit_of_measurement = DATA_RATE_PACKETS_PER_SECOND
@@ -693,6 +693,7 @@ def _build_interface_sensor_description(
     if "_kilobytes_per_second" in prop_name:
         native_unit_of_measurement = UnitOfDataRate.KILOBYTES_PER_SECOND
         device_class = SensorDeviceClass.DATA_RATE
+        suggested_unit_of_measurement = UnitOfDataRate.MEGABITS_PER_SECOND
 
     if native_unit_of_measurement is None:
         if "bytes" in prop_name:

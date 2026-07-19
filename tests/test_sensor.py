@@ -5527,6 +5527,16 @@ async def test_compile_interface_sensors_routes_rate_keys_to_live_traffic_coordi
         assert slugify(expected_name) == expected_object_id
         assert sensor.unique_id == slugify(f"id_{key}")
 
+    for key in (
+        "interface.eth0.inbytes_kilobytes_per_second",
+        "interface.eth0.outbytes_kilobytes_per_second",
+    ):
+        description = next(
+            entity.entity_description for entity in entities if entity.entity_description.key == key
+        )
+        assert description.native_unit_of_measurement == UnitOfDataRate.KILOBYTES_PER_SECOND
+        assert description.suggested_unit_of_measurement == UnitOfDataRate.MEGABITS_PER_SECOND
+
     for key in normal_sensor_keys:
         sensor = next(entity for entity in entities if entity.entity_description.key == key)
         assert isinstance(sensor, OPNsenseInterfaceSensor)
