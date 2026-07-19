@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from aiopnsense.exceptions import OPNsenseError
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import CONF_SYNC_LIVE_TRAFFIC, DEFAULT_SYNC_OPTION_VALUE
@@ -40,6 +40,7 @@ _LIVE_TRAFFIC_INTERFACE_FIELDS: tuple[str, ...] = (
     "mac",
 )
 _RETRY_DELAYS_SECONDS: tuple[int, ...] = (5, 10, 20, 30)
+_AGGREGATE_LOG_SAMPLE_COUNT: int = 60
 
 
 class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -79,6 +80,8 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._task: asyncio.Task[None] | None = None
         self._shutdown_requested: bool = False
         self._failure_count: int = 0
+        self._samples_since_log: int = 0
+        self._interface_updates_since_log: int = 0
         self.data = {"interfaces": {}}
 
     async def async_start(self) -> None:
@@ -234,8 +237,37 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         host_firmware_version = main_state.get("host_firmware_version")
         if host_firmware_version is not None:
             merged_data["host_firmware_version"] = host_firmware_version
-        self.async_set_updated_data(merged_data)
+        self._async_publish_data(merged_data)
         return True
+
+    @callback
+    def _async_publish_data(self, data: dict[str, Any]) -> None:
+        """Publish push data and periodically summarize live traffic activity.
+
+        This coordinator has no scheduled refresh, so it can notify listeners
+        directly without the per-sample debug message emitted by
+        ``DataUpdateCoordinator.async_set_updated_data``.
+
+        Args:
+            data: Merged interface metadata and live traffic rates.
+        """
+        self.data = data
+        self.last_update_success = True
+        self._samples_since_log += 1
+        interfaces = data.get("interfaces")
+        if isinstance(interfaces, Mapping):
+            self._interface_updates_since_log += len(interfaces)
+
+        if self._samples_since_log >= _AGGREGATE_LOG_SAMPLE_COUNT:
+            _LOGGER.debug(
+                "Processed %d live interface traffic samples covering %d interface updates",
+                self._samples_since_log,
+                self._interface_updates_since_log,
+            )
+            self._samples_since_log = 0
+            self._interface_updates_since_log = 0
+
+        self.async_update_listeners()
 
     def _read_live_traffic_flag(self) -> bool:
         """Return whether live traffic should be synchronized for this entry."""

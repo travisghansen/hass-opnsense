@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import AsyncIterator, Callable
+import logging
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -36,6 +37,37 @@ class _FakeStreamClient(OPNsenseClient):
 def test_live_traffic_coordinator_rejects_invalid_rates(raw_rate: float) -> None:
     """Negative and non-finite stream rates should not enter coordinator data."""
     assert OPNsenseLiveTrafficCoordinator._map_stream_rate("rx_bytes_per_second", raw_rate) is None
+
+
+def test_live_traffic_coordinator_aggregates_sample_logging(
+    caplog: pytest.LogCaptureFixture,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Live samples should notify listeners without logging every pushed update."""
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_LIVE_TRAFFIC: True})
+    main_coordinator = MagicMock()
+    main_coordinator.data = {"interfaces": {"wan": {"name": "WAN"}}}
+    coordinator = OPNsenseLiveTrafficCoordinator(
+        hass=MagicMock(),
+        config_entry=entry,
+        coordinator=main_coordinator,
+        client=_FakeStreamClient(payloads=[]),
+    )
+    listener = MagicMock()
+    coordinator.async_add_listener(listener)
+    caplog.set_level(logging.DEBUG, logger="custom_components.opnsense.traffic_coordinator")
+
+    payload = {"interfaces": {"wan": {"rx_bytes_per_second": 1000}}}
+    for _ in range(60):
+        assert coordinator._consume_payload(payload) is True
+
+    assert listener.call_count == 60
+    messages = [record.getMessage() for record in caplog.records]
+    assert not any("Manually updated" in message for message in messages)
+    assert (
+        messages.count("Processed 60 live interface traffic samples covering 60 interface updates")
+        == 1
+    )
 
 
 @pytest.mark.asyncio
