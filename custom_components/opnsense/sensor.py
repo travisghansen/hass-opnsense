@@ -2250,12 +2250,26 @@ class OPNsenseLiveTrafficSensor(OPNsenseInterfaceSensor):
         """
         live_state = super()._coordinator_mapping()
         key_parts = self.entity_description.key.split(".", 1)
-        state_path = f"interfaces.{key_parts[1]}" if len(key_parts) == 2 else ""
+        if len(key_parts) != 2:
+            polling_state = getattr(self._polling_coordinator, "data", None)
+            return polling_state if isinstance(polling_state, MutableMapping) else None
+        interface_and_property = key_parts[1]
+        interface_parts = interface_and_property.rsplit(".", 1)
+        if len(interface_parts) != 2:
+            polling_state = getattr(self._polling_coordinator, "data", None)
+            return polling_state if isinstance(polling_state, MutableMapping) else None
+        interface_name, property_name = interface_parts
+        if not isinstance(live_state, MutableMapping):
+            polling_state = getattr(self._polling_coordinator, "data", None)
+            return polling_state if isinstance(polling_state, MutableMapping) else None
+        live_interfaces = dict_get(live_state, "interfaces")
         if (
             self.coordinator.last_update_success
             and live_state is not None
-            and state_path
-            and dict_get(live_state, state_path) is not None
+            and isinstance(live_interfaces, MutableMapping)
+            and interface_name in live_interfaces
+            and isinstance(live_interfaces[interface_name], MutableMapping)
+            and property_name in live_interfaces[interface_name]
         ):
             return live_state
         polling_state = getattr(self._polling_coordinator, "data", None)

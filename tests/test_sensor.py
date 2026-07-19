@@ -5596,6 +5596,60 @@ async def test_compile_interface_sensors_routes_rate_keys_to_main_coordinator_wh
 
 
 @pytest.mark.asyncio
+async def test_compile_dotted_interface_rate_sensor_prefers_live_traffic_data_when_available(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Rate sensors for dotted interface names should read from live traffic when usable."""
+    main_state = {
+        "interfaces": {
+            "wan.vlan.100": {
+                "name": "WAN VLAN 100",
+                "status": "up",
+                "inbytes_kilobytes_per_second": 10,
+            }
+        }
+    }
+    live_state = {
+        "interfaces": {
+            "wan.vlan.100": {
+                "inbytes_kilobytes_per_second": 50,
+            }
+        }
+    }
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_INTERFACES: True,
+            CONF_SYNC_LIVE_TRAFFIC: True,
+        }
+    )
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = main_state
+    live_traffic_coordinator = MagicMock(spec=OPNsenseLiveTrafficCoordinator)
+    live_traffic_coordinator.data = live_state
+    live_traffic_coordinator.last_update_success = True
+    setattr(entry.runtime_data, COORDINATOR, coordinator)
+    entry.runtime_data.live_traffic_coordinator = live_traffic_coordinator
+
+    entities = await sensor_module._compile_interface_sensors(entry, coordinator, main_state)
+    rate_sensor = next(
+        entity
+        for entity in entities
+        if entity.entity_description.key == "interface.wan.vlan.100.inbytes_kilobytes_per_second"
+    )
+    assert isinstance(rate_sensor, OPNsenseLiveTrafficSensor)
+    assert rate_sensor.coordinator is live_traffic_coordinator
+
+    rate_sensor.hass = MagicMock()
+    rate_sensor.entity_id = "sensor.wan_vlan_100_inbytes_kilobytes_per_second"
+    object.__setattr__(rate_sensor, "async_write_ha_state", lambda: None)
+    rate_sensor._handle_coordinator_update()
+
+    assert rate_sensor.available is True
+    assert rate_sensor.native_value == 50
+
+
+@pytest.mark.asyncio
 async def test_interface_rate_sensor_falls_back_when_live_traffic_is_unavailable(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
