@@ -30,6 +30,7 @@ from custom_components.opnsense.const import (
     CONF_SYNC_FIRMWARE_UPDATES,
     CONF_SYNC_GATEWAYS,
     CONF_SYNC_INTERFACES,
+    CONF_SYNC_LIVE_TRAFFIC,
     CONF_SYNC_NOTICES,
     CONF_SYNC_SERVICES,
     CONF_SYNC_SMART,
@@ -598,7 +599,12 @@ async def test_calculate_entity_speeds_applies_calculations(
 ) -> None:
     """Entity speed calculations should add correct rate keys to state."""
     entry = make_config_entry(
-        {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_INTERFACES: True,
+            CONF_SYNC_VPN: True,
+            CONF_SYNC_LIVE_TRAFFIC: False,
+        }
     )
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -659,12 +665,67 @@ async def test_calculate_entity_speeds_applies_calculations(
 
 
 @pytest.mark.asyncio
+async def test_calculate_entity_speeds_skips_rates_when_live_traffic_enabled(
+    make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
+) -> None:
+    """Skip interface rates but retain VPN rates when live traffic is enabled."""
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_INTERFACES: True,
+            CONF_SYNC_VPN: True,
+            CONF_SYNC_LIVE_TRAFFIC: True,
+        }
+    )
+    client = fake_client()()
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+    now = time.time()
+    coord._state = {
+        "interfaces": {"eth0": {"inbytes": 200, "outbytes": 100, "inpkts": 300, "outpkts": 150}},
+        "openvpn": {"servers": {"s1": {"total_bytes_recv": 1000, "total_bytes_sent": 2000}}},
+        "previous_state": {
+            "interfaces": {"eth0": {"inbytes": 100, "outbytes": 50, "inpkts": 100, "outpkts": 50}},
+            "openvpn": {"servers": {"s1": {"total_bytes_recv": 500, "total_bytes_sent": 1000}}},
+            "update_time": now - 2,
+        },
+        "update_time": now,
+    }
+
+    await coord._calculate_entity_speeds()
+
+    eth0 = coord._state["interfaces"]["eth0"]
+    assert "inbytes_kilobytes_per_second" not in eth0
+    assert "outbytes_kilobytes_per_second" not in eth0
+    assert "inpkts_packets_per_second" not in eth0
+    assert "outpkts_packets_per_second" not in eth0
+
+    s1 = coord._state["openvpn"]["servers"]["s1"]
+    assert "total_bytes_recv_kilobytes_per_second" in s1
+    assert "total_bytes_sent_kilobytes_per_second" in s1
+    assert s1["total_bytes_recv_kilobytes_per_second"] == pytest.approx(0.5, abs=0.5)
+    assert s1["total_bytes_sent_kilobytes_per_second"] == pytest.approx(0.5, abs=0.5)
+
+
+@pytest.mark.asyncio
 async def test_calculate_entity_speeds_treats_counter_decrease_as_reset(
     make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
 ) -> None:
     """Counter resets should not be reported as traffic spikes."""
     entry = make_config_entry(
-        {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_INTERFACES: True,
+            CONF_SYNC_VPN: True,
+            CONF_SYNC_LIVE_TRAFFIC: False,
+        }
     )
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -710,7 +771,12 @@ async def test_calculate_entity_speeds_skips_missing_counter_values(
 ) -> None:
     """Missing counter values should not abort a coordinator refresh."""
     entry = make_config_entry(
-        {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_INTERFACES: True,
+            CONF_SYNC_VPN: True,
+            CONF_SYNC_LIVE_TRAFFIC: False,
+        }
     )
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(

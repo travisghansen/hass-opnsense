@@ -39,6 +39,8 @@ from .const import (
     CONF_DEVICE_TRACKER_ENABLED,
     CONF_DEVICE_TRACKER_SCAN_INTERVAL,
     CONF_DEVICE_UNIQUE_ID,
+    CONF_SYNC_INTERFACES,
+    CONF_SYNC_LIVE_TRAFFIC,
     DEFAULT_DEVICE_TRACKER_ENABLED,
     DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
@@ -82,6 +84,7 @@ from .repairs import (
     is_valid_device_id,
 )
 from .services import async_setup_services
+from .traffic_coordinator import OPNsenseLiveTrafficCoordinator
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -100,6 +103,7 @@ class OPNsenseData:
     opnsense_client: OPNsenseClient
     loaded_platforms: list[Platform]
     device_unique_id: str | None
+    live_traffic_coordinator: OPNsenseLiveTrafficCoordinator | None = None
     repair_reconciliation: RepairReconciliation | None = None
     should_reload: bool = True
 
@@ -567,6 +571,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         config_entry=entry,
     )
     device_tracker_coordinator: OPNsenseDataUpdateCoordinator | None = None
+    live_traffic_coordinator: OPNsenseLiveTrafficCoordinator | None = None
+    should_create_live_traffic_coordinator: bool = config.get(
+        CONF_SYNC_INTERFACES, DEFAULT_SYNC_OPTION_VALUE
+    ) and config.get(CONF_SYNC_LIVE_TRAFFIC, DEFAULT_SYNC_OPTION_VALUE)
 
     setup_succeeded: bool = False
     keep_reconciliation_runtime: bool = False
@@ -644,6 +652,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.warning("Unable to confirm OPNsense Firmware version")
 
         await _async_first_refresh_with_marker_issue(hass, entry, coordinator, repair_marker)
+        if should_create_live_traffic_coordinator:
+            live_traffic_coordinator = OPNsenseLiveTrafficCoordinator(
+                hass=hass,
+                config_entry=entry,
+                coordinator=coordinator,
+                client=client,
+            )
 
         platforms: list[Platform] = PLATFORMS.copy()
         if not device_tracker_enabled and Platform.DEVICE_TRACKER in platforms:
@@ -675,8 +690,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             opnsense_client=client,
             device_unique_id=config_device_id,
             loaded_platforms=platforms,
+            live_traffic_coordinator=live_traffic_coordinator,
             repair_reconciliation=reconciliation,
         )
+
+        if live_traffic_coordinator is not None:
+            await live_traffic_coordinator.async_start()
 
         if device_tracker_enabled and device_tracker_coordinator:
             # Fetch initial data so we have data when entities subscribe
@@ -759,6 +778,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             entry.runtime_data = None
             if device_tracker_coordinator is not None:
                 await device_tracker_coordinator.async_shutdown()
+            if live_traffic_coordinator is not None:
+                await live_traffic_coordinator.async_shutdown()
             await coordinator.async_shutdown()
             if DOMAIN in hass.data:
                 hass.data[DOMAIN].pop(entry.entry_id, None)
@@ -802,9 +823,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("Unloading: %s", entry.as_dict())
     platforms: list[Platform] = getattr(entry.runtime_data, LOADED_PLATFORMS)
     client: OPNsenseClient = getattr(entry.runtime_data, OPNSENSE_CLIENT)
+    live_traffic_coordinator: OPNsenseLiveTrafficCoordinator | None = getattr(
+        entry.runtime_data, "live_traffic_coordinator", None
+    )
     unload_ok: bool = await hass.config_entries.async_unload_platforms(entry, platforms)
 
     if unload_ok:
+        if live_traffic_coordinator is not None:
+            await live_traffic_coordinator.async_shutdown()
         await client.async_close()
         hass.data[DOMAIN].pop(entry.entry_id, None)
 
