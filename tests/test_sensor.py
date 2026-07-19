@@ -4167,6 +4167,98 @@ async def test_compile_nut_sensors_skips_unavailable_or_malformed_payloads(
     assert await sensor_module._compile_nut_sensors(entry, coordinator, state) == []
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("state", "expected_count", "expected_complete"),
+    [
+        pytest.param({}, 0, False, id="missing-nut-payload"),
+        pytest.param({"nut_ups_status": "bad"}, 0, False, id="non-mapping-payload"),
+        pytest.param({"nut_ups_status": {"status": "bad"}}, 0, False, id="non-mapping-status"),
+        pytest.param({"nut_ups_status": {}}, 0, True, id="empty-payload-complete"),
+        pytest.param(
+            {
+                "nut_ups_status": {
+                    "status": {
+                        "ups.status": "OL",
+                        "battery.charge": "100",
+                        "ups.load": "20",
+                    }
+                }
+            },
+            3,
+            True,
+            id="valid-status-maps-to-nut-sensors",
+        ),
+    ],
+)
+async def test_compile_nut_sensors_for_setup_reports_inventory_completeness(
+    make_config_entry: Callable[..., MockConfigEntry],
+    state: dict[str, Any],
+    expected_count: int,
+    expected_complete: bool,
+) -> None:
+    """NUT setup compilation should return completeness when payload shapes match expected contracts."""
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_NUT: True})
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+
+    entities, nut_complete = await sensor_module._compile_nut_sensors_for_setup(
+        entry, coordinator, state
+    )
+
+    assert nut_complete is expected_complete
+    assert len(entities) == expected_count
+    if expected_count:
+        assert all(isinstance(entity, OPNsenseNUTSensor) for entity in entities)
+
+
+@pytest.mark.parametrize(
+    ("description_key", "state"),
+    [
+        pytest.param("nut.ups_status", {"nut_ups_status": "bad"}, id="malformed-status-mapping"),
+        pytest.param(
+            "nut.unknown",
+            {"nut_ups_status": {"status": {"ups.status": "OL", "ups.load": "20"}}},
+            id="unmapped-description-key",
+        ),
+        pytest.param(
+            "nut.battery_charge",
+            {"nut_ups_status": {"status": {"ups.status": "OL", "ups.load": "20"}}},
+            id="missing-raw-metric",
+        ),
+    ],
+)
+def test_nut_sensor_update_marked_unavailable_for_invalid_status_or_key(
+    make_config_entry: Callable[..., MockConfigEntry],
+    description_key: str,
+    state: dict[str, Any],
+) -> None:
+    """NUT sensors should become unavailable when status payload is invalid or sensor key is unmapped."""
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+    description = next(
+        (
+            description
+            for description in sensor_module.STATIC_NUT_SENSORS
+            if description.key == description_key
+        ),
+        None,
+    )
+    if description is None:
+        description = MagicMock()
+        description.key = description_key
+        description.name = "NUT Sensor"
+    sensor = OPNsenseNUTSensor(entry, coordinator, description)
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.ups_nut"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
+
+
 def test_nut_numeric_sensor_becomes_unavailable_for_non_numeric_value(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
