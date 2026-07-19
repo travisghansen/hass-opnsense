@@ -271,6 +271,14 @@ async def test_async_setup_entry_starts_live_traffic_coordinator_when_enabled(
     live_traffic_instances: list[Any] = []
 
     def _live_factory(**_kwargs: Any) -> Any:
+        """Create and return a fake live-traffic coordinator.
+
+        Args:
+            **_kwargs: Unused constructor args forwarded from setup code.
+
+        Returns:
+            Any: A fake coordinator with `async_start` and `async_shutdown` mocks.
+        """
         live = MagicMock()
         live.async_start = AsyncMock(return_value=True)
         live.async_shutdown = AsyncMock(return_value=True)
@@ -324,6 +332,14 @@ async def test_async_setup_entry_starts_live_traffic_coordinator_when_flag_missi
     live_traffic_instances: list[Any] = []
 
     def _live_factory(**_kwargs: Any) -> Any:
+        """Create and return a fake live-traffic coordinator.
+
+        Args:
+            **_kwargs: Unused constructor args forwarded from setup code.
+
+        Returns:
+            Any: A fake coordinator with `async_start` and `async_shutdown` mocks.
+        """
         live = MagicMock()
         live.async_start = AsyncMock(return_value=True)
         live.async_shutdown = AsyncMock(return_value=True)
@@ -381,6 +397,14 @@ async def test_async_setup_entry_does_not_start_live_traffic_coordinator_when_di
     live_traffic_instances: list[Any] = []
 
     def _live_factory(**_kwargs: Any) -> Any:
+        """Create and return a fake live-traffic coordinator.
+
+        Args:
+            **_kwargs: Unused constructor args forwarded from setup code.
+
+        Returns:
+            Any: A fake coordinator with `async_start` and `async_shutdown` mocks.
+        """
         live = MagicMock()
         live.async_start = AsyncMock(return_value=True)
         live.async_shutdown = AsyncMock(return_value=True)
@@ -426,6 +450,11 @@ async def test_async_setup_entry_shuts_down_live_traffic_coordinator_when_forwar
     coordinator = _make_setup_coordinator()
 
     async def _main_first_refresh() -> bool:
+        """Simulate a successful first refresh of the main coordinator.
+
+        Returns:
+            bool: ``True`` when the first refresh is successful.
+        """
         live_traffic_setup_events.append("main_refresh")
         return True
 
@@ -434,12 +463,22 @@ async def test_async_setup_entry_shuts_down_live_traffic_coordinator_when_forwar
     monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
 
     def _live_factory(**_kwargs: Any) -> Any:
+        """Create and return a fake live-traffic coordinator.
+
+        Args:
+            **_kwargs: Unused constructor args forwarded from setup code.
+
+        Returns:
+            Any: A fake coordinator with `async_start` and `async_shutdown` mocks.
+        """
         live = MagicMock()
 
         async def _start() -> None:
+            """Record that live traffic startup was invoked."""
             live_traffic_setup_events.append("live_start")
 
         async def _shutdown() -> None:
+            """Record that live traffic shutdown was invoked."""
             live_traffic_setup_events.append("live_shutdown")
 
         live.async_start = AsyncMock(side_effect=_start)
@@ -449,6 +488,15 @@ async def test_async_setup_entry_shuts_down_live_traffic_coordinator_when_forwar
     monkeypatch.setattr(init_mod, "OPNsenseLiveTrafficCoordinator", _live_factory)
 
     async def _platform_forward_failure(*_args: Any, **_kwargs: Any) -> None:
+        """Raise an error to emulate platform forwarding failures.
+
+        Args:
+            *_args: Positional args forwarded by HA setup flow.
+            **_kwargs: Keyword args forwarded by HA setup flow.
+
+        Raises:
+            RuntimeError: Simulated platform forwarding failure.
+        """
         live_traffic_setup_events.append("platform_forward")
         raise RuntimeError("platform forwarding failed")
 

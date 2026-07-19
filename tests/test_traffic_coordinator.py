@@ -19,15 +19,32 @@ class _FakeStreamClient(OPNsenseClient):
     """Fake OPNsense client for streaming traffic coordinator tests."""
 
     def __init__(self, payloads: list[dict[str, Any]]) -> None:
-        """Store streamed payloads and track stream invocations."""
+        """Store streamed payloads and track stream invocations.
+
+        Args:
+            payloads: Pre-baked payloads emitted by
+                :meth:`stream_interface_traffic`.
+        """
         self._payloads = payloads
         self.stream_calls: list[int] = []
 
     def stream_interface_traffic(self, poll_interval: int = 1) -> AsyncIterator[dict[str, Any]]:
-        """Return an async iterator for the configured payload sequence."""
+        """Return an async iterator for the configured payload sequence.
+
+        Args:
+            poll_interval: Requested polling interval in seconds.
+
+        Returns:
+            AsyncIterator[dict[str, Any]]: Iterator over the configured stream payloads.
+        """
         self.stream_calls.append(poll_interval)
 
         async def _stream() -> AsyncIterator[dict[str, Any]]:
+            """Yield payloads from the configured stream.
+
+            Yields:
+                dict[str, Any]: Payload frames from ``self._payloads``.
+            """
             for payload in self._payloads:
                 yield payload
 
@@ -208,6 +225,16 @@ async def test_live_traffic_coordinator_start_is_idempotent(
     active_tasks: list[asyncio.Task[None]] = []
 
     def _create_task(_hass: Any, _coro: Any, _name: str) -> asyncio.Task[None]:
+        """Capture an async task created by the test harness.
+
+        Args:
+            _hass: Home Assistant instance from the coordinator API.
+            _coro: Coroutine body scheduled by the coordinator.
+            _name: Task name requested by the caller (unused in this test).
+
+        Returns:
+            asyncio.Task[None]: The created asyncio task.
+        """
         task = asyncio.create_task(_coro)
         active_tasks.append(task)
         return task
@@ -353,6 +380,11 @@ async def test_live_traffic_coordinator_consumes_stream_cancelled_error(
     """CancelledError from the stream should propagate to the caller."""
 
     async def _stream() -> AsyncIterator[dict[str, Any]]:
+        """Raise ``asyncio.CancelledError`` as soon as stream iteration starts.
+
+        Raises:
+            asyncio.CancelledError: Stream iteration is intentionally cancelled.
+        """
         raise asyncio.CancelledError
         yield {}
 
@@ -372,6 +404,11 @@ async def test_live_traffic_coordinator_consumes_stream_opnsense_error(
     """OPNsenseError from the stream should be captured as an update failure."""
 
     async def _stream() -> AsyncIterator[dict[str, Any]]:
+        """Raise ``OPNsenseError`` as soon as stream iteration starts.
+
+        Raises:
+            OPNsenseError: Stream iteration raises a stream transport error.
+        """
         raise OPNsenseError("boom")
         yield {}
 
@@ -395,6 +432,11 @@ async def test_live_traffic_run_breaks_when_shutdown_requested_inside_consume_st
     coordinator, _ = _build_test_coordinator(make_config_entry)
 
     async def _consume_and_request_shutdown() -> bool:
+        """Request shutdown and report no payload consumed.
+
+        Returns:
+            bool: ``False`` because no payload was consumed.
+        """
         coordinator._shutdown_requested = True
         return False
 
@@ -423,9 +465,19 @@ async def test_live_traffic_run_sleeps_poll_interval_when_live_traffic_disabled(
     monkeypatch.setattr(coordinator, "_read_live_traffic_flag", MagicMock(return_value=False))
 
     async def _consume_stream() -> bool:
+        """Return ``False`` to indicate no payload was consumed.
+
+        Returns:
+            bool: ``False`` because nothing was consumed.
+        """
         return False
 
     async def _sleep(duration: float) -> None:
+        """Wait expected interval and then request shutdown.
+
+        Args:
+            duration: Delay requested by the coordinator's run loop.
+        """
         assert duration == 2
         coordinator._shutdown_requested = True
 
@@ -455,9 +507,21 @@ async def test_live_traffic_coordinator_records_update_error_on_stream_exception
             """Initialize the stream-error test double without a network session."""
 
         def stream_interface_traffic(self, poll_interval: int = 1) -> AsyncIterator[dict[str, Any]]:
-            """Async iterator that raises a stream parsing exception."""
+            """Return a stream that raises during iteration.
+
+            Args:
+                poll_interval: Requested polling interval in seconds.
+
+            Returns:
+                AsyncIterator[dict[str, Any]]: A stream iterator that raises.
+            """
 
             async def _stream() -> AsyncIterator[dict[str, Any]]:
+                """Raise ``ValueError`` when stream starts.
+
+                Raises:
+                    ValueError: Stream payload contains invalid data.
+                """
                 raise ValueError("bad stream payload")
                 yield {}
 
@@ -528,6 +592,11 @@ async def test_live_traffic_run_applies_backoff_sequence_and_resets_on_success(
     sleep_calls: list[int] = []
 
     async def _fake_sleep(delay: int) -> None:
+        """Record sleep delay and request shutdown after retry backoff caps.
+
+        Args:
+            delay: Delay requested by the coordinator's retry sleep helper.
+        """
         sleep_calls.append(delay)
         if len(sleep_calls) >= 5:
             coordinator._shutdown_requested = True
@@ -542,11 +611,21 @@ async def test_live_traffic_run_applies_backoff_sequence_and_resets_on_success(
     assert coordinator._failure_count == 4
 
     async def _fake_success_sleep(delay: int) -> None:
+        """Request shutdown at the next poll cycle.
+
+        Args:
+            delay: Delay requested by the coordinator's sleep helper.
+        """
         coordinator._shutdown_requested = True
 
     coordinator._failure_count = 7
 
     async def _consume_valid_sample() -> bool:
+        """Consume a valid sample and report success.
+
+        Returns:
+            bool: ``True`` when ``_consume_payload`` accepts the sample.
+        """
         return coordinator._consume_payload({"interfaces": {"wan": {"rx_bytes_per_second": 1000}}})
 
     monkeypatch.setattr(

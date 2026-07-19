@@ -138,7 +138,14 @@ def _is_valid_filesystem_row(filesystem: Any) -> bool:
 def _get_runtime_live_traffic_coordinator(
     config_entry: ConfigEntry,
 ) -> OPNsenseLiveTrafficCoordinator | None:
-    """Return the live traffic coordinator when explicitly attached to runtime data."""
+    """Return the live traffic coordinator attached to runtime data.
+
+    Args:
+        config_entry: Config entry to inspect for runtime state.
+
+    Returns:
+        OPNsenseLiveTrafficCoordinator | None: Coordinator when present, else ``None``.
+    """
     runtime_data = getattr(config_entry, "runtime_data", None)
     coordinator = getattr(runtime_data, "live_traffic_coordinator", None)
     return coordinator if isinstance(coordinator, OPNsenseLiveTrafficCoordinator) else None
@@ -428,7 +435,6 @@ def _create_sensor[SensorT: OPNsenseSensor](
         coordinator: Coordinator providing the OPNsense data for the entity.
         entity_description: Metadata describing the sensor entity.
 
-
     Returns:
         SensorT: Instantiated sensor entity.
     """
@@ -455,7 +461,6 @@ def _create_sensors[SensorT: OPNsenseSensor](
 
     Returns:
         list[SensorT]: Instantiated sensor entities in description order.
-
     """
     return [
         _create_sensor(entity_cls, config_entry, coordinator, entity_description)
@@ -674,7 +679,6 @@ def _build_interface_sensor_description(
 
     Returns:
         SensorEntityDescription: Description for the interface sensor.
-
     """
     state_class: SensorStateClass | None = SensorStateClass.MEASUREMENT
     native_unit_of_measurement = None
@@ -864,7 +868,6 @@ def _build_vpn_sensor_description(
 
     Returns:
         SensorEntityDescription: Description for the VPN sensor entity.
-
     """
     state_class: SensorStateClass | None = None
     native_unit_of_measurement: UnitOfDataRate | UnitOfInformation | None = None
@@ -1434,7 +1437,8 @@ async def _compile_interface_sensors(
         state: Coordinator state snapshot that contains network interface statistics.
 
     Returns:
-        list: Compiled interface sensor entities.
+        list[OPNsenseInterfaceSensor]: Compiled interface sensors; rate properties use
+            ``OPNsenseLiveTrafficSensor`` when live traffic is configured and available.
     """
     if not isinstance(state, MutableMapping):
         return []
@@ -2207,7 +2211,7 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
 
 
 class OPNsenseLiveTrafficSensor(OPNsenseInterfaceSensor):
-    """Class for OPNsense live interface rate sensors."""
+    """Sensor class for live interface rate properties."""
 
     @callback
     def _handle_coordinator_update(self) -> None:

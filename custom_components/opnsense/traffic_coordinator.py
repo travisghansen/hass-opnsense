@@ -85,7 +85,10 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.data = {"interfaces": {}}
 
     async def async_start(self) -> None:
-        """Start the stream loop as an entry-owned background task."""
+        """Start the stream loop as an entry-owned background task.
+
+        The task is created only once; repeated calls are no-ops while it is active.
+        """
         if self._task is not None and not self._task.done():
             return
         self._shutdown_requested = False
@@ -96,7 +99,11 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     async def async_shutdown(self) -> None:
-        """Stop the background stream loop and wait for completion."""
+        """Stop the background stream loop and wait for the task to finish.
+
+        This function cancels the running task and awaits it, forwarding cancellation
+        into the running loop to ensure ``_run`` exits cleanly.
+        """
         self._shutdown_requested = True
         try:
             task = self._task
@@ -113,7 +120,7 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await super().async_shutdown()
 
     async def _run(self) -> None:
-        """Run the stream loop and apply retry behavior on failures."""
+        """Run the stream loop and apply retry/backoff behavior on failures."""
         while not self._shutdown_requested:
             has_sample = await self._consume_stream()
             if self._shutdown_requested:
@@ -135,7 +142,12 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await asyncio.sleep(delay)
 
     def _get_retry_delay(self) -> int:
-        """Return the current retry delay in seconds."""
+        """Return the current retry delay in seconds.
+
+        Returns:
+            int: Retry delay derived from ``_RETRY_DELAYS_SECONDS`` using the current
+                consecutive failure count.
+        """
         if self._failure_count <= 0:
             return _RETRY_DELAYS_SECONDS[0]
         delay_index = min(
@@ -145,7 +157,18 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return _RETRY_DELAYS_SECONDS[delay_index]
 
     async def _consume_stream(self) -> bool:
-        """Consume a single stream cycle and apply any usable rates."""
+        """Consume a single stream cycle and apply any usable rate samples.
+
+        Returns ``True`` only when at least one payload row was successfully converted
+        into interface rates and published to listeners.
+
+        Returns:
+            bool: ``True`` when one or more usable samples were consumed, else
+                ``False``.
+
+        Raises:
+            asyncio.CancelledError: Propagates when the stream is cancelled.
+        """
         had_payload = False
         has_valid_sample = False
         try:
@@ -182,7 +205,15 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return has_valid_sample
 
     def _consume_payload(self, payload: Mapping[str, Any]) -> bool:
-        """Merge a stream payload with coordinator interface metadata."""
+        """Merge a stream payload with coordinator interface metadata.
+
+        Args:
+            payload: Mapping payload from the stream with an ``interfaces`` section.
+
+        Returns:
+            bool: ``True`` when metadata and at least one usable interface row was
+                merged and published.
+        """
         if not isinstance(payload, Mapping):
             _LOGGER.debug("Ignoring non-mapping live traffic payload: %s", type(payload))
             return False
@@ -270,13 +301,26 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.async_update_listeners()
 
     def _read_live_traffic_flag(self) -> bool:
-        """Return whether live traffic should be synchronized for this entry."""
+        """Return whether live traffic should be synchronized for this entry.
+
+        Returns:
+            bool: ``True`` when live traffic is enabled for this config entry.
+        """
         data: Mapping[str, Any] = self._config_entry.data
         return data.get(CONF_SYNC_LIVE_TRAFFIC, DEFAULT_SYNC_OPTION_VALUE)
 
     @staticmethod
     def _map_stream_rate(stream_key: str, raw_rate: Any) -> float | None:
-        """Normalize a stream rate key into Home Assistant payload units."""
+        """Normalize a stream rate key into Home Assistant payload units.
+
+        Args:
+            stream_key: Stream field name from ``_STREAM_RATE_FIELD_MAP``.
+            raw_rate: Incoming raw value to coerce and normalize.
+
+        Returns:
+            float | None: Rounded kilobytes-per-second or packets-per-second value, or
+                ``None`` when invalid.
+        """
         try:
             rate = float(raw_rate)
         except TypeError, ValueError:
