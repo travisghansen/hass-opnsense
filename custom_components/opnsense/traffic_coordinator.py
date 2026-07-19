@@ -113,8 +113,6 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     await task
                 except asyncio.CancelledError:
                     _LOGGER.debug("Live traffic task cancelled during shutdown")
-            if task is not None:
-                self._task = None
         finally:
             self._task = None
             await super().async_shutdown()
@@ -128,9 +126,6 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if has_sample:
                 # Reset consecutive failures once we have usable live traffic.
                 self._failure_count = 0
-            if self.last_update_success:
-                await asyncio.sleep(self._poll_interval)
-                continue
 
             if not self._read_live_traffic_flag():
                 await asyncio.sleep(self._poll_interval)
@@ -169,15 +164,11 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         Raises:
             asyncio.CancelledError: Propagates when the stream is cancelled.
         """
-        had_payload = False
         has_valid_sample = False
         try:
-            stream_interface_traffic = getattr(self._client, "stream_interface_traffic", None)
-            if not callable(stream_interface_traffic):
-                raise TypeError("stream interface not available")
-
-            async for payload in stream_interface_traffic(poll_interval=self._poll_interval):
-                had_payload = True
+            async for payload in self._client.stream_interface_traffic(
+                poll_interval=self._poll_interval
+            ):
                 if self._consume_payload(payload):
                     has_valid_sample = True
         except asyncio.CancelledError:
@@ -191,7 +182,7 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.warning("Live traffic stream failed: %s", err)
             return False
 
-        if not had_payload or not has_valid_sample:
+        if not has_valid_sample:
             self.async_set_update_error(
                 RuntimeError("Live traffic stream ended without valid interface payload")
             )
@@ -202,7 +193,7 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.async_set_update_error(
             RuntimeError("Live traffic stream ended and must be reconnected")
         )
-        return has_valid_sample
+        return True
 
     def _consume_payload(self, payload: Mapping[str, Any]) -> bool:
         """Merge a stream payload with coordinator interface metadata.

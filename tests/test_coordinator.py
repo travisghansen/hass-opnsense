@@ -647,10 +647,10 @@ async def test_calculate_entity_speeds_applies_calculations(
     # Compute expected rounded values
     # inbytes: change = 100 B/s -> 100 / 2 = 50 B/s -> 50 / 1000 = 0.05 KB/s -> round = 0
     # outbytes: change = 50 B/s -> 25 B/s -> 0.025 KB/s -> round = 0
-    assert eth0["inbytes_kilobytes_per_second"] == pytest.approx(0.5, abs=0.5)
-    assert eth0["outbytes_kilobytes_per_second"] == pytest.approx(0.5, abs=0.5)
-    assert eth0["inpkts_packets_per_second"] == pytest.approx(100, abs=0.5)
-    assert eth0["outpkts_packets_per_second"] == pytest.approx(50, abs=0.5)
+    assert eth0["inbytes_kilobytes_per_second"] == 0
+    assert eth0["outbytes_kilobytes_per_second"] == 0
+    assert eth0["inpkts_packets_per_second"] == 100
+    assert eth0["outpkts_packets_per_second"] == 50
 
     # openvpn server s1 expected rates (kilobytes_per_second, rounded)
     assert "openvpn" in coord._state
@@ -660,8 +660,8 @@ async def test_calculate_entity_speeds_applies_calculations(
     assert "total_bytes_sent_kilobytes_per_second" in s1
     # total_bytes_recv: (1000-500)/2 = 250 B/s -> 0.25 KB/s -> round = 0
     # total_bytes_sent: (2000-1000)/2 = 500 B/s -> 0.5 KB/s -> round = 0
-    assert s1["total_bytes_recv_kilobytes_per_second"] == pytest.approx(0.5, abs=0.5)
-    assert s1["total_bytes_sent_kilobytes_per_second"] == pytest.approx(0.5, abs=0.5)
+    assert s1["total_bytes_recv_kilobytes_per_second"] == 0
+    assert s1["total_bytes_sent_kilobytes_per_second"] == 0
 
 
 @pytest.mark.asyncio
@@ -710,8 +710,8 @@ async def test_calculate_entity_speeds_skips_rates_when_live_traffic_enabled(
     s1 = coord._state["openvpn"]["servers"]["s1"]
     assert "total_bytes_recv_kilobytes_per_second" in s1
     assert "total_bytes_sent_kilobytes_per_second" in s1
-    assert s1["total_bytes_recv_kilobytes_per_second"] == pytest.approx(0.5, abs=0.5)
-    assert s1["total_bytes_sent_kilobytes_per_second"] == pytest.approx(0.5, abs=0.5)
+    assert s1["total_bytes_recv_kilobytes_per_second"] == 0
+    assert s1["total_bytes_sent_kilobytes_per_second"] == 0
 
 
 @pytest.mark.asyncio
@@ -1295,7 +1295,7 @@ async def test_calculate_speed_bytes_case() -> None:
     )
     assert new_prop == "inbytes_kilobytes_per_second"
     assert isinstance(value, int)
-    assert value == pytest.approx(0.5, abs=0.5)  # 500 B/s -> 0.5 KB/s, allow ±0.5 tolerance
+    assert value == 0  # 500 B/s -> 0.5 KB/s, round() to 0
 
 
 def test_build_categories_returns_empty_when_no_config(

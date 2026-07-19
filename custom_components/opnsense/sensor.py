@@ -1442,9 +1442,9 @@ async def _compile_interface_sensors(
     """
     if not isinstance(state, MutableMapping):
         return []
-    options: Mapping[str, Any] = getattr(config_entry, "data", {})
-    sync_interfaces: bool = options.get(CONF_SYNC_INTERFACES, DEFAULT_SYNC_OPTION_VALUE)
-    sync_live_traffic: bool = options.get(CONF_SYNC_LIVE_TRAFFIC, DEFAULT_SYNC_OPTION_VALUE)
+    config: Mapping[str, Any] = getattr(config_entry, "data", {})
+    sync_interfaces: bool = config.get(CONF_SYNC_INTERFACES, DEFAULT_SYNC_OPTION_VALUE)
+    sync_live_traffic: bool = config.get(CONF_SYNC_LIVE_TRAFFIC, DEFAULT_SYNC_OPTION_VALUE)
     live_traffic_coordinator: OPNsenseLiveTrafficCoordinator | None = None
     if sync_interfaces and sync_live_traffic:
         live_traffic_coordinator = _get_runtime_live_traffic_coordinator(config_entry)

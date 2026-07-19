@@ -254,15 +254,27 @@ async def test_async_setup_entry_validates_client_before_probes(
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_starts_live_traffic_coordinator_when_enabled(
+@pytest.mark.parametrize(
+    ("sync_live_traffic", "sync_interfaces", "should_start"),
+    [
+        pytest.param(True, True, True, id="enabled"),
+        pytest.param(None, True, True, id="enabled-default-live-traffic"),
+        pytest.param(False, True, False, id="disabled-live-traffic-flag"),
+        pytest.param(True, False, False, id="disabled-missing-interfaces"),
+    ],
+)
+async def test_async_setup_entry_live_traffic_coordinator_startup_cases(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     coordinator_capture: Any,
     fake_client: Any,
     fake_coordinator: Any,
     make_config_entry: Callable[..., MockConfigEntry],
+    sync_live_traffic: bool | None,
+    sync_interfaces: bool,
+    should_start: bool,
 ) -> None:
-    """async_setup_entry should create and start the live traffic coordinator when configured."""
+    """Live traffic coordinator creation/launch should honor live and interface toggles."""
     patch_opnsense_client(monkeypatch, init_mod, fake_client())
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
@@ -287,15 +299,18 @@ async def test_async_setup_entry_starts_live_traffic_coordinator_when_enabled(
 
     monkeypatch.setattr(init_mod, "OPNsenseLiveTrafficCoordinator", _live_factory)
 
+    entry_data = {
+        CONF_URL: "http://1.2.3.4",
+        CONF_USERNAME: "u",
+        CONF_PASSWORD: "p",
+        CONF_DEVICE_UNIQUE_ID: "dev1",
+        CONF_SYNC_INTERFACES: sync_interfaces,
+    }
+    if sync_live_traffic is not None:
+        entry_data[CONF_SYNC_LIVE_TRAFFIC] = sync_live_traffic
+
     entry = make_config_entry(
-        data={
-            CONF_URL: "http://1.2.3.4",
-            CONF_USERNAME: "u",
-            CONF_PASSWORD: "p",
-            CONF_DEVICE_UNIQUE_ID: "dev1",
-            CONF_SYNC_INTERFACES: True,
-            CONF_SYNC_LIVE_TRAFFIC: True,
-        },
+        data=entry_data,
         options={CONF_DEVICE_TRACKER_ENABLED: False},
     )
 
@@ -307,133 +322,13 @@ async def test_async_setup_entry_starts_live_traffic_coordinator_when_enabled(
 
     res = await init_mod.async_setup_entry(hass, entry)
     assert res is True
-    assert len(live_traffic_instances) == 1
-    assert entry.runtime_data.live_traffic_coordinator is live_traffic_instances[0]
-    live_traffic_instances[0].async_start.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_async_setup_entry_starts_live_traffic_coordinator_when_flag_missing_defaults_on(
-    monkeypatch: pytest.MonkeyPatch,
-    ph_hass: Any,
-    coordinator_capture: Any,
-    fake_client: Any,
-    fake_coordinator: Any,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Absent sync_live_traffic uses the default on state and still starts the live coordinator."""
-    patch_opnsense_client(monkeypatch, init_mod, fake_client())
-    monkeypatch.setattr(
-        init_mod,
-        "OPNsenseDataUpdateCoordinator",
-        coordinator_capture.factory(fake_coordinator),
-    )
-
-    live_traffic_instances: list[Any] = []
-
-    def _live_factory(**_kwargs: Any) -> Any:
-        """Create and return a fake live-traffic coordinator.
-
-        Args:
-            **_kwargs: Unused constructor args forwarded from setup code.
-
-        Returns:
-            Any: A fake coordinator with `async_start` and `async_shutdown` mocks.
-        """
-        live = MagicMock()
-        live.async_start = AsyncMock(return_value=True)
-        live.async_shutdown = AsyncMock(return_value=True)
-        live_traffic_instances.append(live)
-        return live
-
-    monkeypatch.setattr(init_mod, "OPNsenseLiveTrafficCoordinator", _live_factory)
-
-    entry = make_config_entry(
-        data={
-            CONF_URL: "http://1.2.3.4",
-            CONF_USERNAME: "u",
-            CONF_PASSWORD: "p",
-            CONF_DEVICE_UNIQUE_ID: "dev1",
-            CONF_SYNC_INTERFACES: True,
-        },
-        options={CONF_DEVICE_TRACKER_ENABLED: False},
-    )
-
-    hass = cast("MagicMock", ph_hass)
-    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
-    hass.config_entries.async_reload = MagicMock()
-    hass.data = {}
-
-    res = await init_mod.async_setup_entry(hass, entry)
-    assert res is True
-    assert len(live_traffic_instances) == 1
-    assert entry.runtime_data.live_traffic_coordinator is live_traffic_instances[0]
-    live_traffic_instances[0].async_start.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("sync_live_traffic", "sync_interfaces"),
-    [(False, True), (True, False)],
-)
-async def test_async_setup_entry_does_not_start_live_traffic_coordinator_when_disabled(
-    monkeypatch: pytest.MonkeyPatch,
-    ph_hass: Any,
-    coordinator_capture: Any,
-    fake_client: Any,
-    fake_coordinator: Any,
-    make_config_entry: Callable[..., MockConfigEntry],
-    sync_live_traffic: bool,
-    sync_interfaces: bool,
-) -> None:
-    """Live traffic coordinator requires both sync_interfaces and sync_live_traffic flags."""
-    patch_opnsense_client(monkeypatch, init_mod, fake_client())
-    monkeypatch.setattr(
-        init_mod,
-        "OPNsenseDataUpdateCoordinator",
-        coordinator_capture.factory(fake_coordinator),
-    )
-
-    live_traffic_instances: list[Any] = []
-
-    def _live_factory(**_kwargs: Any) -> Any:
-        """Create and return a fake live-traffic coordinator.
-
-        Args:
-            **_kwargs: Unused constructor args forwarded from setup code.
-
-        Returns:
-            Any: A fake coordinator with `async_start` and `async_shutdown` mocks.
-        """
-        live = MagicMock()
-        live.async_start = AsyncMock(return_value=True)
-        live.async_shutdown = AsyncMock(return_value=True)
-        live_traffic_instances.append(live)
-        return live
-
-    monkeypatch.setattr(init_mod, "OPNsenseLiveTrafficCoordinator", _live_factory)
-
-    entry = make_config_entry(
-        data={
-            CONF_URL: "http://1.2.3.4",
-            CONF_USERNAME: "u",
-            CONF_PASSWORD: "p",
-            CONF_DEVICE_UNIQUE_ID: "dev1",
-            CONF_SYNC_INTERFACES: sync_interfaces,
-            CONF_SYNC_LIVE_TRAFFIC: sync_live_traffic,
-        },
-        options={CONF_DEVICE_TRACKER_ENABLED: False},
-    )
-
-    hass = cast("MagicMock", ph_hass)
-    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
-    hass.config_entries.async_reload = MagicMock()
-    hass.data = {}
-
-    res = await init_mod.async_setup_entry(hass, entry)
-    assert res is True
-    assert not live_traffic_instances
-    assert entry.runtime_data.live_traffic_coordinator is None
+    if should_start:
+        assert len(live_traffic_instances) == 1
+        assert entry.runtime_data.live_traffic_coordinator is live_traffic_instances[0]
+        live_traffic_instances[0].async_start.assert_awaited_once()
+    else:
+        assert not live_traffic_instances
+        assert entry.runtime_data.live_traffic_coordinator is None
 
 
 @pytest.mark.asyncio

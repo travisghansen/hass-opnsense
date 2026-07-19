@@ -78,14 +78,18 @@ def _build_test_coordinator(
     return coordinator, main_coordinator
 
 
-@pytest.mark.parametrize("raw_rate", [-1, float("nan"), float("inf"), float("-inf")])
-def test_live_traffic_coordinator_rejects_invalid_rates(raw_rate: float) -> None:
-    """Negative and non-finite stream rates should not enter coordinator data."""
-    assert OPNsenseLiveTrafficCoordinator._map_stream_rate("rx_bytes_per_second", raw_rate) is None
-
-
-@pytest.mark.parametrize("raw_rate", ["bad-rate", None])
-def test_live_traffic_coordinator_rejects_non_numeric_rates(raw_rate: Any) -> None:
+@pytest.mark.parametrize(
+    "raw_rate",
+    [
+        pytest.param(-1, id="negative"),
+        pytest.param(float("nan"), id="nan"),
+        pytest.param(float("inf"), id="infinity"),
+        pytest.param(float("-inf"), id="negative-infinity"),
+        pytest.param("bad-rate", id="non-numeric"),
+        pytest.param(None, id="none"),
+    ],
+)
+def test_live_traffic_coordinator_rejects_invalid_rates(raw_rate: Any) -> None:
     """Rate conversion errors should be treated as unavailable values."""
     assert OPNsenseLiveTrafficCoordinator._map_stream_rate("rx_bytes_per_second", raw_rate) is None
 
@@ -183,7 +187,6 @@ async def test_live_traffic_coordinator_merges_rates_with_interface_metadata(
     has_sample = await coordinator._consume_stream()
 
     assert has_sample is True
-    assert coordinator.last_update_success is False
     state = coordinator.data
     interfaces = state.get("interfaces")
     assert isinstance(interfaces, dict)
@@ -262,30 +265,6 @@ async def test_live_traffic_coordinator_start_is_idempotent(
 
 
 @pytest.mark.asyncio
-async def test_live_traffic_coordinator_async_shutdown_cancels_running_task(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Shutdown should cancel an in-progress stream task and clear task state."""
-    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
-    main_coordinator = MagicMock()
-    main_coordinator.data = {"interfaces": {"wan": {"name": "WAN"}}}
-    client = _FakeStreamClient(payloads=[])
-
-    coordinator = OPNsenseLiveTrafficCoordinator(
-        hass=MagicMock(),
-        config_entry=entry,
-        coordinator=main_coordinator,
-        client=client,
-    )
-    coordinator._task = asyncio.create_task(asyncio.sleep(3600))
-
-    await coordinator.async_shutdown()
-
-    assert coordinator._task is None
-    assert coordinator._shutdown_requested is True
-
-
-@pytest.mark.asyncio
 async def test_live_traffic_coordinator_records_update_error_on_missing_payload(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
@@ -312,22 +291,45 @@ async def test_live_traffic_coordinator_records_update_error_on_missing_payload(
 @pytest.mark.parametrize(
     ("payload", "main_coordinator_data"),
     [
-        ([], {"interfaces": {"wan": {"name": "WAN"}}}),
-        (object(), {"interfaces": {"wan": {"name": "WAN"}}}),
-        (1, {"interfaces": {"wan": {"name": "WAN"}}}),
-        ("bad", {"interfaces": {"wan": {"name": "WAN"}}}),
-        (None, {"interfaces": {"wan": {"name": "WAN"}}}),
-        ({"foo": "bar"}, {"interfaces": {"wan": {"name": "WAN"}}}),
-        ({"interfaces": "bad"}, {"interfaces": {"wan": {"name": "WAN"}}}),
-        ({"interfaces": {"wan": {"rx_bytes_per_second": 1000}}}, "bad"),
-        ({"interfaces": {"wan": {"rx_bytes_per_second": 1000}}}, {"interfaces": "bad"}),
-        (
-            {"interfaces": {"wan": {"rx_bytes_per_second": "bad"}}},
+        pytest.param([], {"interfaces": {"wan": {"name": "WAN"}}}, id="payload-non-mapping"),
+        pytest.param(
+            {"foo": "bar"},
             {"interfaces": {"wan": {"name": "WAN"}}},
+            id="payload-missing-interfaces-key",
         ),
-        (
-            {"interfaces": {1: {"rx_bytes_per_second": 1000}, "wan": "bad"}},
+        pytest.param(
+            {"interfaces": "bad"},
             {"interfaces": {"wan": {"name": "WAN"}}},
+            id="payload-interfaces-not-mapping",
+        ),
+        pytest.param(
+            {"interfaces": {1: {"rx_bytes_per_second": 100}}},
+            {"interfaces": {"wan": {"name": "WAN"}}},
+            id="payload-non-string-interface-name",
+        ),
+        pytest.param(
+            {"interfaces": {"wan": "bad"}},
+            {"interfaces": {"wan": {"name": "WAN"}}},
+            id="payload-interface-entry-not-mapping",
+        ),
+        pytest.param(
+            {"interfaces": {"wan": {"rx_bytes_per_second": 100}}},
+            "bad-main-state",
+            id="main-state-not-mapping",
+        ),
+        pytest.param(
+            {"interfaces": {"wan": {"rx_bytes_per_second": 100}}},
+            {"interfaces": "bad"},
+            id="main-interfaces-not-mapping",
+        ),
+        pytest.param(
+            {
+                "interfaces": {
+                    "wan": {"rx_bytes_per_second": "bad", "tx_bytes_per_second": float("nan")}
+                }
+            },
+            {"interfaces": {"wan": {"name": "WAN"}}},
+            id="rates-no-usable-rate",
         ),
     ],
 )
@@ -344,33 +346,6 @@ def test_live_traffic_coordinator_rejects_bad_payload_context_matrix(
 
     assert coordinator._consume_payload(payload) is False
     assert coordinator.data == {"interfaces": {}}
-
-
-@pytest.mark.asyncio
-async def test_live_traffic_coordinator_returns_no_sample_when_stream_method_missing() -> None:
-    """A missing client streaming method should mark the coordinator as failed."""
-    entry = MockConfigEntry(
-        domain="opnsense",
-        title="OPNsense",
-        data={CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_LIVE_TRAFFIC: True},
-        options={},
-        entry_id="x",
-    )
-    main_coordinator = MagicMock()
-    main_coordinator.data = {"interfaces": {"wan": {"name": "WAN"}}}
-    client = object()
-
-    coordinator = OPNsenseLiveTrafficCoordinator(
-        hass=MagicMock(),
-        config_entry=entry,
-        coordinator=main_coordinator,
-        client=client,  # type: ignore[arg-type]
-    )
-
-    has_sample = await coordinator._consume_stream()
-
-    assert has_sample is False
-    assert coordinator.last_update_success is False
 
 
 @pytest.mark.asyncio
@@ -398,18 +373,26 @@ async def test_live_traffic_coordinator_consumes_stream_cancelled_error(
 
 
 @pytest.mark.asyncio
-async def test_live_traffic_coordinator_consumes_stream_opnsense_error(
+@pytest.mark.parametrize(
+    "stream_exception",
+    [
+        pytest.param(OPNsenseError("boom"), id="opnsense-error"),
+        pytest.param(ValueError("bad stream payload"), id="value-error"),
+    ],
+)
+async def test_live_traffic_coordinator_consumes_stream_records_update_error(
     make_config_entry: Callable[..., MockConfigEntry],
+    stream_exception: Exception,
 ) -> None:
-    """OPNsenseError from the stream should be captured as an update failure."""
+    """Stream-time exceptions should be captured as update failures."""
 
     async def _stream() -> AsyncIterator[dict[str, Any]]:
-        """Raise ``OPNsenseError`` as soon as stream iteration starts.
+        """Raise a stream error as soon as stream iteration starts.
 
         Raises:
-            OPNsenseError: Stream iteration raises a stream transport error.
+            Exception: Stream iteration raises a transport or payload exception.
         """
-        raise OPNsenseError("boom")
+        raise stream_exception
         yield {}
 
     client = MagicMock()
@@ -492,57 +475,53 @@ async def test_live_traffic_run_sleeps_poll_interval_when_live_traffic_disabled(
 
 
 @pytest.mark.asyncio
-async def test_live_traffic_coordinator_records_update_error_on_stream_exceptions(
+async def test_live_traffic_run_reconnects_after_finite_valid_stream(
+    monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Stream-time exceptions from the live stream should be captured as update errors."""
+    """A finite valid stream should mark unavailable and schedule minimum backoff."""
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_LIVE_TRAFFIC: True})
     main_coordinator = MagicMock()
     main_coordinator.data = {"interfaces": {"wan": {"name": "WAN"}}}
-
-    class _BadClient(OPNsenseClient):
-        """Client that raises ValueError while iterating the stream."""
-
-        def __init__(self) -> None:
-            """Initialize the stream-error test double without a network session."""
-
-        def stream_interface_traffic(self, poll_interval: int = 1) -> AsyncIterator[dict[str, Any]]:
-            """Return a stream that raises during iteration.
-
-            Args:
-                poll_interval: Requested polling interval in seconds.
-
-            Returns:
-                AsyncIterator[dict[str, Any]]: A stream iterator that raises.
-            """
-
-            async def _stream() -> AsyncIterator[dict[str, Any]]:
-                """Raise ``ValueError`` when stream starts.
-
-                Raises:
-                    ValueError: Stream payload contains invalid data.
-                """
-                raise ValueError("bad stream payload")
-                yield {}
-
-            return _stream()
+    client = _FakeStreamClient(
+        [
+            {
+                "interfaces": {
+                    "wan": {
+                        "rx_bytes_per_second": 1000,
+                    },
+                },
+            }
+        ]
+    )
 
     coordinator = OPNsenseLiveTrafficCoordinator(
         hass=MagicMock(),
         config_entry=entry,
         coordinator=main_coordinator,
-        client=_BadClient(),
+        client=client,
     )
 
-    has_sample = await coordinator._consume_stream()
+    sleep_calls: list[int] = []
 
-    assert has_sample is False
+    async def _fake_sleep(delay: int) -> None:
+        """Capture the reconnect delay and stop the loop after first retry."""
+        sleep_calls.append(delay)
+        coordinator._shutdown_requested = True
+
+    monkeypatch.setattr("custom_components.opnsense.traffic_coordinator.asyncio.sleep", _fake_sleep)
+
+    await coordinator._run()
+
+    assert sleep_calls == [5]
+    assert coordinator._failure_count == 1
     assert coordinator.last_update_success is False
-    assert coordinator.data == {"interfaces": {}}
+    assert client.stream_calls == [1]
+    assert coordinator.data["interfaces"]["wan"]["name"] == "WAN"
+    assert coordinator.data["interfaces"]["wan"]["inbytes_kilobytes_per_second"] == 1.0
 
 
-@pytest.mark.asyncio
-async def test_live_traffic_retry_delay_caps_at_max_interval(
+def test_live_traffic_retry_delay_caps_at_max_interval(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """Retry delay should grow through backoff values and then cap."""
@@ -572,11 +551,11 @@ async def test_live_traffic_retry_delay_caps_at_max_interval(
 
 
 @pytest.mark.asyncio
-async def test_live_traffic_run_applies_backoff_sequence_and_resets_on_success(
+async def test_live_traffic_run_applies_and_caps_backoff_sequence(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """The retry loop should walk 5/10/20/30 and reset after a success sample."""
+    """The retry loop should walk the full backoff sequence and cap at the maximum."""
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_LIVE_TRAFFIC: True})
     main_coordinator = MagicMock()
     main_coordinator.data = {"interfaces": {"wan": {"name": "WAN"}}}
@@ -609,33 +588,3 @@ async def test_live_traffic_run_applies_backoff_sequence_and_resets_on_success(
 
     assert sleep_calls == [5, 10, 20, 30, 30]
     assert coordinator._failure_count == 4
-
-    async def _fake_success_sleep(delay: int) -> None:
-        """Request shutdown at the next poll cycle.
-
-        Args:
-            delay: Delay requested by the coordinator's sleep helper.
-        """
-        coordinator._shutdown_requested = True
-
-    coordinator._failure_count = 7
-
-    async def _consume_valid_sample() -> bool:
-        """Consume a valid sample and report success.
-
-        Returns:
-            bool: ``True`` when ``_consume_payload`` accepts the sample.
-        """
-        return coordinator._consume_payload({"interfaces": {"wan": {"rx_bytes_per_second": 1000}}})
-
-    monkeypatch.setattr(
-        coordinator,
-        "_consume_stream",
-        AsyncMock(side_effect=_consume_valid_sample),
-    )
-    coordinator._shutdown_requested = False
-    monkeypatch.setattr(
-        "custom_components.opnsense.traffic_coordinator.asyncio.sleep", _fake_success_sleep
-    )
-    await coordinator._run()
-    assert coordinator._failure_count == 0

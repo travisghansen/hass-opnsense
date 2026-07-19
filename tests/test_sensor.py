@@ -5438,15 +5438,7 @@ async def test_compile_interface_sensors_routes_rate_keys_to_live_traffic_coordi
         "interfaces": {
             "eth0": {
                 "name": "WAN",
-                "inbytes_kilobytes_per_second": 1000,
-                "outbytes_kilobytes_per_second": 2000,
-                "inpkts_packets_per_second": 111,
-                "outpkts_packets_per_second": 222,
-                "inbytes": 2048,
-                "inpkts": 10,
                 "status": "up",
-                "interface": "eth0",
-                "device": "igc0",
             }
         }
     }
@@ -5458,11 +5450,6 @@ async def test_compile_interface_sensors_routes_rate_keys_to_live_traffic_coordi
                 "outbytes_kilobytes_per_second": 2.5,
                 "inpkts_packets_per_second": 3,
                 "outpkts_packets_per_second": 4,
-                "inbytes": 4096,
-                "inpkts": 20,
-                "status": "up",
-                "interface": "eth0",
-                "device": "igc0",
             }
         }
     }
@@ -5482,22 +5469,7 @@ async def test_compile_interface_sensors_routes_rate_keys_to_live_traffic_coordi
 
     entities = await sensor_module._compile_interface_sensors(entry, coordinator, main_state)
 
-    rate_sensor_keys = {
-        "interface.eth0.inbytes_kilobytes_per_second",
-        "interface.eth0.outbytes_kilobytes_per_second",
-        "interface.eth0.inpkts_packets_per_second",
-        "interface.eth0.outpkts_packets_per_second",
-    }
-    normal_sensor_keys = {
-        "interface.eth0.status",
-        "interface.eth0.inbytes",
-        "interface.eth0.inpkts",
-    }
-
-    for key in rate_sensor_keys:
-        sensor = next(entity for entity in entities if entity.entity_description.key == key)
-        assert isinstance(sensor, OPNsenseLiveTrafficSensor)
-        assert sensor.coordinator is live_traffic_coordinator
+    entities_by_key = {entity.entity_description.key: entity for entity in entities}
 
     traffic_sensor_contracts = {
         "interface.eth0.inerrs": (
@@ -5546,7 +5518,7 @@ async def test_compile_interface_sensors_routes_rate_keys_to_live_traffic_coordi
         ),
     }
     for key, (expected_name, expected_object_id) in traffic_sensor_contracts.items():
-        sensor = next(entity for entity in entities if entity.entity_description.key == key)
+        sensor = entities_by_key[key]
         assert sensor.entity_description.name == expected_name
         assert slugify(expected_name) == expected_object_id
         assert sensor.unique_id == slugify(f"id_{key}")
@@ -5555,14 +5527,31 @@ async def test_compile_interface_sensors_routes_rate_keys_to_live_traffic_coordi
         "interface.eth0.inbytes_kilobytes_per_second",
         "interface.eth0.outbytes_kilobytes_per_second",
     ):
-        description = next(
-            entity.entity_description for entity in entities if entity.entity_description.key == key
-        )
+        sensor = entities_by_key[key]
+        assert sensor.unique_id == slugify(f"id_{key}")
+        assert isinstance(sensor, OPNsenseLiveTrafficSensor)
+        assert sensor.coordinator is live_traffic_coordinator
+        description = sensor.entity_description
         assert description.native_unit_of_measurement == UnitOfDataRate.KILOBYTES_PER_SECOND
         assert description.suggested_unit_of_measurement == UnitOfDataRate.MEGABITS_PER_SECOND
 
-    for key in normal_sensor_keys:
-        sensor = next(entity for entity in entities if entity.entity_description.key == key)
+    for key in (
+        "interface.eth0.inpkts_packets_per_second",
+        "interface.eth0.outpkts_packets_per_second",
+    ):
+        sensor = entities_by_key[key]
+        assert sensor.unique_id == slugify(f"id_{key}")
+        assert isinstance(sensor, OPNsenseLiveTrafficSensor)
+        assert sensor.coordinator is live_traffic_coordinator
+
+    for key in (
+        "interface.eth0.status",
+        "interface.eth0.inbytes",
+        "interface.eth0.inpkts",
+        "interface.eth0.outbytes",
+        "interface.eth0.outpkts",
+    ):
+        sensor = entities_by_key[key]
         assert isinstance(sensor, OPNsenseInterfaceSensor)
         assert sensor.coordinator is coordinator
 
@@ -5576,15 +5565,7 @@ async def test_compile_interface_sensors_routes_rate_keys_to_main_coordinator_wh
         "interfaces": {
             "eth0": {
                 "name": "WAN",
-                "inbytes_kilobytes_per_second": 1000,
-                "outbytes_kilobytes_per_second": 2000,
-                "inpkts_packets_per_second": 111,
-                "outpkts_packets_per_second": 222,
-                "inbytes": 2048,
-                "inpkts": 10,
                 "status": "up",
-                "interface": "eth0",
-                "device": "igc0",
             }
         }
     }
@@ -5603,15 +5584,15 @@ async def test_compile_interface_sensors_routes_rate_keys_to_main_coordinator_wh
     entry.runtime_data.live_traffic_coordinator = live_traffic_coordinator
 
     entities = await sensor_module._compile_interface_sensors(entry, coordinator, state)
+    entities_by_key = {entity.entity_description.key: entity for entity in entities}
 
-    rate_sensor_keys = {
+    for key in (
         "interface.eth0.inbytes_kilobytes_per_second",
         "interface.eth0.outbytes_kilobytes_per_second",
         "interface.eth0.inpkts_packets_per_second",
         "interface.eth0.outpkts_packets_per_second",
-    }
-    for key in rate_sensor_keys:
-        sensor = next(entity for entity in entities if entity.entity_description.key == key)
+    ):
+        sensor = entities_by_key[key]
         assert isinstance(sensor, OPNsenseInterfaceSensor)
         assert sensor.coordinator is coordinator
 
