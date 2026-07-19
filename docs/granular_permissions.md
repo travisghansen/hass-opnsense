@@ -2,7 +2,7 @@
 
 `All pages` grants access to every endpoint and is recommended, but the narrower permissions are below.
 
-This page maps every OPNsense API endpoint used by the integration's `aiopnsense` client to the OPNsense permission that grants access to it. 
+This page maps every OPNsense API endpoint used by the integration's `aiopnsense` client to the OPNsense permission that grants access to it.
 
 Endpoint parameters are shown in braces, for example `{uuid}`. OPNsense firmware before 25.7 uses the camelCase endpoint variant shown in parentheses for endpoints that were renamed to snake_case.
 
