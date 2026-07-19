@@ -1345,7 +1345,14 @@ async def test_build_categories_flag_true_and_false(
     flag: Any,
     expected_keys: Any,
 ) -> None:
-    """Verify categories include keys when flag True and exclude when False."""
+    """Verify a sync flag includes or excludes its coordinator state keys.
+
+    Args:
+        make_config_entry: Fixture that creates Home Assistant config entries.
+        fake_client: Fixture that creates fake OPNsense client classes.
+        flag: Sync option under test.
+        expected_keys: Coordinator state keys controlled by ``flag``.
+    """
     # When flag is True -> expected keys present
     entry_true = make_config_entry(
         {

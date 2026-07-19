@@ -3118,7 +3118,27 @@ def setup_sensor_reconciliation_entry(
     sync_certificates: bool = False,
     opnsense_client: object | None = None,
 ) -> MockConfigEntry:
-    """Create a sensor test entry with coordinator/runtime pre-wired."""
+    """Create a sensor test entry with coordinator runtime data preconfigured.
+
+    Args:
+        make_config_entry: Fixture that creates Home Assistant config entries.
+        coordinator_data: Coordinator state exposed to the sensor platform.
+        sync_telemetry: Whether telemetry sensor synchronization is enabled.
+        sync_vnstat: Whether vnStat sensor synchronization is enabled.
+        sync_speedtest: Whether speed-test sensor synchronization is enabled.
+        sync_nut: Whether NUT UPS sensor synchronization is enabled.
+        sync_smart: Whether SMART sensor synchronization is enabled.
+        sync_gateways: Whether gateway sensor synchronization is enabled.
+        sync_interfaces: Whether interface sensor synchronization is enabled.
+        sync_carp: Whether CARP sensor synchronization is enabled.
+        sync_dhcp_leases: Whether DHCP lease sensor synchronization is enabled.
+        sync_vpn: Whether VPN sensor synchronization is enabled.
+        sync_certificates: Whether certificate sensor synchronization is enabled.
+        opnsense_client: Optional client exposed through the config entry runtime data.
+
+    Returns:
+        MockConfigEntry: Config entry with coordinator and optional client runtime data.
+    """
     entry = make_config_entry(
         {
             CONF_DEVICE_UNIQUE_ID: "id",
@@ -3146,11 +3166,14 @@ def setup_sensor_reconciliation_entry(
 def _setup_entry_with_all_syncs(
     state: dict, make_config_entry: Callable[..., MockConfigEntry]
 ) -> Any:
-    """Setup entry with all syncs.
+    """Set up a config entry with every sensor synchronization option enabled.
 
     Args:
         state: Dictionary containing the initial coordinator state for the entry.
         make_config_entry: Fixture that builds config entries tailored for the test scenario.
+
+    Returns:
+        Any: Tuple containing the configured entry and its coordinator mock.
     """
     entry = make_config_entry()
     base = dict(entry.data)
@@ -4107,7 +4130,11 @@ async def test_async_setup_entry_creates_entities(
 async def test_compile_nut_sensors_exposes_core_metrics_and_status_attributes(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """NUT sensor compilation should expose status, charge, load, and raw details."""
+    """Verify NUT compilation exposes core metrics and raw status attributes.
+
+    Args:
+        make_config_entry: Fixture that creates Home Assistant config entries.
+    """
     state = {
         "nut_ups_status": {
             "status": {
@@ -4159,7 +4186,12 @@ async def test_compile_nut_sensors_exposes_core_metrics_and_status_attributes(
 async def test_compile_nut_sensors_skips_unavailable_or_malformed_payloads(
     make_config_entry: Callable[..., MockConfigEntry], state: dict[str, Any]
 ) -> None:
-    """NUT sensor compilation should skip unavailable and malformed inventories."""
+    """Verify NUT compilation skips unavailable or malformed inventories.
+
+    Args:
+        make_config_entry: Fixture that creates Home Assistant config entries.
+        state: NUT coordinator state under test.
+    """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_NUT: True})
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coordinator.data = state
@@ -4197,7 +4229,14 @@ async def test_compile_nut_sensors_for_setup_reports_inventory_completeness(
     expected_count: int,
     expected_complete: bool,
 ) -> None:
-    """NUT setup compilation should return completeness when payload shapes match expected contracts."""
+    """Verify NUT setup reports inventory completeness for each payload shape.
+
+    Args:
+        make_config_entry: Fixture that creates Home Assistant config entries.
+        state: NUT coordinator state under test.
+        expected_count: Number of sensor entities expected from ``state``.
+        expected_complete: Whether ``state`` is authoritative for reconciliation.
+    """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_NUT: True})
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coordinator.data = state
@@ -4233,7 +4272,13 @@ def test_nut_sensor_update_marked_unavailable_for_invalid_status_or_key(
     description_key: str,
     state: dict[str, Any],
 ) -> None:
-    """NUT sensors should become unavailable when status payload is invalid or sensor key is unmapped."""
+    """Verify invalid NUT status data or keys make a sensor unavailable.
+
+    Args:
+        make_config_entry: Fixture that creates Home Assistant config entries.
+        description_key: Sensor description key under test.
+        state: NUT coordinator state supplied to the sensor.
+    """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coordinator.data = state
@@ -4262,7 +4307,11 @@ def test_nut_sensor_update_marked_unavailable_for_invalid_status_or_key(
 def test_nut_numeric_sensor_becomes_unavailable_for_non_numeric_value(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Numeric NUT sensors should reject values Home Assistant cannot measure."""
+    """Verify numeric NUT sensors reject non-numeric metric values.
+
+    Args:
+        make_config_entry: Fixture that creates Home Assistant config entries.
+    """
     state = {"nut_ups_status": {"status": {"battery.charge": "unknown"}}}
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)

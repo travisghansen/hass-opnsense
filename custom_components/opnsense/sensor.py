@@ -994,7 +994,7 @@ async def _compile_nut_sensors(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> list:
-    """Compile NUT UPS sensors when a status inventory is available.
+    """Compile NUT UPS sensors from a non-empty status inventory.
 
     Args:
         config_entry: Config entry owning the sensors.
@@ -1002,7 +1002,8 @@ async def _compile_nut_sensors(
         state: Coordinator state snapshot containing NUT UPS status data.
 
     Returns:
-        list: Compiled NUT UPS sensor entities.
+        list: NUT UPS sensor entities, or an empty list when the status
+            inventory is missing, malformed, or empty.
     """
     nut_payload = state.get("nut_ups_status")
     if not isinstance(nut_payload, Mapping):
@@ -1023,7 +1024,7 @@ async def _compile_nut_sensors_for_setup(
     coordinator: OPNsenseDataUpdateCoordinator,
     state: MutableMapping[str, Any],
 ) -> tuple[list, bool]:
-    """Compile NUT sensors and report whether its inventory is authoritative.
+    """Compile NUT sensors and report whether the inventory is authoritative.
 
     Args:
         config_entry: Config entry owning the sensors.
@@ -1031,7 +1032,8 @@ async def _compile_nut_sensors_for_setup(
         state: Coordinator state snapshot containing NUT UPS status data.
 
     Returns:
-        tuple[list, bool]: Compiled sensors and inventory completeness.
+        tuple[list, bool]: Compiled NUT sensor entities and whether the NUT
+            inventory is complete enough for entity reconciliation.
     """
     if "nut_ups_status" not in state:
         return [], False
@@ -2021,7 +2023,7 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
 
 
 class OPNsenseNUTSensor(OPNsenseSensor):
-    """Representation of a Network UPS Tools status sensor."""
+    """Represent a Network UPS Tools metric from coordinator status data."""
 
     _VALUE_KEYS: Final[Mapping[str, str]] = {
         "nut.ups_status": "ups.status",
@@ -2032,7 +2034,7 @@ class OPNsenseNUTSensor(OPNsenseSensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        """Update the sensor from the latest NUT UPS status payload."""
+        """Refresh the metric from the latest NUT UPS status payload."""
         nut_payload = self._get_opnsense_state_value("nut_ups_status")
         status = nut_payload.get("status") if isinstance(nut_payload, Mapping) else None
         raw_key = self._VALUE_KEYS.get(self.entity_description.key)
