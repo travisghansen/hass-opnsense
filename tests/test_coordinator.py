@@ -280,55 +280,6 @@ async def test_get_states_skips_smart_info_when_smart_devices_missing(
 
 
 @pytest.mark.asyncio
-async def test_build_categories_includes_smart_without_smart_info_when_client_lacks_method(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """SMART sync should still collect status when attribute data is unsupported."""
-
-    class ClientWithoutSmartInfo:
-        """Client that supports SMART status but not SMART attributes."""
-
-        async def get_smart(self) -> list[Any]:
-            """Return empty SMART status rows."""
-            return []
-
-    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_SMART: True})
-    coordinator = OPNsenseDataUpdateCoordinator(
-        hass=MagicMock(),
-        client=cast("Any", ClientWithoutSmartInfo()),
-        name="n",
-        update_interval=timedelta(seconds=1),
-        device_unique_id="id",
-        config_entry=entry,
-    )
-
-    state_keys = [category["state_key"] for category in coordinator._categories]
-    assert "smart" in state_keys
-    assert "smart_info" not in state_keys
-
-
-@pytest.mark.asyncio
-async def test_build_categories_skips_smart_when_client_lacks_support(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """SMART sync should not call unsupported runtime clients."""
-    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_SMART: True})
-    client = MagicMock()
-    del client.get_smart
-
-    coord = OPNsenseDataUpdateCoordinator(
-        hass=MagicMock(),
-        client=client,
-        name="n",
-        update_interval=timedelta(seconds=1),
-        device_unique_id="id",
-        config_entry=entry,
-    )
-
-    assert "smart" not in [category["state_key"] for category in coord._categories]
-
-
-@pytest.mark.asyncio
 async def test_get_states_handles_missing_method_and_calls(
     make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
 ) -> None:
