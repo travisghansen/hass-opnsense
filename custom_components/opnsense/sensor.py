@@ -989,36 +989,6 @@ async def _compile_static_certificate_sensors(
     )
 
 
-async def _compile_nut_sensors(
-    config_entry: ConfigEntry,
-    coordinator: OPNsenseDataUpdateCoordinator,
-    state: MutableMapping[str, Any],
-) -> list:
-    """Compile NUT UPS sensors from a non-empty status inventory.
-
-    Args:
-        config_entry: Config entry owning the sensors.
-        coordinator: Data update coordinator supplying state.
-        state: Coordinator state snapshot containing NUT UPS status data.
-
-    Returns:
-        list: NUT UPS sensor entities, or an empty list when the status
-            inventory is missing, malformed, or empty.
-    """
-    nut_payload = state.get("nut_ups_status")
-    if not isinstance(nut_payload, Mapping):
-        return []
-    status = nut_payload.get("status")
-    if not isinstance(status, Mapping) or not status:
-        return []
-    return _create_sensors(
-        OPNsenseNUTSensor,
-        config_entry,
-        coordinator,
-        STATIC_NUT_SENSORS,
-    )
-
-
 async def _compile_nut_sensors_for_setup(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
@@ -1040,9 +1010,22 @@ async def _compile_nut_sensors_for_setup(
     nut_payload = state.get("nut_ups_status")
     if not isinstance(nut_payload, Mapping):
         return [], False
-    if nut_payload and not isinstance(nut_payload.get("status"), Mapping):
+    if not nut_payload:
+        return [], True
+    status = nut_payload.get("status")
+    if not isinstance(status, Mapping):
         return [], False
-    return await _compile_nut_sensors(config_entry, coordinator, state), True
+    if not status:
+        return [], True
+    return (
+        _create_sensors(
+            OPNsenseNUTSensor,
+            config_entry,
+            coordinator,
+            STATIC_NUT_SENSORS,
+        ),
+        True,
+    )
 
 
 async def _compile_vnstat_sensors(
