@@ -2211,14 +2211,67 @@ class OPNsenseInterfaceSensor(OPNsenseSensor):
 
 
 class OPNsenseLiveTrafficSensor(OPNsenseInterfaceSensor):
-    """Sensor class for live interface rate properties."""
+    """Sensor class that prefers live interface rates with a polling fallback."""
+
+    def __init__(
+        self,
+        config_entry: ConfigEntry,
+        coordinator: OPNsenseEntityCoordinator,
+        entity_description: SensorEntityDescription,
+        unique_id_suffix: str | None = None,
+    ) -> None:
+        """Initialize a live traffic sensor and retain its polling coordinator.
+
+        Args:
+            config_entry: Config entry that owns this entity.
+            coordinator: Live traffic coordinator providing push updates.
+            entity_description: Metadata describing the interface rate sensor.
+            unique_id_suffix: Optional stable suffix for the entity unique ID.
+        """
+        super().__init__(
+            config_entry,
+            coordinator,
+            entity_description,
+            unique_id_suffix,
+        )
+        polling_coordinator = getattr(config_entry.runtime_data, COORDINATOR, None)
+        self._polling_coordinator: OPNsenseDataUpdateCoordinator | None = (
+            polling_coordinator
+            if isinstance(polling_coordinator, OPNsenseDataUpdateCoordinator)
+            else None
+        )
+
+    def _coordinator_mapping(self) -> MutableMapping[str, Any] | None:
+        """Return live data when usable, otherwise polling-derived interface rates.
+
+        Returns:
+            MutableMapping[str, Any] | None: Coordinator data containing this sensor's
+                rate, preferring the live stream over the polling coordinator.
+        """
+        live_state = super()._coordinator_mapping()
+        key_parts = self.entity_description.key.split(".", 1)
+        state_path = f"interfaces.{key_parts[1]}" if len(key_parts) == 2 else ""
+        if (
+            self.coordinator.last_update_success
+            and live_state is not None
+            and state_path
+            and dict_get(live_state, state_path) is not None
+        ):
+            return live_state
+        polling_state = getattr(self._polling_coordinator, "data", None)
+        return polling_state if isinstance(polling_state, MutableMapping) else None
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to polling updates so fallback rates continue to refresh."""
+        await super().async_added_to_hass()
+        if self._polling_coordinator is not None:
+            self.async_on_remove(
+                self._polling_coordinator.async_add_listener(self._handle_coordinator_update)
+            )
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        """Handle coordinator update for rate entries with live-update gating."""
-        if not self.coordinator.last_update_success:
-            self._mark_unavailable()
-            return
+        """Handle live or polling coordinator updates for interface rates."""
         super()._handle_coordinator_update()
 
 

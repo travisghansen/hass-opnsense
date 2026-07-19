@@ -5596,10 +5596,10 @@ async def test_compile_interface_sensors_routes_rate_keys_to_main_coordinator_wh
 
 
 @pytest.mark.asyncio
-async def test_interface_rate_sensor_available_only_when_coordinator_updates_successfully(
+async def test_interface_rate_sensor_falls_back_when_live_traffic_is_unavailable(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Interface rate sensors should gate availability on their coordinator success flag."""
+    """Interface rate sensors should fall back to polling when live traffic fails."""
     state = {
         "interfaces": {
             "eth0": {
@@ -5616,13 +5616,12 @@ async def test_interface_rate_sensor_available_only_when_coordinator_updates_suc
         {
             CONF_DEVICE_UNIQUE_ID: "id",
             CONF_SYNC_INTERFACES: True,
-            CONF_SYNC_LIVE_TRAFFIC: True,
         }
     )
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coordinator.data = state
     live_traffic_coordinator = MagicMock(spec=OPNsenseLiveTrafficCoordinator)
-    live_traffic_coordinator.data = {"interfaces": {"eth0": {"inbytes_kilobytes_per_second": 10}}}
+    live_traffic_coordinator.data = {"interfaces": {"eth0": {"inbytes_kilobytes_per_second": 20}}}
     live_traffic_coordinator.last_update_success = False
     setattr(entry.runtime_data, COORDINATOR, coordinator)
     entry.runtime_data.live_traffic_coordinator = live_traffic_coordinator
@@ -5647,11 +5646,16 @@ async def test_interface_rate_sensor_available_only_when_coordinator_updates_suc
     object.__setattr__(non_rate_sensor, "async_write_ha_state", lambda: None)
 
     rate_sensor._handle_coordinator_update()
-    assert rate_sensor.available is False
+    assert rate_sensor.available is True
+    assert rate_sensor.native_value == 10
     non_rate_sensor._handle_coordinator_update()
     assert non_rate_sensor.available is True
 
     live_traffic_coordinator.last_update_success = True
     rate_sensor._handle_coordinator_update()
     assert rate_sensor.available is True
-    assert rate_sensor.native_value == 10
+    assert rate_sensor.native_value == 20
+
+    setattr(entry.runtime_data, OPNSENSE_CLIENT, MagicMock())
+    await rate_sensor.async_added_to_hass()
+    coordinator.async_add_listener.assert_called_once_with(rate_sensor._handle_coordinator_update)

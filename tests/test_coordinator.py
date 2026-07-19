@@ -665,16 +665,15 @@ async def test_calculate_entity_speeds_applies_calculations(
 
 
 @pytest.mark.asyncio
-async def test_calculate_entity_speeds_skips_rates_when_live_traffic_enabled(
+async def test_calculate_entity_speeds_preserves_polling_rates_when_live_traffic_enabled(
     make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
 ) -> None:
-    """Skip interface rates but retain VPN rates when live traffic is enabled."""
+    """Preserve polling interface rates as a fallback when live traffic is enabled."""
     entry = make_config_entry(
         {
             CONF_DEVICE_UNIQUE_ID: "id",
             CONF_SYNC_INTERFACES: True,
             CONF_SYNC_VPN: True,
-            CONF_SYNC_LIVE_TRAFFIC: True,
         }
     )
     client = fake_client()()
@@ -702,10 +701,10 @@ async def test_calculate_entity_speeds_skips_rates_when_live_traffic_enabled(
     await coord._calculate_entity_speeds()
 
     eth0 = coord._state["interfaces"]["eth0"]
-    assert "inbytes_kilobytes_per_second" not in eth0
-    assert "outbytes_kilobytes_per_second" not in eth0
-    assert "inpkts_packets_per_second" not in eth0
-    assert "outpkts_packets_per_second" not in eth0
+    assert eth0["inbytes_kilobytes_per_second"] == 0
+    assert eth0["outbytes_kilobytes_per_second"] == 0
+    assert eth0["inpkts_packets_per_second"] == 100
+    assert eth0["outpkts_packets_per_second"] == 50
 
     s1 = coord._state["openvpn"]["servers"]["s1"]
     assert "total_bytes_recv_kilobytes_per_second" in s1

@@ -21,7 +21,6 @@ from .const import (
     CONF_SYNC_FIRMWARE_UPDATES,
     CONF_SYNC_GATEWAYS,
     CONF_SYNC_INTERFACES,
-    CONF_SYNC_LIVE_TRAFFIC,
     CONF_SYNC_NOTICES,
     CONF_SYNC_SERVICES,
     CONF_SYNC_SMART,
@@ -447,9 +446,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         elapsed_time: float = update_time - previous_update_time
         config: Mapping[str, Any] = self.config_entry.data
 
-        sync_live_traffic: bool = config.get(CONF_SYNC_LIVE_TRAFFIC, DEFAULT_SYNC_OPTION_VALUE)
-
-        if config.get(CONF_SYNC_INTERFACES, DEFAULT_SYNC_OPTION_VALUE) and not sync_live_traffic:
+        if config.get(CONF_SYNC_INTERFACES, DEFAULT_SYNC_OPTION_VALUE):
             await self._calculate_interface_speeds(elapsed_time=elapsed_time)
 
         if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):
