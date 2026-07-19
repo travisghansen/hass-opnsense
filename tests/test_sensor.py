@@ -2184,6 +2184,30 @@ def test_build_vpn_sensor_description_uses_gauge_icon_for_generic_properties() -
     assert description.icon == "mdi:gauge"
 
 
+@pytest.mark.parametrize(
+    "prop_name",
+    [
+        "total_bytes_recv_kilobytes_per_second",
+        "total_bytes_sent_kilobytes_per_second",
+    ],
+)
+def test_build_vpn_rate_sensor_description_suggests_megabits_per_second(
+    prop_name: str,
+) -> None:
+    """VPN byte-rate sensors should prefer megabits per second for display."""
+    description = sensor_module._build_vpn_sensor_description(
+        "wireguard",
+        "clients",
+        "uuid1",
+        "wg0",
+        prop_name,
+    )
+
+    assert description.native_unit_of_measurement == UnitOfDataRate.KILOBYTES_PER_SECOND
+    assert description.suggested_unit_of_measurement == UnitOfDataRate.MEGABITS_PER_SECOND
+    assert description.device_class == SensorDeviceClass.DATA_RATE
+
+
 def test_sensor_module_import() -> None:
     """Test that the sensor module can be imported via relative import."""
     assert sensor_module is not None

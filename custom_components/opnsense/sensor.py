@@ -871,12 +871,13 @@ def _build_vpn_sensor_description(
     device_class: SensorDeviceClass | None = None
     enabled_default = False
     suggested_display_precision = None
-    suggested_unit_of_measurement = None
+    suggested_unit_of_measurement: UnitOfDataRate | UnitOfInformation | None = None
 
     if "_kilobytes_per_second" in prop_name:
         native_unit_of_measurement = UnitOfDataRate.KILOBYTES_PER_SECOND
         device_class = SensorDeviceClass.DATA_RATE
         state_class = SensorStateClass.MEASUREMENT
+        suggested_unit_of_measurement = UnitOfDataRate.MEGABITS_PER_SECOND
 
     if native_unit_of_measurement is None and "bytes" in prop_name:
         native_unit_of_measurement = UnitOfInformation.BYTES
