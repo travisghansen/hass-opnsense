@@ -24,6 +24,7 @@ from custom_components.opnsense.const import (
     CONF_SYNC_GATEWAYS,
     CONF_SYNC_INTERFACES,
     CONF_SYNC_LIVE_TRAFFIC,
+    CONF_SYNC_NUT,
     CONF_SYNC_SMART,
     CONF_SYNC_SPEEDTEST,
     CONF_SYNC_TELEMETRY,
@@ -43,6 +44,7 @@ from custom_components.opnsense.sensor import (
     OPNsenseGatewaySensor,
     OPNsenseInterfaceSensor,
     OPNsenseLiveTrafficSensor,
+    OPNsenseNUTSensor,
     OPNsenseSmartSensor,
     OPNsenseSpeedtestSensor,
     OPNsenseStaticKeySensor,
@@ -60,11 +62,13 @@ def test_static_sensor_descriptions_live_in_sensor_module() -> None:
     """Static sensor descriptions should be owned by the sensor platform."""
     telemetry_keys = {description.key for description in sensor_module.STATIC_TELEMETRY_SENSORS}
     certificate_keys = {description.key for description in sensor_module.STATIC_CERTIFICATE_SENSORS}
+    nut_keys = {description.key for description in sensor_module.STATIC_NUT_SENSORS}
 
     assert not hasattr(const_module, "STATIC_TELEMETRY_SENSORS")
     assert not hasattr(const_module, "STATIC_CERTIFICATE_SENSORS")
     assert "telemetry.cpu.usage_total" in telemetry_keys
     assert "certificates" in certificate_keys
+    assert nut_keys == {"nut.ups_status", "nut.battery_charge", "nut.ups_load"}
 
 
 @pytest.mark.asyncio
@@ -3104,6 +3108,7 @@ def setup_sensor_reconciliation_entry(
     sync_telemetry: bool = False,
     sync_vnstat: bool = False,
     sync_speedtest: bool = False,
+    sync_nut: bool = False,
     sync_smart: bool = False,
     sync_gateways: bool = False,
     sync_interfaces: bool = False,
@@ -3120,6 +3125,7 @@ def setup_sensor_reconciliation_entry(
             CONF_SYNC_TELEMETRY: sync_telemetry,
             CONF_SYNC_VNSTAT: sync_vnstat,
             CONF_SYNC_SPEEDTEST: sync_speedtest,
+            CONF_SYNC_NUT: sync_nut,
             CONF_SYNC_SMART: sync_smart,
             CONF_SYNC_GATEWAYS: sync_gateways,
             CONF_SYNC_INTERFACES: sync_interfaces,
@@ -3153,6 +3159,7 @@ def _setup_entry_with_all_syncs(
             CONF_SYNC_TELEMETRY: True,
             CONF_SYNC_VNSTAT: True,
             CONF_SYNC_SPEEDTEST: True,
+            CONF_SYNC_NUT: True,
             CONF_SYNC_SMART: True,
             CONF_SYNC_CERTIFICATES: True,
             CONF_SYNC_VPN: True,
@@ -4094,6 +4101,96 @@ async def test_async_setup_entry_creates_entities(
     await async_setup_entry(MagicMock(), entry, cast("AddEntitiesCallback", add_entities))
     assert created, "no entities created"
     assert any(isinstance(e, OPNsenseStaticKeySensor) for e in created)
+
+
+@pytest.mark.asyncio
+async def test_compile_nut_sensors_exposes_core_metrics_and_status_attributes(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """NUT sensor compilation should expose status, charge, load, and raw details."""
+    state = {
+        "nut_ups_status": {
+            "status": {
+                "ups.status": "OL",
+                "battery.charge": "100",
+                "ups.load": "12.5",
+                "ups.model": "Example UPS",
+            }
+        }
+    }
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_NUT: True})
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+
+    entities = await sensor_module._compile_nut_sensors(entry, coordinator, state)
+
+    assert len(entities) == 3
+    assert all(isinstance(entity, OPNsenseNUTSensor) for entity in entities)
+    assert all(
+        entity.entity_description.entity_registry_enabled_default is False for entity in entities
+    )
+    entities_by_key = {entity.entity_description.key: entity for entity in entities}
+    for entity in entities:
+        entity.hass = MagicMock()
+        entity.entity_id = f"sensor.{entity.entity_description.key.replace('.', '_')}"
+        object.__setattr__(entity, "async_write_ha_state", lambda: None)
+        entity._handle_coordinator_update()
+
+    assert entities_by_key["nut.ups_status"].native_value == "OL"
+    assert (
+        entities_by_key["nut.ups_status"].extra_state_attributes
+        == state["nut_ups_status"]["status"]
+    )
+    assert entities_by_key["nut.battery_charge"].native_value == 100.0
+    assert entities_by_key["nut.ups_load"].native_value == 12.5
+    assert all(entity.available for entity in entities)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "state",
+    [
+        {},
+        {"nut_ups_status": {}},
+        {"nut_ups_status": {"status": {}}},
+        {"nut_ups_status": {"status": "bad"}},
+    ],
+)
+async def test_compile_nut_sensors_skips_unavailable_or_malformed_payloads(
+    make_config_entry: Callable[..., MockConfigEntry], state: dict[str, Any]
+) -> None:
+    """NUT sensor compilation should skip unavailable and malformed inventories."""
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_NUT: True})
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+
+    assert await sensor_module._compile_nut_sensors(entry, coordinator, state) == []
+
+
+def test_nut_numeric_sensor_becomes_unavailable_for_non_numeric_value(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Numeric NUT sensors should reject values Home Assistant cannot measure."""
+    state = {"nut_ups_status": {"status": {"battery.charge": "unknown"}}}
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+    sensor = OPNsenseNUTSensor(
+        entry,
+        coordinator,
+        next(
+            description
+            for description in sensor_module.STATIC_NUT_SENSORS
+            if description.key == "nut.battery_charge"
+        ),
+    )
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.ups_battery_charge"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
 
 
 @pytest.mark.asyncio

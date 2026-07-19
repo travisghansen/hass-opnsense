@@ -50,6 +50,7 @@ CONF_SYNC_TELEMETRY = "sync_telemetry"
 CONF_SYNC_VNSTAT = "sync_vnstat"
 CONF_SYNC_SPEEDTEST = "sync_speedtest"
 CONF_SYNC_SMART = "sync_smart"
+CONF_SYNC_NUT = "sync_nut"
 CONF_SYNC_VPN = "sync_vpn"
 CONF_SYNC_FIRMWARE_UPDATES = "sync_firmware_updates"
 CONF_SYNC_CARP = "sync_carp"
@@ -83,6 +84,7 @@ GRANULAR_SYNC_ITEMS = (
     CONF_SYNC_VNSTAT,
     CONF_SYNC_SPEEDTEST,
     CONF_SYNC_SMART,
+    CONF_SYNC_NUT,
 )
 GRANULAR_SYNC_PREFIX = {
     CONF_SYNC_CARP: ["carp"],
@@ -96,6 +98,7 @@ GRANULAR_SYNC_PREFIX = {
     CONF_SYNC_SERVICES: ["service"],
     CONF_SYNC_SPEEDTEST: ["speedtest"],
     CONF_SYNC_SMART: ["smart"],
+    CONF_SYNC_NUT: ["nut"],
     CONF_SYNC_TELEMETRY: ["telemetry"],
     CONF_SYNC_UNBOUND: ["unbound"],
     CONF_SYNC_VNSTAT: ["vnstat"],

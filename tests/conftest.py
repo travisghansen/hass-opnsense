@@ -327,6 +327,10 @@ def fake_client() -> Any:
                 """Return an empty SMART payload for coordinator tests."""
                 return []
 
+            async def get_nut_ups_status(self) -> Any:
+                """Return an empty NUT UPS payload for coordinator tests."""
+                return {}
+
             async def get_smart_info(self, device: str, info_type: str = "a") -> dict[str, Any]:
                 """Return an empty SMART info payload for coordinator tests.
 
