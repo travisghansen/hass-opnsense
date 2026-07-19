@@ -76,6 +76,19 @@ _INTERFACE_RATE_SENSOR_PROPERTIES: tuple[str, ...] = (
     "inpkts_packets_per_second",
     "outpkts_packets_per_second",
 )
+_INTERFACE_TRAFFIC_SENSOR_NAMES: dict[str, str] = {
+    "inerrs": "Errors In Total",
+    "outerrs": "Errors Out Total",
+    "collisions": "Collisions Total",
+    "inbytes": "Traffic In Total",
+    "inbytes_kilobytes_per_second": "Traffic In Rate",
+    "outbytes": "Traffic Out Total",
+    "outbytes_kilobytes_per_second": "Traffic Out Rate",
+    "inpkts": "Packets In Total",
+    "inpkts_packets_per_second": "Packets In Rate",
+    "outpkts": "Packets Out Total",
+    "outpkts_packets_per_second": "Packets Out Rate",
+}
 
 _GATEWAY_SENSOR_PROPERTIES: tuple[str, ...] = ("status", "delay", "stddev", "loss", "address")
 _VPN_TRAFFIC_PROPERTIES: tuple[str, ...] = (
@@ -703,9 +716,10 @@ def _build_interface_sensor_description(
     else:
         icon = "mdi:gauge"
 
+    property_name = _INTERFACE_TRAFFIC_SENSOR_NAMES.get(prop_name, prop_name)
     return SensorEntityDescription(
         key=f"interface.{interface_name}.{prop_name}",
-        name=f"Interface {interface.get('name', interface_name)} {prop_name}",
+        name=f"Interface {interface.get('name', interface_name)} {property_name}",
         native_unit_of_measurement=native_unit_of_measurement,
         device_class=device_class,
         icon=icon,

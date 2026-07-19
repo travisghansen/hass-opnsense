@@ -4523,7 +4523,7 @@ async def test_generated_sensor_entity_contract(
             "entity_registry_enabled_default": False,
         },
         "interface.wan.inbytes": {
-            "name": "Interface WAN inbytes",
+            "name": "Interface WAN Traffic In Total",
             "native_unit_of_measurement": UnitOfInformation.BYTES,
             "device_class": SensorDeviceClass.DATA_SIZE,
             "state_class": SensorStateClass.TOTAL_INCREASING,
@@ -5474,6 +5474,58 @@ async def test_compile_interface_sensors_routes_rate_keys_to_live_traffic_coordi
         sensor = next(entity for entity in entities if entity.entity_description.key == key)
         assert isinstance(sensor, OPNsenseLiveTrafficSensor)
         assert sensor.coordinator is live_traffic_coordinator
+
+    traffic_sensor_contracts = {
+        "interface.eth0.inerrs": (
+            "Interface WAN Errors In Total",
+            "interface_wan_errors_in_total",
+        ),
+        "interface.eth0.outerrs": (
+            "Interface WAN Errors Out Total",
+            "interface_wan_errors_out_total",
+        ),
+        "interface.eth0.collisions": (
+            "Interface WAN Collisions Total",
+            "interface_wan_collisions_total",
+        ),
+        "interface.eth0.inbytes": (
+            "Interface WAN Traffic In Total",
+            "interface_wan_traffic_in_total",
+        ),
+        "interface.eth0.inbytes_kilobytes_per_second": (
+            "Interface WAN Traffic In Rate",
+            "interface_wan_traffic_in_rate",
+        ),
+        "interface.eth0.outbytes": (
+            "Interface WAN Traffic Out Total",
+            "interface_wan_traffic_out_total",
+        ),
+        "interface.eth0.outbytes_kilobytes_per_second": (
+            "Interface WAN Traffic Out Rate",
+            "interface_wan_traffic_out_rate",
+        ),
+        "interface.eth0.inpkts": (
+            "Interface WAN Packets In Total",
+            "interface_wan_packets_in_total",
+        ),
+        "interface.eth0.inpkts_packets_per_second": (
+            "Interface WAN Packets In Rate",
+            "interface_wan_packets_in_rate",
+        ),
+        "interface.eth0.outpkts": (
+            "Interface WAN Packets Out Total",
+            "interface_wan_packets_out_total",
+        ),
+        "interface.eth0.outpkts_packets_per_second": (
+            "Interface WAN Packets Out Rate",
+            "interface_wan_packets_out_rate",
+        ),
+    }
+    for key, (expected_name, expected_object_id) in traffic_sensor_contracts.items():
+        sensor = next(entity for entity in entities if entity.entity_description.key == key)
+        assert sensor.entity_description.name == expected_name
+        assert slugify(expected_name) == expected_object_id
+        assert sensor.unique_id == slugify(f"id_{key}")
 
     for key in normal_sensor_keys:
         sensor = next(entity for entity in entities if entity.entity_description.key == key)
