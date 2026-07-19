@@ -225,31 +225,13 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         merged_interfaces: dict[str, Any] = {}
         for interface_name, rates in interface_rows.items():
-            if not isinstance(interface_name, str):
+            merged_interface = self._build_live_traffic_interface_data(
+                interface_name,
+                rates,
+                main_interfaces,
+            )
+            if merged_interface is None:
                 continue
-            if not isinstance(rates, Mapping):
-                continue
-
-            interface_rates: dict[str, Any] = {}
-            for stream_key, state_key in _STREAM_RATE_FIELD_MAP.items():
-                if stream_key not in rates:
-                    continue
-                mapped_rate = self._map_stream_rate(stream_key, rates[stream_key])
-                if mapped_rate is not None:
-                    interface_rates[state_key] = mapped_rate
-            if not interface_rates:
-                continue
-
-            metadata = main_interfaces.get(interface_name)
-            if not isinstance(metadata, Mapping):
-                continue
-
-            merged_interface = {
-                field: metadata[field]
-                for field in _LIVE_TRAFFIC_INTERFACE_FIELDS
-                if field in metadata
-            }
-            merged_interface.update(interface_rates)
             merged_interfaces[interface_name] = merged_interface
 
         if not merged_interfaces:
@@ -261,6 +243,48 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             merged_data["host_firmware_version"] = host_firmware_version
         self._async_publish_data(merged_data)
         return True
+
+    def _build_live_traffic_interface_data(
+        self,
+        interface_name: Any,
+        rates: Any,
+        main_interfaces: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Build merged live traffic interface payload data.
+
+        Args:
+            interface_name: Interface identifier from the stream payload.
+            rates: Stream-provided rates for that interface.
+            main_interfaces: Metadata map keyed by interface name from coordinator data.
+
+        Returns:
+            dict[str, Any] | None: Merged metadata and mapped rates, or ``None`` when
+                the row is incomplete or invalid.
+        """
+        if not isinstance(interface_name, str):
+            return None
+        if not isinstance(rates, Mapping):
+            return None
+
+        interface_rates: dict[str, Any] = {}
+        for stream_key, state_key in _STREAM_RATE_FIELD_MAP.items():
+            if stream_key not in rates:
+                continue
+            mapped_rate = self._map_stream_rate(stream_key, rates[stream_key])
+            if mapped_rate is not None:
+                interface_rates[state_key] = mapped_rate
+        if not interface_rates:
+            return None
+
+        metadata = main_interfaces.get(interface_name)
+        if not isinstance(metadata, Mapping):
+            return None
+
+        merged_interface = {
+            field: metadata[field] for field in _LIVE_TRAFFIC_INTERFACE_FIELDS if field in metadata
+        }
+        merged_interface.update(interface_rates)
+        return merged_interface
 
     @callback
     def _async_publish_data(self, data: dict[str, Any]) -> None:
