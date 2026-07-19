@@ -217,10 +217,16 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         main_state = self._coordinator.data
         if not isinstance(main_state, Mapping):
             _LOGGER.debug("Skipping live traffic update because main state is unavailable")
+            self.async_set_update_error(
+                RuntimeError("Live traffic metadata unavailable: main state is not available")
+            )
             return False
         main_interfaces = main_state.get("interfaces")
         if not isinstance(main_interfaces, Mapping):
             _LOGGER.debug("Skipping live traffic update because metadata is unavailable")
+            self.async_set_update_error(
+                RuntimeError("Live traffic metadata unavailable: interface map is missing")
+            )
             return False
 
         merged_interfaces: dict[str, Any] = {}

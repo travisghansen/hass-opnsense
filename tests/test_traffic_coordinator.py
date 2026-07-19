@@ -94,6 +94,59 @@ def test_live_traffic_coordinator_rejects_invalid_rates(raw_rate: Any) -> None:
     assert OPNsenseLiveTrafficCoordinator._map_stream_rate("rx_bytes_per_second", raw_rate) is None
 
 
+def test_live_traffic_coordinator_marks_update_failed_when_main_state_missing(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Missing live metadata should immediately mark coordinator updates as failed."""
+    coordinator, main_coordinator = _build_test_coordinator(
+        make_config_entry,
+        main_coordinator_data={"interfaces": {"wan": {"name": "WAN"}}},
+    )
+
+    coordinator._async_publish_data(
+        {"interfaces": {"wan": {"name": "WAN", "inbytes_kilobytes_per_second": 1.0}}}
+    )
+    assert coordinator.last_update_success is True
+
+    main_coordinator.data = "bad-main-state"
+    assert (
+        coordinator._consume_payload({"interfaces": {"wan": {"rx_bytes_per_second": 1_000}}})
+        is False
+    )
+    assert coordinator.last_update_success is False
+    assert coordinator.data["interfaces"]["wan"]["inbytes_kilobytes_per_second"] == 1.0
+
+
+def test_live_traffic_coordinator_recovers_when_main_state_returns(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """A later valid metadata payload should restore live coordinator success."""
+    coordinator, main_coordinator = _build_test_coordinator(
+        make_config_entry,
+        main_coordinator_data={"interfaces": {"wan": {"name": "WAN"}}},
+    )
+
+    coordinator._async_publish_data(
+        {"interfaces": {"wan": {"name": "WAN", "inbytes_kilobytes_per_second": 1.0}}}
+    )
+    assert coordinator.last_update_success is True
+
+    main_coordinator.data = "bad-main-state"
+    assert (
+        coordinator._consume_payload({"interfaces": {"wan": {"rx_bytes_per_second": 1_000}}})
+        is False
+    )
+    assert coordinator.last_update_success is False
+
+    main_coordinator.data = {"interfaces": {"wan": {"name": "WAN"}}}
+    assert (
+        coordinator._consume_payload({"interfaces": {"wan": {"rx_bytes_per_second": 2_000}}})
+        is True
+    )
+    assert coordinator.last_update_success is True
+    assert coordinator.data["interfaces"]["wan"]["inbytes_kilobytes_per_second"] == 2.0
+
+
 def test_live_traffic_coordinator_aggregates_sample_logging(
     caplog: pytest.LogCaptureFixture,
     make_config_entry: Callable[..., MockConfigEntry],
