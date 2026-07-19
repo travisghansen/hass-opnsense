@@ -1,211 +1,245 @@
-# Base Permissions <ins>required</ins> for the Integration
+# OPNsense API Permissions
 
-| OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Lobby: Dashboard | /api/diagnostics/system/system_information (or systemInformation) |
-| Status: Interfaces | /api/interfaces/overview/export |
-| System: Firmware | /api/core/firmware/status |
+This page maps every OPNsense API endpoint used by the integration's `aiopnsense` client to the OPNsense permission that grants access to it. `All pages` also grants access to every endpoint, but the narrower permissions below are preferred.
+
+Endpoint parameters are shown in braces, for example `{uuid}`. OPNsense firmware before 25.7 uses the camelCase endpoint variant shown in parentheses for endpoints that were renamed to snake_case.
+
+# Base Permissions Required for the Integration
+
+These permissions are required during setup and normal operation, regardless of the selected granular sync options.
+
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Lobby: Dashboard | GET | `/api/diagnostics/system/system_information` (or `/api/diagnostics/system/systemInformation`) |
+| Status: Interfaces | GET | `/api/interfaces/overview/export` |
+| System: Firmware | GET | `/api/core/firmware/status` |
 
 # Granular Sync Permissions
 
-## Basic telemetry data
+## Basic Telemetry Data
 
-|  OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Lobby: Dashboard | /api/diagnostics/system/system_mbuf<br>/api/diagnostics/firewall/pf_states<br>/api/diagnostics/system/system_resources (or systemResources)<br>/api/diagnostics/system/system_swap<br>/api/diagnostics/system/system_time (or systemTime)<br>/api/diagnostics/cpu_usage/get_c_p_u_type (or getCPUType)<br>/api/diagnostics/cpu_usage/stream<br>/api/diagnostics/system/system_disk (or systemDisk)<br>/api/diagnostics/system/system_temperature (or systemTemperature) |
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Lobby: Dashboard | GET | `/api/diagnostics/system/system_mbuf`<br>`/api/diagnostics/firewall/pf_states`<br>`/api/diagnostics/system/system_resources` (or `/api/diagnostics/system/systemResources`)<br>`/api/diagnostics/system/system_swap`<br>`/api/diagnostics/system/system_time` (or `/api/diagnostics/system/systemTime`)<br>`/api/diagnostics/cpu_usage/get_c_p_u_type` (or `/api/diagnostics/cpu_usage/getCPUType`)<br>`/api/diagnostics/cpu_usage/stream`<br>`/api/diagnostics/system/system_disk` (or `/api/diagnostics/system/systemDisk`)<br>`/api/diagnostics/system/system_temperature` (or `/api/diagnostics/system/systemTemperature`) |
 
-## Gateway information
+## Gateway Information
 
-| OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| System: Gateways | /api/routes/gateway/status |
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| System: Gateways | GET | `/api/routes/gateway/status` |
 
-## Interface information
+## Interface Information
 
-| OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Status: Interfaces | /api/interfaces/overview/export |
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Status: Interfaces | GET | `/api/interfaces/overview/export` |
 
-## Live interface traffic
+## Live Traffic Metrics
 
-| OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Reporting: Traffic | /api/diagnostics/traffic/stream/1 |
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Reporting: Traffic | GET | `/api/diagnostics/traffic/interface`<br>`/api/diagnostics/traffic/stream/{interval}` |
 
 This option depends on "Interface information". If disabled, interface traffic rates are calculated from coordinator polling instead of the live stream.
 
-## DHCP leases
+## DHCP Leases
 
-| OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Services: DHCP: Kea(v4) | /api/kea/leases4/search<br>/api/kea/dhcpv4/search_reservation (or searchReservation)<br>/api/kea/dhcpv4/get |
-| Status: DHCP leases | /api/dhcpv4/leases/search_lease (or searchLease) |
-| Status: DHCPv6 leases | /api/dhcpv6/leases/search_lease (or searchLease) |
-| Services: Dnsmasq DNS/DHCP: Settings | /api/dnsmasq/leases/search |
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Services: DHCP: Kea(v4) | GET | `/api/kea/leases4/search`<br>`/api/kea/dhcpv4/search_reservation` (or `/api/kea/dhcpv4/searchReservation`)<br>`/api/kea/dhcpv4/get` |
+| Services: DHCP: Kea(v6) | GET | `/api/kea/leases6/search` |
+| Services: Dnsmasq DNS/DHCP: Settings | GET | `/api/dnsmasq/leases/search` |
+| Status: DHCP leases (25.x)<br>Services: ISC DHCPv4: Leases (26.1+) | GET | `/api/dhcpv4/leases/search_lease` (or `/api/dhcpv4/leases/searchLease`) |
+| Status: DHCPv6 leases (25.x)<br>Status: ISC DHCPv6: Leases (26.1+) | GET | `/api/dhcpv6/leases/search_lease` (or `/api/dhcpv6/leases/searchLease`) |
+| All pages | GET | `/api/dhcpv4/service/status`<br>`/api/dhcpv6/service/status` |
 
-## Notice information
+OPNsense does not currently assign the ISC DHCP service-status endpoints to a narrower privilege. `All pages` is therefore required only when ISC DHCP lease discovery is needed; Kea and Dnsmasq lease collection use their own granular permissions.
 
-|  OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| System: Status | /api/core/system/status |
+## Notice Information
 
-## Firmware updates
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| System: Status | GET | `/api/core/system/status` |
 
-| OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| System: Firmware | /api/core/firmware/changelog<br>/api/core/firmware/status<br>/api/core/firmware/update<br>/api/core/firmware/upgrade<br>/api/core/firmware/upgradestatus |
+## Firmware Updates
 
-## CARP information
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| System: Firmware | GET | `/api/core/firmware/status`<br>`/api/core/firmware/upgradestatus` |
+| System: Firmware | POST | `/api/core/firmware/check`<br>`/api/core/firmware/update`<br>`/api/core/firmware/upgrade`<br>`/api/core/firmware/changelog/{version}` |
 
-| OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Interfaces: Virtual IPs: Status | /api/diagnostics/interface/get_vip_status |
-| Interfaces: Virtual IPs: Settings | /api/interfaces/vip_settings/get |
+## CARP Information and Maintenance
 
-## Firewall rules and NAT rules switches
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Interfaces: Virtual IPs: Status | GET | `/api/diagnostics/interface/get_vip_status` |
+| Interfaces: Virtual IPs: Status | POST | `/api/diagnostics/interface/carp_status/maintenance` (26.1.11+) |
+| Interfaces: Virtual IPs: Settings | GET | `/api/interfaces/vip_settings/get` |
+| All pages | POST | `/api/diagnostics/interface/_carp_status/maintenance` (25.7 through 26.1.10)<br>`/api/diagnostics/interface/CarpStatus/maintenance` (before 25.7) |
 
-### OPNsense Firmware 26.1.1+
+The OPNsense `Interfaces: Virtual IPs: Status` ACL did not cover the parameterized CARP maintenance endpoint before firmware 26.1.11, so older supported firmware requires `All pages` for CARP maintenance changes.
 
-| OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Firewall: Rules [New] | /api/firewall/filter/search_rule<br>/api/firewall/filter/toggle_rule |
-| Firewall: NAT: Destination NAT | /api/firewall/d_nat/search_rule<br>/api/firewall/d_nat/toggle_rule |
-| Firewall: NAT: 1:1 | /api/firewall/one_to_one/search_rule<br>/api/firewall/one_to_one/toggle_rule |
-| Firewall: NAT: Source NAT | /api/firewall/source_nat/search_rule<br>/api/firewall/source_nat/toggle_rule |
-| Firewall: NAT: NPTv6 | /api/firewall/npt/search_rule<br>/api/firewall/npt/toggle_rule |
+## Firewall Rules and NAT Rule Switches
 
-<details>
-<summary><h3>OPNsense Firmware < 26.1.1</h3></summary>
+Available on OPNsense firmware 26.1.1 and newer.
 
-> **\*\*OPNsense plugin required\*\***
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Firewall: Rules [new] | GET | `/api/firewall/filter/download_rules` |
+| Firewall: Rules [new] | POST | `/api/firewall/filter/toggle_rule/{uuid}`<br>`/api/firewall/filter/toggle_rule/{uuid}/{state}`<br>`/api/firewall/filter/apply` |
+| Firewall: NAT: Destination NAT | GET | `/api/firewall/d_nat/search_rule` |
+| Firewall: NAT: Destination NAT | POST | `/api/firewall/d_nat/toggle_rule/{uuid}`<br>`/api/firewall/d_nat/toggle_rule/{uuid}/{state}`<br>`/api/firewall/d_nat/apply` |
+| Firewall: NAT: 1:1 | GET | `/api/firewall/one_to_one/search_rule` |
+| Firewall: NAT: 1:1 | POST | `/api/firewall/one_to_one/toggle_rule/{uuid}`<br>`/api/firewall/one_to_one/toggle_rule/{uuid}/{state}`<br>`/api/firewall/one_to_one/apply` |
+| Firewall: NAT: Source NAT | GET | `/api/firewall/source_nat/search_rule` |
+| Firewall: NAT: Source NAT | POST | `/api/firewall/source_nat/toggle_rule/{uuid}`<br>`/api/firewall/source_nat/toggle_rule/{uuid}/{state}`<br>`/api/firewall/source_nat/apply` |
+| Firewall: NAT: NPTv6 | GET | `/api/firewall/npt/search_rule` |
+| Firewall: NAT: NPTv6 | POST | `/api/firewall/npt/toggle_rule/{uuid}`<br>`/api/firewall/npt/toggle_rule/{uuid}/{state}`<br>`/api/firewall/npt/apply` |
 
-| OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| XMLRPC Library | *N/A – Operations are executed using the XMLRPC interface and OPNsense plugin* |
+Firewall and NAT rule switches are unavailable on older firmware; the deprecated OPNsense Home Assistant plugin is not used as a fallback.
 
-</details>
+## Service Switches
 
-## Service switches
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Status: Services | GET | `/api/core/service/search` |
+| Status: Services | POST | `/api/core/service/start/{service}`<br>`/api/core/service/stop/{service}`<br>`/api/core/service/restart/{service}` |
 
-| OPNsense Permission | API Endpoints | 
-| ----- | ----- |
-| Status: Services | /api/core/service/search<br>/api/core/service/start<br>/api/core/service/stop |
+## VPN Information and Switches
 
-## VPN information and switches
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Status: OpenVPN | GET | `/api/openvpn/service/search_sessions` (or `/api/openvpn/service/searchSessions`)<br>`/api/openvpn/service/search_routes` (or `/api/openvpn/service/searchRoutes`) |
+| Status: OpenVPN | POST | `/api/openvpn/service/reconfigure` |
+| VPN: OpenVPN: Instances | GET | `/api/openvpn/instances/search`<br>`/api/openvpn/instances/get/{uuid}` |
+| VPN: OpenVPN: Instances | POST | `/api/openvpn/instances/toggle/{uuid}` |
+| VPN: OpenVPN: Client Export Utility | GET | `/api/openvpn/export/providers` |
+| VPN: WireGuard (25.1)<br>VPN: WireGuard: Configuration (25.7+) | GET | `/api/wireguard/service/show`<br>`/api/wireguard/client/get`<br>`/api/wireguard/server/get` |
+| VPN: WireGuard (25.1)<br>VPN: WireGuard: Configuration (25.7+) | POST | `/api/wireguard/client/toggle_client/{uuid}` (or `/api/wireguard/client/toggleClient/{uuid}`)<br>`/api/wireguard/server/toggle_server/{uuid}` (or `/api/wireguard/server/toggleServer/{uuid}`)<br>`/api/wireguard/service/reconfigure` |
+| VPN: WireGuard: Status (25.7+, alternative for status-only access) | GET / POST | `/api/wireguard/service/show`<br>`/api/wireguard/service/reconfigure` |
 
-| OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Status: OpenVPN | /api/openvpn/service/reconfigure<br>/api/openvpn/service/search_sessions (or searchSessions) |
-| VPN: OpenVPN: Instances | /api/openvpn/instances/get<br>/api/openvpn/instances/search<br>/api/openvpn/instances/toggle |
-| VPN: OpenVPN: Client Export Utility | /api/openvpn/export/providers |
-| VPN: WireGuard | /api/wireguard/client/get<br>/api/wireguard/client/toggle_client (or toggleClient)<br>/api/wireguard/server/get<br>/api/wireguard/service/reconfigure<br>/api/wireguard/service/show<br>/api/wireguard/server/toggle_server (or toggleServer) |
+## Security Certificate Information
 
-## Security certificate information
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| System: Certificate Manager | GET | `/api/trust/cert/search` |
 
-|  OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| System: Certificate Manager | /api/trust/cert/search |
+## Unbound Blocklist Switch
 
-## Unbound blocklist switch
+The permission is named `Services: Unbound (MVC)` on OPNsense 25.x and `Services: Unbound` on OPNsense 26.1 and newer.
 
-|  OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Services: Unbound (MVC) | **Firmware <25.7.8**<br>/api/unbound/service/dnsbl<br>/api/unbound/settings/get<br>/api/unbound/service/restart<br>/api/unbound/settings/set<br>**Firmware >=25.7.8**<br>/api/unbound/settings/search_dnsbl<br>/api/unbound/settings/toggle_dnsbl |
+| OPNsense Permission | Firmware | Method | API Endpoints |
+| --- | --- | --- | --- |
+| Services: Unbound (MVC)<br>Services: Unbound | Before 25.7.8 | GET / POST | `/api/unbound/service/dnsbl`<br>`/api/unbound/settings/get`<br>`/api/unbound/settings/set`<br>`/api/unbound/service/restart` |
+| Services: Unbound (MVC)<br>Services: Unbound | 25.7.8+ | GET / POST | `/api/unbound/settings/search_dnsbl`<br>`/api/unbound/settings/toggle_dnsbl/{uuid}/{state}` |
 
 ## Device Trackers
 
-| OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Diagnostics: ARP Table | /api/diagnostics/interface/search_arp |
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Diagnostics: ARP Table | GET | `/api/diagnostics/interface/search_arp` (availability probe)<br>`/api/diagnostics/interface/search_arp?resolve={yes-or-no}` |
 
-## Speedtest results
+## NUT UPS Information
 
-| OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Monitoring: Speedtest | /api/speedtest/service/showrecent<br>/api/speedtest/service/showstat |
+Requires the OPNsense NUT plugin.
 
-## vnStat metrics
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Nut | GET | `/api/nut/diagnostics/upsstatus` |
 
-|  OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Services: Vnstat | /api/vnstat/service/hourly<br>/api/vnstat/service/daily<br>/api/vnstat/service/monthly |
+## SMART Information
 
-# Action *(Service)* Permissions
+Requires the OPNsense SMART plugin.
 
-## Close Notice *(opnsense.close_notice)*
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Services: SMART | POST | `/api/smart/service/list` (availability probe)<br>`/api/smart/service/list/1`<br>`/api/smart/service/info` |
 
-|  OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| System: Status | /api/core/system/dismiss_status (or dismissStatus)<br>/api/core/system/status |
+## Speedtest Results
 
-## Shutdown OPNsense *(opnsense.system_halt)*
+Requires a supported OPNsense Speedtest plugin. Both supported plugin variants use the same `Monitoring: Speedtest` permission.
 
-|  OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Diagnostics: Halt system | /api/core/system/halt |
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Monitoring: Speedtest | GET | `/api/speedtest/service/showrecent` (current released client)<br>`/api/speedtest/service/showlog` (in-process replacement)<br>`/api/speedtest/service/showstat` |
 
-## Reboot OPNsense *(opnsense.system_reboot)*
+## vnStat Metrics
 
-|  OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Diagnostics: Reboot System | /api/core/system/reboot |
+Requires the OPNsense vnStat plugin.
 
-## Start Service *(opnsense.start_service)*
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Services: Vnstat | GET | `/api/vnstat/service/hourly`<br>`/api/vnstat/service/daily`<br>`/api/vnstat/service/monthly` |
 
-|  OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Status: Services | /api/core/service/start |
+# Action (Service) Permissions
 
-## Stop Service *(opnsense.stop_service)*
+## Close Notice (`opnsense.close_notice`)
 
-|  OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Status: Services | /api/core/service/stop |
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| System: Status | GET | `/api/core/system/status` |
+| System: Status | POST | `/api/core/system/dismiss_status` (or `/api/core/system/dismissStatus`) |
 
-## Restart Service *(opnsense.restart_service)*
+## Shutdown OPNsense (`opnsense.system_halt`)
 
-|  OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Status: Services | /api/core/service/restart |
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Diagnostics: Halt system | POST | `/api/core/system/halt` |
 
-## Send Wake on LAN *(opnsense.send_wol)*
+## Reboot OPNsense (`opnsense.system_reboot`)
 
-|  OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Services: Wake on LAN | /api/wol/wol/set |
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Diagnostics: Reboot System | POST | `/api/core/system/reboot` |
 
-## Reload Interface *(opnsense.reload_interface)*
+## Start, Stop, or Restart Service
 
-|  OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Status: Interfaces | /api/interfaces/overview/reload_interface (or reloadInterface) |
+Applies to `opnsense.start_service`, `opnsense.stop_service`, and `opnsense.restart_service`.
 
-## Kill States *(opnsense.kill_states)*
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Status: Services | POST | `/api/core/service/start/{service}`<br>`/api/core/service/stop/{service}`<br>`/api/core/service/restart/{service}` |
 
-|  OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Diagnostics: Show States | /api/diagnostics/firewall/kill_states |
+## Send Wake on LAN (`opnsense.send_wol`)
 
-## Generate Captive Portal Vouchers *(opnsense.generate_vouchers)*
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Services: Wake on LAN | POST | `/api/wol/wol/set` |
 
-|  OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Services: Captive Portal | /api/captiveportal/voucher/generate_vouchers (or generateVouchers)<br>/api/captiveportal/voucher/list_providers (or listProviders) |
+## Reload Interface (`opnsense.reload_interface`)
 
-## Toggle Alias *(opnsense.toggle_alias)*
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Status: Interfaces | POST | `/api/interfaces/overview/reload_interface/{interface}` (or `/api/interfaces/overview/reloadInterface/{interface}`) |
 
-|  OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Firewall: Alias: Edit | /api/firewall/alias/reconfigure<br>/api/firewall/alias/search_item (or searchItem)<br>/api/firewall/alias/set<br>/api/firewall/alias/toggle_item (or toggleItem) |
+## Kill States (`opnsense.kill_states`)
 
-## Run Speedtest *(opnsense.run_speedtest)*
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Diagnostics: Show States | POST | `/api/diagnostics/firewall/kill_states/` |
 
-|  OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Monitoring: Speedtest | /api/speedtest/service/run |
+## Generate Captive Portal Vouchers (`opnsense.generate_vouchers`)
 
-## Get vnStat Metrics *(opnsense.get_vnstat_metrics)*
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Services: Captive Portal | GET | `/api/captiveportal/voucher/list_providers` (or `/api/captiveportal/voucher/listProviders`) |
+| Services: Captive Portal | POST | `/api/captiveportal/voucher/generate_vouchers/{server}/` (or `/api/captiveportal/voucher/generateVouchers/{server}/`) |
 
-|  OPNsense Permission | API Endpoints |
-| ----- | ----- |
-| Services: Vnstat | /api/vnstat/service/hourly<br>/api/vnstat/service/daily<br>/api/vnstat/service/monthly<br>/api/vnstat/service/yearly |
+## Toggle Alias (`opnsense.toggle_alias`)
+
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Firewall: Alias: Edit | GET | `/api/firewall/alias/search_item` (or `/api/firewall/alias/searchItem`) |
+| Firewall: Alias: Edit | POST | `/api/firewall/alias/toggle_item/{uuid}/{state}` (or `/api/firewall/alias/toggleItem/{uuid}/{state}`)<br>`/api/firewall/alias/set`<br>`/api/firewall/alias/reconfigure` |
+
+## Run Speedtest (`opnsense.run_speedtest`)
+
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Monitoring: Speedtest | GET | `/api/speedtest/service/run` |
+
+## Get vnStat Metrics (`opnsense.get_vnstat_metrics`)
+
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Services: Vnstat | GET | `/api/vnstat/service/hourly`<br>`/api/vnstat/service/daily`<br>`/api/vnstat/service/monthly`<br>`/api/vnstat/service/yearly` |
