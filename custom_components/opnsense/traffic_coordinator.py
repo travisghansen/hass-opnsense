@@ -133,7 +133,7 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             self._failure_count = min(self._failure_count + 1, len(_RETRY_DELAYS_SECONDS))
             delay = self._get_retry_delay()
-            _LOGGER.warning("Retrying live traffic stream in %s seconds", delay)
+            _LOGGER.info("Retrying live traffic stream in %s seconds", delay)
             await asyncio.sleep(delay)
 
     def _get_retry_delay(self) -> int:
@@ -175,11 +175,9 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise
         except OPNsenseError as err:
             self.async_set_update_error(err)
-            _LOGGER.warning("Live traffic stream failed with OPNsenseError: %s", err)
             return False
         except (TimeoutError, RuntimeError, TypeError, ValueError, AttributeError) as err:
             self.async_set_update_error(err)
-            _LOGGER.warning("Live traffic stream failed: %s", err)
             return False
 
         if not has_valid_sample:
@@ -190,7 +188,9 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # The stream ended after providing valid samples; mark unavailable so
         # reconnect backoff is applied while preserving the last sample payload.
-        self.async_set_update_error(
+        # aiopnsense logs the transport failure that terminates the stream, so avoid
+        # logging the same interruption again at the coordinator boundary.
+        self._async_mark_stream_unavailable(
             RuntimeError("Live traffic stream ended and must be reconnected")
         )
         return True
@@ -296,6 +296,18 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return merged_interface
 
     @callback
+    def _async_mark_stream_unavailable(self, err: Exception) -> None:
+        """Mark live traffic unavailable without duplicating transport error logs.
+
+        Args:
+            err: Stream interruption retained as the coordinator's last exception.
+        """
+        self.last_exception = err
+        if self.last_update_success:
+            self.last_update_success = False
+            self.async_update_listeners()
+
+    @callback
     def _async_publish_data(self, data: dict[str, Any]) -> None:
         """Publish push data and periodically summarize live traffic activity.
 
@@ -306,8 +318,11 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         Args:
             data: Merged interface metadata and live traffic rates.
         """
+        stream_recovered = not self.last_update_success
         self.data = data
         self.last_update_success = True
+        if stream_recovered:
+            _LOGGER.info("Live traffic stream recovered")
         self._samples_since_log += 1
         interfaces = data.get("interfaces")
         if isinstance(interfaces, Mapping):

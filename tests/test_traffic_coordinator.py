@@ -446,10 +446,11 @@ async def test_live_traffic_coordinator_consumes_stream_cancelled_error(
     ],
 )
 async def test_live_traffic_coordinator_consumes_stream_records_update_error(
+    caplog: pytest.LogCaptureFixture,
     make_config_entry: Callable[..., MockConfigEntry],
     stream_exception: Exception,
 ) -> None:
-    """Stream-time exceptions should be captured as update failures."""
+    """Stream exceptions should produce one coordinator error without a warning."""
 
     async def _stream() -> AsyncIterator[dict[str, Any]]:
         """Raise a stream error as soon as stream iteration starts.
@@ -464,11 +465,18 @@ async def test_live_traffic_coordinator_consumes_stream_records_update_error(
     client.stream_interface_traffic = MagicMock(return_value=_stream())
 
     coordinator, _ = _build_test_coordinator(make_config_entry, client=client)
+    caplog.set_level(logging.INFO, logger="custom_components.opnsense.traffic_coordinator")
 
     has_sample = await coordinator._consume_stream()
 
     assert has_sample is False
     assert coordinator.last_update_success is False
+    coordinator_records = [
+        record
+        for record in caplog.records
+        if record.name == "custom_components.opnsense.traffic_coordinator"
+    ]
+    assert sum(record.levelno >= logging.WARNING for record in coordinator_records) == 1
 
 
 @pytest.mark.asyncio
@@ -541,10 +549,11 @@ async def test_live_traffic_run_sleeps_poll_interval_when_live_traffic_disabled(
 
 @pytest.mark.asyncio
 async def test_live_traffic_run_reconnects_after_finite_valid_stream(
+    caplog: pytest.LogCaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """A finite valid stream should mark unavailable and schedule minimum backoff."""
+    """A finite valid stream should retry quietly and report its recovery."""
     client = _FakeStreamClient(
         [
             {
@@ -561,20 +570,41 @@ async def test_live_traffic_run_reconnects_after_finite_valid_stream(
     sleep_calls: list[int] = []
 
     async def _fake_sleep(delay: int) -> None:
-        """Capture the reconnect delay and stop the loop after first retry."""
+        """Capture reconnect delays and stop after the recovery cycle."""
         sleep_calls.append(delay)
-        coordinator._shutdown_requested = True
+        if len(sleep_calls) == 2:
+            coordinator._shutdown_requested = True
 
     monkeypatch.setattr("custom_components.opnsense.traffic_coordinator.asyncio.sleep", _fake_sleep)
+    caplog.set_level(logging.INFO, logger="custom_components.opnsense.traffic_coordinator")
 
     await coordinator._run()
 
-    assert sleep_calls == [5]
+    assert sleep_calls == [5, 5]
     assert coordinator._failure_count == 1
     assert coordinator.last_update_success is False
-    assert client.stream_calls == [1]
+    assert client.stream_calls == [1, 1]
     assert coordinator.data["interfaces"]["wan"]["name"] == "WAN"
     assert coordinator.data["interfaces"]["wan"]["inbytes_kilobytes_per_second"] == 1.0
+    coordinator_records = [
+        record
+        for record in caplog.records
+        if record.name == "custom_components.opnsense.traffic_coordinator"
+    ]
+    assert not any(record.levelno >= logging.WARNING for record in coordinator_records)
+    assert (
+        sum(
+            record.getMessage() == "Live traffic stream recovered" for record in coordinator_records
+        )
+        == 1
+    )
+    assert (
+        sum(
+            record.getMessage() == "Retrying live traffic stream in 5 seconds"
+            for record in coordinator_records
+        )
+        == 2
+    )
 
 
 def test_live_traffic_retry_delay_caps_at_max_interval(
