@@ -1,6 +1,8 @@
 # OPNsense API Permissions
 
-This page maps every OPNsense API endpoint used by the integration's `aiopnsense` client to the OPNsense permission that grants access to it. `All pages` also grants access to every endpoint, but the narrower permissions below are preferred.
+`All pages` grants access to every endpoint and is recommended, but the narrower permissions are below.
+
+This page maps every OPNsense API endpoint used by the integration's `aiopnsense` client to the OPNsense permission that grants access to it. 
 
 Endpoint parameters are shown in braces, for example `{uuid}`. OPNsense firmware before 25.7 uses the camelCase endpoint variant shown in parentheses for endpoints that were renamed to snake_case.
 
@@ -161,7 +163,7 @@ Requires a supported OPNsense Speedtest plugin. Both supported plugin variants u
 
 | OPNsense Permission | Method | API Endpoints |
 | --- | --- | --- |
-| Monitoring: Speedtest | GET | `/api/speedtest/service/showrecent` (current released client)<br>`/api/speedtest/service/showlog` (in-process replacement)<br>`/api/speedtest/service/showstat` |
+| Monitoring: Speedtest | GET | `/api/speedtest/service/showlog`<br>`/api/speedtest/service/showstat` |
 
 ## vnStat Metrics
 
