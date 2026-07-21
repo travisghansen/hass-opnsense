@@ -1,7 +1,30 @@
+<a id="v1.0.2"></a>
+# [v1.0.2](https://github.com/travisghansen/hass-opnsense/releases/tag/v1.0.2) - 2026-07-21
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### ✨ New Features
+* Add live interface traffic sensors by [@Snuffy2](https://github.com/Snuffy2) in [#660](https://github.com/travisghansen/hass-opnsense/pull/660)
+* Add NUT UPS monitoring sensors by [@Snuffy2](https://github.com/Snuffy2) in [#659](https://github.com/travisghansen/hass-opnsense/pull/659)
+### 📚 Documentation
+* Document aiopnsense granular API permissions by [@Snuffy2](https://github.com/Snuffy2) in [#658](https://github.com/travisghansen/hass-opnsense/pull/658)
+### 🧰 Maintenance
+* Bump aiopnsense to 1.1.4 by [@github-actions](https://github.com/github-actions)[bot] in [#663](https://github.com/travisghansen/hass-opnsense/pull/663)
+* Bump aiopnsense to 1.1.5 by [@github-actions](https://github.com/github-actions)[bot] in [#664](https://github.com/travisghansen/hass-opnsense/pull/664)
+### Other Changes
+* Remove brittle test implementation assertions by [@Snuffy2](https://github.com/Snuffy2) in [#665](https://github.com/travisghansen/hass-opnsense/pull/665)
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v1.0.1...v1.0.2
+
+[Changes][v1.0.2]
+
+
 <a id="v1.0.1"></a>
 # [v1.0.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v1.0.1) - 2026-07-19
 
-<!-- Release notes generated using configuration in .github/release.yml at main -->
+<h3>OPNsense Minimum Firmware Required: 25.1</h3><h4>OPNsense Recommended Firmware: 26.1+</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
 ## What's Changed
 ### ✨ New Features
@@ -9,7 +32,7 @@
 * Add device ID replacement repair by [@Snuffy2](https://github.com/Snuffy2) in [#657](https://github.com/travisghansen/hass-opnsense/pull/657)
 
 
-**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v1.0.0...v1.0.1
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v1.0.0...v1.0.1<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
 
 [Changes][v1.0.1]
 
@@ -1154,6 +1177,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v1.0.2]: https://github.com/travisghansen/hass-opnsense/compare/v1.0.1...v1.0.2
 [v1.0.1]: https://github.com/travisghansen/hass-opnsense/compare/v1.0.0...v1.0.1
 [v1.0.0]: https://github.com/travisghansen/hass-opnsense/compare/v0.7.4...v1.0.0
 [v0.7.4]: https://github.com/travisghansen/hass-opnsense/compare/v0.7.3...v0.7.4
