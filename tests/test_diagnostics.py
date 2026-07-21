@@ -1,15 +1,35 @@
 """Tests for OPNsense diagnostics."""
 
 import copy
+from datetime import UTC, date, datetime, time
+from enum import Enum
 import json
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Self
 
 from homeassistant.components.diagnostics import REDACTED
 from homeassistant.core import HomeAssistant
 
 from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID, CONF_ENTRY_TYPE, ENTRY_TYPE_CARP
 from custom_components.opnsense.diagnostics import async_get_config_entry_diagnostics
+
+
+class _DiagnosticMode(Enum):
+    """Representative enum included in a diagnostics payload."""
+
+    ACTIVE = "active"
+
+
+class _OpaqueDiagnosticValue:
+    """Representative unsupported object included in a diagnostics payload."""
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> Self:
+        """Preserve identity when snapshotting the immutable test value."""
+        return self
+
+    def __repr__(self) -> str:
+        """Fail if diagnostics attempts to render the private object."""
+        raise AssertionError("opaque diagnostics values must not be rendered")
 
 
 def _coordinator(
@@ -30,6 +50,7 @@ async def test_config_entry_diagnostics_pseudonymizes_full_runtime(
     router_mac = "aa:bb:cc:dd:ee:ff"
     router_ip = "192.0.2.10"
     router_uuid = "123e4567-e89b-42d3-a456-426614174000"
+    workstation = "private-workstation"
     entry = make_config_entry(
         data={
             "url": f"https://{router_ip}",
@@ -47,7 +68,11 @@ async def test_config_entry_diagnostics_pseudonymizes_full_runtime(
     main_data = {
         "system_info": {"name": "Office Firewall"},
         "host_firmware_version": "26.7.1",
-        "telemetry": {"pfstate": {"used": 42}, "status": "ok"},
+        "telemetry": {
+            "pfstate": {"used": 42},
+            "status": "ok",
+            "temps": {"private-cpu-device": {"temperature": 42.5}},
+        },
         "interfaces": {
             "wan": {
                 "interface": "wan",
@@ -89,6 +114,16 @@ async def test_config_entry_diagnostics_pseudonymizes_full_runtime(
                 "status": "pending",
             }
         ],
+        "connection_summary": "peer [2001:db8::10]:51820 is active",
+        "leases": {workstation: {"hostname": workstation, "active": True}},
+        "json_scalars": {
+            "datetime": datetime(2026, 7, 21, 12, 30, tzinfo=UTC),
+            "date": date(2026, 7, 21),
+            "time": time(12, 30),
+            "enum": _DiagnosticMode.ACTIVE,
+            "bytes": b"private bytes",
+            "opaque": _OpaqueDiagnosticValue(),
+        },
     }
     tracker_data = {
         "arp_table": [{"mac": router_mac, "ip": router_ip, "hostname": "private-workstation"}]
@@ -131,7 +166,11 @@ async def test_config_entry_diagnostics_pseudonymizes_full_runtime(
     assert config_data["url"].startswith("**REDACTED_URL_")
     assert config_data["firmware_version"] == "26.7.1"
     assert sanitized_main["host_firmware_version"] == "26.7.1"
-    assert sanitized_main["telemetry"] == {"pfstate": {"used": 42}, "status": "ok"}
+    assert sanitized_main["telemetry"]["pfstate"] == {"used": 42}
+    assert sanitized_main["telemetry"]["status"] == "ok"
+    redacted_temp_key = next(iter(sanitized_main["telemetry"]["temps"]))
+    assert redacted_temp_key.startswith("**REDACTED_KEY_")
+    assert sanitized_main["telemetry"]["temps"][redacted_temp_key] == {"temperature": 42.5}
 
     redacted_mac = config_data[CONF_DEVICE_UNIQUE_ID]
     redacted_ip = sanitized_tracker["arp_table"][0]["ip"]
@@ -169,6 +208,20 @@ async def test_config_entry_diagnostics_pseudonymizes_full_runtime(
     assert sanitized_main["nut_ups_status"]["response"].startswith("**REDACTED_VALUE_")
     assert sanitized_main["nut_ups_status"]["status"]["device.serial"].startswith("**REDACTED_ID_")
     assert sanitized_main["nut_ups_status"]["status"]["ups.status"] == "OL"
+
+    assert "2001:db8::10" not in sanitized_main["connection_summary"]
+    assert "**REDACTED_IP_" in sanitized_main["connection_summary"]
+    redacted_lease_key = next(iter(sanitized_main["leases"]))
+    assert redacted_lease_key.startswith("**REDACTED_KEY_")
+    assert sanitized_main["leases"][redacted_lease_key]["hostname"] == redacted_lease_key
+    assert sanitized_main["json_scalars"] == {
+        "datetime": "2026-07-21T12:30:00+00:00",
+        "date": "2026-07-21",
+        "time": "12:30:00",
+        "enum": "active",
+        "bytes": REDACTED,
+        "opaque": REDACTED,
+    }
 
     subject = sanitized_main["notices"][0]["subject"]
     assert subject.startswith("**REDACTED_ID_")

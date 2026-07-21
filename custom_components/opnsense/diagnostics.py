@@ -2,6 +2,8 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import date, datetime, time
+from enum import Enum
 import ipaddress
 import re
 from typing import Any
@@ -126,17 +128,24 @@ _IDENTIFIER_KEY_CONTAINERS: frozenset[str] = frozenset(
         "dnsbl",
         "gateways",
         "interfaces",
+        "leases",
         "npt",
         "one_to_one",
         "rules",
         "servers",
         "smart_info",
         "source_nat",
+        "temps",
     }
 )
 
 _MAC_PATTERN = re.compile(r"(?i)(?<![0-9a-f])(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}(?![0-9a-f])")
 _IPV4_PATTERN = re.compile(r"(?<![0-9])(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?![0-9])")
+_IPV6_CANDIDATE_PATTERN = re.compile(
+    r"(?<![0-9a-f:])(?:[0-9a-f.]*:[0-9a-f:.]+)"
+    r"(?:%[0-9a-z_.-]+)?(?:/\d{1,3})?(?![0-9a-f:])",
+    re.IGNORECASE,
+)
 _UUID_PATTERN = re.compile(
     r"(?i)(?<![0-9a-f])[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?![0-9a-f])"
 )
@@ -248,7 +257,7 @@ class _Pseudonymizer:
         if isinstance(value, (list, tuple)):
             return [self.sanitize(item, parent_field) for item in value]
         if isinstance(value, set):
-            return [self.sanitize(item, parent_field) for item in sorted(value, key=repr)]
+            return [self.sanitize(item, parent_field) for item in value]
         return self._replace_scalar(value)
 
     def _collect_detected_values(self, value: str) -> None:
@@ -266,6 +275,14 @@ class _Pseudonymizer:
             candidate = match.group(0)
             try:
                 ipaddress.ip_address(candidate)
+            except ValueError:
+                continue
+            self.register("ip", candidate, embedded=True)
+
+        for match in _IPV6_CANDIDATE_PATTERN.finditer(value):
+            candidate = match.group(0)
+            try:
+                ipaddress.ip_interface(candidate)
             except ValueError:
                 continue
             self.register("ip", candidate, embedded=True)
@@ -301,6 +318,8 @@ class _Pseudonymizer:
 
     def _replace_scalar(self, value: Any) -> Any:
         """Replace registered values in a scalar while preserving its type otherwise."""
+        if isinstance(value, Enum):
+            return self.sanitize(value.value)
         if isinstance(value, str):
             if value in self.aliases:
                 return self.aliases[value]
@@ -312,7 +331,11 @@ class _Pseudonymizer:
             ):
                 result = result.replace(sensitive, replacement)
             return result
-        return value
+        if value is None or isinstance(value, (bool, int, float)):
+            return value
+        if isinstance(value, (datetime, date, time)):
+            return value.isoformat()
+        return REDACTED
 
 
 async def async_get_config_entry_diagnostics(
