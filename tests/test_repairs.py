@@ -1323,13 +1323,13 @@ async def test_reload_failure_keeps_entry_update_and_keeps_issue(
     assert result["reason"] == "repair_failed"
     entity_registry.async_remove.assert_not_called()
     device_registry.async_update_device.assert_not_called()
-    assert hass.config_entries.async_update_entry.call_args_list[0].kwargs == {
-        "data": expected_updated_data,
-        "unique_id": observed_device_id,
-    }
+    hass.config_entries.async_update_entry.assert_called_once_with(
+        entry,
+        data=expected_updated_data,
+        unique_id=observed_device_id,
+    )
     assert entry.data == expected_updated_data
     assert entry.unique_id == observed_device_id
-    assert len(hass.config_entries.async_update_entry.call_args_list) == 1
     issue_delete.assert_not_called()
     hass.config_entries.async_reload.assert_awaited_once_with(entry.entry_id)
     hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
