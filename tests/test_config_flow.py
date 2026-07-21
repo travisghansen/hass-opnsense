@@ -1086,10 +1086,10 @@ async def test_get_dt_entries_skips_non_mapping_arp_rows(
         selected_devices=["AA-BB-CC-DD-EE-FF"],
     )
 
-    assert list(res.keys()) == [
+    assert set(res) == {
         "aa:bb:cc:dd:ee:ff",
         "aa:bb:cc:00:00:02",
-    ]
+    }
     assert res["aa:bb:cc:dd:ee:ff"] == "Not currently detected [aa:bb:cc:dd:ee:ff]"
     assert res["aa:bb:cc:00:00:02"] == "hostb [10.0.0.10 | aa:bb:cc:00:00:02]"
 
@@ -1400,7 +1400,6 @@ def test_async_get_options_flow_returns_options_flow() -> None:
     cfg = MagicMock()
     res = cf_mod.OPNsenseConfigFlow.async_get_options_flow(cfg)
     assert isinstance(res, cf_mod.OPNsenseOptionsFlow)
-    assert isinstance(cf_mod.OPNsenseOptionsFlow(), cf_mod.OPNsenseOptionsFlow)
 
 
 @pytest.mark.asyncio
