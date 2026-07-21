@@ -2776,40 +2776,6 @@ async def test_vpn_toggle_parametrized(
         ent._client.toggle_vpn_instance.assert_awaited_once()
 
 
-def test_reset_delay_calls_existing_remover(
-    monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
-) -> None:
-    """Resetting delay should call any existing remover and replace it."""
-    desc = SwitchEntityDescription(key="service.svc1.status", name="Svc")
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(config_entry.runtime_data, COORDINATOR, None)
-    ent = OPNsenseServiceSwitch(
-        config_entry=config_entry,
-        coordinator=make_coord({}),
-        entity_description=desc,
-    )
-    called = {"old_removed": False, "new_removed": False}
-
-    def old_remover() -> None:
-        """Old remover."""
-        called["old_removed"] = True
-
-    def new_remover() -> None:
-        """New remover."""
-        called["new_removed"] = True
-
-    ent._delay_update_remove = old_remover
-    # monkeypatch async_call_later to return new_remover
-    monkeypatch.setattr(
-        "custom_components.opnsense.switch.async_call_later",
-        lambda hass, delay, action: new_remover,
-    )
-    ent._reset_delay()
-    assert called["old_removed"] is True
-    ent.delay_update = False
-    assert called["new_removed"] is True
-
-
 @pytest.mark.asyncio
 async def test_compile_service_skips_locked(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]

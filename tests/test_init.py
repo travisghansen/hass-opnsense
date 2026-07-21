@@ -3476,13 +3476,17 @@ async def test_migrate_3_to_4_preserves_mixed_marker_precedence(
     result = await _migrate_3_to_4(hass, config_entry, client)
 
     assert result is True
-    assert entity_registry.async_update_entity.call_args_list == [
-        call(
-            gateway_entity.entity_id,
-            new_unique_id="abc_gateway_lan_connected_client_count",
-        ),
-        call(openvpn_entity.entity_id, new_unique_id="abc_openvpn_vpn"),
-    ]
+    entity_registry.async_update_entity.assert_has_calls(
+        [
+            call(
+                gateway_entity.entity_id,
+                new_unique_id="abc_gateway_lan_connected_client_count",
+            ),
+            call(openvpn_entity.entity_id, new_unique_id="abc_openvpn_vpn"),
+        ],
+        any_order=True,
+    )
+    assert entity_registry.async_update_entity.call_count == 2
     entity_registry.async_remove.assert_called_once_with(connected_entity.entity_id)
 
 

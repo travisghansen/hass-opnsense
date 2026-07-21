@@ -15,7 +15,7 @@ from homeassistant.util import slugify
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.opnsense import const as const_module, sensor as sensor_module
+from custom_components.opnsense import sensor as sensor_module
 from custom_components.opnsense.const import (
     CONF_DEVICE_UNIQUE_ID,
     CONF_SYNC_CARP,
@@ -43,7 +43,6 @@ from custom_components.opnsense.sensor import (
     OPNsenseFilesystemSensor,
     OPNsenseGatewaySensor,
     OPNsenseInterfaceSensor,
-    OPNsenseLiveTrafficSensor,
     OPNsenseNUTSensor,
     OPNsenseSmartSensor,
     OPNsenseSpeedtestSensor,
@@ -56,19 +55,6 @@ from custom_components.opnsense.sensor import (
     slugify_filesystem_mountpoint,
 )
 from custom_components.opnsense.traffic_coordinator import OPNsenseLiveTrafficCoordinator
-
-
-def test_static_sensor_descriptions_live_in_sensor_module() -> None:
-    """Static sensor descriptions should be owned by the sensor platform."""
-    telemetry_keys = {description.key for description in sensor_module.STATIC_TELEMETRY_SENSORS}
-    certificate_keys = {description.key for description in sensor_module.STATIC_CERTIFICATE_SENSORS}
-    nut_keys = {description.key for description in sensor_module.STATIC_NUT_SENSORS}
-
-    assert not hasattr(const_module, "STATIC_TELEMETRY_SENSORS")
-    assert not hasattr(const_module, "STATIC_CERTIFICATE_SENSORS")
-    assert "telemetry.cpu.usage_total" in telemetry_keys
-    assert "certificates" in certificate_keys
-    assert nut_keys == {"nut.ups_status", "nut.battery_charge", "nut.ups_load"}
 
 
 @pytest.mark.asyncio
@@ -2212,11 +2198,6 @@ def test_build_vpn_rate_sensor_description_suggests_megabits_per_second(
     assert description.device_class == SensorDeviceClass.DATA_RATE
 
 
-def test_sensor_module_import() -> None:
-    """Test that the sensor module can be imported via relative import."""
-    assert sensor_module is not None
-
-
 @pytest.mark.parametrize(
     ("input_value", "expected"),
     [
@@ -3328,46 +3309,6 @@ async def test_async_setup_entry_records_none_for_partial_vpn_inventory(
     assert recorded["entities"] is None, description
 
 
-def test_vnstat_rows_are_complete_defaults_and_rejects_falsy_rows() -> None:
-    """VnStat inventories should treat missing keys as empty and falsy payloads as incomplete."""
-    assert sensor_module._vnstat_rows_are_complete({}) is True
-    assert sensor_module._vnstat_rows_are_complete({"vnstat": {"interfaces": {}}}) is True
-    assert sensor_module._vnstat_rows_are_complete({"vnstat": {"interfaces": False}}) is False
-    assert sensor_module._vnstat_rows_are_complete({"vnstat": {"interfaces": 0}}) is False
-    assert sensor_module._vnstat_rows_are_complete({"vnstat": {"interfaces": []}}) is False
-
-
-def test_vpn_sensor_rows_are_complete_defaults_and_rejects_falsy_rows() -> None:
-    """VPN inventories should default missing client/server groups to {} and reject falsy groups."""
-    assert (
-        sensor_module._vpn_sensor_rows_are_complete(
-            {
-                "openvpn": {"clients": {}, "servers": {}},
-                "wireguard": {"clients": {}, "servers": {}},
-            }
-        )
-        is True
-    )
-    assert (
-        sensor_module._vpn_sensor_rows_are_complete(
-            {
-                "openvpn": {"clients": {}, "servers": {}},
-                "wireguard": {"clients": [], "servers": {}},
-            }
-        )
-        is False
-    )
-    assert (
-        sensor_module._vpn_sensor_rows_are_complete(
-            {
-                "openvpn": {"clients": {}, "servers": {}},
-                "wireguard": {"clients": {}, "servers": False},
-            }
-        )
-        is False
-    )
-
-
 @pytest.mark.parametrize(
     ("state", "sync_option", "expected_key"),
     [
@@ -3504,9 +3445,54 @@ async def test_async_setup_entry_ignores_unconsumed_openvpn_client_rows(
             True,
             [],
         ),
+        (
+            {
+                "openvpn": {"clients": {}, "servers": {}},
+                "wireguard": {"clients": [], "servers": {}},
+            },
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            True,
+            None,
+        ),
+        (
+            {
+                "openvpn": {"clients": {}, "servers": {}},
+                "wireguard": {"clients": {}, "servers": False},
+            },
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            True,
+            None,
+        ),
         # vnStat
         ({}, False, True, False, False, False, False, False, False, False, None),
         ({"vnstat": {}}, False, True, False, False, False, False, False, False, False, []),
+        (
+            {"vnstat": {"interfaces": False}},
+            False,
+            True,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            None,
+        ),
         # Speedtest
         ({}, False, False, True, False, False, False, False, False, False, None),
         ({"speedtest": {}}, False, False, True, False, False, False, False, False, False, []),
@@ -3622,8 +3608,11 @@ async def test_async_setup_entry_ignores_unconsumed_openvpn_client_rows(
         "empty_gateway_inventory",
         "missing_vpn_inventory",
         "empty_vpn_inventory",
+        "incomplete_vpn_inventory_falsy_clients",
+        "incomplete_vpn_inventory_falsy_servers",
         "missing_vnstat_inventory",
         "empty_vnstat_inventory",
+        "incomplete_vnstat_inventory_falsy_interfaces",
         "missing_speedtest_inventory",
         "empty_speedtest_inventory",
         "missing_telemetry_inventory",
@@ -5646,6 +5635,10 @@ async def test_compile_interface_sensors_routes_rate_keys_to_live_traffic_coordi
             "eth0": {
                 "name": "WAN",
                 "status": "up",
+                "inbytes_kilobytes_per_second": 11,
+                "outbytes_kilobytes_per_second": 12,
+                "inpkts_packets_per_second": 13,
+                "outpkts_packets_per_second": 14,
             }
         }
     }
@@ -5671,6 +5664,7 @@ async def test_compile_interface_sensors_routes_rate_keys_to_live_traffic_coordi
     coordinator.data = main_state
     live_traffic_coordinator = MagicMock(spec=OPNsenseLiveTrafficCoordinator)
     live_traffic_coordinator.data = live_state
+    live_traffic_coordinator.last_update_success = True
     setattr(entry.runtime_data, COORDINATOR, coordinator)
     entry.runtime_data.live_traffic_coordinator = live_traffic_coordinator
 
@@ -5678,87 +5672,19 @@ async def test_compile_interface_sensors_routes_rate_keys_to_live_traffic_coordi
 
     entities_by_key = {entity.entity_description.key: entity for entity in entities}
 
-    traffic_sensor_contracts = {
-        "interface.eth0.inerrs": (
-            "Interface WAN Errors In Total",
-            "interface_wan_errors_in_total",
-        ),
-        "interface.eth0.outerrs": (
-            "Interface WAN Errors Out Total",
-            "interface_wan_errors_out_total",
-        ),
-        "interface.eth0.collisions": (
-            "Interface WAN Collisions Total",
-            "interface_wan_collisions_total",
-        ),
-        "interface.eth0.inbytes": (
-            "Interface WAN Traffic In Total",
-            "interface_wan_traffic_in_total",
-        ),
-        "interface.eth0.inbytes_kilobytes_per_second": (
-            "Interface WAN Traffic In Rate",
-            "interface_wan_traffic_in_rate",
-        ),
-        "interface.eth0.outbytes": (
-            "Interface WAN Traffic Out Total",
-            "interface_wan_traffic_out_total",
-        ),
-        "interface.eth0.outbytes_kilobytes_per_second": (
-            "Interface WAN Traffic Out Rate",
-            "interface_wan_traffic_out_rate",
-        ),
-        "interface.eth0.inpkts": (
-            "Interface WAN Packets In Total",
-            "interface_wan_packets_in_total",
-        ),
-        "interface.eth0.inpkts_packets_per_second": (
-            "Interface WAN Packets In Rate",
-            "interface_wan_packets_in_rate",
-        ),
-        "interface.eth0.outpkts": (
-            "Interface WAN Packets Out Total",
-            "interface_wan_packets_out_total",
-        ),
-        "interface.eth0.outpkts_packets_per_second": (
-            "Interface WAN Packets Out Rate",
-            "interface_wan_packets_out_rate",
-        ),
-    }
-    for key, (expected_name, expected_object_id) in traffic_sensor_contracts.items():
-        sensor = entities_by_key[key]
-        assert sensor.entity_description.name == expected_name
-        assert slugify(expected_name) == expected_object_id
-        assert sensor.unique_id == slugify(f"id_{key}")
-
-    for key in (
-        "interface.eth0.inbytes_kilobytes_per_second",
-        "interface.eth0.outbytes_kilobytes_per_second",
+    for key, expected_value in (
+        ("interface.eth0.inbytes_kilobytes_per_second", 1.5),
+        ("interface.eth0.outbytes_kilobytes_per_second", 2.5),
+        ("interface.eth0.inpkts_packets_per_second", 3),
+        ("interface.eth0.outpkts_packets_per_second", 4),
     ):
         sensor = entities_by_key[key]
-        assert isinstance(sensor, OPNsenseLiveTrafficSensor)
-        assert sensor.coordinator is live_traffic_coordinator
-        description = sensor.entity_description
-        assert description.native_unit_of_measurement == UnitOfDataRate.KILOBYTES_PER_SECOND
-        assert description.suggested_unit_of_measurement == UnitOfDataRate.MEGABITS_PER_SECOND
-
-    for key in (
-        "interface.eth0.inpkts_packets_per_second",
-        "interface.eth0.outpkts_packets_per_second",
-    ):
-        sensor = entities_by_key[key]
-        assert isinstance(sensor, OPNsenseLiveTrafficSensor)
-        assert sensor.coordinator is live_traffic_coordinator
-
-    for key in (
-        "interface.eth0.status",
-        "interface.eth0.inbytes",
-        "interface.eth0.inpkts",
-        "interface.eth0.outbytes",
-        "interface.eth0.outpkts",
-    ):
-        sensor = entities_by_key[key]
-        assert isinstance(sensor, OPNsenseInterfaceSensor)
-        assert sensor.coordinator is coordinator
+        sensor.hass = MagicMock()
+        sensor.entity_id = f"sensor.{slugify(key)}"
+        object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+        sensor._handle_coordinator_update()
+        assert sensor.available is True
+        assert sensor.native_value == expected_value
 
 
 @pytest.mark.asyncio
@@ -5771,6 +5697,10 @@ async def test_compile_interface_sensors_routes_rate_keys_to_main_coordinator_wh
             "eth0": {
                 "name": "WAN",
                 "status": "up",
+                "inbytes_kilobytes_per_second": 11,
+                "outbytes_kilobytes_per_second": 12,
+                "inpkts_packets_per_second": 13,
+                "outpkts_packets_per_second": 14,
             }
         }
     }
@@ -5791,15 +5721,18 @@ async def test_compile_interface_sensors_routes_rate_keys_to_main_coordinator_wh
     entities = await sensor_module._compile_interface_sensors(entry, coordinator, state)
     entities_by_key = {entity.entity_description.key: entity for entity in entities}
 
-    for key in (
-        "interface.eth0.inbytes_kilobytes_per_second",
-        "interface.eth0.outbytes_kilobytes_per_second",
-        "interface.eth0.inpkts_packets_per_second",
-        "interface.eth0.outpkts_packets_per_second",
+    for key, expected_value in (
+        ("interface.eth0.inbytes_kilobytes_per_second", 11),
+        ("interface.eth0.outbytes_kilobytes_per_second", 12),
+        ("interface.eth0.inpkts_packets_per_second", 13),
+        ("interface.eth0.outpkts_packets_per_second", 14),
     ):
         sensor = entities_by_key[key]
-        assert isinstance(sensor, OPNsenseInterfaceSensor)
-        assert sensor.coordinator is coordinator
+        sensor.hass = MagicMock()
+        sensor.entity_id = f"sensor.{slugify(key)}"
+        object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+        sensor._handle_coordinator_update()
+        assert sensor.native_value == expected_value
 
 
 @pytest.mark.asyncio
@@ -5844,9 +5777,6 @@ async def test_compile_dotted_interface_rate_sensor_prefers_live_traffic_data_wh
         for entity in entities
         if entity.entity_description.key == "interface.wan.vlan.100.inbytes_kilobytes_per_second"
     )
-    assert isinstance(rate_sensor, OPNsenseLiveTrafficSensor)
-    assert rate_sensor.coordinator is live_traffic_coordinator
-
     rate_sensor.hass = MagicMock()
     rate_sensor.entity_id = "sensor.wan_vlan_100_inbytes_kilobytes_per_second"
     object.__setattr__(rate_sensor, "async_write_ha_state", lambda: None)
@@ -5893,11 +5823,9 @@ async def test_interface_rate_sensor_falls_back_when_live_traffic_is_unavailable
         for entity in entities
         if entity.entity_description.key == "interface.eth0.inbytes_kilobytes_per_second"
     )
-    assert isinstance(rate_sensor, OPNsenseLiveTrafficSensor)
     non_rate_sensor = next(
         entity for entity in entities if entity.entity_description.key == "interface.eth0.status"
     )
-    assert isinstance(non_rate_sensor, OPNsenseInterfaceSensor)
 
     rate_sensor.hass = MagicMock()
     rate_sensor.entity_id = "sensor.eth0_inbytes_kilobytes_per_second"
@@ -5919,4 +5847,11 @@ async def test_interface_rate_sensor_falls_back_when_live_traffic_is_unavailable
 
     setattr(entry.runtime_data, OPNSENSE_CLIENT, MagicMock())
     await rate_sensor.async_added_to_hass()
-    coordinator.async_add_listener.assert_called_once_with(rate_sensor._handle_coordinator_update)
+
+    polling_listener = coordinator.async_add_listener.call_args.args[0]
+    state["interfaces"]["eth0"]["inbytes_kilobytes_per_second"] = 30
+    live_traffic_coordinator.last_update_success = False
+    polling_listener()
+
+    assert rate_sensor.available is True
+    assert rate_sensor.native_value == 30

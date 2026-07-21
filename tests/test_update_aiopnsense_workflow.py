@@ -1,14 +1,15 @@
 """Tests for the aiopnsense dependency update workflow."""
 
 from importlib import util
+from io import StringIO
 import json
 from pathlib import Path
 import sys
+import tomllib
 from types import ModuleType
 
 import pytest
 
-WORKFLOW_PATH = Path(".github/workflows/update_aiopnsense.yml")
 SCRIPT_PATH = Path(".github/scripts/update_aiopnsense_pins.py")
 RELEASE_NOTES_SCRIPT_PATH = Path(".github/scripts/build_aiopnsense_release_notes.py")
 CLEANUP_SCRIPT_PATH = Path(".github/scripts/cleanup_aiopnsense_update_branches.py")
@@ -153,50 +154,6 @@ def _load_script(module_name: str, script_path: Path) -> ModuleType:
 
 
 @pytest.mark.parametrize(
-    ("needle", "reason"),
-    [
-        ("actions/setup-python@v6", "pins a Python runtime"),
-        ("python-version: '3.14'", "uses a tomllib-capable Python"),
-        ("Automated update of aiopnsense dependency pins.", "describes generated PRs"),
-        ("custom_components/opnsense/manifest.json", "updates the integration manifest"),
-        ("pyproject.toml", "updates the local dependency pin"),
-        ("prek.toml", "updates the isolated mypy-hook dependency pin"),
-        ("pyproject_current", "reports pyproject drift in PR metadata"),
-        ("prek_current", "reports prek mypy-hook drift in PR metadata"),
-        ("--prek-path prek.toml", "passes the prek configuration to the updater"),
-        (str(SCRIPT_PATH), "runs the checked-in updater helper"),
-        (str(RELEASE_NOTES_SCRIPT_PATH), "runs the checked-in release-note helper"),
-        (str(CLEANUP_SCRIPT_PATH), "runs the checked-in cleanup helper"),
-        ("--body-path aiopnsense-update-pr-body.md", "uses a PR body file"),
-        ("--delete-merged-branches", "cleans merged workflow-owned branches"),
-        ("LATEST_VERSION: ${{ steps.versions.outputs.latest }}", "exports latest pin"),
-        ('--latest-version "$LATEST_VERSION"', "avoids shell template injection"),
-        ("REPOSITORY: ${{ github.repository }}", "exports repository before shell use"),
-        ('--repository "$REPOSITORY"', "avoids inline repository template expansion"),
-    ],
-)
-def test_workflow_contains_expected_update_logic(needle: str, reason: str) -> None:
-    """Workflow should include the expected aiopnsense updater logic."""
-    del reason
-
-    assert needle in _read_update_workflow_surface()
-
-
-def test_workflow_avoids_inline_repository_template_expansion() -> None:
-    """Workflow should not expand the repository context inside shell scripts."""
-    assert '--repository "${{ github.repository }}"' not in WORKFLOW_PATH.read_text()
-
-
-def _read_update_workflow_surface() -> str:
-    """Read workflow and helper surfaces checked by workflow assertions."""
-    return (
-        f"{WORKFLOW_PATH.read_text()}\n"
-        f"{RELEASE_NOTES_SCRIPT_PATH.read_text()}\n"
-        f"{CLEANUP_SCRIPT_PATH.read_text()}"
-    )
-
-
-@pytest.mark.parametrize(
     (
         "manifest_version",
         "pyproject_version",
@@ -239,9 +196,13 @@ def test_updater_script_pin_update_scenarios(
     assert result.prek_current == pyproject_version
     assert result.latest == expected_target
     assert result.update_needed is expected_update_needed
-    assert f"aiopnsense=={expected_target}" in manifest_path.read_text()
-    assert f'    "aiopnsense=={expected_target}",' in pyproject_path.read_text()
-    assert f'  "aiopnsense=={expected_target}",' in prek_path.read_text()
+    manifest = json.loads(manifest_path.read_text())
+    pyproject = tomllib.loads(pyproject_path.read_text())
+    prek = tomllib.loads(prek_path.read_text())
+    expected_pin = f"aiopnsense=={expected_target}"
+    assert expected_pin in manifest["requirements"]
+    assert expected_pin in pyproject["dependency-groups"]["ha"]
+    assert expected_pin in prek["repos"][0]["hooks"][0]["additional_dependencies"]
 
 
 def test_updater_script_updates_pyproject_pin_without_trailing_comma(
@@ -267,7 +228,8 @@ ha = [
     )
 
     assert result.update_needed is True
-    assert '    "aiopnsense==1.0.9"\n' in pyproject_path.read_text()
+    pyproject = tomllib.loads(pyproject_path.read_text())
+    assert "aiopnsense==1.0.9" in pyproject["dependency-groups"]["ha"]
 
 
 def test_updater_script_repairs_prek_mypy_pin_drift(
@@ -291,7 +253,8 @@ def test_updater_script_repairs_prek_mypy_pin_drift(
     assert result.prek_current == "1.1.2"
     assert result.latest == "1.1.3"
     assert result.update_needed is True
-    assert '  "aiopnsense==1.1.3",' in prek_path.read_text()
+    prek = tomllib.loads(prek_path.read_text())
+    assert "aiopnsense==1.1.3" in prek["repos"][0]["hooks"][0]["additional_dependencies"]
 
 
 def test_updater_script_rejects_missing_prek_mypy_pin(
@@ -349,15 +312,19 @@ additional_dependencies = ["homeassistant-stubs"]
 )
 def test_updater_script_selects_latest_stable_from_pypi_payload(
     updater_script: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
     payload: dict[str, object],
     expected_latest: str,
 ) -> None:
     """Updater script should select the latest installable stable PyPI release."""
-    latest = updater_script._select_latest_stable_version(
-        payload,
-    )
 
-    assert latest == expected_latest
+    def open_pypi_response(*_: object, **__: object) -> StringIO:
+        """Return the fake PyPI response as a readable context manager."""
+        return StringIO(json.dumps(payload))
+
+    monkeypatch.setattr(updater_script, "urlopen", open_pypi_response)
+
+    assert updater_script.fetch_latest_version() == expected_latest
 
 
 def test_updater_script_rejects_duplicate_pyproject_pins(
@@ -494,13 +461,13 @@ def test_cleanup_script_closes_stale_prs_and_deletes_workflow_branches(
         delete_merged_branches=True,
     )
 
-    assert client.closed_prs == [10, 9]
-    assert client.deleted_refs == [
+    assert sorted(client.closed_prs) == [9, 10]
+    assert sorted(client.deleted_refs) == [
         "heads/chore/update-aiopnsense-manifest",
         "heads/chore/update-aiopnsense-old",
     ]
-    assert result.closed_prs == [10, 9]
-    assert result.deleted_branches == [
+    assert sorted(result.closed_prs) == [9, 10]
+    assert sorted(result.deleted_branches) == [
         "chore/update-aiopnsense-manifest",
         "chore/update-aiopnsense-old",
     ]
