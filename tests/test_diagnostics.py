@@ -115,6 +115,7 @@ async def test_config_entry_diagnostics_pseudonymizes_full_runtime(
             }
         ],
         "connection_summary": "peer [2001:db8::10]:51820 is active",
+        "detail": "Connected through the private office uplink",
         "leases": {workstation: {"hostname": workstation, "active": True}},
         "json_scalars": {
             "datetime": datetime(2026, 7, 21, 12, 30, tzinfo=UTC),
@@ -210,18 +211,18 @@ async def test_config_entry_diagnostics_pseudonymizes_full_runtime(
     assert sanitized_main["nut_ups_status"]["status"]["ups.status"] == "OL"
 
     assert "2001:db8::10" not in sanitized_main["connection_summary"]
-    assert "**REDACTED_IP_" in sanitized_main["connection_summary"]
+    assert sanitized_main["connection_summary"].startswith("**REDACTED_VALUE_")
+    assert sanitized_main["detail"].startswith("**REDACTED_VALUE_")
     redacted_lease_key = next(iter(sanitized_main["leases"]))
     assert redacted_lease_key.startswith("**REDACTED_KEY_")
     assert sanitized_main["leases"][redacted_lease_key]["hostname"] == redacted_lease_key
-    assert sanitized_main["json_scalars"] == {
-        "datetime": "2026-07-21T12:30:00+00:00",
-        "date": "2026-07-21",
-        "time": "12:30:00",
-        "enum": "active",
-        "bytes": REDACTED,
-        "opaque": REDACTED,
-    }
+    json_scalars = sanitized_main["json_scalars"]
+    assert json_scalars["datetime"] == "2026-07-21T12:30:00+00:00"
+    assert json_scalars["date"] == "2026-07-21"
+    assert json_scalars["time"] == "12:30:00"
+    assert json_scalars["enum"].startswith("**REDACTED_VALUE_")
+    assert json_scalars["bytes"] == REDACTED
+    assert json_scalars["opaque"] == REDACTED
 
     subject = sanitized_main["notices"][0]["subject"]
     assert subject.startswith("**REDACTED_ID_")
@@ -237,6 +238,7 @@ async def test_config_entry_diagnostics_pseudonymizes_full_runtime(
     assert "private-ups-serial" not in json.dumps(diagnostics)
     assert "private-wireguard-public-key" not in json.dumps(diagnostics)
     assert "vpn.private.example" not in json.dumps(diagnostics)
+    assert "private office uplink" not in json.dumps(diagnostics)
     json.dumps(diagnostics)
 
     assert dict(entry.data) == original_entry_data
@@ -326,3 +328,51 @@ async def test_config_entry_diagnostics_redacts_keys_and_sensitive_containers(
     assert "private-client-key" not in serialized
     assert "lan_custom" not in serialized
     assert "Private LAN" not in serialized
+
+
+async def test_config_entry_diagnostics_numeric_ids_and_high_cardinality(
+    hass: HomeAssistant, make_config_entry: Any
+) -> None:
+    """Diagnostics should alias numeric IDs without changing metrics at high cardinality."""
+    leases = {
+        f"private-lease-{index}": {
+            "ip": f"10.0.{index // 250}.{index % 250 + 1}",
+            "status": "active",
+        }
+        for index in range(500)
+    }
+    entry = make_config_entry(
+        data={"url": "https://router.example.test"},
+        title="Private Router",
+    )
+    entry.runtime_data = SimpleNamespace(
+        coordinator=_coordinator(
+            {
+                "firmware_version": "26.7.1",
+                "status": "online",
+                "clients": {
+                    101: {"id": 101, "packets": 101},
+                    202: {"id": 202, "packets": 202},
+                },
+                "leases": leases,
+            }
+        ),
+        device_tracker_coordinator=None,
+        live_traffic_coordinator=None,
+    )
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    data = diagnostics["coordinators"]["main"]["data"]
+    assert data["firmware_version"] == "26.7.1"
+    assert data["status"] == "online"
+    clients = data["clients"]
+    assert len(clients) == 2
+    for client_key, client in clients.items():
+        assert client_key.startswith("**REDACTED_KEY_")
+        assert client["id"] == client_key
+    assert {client["packets"] for client in clients.values()} == {101, 202}
+    assert len(data["leases"]) == 500
+    serialized = json.dumps(diagnostics)
+    assert "private-lease-0" not in serialized
+    assert "10.0.0.1" not in serialized

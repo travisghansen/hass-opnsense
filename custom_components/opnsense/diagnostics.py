@@ -139,6 +139,27 @@ _IDENTIFIER_KEY_CONTAINERS: frozenset[str] = frozenset(
         "temps",
     }
 )
+_SAFE_OPERATIONAL_FIELDS: frozenset[str] = frozenset(
+    {
+        "date",
+        "datetime",
+        "firmware_version",
+        "host_firmware_version",
+        "last_exception",
+        "mode",
+        "period",
+        "protocol",
+        "role",
+        "state",
+        "status",
+        "time",
+        "type",
+        "unit",
+        "units",
+        "valid_from",
+        "valid_to",
+    }
+)
 
 _MAC_PATTERN = re.compile(r"(?i)(?<![0-9a-f])(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}(?![0-9a-f])")
 _IPV4_PATTERN = re.compile(r"(?<![0-9])(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?![0-9])")
@@ -184,6 +205,13 @@ def _is_sensitive_field(field_name: str) -> bool:
     )
 
 
+def _is_safe_operational_field(field_name: str) -> bool:
+    """Return whether a string field is explicitly safe operational metadata."""
+    return field_name in _SAFE_OPERATIONAL_FIELDS or any(
+        field_name.endswith(f"_{safe}") for safe in _SAFE_OPERATIONAL_FIELDS
+    )
+
+
 def _coordinator_diagnostics(coordinator: Any | None) -> dict[str, Any] | None:
     """Build diagnostics from an existing coordinator without refreshing it."""
     if coordinator is None:
@@ -201,24 +229,31 @@ def _coordinator_diagnostics(coordinator: Any | None) -> dict[str, Any] | None:
 class _Pseudonymizer:
     """Replace sensitive values with consistent placeholders for one document."""
 
-    aliases: dict[str, str] = field(default_factory=dict)
+    aliases: dict[tuple[type, str | int | float], str] = field(default_factory=dict)
     counters: dict[str, int] = field(default_factory=dict)
-    embedded_aliases: set[str] = field(default_factory=set)
 
-    def register(self, kind: str, value: object, *, embedded: bool = False) -> None:
+    def register(self, kind: str, value: object) -> None:
         """Register a sensitive value for consistent replacement."""
-        if not isinstance(value, str):
+        if isinstance(value, bool) or not isinstance(value, (str, int, float)):
             return
-        if not value or value == REDACTED:
+        if value in ("", REDACTED):
             return
-        if value not in self.aliases:
+        alias_key = (type(value), value)
+        if alias_key not in self.aliases:
             self.counters[kind] = self.counters.get(kind, 0) + 1
-            self.aliases[value] = f"**REDACTED_{kind.upper()}_{self.counters[kind]}**"
-        if embedded:
-            self.embedded_aliases.add(value)
+            self.aliases[alias_key] = f"**REDACTED_{kind.upper()}_{self.counters[kind]}**"
+
+    def alias_for(self, value: object) -> str | None:
+        """Return the registered alias for a supported scalar value."""
+        if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+            return None
+        return self.aliases.get((type(value), value))
 
     def collect(self, value: Any, parent_field: str = "", *, force_sensitive: bool = False) -> None:
         """Collect sensitive values recursively before replacing mapping keys."""
+        if isinstance(value, Enum):
+            self.collect(value.value, parent_field, force_sensitive=force_sensitive)
+            return
         if isinstance(value, Mapping):
             redact_mapping_keys = force_sensitive or parent_field in _IDENTIFIER_KEY_CONTAINERS
             for key, item in value.items():
@@ -250,6 +285,8 @@ class _Pseudonymizer:
                 self.register("value", value)
             else:
                 self._collect_detected_values(value)
+                if not _is_safe_operational_field(parent_field):
+                    self.register("value", value)
 
     def sanitize(self, value: Any, parent_field: str = "", *, force_sensitive: bool = False) -> Any:
         """Return a recursively pseudonymized, JSON-compatible copy."""
@@ -258,7 +295,13 @@ class _Pseudonymizer:
             redact_mapping_keys = force_sensitive or parent_field in _IDENTIFIER_KEY_CONTAINERS
             for key, item in value.items():
                 normalized_key = _normalize_field(key)
-                sanitized_key = self._replace_scalar(key)
+                sanitized_key = (
+                    self.alias_for(key) or REDACTED
+                    if redact_mapping_keys
+                    else self._replace_embedded(key)
+                    if isinstance(key, str)
+                    else key
+                )
                 if force_sensitive:
                     sanitized[sanitized_key] = self.sanitize(
                         item, normalized_key, force_sensitive=True
@@ -268,9 +311,7 @@ class _Pseudonymizer:
                 elif _is_sensitive_field(normalized_key) and not isinstance(
                     item, (Mapping, list, tuple, set)
                 ):
-                    sanitized[sanitized_key] = (
-                        self.aliases.get(item, REDACTED) if isinstance(item, str) else REDACTED
-                    )
+                    sanitized[sanitized_key] = self.alias_for(item) or REDACTED
                 else:
                     sanitized[sanitized_key] = self.sanitize(
                         item,
@@ -289,8 +330,8 @@ class _Pseudonymizer:
                 self.sanitize(item, parent_field, force_sensitive=force_sensitive) for item in value
             ]
         if force_sensitive and isinstance(value, str):
-            return self.aliases.get(value, REDACTED)
-        return self._replace_scalar(value)
+            return self.alias_for(value) or REDACTED
+        return self._replace_scalar(value, parent_field)
 
     def _collect_detected_values(self, value: str) -> None:
         """Collect formatted identifiers embedded in an arbitrary string."""
@@ -301,7 +342,7 @@ class _Pseudonymizer:
             (_UUID_PATTERN, "id"),
         ):
             for match in pattern.finditer(value):
-                self.register(kind, match.group(0), embedded=True)
+                self.register(kind, match.group(0))
 
         for match in _IPV4_PATTERN.finditer(value):
             candidate = match.group(0)
@@ -309,7 +350,7 @@ class _Pseudonymizer:
                 ipaddress.ip_address(candidate)
             except ValueError:
                 continue
-            self.register("ip", candidate, embedded=True)
+            self.register("ip", candidate)
 
         for match in _IPV6_CANDIDATE_PATTERN.finditer(value):
             candidate = match.group(0)
@@ -317,13 +358,13 @@ class _Pseudonymizer:
                 ipaddress.ip_interface(candidate)
             except ValueError:
                 continue
-            self.register("ip", candidate, embedded=True)
+            self.register("ip", candidate)
 
         try:
             ipaddress.ip_interface(value)
         except ValueError:
             return
-        self.register("ip", value, embedded=True)
+        self.register("ip", value)
 
     def _kind_for_field(self, field_name: str, value: object) -> str:
         """Return a useful placeholder type for a sensitive field."""
@@ -348,21 +389,36 @@ class _Pseudonymizer:
             return "user"
         return "value"
 
-    def _replace_scalar(self, value: Any) -> Any:
+    def _replace_embedded(self, value: str) -> str:
+        """Replace detected formatted identifiers without scanning unrelated aliases."""
+        result = value
+        for pattern in (_URL_PATTERN, _EMAIL_PATTERN, _MAC_PATTERN, _UUID_PATTERN):
+            result = pattern.sub(
+                lambda match: self.alias_for(match.group(0)) or match.group(0), result
+            )
+
+        def _replace_ip(match: re.Match[str]) -> str:
+            """Replace a candidate only when it is a valid IP address or interface."""
+            candidate = match.group(0)
+            try:
+                ipaddress.ip_interface(candidate)
+            except ValueError:
+                return candidate
+            return self.alias_for(candidate) or candidate
+
+        result = _IPV4_PATTERN.sub(_replace_ip, result)
+        return _IPV6_CANDIDATE_PATTERN.sub(_replace_ip, result)
+
+    def _replace_scalar(self, value: Any, parent_field: str = "") -> Any:
         """Replace registered values in a scalar while preserving its type otherwise."""
         if isinstance(value, Enum):
-            return self.sanitize(value.value)
+            return self.sanitize(value.value, parent_field)
         if isinstance(value, str):
-            if value in self.aliases:
-                return self.aliases[value]
-            result = value
-            for sensitive, replacement in sorted(
-                ((sensitive, self.aliases[sensitive]) for sensitive in self.embedded_aliases),
-                key=lambda item: len(item[0]),
-                reverse=True,
-            ):
-                result = result.replace(sensitive, replacement)
-            return result
+            if not _is_safe_operational_field(parent_field):
+                alias = self.alias_for(value)
+                if alias is not None:
+                    return alias
+            return self._replace_embedded(value)
         if value is None or isinstance(value, (bool, int, float)):
             return value
         if isinstance(value, (datetime, date, time)):
