@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for custom_components/opnsense/traffic_coordinator.py: 98%</title>
+    <title>Coverage for custom_components/opnsense/traffic_coordinator.py: 96%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_c827f16f.png">
     <link rel="stylesheet" href="style_cb_4667309f.css" type="text/css">
     <script src="coverage_html_cb_dd2e7eb5.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>custom_components<span class="sep">/</span>opnsense<span class="sep">/</span>traffic_coordinator.py</b>:
-            <span class="pc_cov">98%</span>
+            <span class="pc_cov">96%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -56,10 +56,10 @@
         </aside>
         <h2>
             <span class="text">174 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">174<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">0<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">170<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">4<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">2<span class="text"> excluded</span></button>
-            <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">4<span class="text"> partial</span></button>
+            <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">6<span class="text"> partial</span></button>
         </h2>
         <p class="text">
             <a id="prevFileLink" class="nav" href="z_a139522e3a23c96e_switch_py.html">&#xab; prev</a> &nbsp; &nbsp;
@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_a139522e3a23c96e_update_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.14.3">coverage.py v7.14.3</a>,
-            created at 2026-07-19 23:02 +0000
+            created at 2026-07-21 02:41 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -227,8 +227,8 @@
     <p class="pln"><span class="n"><a id="t143" href="#t143">143</a></span><span class="t"><span class="str">            int: Retry delay derived from ``_RETRY_DELAYS_SECONDS`` using the current</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t144" href="#t144">144</a></span><span class="t"><span class="str">                consecutive failure count.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t145" href="#t145">145</a></span><span class="t"><span class="str">        """</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t146" href="#t146">146</a></span><span class="t">        <span class="key">if</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_failure_count</span> <span class="op">&lt;=</span> <span class="num">0</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t147" href="#t147">147</a></span><span class="t">            <span class="key">return</span> <span class="nam">_RETRY_DELAYS_SECONDS</span><span class="op">[</span><span class="num">0</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
+    <p class="par run show_par"><span class="n"><a id="t146" href="#t146">146</a></span><span class="t">        <span class="key">if</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_failure_count</span> <span class="op">&lt;=</span> <span class="num">0</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">146&#x202F;&#x219B;&#x202F;147</span><span class="annotate long">line 146 didn't jump to line 147 because the condition on line 146 was never true</span></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t147" href="#t147">147</a></span><span class="t">            <span class="key">return</span> <span class="nam">_RETRY_DELAYS_SECONDS</span><span class="op">[</span><span class="num">0</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t148" href="#t148">148</a></span><span class="t">        <span class="nam">delay_index</span> <span class="op">=</span> <span class="nam">min</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t149" href="#t149">149</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">_failure_count</span> <span class="op">-</span> <span class="num">1</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t150" href="#t150">150</a></span><span class="t">            <span class="nam">len</span><span class="op">(</span><span class="nam">_RETRY_DELAYS_SECONDS</span><span class="op">)</span> <span class="op">-</span> <span class="num">1</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
@@ -412,14 +412,14 @@
     <p class="par run show_par"><span class="n"><a id="t328" href="#t328">328</a></span><span class="t">        <span class="key">if</span> <span class="nam">isinstance</span><span class="op">(</span><span class="nam">interfaces</span><span class="op">,</span> <span class="nam">Mapping</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">328&#x202F;&#x219B;&#x202F;331</span><span class="annotate long">line 328 didn't jump to line 331 because the condition on line 328 was always true</span></span></p>
     <p class="run"><span class="n"><a id="t329" href="#t329">329</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">_interface_updates_since_log</span> <span class="op">+=</span> <span class="nam">len</span><span class="op">(</span><span class="nam">interfaces</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t330" href="#t330">330</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t331" href="#t331">331</a></span><span class="t">        <span class="key">if</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_samples_since_log</span> <span class="op">>=</span> <span class="nam">_AGGREGATE_LOG_SAMPLE_COUNT</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t332" href="#t332">332</a></span><span class="t">            <span class="nam">_LOGGER</span><span class="op">.</span><span class="nam">debug</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t333" href="#t333">333</a></span><span class="t">                <span class="str">"Processed %d live interface traffic samples covering %d interface updates"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t334" href="#t334">334</a></span><span class="t">                <span class="nam">self</span><span class="op">.</span><span class="nam">_samples_since_log</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t335" href="#t335">335</a></span><span class="t">                <span class="nam">self</span><span class="op">.</span><span class="nam">_interface_updates_since_log</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t336" href="#t336">336</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t337" href="#t337">337</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">_samples_since_log</span> <span class="op">=</span> <span class="num">0</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t338" href="#t338">338</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">_interface_updates_since_log</span> <span class="op">=</span> <span class="num">0</span>&nbsp;</span><span class="r"></span></p>
+    <p class="par run show_par"><span class="n"><a id="t331" href="#t331">331</a></span><span class="t">        <span class="key">if</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_samples_since_log</span> <span class="op">>=</span> <span class="nam">_AGGREGATE_LOG_SAMPLE_COUNT</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">331&#x202F;&#x219B;&#x202F;332</span><span class="annotate long">line 331 didn't jump to line 332 because the condition on line 331 was never true</span></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t332" href="#t332">332</a></span><span class="t">            <span class="nam">_LOGGER</span><span class="op">.</span><span class="nam">debug</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t333" href="#t333">333</a></span><span class="t">                <span class="str">"Processed %d live interface traffic samples covering %d interface updates"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t334" href="#t334">334</a></span><span class="t">                <span class="nam">self</span><span class="op">.</span><span class="nam">_samples_since_log</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t335" href="#t335">335</a></span><span class="t">                <span class="nam">self</span><span class="op">.</span><span class="nam">_interface_updates_since_log</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t336" href="#t336">336</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t337" href="#t337">337</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">_samples_since_log</span> <span class="op">=</span> <span class="num">0</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t338" href="#t338">338</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">_interface_updates_since_log</span> <span class="op">=</span> <span class="num">0</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t339" href="#t339">339</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t340" href="#t340">340</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">async_update_listeners</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t341" href="#t341">341</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
@@ -462,7 +462,7 @@
             <a class="nav" href="z_a139522e3a23c96e_update_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.14.3">coverage.py v7.14.3</a>,
-            created at 2026-07-19 23:02 +0000
+            created at 2026-07-21 02:41 +0000
         </p>
     </div>
 </footer>
