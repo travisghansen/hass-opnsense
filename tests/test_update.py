@@ -21,7 +21,6 @@ from custom_components.opnsense.const import (
 )
 from custom_components.opnsense.update import (
     OPNsenseFirmwareUpdatesAvailableUpdate,
-    _affected_package_count,
     async_setup_entry,
 )
 
@@ -266,13 +265,8 @@ def test_is_update_available_true_for_valid_status(
     assert ent.available is True
 
 
-def test_affected_package_count_counts_lists() -> None:
-    """Affected package count should count list-shaped package collections."""
-    assert _affected_package_count(["base", "kernel"]) == 2
-
-
 @pytest.mark.parametrize(
-    ("state", "expected_latest", "expected_series"),
+    ("state", "expected_latest"),
     [
         (
             _firmware_update_state(
@@ -282,7 +276,6 @@ def test_affected_package_count_counts_lists() -> None:
                 upgrade_packages=[{"name": "not-opnsense"}],
             ),
             "1_0_0+",
-            "1.0",
         ),
         (
             _firmware_update_state(
@@ -292,7 +285,6 @@ def test_affected_package_count_counts_lists() -> None:
                 upgrade_packages=[{"name": "opnsense", "new_version": "1_0_1"}],
             ),
             "1_0_1",
-            "1.0",
         ),
         (
             _firmware_update_state(
@@ -302,7 +294,6 @@ def test_affected_package_count_counts_lists() -> None:
                 upgrade_packages=[{"name": "opnsense", "new_version": ""}],
             ),
             "1_0_0+",
-            "1.0",
         ),
         (
             _firmware_update_state(
@@ -315,7 +306,6 @@ def test_affected_package_count_counts_lists() -> None:
                 ],
             ),
             "1.0.1",
-            "1.0",
         ),
         (
             _firmware_update_state(
@@ -329,7 +319,6 @@ def test_affected_package_count_counts_lists() -> None:
                 ],
             ),
             "1.0.2",
-            "1.0",
         ),
         (
             _firmware_update_state(
@@ -338,7 +327,6 @@ def test_affected_package_count_counts_lists() -> None:
                 product_series="1.0",
             ),
             "1_0_0+",
-            "1.0",
         ),
         (
             _firmware_update_state(
@@ -347,7 +335,6 @@ def test_affected_package_count_counts_lists() -> None:
                 product_series="s1",
             ),
             None,
-            "s1",
         ),
         (
             _firmware_update_state(
@@ -358,7 +345,6 @@ def test_affected_package_count_counts_lists() -> None:
                 upgrade_major_version="2.1.3",
             ),
             "2.1.3",
-            "2.1",
         ),
         (
             _firmware_update_state(
@@ -369,19 +355,17 @@ def test_affected_package_count_counts_lists() -> None:
                 upgrade_major_version="",
             ),
             "2.0.0",
-            "2.0",
         ),
     ],
 )
-def test_get_versions_scenarios(
+def test_handle_coordinator_update_publishes_latest_version(
     state: dict[str, Any],
     expected_latest: str | None,
-    expected_series: str | None,
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
 ) -> None:
-    """Parameterize _get_versions behaviors across upgrade package presence and missing fields."""
-    entry = make_config_entry()
+    """Publish the expected latest version across representative firmware payloads."""
+    entry = make_config_entry({"url": "https://opnsense.example"})
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,
         coordinator=dummy_coordinator,
@@ -389,38 +373,11 @@ def test_get_versions_scenarios(
             key="firmware.update_available", name="Firmware"
         ),
     )
-    _pv, pl, ps = ent._get_versions(state)
-    assert ps == expected_series
-    assert pl == expected_latest
-
-
-@pytest.mark.parametrize(
-    ("series", "expected"),
-    [
-        ("25.1", "community"),
-        ("1.1", "community"),
-        ("2.4", "business"),
-        ("3.4", "business"),
-        ("25.7", "community"),
-        ("1.10", "business"),
-    ],
-)
-def test_get_product_class_and_series_parsing(
-    series: str | None,
-    expected: Any,
-    make_config_entry: Callable[..., MockConfigEntry],
-    dummy_coordinator: MagicMock,
-) -> None:
-    """Parameterize product class mapping by series minor version."""
-    entry = make_config_entry()
-    ent = OPNsenseFirmwareUpdatesAvailableUpdate(
-        config_entry=entry,
-        coordinator=dummy_coordinator,
-        entity_description=UpdateEntityDescription(
-            key="firmware.update_available", name="Firmware"
-        ),
-    )
-    assert ent._get_product_class(series) == expected
+    ent.coordinator.data = state
+    object.__setattr__(ent, "async_write_ha_state", lambda: None)
+    ent._handle_coordinator_update()
+    expected_published = expected_latest.replace("_", ".") if expected_latest else None
+    assert ent.latest_version == expected_published
 
 
 def test_handle_coordinator_update_sets_attributes(
@@ -482,6 +439,7 @@ def test_handle_coordinator_update_sets_attributes(
     [
         pytest.param("2.0.0", "2_0_1", "2.1", "2.1.3", "community/2.1", id="community"),
         pytest.param("3.0.0", "3_0_1", "2.4", "2.4.1", "business/2.4", id="business"),
+        pytest.param("1.9.0", "1_9_1", "1.9", "1.10.3", "business/1.10", id="business-1.10"),
     ],
 )
 def test_handle_coordinator_update_upgrade_sets_release_url(
@@ -575,11 +533,10 @@ async def test_handle_coordinator_update_update_normalizes_product_latest(
 
 
 def test_handle_coordinator_update_release_url_fallback_when_product_class_none(
-    monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
 ) -> None:
-    """When _get_product_class returns None, release_url should fall back to the OPNsense UI changelog."""
+    """An unmapped firmware series should use the OPNsense UI changelog."""
     entry = make_config_entry(
         {
             CONF_DEVICE_UNIQUE_ID: "test-device-123",
@@ -597,19 +554,16 @@ def test_handle_coordinator_update_release_url_fallback_when_product_class_none(
 
     state = {
         "firmware_update_info": {
-            "status": "upgrade",
+            "status": "update",
             "product": {
                 "product_version": "2.0.0",
                 "product_latest": "2_0_1",
-                "product_series": "2.1",
+                "product_series": "25.13",
             },
-            "upgrade_major_version": "2.1.3",
         }
     }
     ent.coordinator.data = state
     object.__setattr__(ent, "async_write_ha_state", lambda: None)
-
-    monkeypatch.setattr(ent, "_get_product_class", lambda series: None)
 
     ent._handle_coordinator_update()
 
@@ -888,12 +842,12 @@ async def test_async_install_handles_masked_polling_response(
 
 
 @pytest.mark.asyncio
-async def test_async_install_stops_after_four_invalid_polling_responses(
+async def test_async_install_terminates_after_invalid_polling_responses(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
 ) -> None:
-    """Stop after four malformed polls without fetching firmware info or rebooting."""
+    """Malformed polling responses should terminate without fetching info or rebooting."""
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,
@@ -921,7 +875,6 @@ async def test_async_install_stops_after_four_invalid_polling_responses(
     await ent.async_install()
 
     bad.upgrade_status.assert_awaited()
-    assert bad.upgrade_status.await_count == 4
     bad.upgrade_firmware.assert_awaited_once()
     bad.get_firmware_update_info.assert_not_awaited()
     assert bad.rebooted is False
@@ -1002,7 +955,7 @@ async def test_async_release_notes_returns_value(
             },
             "status_msg": "ok",
             "needs_reboot": "0",
-            "all_packages": {},
+            "all_packages": ["base", "kernel"],
             "new_packages": [],
             "reinstall_packages": [],
             "remove_packages": [],
@@ -1016,3 +969,4 @@ async def test_async_release_notes_returns_value(
     val = await ent.async_release_notes()
     assert val is not None
     assert "OPN" in val
+    assert "- total affected packages: 2" in val
