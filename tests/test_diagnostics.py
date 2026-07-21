@@ -278,3 +278,51 @@ async def test_config_entry_diagnostics_supports_optional_coordinators(
     }
     assert diagnostics["config_entry"]["data"]["url"].startswith("**REDACTED_URL_")
     json.dumps(diagnostics)
+
+
+async def test_config_entry_diagnostics_redacts_keys_and_sensitive_containers(
+    hass: HomeAssistant, make_config_entry: Any
+) -> None:
+    """Diagnostics should redact secret keys and recursively pseudonymize private containers."""
+    entry = make_config_entry(
+        data={"url": "https://router.example.test"},
+        title="Private Router",
+    )
+    entry.runtime_data = SimpleNamespace(
+        coordinator=_coordinator(
+            {
+                "preshared_key": "private-preshared-key",
+                "client_key": "private-client-key",
+                "public_key": "correlatable-public-key",
+                "lease_interfaces": {
+                    "lan_custom": "Private LAN",
+                    "nested_group": {
+                        "labels": ["Private Guest", 7, True, None],
+                    },
+                },
+            }
+        ),
+        device_tracker_coordinator=None,
+        live_traffic_coordinator=None,
+    )
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    data = diagnostics["coordinators"]["main"]["data"]
+    assert data["preshared_key"] == REDACTED
+    assert data["client_key"] == REDACTED
+    assert data["public_key"].startswith("**REDACTED_ID_")
+    interfaces = data["lease_interfaces"]
+    interface_key = next(key for key, value in interfaces.items() if isinstance(value, str))
+    assert interface_key.startswith("**REDACTED_KEY_")
+    assert interfaces[interface_key].startswith("**REDACTED_VALUE_")
+    nested = next(value for value in interfaces.values() if isinstance(value, dict))
+    nested_key = next(iter(nested))
+    assert nested_key.startswith("**REDACTED_KEY_")
+    assert nested[nested_key][0].startswith("**REDACTED_VALUE_")
+    assert nested[nested_key][1:] == [7, True, None]
+    serialized = json.dumps(diagnostics)
+    assert "private-preshared-key" not in serialized
+    assert "private-client-key" not in serialized
+    assert "lan_custom" not in serialized
+    assert "Private LAN" not in serialized

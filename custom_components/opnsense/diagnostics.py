@@ -32,6 +32,7 @@ _SECRET_FIELDS: frozenset[str] = frozenset(
         "username",
     }
 )
+_NON_SECRET_KEY_FIELDS: frozenset[str] = frozenset({"public_key"})
 _MAC_FIELDS: frozenset[str] = frozenset(
     {"apmac", "bssid", "gateway_mac", "hwaddr", "mac", "mac_address", "macaddr"}
 )
@@ -169,8 +170,10 @@ def _normalize_field(field_name: object) -> str:
 
 def _is_secret_field(field_name: str) -> bool:
     """Return whether a normalized field contains a secret value."""
+    if field_name in _NON_SECRET_KEY_FIELDS:
+        return False
     return field_name in _SECRET_FIELDS or any(
-        candidate != "key" and field_name.endswith(f"_{candidate}") for candidate in _SECRET_FIELDS
+        field_name.endswith(f"_{candidate}") for candidate in _SECRET_FIELDS
     )
 
 
@@ -214,36 +217,53 @@ class _Pseudonymizer:
         if embedded:
             self.embedded_aliases.add(value)
 
-    def collect(self, value: Any, parent_field: str = "") -> None:
+    def collect(self, value: Any, parent_field: str = "", *, force_sensitive: bool = False) -> None:
         """Collect sensitive values recursively before replacing mapping keys."""
         if isinstance(value, Mapping):
-            redact_mapping_keys = parent_field in _IDENTIFIER_KEY_CONTAINERS
+            redact_mapping_keys = force_sensitive or parent_field in _IDENTIFIER_KEY_CONTAINERS
             for key, item in value.items():
                 normalized_key = _normalize_field(key)
                 if redact_mapping_keys:
                     self.register("key", key)
-                if not _is_secret_field(normalized_key):
+                if force_sensitive:
+                    self.collect(item, normalized_key, force_sensitive=True)
+                elif not _is_secret_field(normalized_key):
                     if _is_sensitive_field(normalized_key):
                         self.register(self._kind_for_field(normalized_key, item), item)
-                    self.collect(item, normalized_key)
+                    self.collect(
+                        item,
+                        normalized_key,
+                        force_sensitive=not redact_mapping_keys
+                        and _is_sensitive_field(normalized_key)
+                        and isinstance(item, (Mapping, list, tuple, set)),
+                    )
                 if isinstance(key, str):
                     self._collect_detected_values(key)
             return
         if isinstance(value, (list, tuple, set)):
             for item in value:
-                self.collect(item, parent_field)
+                self.collect(item, parent_field, force_sensitive=force_sensitive)
             return
         if isinstance(value, str):
-            self._collect_detected_values(value)
+            if force_sensitive:
+                self._collect_detected_values(value)
+                self.register("value", value)
+            else:
+                self._collect_detected_values(value)
 
-    def sanitize(self, value: Any, parent_field: str = "") -> Any:
+    def sanitize(self, value: Any, parent_field: str = "", *, force_sensitive: bool = False) -> Any:
         """Return a recursively pseudonymized, JSON-compatible copy."""
         if isinstance(value, Mapping):
             sanitized: dict[Any, Any] = {}
+            redact_mapping_keys = force_sensitive or parent_field in _IDENTIFIER_KEY_CONTAINERS
             for key, item in value.items():
                 normalized_key = _normalize_field(key)
                 sanitized_key = self._replace_scalar(key)
-                if _is_secret_field(normalized_key):
+                if force_sensitive:
+                    sanitized[sanitized_key] = self.sanitize(
+                        item, normalized_key, force_sensitive=True
+                    )
+                elif _is_secret_field(normalized_key):
                     sanitized[sanitized_key] = REDACTED
                 elif _is_sensitive_field(normalized_key) and not isinstance(
                     item, (Mapping, list, tuple, set)
@@ -252,12 +272,24 @@ class _Pseudonymizer:
                         self.aliases.get(item, REDACTED) if isinstance(item, str) else REDACTED
                     )
                 else:
-                    sanitized[sanitized_key] = self.sanitize(item, normalized_key)
+                    sanitized[sanitized_key] = self.sanitize(
+                        item,
+                        normalized_key,
+                        force_sensitive=not redact_mapping_keys
+                        and _is_sensitive_field(normalized_key)
+                        and isinstance(item, (Mapping, list, tuple, set)),
+                    )
             return sanitized
         if isinstance(value, (list, tuple)):
-            return [self.sanitize(item, parent_field) for item in value]
+            return [
+                self.sanitize(item, parent_field, force_sensitive=force_sensitive) for item in value
+            ]
         if isinstance(value, set):
-            return [self.sanitize(item, parent_field) for item in value]
+            return [
+                self.sanitize(item, parent_field, force_sensitive=force_sensitive) for item in value
+            ]
+        if force_sensitive and isinstance(value, str):
+            return self.aliases.get(value, REDACTED)
         return self._replace_scalar(value)
 
     def _collect_detected_values(self, value: str) -> None:
