@@ -388,8 +388,14 @@ async def test_config_entry_diagnostics_defaults_dynamic_keys_and_text_private(
         coordinator=_coordinator(
             {
                 "users_by_name": {"Alice Smith": {"count": 1}},
+                "Alice_id": {"count": 2},
+                "Alice_ids": {"count": 3},
+                "Alice_status": {"count": 4},
+                "Alice_state": {"count": 5},
+                "Alice_version": {"count": 6},
                 "status": "Connected for Alice Smith",
                 "firmware_version": "26.7.1",
+                "new_version": "26.1-OfficeFirewall",
             }
         ),
         device_tracker_coordinator=None,
@@ -401,6 +407,7 @@ async def test_config_entry_diagnostics_defaults_dynamic_keys_and_text_private(
     data = diagnostics["coordinators"]["main"]["data"]
     assert data["status"].startswith("**REDACTED_VALUE_")
     assert data["firmware_version"] == "26.7.1"
+    assert data["new_version"].startswith("**REDACTED_VALUE_")
     users = next(value for key, value in data.items() if key.startswith("**REDACTED_KEY_"))
     user = next(iter(users.values()))
     assert user == {"count": 1}
@@ -408,6 +415,15 @@ async def test_config_entry_diagnostics_defaults_dynamic_keys_and_text_private(
     assert "users_by_name" not in serialized
     assert "Alice Smith" not in serialized
     assert "Connected for Alice Smith" not in serialized
+    for private_key in (
+        "Alice_id",
+        "Alice_ids",
+        "Alice_status",
+        "Alice_state",
+        "Alice_version",
+    ):
+        assert private_key not in serialized
+    assert "26.1-OfficeFirewall" not in serialized
 
 
 async def test_config_entry_diagnostics_plural_numeric_ids_and_distinct_dynamic_keys(
@@ -452,3 +468,83 @@ async def test_config_entry_diagnostics_plural_numeric_ids_and_distinct_dynamic_
     assert len(set(dynamic)) == 4
     assert all(key.startswith("**REDACTED_KEY_") for key in dynamic)
     json.dumps(diagnostics)
+
+
+async def test_config_entry_diagnostics_preserves_real_payload_shapes(
+    hass: HomeAssistant, make_config_entry: Any
+) -> None:
+    """Diagnostics should retain known coordinator schemas while hiding dynamic identifiers."""
+    entry = make_config_entry(data={"url": "https://router.example.test"}, title="Router")
+    entry.runtime_data = SimpleNamespace(
+        coordinator=_coordinator(
+            {
+                "vnstat": {"interfaces": {"igc0": {"used": 10}}},
+                "speedtest": {"download": 100.5, "upload": 20.5, "latency": 8.1},
+                "smart": {"smart_info": {"nvme0": {"temperature": 41}}},
+                "openvpn": {"clients": {"private-client": {"status": "up"}}},
+                "firmware_update_info": {
+                    "new_version": "26.7.1_2",
+                    "new_packages": 3,
+                },
+                "dhcp_leases": [{"interface": "lan", "hostname": "private-host", "active": True}],
+                "gateways": {"private-gateway": {"status": "online", "delay": 3.2}},
+                "services": [
+                    {"service_name": "private-service", "status": state}
+                    for state in (
+                        "MASTER",
+                        "BACKUP",
+                        "INIT",
+                        "healthy",
+                        "maintenance",
+                        "degraded",
+                        "not_configured",
+                    )
+                ],
+                "firewall": {"rules": {"private-rule": {"enabled": True}}},
+                "carp": {
+                    "interfaces": [
+                        {
+                            "interface": "igc0",
+                            "subnet": "192.0.2.10",
+                            "status": "MASTER",
+                            "unexpected_owner": "Alice Smith",
+                        }
+                    ],
+                    "status_summary": {"state": "healthy"},
+                },
+            }
+        ),
+        device_tracker_coordinator=None,
+        live_traffic_coordinator=None,
+    )
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    data = diagnostics["coordinators"]["main"]["data"]
+    assert data["speedtest"] == {"download": 100.5, "upload": 20.5, "latency": 8.1}
+    assert data["firmware_update_info"]["new_version"] == "26.7.1_2"
+    assert [service["status"] for service in data["services"]] == [
+        "MASTER",
+        "BACKUP",
+        "INIT",
+        "healthy",
+        "maintenance",
+        "degraded",
+        "not_configured",
+    ]
+    carp_row = data["carp"]["interfaces"][0]
+    assert {"interface", "subnet", "status"} <= carp_row.keys()
+    assert carp_row["status"] == "MASTER"
+    assert "unexpected_owner" not in carp_row
+    serialized = json.dumps(diagnostics)
+    for private_value in (
+        "igc0",
+        "nvme0",
+        "private-client",
+        "private-host",
+        "private-gateway",
+        "private-service",
+        "private-rule",
+        "Alice Smith",
+    ):
+        assert private_value not in serialized
