@@ -210,9 +210,6 @@ async def test_config_entry_diagnostics_pseudonymizes_full_runtime(
     assert sanitized_main["nut_ups_status"]["status"]["device.serial"].startswith("**REDACTED_ID_")
     assert sanitized_main["nut_ups_status"]["status"]["ups.status"] == "OL"
 
-    assert "2001:db8::10" not in sanitized_main["connection_summary"]
-    assert sanitized_main["connection_summary"].startswith("**REDACTED_VALUE_")
-    assert sanitized_main["detail"].startswith("**REDACTED_VALUE_")
     redacted_lease_key = next(iter(sanitized_main["leases"]))
     assert redacted_lease_key.startswith("**REDACTED_KEY_")
     assert sanitized_main["leases"][redacted_lease_key]["hostname"] == redacted_lease_key
@@ -239,6 +236,9 @@ async def test_config_entry_diagnostics_pseudonymizes_full_runtime(
     assert "private-wireguard-public-key" not in json.dumps(diagnostics)
     assert "vpn.private.example" not in json.dumps(diagnostics)
     assert "private office uplink" not in json.dumps(diagnostics)
+    assert "connection_summary" not in json.dumps(diagnostics)
+    assert "detail" not in json.dumps(diagnostics)
+    assert "2001:db8::10" not in json.dumps(diagnostics)
     json.dumps(diagnostics)
 
     assert dict(entry.data) == original_entry_data
@@ -322,7 +322,8 @@ async def test_config_entry_diagnostics_redacts_keys_and_sensitive_containers(
     nested_key = next(iter(nested))
     assert nested_key.startswith("**REDACTED_KEY_")
     assert nested[nested_key][0].startswith("**REDACTED_VALUE_")
-    assert nested[nested_key][1:] == [7, True, None]
+    assert nested[nested_key][1].startswith("**REDACTED_VALUE_")
+    assert nested[nested_key][2:] == [True, None]
     serialized = json.dumps(diagnostics)
     assert "private-preshared-key" not in serialized
     assert "private-client-key" not in serialized
@@ -376,3 +377,78 @@ async def test_config_entry_diagnostics_numeric_ids_and_high_cardinality(
     serialized = json.dumps(diagnostics)
     assert "private-lease-0" not in serialized
     assert "10.0.0.1" not in serialized
+
+
+async def test_config_entry_diagnostics_defaults_dynamic_keys_and_text_private(
+    hass: HomeAssistant, make_config_entry: Any
+) -> None:
+    """Diagnostics should hide dynamic keys and validate operational string values."""
+    entry = make_config_entry(data={"url": "https://router.example.test"}, title="Router")
+    entry.runtime_data = SimpleNamespace(
+        coordinator=_coordinator(
+            {
+                "users_by_name": {"Alice Smith": {"count": 1}},
+                "status": "Connected for Alice Smith",
+                "firmware_version": "26.7.1",
+            }
+        ),
+        device_tracker_coordinator=None,
+        live_traffic_coordinator=None,
+    )
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    data = diagnostics["coordinators"]["main"]["data"]
+    assert data["status"].startswith("**REDACTED_VALUE_")
+    assert data["firmware_version"] == "26.7.1"
+    users = next(value for key, value in data.items() if key.startswith("**REDACTED_KEY_"))
+    user = next(iter(users.values()))
+    assert user == {"count": 1}
+    serialized = json.dumps(diagnostics)
+    assert "users_by_name" not in serialized
+    assert "Alice Smith" not in serialized
+    assert "Connected for Alice Smith" not in serialized
+
+
+async def test_config_entry_diagnostics_plural_numeric_ids_and_distinct_dynamic_keys(
+    hass: HomeAssistant, make_config_entry: Any
+) -> None:
+    """Diagnostics should alias nested numeric IDs and avoid dynamic-key collisions."""
+    opaque_key = _OpaqueDiagnosticValue()
+    entry = make_config_entry(data={"url": "https://router.example.test"}, title="Router")
+    entry.runtime_data = SimpleNamespace(
+        coordinator=_coordinator(
+            {
+                "rule_ids": [1, 2],
+                "client_ids": (1, 3),
+                "nested_ids": {"private_group": [1, 4]},
+                "packets": 1,
+                "dynamic_keys": {None: 1, False: 2, "": 3, opaque_key: 4},
+            }
+        ),
+        device_tracker_coordinator=None,
+        live_traffic_coordinator=None,
+    )
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    data = diagnostics["coordinators"]["main"]["data"]
+    assert all(value.startswith("**REDACTED_VALUE_") for value in data["rule_ids"])
+    assert data["client_ids"][0] == data["rule_ids"][0]
+    assert data["client_ids"][1] != data["rule_ids"][1]
+    nested_ids = data["nested_ids"]
+    nested_values = next(iter(nested_ids.values()))
+    assert nested_values[0] == data["rule_ids"][0]
+    assert nested_values[1].startswith("**REDACTED_VALUE_")
+    assert data["packets"] == 1
+    dynamic = next(
+        value
+        for key, value in data.items()
+        if key.startswith("**REDACTED_KEY_")
+        and isinstance(value, dict)
+        and set(value.values()) == {1, 2, 3, 4}
+    )
+    assert len(dynamic) == 4
+    assert len(set(dynamic)) == 4
+    assert all(key.startswith("**REDACTED_KEY_") for key in dynamic)
+    json.dumps(diagnostics)

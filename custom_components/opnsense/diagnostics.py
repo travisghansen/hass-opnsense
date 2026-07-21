@@ -68,6 +68,7 @@ _ID_FIELDS: frozenset[str] = frozenset(
         "entry_id",
         "fingerprint",
         "id",
+        "ids",
         "issuer",
         "public_key",
         "pubkey",
@@ -160,6 +161,94 @@ _SAFE_OPERATIONAL_FIELDS: frozenset[str] = frozenset(
         "valid_to",
     }
 )
+_SAFE_STRUCTURAL_FIELDS: frozenset[str] = frozenset(
+    {
+        "active",
+        "arp_table",
+        "bytes",
+        "carp",
+        "certificates",
+        "clients",
+        "config_entry",
+        "coordinators",
+        "count",
+        "data",
+        "device_tracker",
+        "device_serial",
+        "devices",
+        "disabled_by",
+        "discovery_keys",
+        "enum",
+        "firmware_version",
+        "host_firmware_version",
+        "inbytes_kilobytes_per_second",
+        "interfaces",
+        "json_scalars",
+        "last_exception",
+        "last_update_success",
+        "leases",
+        "live_traffic",
+        "main",
+        "minor_version",
+        "notices",
+        "nut_ups_status",
+        "opaque",
+        "options",
+        "packets",
+        "pfstate",
+        "pref_disable_new_entities",
+        "pref_disable_polling",
+        "scan_interval",
+        "source",
+        "subentries",
+        "system_info",
+        "telemetry",
+        "temperature",
+        "temps",
+        "used",
+        "version",
+        "wireguard",
+    }
+)
+_SAFE_CODE_VALUES: frozenset[str] = frozenset(
+    {
+        "OL",
+        "active",
+        "available",
+        "carp",
+        "client",
+        "connected",
+        "disabled",
+        "disconnected",
+        "down",
+        "enabled",
+        "error",
+        "failed",
+        "http",
+        "https",
+        "offline",
+        "ok",
+        "online",
+        "pending",
+        "primary",
+        "running",
+        "secondary",
+        "server",
+        "stopped",
+        "success",
+        "tcp",
+        "udp",
+        "unknown",
+        "unavailable",
+        "up",
+        "warning",
+    }
+)
+_SAFE_UNIT_VALUES: frozenset[str] = frozenset(
+    {"%", "A", "B", "B/s", "C", "F", "Hz", "K", "V", "W", "bit/s", "bytes", "ms", "s"}
+)
+_VERSION_PATTERN = re.compile(r"\d+(?:\.\d+)+(?:[-+._a-z0-9]*)?", re.IGNORECASE)
+_EXCEPTION_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_.]*")
 
 _MAC_PATTERN = re.compile(r"(?i)(?<![0-9a-f])(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}(?![0-9a-f])")
 _IPV4_PATTERN = re.compile(r"(?<![0-9])(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?![0-9])")
@@ -206,10 +295,47 @@ def _is_sensitive_field(field_name: str) -> bool:
 
 
 def _is_safe_operational_field(field_name: str) -> bool:
-    """Return whether a string field is explicitly safe operational metadata."""
+    """Return whether a field may contain safe operational metadata."""
     return field_name in _SAFE_OPERATIONAL_FIELDS or any(
         field_name.endswith(f"_{safe}") for safe in _SAFE_OPERATIONAL_FIELDS
     )
+
+
+def _is_safe_structural_field(field_name: str) -> bool:
+    """Return whether a mapping key belongs to the diagnostics payload structure."""
+    return (
+        field_name in _SAFE_STRUCTURAL_FIELDS
+        or _is_secret_field(field_name)
+        or field_name in _SENSITIVE_FIELDS
+        or field_name == "ids"
+        or field_name.endswith(("_id", "_ids"))
+        or _is_safe_operational_field(field_name)
+    )
+
+
+def _is_safe_operational_value(field_name: str, value: str) -> bool:
+    """Return whether a string value is valid safe metadata for its field."""
+    if not _is_safe_operational_field(field_name):
+        return False
+    if field_name == "last_exception":
+        return _EXCEPTION_PATTERN.fullmatch(value) is not None
+    if "version" in field_name:
+        return _VERSION_PATTERN.fullmatch(value) is not None
+    if field_name in {"date", "valid_from", "valid_to"} or field_name.endswith("_date"):
+        try:
+            date.fromisoformat(value)
+        except ValueError:
+            return False
+        return True
+    if field_name in {"datetime", "time"} or field_name.endswith(("_datetime", "_time")):
+        try:
+            datetime.fromisoformat(value) if "date" in field_name else time.fromisoformat(value)
+        except ValueError:
+            return False
+        return True
+    if field_name in {"unit", "units"} or field_name.endswith(("_unit", "_units")):
+        return value in _SAFE_UNIT_VALUES
+    return value in _SAFE_CODE_VALUES
 
 
 def _coordinator_diagnostics(coordinator: Any | None) -> dict[str, Any] | None:
@@ -230,6 +356,7 @@ class _Pseudonymizer:
     """Replace sensitive values with consistent placeholders for one document."""
 
     aliases: dict[tuple[type, str | int | float], str] = field(default_factory=dict)
+    key_aliases: dict[tuple[object, object], str] = field(default_factory=dict)
     counters: dict[str, int] = field(default_factory=dict)
 
     def register(self, kind: str, value: object) -> None:
@@ -249,6 +376,27 @@ class _Pseudonymizer:
             return None
         return self.aliases.get((type(value), value))
 
+    def register_key(self, value: object) -> None:
+        """Register a dynamic mapping key without rendering its value."""
+        if isinstance(value, (str, int, float)) and not isinstance(value, bool) and value != "":
+            self.register("key", value)
+            return
+        token = self._key_token(value)
+        if token not in self.key_aliases:
+            self.counters["key"] = self.counters.get("key", 0) + 1
+            self.key_aliases[token] = f"**REDACTED_KEY_{self.counters['key']}**"
+
+    def key_alias_for(self, value: object) -> str:
+        """Return the distinct alias registered for a dynamic mapping key."""
+        return self.alias_for(value) or self.key_aliases[self._key_token(value)]
+
+    @staticmethod
+    def _key_token(value: object) -> tuple[object, object]:
+        """Build a non-rendering, type-aware token for a dynamic mapping key."""
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return (type(value), value)
+        return (type(value), id(value))
+
     def collect(self, value: Any, parent_field: str = "", *, force_sensitive: bool = False) -> None:
         """Collect sensitive values recursively before replacing mapping keys."""
         if isinstance(value, Enum):
@@ -258,8 +406,9 @@ class _Pseudonymizer:
             redact_mapping_keys = force_sensitive or parent_field in _IDENTIFIER_KEY_CONTAINERS
             for key, item in value.items():
                 normalized_key = _normalize_field(key)
-                if redact_mapping_keys:
-                    self.register("key", key)
+                redact_key = redact_mapping_keys or not _is_safe_structural_field(normalized_key)
+                if redact_key:
+                    self.register_key(key)
                 if force_sensitive:
                     self.collect(item, normalized_key, force_sensitive=True)
                 elif not _is_secret_field(normalized_key):
@@ -268,7 +417,7 @@ class _Pseudonymizer:
                     self.collect(
                         item,
                         normalized_key,
-                        force_sensitive=not redact_mapping_keys
+                        force_sensitive=not redact_key
                         and _is_sensitive_field(normalized_key)
                         and isinstance(item, (Mapping, list, tuple, set)),
                     )
@@ -279,14 +428,15 @@ class _Pseudonymizer:
             for item in value:
                 self.collect(item, parent_field, force_sensitive=force_sensitive)
             return
+        if force_sensitive:
+            if isinstance(value, str):
+                self._collect_detected_values(value)
+            self.register("value", value)
+            return
         if isinstance(value, str):
-            if force_sensitive:
-                self._collect_detected_values(value)
+            self._collect_detected_values(value)
+            if not _is_safe_operational_value(parent_field, value):
                 self.register("value", value)
-            else:
-                self._collect_detected_values(value)
-                if not _is_safe_operational_field(parent_field):
-                    self.register("value", value)
 
     def sanitize(self, value: Any, parent_field: str = "", *, force_sensitive: bool = False) -> Any:
         """Return a recursively pseudonymized, JSON-compatible copy."""
@@ -295,9 +445,10 @@ class _Pseudonymizer:
             redact_mapping_keys = force_sensitive or parent_field in _IDENTIFIER_KEY_CONTAINERS
             for key, item in value.items():
                 normalized_key = _normalize_field(key)
+                redact_key = redact_mapping_keys or not _is_safe_structural_field(normalized_key)
                 sanitized_key = (
-                    self.alias_for(key) or REDACTED
-                    if redact_mapping_keys
+                    self.key_alias_for(key)
+                    if redact_key
                     else self._replace_embedded(key)
                     if isinstance(key, str)
                     else key
@@ -316,7 +467,7 @@ class _Pseudonymizer:
                     sanitized[sanitized_key] = self.sanitize(
                         item,
                         normalized_key,
-                        force_sensitive=not redact_mapping_keys
+                        force_sensitive=not redact_key
                         and _is_sensitive_field(normalized_key)
                         and isinstance(item, (Mapping, list, tuple, set)),
                     )
@@ -329,8 +480,10 @@ class _Pseudonymizer:
             return [
                 self.sanitize(item, parent_field, force_sensitive=force_sensitive) for item in value
             ]
-        if force_sensitive and isinstance(value, str):
-            return self.alias_for(value) or REDACTED
+        if force_sensitive:
+            alias = self.alias_for(value)
+            if alias is not None:
+                return alias
         return self._replace_scalar(value, parent_field)
 
     def _collect_detected_values(self, value: str) -> None:
@@ -414,7 +567,7 @@ class _Pseudonymizer:
         if isinstance(value, Enum):
             return self.sanitize(value.value, parent_field)
         if isinstance(value, str):
-            if not _is_safe_operational_field(parent_field):
+            if not _is_safe_operational_value(parent_field, value):
                 alias = self.alias_for(value)
                 if alias is not None:
                     return alias
