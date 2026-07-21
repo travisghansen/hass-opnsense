@@ -461,16 +461,16 @@ def test_cleanup_script_closes_stale_prs_and_deletes_workflow_branches(
         delete_merged_branches=True,
     )
 
-    assert set(client.closed_prs) == {10, 9}
-    assert set(client.deleted_refs) == {
+    assert sorted(client.closed_prs) == [9, 10]
+    assert sorted(client.deleted_refs) == [
         "heads/chore/update-aiopnsense-manifest",
         "heads/chore/update-aiopnsense-old",
-    }
-    assert set(result.closed_prs) == {10, 9}
-    assert set(result.deleted_branches) == {
+    ]
+    assert sorted(result.closed_prs) == [9, 10]
+    assert sorted(result.deleted_branches) == [
         "chore/update-aiopnsense-manifest",
         "chore/update-aiopnsense-old",
-    }
+    ]
 
 
 def test_cleanup_script_keeps_active_update_branch(cleanup_script: ModuleType) -> None:
