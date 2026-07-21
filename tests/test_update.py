@@ -858,7 +858,6 @@ async def test_async_install_terminates_after_invalid_polling_responses(
     )
 
     bad: Any = _FirmwareInstallClient(
-        status_responses=[None, None, None, None],
         firmware_info={"needs_reboot": "1", "upgrade_needs_reboot": None},
     )
     object.__setattr__(bad, "upgrade_status", AsyncMock(side_effect=[None, None, None, None]))
