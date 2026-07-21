@@ -13,7 +13,7 @@
   "requirements": [
     "python-dateutil",
     "awesomeversion",
-    "aiopnsense==1.1.4"
+    "aiopnsense==1.1.5"
   ],
   "version": "v1.0.1"
 }
