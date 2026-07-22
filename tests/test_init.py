@@ -58,6 +58,7 @@ from custom_components.opnsense.migrate import (
     _migrate_1_to_2,
     _migrate_2_to_3,
     _migrate_3_to_4,
+    _migrate_4_to_5,
 )
 from custom_components.opnsense.repair_reconciliation import (
     REPAIR_MARKER_KEY,
@@ -2000,6 +2001,30 @@ async def test_migrate_4_to_5_defers_when_device_unique_id_is_missing(
 
 
 @pytest.mark.asyncio
+async def test_migrate_4_to_5_defers_when_migration_client_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: HomeAssistant,
+) -> None:
+    """_migrate_4_to_5 should defer enabled sync without a migration client."""
+    update_entry = MagicMock(return_value=True)
+    monkeypatch.setattr(ph_hass.config_entries, "async_update_entry", update_entry)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_DEVICE_UNIQUE_ID: "device-id",
+            CONF_SYNC_FIREWALL_AND_NAT: True,
+        },
+        version=4,
+    )
+    entry.add_to_hass(ph_hass)
+
+    result = await _migrate_4_to_5(ph_hass, entry, migration_client=None)
+
+    assert result is False
+    update_entry.assert_not_called()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "firewall_result",
     [
@@ -2107,10 +2132,11 @@ async def test_migrate_4_to_5_completes_when_firewall_privileges_are_missing(
     [
         pytest.param({}, id="missing-rules"),
         pytest.param({"rules": []}, id="invalid-rules"),
+        pytest.param([], id="invalid-firewall-payload"),
     ],
 )
 async def test_migrate_4_to_5_skips_native_pruning_when_rules_payload_unavailable(
-    monkeypatch: pytest.MonkeyPatch, ph_hass: HomeAssistant, firewall_payload: dict[str, object]
+    monkeypatch: pytest.MonkeyPatch, ph_hass: HomeAssistant, firewall_payload: object
 ) -> None:
     """_migrate_4_to_5 should complete migration with legacy cleanup only when rules are unavailable."""
     update_entry = MagicMock(return_value=True)
