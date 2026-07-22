@@ -423,6 +423,8 @@ class _Pseudonymizer:
 
     def register_key(self, value: object) -> None:
         """Register a dynamic mapping key without rendering its value."""
+        if isinstance(value, str):
+            self._collect_detected_values(value)
         if isinstance(value, (str, int, float)) and not isinstance(value, bool) and value != "":
             self.register("key", value)
             return
@@ -511,6 +513,13 @@ class _Pseudonymizer:
         schema_row: bool = False,
     ) -> Any:
         """Return a recursively pseudonymized, JSON-compatible copy."""
+        if isinstance(value, Enum):
+            return self.sanitize(
+                value.value,
+                parent_field,
+                force_sensitive=force_sensitive,
+                schema_row=schema_row,
+            )
         if isinstance(value, Mapping):
             sanitized: dict[Any, Any] = {}
             redact_mapping_keys = force_sensitive or (

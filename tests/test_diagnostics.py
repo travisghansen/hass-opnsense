@@ -2,7 +2,7 @@
 
 import copy
 from datetime import UTC, date, datetime, time
-from enum import Enum
+from enum import Enum, IntEnum
 import json
 from types import SimpleNamespace
 from typing import Any, Self
@@ -18,6 +18,12 @@ class _DiagnosticMode(Enum):
     """Representative enum included in a diagnostics payload."""
 
     ACTIVE = "active"
+
+
+class _NumericDiagnosticId(IntEnum):
+    """Representative numeric enum used as an identifier."""
+
+    PRIMARY = 7
 
 
 class _OpaqueDiagnosticValue:
@@ -435,10 +441,10 @@ async def test_config_entry_diagnostics_plural_numeric_ids_and_distinct_dynamic_
     entry.runtime_data = SimpleNamespace(
         coordinator=_coordinator(
             {
-                "rule_ids": [1, 2],
+                "rule_ids": [_NumericDiagnosticId.PRIMARY, 7, 2],
                 "client_ids": (1, 3),
                 "nested_ids": {"private_group": [1, 4]},
-                "packets": 1,
+                "packets": 7,
                 "dynamic_keys": {None: 1, False: 2, "": 3, opaque_key: 4},
             }
         ),
@@ -450,13 +456,14 @@ async def test_config_entry_diagnostics_plural_numeric_ids_and_distinct_dynamic_
 
     data = diagnostics["coordinators"]["main"]["data"]
     assert all(value.startswith("**REDACTED_VALUE_") for value in data["rule_ids"])
-    assert data["client_ids"][0] == data["rule_ids"][0]
-    assert data["client_ids"][1] != data["rule_ids"][1]
+    assert data["rule_ids"][0] == data["rule_ids"][1]
+    assert data["client_ids"][0] != data["rule_ids"][0]
+    assert data["client_ids"][1] != data["rule_ids"][2]
     nested_ids = data["nested_ids"]
     nested_values = next(iter(nested_ids.values()))
-    assert nested_values[0] == data["rule_ids"][0]
+    assert nested_values[0] == data["client_ids"][0]
     assert nested_values[1].startswith("**REDACTED_VALUE_")
-    assert data["packets"] == 1
+    assert data["packets"] == 7
     dynamic = next(
         value
         for key, value in data.items()
@@ -548,3 +555,48 @@ async def test_config_entry_diagnostics_preserves_real_payload_shapes(
         "Alice Smith",
     ):
         assert private_value not in serialized
+
+
+async def test_config_entry_diagnostics_typed_identifier_keys_are_order_independent(
+    hass: HomeAssistant, make_config_entry: Any
+) -> None:
+    """Diagnostics should type aliases consistently whether keys or fields occur first."""
+    key_first_ip = "192.0.2.10"
+    field_first_ip = "192.0.2.20"
+    key_first_mac = "aa:bb:cc:dd:ee:01"
+    field_first_mac = "aa:bb:cc:dd:ee:02"
+    payload = {
+        "ipv4": field_first_ip,
+        "mac": field_first_mac,
+        "leases": {
+            key_first_ip: {"ip": key_first_ip},
+            field_first_ip: {"ip": field_first_ip},
+        },
+        "clients": {
+            key_first_mac: {"mac": key_first_mac},
+            field_first_mac: {"mac": field_first_mac},
+        },
+    }
+    original_payload = copy.deepcopy(payload)
+    entry = make_config_entry(data={"url": "https://router.example.test"}, title="Router")
+    entry.runtime_data = SimpleNamespace(
+        coordinator=_coordinator(payload),
+        device_tracker_coordinator=None,
+        live_traffic_coordinator=None,
+    )
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    data = diagnostics["coordinators"]["main"]["data"]
+    lease_keys = list(data["leases"])
+    assert all(key.startswith("**REDACTED_IP_") for key in lease_keys)
+    assert [lease["ip"] for lease in data["leases"].values()] == lease_keys
+    client_keys = list(data["clients"])
+    assert all(key.startswith("**REDACTED_MAC_") for key in client_keys)
+    assert [client["mac"] for client in data["clients"].values()] == client_keys
+    assert data["ipv4"] == lease_keys[1]
+    assert data["mac"] == client_keys[1]
+    serialized = json.dumps(diagnostics)
+    for identifier in (key_first_ip, field_first_ip, key_first_mac, field_first_mac):
+        assert identifier not in serialized
+    assert payload == original_payload
