@@ -641,3 +641,94 @@ async def test_config_entry_diagnostics_uses_per_download_alias_namespace(
     json.dumps(first)
     json.dumps(second)
     assert payload == original_payload
+
+
+async def test_config_entry_diagnostics_preserves_post_refresh_counters(
+    hass: HomeAssistant, make_config_entry: Any
+) -> None:
+    """Diagnostics should preserve current coordinator counter and rate schema keys."""
+    current_time = 1_721_572_200.5
+    interface_sample = {
+        "inbytes": 200,
+        "outbytes": 100,
+        "inpkts": 300,
+        "outpkts": 150,
+        "inbytes_kilobytes_per_second": 10,
+        "outbytes_kilobytes_per_second": 5,
+        "inpkts_packets_per_second": 100,
+        "outpkts_packets_per_second": 50,
+    }
+    vpn_sample = {
+        "total_bytes_recv": 1000,
+        "total_bytes_sent": 2000,
+        "total_bytes_recv_kilobytes_per_second": 25,
+        "total_bytes_sent_kilobytes_per_second": 50,
+        "connected_clients": 2,
+    }
+    payload = {
+        "update_time": current_time,
+        "interfaces": {"private-wan": interface_sample},
+        "openvpn": {"servers": {"private-openvpn": vpn_sample}},
+        "wireguard": {
+            "clients": {
+                "private-wireguard-client": {
+                    "total_bytes_recv": 3000,
+                    "total_bytes_sent": 4000,
+                    "total_bytes_recv_kilobytes_per_second": 75,
+                    "total_bytes_sent_kilobytes_per_second": 100,
+                    "connected_servers": 1,
+                }
+            }
+        },
+        "previous_state": {
+            "update_time": current_time - 2,
+            "interfaces": {
+                "private-wan": {
+                    "inbytes": 100,
+                    "outbytes": 50,
+                    "inpkts": 100,
+                    "outpkts": 50,
+                }
+            },
+            "openvpn": {
+                "servers": {
+                    "private-openvpn": {
+                        "total_bytes_recv": 500,
+                        "total_bytes_sent": 1000,
+                    }
+                }
+            },
+        },
+    }
+    original_payload = copy.deepcopy(payload)
+    entry = make_config_entry(data={"url": "https://router.example.test"}, title="Router")
+    entry.runtime_data = SimpleNamespace(
+        coordinator=_coordinator(payload),
+        device_tracker_coordinator=None,
+        live_traffic_coordinator=None,
+    )
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    data = diagnostics["coordinators"]["main"]["data"]
+    assert data["update_time"] == current_time
+    assert data["previous_state"]["update_time"] == current_time - 2
+    current_interface = next(iter(data["interfaces"].values()))
+    assert current_interface == interface_sample
+    previous_interface = next(iter(data["previous_state"]["interfaces"].values()))
+    assert previous_interface == {
+        "inbytes": 100,
+        "outbytes": 50,
+        "inpkts": 100,
+        "outpkts": 50,
+    }
+    openvpn_server = next(iter(data["openvpn"]["servers"].values()))
+    assert openvpn_server == vpn_sample
+    wireguard_client = next(iter(data["wireguard"]["clients"].values()))
+    assert wireguard_client["total_bytes_recv"] == 3000
+    assert wireguard_client["total_bytes_sent_kilobytes_per_second"] == 100
+    assert wireguard_client["connected_servers"] == 1
+    serialized = json.dumps(diagnostics)
+    for identifier in ("private-wan", "private-openvpn", "private-wireguard-client"):
+        assert identifier not in serialized
+    assert payload == original_payload
