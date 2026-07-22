@@ -4,6 +4,7 @@ import copy
 from datetime import UTC, date, datetime, time
 from enum import Enum, IntEnum
 import json
+import math
 from types import SimpleNamespace
 from typing import Any, Self
 
@@ -732,3 +733,71 @@ async def test_config_entry_diagnostics_preserves_post_refresh_counters(
     for identifier in ("private-wan", "private-openvpn", "private-wireguard-client"):
         assert identifier not in serialized
     assert payload == original_payload
+
+
+async def test_config_entry_diagnostics_temporal_privacy_and_strict_json(
+    hass: HomeAssistant, make_config_entry: Any
+) -> None:
+    """Diagnostics should hide unknown temporal data and normalize non-finite floats."""
+    private_datetime = datetime(1990, 5, 4, 3, 2, 1, tzinfo=UTC)
+    private_date = date(1990, 5, 4)
+    private_time = time(3, 2, 1)
+    payload = {
+        "customer_birth_date": "1990-05-04",
+        "private_event": private_datetime,
+        "repeated_private_event": private_datetime,
+        "private_day": private_date,
+        "private_clock": private_time,
+        "date": date(2026, 7, 21),
+        "timestamp": "2026-07-21T12:30:00+00:00",
+        "update_time": 1_721_572_200.5,
+        "used": float("nan"),
+        "temperature": float("inf"),
+        "packets": float("-inf"),
+        "count": 42.5,
+    }
+    entry = make_config_entry(data={"url": "https://router.example.test"}, title="Router")
+    entry.runtime_data = SimpleNamespace(
+        coordinator=_coordinator(payload),
+        device_tracker_coordinator=None,
+        live_traffic_coordinator=None,
+    )
+
+    first = await async_get_config_entry_diagnostics(hass, entry)
+    second = await async_get_config_entry_diagnostics(hass, entry)
+
+    first_data = first["coordinators"]["main"]["data"]
+    second_data = second["coordinators"]["main"]["data"]
+    assert first_data["date"] == "2026-07-21"
+    assert first_data["timestamp"] == "2026-07-21T12:30:00+00:00"
+    assert first_data["update_time"] == 1_721_572_200.5
+    assert first_data["used"] is None
+    assert first_data["temperature"] is None
+    assert first_data["packets"] is None
+    assert first_data["count"] == 42.5
+    first_private_values = [
+        value for key, value in first_data.items() if key.startswith("**REDACTED_KEY_")
+    ]
+    second_private_values = [
+        value for key, value in second_data.items() if key.startswith("**REDACTED_KEY_")
+    ]
+    assert first_private_values[1] == first_private_values[2]
+    assert first_private_values != second_private_values
+    assert all(
+        isinstance(value, str) and value.startswith("**REDACTED_VALUE_")
+        for value in first_private_values
+    )
+    serialized = json.dumps(first, allow_nan=False)
+    for private_value in (
+        "customer_birth_date",
+        "1990-05-04",
+        "private_event",
+        "03:02:01",
+    ):
+        assert private_value not in serialized
+    source_used = payload["used"]
+    source_temperature = payload["temperature"]
+    source_packets = payload["packets"]
+    assert isinstance(source_used, float) and math.isnan(source_used)
+    assert isinstance(source_temperature, float) and math.isinf(source_temperature)
+    assert isinstance(source_packets, float) and math.isinf(source_packets)

@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time
 from enum import Enum
 import ipaddress
+import math
 import re
 import secrets
 from typing import Any
@@ -156,6 +157,7 @@ _SAFE_OPERATIONAL_FIELDS: frozenset[str] = frozenset(
         "role",
         "state",
         "status",
+        "timestamp",
         "time",
         "type",
         "unit",
@@ -163,6 +165,21 @@ _SAFE_OPERATIONAL_FIELDS: frozenset[str] = frozenset(
         "valid_from",
         "valid_to",
         "version",
+    }
+)
+_TEMPORAL_OPERATIONAL_FIELDS: frozenset[str] = frozenset(
+    {
+        "date",
+        "datetime",
+        "expirytime",
+        "last_check",
+        "last_known_connected_time",
+        "latest_handshake",
+        "time",
+        "timestamp",
+        "update_time",
+        "valid_from",
+        "valid_to",
     }
 )
 _SAFE_STRUCTURAL_FIELDS: frozenset[str] = frozenset(
@@ -196,6 +213,7 @@ _SAFE_STRUCTURAL_FIELDS: frozenset[str] = frozenset(
         "delay",
         "enum",
         "enabled",
+        "expirytime",
         "download",
         "firmware_update_info",
         "firewall",
@@ -210,7 +228,10 @@ _SAFE_STRUCTURAL_FIELDS: frozenset[str] = frozenset(
         "interfaces",
         "json_scalars",
         "last_exception",
+        "last_check",
+        "last_known_connected_time",
         "last_update_success",
+        "latest_handshake",
         "leases",
         "latency",
         "lease_interfaces",
@@ -385,7 +406,8 @@ def _is_sensitive_field(field_name: str) -> bool:
 def _is_safe_operational_field(field_name: str) -> bool:
     """Return whether a field may contain safe operational metadata."""
     return field_name in _SAFE_OPERATIONAL_FIELDS or any(
-        field_name.endswith(f"_{safe}") for safe in _SAFE_OPERATIONAL_FIELDS
+        safe not in _TEMPORAL_OPERATIONAL_FIELDS and field_name.endswith(f"_{safe}")
+        for safe in _SAFE_OPERATIONAL_FIELDS
     )
 
 
@@ -404,15 +426,15 @@ def _is_safe_operational_value(field_name: str, value: str) -> bool:
         return _EXCEPTION_PATTERN.fullmatch(value) is not None
     if "version" in field_name:
         return _VERSION_PATTERN.fullmatch(value) is not None
-    if field_name in {"date", "valid_from", "valid_to"} or field_name.endswith("_date"):
+    if field_name in {"date", "valid_from", "valid_to"}:
         try:
             date.fromisoformat(value)
         except ValueError:
             return False
         return True
-    if field_name in {"datetime", "time"} or field_name.endswith(("_datetime", "_time")):
+    if field_name in _TEMPORAL_OPERATIONAL_FIELDS:
         try:
-            datetime.fromisoformat(value) if "date" in field_name else time.fromisoformat(value)
+            time.fromisoformat(value) if field_name == "time" else datetime.fromisoformat(value)
         except ValueError:
             return False
         return True
@@ -438,14 +460,20 @@ def _coordinator_diagnostics(coordinator: Any | None) -> dict[str, Any] | None:
 class _Pseudonymizer:
     """Replace sensitive values with consistent placeholders for one document."""
 
-    aliases: dict[tuple[type, str | int | float], str] = field(default_factory=dict)
+    aliases: dict[tuple[type, str | int | float | date | datetime | time], str] = field(
+        default_factory=dict
+    )
     key_aliases: dict[tuple[object, object], str] = field(default_factory=dict)
     counters: dict[str, int] = field(default_factory=dict)
     namespace: str = field(default_factory=lambda: secrets.token_hex(16))
 
     def register(self, kind: str, value: object) -> None:
         """Register a sensitive value for consistent replacement."""
-        if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+        if isinstance(value, bool) or not isinstance(
+            value, (str, int, float, date, datetime, time)
+        ):
+            return
+        if isinstance(value, float) and not math.isfinite(value):
             return
         if value in ("", REDACTED):
             return
@@ -458,7 +486,11 @@ class _Pseudonymizer:
 
     def alias_for(self, value: object) -> str | None:
         """Return the registered alias for a supported scalar value."""
-        if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+        if isinstance(value, bool) or not isinstance(
+            value, (str, int, float, date, datetime, time)
+        ):
+            return None
+        if isinstance(value, float) and not math.isfinite(value):
             return None
         return self.aliases.get((type(value), value))
 
@@ -466,7 +498,12 @@ class _Pseudonymizer:
         """Register a dynamic mapping key without rendering its value."""
         if isinstance(value, str):
             self._collect_detected_values(value)
-        if isinstance(value, (str, int, float)) and not isinstance(value, bool) and value != "":
+        if (
+            isinstance(value, (str, int, float, date, datetime, time))
+            and not isinstance(value, bool)
+            and value != ""
+            and not (isinstance(value, float) and not math.isfinite(value))
+        ):
             self.register("key", value)
             return
         token = self._key_token(value)
@@ -481,6 +518,10 @@ class _Pseudonymizer:
     @staticmethod
     def _key_token(value: object) -> tuple[object, object]:
         """Build a non-rendering, type-aware token for a dynamic mapping key."""
+        if isinstance(value, float) and not math.isfinite(value):
+            if math.isnan(value):
+                return (float, "nan")
+            return (float, "positive_infinity" if value > 0 else "negative_infinity")
         if value is None or isinstance(value, (str, int, float, bool)):
             return (type(value), value)
         return (type(value), id(value))
@@ -539,6 +580,10 @@ class _Pseudonymizer:
             if isinstance(value, str):
                 self._collect_detected_values(value)
             self.register("value", value)
+            return
+        if isinstance(value, (datetime, date, time)):
+            if parent_field not in _TEMPORAL_OPERATIONAL_FIELDS:
+                self.register("value", value)
             return
         if isinstance(value, str):
             self._collect_detected_values(value)
@@ -707,10 +752,14 @@ class _Pseudonymizer:
                 if alias is not None:
                     return alias
             return self._replace_embedded(value)
-        if value is None or isinstance(value, (bool, int, float)):
+        if value is None or isinstance(value, (bool, int)):
             return value
+        if isinstance(value, float):
+            return value if math.isfinite(value) else None
         if isinstance(value, (datetime, date, time)):
-            return value.isoformat()
+            if parent_field in _TEMPORAL_OPERATIONAL_FIELDS:
+                return value.isoformat()
+            return self.alias_for(value) or REDACTED
         return REDACTED
 
 
