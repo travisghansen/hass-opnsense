@@ -552,6 +552,8 @@ class _Pseudonymizer:
                 redact_key = redact_mapping_keys or not _is_safe_structural_field(normalized_key)
                 if redact_key:
                     self.register_key(key)
+                elif isinstance(key, str):
+                    self._collect_detected_values(key)
                 if force_sensitive:
                     self.collect(item, normalized_key, force_sensitive=True)
                 elif not _is_secret_field(normalized_key):
@@ -564,8 +566,6 @@ class _Pseudonymizer:
                         and _is_sensitive_field(normalized_key)
                         and isinstance(item, (Mapping, list, tuple, set)),
                     )
-                if isinstance(key, str):
-                    self._collect_detected_values(key)
             return
         if isinstance(value, (list, tuple, set)):
             for item in value:
@@ -640,17 +640,7 @@ class _Pseudonymizer:
                         and isinstance(item, (Mapping, list, tuple, set)),
                     )
             return sanitized
-        if isinstance(value, (list, tuple)):
-            return [
-                self.sanitize(
-                    item,
-                    parent_field,
-                    force_sensitive=force_sensitive,
-                    schema_row=isinstance(item, Mapping),
-                )
-                for item in value
-            ]
-        if isinstance(value, set):
+        if isinstance(value, (list, tuple, set)):
             return [
                 self.sanitize(
                     item,
@@ -744,8 +734,6 @@ class _Pseudonymizer:
 
     def _replace_scalar(self, value: Any, parent_field: str = "") -> Any:
         """Replace registered values in a scalar while preserving its type otherwise."""
-        if isinstance(value, Enum):
-            return self.sanitize(value.value, parent_field)
         if isinstance(value, str):
             if not _is_safe_operational_value(parent_field, value):
                 alias = self.alias_for(value)
