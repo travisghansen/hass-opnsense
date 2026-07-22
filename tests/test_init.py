@@ -2052,6 +2052,56 @@ async def test_migrate_4_to_5_defers_when_firewall_rules_unavailable(
 
 
 @pytest.mark.asyncio
+async def test_migrate_4_to_5_completes_when_firewall_privileges_are_missing(
+    monkeypatch: pytest.MonkeyPatch, ph_hass: HomeAssistant
+) -> None:
+    """Migration should not block unrelated entities on missing firewall privileges."""
+    update_entry = MagicMock(return_value=True)
+    monkeypatch.setattr(ph_hass.config_entries, "async_update_entry", update_entry)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_DEVICE_UNIQUE_ID: "device-id",
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+        },
+        version=4,
+    )
+    entry.add_to_hass(ph_hass)
+    client = MagicMock()
+    client.get_firewall = AsyncMock(side_effect=OPNsensePrivilegeMissing("forbidden"))
+    client.async_close = AsyncMock()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", MagicMock(return_value=client)
+    )
+
+    entry_prefix = slugify("device-id")
+    legacy_filter = _RegistryEntity("switch.filter", f"{entry_prefix}_filter_123")
+    native_firewall = _RegistryEntity(
+        "switch.firewall_rule", f"{entry_prefix}_firewall_rule_current"
+    )
+    native_nat = _RegistryEntity(
+        "switch.firewall_nat", f"{entry_prefix}_firewall_nat_source_nat_current"
+    )
+
+    entity_registry = MagicMock()
+    entity_registry.async_remove = MagicMock()
+    monkeypatch.setattr(er, "async_get", lambda hass: entity_registry)
+    monkeypatch.setattr(
+        er,
+        "async_entries_for_config_entry",
+        lambda registry, config_entry_id: [legacy_filter, native_firewall, native_nat],
+    )
+
+    res = await init_mod.async_migrate_entry(ph_hass, entry)
+
+    assert res is True
+    entity_registry.async_remove.assert_called_once_with(legacy_filter.entity_id)
+    update_entry.assert_called_once_with(entry, version=5)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "firewall_payload",
     [

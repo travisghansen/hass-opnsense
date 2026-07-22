@@ -5,7 +5,7 @@ import logging
 from typing import Any
 
 from aiopnsense import OPNsenseClient
-from aiopnsense.exceptions import OPNsenseError
+from aiopnsense.exceptions import OPNsenseError, OPNsensePrivilegeMissing
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_VERIFY_SSL, Platform
 from homeassistant.core import HomeAssistant
@@ -497,6 +497,12 @@ async def _migrate_4_to_5(
             return False
         try:
             firewall = await migration_client.get_firewall()
+        except OPNsensePrivilegeMissing:
+            _LOGGER.warning(
+                "Migration to version 5 skipping native rule pruning because firewall "
+                "privileges are unavailable"
+            )
+            firewall = None
         except OPNsenseError as e:
             _LOGGER.warning(
                 "Migration to version 5 deferred because current firewall rules are "
@@ -505,12 +511,12 @@ async def _migrate_4_to_5(
             )
             return False
 
-        if not isinstance(firewall, Mapping):
+        if firewall is not None and not isinstance(firewall, Mapping):
             _LOGGER.warning(
                 "Migration to version 5 skipping native rule pruning because firewall payload is "
                 "unavailable"
             )
-        else:
+        elif isinstance(firewall, Mapping):
             rules = firewall.get("rules")
             if isinstance(rules, Mapping):
                 current_firewall_unique_ids = firewall_rule_switch_unique_ids_from_payload(
