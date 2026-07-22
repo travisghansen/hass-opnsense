@@ -416,11 +416,6 @@ def _is_safe_operational_field(field_name: str) -> bool:
     )
 
 
-def _is_safe_structural_field(field_name: str) -> bool:
-    """Return whether a mapping key belongs to the diagnostics payload structure."""
-    return field_name in _SAFE_FIELD_NAMES
-
-
 def _is_safe_operational_value(field_name: str, value: str) -> bool:
     """Return whether a string value is valid safe metadata for its field."""
     if not _is_safe_operational_field(field_name):
@@ -552,7 +547,7 @@ class _Pseudonymizer:
             )
             for key, item in value.items():
                 normalized_key = _normalize_field(key)
-                redact_key = redact_mapping_keys or not _is_safe_structural_field(normalized_key)
+                redact_key = redact_mapping_keys or normalized_key not in _SAFE_FIELD_NAMES
                 if redact_key:
                     self.register_key(key)
                 elif isinstance(key, str):
@@ -616,7 +611,7 @@ class _Pseudonymizer:
             )
             for key, item in value.items():
                 normalized_key = _normalize_field(key)
-                redact_key = redact_mapping_keys or not _is_safe_structural_field(normalized_key)
+                redact_key = redact_mapping_keys or normalized_key not in _SAFE_FIELD_NAMES
                 sanitized_key = (
                     self.key_alias_for(key)
                     if redact_key
