@@ -113,6 +113,7 @@ _INTERNAL_IPV4_NETWORKS: tuple[ipaddress.IPv4Network, ...] = (
 _LOOPBACK_IPV4 = ipaddress.IPv4Address("127.0.0.1")
 _ULA_IPV6_NETWORK = ipaddress.IPv6Network("fc00::/7")
 _LOOPBACK_IPV6 = ipaddress.IPv6Address("::1")
+_IPV6_SENTENCE_PUNCTUATION = ".,;!?"
 
 
 def _normalize_field(field_name: object) -> str:
@@ -174,6 +175,27 @@ def _is_safe_network_identifier(value: object) -> bool:
     )
 
 
+def _validated_ipv6_candidate(candidate: str) -> tuple[str, str] | None:
+    """Return a valid IPv6 candidate and any trailing sentence punctuation."""
+    try:
+        interface = ipaddress.ip_interface(candidate)
+    except ValueError:
+        core = candidate.rstrip(_IPV6_SENTENCE_PUNCTUATION)
+        if core == candidate:
+            return None
+        try:
+            interface = ipaddress.ip_interface(core)
+        except ValueError:
+            return None
+        suffix = candidate[len(core) :]
+    else:
+        core = candidate
+        suffix = ""
+    if not isinstance(interface, ipaddress.IPv6Interface):
+        return None
+    return core, suffix
+
+
 def _coordinator_diagnostics(coordinator: Any | None) -> dict[str, Any] | None:
     """Build diagnostics from an existing coordinator without refreshing it."""
     if coordinator is None:
@@ -195,6 +217,7 @@ class _Pseudonymizer:
         default_factory=dict
     )
     key_aliases: dict[tuple[object, object], str] = field(default_factory=dict)
+    embedded_secret_aliases: dict[str, str] = field(default_factory=dict)
     counters: dict[str, int] = field(default_factory=dict)
     namespace: str = field(default_factory=lambda: secrets.token_hex(4))
 
@@ -242,6 +265,19 @@ class _Pseudonymizer:
             self.counters["key"] = self.counters.get("key", 0) + 1
             self.key_aliases[token] = f"**REDACTED_KEY_{self.namespace}_{self.counters['key']}**"
 
+    def collect_config_secrets(self, value: Any) -> None:
+        """Collect exact config-entry credentials for replacement in free text."""
+        if not isinstance(value, Mapping):
+            return
+        for key, item in value.items():
+            if _is_secret_field(_normalize_field(key)):
+                if isinstance(item, str) and item not in ("", REDACTED):
+                    self.register("secret", item)
+                    self.embedded_secret_aliases[item] = self.aliases[(str, item)]
+                continue
+            if isinstance(item, Mapping):
+                self.collect_config_secrets(item)
+
     def key_alias_for(self, value: object) -> str:
         """Return the distinct alias registered for a dynamic mapping key."""
         return self.alias_for(value) or self.key_aliases[self._key_token(value)]
@@ -260,7 +296,6 @@ class _Pseudonymizer:
     def collect(
         self,
         value: Any,
-        parent_field: str = "",
         *,
         force_sensitive: bool = False,
     ) -> None:
@@ -268,7 +303,6 @@ class _Pseudonymizer:
         if isinstance(value, Enum):
             self.collect(
                 value.value,
-                parent_field,
                 force_sensitive=force_sensitive,
             )
             return
@@ -281,7 +315,7 @@ class _Pseudonymizer:
                 elif isinstance(key, str):
                     self._collect_detected_values(key)
                 if force_sensitive:
-                    self.collect(item, normalized_key, force_sensitive=True)
+                    self.collect(item, force_sensitive=True)
                 elif not _is_secret_field(normalized_key):
                     if _is_sensitive_field(normalized_key):
                         kind = self._kind_for_field(normalized_key, item)
@@ -289,7 +323,6 @@ class _Pseudonymizer:
                             self.register(kind, item)
                     self.collect(
                         item,
-                        normalized_key,
                         force_sensitive=not redact_key
                         and _is_sensitive_field(normalized_key)
                         and isinstance(item, (Mapping, list, tuple, set)),
@@ -299,7 +332,6 @@ class _Pseudonymizer:
             for item in value:
                 self.collect(
                     item,
-                    parent_field,
                     force_sensitive=force_sensitive,
                 )
             return
@@ -314,7 +346,6 @@ class _Pseudonymizer:
     def sanitize(
         self,
         value: Any,
-        parent_field: str = "",
         *,
         force_sensitive: bool = False,
     ) -> Any:
@@ -322,7 +353,6 @@ class _Pseudonymizer:
         if isinstance(value, Enum):
             return self.sanitize(
                 value.value,
-                parent_field,
                 force_sensitive=force_sensitive,
             )
         if isinstance(value, Mapping):
@@ -338,9 +368,7 @@ class _Pseudonymizer:
                     else key
                 )
                 if force_sensitive:
-                    sanitized[sanitized_key] = self.sanitize(
-                        item, normalized_key, force_sensitive=True
-                    )
+                    sanitized[sanitized_key] = self.sanitize(item, force_sensitive=True)
                 elif _is_secret_field(normalized_key):
                     sanitized[sanitized_key] = REDACTED
                 elif _is_sensitive_field(normalized_key) and not isinstance(
@@ -350,7 +378,6 @@ class _Pseudonymizer:
                 else:
                     sanitized[sanitized_key] = self.sanitize(
                         item,
-                        normalized_key,
                         force_sensitive=not redact_key
                         and _is_sensitive_field(normalized_key)
                         and isinstance(item, (Mapping, list, tuple, set)),
@@ -360,7 +387,6 @@ class _Pseudonymizer:
             return [
                 self.sanitize(
                     item,
-                    parent_field,
                     force_sensitive=force_sensitive,
                 )
                 for item in value
@@ -400,12 +426,12 @@ class _Pseudonymizer:
 
         for match in _IPV6_CANDIDATE_PATTERN.finditer(value):
             candidate = match.group(0)
-            try:
-                ipaddress.ip_interface(candidate)
-            except ValueError:
+            validated = _validated_ipv6_candidate(candidate)
+            if validated is None:
                 continue
-            if not _is_safe_ipv6(candidate):
-                self.register("ipv6", candidate)
+            core, _suffix = validated
+            if not _is_safe_ipv6(core):
+                self.register("ipv6", core)
 
         try:
             interface = ipaddress.ip_interface(value)
@@ -462,7 +488,22 @@ class _Pseudonymizer:
             return self.alias_for(candidate) or candidate
 
         result = _IPV4_PATTERN.sub(_replace_ip, result)
-        return _IPV6_CANDIDATE_PATTERN.sub(_replace_ip, result)
+
+        def _replace_ipv6(match: re.Match[str]) -> str:
+            """Replace a valid IPv6 core while preserving sentence punctuation."""
+            candidate = match.group(0)
+            validated = _validated_ipv6_candidate(candidate)
+            if validated is None:
+                return candidate
+            core, suffix = validated
+            return f"{self.alias_for(core) or core}{suffix}"
+
+        result = _IPV6_CANDIDATE_PATTERN.sub(_replace_ipv6, result)
+        for secret, alias in sorted(
+            self.embedded_secret_aliases.items(), key=lambda item: len(item[0]), reverse=True
+        ):
+            result = result.replace(secret, alias)
+        return result
 
     def _replace_scalar(self, value: Any) -> Any:
         """Replace registered values in a scalar while preserving its type otherwise."""
@@ -484,16 +525,21 @@ async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: ConfigEntry[OPNsenseData]
 ) -> dict[str, Any]:
     """Return privacy-safe diagnostics for an OPNsense config entry."""
-    runtime_data = entry.runtime_data
+    runtime_data = getattr(entry, "runtime_data", None)
     diagnostics: dict[str, Any] = {
         "config_entry": entry.as_dict(),
         "coordinators": {
-            "main": _coordinator_diagnostics(runtime_data.coordinator),
-            "device_tracker": _coordinator_diagnostics(runtime_data.device_tracker_coordinator),
-            "live_traffic": _coordinator_diagnostics(runtime_data.live_traffic_coordinator),
+            "main": _coordinator_diagnostics(getattr(runtime_data, "coordinator", None)),
+            "device_tracker": _coordinator_diagnostics(
+                getattr(runtime_data, "device_tracker_coordinator", None)
+            ),
+            "live_traffic": _coordinator_diagnostics(
+                getattr(runtime_data, "live_traffic_coordinator", None)
+            ),
         },
     }
-    credential_redacted = async_redact_data(diagnostics, _SECRET_FIELDS)
     pseudonymizer = _Pseudonymizer()
+    pseudonymizer.collect_config_secrets(diagnostics["config_entry"])
+    credential_redacted = async_redact_data(diagnostics, _SECRET_FIELDS)
     pseudonymizer.collect(credential_redacted)
     return pseudonymizer.sanitize(credential_redacted)

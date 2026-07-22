@@ -15,6 +15,7 @@ import pytest
 from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID, CONF_ENTRY_TYPE, ENTRY_TYPE_CARP
 from custom_components.opnsense.diagnostics import (
     _Pseudonymizer,
+    _validated_ipv6_candidate,
     async_get_config_entry_diagnostics,
 )
 
@@ -41,6 +42,9 @@ class _OpaqueDiagnosticValue:
     def __repr__(self) -> str:
         """Fail if diagnostics attempts to render the private object."""
         raise AssertionError("opaque diagnostics values must not be rendered")
+
+
+_MISSING_RUNTIME_DATA = object()
 
 
 def _coordinator(
@@ -273,6 +277,131 @@ async def test_config_entry_diagnostics_supports_optional_coordinators(
     }
     assert diagnostics["config_entry"]["data"]["url"].startswith("**REDACTED_URL_")
     json.dumps(diagnostics)
+
+
+@pytest.mark.parametrize("runtime_data", [_MISSING_RUNTIME_DATA, None, SimpleNamespace()])
+async def test_config_entry_diagnostics_supports_missing_runtime_data(
+    hass: HomeAssistant, make_config_entry: Any, runtime_data: object
+) -> None:
+    """Diagnostics should retain a stable shape before runtime setup completes."""
+    entry = make_config_entry(
+        data={
+            "url": "https://router.example.test",
+            "username": "diagnostics-user",
+            "password": "diagnostics-password",
+        },
+        title="Router",
+    )
+    if runtime_data is _MISSING_RUNTIME_DATA:
+        del entry.runtime_data
+    else:
+        entry.runtime_data = runtime_data
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert diagnostics["coordinators"] == {
+        "main": None,
+        "device_tracker": None,
+        "live_traffic": None,
+    }
+    assert diagnostics["config_entry"]["data"]["username"] == REDACTED
+    assert diagnostics["config_entry"]["data"]["password"] == REDACTED
+    assert diagnostics["config_entry"]["data"]["url"].startswith("**REDACTED_URL_")
+
+
+async def test_config_entry_diagnostics_redacts_credentials_embedded_in_text(
+    hass: HomeAssistant, make_config_entry: Any
+) -> None:
+    """Diagnostics should replace config credentials repeated in coordinator text."""
+    username = "diagnostics-user"
+    password = "diagnostics-password"
+    api_key = "diagnostics-api-key"
+    entry = make_config_entry(
+        data={
+            "url": "https://router.example.test",
+            "username": username,
+            "password": password,
+            "api_key": api_key,
+        },
+        title="Router",
+    )
+    entry.runtime_data = SimpleNamespace(
+        coordinator=_coordinator(
+            {
+                "detail": f"Authentication for {username} failed with {password}.",
+                "nested": [
+                    f"Rejected API key {api_key}",
+                    f"Repeated user {username}",
+                    f"Request https://{username}:{password}@router.example.test/status failed",
+                ],
+            }
+        ),
+        device_tracker_coordinator=None,
+        live_traffic_coordinator=None,
+    )
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    config_data = diagnostics["config_entry"]["data"]
+    assert config_data["username"] == REDACTED
+    assert config_data["password"] == REDACTED
+    assert config_data["api_key"] == REDACTED
+    main_data = diagnostics["coordinators"]["main"]["data"]
+    assert "**REDACTED_SECRET_" in main_data["detail"]
+    assert "**REDACTED_SECRET_" in main_data["nested"][0]
+    username_alias = main_data["nested"][1].removeprefix("Repeated user ")
+    assert username_alias.startswith("**REDACTED_SECRET_")
+    assert f"Authentication for {username_alias} failed" in main_data["detail"]
+    assert main_data["nested"][2].startswith("Request **REDACTED_URL_")
+    assert "router.example.test" not in main_data["nested"][2]
+    serialized = json.dumps(diagnostics)
+    for credential in (username, password, api_key):
+        assert credential not in serialized
+
+
+async def test_config_entry_diagnostics_ipv6_sentence_punctuation(
+    hass: HomeAssistant, make_config_entry: Any
+) -> None:
+    """Diagnostics should redact public IPv6 before preserving sentence punctuation."""
+    public_ipv6 = "2001:db8::10"
+    safe_addresses = ("fe80::1", "fd12:3456:789a::1", "::1")
+    entry = make_config_entry(data={"url": "https://router.example.test"}, title="Router")
+    entry.runtime_data = SimpleNamespace(
+        coordinator=_coordinator(
+            {
+                "detail": f"peer {public_ipv6}.",
+                "safe_detail": "; ".join(f"peer {address}." for address in safe_addresses),
+            }
+        ),
+        device_tracker_coordinator=None,
+        live_traffic_coordinator=None,
+    )
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    data = diagnostics["coordinators"]["main"]["data"]
+    assert data["detail"].startswith("peer **REDACTED_IPV6_")
+    assert data["detail"].endswith("**.")
+    assert public_ipv6 not in data["detail"]
+    assert data["safe_detail"] == "; ".join(f"peer {address}." for address in safe_addresses)
+
+
+@pytest.mark.parametrize("candidate", ["2001:db8::invalid.", "192.0.2.1"])
+def test_validated_ipv6_candidate_rejects_invalid_and_ipv4_candidates(candidate: str) -> None:
+    """IPv6 candidate validation should reject malformed and IPv4 input."""
+    assert _validated_ipv6_candidate(candidate) is None
+
+
+def test_pseudonymizer_ignores_unsupported_config_secret_values() -> None:
+    """Config secret collection should ignore absent, non-string, and redacted values."""
+    pseudonymizer = _Pseudonymizer()
+
+    pseudonymizer.collect_config_secrets(None)
+    pseudonymizer.collect_config_secrets(
+        {"password": 123, "username": "", "nested": {"token": REDACTED}}
+    )
+
+    assert pseudonymizer.embedded_secret_aliases == {}
 
 
 async def test_config_entry_diagnostics_redacts_keys_and_sensitive_containers(
