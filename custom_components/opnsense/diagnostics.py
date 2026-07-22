@@ -6,6 +6,7 @@ from datetime import date, datetime, time
 from enum import Enum
 import ipaddress
 import re
+import secrets
 from typing import Any
 
 from homeassistant.components.diagnostics import REDACTED, async_redact_data
@@ -403,6 +404,7 @@ class _Pseudonymizer:
     aliases: dict[tuple[type, str | int | float], str] = field(default_factory=dict)
     key_aliases: dict[tuple[object, object], str] = field(default_factory=dict)
     counters: dict[str, int] = field(default_factory=dict)
+    namespace: str = field(default_factory=lambda: secrets.token_hex(16))
 
     def register(self, kind: str, value: object) -> None:
         """Register a sensitive value for consistent replacement."""
@@ -413,7 +415,9 @@ class _Pseudonymizer:
         alias_key = (type(value), value)
         if alias_key not in self.aliases:
             self.counters[kind] = self.counters.get(kind, 0) + 1
-            self.aliases[alias_key] = f"**REDACTED_{kind.upper()}_{self.counters[kind]}**"
+            self.aliases[alias_key] = (
+                f"**REDACTED_{kind.upper()}_{self.namespace}_{self.counters[kind]}**"
+            )
 
     def alias_for(self, value: object) -> str | None:
         """Return the registered alias for a supported scalar value."""
@@ -431,7 +435,7 @@ class _Pseudonymizer:
         token = self._key_token(value)
         if token not in self.key_aliases:
             self.counters["key"] = self.counters.get("key", 0) + 1
-            self.key_aliases[token] = f"**REDACTED_KEY_{self.counters['key']}**"
+            self.key_aliases[token] = f"**REDACTED_KEY_{self.namespace}_{self.counters['key']}**"
 
     def key_alias_for(self, value: object) -> str:
         """Return the distinct alias registered for a dynamic mapping key."""

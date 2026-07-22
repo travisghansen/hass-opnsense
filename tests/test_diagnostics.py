@@ -600,3 +600,44 @@ async def test_config_entry_diagnostics_typed_identifier_keys_are_order_independ
     for identifier in (key_first_ip, field_first_ip, key_first_mac, field_first_mac):
         assert identifier not in serialized
     assert payload == original_payload
+
+
+async def test_config_entry_diagnostics_uses_per_download_alias_namespace(
+    hass: HomeAssistant, make_config_entry: Any
+) -> None:
+    """Diagnostics should prevent aliases from linking separate downloads."""
+    private_mac = "aa:bb:cc:dd:ee:ff"
+    payload = {
+        "clients": {private_mac: {"mac": private_mac}},
+        "interfaces": {"wan": {"mac": private_mac, "status": "up"}},
+    }
+    original_payload = copy.deepcopy(payload)
+    entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: private_mac, "url": "https://router.example.test"},
+        title="Router",
+    )
+    entry.runtime_data = SimpleNamespace(
+        coordinator=_coordinator(payload),
+        device_tracker_coordinator=None,
+        live_traffic_coordinator=None,
+    )
+
+    first = await async_get_config_entry_diagnostics(hass, entry)
+    second = await async_get_config_entry_diagnostics(hass, entry)
+
+    first_mac = first["config_entry"]["data"][CONF_DEVICE_UNIQUE_ID]
+    second_mac = second["config_entry"]["data"][CONF_DEVICE_UNIQUE_ID]
+    assert first_mac.startswith("**REDACTED_MAC_")
+    assert second_mac.startswith("**REDACTED_MAC_")
+    assert first_mac != second_mac
+    first_data = first["coordinators"]["main"]["data"]
+    second_data = second["coordinators"]["main"]["data"]
+    assert next(iter(first_data["clients"])) == first_mac
+    assert next(iter(first_data["clients"].values()))["mac"] == first_mac
+    assert next(iter(first_data["interfaces"].values()))["mac"] == first_mac
+    assert next(iter(second_data["clients"])) == second_mac
+    assert next(iter(second_data["clients"].values()))["mac"] == second_mac
+    assert next(iter(second_data["interfaces"].values()))["mac"] == second_mac
+    json.dumps(first)
+    json.dumps(second)
+    assert payload == original_payload
