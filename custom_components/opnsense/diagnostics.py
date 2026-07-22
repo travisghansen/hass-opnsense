@@ -65,14 +65,11 @@ _URL_FIELDS: frozenset[str] = frozenset({"host", "url"})
 _ID_FIELDS: frozenset[str] = frozenset(
     {
         "caref",
-        "device_unique_id",
-        "entry_id",
         "fingerprint",
         "public_key",
         "pubkey",
         "serial",
         "serial_number",
-        "unique_id",
         "wwn",
     }
 )
@@ -113,6 +110,7 @@ _INTERNAL_IPV4_NETWORKS: tuple[ipaddress.IPv4Network, ...] = (
     ipaddress.IPv4Network("172.16.0.0/12"),
     ipaddress.IPv4Network("192.168.0.0/16"),
 )
+_LOOPBACK_IPV4 = ipaddress.IPv4Address("127.0.0.1")
 
 
 def _normalize_field(field_name: object) -> str:
@@ -145,21 +143,21 @@ def _is_sensitive_field(field_name: str) -> bool:
     )
 
 
-def _is_internal_ipv4(value: str) -> bool:
-    """Return whether a value is an RFC 1918 IPv4 address or interface."""
+def _is_safe_ipv4(value: str) -> bool:
+    """Return whether a value is an allowed local IPv4 address or interface."""
     try:
         address = ipaddress.ip_interface(value).ip
     except ValueError:
         return False
-    return isinstance(address, ipaddress.IPv4Address) and any(
-        address in network for network in _INTERNAL_IPV4_NETWORKS
+    return isinstance(address, ipaddress.IPv4Address) and (
+        address == _LOOPBACK_IPV4 or any(address in network for network in _INTERNAL_IPV4_NETWORKS)
     )
 
 
 def _is_safe_network_identifier(value: object) -> bool:
     """Return whether a mapping identifier is safe and useful in diagnostics."""
     return isinstance(value, str) and (
-        _MAC_PATTERN.fullmatch(value) is not None or _is_internal_ipv4(value)
+        _MAC_PATTERN.fullmatch(value) is not None or _is_safe_ipv4(value)
     )
 
 
@@ -185,7 +183,7 @@ class _Pseudonymizer:
     )
     key_aliases: dict[tuple[object, object], str] = field(default_factory=dict)
     counters: dict[str, int] = field(default_factory=dict)
-    namespace: str = field(default_factory=lambda: secrets.token_hex(16))
+    namespace: str = field(default_factory=lambda: secrets.token_hex(4))
 
     def register(self, kind: str, value: object) -> None:
         """Register a sensitive value for consistent replacement."""
@@ -384,8 +382,8 @@ class _Pseudonymizer:
                 ipaddress.ip_address(candidate)
             except ValueError:
                 continue
-            if not _is_internal_ipv4(candidate):
-                self.register("ip", candidate)
+            if not _is_safe_ipv4(candidate):
+                self.register("ipv4", candidate)
 
         for match in _IPV6_CANDIDATE_PATTERN.finditer(value):
             candidate = match.group(0)
@@ -393,14 +391,17 @@ class _Pseudonymizer:
                 ipaddress.ip_interface(candidate)
             except ValueError:
                 continue
-            self.register("ip", candidate)
+            self.register("ipv6", candidate)
 
         try:
-            ipaddress.ip_interface(value)
+            interface = ipaddress.ip_interface(value)
         except ValueError:
             return
-        if not _is_internal_ipv4(value):
-            self.register("ip", value)
+        if isinstance(interface, ipaddress.IPv4Interface):
+            if not _is_safe_ipv4(value):
+                self.register("ipv4", value)
+        else:
+            self.register("ipv6", value)
 
     def _kind_for_field(self, field_name: str, value: object) -> str | None:
         """Return a useful placeholder type for a sensitive field."""
@@ -410,13 +411,13 @@ class _Pseudonymizer:
             if _UUID_PATTERN.fullmatch(value):
                 return None
             try:
-                ipaddress.ip_interface(value)
+                interface = ipaddress.ip_interface(value)
             except ValueError:
                 pass
             else:
-                if _is_internal_ipv4(value):
+                if isinstance(interface, ipaddress.IPv4Interface) and _is_safe_ipv4(value):
                     return None
-                return "ip"
+                return "ipv4" if isinstance(interface, ipaddress.IPv4Interface) else "ipv6"
         if field_name in _IP_FIELDS or field_name.endswith(_IP_FIELD_SUFFIXES):
             return None
         if field_name in _URL_FIELDS or field_name.endswith(_URL_FIELD_SUFFIXES):

@@ -61,6 +61,8 @@ async def test_config_entry_diagnostics_pseudonymizes_full_runtime(
     router_mac = "aa:bb:cc:dd:ee:ff"
     router_ip = "192.168.1.10"
     router_uuid = "123e4567-e89b-42d3-a456-426614174000"
+    device_unique_id = "private-device-id"
+    unique_id = "private-unique-id"
     workstation = "private-workstation"
     entry = make_config_entry(
         data={
@@ -68,11 +70,11 @@ async def test_config_entry_diagnostics_pseudonymizes_full_runtime(
             "username": "diagnostics-user",
             "password": "diagnostics-password",
             "name": "Office Firewall",
-            CONF_DEVICE_UNIQUE_ID: router_mac,
+            CONF_DEVICE_UNIQUE_ID: device_unique_id,
             "firmware_version": "26.7.1",
         },
         title="Office Firewall",
-        unique_id=router_mac,
+        unique_id=unique_id,
         entry_id="private-entry-id",
         options={"devices": [router_mac], "scan_interval": 30},
     )
@@ -182,7 +184,9 @@ async def test_config_entry_diagnostics_pseudonymizes_full_runtime(
     assert sanitized_main["telemetry"]["status"] == "ok"
     assert sanitized_main["telemetry"]["temps"]["private-cpu-device"] == {"temperature": 42.5}
 
-    assert config_data[CONF_DEVICE_UNIQUE_ID] == router_mac
+    assert config_data[CONF_DEVICE_UNIQUE_ID] == device_unique_id
+    assert diagnostics["config_entry"]["entry_id"] == "private-entry-id"
+    assert diagnostics["config_entry"]["unique_id"] == unique_id
     assert sanitized_tracker["arp_table"][0]["mac"] == router_mac
     assert sanitized_live["interfaces"]["wan"]["mac"] == router_mac
     assert sanitized_tracker["arp_table"][0]["ip"] == router_ip
@@ -198,7 +202,7 @@ async def test_config_entry_diagnostics_pseudonymizes_full_runtime(
     assert sanitized_vpn["uuid"] == router_uuid
     assert sanitized_vpn["pubkey"].startswith("**REDACTED_ID_")
     assert sanitized_vpn["endpoint"] == "vpn.private.example:51820"
-    assert sanitized_vpn["tunnel_addresses"][0].startswith("**REDACTED_IP_")
+    assert sanitized_vpn["tunnel_addresses"][0].startswith("**REDACTED_IPV6_")
     assert sanitized_main["nut_ups_status"]["response"].startswith("**REDACTED_VALUE_")
     assert sanitized_main["nut_ups_status"]["status"]["device.serial"].startswith("**REDACTED_ID_")
     assert sanitized_main["nut_ups_status"]["status"]["ups.status"] == "OL"
@@ -512,7 +516,7 @@ async def test_config_entry_diagnostics_preserves_real_payload_shapes(
     assert {"interface", "subnet", "status"} <= carp_row.keys()
     assert carp_row["status"] == "MASTER"
     assert carp_row["unexpected_owner"] == "Alice Smith"
-    assert carp_row["subnet"].startswith("**REDACTED_IP_")
+    assert carp_row["subnet"].startswith("**REDACTED_IPV4_")
     serialized = json.dumps(diagnostics)
     for private_value in (
         "igc0",
@@ -533,10 +537,15 @@ async def test_config_entry_diagnostics_typed_identifier_keys_are_order_independ
     """Diagnostics should redact public IPs while preserving local MAC identifiers."""
     key_first_ip = "192.0.2.10"
     field_first_ip = "192.0.2.20"
+    public_ipv6 = "2001:db8::20"
+    loopback_ipv4 = "127.0.0.1"
     key_first_mac = "aa:bb:cc:dd:ee:01"
     field_first_mac = "aa:bb:cc:dd:ee:02"
     payload = {
         "ipv4": field_first_ip,
+        "ipv6": public_ipv6,
+        "loopback_ip": loopback_ipv4,
+        "loopback_detail": f"API bound to {loopback_ipv4}",
         "mac": field_first_mac,
         "leases": {
             key_first_ip: {"ip": key_first_ip},
@@ -559,15 +568,18 @@ async def test_config_entry_diagnostics_typed_identifier_keys_are_order_independ
 
     data = diagnostics["coordinators"]["main"]["data"]
     lease_keys = list(data["leases"])
-    assert all(key.startswith("**REDACTED_IP_") for key in lease_keys)
+    assert all(key.startswith("**REDACTED_IPV4_") for key in lease_keys)
     assert [lease["ip"] for lease in data["leases"].values()] == lease_keys
     client_keys = list(data["clients"])
     assert client_keys == [key_first_mac, field_first_mac]
     assert [client["mac"] for client in data["clients"].values()] == client_keys
     assert data["ipv4"] == lease_keys[1]
+    assert data["ipv6"].startswith("**REDACTED_IPV6_")
+    assert data["loopback_ip"] == loopback_ipv4
+    assert data["loopback_detail"] == f"API bound to {loopback_ipv4}"
     assert data["mac"] == field_first_mac
     serialized = json.dumps(diagnostics)
-    for identifier in (key_first_ip, field_first_ip):
+    for identifier in (key_first_ip, field_first_ip, public_ipv6):
         assert identifier not in serialized
     for identifier in (key_first_mac, field_first_mac):
         assert identifier in serialized
@@ -584,7 +596,7 @@ async def test_config_entry_diagnostics_uses_per_download_alias_namespace(
     }
     original_payload = copy.deepcopy(payload)
     entry = make_config_entry(
-        data={CONF_DEVICE_UNIQUE_ID: private_serial, "url": "https://router.example.test"},
+        data={CONF_DEVICE_UNIQUE_ID: "local-device-id", "url": "https://router.example.test"},
         title="Router",
     )
     entry.runtime_data = SimpleNamespace(
@@ -596,13 +608,15 @@ async def test_config_entry_diagnostics_uses_per_download_alias_namespace(
     first = await async_get_config_entry_diagnostics(hass, entry)
     second = await async_get_config_entry_diagnostics(hass, entry)
 
-    first_serial = first["config_entry"]["data"][CONF_DEVICE_UNIQUE_ID]
-    second_serial = second["config_entry"]["data"][CONF_DEVICE_UNIQUE_ID]
+    first_data = first["coordinators"]["main"]["data"]
+    second_data = second["coordinators"]["main"]["data"]
+    first_serial = first_data["devices"][0]["serial"]
+    second_serial = second_data["devices"][0]["serial"]
     assert first_serial.startswith("**REDACTED_ID_")
     assert second_serial.startswith("**REDACTED_ID_")
     assert first_serial != second_serial
-    first_data = first["coordinators"]["main"]["data"]
-    second_data = second["coordinators"]["main"]["data"]
+    assert len(first_serial.split("_")[2]) == 8
+    assert len(second_serial.split("_")[2]) == 8
     assert [
         device["serial"] if "serial" in device else device["serial_number"]
         for device in first_data["devices"]
@@ -918,10 +932,15 @@ def test_pseudonymizer_preserves_safe_identifiers_and_scalar_types() -> None:
     pseudonymizer = _Pseudonymizer()
     uuid = "123e4567-e89b-42d3-a456-426614174000"
     public_ip = "192.0.2.10"
+    mac = "aa:bb:cc:dd:ee:ff"
 
-    pseudonymizer.register("ip", public_ip)
+    pseudonymizer.register("ipv4", public_ip)
+    pseudonymizer.register("value", True)
+    pseudonymizer.register("value", object())
 
+    assert len(pseudonymizer.namespace) == 8
     assert pseudonymizer._kind_for_field("entry_id", uuid) is None
+    assert pseudonymizer._kind_for_field("unique_id", mac) is None
     assert pseudonymizer._key_token("label") == (str, "label")
     assert pseudonymizer.sanitize(True, force_sensitive=True) is True
     assert pseudonymizer._replace_scalar(public_ip) == pseudonymizer.alias_for(public_ip)
@@ -950,7 +969,7 @@ def test_pseudonymizer_replaces_embedded_ip_with_registered_alias() -> None:
     """Embedded valid IP addresses should reuse their previously registered alias."""
     pseudonymizer = _Pseudonymizer()
     private_ip = "192.0.2.10"
-    pseudonymizer.register("ip", private_ip)
+    pseudonymizer.register("ipv4", private_ip)
     alias = pseudonymizer.alias_for(private_ip)
 
     assert alias is not None
