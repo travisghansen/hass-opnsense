@@ -82,6 +82,8 @@ _ID_FIELDS: frozenset[str] = frozenset(
         "wwn",
     }
 )
+_URL_FIELD_SUFFIXES: tuple[str, ...] = tuple(f"_{item}" for item in _URL_FIELDS)
+_ID_FIELD_SUFFIXES: tuple[str, ...] = tuple(f"_{item}" for item in _ID_FIELDS)
 _PERSONAL_FIELDS: frozenset[str] = frozenset(
     {
         "client",
@@ -312,6 +314,9 @@ _SAFE_STRUCTURAL_FIELDS: frozenset[str] = frozenset(
         "wireguard",
     }
 )
+_SAFE_FIELD_NAMES: frozenset[str] = frozenset(
+    _SAFE_STRUCTURAL_FIELDS | _SECRET_FIELDS | _SENSITIVE_FIELDS | _SAFE_OPERATIONAL_FIELDS
+)
 _SAFE_CODE_VALUES: frozenset[str] = frozenset(
     {
         "OL",
@@ -413,9 +418,7 @@ def _is_safe_operational_field(field_name: str) -> bool:
 
 def _is_safe_structural_field(field_name: str) -> bool:
     """Return whether a mapping key belongs to the diagnostics payload structure."""
-    return field_name in (
-        _SAFE_STRUCTURAL_FIELDS | _SECRET_FIELDS | _SENSITIVE_FIELDS | _SAFE_OPERATIONAL_FIELDS
-    )
+    return field_name in _SAFE_FIELD_NAMES
 
 
 def _is_safe_operational_value(field_name: str, value: str) -> bool:
@@ -700,13 +703,9 @@ class _Pseudonymizer:
                 pass
             else:
                 return "ip"
-        if field_name in _URL_FIELDS or field_name.endswith(
-            tuple(f"_{item}" for item in _URL_FIELDS)
-        ):
+        if field_name in _URL_FIELDS or field_name.endswith(_URL_FIELD_SUFFIXES):
             return "url"
-        if field_name in _ID_FIELDS or field_name.endswith(
-            tuple(f"_{item}" for item in _ID_FIELDS)
-        ):
+        if field_name in _ID_FIELDS or field_name.endswith(_ID_FIELD_SUFFIXES):
             return "id"
         if field_name in {"email", "user"}:
             return "user"
