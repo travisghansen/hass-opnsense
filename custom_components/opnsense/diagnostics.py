@@ -111,6 +111,8 @@ _INTERNAL_IPV4_NETWORKS: tuple[ipaddress.IPv4Network, ...] = (
     ipaddress.IPv4Network("192.168.0.0/16"),
 )
 _LOOPBACK_IPV4 = ipaddress.IPv4Address("127.0.0.1")
+_ULA_IPV6_NETWORK = ipaddress.IPv6Network("fc00::/7")
+_LOOPBACK_IPV6 = ipaddress.IPv6Address("::1")
 
 
 def _normalize_field(field_name: object) -> str:
@@ -154,21 +156,21 @@ def _is_safe_ipv4(value: str) -> bool:
     )
 
 
-def _is_link_local_ipv6(value: str) -> bool:
-    """Return whether a value is an IPv6 link-local address or interface."""
+def _is_safe_ipv6(value: str) -> bool:
+    """Return whether a value is an allowed local IPv6 address or interface."""
     try:
         address = ipaddress.ip_interface(value).ip
     except ValueError:
         return False
-    return isinstance(address, ipaddress.IPv6Address) and address.is_link_local
+    return isinstance(address, ipaddress.IPv6Address) and (
+        address.is_link_local or address == _LOOPBACK_IPV6 or address in _ULA_IPV6_NETWORK
+    )
 
 
 def _is_safe_network_identifier(value: object) -> bool:
     """Return whether a mapping identifier is safe and useful in diagnostics."""
     return isinstance(value, str) and (
-        _MAC_PATTERN.fullmatch(value) is not None
-        or _is_safe_ipv4(value)
-        or _is_link_local_ipv6(value)
+        _MAC_PATTERN.fullmatch(value) is not None or _is_safe_ipv4(value) or _is_safe_ipv6(value)
     )
 
 
@@ -402,7 +404,7 @@ class _Pseudonymizer:
                 ipaddress.ip_interface(candidate)
             except ValueError:
                 continue
-            if not _is_link_local_ipv6(candidate):
+            if not _is_safe_ipv6(candidate):
                 self.register("ipv6", candidate)
 
         try:
@@ -412,7 +414,7 @@ class _Pseudonymizer:
         if isinstance(interface, ipaddress.IPv4Interface):
             if not _is_safe_ipv4(value):
                 self.register("ipv4", value)
-        elif not _is_link_local_ipv6(value):
+        elif not _is_safe_ipv6(value):
             self.register("ipv6", value)
 
     def _kind_for_field(self, field_name: str, value: object) -> str | None:
@@ -429,7 +431,7 @@ class _Pseudonymizer:
             else:
                 if isinstance(interface, ipaddress.IPv4Interface) and _is_safe_ipv4(value):
                     return None
-                if isinstance(interface, ipaddress.IPv6Interface) and _is_link_local_ipv6(value):
+                if isinstance(interface, ipaddress.IPv6Interface) and _is_safe_ipv6(value):
                     return None
                 return "ipv4" if isinstance(interface, ipaddress.IPv4Interface) else "ipv6"
         if field_name in _IP_FIELDS or field_name.endswith(_IP_FIELD_SUFFIXES):

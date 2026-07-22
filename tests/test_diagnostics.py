@@ -540,6 +540,8 @@ async def test_config_entry_diagnostics_typed_identifier_keys_are_order_independ
     public_ipv6 = "2001:db8::20"
     loopback_ipv4 = "127.0.0.1"
     link_local_ipv6 = "fe80::1%igc0"
+    ula_ipv6 = "fd12:3456:789a::1/64"
+    loopback_ipv6 = "::1"
     key_first_mac = "aa:bb:cc:dd:ee:01"
     field_first_mac = "aa:bb:cc:dd:ee:02"
     payload = {
@@ -549,6 +551,10 @@ async def test_config_entry_diagnostics_typed_identifier_keys_are_order_independ
         "loopback_detail": f"API bound to {loopback_ipv4}",
         "link_local_ipv6": link_local_ipv6,
         "link_local_detail": f"Neighbor {link_local_ipv6} is reachable",
+        "ula_ipv6": ula_ipv6,
+        "ula_detail": f"Local tunnel {ula_ipv6} is active",
+        "loopback_ipv6": loopback_ipv6,
+        "loopback_ipv6_detail": f"API bound to [{loopback_ipv6}]",
         "mac": field_first_mac,
         "leases": {
             key_first_ip: {"ip": key_first_ip},
@@ -582,6 +588,10 @@ async def test_config_entry_diagnostics_typed_identifier_keys_are_order_independ
     assert data["loopback_detail"] == f"API bound to {loopback_ipv4}"
     assert data["link_local_ipv6"] == link_local_ipv6
     assert data["link_local_detail"] == f"Neighbor {link_local_ipv6} is reachable"
+    assert data["ula_ipv6"] == ula_ipv6
+    assert data["ula_detail"] == f"Local tunnel {ula_ipv6} is active"
+    assert data["loopback_ipv6"] == loopback_ipv6
+    assert data["loopback_ipv6_detail"] == f"API bound to [{loopback_ipv6}]"
     assert data["mac"] == field_first_mac
     serialized = json.dumps(diagnostics)
     for identifier in (key_first_ip, field_first_ip, public_ipv6):
