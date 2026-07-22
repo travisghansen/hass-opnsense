@@ -59,7 +59,7 @@ async def test_config_entry_diagnostics_pseudonymizes_full_runtime(
 ) -> None:
     """Diagnostics should retain operational state without exposing identifiers."""
     router_mac = "aa:bb:cc:dd:ee:ff"
-    router_ip = "192.0.2.10"
+    router_ip = "192.168.1.10"
     router_uuid = "123e4567-e89b-42d3-a456-426614174000"
     workstation = "private-workstation"
     entry = make_config_entry(
@@ -180,75 +180,53 @@ async def test_config_entry_diagnostics_pseudonymizes_full_runtime(
     assert sanitized_main["host_firmware_version"] == "26.7.1"
     assert sanitized_main["telemetry"]["pfstate"] == {"used": 42}
     assert sanitized_main["telemetry"]["status"] == "ok"
-    redacted_temp_key = next(iter(sanitized_main["telemetry"]["temps"]))
-    assert redacted_temp_key.startswith("**REDACTED_KEY_")
-    assert sanitized_main["telemetry"]["temps"][redacted_temp_key] == {"temperature": 42.5}
+    assert sanitized_main["telemetry"]["temps"]["private-cpu-device"] == {"temperature": 42.5}
 
-    redacted_mac = config_data[CONF_DEVICE_UNIQUE_ID]
-    redacted_ip = sanitized_tracker["arp_table"][0]["ip"]
-    redacted_interface = sanitized_main["interfaces"][next(iter(sanitized_main["interfaces"]))]
-    assert redacted_mac.startswith("**REDACTED_MAC_")
-    assert sanitized_tracker["arp_table"][0]["mac"] == redacted_mac
-    assert (
-        sanitized_live["interfaces"][next(iter(sanitized_live["interfaces"]))]["mac"]
-        == redacted_mac
-    )
-    assert redacted_ip.startswith("**REDACTED_IP_")
-    assert redacted_interface["ipv4"] == redacted_ip
+    assert config_data[CONF_DEVICE_UNIQUE_ID] == router_mac
+    assert sanitized_tracker["arp_table"][0]["mac"] == router_mac
+    assert sanitized_live["interfaces"]["wan"]["mac"] == router_mac
+    assert sanitized_tracker["arp_table"][0]["ip"] == router_ip
+    redacted_interface = sanitized_main["interfaces"]["wan"]
+    assert redacted_interface["ipv4"] == router_ip
     assert redacted_interface["status"] == "up"
-    assert (
-        sanitized_live["interfaces"][next(iter(sanitized_live["interfaces"]))][
-            "inbytes_kilobytes_per_second"
-        ]
-        == 12.5
-    )
+    assert sanitized_live["interfaces"]["wan"]["inbytes_kilobytes_per_second"] == 12.5
 
-    redacted_wan_key = next(iter(sanitized_main["interfaces"]))
-    assert redacted_wan_key.startswith("**REDACTED_KEY_")
-    assert redacted_interface["interface"] == redacted_wan_key
-    redacted_certificate_key = next(iter(sanitized_main["certificates"]))
-    assert redacted_certificate_key.startswith("**REDACTED_KEY_")
-    assert sanitized_main["certificates"][redacted_certificate_key]["uuid"].startswith(
-        "**REDACTED_ID_"
-    )
-    redacted_vpn_key = next(iter(sanitized_main["wireguard"]["clients"]))
-    sanitized_vpn = sanitized_main["wireguard"]["clients"][redacted_vpn_key]
-    assert sanitized_vpn["uuid"] == redacted_vpn_key
+    assert redacted_interface["interface"] == "wan"
+    certificate = sanitized_main["certificates"]["Home Certificate"]
+    assert certificate["uuid"] == router_uuid
+    sanitized_vpn = sanitized_main["wireguard"]["clients"][router_uuid]
+    assert sanitized_vpn["uuid"] == router_uuid
     assert sanitized_vpn["pubkey"].startswith("**REDACTED_ID_")
-    assert sanitized_vpn["endpoint"].startswith("**REDACTED_VALUE_")
+    assert sanitized_vpn["endpoint"] == "vpn.private.example:51820"
     assert sanitized_vpn["tunnel_addresses"][0].startswith("**REDACTED_IP_")
     assert sanitized_main["nut_ups_status"]["response"].startswith("**REDACTED_VALUE_")
     assert sanitized_main["nut_ups_status"]["status"]["device.serial"].startswith("**REDACTED_ID_")
     assert sanitized_main["nut_ups_status"]["status"]["ups.status"] == "OL"
 
-    redacted_lease_key = next(iter(sanitized_main["leases"]))
-    assert redacted_lease_key.startswith("**REDACTED_KEY_")
-    assert sanitized_main["leases"][redacted_lease_key]["hostname"] == redacted_lease_key
+    assert sanitized_main["leases"][workstation]["hostname"] == workstation
     json_scalars = sanitized_main["json_scalars"]
     assert json_scalars["datetime"] == "2026-07-21T12:30:00+00:00"
     assert json_scalars["date"] == "2026-07-21"
     assert json_scalars["time"] == "12:30:00"
-    assert json_scalars["enum"].startswith("**REDACTED_VALUE_")
+    assert json_scalars["enum"] == "active"
     assert json_scalars["bytes"] == REDACTED
     assert json_scalars["opaque"] == REDACTED
 
     subject = sanitized_main["notices"][0]["subject"]
-    assert subject.startswith("**REDACTED_ID_")
-    assert router_mac not in subject
-    assert router_ip not in subject
+    assert router_mac in subject
     assert "admin@example.com" not in subject
     assert coordinators["device_tracker"]["last_update_success"] is False
     assert coordinators["device_tracker"]["last_exception"] == "RuntimeError"
     assert "diagnostics-user" not in json.dumps(diagnostics)
     assert "diagnostics-password" not in json.dumps(diagnostics)
-    assert router_mac not in json.dumps(diagnostics)
-    assert router_ip not in json.dumps(diagnostics)
+    assert router_mac in json.dumps(diagnostics)
+    assert router_ip in json.dumps(diagnostics)
     assert "private-ups-serial" not in json.dumps(diagnostics)
     assert "private-wireguard-public-key" not in json.dumps(diagnostics)
-    assert "vpn.private.example" not in json.dumps(diagnostics)
-    assert "private office uplink" not in json.dumps(diagnostics)
-    assert "connection_summary" not in json.dumps(diagnostics)
-    assert "detail" not in json.dumps(diagnostics)
+    assert "vpn.private.example" in json.dumps(diagnostics)
+    assert "private office uplink" in json.dumps(diagnostics)
+    assert "connection_summary" in json.dumps(diagnostics)
+    assert "detail" in json.dumps(diagnostics)
     assert "2001:db8::10" not in json.dumps(diagnostics)
     json.dumps(diagnostics)
 
@@ -296,7 +274,7 @@ async def test_config_entry_diagnostics_supports_optional_coordinators(
 async def test_config_entry_diagnostics_redacts_keys_and_sensitive_containers(
     hass: HomeAssistant, make_config_entry: Any
 ) -> None:
-    """Diagnostics should redact secret keys and recursively pseudonymize private containers."""
+    """Diagnostics should redact secrets while retaining useful interface labels."""
     entry = make_config_entry(
         data={"url": "https://router.example.test"},
         title="Private Router",
@@ -326,26 +304,21 @@ async def test_config_entry_diagnostics_redacts_keys_and_sensitive_containers(
     assert data["client_key"] == REDACTED
     assert data["public_key"].startswith("**REDACTED_ID_")
     interfaces = data["lease_interfaces"]
-    interface_key = next(key for key, value in interfaces.items() if isinstance(value, str))
-    assert interface_key.startswith("**REDACTED_KEY_")
-    assert interfaces[interface_key].startswith("**REDACTED_VALUE_")
-    nested = next(value for value in interfaces.values() if isinstance(value, dict))
-    nested_key = next(iter(nested))
-    assert nested_key.startswith("**REDACTED_KEY_")
-    assert nested[nested_key][0].startswith("**REDACTED_VALUE_")
-    assert nested[nested_key][1].startswith("**REDACTED_VALUE_")
-    assert nested[nested_key][2:] == [True, None]
+    assert interfaces == {
+        "lan_custom": "Private LAN",
+        "nested_group": {"labels": ["Private Guest", 7, True, None]},
+    }
     serialized = json.dumps(diagnostics)
     assert "private-preshared-key" not in serialized
     assert "private-client-key" not in serialized
-    assert "lan_custom" not in serialized
-    assert "Private LAN" not in serialized
+    assert "lan_custom" in serialized
+    assert "Private LAN" in serialized
 
 
 async def test_config_entry_diagnostics_numeric_ids_and_high_cardinality(
     hass: HomeAssistant, make_config_entry: Any
 ) -> None:
-    """Diagnostics should alias numeric IDs without changing metrics at high cardinality."""
+    """Diagnostics should preserve local IDs and labels at high cardinality."""
     leases = {
         f"private-lease-{index}": {
             "ip": f"10.0.{index // 250}.{index % 250 + 1}",
@@ -379,21 +352,21 @@ async def test_config_entry_diagnostics_numeric_ids_and_high_cardinality(
     assert data["firmware_version"] == "26.7.1"
     assert data["status"] == "online"
     clients = data["clients"]
-    assert len(clients) == 2
-    for client_key, client in clients.items():
-        assert client_key.startswith("**REDACTED_KEY_")
-        assert client["id"] == client_key
+    assert clients == {
+        101: {"id": 101, "packets": 101},
+        202: {"id": 202, "packets": 202},
+    }
     assert {client["packets"] for client in clients.values()} == {101, 202}
     assert len(data["leases"]) == 500
     serialized = json.dumps(diagnostics)
-    assert "private-lease-0" not in serialized
-    assert "10.0.0.1" not in serialized
+    assert "private-lease-0" in serialized
+    assert "10.0.0.1" in serialized
 
 
-async def test_config_entry_diagnostics_defaults_dynamic_keys_and_text_private(
+async def test_config_entry_diagnostics_preserves_dynamic_keys_and_operational_text(
     hass: HomeAssistant, make_config_entry: Any
 ) -> None:
-    """Diagnostics should hide dynamic keys and validate operational string values."""
+    """Diagnostics should preserve evolving keys and operational string values."""
     entry = make_config_entry(data={"url": "https://router.example.test"}, title="Router")
     entry.runtime_data = SimpleNamespace(
         coordinator=_coordinator(
@@ -416,16 +389,14 @@ async def test_config_entry_diagnostics_defaults_dynamic_keys_and_text_private(
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
 
     data = diagnostics["coordinators"]["main"]["data"]
-    assert data["status"].startswith("**REDACTED_VALUE_")
+    assert data["status"] == "Connected for Alice Smith"
     assert data["firmware_version"] == "26.7.1"
-    assert data["new_version"].startswith("**REDACTED_VALUE_")
-    users = next(value for key, value in data.items() if key.startswith("**REDACTED_KEY_"))
-    user = next(iter(users.values()))
-    assert user == {"count": 1}
+    assert data["new_version"] == "26.1-OfficeFirewall"
+    assert data["users_by_name"]["Alice Smith"] == {"count": 1}
     serialized = json.dumps(diagnostics)
-    assert "users_by_name" not in serialized
-    assert "Alice Smith" not in serialized
-    assert "Connected for Alice Smith" not in serialized
+    assert "users_by_name" in serialized
+    assert "Alice Smith" in serialized
+    assert "Connected for Alice Smith" in serialized
     for private_key in (
         "Alice_id",
         "Alice_ids",
@@ -433,14 +404,14 @@ async def test_config_entry_diagnostics_defaults_dynamic_keys_and_text_private(
         "Alice_state",
         "Alice_version",
     ):
-        assert private_key not in serialized
-    assert "26.1-OfficeFirewall" not in serialized
+        assert private_key in serialized
+    assert "26.1-OfficeFirewall" in serialized
 
 
 async def test_config_entry_diagnostics_plural_numeric_ids_and_distinct_dynamic_keys(
     hass: HomeAssistant, make_config_entry: Any
 ) -> None:
-    """Diagnostics should alias nested numeric IDs and avoid dynamic-key collisions."""
+    """Diagnostics should preserve numeric IDs and safely encode unsupported keys."""
     opaque_key = _OpaqueDiagnosticValue()
     entry = make_config_entry(data={"url": "https://router.example.test"}, title="Router")
     entry.runtime_data = SimpleNamespace(
@@ -460,32 +431,25 @@ async def test_config_entry_diagnostics_plural_numeric_ids_and_distinct_dynamic_
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
 
     data = diagnostics["coordinators"]["main"]["data"]
-    assert all(value.startswith("**REDACTED_VALUE_") for value in data["rule_ids"])
-    assert data["rule_ids"][0] == data["rule_ids"][1]
-    assert data["client_ids"][0] != data["rule_ids"][0]
-    assert data["client_ids"][1] != data["rule_ids"][2]
-    nested_ids = data["nested_ids"]
-    nested_values = next(iter(nested_ids.values()))
-    assert nested_values[0] == data["client_ids"][0]
-    assert nested_values[1].startswith("**REDACTED_VALUE_")
+    assert data["rule_ids"] == [7, 7, 2]
+    assert data["client_ids"] == [1, 3]
+    assert data["nested_ids"] == {"private_group": [1, 4]}
     assert data["packets"] == 7
-    dynamic = next(
-        value
-        for key, value in data.items()
-        if key.startswith("**REDACTED_KEY_")
-        and isinstance(value, dict)
-        and set(value.values()) == {1, 2, 3, 4}
-    )
+    dynamic = data["dynamic_keys"]
     assert len(dynamic) == 4
-    assert len(set(dynamic)) == 4
-    assert all(key.startswith("**REDACTED_KEY_") for key in dynamic)
+    assert dynamic[None] == 1
+    assert dynamic[False] == 2
+    assert dynamic[""] == 3
+    opaque_alias = next(key for key in dynamic if isinstance(key, str) and key)
+    assert opaque_alias.startswith("**REDACTED_KEY_")
+    assert dynamic[opaque_alias] == 4
     json.dumps(diagnostics)
 
 
 async def test_config_entry_diagnostics_preserves_real_payload_shapes(
     hass: HomeAssistant, make_config_entry: Any
 ) -> None:
-    """Diagnostics should retain known coordinator schemas while hiding dynamic identifiers."""
+    """Diagnostics should retain coordinator schemas and local operational labels."""
     entry = make_config_entry(data={"url": "https://router.example.test"}, title="Router")
     entry.runtime_data = SimpleNamespace(
         coordinator=_coordinator(
@@ -547,7 +511,8 @@ async def test_config_entry_diagnostics_preserves_real_payload_shapes(
     carp_row = data["carp"]["interfaces"][0]
     assert {"interface", "subnet", "status"} <= carp_row.keys()
     assert carp_row["status"] == "MASTER"
-    assert "unexpected_owner" not in carp_row
+    assert carp_row["unexpected_owner"] == "Alice Smith"
+    assert carp_row["subnet"].startswith("**REDACTED_IP_")
     serialized = json.dumps(diagnostics)
     for private_value in (
         "igc0",
@@ -559,13 +524,13 @@ async def test_config_entry_diagnostics_preserves_real_payload_shapes(
         "private-rule",
         "Alice Smith",
     ):
-        assert private_value not in serialized
+        assert private_value in serialized
 
 
 async def test_config_entry_diagnostics_typed_identifier_keys_are_order_independent(
     hass: HomeAssistant, make_config_entry: Any
 ) -> None:
-    """Diagnostics should type aliases consistently whether keys or fields occur first."""
+    """Diagnostics should redact public IPs while preserving local MAC identifiers."""
     key_first_ip = "192.0.2.10"
     field_first_ip = "192.0.2.20"
     key_first_mac = "aa:bb:cc:dd:ee:01"
@@ -597,13 +562,15 @@ async def test_config_entry_diagnostics_typed_identifier_keys_are_order_independ
     assert all(key.startswith("**REDACTED_IP_") for key in lease_keys)
     assert [lease["ip"] for lease in data["leases"].values()] == lease_keys
     client_keys = list(data["clients"])
-    assert all(key.startswith("**REDACTED_MAC_") for key in client_keys)
+    assert client_keys == [key_first_mac, field_first_mac]
     assert [client["mac"] for client in data["clients"].values()] == client_keys
     assert data["ipv4"] == lease_keys[1]
-    assert data["mac"] == client_keys[1]
+    assert data["mac"] == field_first_mac
     serialized = json.dumps(diagnostics)
-    for identifier in (key_first_ip, field_first_ip, key_first_mac, field_first_mac):
+    for identifier in (key_first_ip, field_first_ip):
         assert identifier not in serialized
+    for identifier in (key_first_mac, field_first_mac):
+        assert identifier in serialized
     assert payload == original_payload
 
 
@@ -611,14 +578,13 @@ async def test_config_entry_diagnostics_uses_per_download_alias_namespace(
     hass: HomeAssistant, make_config_entry: Any
 ) -> None:
     """Diagnostics should prevent aliases from linking separate downloads."""
-    private_mac = "aa:bb:cc:dd:ee:ff"
+    private_serial = "private-appliance-serial"
     payload = {
-        "clients": {private_mac: {"mac": private_mac}},
-        "interfaces": {"wan": {"mac": private_mac, "status": "up"}},
+        "devices": [{"serial": private_serial}, {"serial_number": private_serial}],
     }
     original_payload = copy.deepcopy(payload)
     entry = make_config_entry(
-        data={CONF_DEVICE_UNIQUE_ID: private_mac, "url": "https://router.example.test"},
+        data={CONF_DEVICE_UNIQUE_ID: private_serial, "url": "https://router.example.test"},
         title="Router",
     )
     entry.runtime_data = SimpleNamespace(
@@ -630,19 +596,21 @@ async def test_config_entry_diagnostics_uses_per_download_alias_namespace(
     first = await async_get_config_entry_diagnostics(hass, entry)
     second = await async_get_config_entry_diagnostics(hass, entry)
 
-    first_mac = first["config_entry"]["data"][CONF_DEVICE_UNIQUE_ID]
-    second_mac = second["config_entry"]["data"][CONF_DEVICE_UNIQUE_ID]
-    assert first_mac.startswith("**REDACTED_MAC_")
-    assert second_mac.startswith("**REDACTED_MAC_")
-    assert first_mac != second_mac
+    first_serial = first["config_entry"]["data"][CONF_DEVICE_UNIQUE_ID]
+    second_serial = second["config_entry"]["data"][CONF_DEVICE_UNIQUE_ID]
+    assert first_serial.startswith("**REDACTED_ID_")
+    assert second_serial.startswith("**REDACTED_ID_")
+    assert first_serial != second_serial
     first_data = first["coordinators"]["main"]["data"]
     second_data = second["coordinators"]["main"]["data"]
-    assert next(iter(first_data["clients"])) == first_mac
-    assert next(iter(first_data["clients"].values()))["mac"] == first_mac
-    assert next(iter(first_data["interfaces"].values()))["mac"] == first_mac
-    assert next(iter(second_data["clients"])) == second_mac
-    assert next(iter(second_data["clients"].values()))["mac"] == second_mac
-    assert next(iter(second_data["interfaces"].values()))["mac"] == second_mac
+    assert [
+        device["serial"] if "serial" in device else device["serial_number"]
+        for device in first_data["devices"]
+    ] == [first_serial, first_serial]
+    assert [
+        device["serial"] if "serial" in device else device["serial_number"]
+        for device in second_data["devices"]
+    ] == [second_serial, second_serial]
     json.dumps(first)
     json.dumps(second)
     assert payload == original_payload
@@ -735,14 +703,96 @@ async def test_config_entry_diagnostics_preserves_post_refresh_counters(
     assert wireguard_client["connected_servers"] == 1
     serialized = json.dumps(diagnostics)
     for identifier in ("private-wan", "private-openvpn", "private-wireguard-client"):
-        assert identifier not in serialized
+        assert identifier in serialized
     assert payload == original_payload
+
+
+async def test_config_entry_diagnostics_preserves_evolving_operational_schema(
+    hass: HomeAssistant, make_config_entry: Any
+) -> None:
+    """Diagnostics should keep unclassified API schema while hiding private values."""
+    main_payload = {
+        "telemetry": {"mbuf": {"used": 12, "total": 24, "status": "ok"}},
+        "firmware_update_info": {
+            "product_version": "26.7.1",
+            "upgrade_needs_reboot": False,
+        },
+        "firewall": {
+            "rules": {
+                "private-rule-id": {
+                    "uuid": "private-rule-id",
+                    "sequence": 10,
+                    "action": "pass",
+                    "ipprotocol": "inet",
+                    "protocol": "TCP",
+                    "source_net": "Private VLAN",
+                    "destination_net": "any",
+                    "description": "Private firewall rule",
+                }
+            }
+        },
+    }
+    tracker_payload = {
+        "arp_table": [
+            {
+                "expires": 1200,
+                "permanent": False,
+                "type": "ethernet",
+                "ip": "192.168.1.10",
+                "mac": "aa:bb:cc:dd:ee:ff",
+                "hostname": "private-host",
+            }
+        ]
+    }
+    entry = make_config_entry(data={"url": "https://router.example.test"}, title="Router")
+    entry.runtime_data = SimpleNamespace(
+        coordinator=_coordinator(main_payload),
+        device_tracker_coordinator=_coordinator(tracker_payload),
+        live_traffic_coordinator=None,
+    )
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    main = diagnostics["coordinators"]["main"]["data"]
+    assert main["telemetry"]["mbuf"] == {"used": 12, "total": 24, "status": "ok"}
+    assert main["firmware_update_info"] == {
+        "product_version": "26.7.1",
+        "upgrade_needs_reboot": False,
+    }
+    rule = next(iter(main["firewall"]["rules"].values()))
+    assert {
+        "uuid",
+        "sequence",
+        "action",
+        "ipprotocol",
+        "protocol",
+        "source_net",
+        "destination_net",
+        "description",
+    } == set(rule)
+    assert rule["sequence"] == 10
+    assert rule["action"] == "pass"
+    assert rule["ipprotocol"] == "inet"
+    assert rule["protocol"] == "TCP"
+    assert rule["uuid"] == "private-rule-id"
+    assert rule["source_net"] == "Private VLAN"
+    assert rule["destination_net"] == "any"
+    assert rule["description"] == "Private firewall rule"
+
+    arp_row = diagnostics["coordinators"]["device_tracker"]["data"]["arp_table"][0]
+    assert {"expires", "permanent", "type", "ip", "mac", "hostname"} == set(arp_row)
+    assert arp_row["expires"] == 1200
+    assert arp_row["permanent"] is False
+    assert arp_row["type"] == "ethernet"
+    assert arp_row["ip"] == "192.168.1.10"
+    assert arp_row["mac"] == "aa:bb:cc:dd:ee:ff"
+    assert arp_row["hostname"] == "private-host"
 
 
 async def test_config_entry_diagnostics_temporal_privacy_and_strict_json(
     hass: HomeAssistant, make_config_entry: Any
 ) -> None:
-    """Diagnostics should hide unknown temporal data and normalize non-finite floats."""
+    """Diagnostics should preserve temporal data and normalize non-finite floats."""
     private_datetime = datetime(1990, 5, 4, 3, 2, 1, tzinfo=UTC)
     private_date = date(1990, 5, 4)
     private_time = time(3, 2, 1)
@@ -779,26 +829,20 @@ async def test_config_entry_diagnostics_temporal_privacy_and_strict_json(
     assert first_data["temperature"] is None
     assert first_data["packets"] is None
     assert first_data["count"] == 42.5
-    first_private_values = [
-        value for key, value in first_data.items() if key.startswith("**REDACTED_KEY_")
-    ]
-    second_private_values = [
-        value for key, value in second_data.items() if key.startswith("**REDACTED_KEY_")
-    ]
-    assert first_private_values[1] == first_private_values[2]
-    assert first_private_values != second_private_values
-    assert all(
-        isinstance(value, str) and value.startswith("**REDACTED_VALUE_")
-        for value in first_private_values
-    )
+    assert first_data["customer_birth_date"] == "1990-05-04"
+    assert first_data["private_event"] == "1990-05-04T03:02:01+00:00"
+    assert first_data["repeated_private_event"] == "1990-05-04T03:02:01+00:00"
+    assert first_data["private_day"] == "1990-05-04"
+    assert first_data["private_clock"] == "03:02:01"
+    assert first_data == second_data
     serialized = json.dumps(first, allow_nan=False)
-    for private_value in (
+    for operational_value in (
         "customer_birth_date",
         "1990-05-04",
         "private_event",
         "03:02:01",
     ):
-        assert private_value not in serialized
+        assert operational_value in serialized
     source_used = payload["used"]
     source_temperature = payload["temperature"]
     source_packets = payload["packets"]
@@ -807,10 +851,10 @@ async def test_config_entry_diagnostics_temporal_privacy_and_strict_json(
     assert isinstance(source_packets, float) and math.isinf(source_packets)
 
 
-async def test_config_entry_diagnostics_validates_temporal_and_unit_metadata(
+async def test_config_entry_diagnostics_preserves_temporal_and_unit_metadata(
     hass: HomeAssistant, make_config_entry: Any
 ) -> None:
-    """Diagnostics should retain only valid temporal and unit metadata."""
+    """Diagnostics should retain unfamiliar temporal and unit metadata."""
     payload = {
         "date": "not-a-date",
         "time": "not-a-time",
@@ -828,14 +872,8 @@ async def test_config_entry_diagnostics_validates_temporal_and_unit_metadata(
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
 
     data = diagnostics["coordinators"]["main"]["data"]
-    assert data["unit"] == "ms"
-    for field in ("date", "time", "timestamp", "units"):
-        assert data[field].startswith("**REDACTED_VALUE_")
-    serialized = json.dumps(diagnostics)
-    assert "not-a-date" not in serialized
-    assert "not-a-time" not in serialized
-    assert "not-a-datetime" not in serialized
-    assert "private-unit" not in serialized
+    assert data == payload
+    json.dumps(diagnostics)
 
 
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
@@ -867,11 +905,26 @@ def test_pseudonymizer_distinguishes_non_finite_mapping_keys() -> None:
 
     for value in values:
         pseudonymizer.register_key(value)
+    pseudonymizer.register_key(values[0])
 
     aliases = [pseudonymizer.key_alias_for(value) for value in values]
     assert len(set(aliases)) == 3
     assert all(alias.startswith("**REDACTED_KEY_") for alias in aliases)
     assert pseudonymizer.key_alias_for(float("nan")) == aliases[0]
+
+
+def test_pseudonymizer_preserves_safe_identifiers_and_scalar_types() -> None:
+    """Local identifiers and ordinary scalar types should remain useful."""
+    pseudonymizer = _Pseudonymizer()
+    uuid = "123e4567-e89b-42d3-a456-426614174000"
+    public_ip = "192.0.2.10"
+
+    pseudonymizer.register("ip", public_ip)
+
+    assert pseudonymizer._kind_for_field("entry_id", uuid) is None
+    assert pseudonymizer._key_token("label") == (str, "label")
+    assert pseudonymizer.sanitize(True, force_sensitive=True) is True
+    assert pseudonymizer._replace_scalar(public_ip) == pseudonymizer.alias_for(public_ip)
 
 
 def test_pseudonymizer_skips_regex_shaped_invalid_ipv4_candidates() -> None:
