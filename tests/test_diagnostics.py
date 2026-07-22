@@ -539,6 +539,7 @@ async def test_config_entry_diagnostics_typed_identifier_keys_are_order_independ
     field_first_ip = "192.0.2.20"
     public_ipv6 = "2001:db8::20"
     loopback_ipv4 = "127.0.0.1"
+    link_local_ipv6 = "fe80::1%igc0"
     key_first_mac = "aa:bb:cc:dd:ee:01"
     field_first_mac = "aa:bb:cc:dd:ee:02"
     payload = {
@@ -546,6 +547,8 @@ async def test_config_entry_diagnostics_typed_identifier_keys_are_order_independ
         "ipv6": public_ipv6,
         "loopback_ip": loopback_ipv4,
         "loopback_detail": f"API bound to {loopback_ipv4}",
+        "link_local_ipv6": link_local_ipv6,
+        "link_local_detail": f"Neighbor {link_local_ipv6} is reachable",
         "mac": field_first_mac,
         "leases": {
             key_first_ip: {"ip": key_first_ip},
@@ -577,6 +580,8 @@ async def test_config_entry_diagnostics_typed_identifier_keys_are_order_independ
     assert data["ipv6"].startswith("**REDACTED_IPV6_")
     assert data["loopback_ip"] == loopback_ipv4
     assert data["loopback_detail"] == f"API bound to {loopback_ipv4}"
+    assert data["link_local_ipv6"] == link_local_ipv6
+    assert data["link_local_detail"] == f"Neighbor {link_local_ipv6} is reachable"
     assert data["mac"] == field_first_mac
     serialized = json.dumps(diagnostics)
     for identifier in (key_first_ip, field_first_ip, public_ipv6):
