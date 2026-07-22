@@ -10,9 +10,13 @@ from typing import Any, Self
 
 from homeassistant.components.diagnostics import REDACTED
 from homeassistant.core import HomeAssistant
+import pytest
 
 from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID, CONF_ENTRY_TYPE, ENTRY_TYPE_CARP
-from custom_components.opnsense.diagnostics import async_get_config_entry_diagnostics
+from custom_components.opnsense.diagnostics import (
+    _Pseudonymizer,
+    async_get_config_entry_diagnostics,
+)
 
 
 class _DiagnosticMode(Enum):
@@ -801,3 +805,102 @@ async def test_config_entry_diagnostics_temporal_privacy_and_strict_json(
     assert isinstance(source_used, float) and math.isnan(source_used)
     assert isinstance(source_temperature, float) and math.isinf(source_temperature)
     assert isinstance(source_packets, float) and math.isinf(source_packets)
+
+
+async def test_config_entry_diagnostics_validates_temporal_and_unit_metadata(
+    hass: HomeAssistant, make_config_entry: Any
+) -> None:
+    """Diagnostics should retain only valid temporal and unit metadata."""
+    payload = {
+        "date": "not-a-date",
+        "time": "not-a-time",
+        "timestamp": "not-a-datetime",
+        "unit": "ms",
+        "units": "private-unit",
+    }
+    entry = make_config_entry(data={"url": "https://router.example.test"}, title="Router")
+    entry.runtime_data = SimpleNamespace(
+        coordinator=_coordinator(payload),
+        device_tracker_coordinator=None,
+        live_traffic_coordinator=None,
+    )
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    data = diagnostics["coordinators"]["main"]["data"]
+    assert data["unit"] == "ms"
+    for field in ("date", "time", "timestamp", "units"):
+        assert data[field].startswith("**REDACTED_VALUE_")
+    serialized = json.dumps(diagnostics)
+    assert "not-a-date" not in serialized
+    assert "not-a-time" not in serialized
+    assert "not-a-datetime" not in serialized
+    assert "private-unit" not in serialized
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_pseudonymizer_ignores_non_finite_alias_values(value: float) -> None:
+    """Non-finite floats should never be registered or resolved as aliases."""
+    pseudonymizer = _Pseudonymizer()
+
+    pseudonymizer.register("value", value)
+
+    assert pseudonymizer.aliases == {}
+    assert pseudonymizer.alias_for(value) is None
+
+
+@pytest.mark.parametrize("value", ["", REDACTED])
+def test_pseudonymizer_ignores_empty_and_redacted_alias_values(value: str) -> None:
+    """Empty and already-redacted values should not consume alias counters."""
+    pseudonymizer = _Pseudonymizer()
+
+    pseudonymizer.register("value", value)
+
+    assert pseudonymizer.aliases == {}
+    assert pseudonymizer.counters == {}
+
+
+def test_pseudonymizer_distinguishes_non_finite_mapping_keys() -> None:
+    """Non-finite mapping keys should receive stable, distinct aliases."""
+    pseudonymizer = _Pseudonymizer()
+    values = (float("nan"), float("inf"), float("-inf"))
+
+    for value in values:
+        pseudonymizer.register_key(value)
+
+    aliases = [pseudonymizer.key_alias_for(value) for value in values]
+    assert len(set(aliases)) == 3
+    assert all(alias.startswith("**REDACTED_KEY_") for alias in aliases)
+    assert pseudonymizer.key_alias_for(float("nan")) == aliases[0]
+
+
+def test_pseudonymizer_skips_regex_shaped_invalid_ipv4_candidates() -> None:
+    """Regex-shaped text should not register an alias unless it is a valid IPv4 address."""
+    pseudonymizer = _Pseudonymizer()
+    candidate = "999.999.999.999"
+
+    pseudonymizer._collect_detected_values(f"peer {candidate} unavailable")
+
+    assert pseudonymizer.alias_for(candidate) is None
+    assert pseudonymizer._replace_embedded(candidate) == candidate
+
+
+@pytest.mark.parametrize("field_name", ["email", "user"])
+def test_pseudonymizer_classifies_email_and_user_fields(field_name: str) -> None:
+    """Email and user fields should use the user alias classification."""
+    pseudonymizer = _Pseudonymizer()
+
+    assert pseudonymizer._kind_for_field(field_name, "private-user") == "user"
+
+
+def test_pseudonymizer_replaces_embedded_ip_with_registered_alias() -> None:
+    """Embedded valid IP addresses should reuse their previously registered alias."""
+    pseudonymizer = _Pseudonymizer()
+    private_ip = "192.0.2.10"
+    pseudonymizer.register("ip", private_ip)
+    alias = pseudonymizer.alias_for(private_ip)
+
+    assert alias is not None
+    assert pseudonymizer._replace_embedded(f"peer {private_ip} unavailable") == (
+        f"peer {alias} unavailable"
+    )
