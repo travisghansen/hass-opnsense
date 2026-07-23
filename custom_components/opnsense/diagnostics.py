@@ -146,6 +146,11 @@ def _is_sensitive_field(field_name: str) -> bool:
     )
 
 
+def _is_alias_metadata_field(field_name: str) -> bool:
+    """Return whether a normalized field contains OPNsense alias display metadata."""
+    return field_name.startswith("alias_meta_")
+
+
 def _is_safe_ipv4(value: str) -> bool:
     """Return whether a value is an allowed local IPv4 address or interface."""
     try:
@@ -327,6 +332,8 @@ class _Pseudonymizer:
         if isinstance(value, Mapping):
             for key, item in value.items():
                 normalized_key = _normalize_field(key)
+                if _is_alias_metadata_field(normalized_key):
+                    continue
                 redact_key = self._should_redact_key(key, force_sensitive=force_sensitive)
                 if redact_key:
                     self.register_key(key)
@@ -377,6 +384,9 @@ class _Pseudonymizer:
             sanitized: dict[Any, Any] = {}
             for key, item in value.items():
                 normalized_key = _normalize_field(key)
+                if _is_alias_metadata_field(normalized_key):
+                    sanitized[key] = item
+                    continue
                 redact_key = self._should_redact_key(key, force_sensitive=force_sensitive)
                 sanitized_key = (
                     self.key_alias_for(key)

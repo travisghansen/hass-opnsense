@@ -515,6 +515,34 @@ async def test_config_entry_diagnostics_redacts_keys_and_sensitive_containers(
     assert "Private LAN" in serialized
 
 
+async def test_config_entry_diagnostics_preserves_alias_metadata(
+    hass: HomeAssistant, make_config_entry: Any
+) -> None:
+    """Diagnostics should preserve every alias metadata key and value."""
+    alias_metadata = [
+        {
+            "summary": "<strong>Public endpoint</strong><br/>203.0.113.10",
+            "description": "Public endpoint",
+            "value": "public_endpoint_alias",
+            "%value": "public_endpoint_alias",
+            "isAlias": True,
+        }
+    ]
+    entry = make_config_entry(
+        data={"url": "https://router.example.test"},
+        title="Private Router",
+    )
+    entry.runtime_data = SimpleNamespace(
+        coordinator=_coordinator({"alias_meta_target": alias_metadata}),
+        device_tracker_coordinator=None,
+        live_traffic_coordinator=None,
+    )
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert diagnostics["coordinators"]["main"]["data"]["alias_meta_target"] == alias_metadata
+
+
 async def test_config_entry_diagnostics_numeric_ids_and_high_cardinality(
     hass: HomeAssistant, make_config_entry: Any
 ) -> None:
