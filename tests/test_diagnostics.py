@@ -545,7 +545,7 @@ async def test_config_entry_diagnostics_replaces_only_safe_embedded_secrets(
     entry = make_config_entry(
         data={
             "url": "https://router.example.test",
-            "username": "root",
+            "username": "op",
             "password": "1",
         },
         title="Router",
@@ -556,8 +556,11 @@ async def test_config_entry_diagnostics_replaces_only_safe_embedded_secrets(
                 "firmware": "26.1",
                 "counter": 10,
                 "counter_text": "10",
-                "detail": "root logged in; rooted remains ordinary text",
+                "detail": "user op entered code 1; open remains ordinary text",
                 "exact_value": "1",
+                "ipv4": "192.168.1.10",
+                "ipv6": "fd00::1",
+                "dotted_name": "router.op.local",
                 "public_url": "https://status.example.test/result",
             }
         ),
@@ -573,8 +576,13 @@ async def test_config_entry_diagnostics_replaces_only_safe_embedded_secrets(
     assert data["firmware"] == "26.1"
     assert data["counter"] == 10
     assert data["counter_text"] == "10"
-    assert data["detail"] == "**REDACTED_SECRET_1** logged in; rooted remains ordinary text"
+    assert data["detail"] == (
+        "user **REDACTED_SECRET_1** entered code **REDACTED_SECRET_2**; open remains ordinary text"
+    )
     assert data["exact_value"] == "**REDACTED_SECRET_2**"
+    assert data["ipv4"] == "192.168.1.10"
+    assert data["ipv6"] == "fd00::1"
+    assert data["dotted_name"] == "router.op.local"
     assert data["public_url"] == "**REDACTED_URL_2**"
 
 

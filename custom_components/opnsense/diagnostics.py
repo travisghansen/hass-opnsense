@@ -115,7 +115,6 @@ _ULA_IPV6_NETWORK = ipaddress.IPv6Network("fc00::/7")
 _LOOPBACK_IPV6 = ipaddress.IPv6Address("::1")
 _IPV6_SENTENCE_PUNCTUATION = ".,;!?"
 _SPEEDTEST_LAST_METRICS: frozenset[str] = frozenset({"download", "upload", "latency"})
-_MIN_EMBEDDED_SECRET_LENGTH = 4
 
 
 def _normalize_field(field_name: object) -> str:
@@ -311,8 +310,7 @@ class _Pseudonymizer:
         if isinstance(value, str):
             if value not in ("", REDACTED):
                 self.register("secret", value)
-                if len(value) >= _MIN_EMBEDDED_SECRET_LENGTH:
-                    self.embedded_secret_aliases[value] = self.aliases[(str, value)]
+                self.embedded_secret_aliases[value] = self.aliases[(str, value)]
             return
         if isinstance(value, Mapping):
             for item in value.values():
@@ -585,7 +583,7 @@ class _Pseudonymizer:
         for secret, alias in sorted(
             self.embedded_secret_aliases.items(), key=lambda item: len(item[0]), reverse=True
         ):
-            result = re.sub(rf"(?<!\w){re.escape(secret)}(?!\w)", alias, result)
+            result = re.sub(rf"(?<![\w.:]){re.escape(secret)}(?!\w|:|\.(?=\w))", alias, result)
         return result
 
     def _replace_scalar(self, value: Any) -> Any:
