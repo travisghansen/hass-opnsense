@@ -225,18 +225,18 @@ async def test_config_entry_diagnostics_pseudonymizes_full_runtime(
     assert "admin@example.com" not in subject
     assert coordinators["device_tracker"]["last_update_success"] is False
     assert coordinators["device_tracker"]["last_exception"] == "RuntimeError"
-    assert "diagnostics-user" not in json.dumps(diagnostics)
-    assert "diagnostics-password" not in json.dumps(diagnostics)
-    assert router_mac in json.dumps(diagnostics)
-    assert router_ip in json.dumps(diagnostics)
-    assert "private-ups-serial" not in json.dumps(diagnostics)
-    assert "private-wireguard-public-key" not in json.dumps(diagnostics)
-    assert "vpn.private.example" in json.dumps(diagnostics)
-    assert "private office uplink" in json.dumps(diagnostics)
-    assert "connection_summary" in json.dumps(diagnostics)
-    assert "detail" in json.dumps(diagnostics)
-    assert "2001:db8::10" not in json.dumps(diagnostics)
-    json.dumps(diagnostics)
+    serialized = json.dumps(diagnostics)
+    assert "diagnostics-user" not in serialized
+    assert "diagnostics-password" not in serialized
+    assert router_mac in serialized
+    assert router_ip in serialized
+    assert "private-ups-serial" not in serialized
+    assert "private-wireguard-public-key" not in serialized
+    assert "vpn.private.example" in serialized
+    assert "private office uplink" in serialized
+    assert "connection_summary" in serialized
+    assert "detail" in serialized
+    assert "2001:db8::10" not in serialized
 
     assert dict(entry.data) == original_entry_data
     assert main_data == original_main_data
