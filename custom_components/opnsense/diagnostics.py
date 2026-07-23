@@ -7,7 +7,6 @@ from enum import Enum
 import ipaddress
 import math
 import re
-import secrets
 from typing import Any
 
 from homeassistant.components.diagnostics import REDACTED, async_redact_data
@@ -225,7 +224,6 @@ class _Pseudonymizer:
     embedded_identifier_aliases: dict[str, str] = field(default_factory=dict)
     embedded_secret_aliases: dict[str, str] = field(default_factory=dict)
     counters: dict[str, int] = field(default_factory=dict)
-    namespace: str = field(default_factory=lambda: secrets.token_hex(4))
 
     def register(self, kind: str, value: object) -> None:
         """Register a sensitive value for consistent replacement."""
@@ -240,9 +238,7 @@ class _Pseudonymizer:
         alias_key = (type(value), value)
         if alias_key not in self.aliases:
             self.counters[kind] = self.counters.get(kind, 0) + 1
-            self.aliases[alias_key] = (
-                f"**REDACTED_{kind.upper()}_{self.namespace}_{self.counters[kind]}**"
-            )
+            self.aliases[alias_key] = f"**REDACTED_{kind.upper()}_{self.counters[kind]}**"
         if kind == "id" and isinstance(value, str):
             self.embedded_identifier_aliases[value] = self.aliases[alias_key]
 
@@ -271,7 +267,7 @@ class _Pseudonymizer:
         token = self._key_token(value)
         if token not in self.key_aliases:
             self.counters["key"] = self.counters.get("key", 0) + 1
-            self.key_aliases[token] = f"**REDACTED_KEY_{self.namespace}_{self.counters['key']}**"
+            self.key_aliases[token] = f"**REDACTED_KEY_{self.counters['key']}**"
 
     def collect_secret_literals(self, value: Any) -> None:
         """Collect exact credentials anywhere in raw diagnostics for free-text replacement."""

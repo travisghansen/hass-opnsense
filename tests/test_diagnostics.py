@@ -825,10 +825,10 @@ async def test_config_entry_diagnostics_typed_identifier_keys_are_order_independ
     assert payload == original_payload
 
 
-async def test_config_entry_diagnostics_uses_per_download_alias_namespace(
+async def test_config_entry_diagnostics_uses_simple_correlated_aliases(
     hass: HomeAssistant, make_config_entry: Any
 ) -> None:
-    """Diagnostics should prevent aliases from linking separate downloads."""
+    """Diagnostics should use simple aliases correlated within each download."""
     private_serial = "private-appliance-serial"
     payload = {
         "devices": [{"serial": private_serial}, {"serial_number": private_serial}],
@@ -851,11 +851,8 @@ async def test_config_entry_diagnostics_uses_per_download_alias_namespace(
     second_data = second["coordinators"]["main"]["data"]
     first_serial = first_data["devices"][0]["serial"]
     second_serial = second_data["devices"][0]["serial"]
-    assert first_serial.startswith("**REDACTED_ID_")
-    assert second_serial.startswith("**REDACTED_ID_")
-    assert first_serial != second_serial
-    assert len(first_serial.split("_")[2]) == 8
-    assert len(second_serial.split("_")[2]) == 8
+    assert first_serial == "**REDACTED_ID_1**"
+    assert second_serial == "**REDACTED_ID_1**"
     assert [
         device["serial"] if "serial" in device else device["serial_number"]
         for device in first_data["devices"]
@@ -1177,7 +1174,6 @@ def test_pseudonymizer_preserves_safe_identifiers_and_scalar_types() -> None:
     pseudonymizer.register("value", True)
     pseudonymizer.register("value", object())
 
-    assert len(pseudonymizer.namespace) == 8
     assert pseudonymizer._kind_for_field("entry_id", uuid) is None
     assert pseudonymizer._kind_for_field("unique_id", mac) is None
     assert pseudonymizer._key_token("label") == (str, "label")
