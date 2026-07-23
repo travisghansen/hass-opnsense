@@ -217,6 +217,7 @@ class _Pseudonymizer:
         default_factory=dict
     )
     key_aliases: dict[tuple[object, object], str] = field(default_factory=dict)
+    embedded_identifier_aliases: dict[str, str] = field(default_factory=dict)
     embedded_secret_aliases: dict[str, str] = field(default_factory=dict)
     counters: dict[str, int] = field(default_factory=dict)
     namespace: str = field(default_factory=lambda: secrets.token_hex(4))
@@ -237,6 +238,8 @@ class _Pseudonymizer:
             self.aliases[alias_key] = (
                 f"**REDACTED_{kind.upper()}_{self.namespace}_{self.counters[kind]}**"
             )
+        if kind == "id" and isinstance(value, str):
+            self.embedded_identifier_aliases[value] = self.aliases[alias_key]
 
     def alias_for(self, value: object) -> str | None:
         """Return the registered alias for a supported scalar value."""
@@ -265,18 +268,33 @@ class _Pseudonymizer:
             self.counters["key"] = self.counters.get("key", 0) + 1
             self.key_aliases[token] = f"**REDACTED_KEY_{self.namespace}_{self.counters['key']}**"
 
-    def collect_config_secrets(self, value: Any) -> None:
-        """Collect exact config-entry credentials for replacement in free text."""
-        if not isinstance(value, Mapping):
+    def collect_secret_literals(self, value: Any) -> None:
+        """Collect exact credentials anywhere in raw diagnostics for free-text replacement."""
+        if isinstance(value, Mapping):
+            for key, item in value.items():
+                if _is_secret_field(_normalize_field(key)):
+                    self._register_secret_literals(item)
+                else:
+                    self.collect_secret_literals(item)
             return
-        for key, item in value.items():
-            if _is_secret_field(_normalize_field(key)):
-                if isinstance(item, str) and item not in ("", REDACTED):
-                    self.register("secret", item)
-                    self.embedded_secret_aliases[item] = self.aliases[(str, item)]
-                continue
-            if isinstance(item, Mapping):
-                self.collect_config_secrets(item)
+        if isinstance(value, (list, tuple, set)):
+            for item in value:
+                self.collect_secret_literals(item)
+
+    def _register_secret_literals(self, value: Any) -> None:
+        """Register string literals contained by a secret field."""
+        if isinstance(value, str):
+            if value not in ("", REDACTED):
+                self.register("secret", value)
+                self.embedded_secret_aliases[value] = self.aliases[(str, value)]
+            return
+        if isinstance(value, Mapping):
+            for item in value.values():
+                self._register_secret_literals(item)
+            return
+        if isinstance(value, (list, tuple, set)):
+            for item in value:
+                self._register_secret_literals(item)
 
     def key_alias_for(self, value: object) -> str:
         """Return the distinct alias registered for a dynamic mapping key."""
@@ -499,6 +517,12 @@ class _Pseudonymizer:
             return f"{self.alias_for(core) or core}{suffix}"
 
         result = _IPV6_CANDIDATE_PATTERN.sub(_replace_ipv6, result)
+        for literal, alias in sorted(
+            self.embedded_identifier_aliases.items(),
+            key=lambda item: len(item[0]),
+            reverse=True,
+        ):
+            result = re.sub(rf"(?<!\w){re.escape(literal)}(?!\w)", alias, result)
         for secret, alias in sorted(
             self.embedded_secret_aliases.items(), key=lambda item: len(item[0]), reverse=True
         ):
@@ -539,7 +563,7 @@ async def async_get_config_entry_diagnostics(
         },
     }
     pseudonymizer = _Pseudonymizer()
-    pseudonymizer.collect_config_secrets(diagnostics["config_entry"])
+    pseudonymizer.collect_secret_literals(diagnostics)
     credential_redacted = async_redact_data(diagnostics, _SECRET_FIELDS)
     pseudonymizer.collect(credential_redacted)
     return pseudonymizer.sanitize(credential_redacted)

@@ -359,6 +359,65 @@ async def test_config_entry_diagnostics_redacts_credentials_embedded_in_text(
         assert credential not in serialized
 
 
+async def test_config_entry_diagnostics_replaces_identifier_literals_in_free_text(
+    hass: HomeAssistant, make_config_entry: Any
+) -> None:
+    """Diagnostics should correlate identifier fields with bounded text replacements."""
+    serial = "SN-1234"
+    entry = make_config_entry(data={"url": "https://router.example.test"}, title="Router")
+    entry.runtime_data = SimpleNamespace(
+        coordinator=_coordinator(
+            {
+                "serial_number": serial,
+                "detail": f"device {serial} reported twice: {serial}",
+                "larger_word": f"prefix{serial}suffix remains operational text",
+            }
+        ),
+        device_tracker_coordinator=None,
+        live_traffic_coordinator=None,
+    )
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    data = diagnostics["coordinators"]["main"]["data"]
+    serial_alias = data["serial_number"]
+    assert serial_alias.startswith("**REDACTED_ID_")
+    assert data["detail"] == f"device {serial_alias} reported twice: {serial_alias}"
+    assert data["larger_word"] == f"prefix{serial}suffix remains operational text"
+
+
+async def test_config_entry_diagnostics_collects_runtime_secrets_before_redaction(
+    hass: HomeAssistant, make_config_entry: Any
+) -> None:
+    """Diagnostics should remove runtime and nested secrets repeated in free text."""
+    preshared_key = "runtime-secret"
+    client_key = "nested-client-secret"
+    entry = make_config_entry(data={"url": "https://router.example.test"}, title="Router")
+    entry.runtime_data = SimpleNamespace(
+        coordinator=_coordinator(
+            {
+                "detail": f"failed with {preshared_key} and {client_key}",
+                "preshared_key": preshared_key,
+                "nested": [{"credentials": {"client_key": client_key}}],
+                "credential_url": (f"https://user:{preshared_key}@router.example.test/status"),
+            }
+        ),
+        device_tracker_coordinator=None,
+        live_traffic_coordinator=None,
+    )
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    data = diagnostics["coordinators"]["main"]["data"]
+    assert data["preshared_key"] == REDACTED
+    assert data["nested"][0]["credentials"]["client_key"] == REDACTED
+    assert preshared_key not in data["detail"]
+    assert client_key not in data["detail"]
+    assert data["detail"].count("**REDACTED_SECRET_") == 2
+    assert data["credential_url"].startswith("**REDACTED_URL_")
+    assert "router.example.test" not in data["credential_url"]
+
+
 async def test_config_entry_diagnostics_ipv6_sentence_punctuation(
     hass: HomeAssistant, make_config_entry: Any
 ) -> None:
@@ -396,12 +455,20 @@ def test_pseudonymizer_ignores_unsupported_config_secret_values() -> None:
     """Config secret collection should ignore absent, non-string, and redacted values."""
     pseudonymizer = _Pseudonymizer()
 
-    pseudonymizer.collect_config_secrets(None)
-    pseudonymizer.collect_config_secrets(
-        {"password": 123, "username": "", "nested": {"token": REDACTED}}
+    pseudonymizer.collect_secret_literals(None)
+    pseudonymizer.collect_secret_literals(
+        {
+            "password": 123,
+            "username": "",
+            "nested": {"token": REDACTED},
+            "auth": {"primary": "nested-secret", "fallbacks": ["backup-secret", None]},
+        }
     )
 
-    assert pseudonymizer.embedded_secret_aliases == {}
+    assert set(pseudonymizer.embedded_secret_aliases) == {
+        "nested-secret",
+        "backup-secret",
+    }
 
 
 async def test_config_entry_diagnostics_redacts_keys_and_sensitive_containers(
