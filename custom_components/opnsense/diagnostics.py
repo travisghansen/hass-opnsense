@@ -9,7 +9,7 @@ import math
 import re
 from typing import Any
 
-from homeassistant.components.diagnostics import REDACTED, async_redact_data
+from homeassistant.components.diagnostics import REDACTED
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
@@ -623,6 +623,5 @@ async def async_get_config_entry_diagnostics(
     }
     pseudonymizer = _Pseudonymizer()
     pseudonymizer.collect_secret_literals(diagnostics)
-    credential_redacted = async_redact_data(diagnostics, _SECRET_FIELDS)
-    pseudonymizer.collect(credential_redacted)
-    return pseudonymizer.sanitize(credential_redacted)
+    pseudonymizer.collect(diagnostics)
+    return pseudonymizer.sanitize(diagnostics)
