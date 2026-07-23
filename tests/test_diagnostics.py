@@ -279,6 +279,80 @@ async def test_config_entry_diagnostics_supports_optional_coordinators(
     json.dumps(diagnostics)
 
 
+async def test_config_entry_diagnostics_pseudonymizes_speedtest_servers_only(
+    hass: HomeAssistant, make_config_entry: Any
+) -> None:
+    """Latest speed-test server descriptions should use correlated typed aliases."""
+    server = "Example ISP - Private City, ST"
+    speedtest = {
+        "last": {
+            "download": {
+                "value": 100.5,
+                "date": "2026-07-22T12:00:00+00:00",
+                "server_id": "12345",
+                "server": server,
+                "url": "https://results.example.test/download/1",
+            },
+            "upload": {"value": 20.5, "server_id": "12345", "server": server},
+            "latency": {"value": 8.1, "server_id": "12345", "server": server},
+        },
+        "average": {"download": {"value": 95.0, "server": server}},
+    }
+    source_data = {
+        "speedtest": speedtest,
+        "service": {"server": server},
+        "label": server,
+    }
+    original_data = copy.deepcopy(source_data)
+    entry = make_config_entry(data={}, title="Router")
+    entry.runtime_data = SimpleNamespace(
+        coordinator=_coordinator(source_data),
+        device_tracker_coordinator=None,
+        live_traffic_coordinator=None,
+    )
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    data = diagnostics["coordinators"]["main"]["data"]
+    last = data["speedtest"]["last"]
+    aliases = {last[metric]["server"] for metric in ("download", "upload", "latency")}
+    assert len(aliases) == 1
+    alias = aliases.pop()
+    assert alias == "**REDACTED_SPEEDTEST_SERVER_1**"
+    assert last["download"]["value"] == 100.5
+    assert last["download"]["date"] == "2026-07-22T12:00:00+00:00"
+    assert last["download"]["server_id"] == "12345"
+    assert last["download"]["url"].startswith("**REDACTED_URL_")
+    assert data["speedtest"]["average"]["download"]["server"] == server
+    assert data["service"]["server"] == server
+    assert data["label"] == server
+    assert source_data == original_data
+    json.dumps(diagnostics)
+
+
+@pytest.mark.parametrize("server", [None, 42, "", REDACTED])
+async def test_config_entry_diagnostics_preserves_malformed_speedtest_servers(
+    hass: HomeAssistant, make_config_entry: Any, server: object
+) -> None:
+    """Malformed latest speed-test server values should use normal scalar sanitization."""
+    entry = make_config_entry(data={}, title="Router")
+    entry.runtime_data = SimpleNamespace(
+        coordinator=_coordinator(
+            {"speedtest": {"last": {"download": {"value": 100.5, "server": server}}}}
+        ),
+        device_tracker_coordinator=None,
+        live_traffic_coordinator=None,
+    )
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    sanitized_server = diagnostics["coordinators"]["main"]["data"]["speedtest"]["last"]["download"][
+        "server"
+    ]
+    assert sanitized_server == server
+    json.dumps(diagnostics)
+
+
 @pytest.mark.parametrize("runtime_data", [_MISSING_RUNTIME_DATA, None, SimpleNamespace()])
 async def test_config_entry_diagnostics_supports_missing_runtime_data(
     hass: HomeAssistant, make_config_entry: Any, runtime_data: object

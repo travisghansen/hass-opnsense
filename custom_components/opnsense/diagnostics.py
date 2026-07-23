@@ -113,6 +113,7 @@ _LOOPBACK_IPV4 = ipaddress.IPv4Address("127.0.0.1")
 _ULA_IPV6_NETWORK = ipaddress.IPv6Network("fc00::/7")
 _LOOPBACK_IPV6 = ipaddress.IPv6Address("::1")
 _IPV6_SENTENCE_PUNCTUATION = ".,;!?"
+_SPEEDTEST_LAST_METRICS: frozenset[str] = frozenset({"download", "upload", "latency"})
 
 
 def _normalize_field(field_name: object) -> str:
@@ -148,6 +149,17 @@ def _is_sensitive_field(field_name: str) -> bool:
 def _is_alias_metadata_field(field_name: str) -> bool:
     """Return whether a normalized field contains OPNsense alias display metadata."""
     return field_name.startswith("alias_meta_")
+
+
+def _is_speedtest_server_field(path: tuple[str, ...], field_name: str) -> bool:
+    """Return whether a field is a latest speed-test metric's server description."""
+    return (
+        field_name == "server"
+        and len(path) >= 3
+        and path[-3] == "speedtest"
+        and path[-2] == "last"
+        and path[-1] in _SPEEDTEST_LAST_METRICS
+    )
 
 
 def _is_safe_ipv4(value: str) -> bool:
@@ -223,6 +235,7 @@ class _Pseudonymizer:
     key_aliases: dict[tuple[object, object], str] = field(default_factory=dict)
     embedded_identifier_aliases: dict[str, str] = field(default_factory=dict)
     embedded_secret_aliases: dict[str, str] = field(default_factory=dict)
+    speedtest_server_aliases: dict[str, str] = field(default_factory=dict)
     counters: dict[str, int] = field(default_factory=dict)
 
     def register(self, kind: str, value: object) -> None:
@@ -251,6 +264,15 @@ class _Pseudonymizer:
         if isinstance(value, float) and not math.isfinite(value):
             return None
         return self.aliases.get((type(value), value))
+
+    def register_speedtest_server(self, value: str) -> None:
+        """Register a speed-test server description without affecting other fields."""
+        if value in self.speedtest_server_aliases:
+            return
+        self.counters["speedtest_server"] = self.counters.get("speedtest_server", 0) + 1
+        self.speedtest_server_aliases[value] = (
+            f"**REDACTED_SPEEDTEST_SERVER_{self.counters['speedtest_server']}**"
+        )
 
     def register_key(self, value: object) -> None:
         """Register a dynamic mapping key without rendering its value."""
@@ -317,6 +339,7 @@ class _Pseudonymizer:
         value: Any,
         *,
         force_sensitive: bool = False,
+        path: tuple[str, ...] = (),
     ) -> None:
         """Collect sensitive values recursively before replacing mapping keys."""
         if isinstance(value, Enum):
@@ -336,9 +359,15 @@ class _Pseudonymizer:
                 elif isinstance(key, str):
                     self._collect_detected_values(key)
                 if force_sensitive:
-                    self.collect(item, force_sensitive=True)
+                    self.collect(item, force_sensitive=True, path=(*path, normalized_key))
                 elif not _is_secret_field(normalized_key):
-                    if _is_sensitive_field(normalized_key):
+                    if (
+                        _is_speedtest_server_field(path, normalized_key)
+                        and isinstance(item, str)
+                        and item not in ("", REDACTED)
+                    ):
+                        self.register_speedtest_server(item)
+                    elif _is_sensitive_field(normalized_key):
                         kind = self._kind_for_field(normalized_key, item)
                         if kind is not None:
                             self.register(kind, item)
@@ -347,6 +376,7 @@ class _Pseudonymizer:
                         force_sensitive=not redact_key
                         and _is_sensitive_field(normalized_key)
                         and isinstance(item, (Mapping, list, tuple, set)),
+                        path=(*path, normalized_key),
                     )
             return
         if isinstance(value, (list, tuple, set)):
@@ -354,6 +384,7 @@ class _Pseudonymizer:
                 self.collect(
                     item,
                     force_sensitive=force_sensitive,
+                    path=path,
                 )
             return
         if force_sensitive:
@@ -369,12 +400,14 @@ class _Pseudonymizer:
         value: Any,
         *,
         force_sensitive: bool = False,
+        path: tuple[str, ...] = (),
     ) -> Any:
         """Return a recursively pseudonymized, JSON-compatible copy."""
         if isinstance(value, Enum):
             return self.sanitize(
                 value.value,
                 force_sensitive=force_sensitive,
+                path=path,
             )
         if isinstance(value, Mapping):
             sanitized: dict[Any, Any] = {}
@@ -392,9 +425,16 @@ class _Pseudonymizer:
                     else key
                 )
                 if force_sensitive:
-                    sanitized[sanitized_key] = self.sanitize(item, force_sensitive=True)
+                    sanitized[sanitized_key] = self.sanitize(
+                        item, force_sensitive=True, path=(*path, normalized_key)
+                    )
                 elif _is_secret_field(normalized_key):
                     sanitized[sanitized_key] = REDACTED
+                elif _is_speedtest_server_field(path, normalized_key):
+                    alias = (
+                        self.speedtest_server_aliases.get(item) if isinstance(item, str) else None
+                    )
+                    sanitized[sanitized_key] = alias or self._replace_scalar(item)
                 elif _is_sensitive_field(normalized_key) and not isinstance(
                     item, (Mapping, list, tuple, set)
                 ):
@@ -405,6 +445,7 @@ class _Pseudonymizer:
                         force_sensitive=not redact_key
                         and _is_sensitive_field(normalized_key)
                         and isinstance(item, (Mapping, list, tuple, set)),
+                        path=(*path, normalized_key),
                     )
             return sanitized
         if isinstance(value, (list, tuple, set)):
@@ -412,6 +453,7 @@ class _Pseudonymizer:
                 self.sanitize(
                     item,
                     force_sensitive=force_sensitive,
+                    path=path,
                 )
                 for item in value
             ]
