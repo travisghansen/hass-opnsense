@@ -138,7 +138,7 @@ At minimum, the following permissions are required:
 | --- | --- | --- |
 | Scan Interval (seconds) | 30 | Scan interval to use for state polling |
 | Device Tracker Mode | Disabled | • Disabled<br>• Track all detected devices<br>• Track only selected devices |
-| Device Tracker Scan Interval (seconds) | 60 | Scan interval to use for ARP updates |
+| Device Tracker Scan Interval (seconds) | 150 | Scan interval to use for ARP updates |
 | Device Tracker Consider Home (seconds) | 0 | Seconds to wait until marking a device as not home after not being seen:<br>• 0 : Disabled *(if device is not present during any given scan interval it is considered away)*<br>• > 0 : Should be a multiple of the Device Tracker Scan Interval |
 | Enable Granular Sync Options | False | See Granular Sync Options |
 
