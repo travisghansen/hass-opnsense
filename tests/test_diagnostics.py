@@ -364,12 +364,19 @@ async def test_config_entry_diagnostics_replaces_identifier_literals_in_free_tex
 ) -> None:
     """Diagnostics should correlate identifier fields with bounded text replacements."""
     serial = "SN-1234"
+    user = "private-user"
+    common_name = "Private Common Name"
     entry = make_config_entry(data={"url": "https://router.example.test"}, title="Router")
     entry.runtime_data = SimpleNamespace(
         coordinator=_coordinator(
             {
                 "serial_number": serial,
-                "detail": f"device {serial} reported twice: {serial}",
+                "user": user,
+                "common_name": common_name,
+                "detail": (
+                    f"device {serial} reported twice: {serial}; "
+                    f"user {user}; certificate {common_name}"
+                ),
                 "larger_word": f"prefix{serial}suffix remains operational text",
             }
         ),
@@ -381,8 +388,15 @@ async def test_config_entry_diagnostics_replaces_identifier_literals_in_free_tex
 
     data = diagnostics["coordinators"]["main"]["data"]
     serial_alias = data["serial_number"]
-    assert serial_alias.startswith("**REDACTED_ID_")
-    assert data["detail"] == f"device {serial_alias} reported twice: {serial_alias}"
+    user_alias = data["user"]
+    common_name_alias = data["common_name"]
+    assert serial_alias == "**REDACTED_ID_1**"
+    assert user_alias == "**REDACTED_USER_1**"
+    assert common_name_alias == "**REDACTED_VALUE_1**"
+    assert data["detail"] == (
+        f"device {serial_alias} reported twice: {serial_alias}; "
+        f"user {user_alias}; certificate {common_name_alias}"
+    )
     assert data["larger_word"] == f"prefix{serial}suffix remains operational text"
 
 

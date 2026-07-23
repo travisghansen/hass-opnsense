@@ -239,7 +239,7 @@ class _Pseudonymizer:
         if alias_key not in self.aliases:
             self.counters[kind] = self.counters.get(kind, 0) + 1
             self.aliases[alias_key] = f"**REDACTED_{kind.upper()}_{self.counters[kind]}**"
-        if kind == "id" and isinstance(value, str):
+        if kind != "key" and isinstance(value, str):
             self.embedded_identifier_aliases[value] = self.aliases[alias_key]
 
     def alias_for(self, value: object) -> str | None:
