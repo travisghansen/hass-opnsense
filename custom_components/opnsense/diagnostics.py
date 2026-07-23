@@ -102,6 +102,7 @@ _IPV6_CANDIDATE_PATTERN = re.compile(
 _UUID_PATTERN = re.compile(
     r"(?i)(?<![0-9a-f])[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?![0-9a-f])"
 )
+_CAREF_PATTERN = re.compile(r"(?i)^[0-9a-f]{13}$")
 _URL_PATTERN = re.compile(r"(?i)\b[a-z][a-z0-9+.-]*://[^\s\"'<>]+")
 _EMAIL_PATTERN = re.compile(r"(?i)\b[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+\.[a-z]{2,}\b")
 _INTERNAL_IPV4_NETWORKS: tuple[ipaddress.IPv4Network, ...] = (
@@ -114,6 +115,7 @@ _ULA_IPV6_NETWORK = ipaddress.IPv6Network("fc00::/7")
 _LOOPBACK_IPV6 = ipaddress.IPv6Address("::1")
 _IPV6_SENTENCE_PUNCTUATION = ".,;!?"
 _SPEEDTEST_LAST_METRICS: frozenset[str] = frozenset({"download", "upload", "latency"})
+_MIN_EMBEDDED_SECRET_LENGTH = 4
 
 
 def _normalize_field(field_name: object) -> str:
@@ -252,7 +254,7 @@ class _Pseudonymizer:
         if alias_key not in self.aliases:
             self.counters[kind] = self.counters.get(kind, 0) + 1
             self.aliases[alias_key] = f"**REDACTED_{kind.upper()}_{self.counters[kind]}**"
-        if kind != "key" and isinstance(value, str):
+        if kind not in {"key", "secret"} and isinstance(value, str):
             self.embedded_identifier_aliases[value] = self.aliases[alias_key]
 
     def alias_for(self, value: object) -> str | None:
@@ -309,7 +311,8 @@ class _Pseudonymizer:
         if isinstance(value, str):
             if value not in ("", REDACTED):
                 self.register("secret", value)
-                self.embedded_secret_aliases[value] = self.aliases[(str, value)]
+                if len(value) >= _MIN_EMBEDDED_SECRET_LENGTH:
+                    self.embedded_secret_aliases[value] = self.aliases[(str, value)]
             return
         if isinstance(value, Mapping):
             for item in value.values():
@@ -361,7 +364,11 @@ class _Pseudonymizer:
                 if force_sensitive:
                     self.collect(item, force_sensitive=True, path=(*path, normalized_key))
                 elif not _is_secret_field(normalized_key):
-                    if (
+                    if normalized_key == "issuer":
+                        kind = self._kind_for_field(normalized_key, item)
+                        if kind is not None:
+                            self.register(kind, item)
+                    elif (
                         _is_speedtest_server_field(path, normalized_key)
                         and isinstance(item, str)
                         and item not in ("", REDACTED)
@@ -430,6 +437,8 @@ class _Pseudonymizer:
                     )
                 elif _is_secret_field(normalized_key):
                     sanitized[sanitized_key] = REDACTED
+                elif normalized_key == "issuer":
+                    sanitized[sanitized_key] = self.alias_for(item) or self._replace_scalar(item)
                 elif _is_speedtest_server_field(path, normalized_key):
                     alias = (
                         self.speedtest_server_aliases.get(item) if isinstance(item, str) else None
@@ -526,6 +535,8 @@ class _Pseudonymizer:
                 if isinstance(interface, ipaddress.IPv6Interface) and _is_safe_ipv6(value):
                     return None
                 return "ipv4" if isinstance(interface, ipaddress.IPv4Interface) else "ipv6"
+        if field_name == "issuer":
+            return "id" if isinstance(value, str) and _CAREF_PATTERN.fullmatch(value) else None
         if field_name in _IP_FIELDS or field_name.endswith(_IP_FIELD_SUFFIXES):
             return None
         if field_name in _URL_FIELDS or field_name.endswith(_URL_FIELD_SUFFIXES):
@@ -574,7 +585,7 @@ class _Pseudonymizer:
         for secret, alias in sorted(
             self.embedded_secret_aliases.items(), key=lambda item: len(item[0]), reverse=True
         ):
-            result = result.replace(secret, alias)
+            result = re.sub(rf"(?<!\w){re.escape(secret)}(?!\w)", alias, result)
         return result
 
     def _replace_scalar(self, value: Any) -> Any:

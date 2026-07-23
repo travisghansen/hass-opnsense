@@ -474,6 +474,38 @@ async def test_config_entry_diagnostics_replaces_identifier_literals_in_free_tex
     assert data["larger_word"] == f"prefix{serial}suffix remains operational text"
 
 
+async def test_config_entry_diagnostics_correlates_certificate_issuer_references(
+    hass: HomeAssistant, make_config_entry: Any
+) -> None:
+    """Certificate issuer references should correlate while UUID issuers stay readable."""
+    caref = "63cc8aa07ef1c"
+    certificate_uuid = "123e4567-e89b-42d3-a456-426614174000"
+    entry = make_config_entry(data={}, title="Router")
+    entry.runtime_data = SimpleNamespace(
+        coordinator=_coordinator(
+            {
+                "certificates": [
+                    {"caref": caref, "issuer": caref},
+                    {"issuer": certificate_uuid},
+                    {"issuer": "Home Certificate Authority"},
+                    {"issuer": None},
+                ]
+            }
+        ),
+        device_tracker_coordinator=None,
+        live_traffic_coordinator=None,
+    )
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    certificates = diagnostics["coordinators"]["main"]["data"]["certificates"]
+    assert certificates[0]["caref"] == "**REDACTED_ID_1**"
+    assert certificates[0]["issuer"] == certificates[0]["caref"]
+    assert certificates[1]["issuer"] == certificate_uuid
+    assert certificates[2]["issuer"] == "Home Certificate Authority"
+    assert certificates[3]["issuer"] is None
+
+
 async def test_config_entry_diagnostics_collects_runtime_secrets_before_redaction(
     hass: HomeAssistant, make_config_entry: Any
 ) -> None:
@@ -504,6 +536,46 @@ async def test_config_entry_diagnostics_collects_runtime_secrets_before_redactio
     assert data["detail"].count("**REDACTED_SECRET_") == 2
     assert data["credential_url"].startswith("**REDACTED_URL_")
     assert "router.example.test" not in data["credential_url"]
+
+
+async def test_config_entry_diagnostics_replaces_only_safe_embedded_secrets(
+    hass: HomeAssistant, make_config_entry: Any
+) -> None:
+    """Short secrets should not corrupt ordinary text or generated aliases."""
+    entry = make_config_entry(
+        data={
+            "url": "https://router.example.test",
+            "username": "root",
+            "password": "1",
+        },
+        title="Router",
+    )
+    entry.runtime_data = SimpleNamespace(
+        coordinator=_coordinator(
+            {
+                "firmware": "26.1",
+                "counter": 10,
+                "counter_text": "10",
+                "detail": "root logged in; rooted remains ordinary text",
+                "exact_value": "1",
+                "public_url": "https://status.example.test/result",
+            }
+        ),
+        device_tracker_coordinator=None,
+        live_traffic_coordinator=None,
+    )
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    data = diagnostics["coordinators"]["main"]["data"]
+    assert diagnostics["config_entry"]["data"]["username"] == REDACTED
+    assert diagnostics["config_entry"]["data"]["password"] == REDACTED
+    assert data["firmware"] == "26.1"
+    assert data["counter"] == 10
+    assert data["counter_text"] == "10"
+    assert data["detail"] == "**REDACTED_SECRET_1** logged in; rooted remains ordinary text"
+    assert data["exact_value"] == "**REDACTED_SECRET_2**"
+    assert data["public_url"] == "**REDACTED_URL_2**"
 
 
 async def test_config_entry_diagnostics_ipv6_sentence_punctuation(
