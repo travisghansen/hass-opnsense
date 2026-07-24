@@ -2,7 +2,7 @@
 
 Use device tracking to show whether devices are currently on your network. This feature is disabled by default and can be enabled from the integration options.
 
-## Configure device tracking
+## Configure Device Tracking
 
 1. Open `Settings -> Devices & services`.
 2. Select the OPNsense integration.
@@ -10,7 +10,7 @@ Use device tracking to show whether devices are currently on your network. This 
 4. Set `Device tracker mode` to one of the available options.
 5. Save the options, or continue to device selection if prompted.
 
-## Choose a tracking mode
+## Choose a Tracking Mode
 
 The main options page provides three modes:
 
@@ -22,7 +22,7 @@ Choose `Track all detected devices` for broad discovery with minimal setup.
 
 Choose `Track only selected devices` to limit tracking to specific phones, tablets, laptops, or other important devices.
 
-### Where the device list comes from
+### Where the Device List Comes From
 
 The selectable device list is built from the current OPNsense ARP table. That means:
 
@@ -30,7 +30,7 @@ The selectable device list is built from the current OPNsense ARP table. That me
 - a device may be missing if it has been idle for too long
 - a device may not appear until it talks on the network again
 
-### When to use manual MAC addresses
+### When to Use Manual MAC Addresses
 
 Use the manual MAC field when:
 
@@ -40,7 +40,7 @@ Use the manual MAC field when:
 
 You can enter one or more MAC addresses separated by commas or new lines.
 
-### ARP aging and `consider_home`
+### ARP Aging and `consider_home`
 
 OPNsense and FreeBSD age out ARP entries over time. Because device tracking depends on recently seen network activity:
 
@@ -53,17 +53,17 @@ By default, OPNsense/FreeBSD uses a max age of 20 minutes for ARP entries (sysct
 
 ## Troubleshooting
 
-### A device is missing from the selector
+### A Device Is Missing from the Selector
 
 - Make sure the device has recently been active on the network.
 - Refresh the options flow again after the device appears in OPNsense.
 - Add the MAC address manually if you already know it.
 
-### A tracked entity exists but is disabled
+### A Tracked Entity Exists But Is Disabled
 
 If you use `Track all detected devices`, Home Assistant will create trackers that are disabled by default. Enable the ones you want to use from the entity settings.
 
-### A device stays home longer than expected
+### A Device Stays Home Longer Than Expected
 
 Check both:
 
