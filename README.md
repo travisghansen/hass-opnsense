@@ -60,13 +60,13 @@ In HACS, add this as a custom repository:
 | ------ | ------ |
 | ![image](https://github.com/user-attachments/assets/60c701dd-a8da-4205-85b8-81af2377e9a5) | ![image](https://github.com/user-attachments/assets/7e19a5e6-844f-4214-8704-ac6409756003) |
 
-Then go to the HACS integrations page, search for `OPNsense integration for Home Assistant` and install it by clicking on 3 dots on the right side and select Download and click on Download on popup window. 
+Then go to the HACS integrations page, search for `OPNsense integration for Home Assistant` and install it by clicking on the 3 dots on the right side, selecting Download, and clicking Download on the popup window. 
 
 ![image](https://github.com/user-attachments/assets/a3df3d73-6f0f-4045-9d29-25dd24202bb0)
 
 ![image](https://github.com/user-attachments/assets/42a747a5-f1dc-4cea-87ad-62ae1f7930da)
 
-Once the integration is installed be sure to restart Home Assistant. Restart option available under Developer tools.
+Once the integration is installed, be sure to restart Home Assistant. Restart option available under Developer tools.
 
 | Developer Tools Page | Restart Home Assistant Popup |
 | ------ | ------ |
