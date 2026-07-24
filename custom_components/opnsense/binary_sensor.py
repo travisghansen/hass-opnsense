@@ -81,7 +81,7 @@ def _build_smart_status_binary_sensor_description(
         device_name: SMART device name used for the entity key and label.
 
     Returns:
-        A binary sensor description for SMART health state.
+        A binary sensor description for the SMART health state.
     """
     return BinarySensorEntityDescription(
         key=f"smart.{slugify(device_name) or 'unknown'}.status",
