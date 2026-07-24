@@ -69,7 +69,7 @@ def _infer_native_nat_section_from_unique_id(unique_id: str) -> str | None:
         unique_id: Native NAT unique identifier from the entity registry.
 
     Returns:
-        str | None: NAT section name when the unique ID is parseable.
+        str | None: NAT section name when the unique ID is parsable.
     """
     suffix: str | None = (
         unique_id.split(NATIVE_FIREWALL_NAT_ENTITY_MARKER, maxsplit=1)[1]
