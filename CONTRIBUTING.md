@@ -23,7 +23,7 @@ Pull requests are the best way to propose changes to the codebase.
 GitHub issues are used to track public bugs.  
 Report a bug by [opening a new issue](../../issues/new/choose); it's that easy!
 
-## Write bug reports with detail, background, and sample code
+## Write Bug Reports with Detail, Background, and Sample Code
 
 **Great Bug Reports** tend to have:
 
@@ -39,7 +39,7 @@ Report a bug by [opening a new issue](../../issues/new/choose); it's that easy!
 
 People *love* thorough bug reports. I'm not even kidding.
 
-## Enable debug logging in Home Assistant
+## Enable Debug Logging in Home Assistant
 
 To enable, add this or modify the logging section of your Home Assistant configuration.yaml:
 ```yaml
@@ -53,7 +53,7 @@ logger:
 
 Use [ruff](https://docs.astral.sh/ruff/) to make sure the code follows the style.
 
-## Setting up the Development Environment
+## Setting Up the Development Environment
 
 1. Create a virtual environment:
 
@@ -73,7 +73,7 @@ Use [ruff](https://docs.astral.sh/ruff/) to make sure the code follows the style
    pip install --group dev -e .
    ```
 
-   This will install the core dependencies plus the development tools including:
+   This will install the core dependencies plus the development tools, including:
    - Linting tools (ruff, mypy, etc.)
    - Testing tools (pytest, etc.)
    - Other development utilities
