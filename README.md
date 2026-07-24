@@ -125,7 +125,7 @@ At minimum, the following permissions are required:
 
 | Option | Required | Default | Description |
 | --- | :---: | --- | --- |
-| URL | ✅ | | The full URL to the <ins>OPNsense</ins> UI (ie: `https://192.168.1.1`). Supported format is `<scheme>://<ip or host>[:<port>]` |
+| URL | ✅ | | The full URL to the <ins>OPNsense</ins> UI (i.e., `https://192.168.1.1`). Supported format is `<scheme>://<ip or host>[:<port>]` |
 | Verify SSL Certificate | | True | If the SSL certificate should be verified or not *(if receiving an SSL error, try unchecking this)* |
 | API Key | ✅ | | The API key of the OPNsense user created previously |
 | API Secret | ✅ | | The API secret of the API key |
@@ -144,7 +144,7 @@ At minimum, the following permissions are required:
 
 ## Entities
 
-Many entities are created by `hass-opnsense` for statistics etc. Due to the volume of entities, **many are disabled by default**. If something is missing, be sure to review the disabled entities as it is probably there.
+Many entities are created by `hass-opnsense` for statistics, etc. Due to the volume of entities, **many are disabled by default**. If something is missing, be sure to review the disabled entities as it is probably there.
 
 ### Binary Sensor
 
@@ -181,7 +181,7 @@ Many entities are created by `hass-opnsense` for statistics etc. Due to the volu
 
 ### Device Tracker
 
-Entities are created for selected devices to track whether they are connected to the network. This feature is disabled by default and can be enabled in the Options once the integration is installed.
+**Entities are created for selected devices to track whether they are connected to the network. This feature is disabled by default and can be enabled in the Options once the integration is installed.**
 
 The options flow supports three modes:
 
@@ -225,7 +225,7 @@ The persistent CARP maintenance switch remains on physical-node entries. Enablin
 
 ## Replacing OPNsense Hardware
 
-Hardware replacement may change a number of OPNsense areas including interfaces, services, gateways, disks, and others.
+Hardware replacement may change a number of OPNsense areas, including interfaces, services, gateways, disks, and others.
 
 When an OPNsense device entry reports a Device ID mismatch, Home Assistant offers a fixable repair. Confirm it once the replacement hardware is reachable and is the intended node. The repair selectively reconciles the registry with the replacement's entities: matching entities and devices retain their registry identity and customizations, entities absent from the replacement are removed, and new entities are created.
 
