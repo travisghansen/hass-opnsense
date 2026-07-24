@@ -53,7 +53,7 @@ def _make_entry(
 
 
 def _make_carp_entry(*, entry_id: str = "carp-entry", unique_id: str = "other") -> MockConfigEntry:
-    """Build a device-ID-less CARP config entry for repair boundary tests."""
+    """Build a device-ID-less CARP config entry for the repair boundary tests."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
