@@ -1,4 +1,4 @@
-# Contribution guidelines
+# Contribution Guidelines
 
 Contributing to this project should be as easy and transparent as possible, whether it's:
 
@@ -7,9 +7,9 @@ Contributing to this project should be as easy and transparent as possible, whet
 - Submitting a fix
 - Proposing new features
 
-## Github is used for everything
+## GitHub is Used for Everything
 
-Github is used to host code, to track issues and feature requests, as well as accept pull requests.
+GitHub is used to host code, to track issues and feature requests, as well as accept pull requests.
 
 Pull requests are the best way to propose changes to the codebase.
 
@@ -18,7 +18,7 @@ Pull requests are the best way to propose changes to the codebase.
 3. Make sure your code lints (using black or Ruff).
 4. Issue that pull request!
 
-## Report bugs using Github's [issues](../../issues)
+## Report Bugs Using GitHub's [Issues](../../issues)
 
 GitHub issues are used to track public bugs.  
 Report a bug by [opening a new issue](../../issues/new/choose); it's that easy!
