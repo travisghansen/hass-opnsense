@@ -217,7 +217,7 @@ def test_create_opnsense_client_builds_client_with_expected_options(
     throw_errors: bool,
     name: str | None,
 ) -> None:
-    """Create OPNsense clients with the caller-specific session and client options."""
+    """Create OPNsense clients with caller-specific session and client options."""
     created: dict[str, Any] = {}
     session = MagicMock(spec=aiohttp.ClientSession)
     hass = MagicMock()
