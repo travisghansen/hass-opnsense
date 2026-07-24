@@ -90,7 +90,7 @@ ignore = [
     "EM",       # flake8-errmsg
     "ERA",      # eradicate
     "FBT",      # flake8-boolean-trap
-    "PLC1901",  # {existing} can be simplified to {replacement} as an empty string is falsey; too many false positives
+    "PLC1901",  # {existing} can be simplified to {replacement} as an empty string is falsy; too many false positives
     "PLR0904",  # Too many public methods
     "PLR0911",  # Too many return statements ({returns} > {max_returns})
     "PLR0912",  # Too many branches ({branches} > {max_branches})
