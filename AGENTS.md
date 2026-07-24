@@ -14,12 +14,12 @@
 - Keep compatibility with the minimum supported OPNsense firmware documented in `custom_components/opnsense/const.py` and `README.md`.
 - If deviating from these guidelines, explicitly state which guideline is deviated from and why.
 
-## Agent permissions and venv policy
+## Agent Permissions and Venv Policy
 
 - Agents may create and use a repository-local venv at `./.venv`. Use `./.venv/bin/python`, `./.venv/bin/pytest`, and `./.venv/bin/prek` for local commands unless using the main checkout venv for a git worktree with no dependency changes.
 - The project uses `pyproject.toml` dependency groups (`ha`, `lint`, `pytest`, `dev`). Installing packages from repo manifests into `./.venv` is allowed for running tests or local tooling after approval; avoid unrelated network operations without explicit consent.
 
-## Folder structure (repo-specific)
+## Folder Structure (Repo-Specific)
 
 - `custom_components/opnsense`: integration code.
 - `tests`: pytest test suite and fixtures.
@@ -27,7 +27,7 @@
 - `.github/workflows`: GitHub Workflows
 - `.github/scripts`: scripts for GitHub Workflows
 
-## Project structure expectations
+## Project Structure Expectations
 
 - Keep code modular: separate files for entity types, services, and utilities.
 - Store constants in `const.py` and use a `config_flow.py` for configuration flows.
@@ -40,7 +40,7 @@
 - Config-entry migrations live in `custom_components/opnsense/migrate.py`. Be careful with entity registry and device registry changes, especially legacy firewall/NAT entity cleanup, because they affect existing user installations.
 - Any changes that require changes to both hass-opnsense and aiopnsense require coordinated branches and PRs in both repositories. Update the aiopnsense pin when dependency behavior changes.
 
-## Coding standards
+## Coding Standards
 
 - Add typing annotations to all functions and classes (including return types).
 - Add or update docstrings for all files, classes and methods, including private methods and nested methods. Method docstrings must follow the Google Style.
@@ -49,13 +49,13 @@
 - Follow existing repository style; run `prek`.
 - Python 3.14 syntax is allowed, including PEP 695 type parameters and PEP 758 grouped exception handlers already used in the codebase.
 
-## Local tooling note
+## Local Tooling Note
 
 - Use the repo's `prek` and `pytest` commands through the venv selected by the agent permissions and venv policy above.
 - By default, run the full pytest suite. If running targeted tests, explain why.
 - Avoid recommending `tox`, it is not in use by this repo.
 
-## Error handling & logging
+## Error Handling & Logging
 
 - Use Home Assistant's logging framework.
 - Catch specific exceptions (do not catch Exception directly).
@@ -72,11 +72,11 @@
 - Mock `aiopnsense.OPNsenseClient` behavior at the integration boundary. Do not add tests for vendored or copied backend-client internals in this repository.
 - Cover config-entry migrations, entity registry cleanup, and firmware-gated behavior when changing setup, coordinator, or switch logic.
 
-## PR & branch behavior
+## PR & Branch Behavior
 
 - Create branches or PRs only when explicitly requested. Do not open PRs autonomously.
 
-## Network / install consent
+## Network / Install Consent
 
 - Package installs from repo manifests for local tooling and tests are allowed after approval. Obtain explicit consent before unrelated network operations.
 
@@ -84,7 +84,7 @@
 
 - Use GitHub Actions for CI/CD where applicable.
 
-## Conventions for changes and documentation
+## Conventions for Changes and Documentation
 
 - When editing code, prefer fixing root causes over surface patches.
 - Keep changes minimal and consistent with the codebase style.
