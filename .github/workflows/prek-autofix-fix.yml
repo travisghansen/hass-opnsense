@@ -1,0 +1,28 @@
+name: prek-autofix fix
+
+on:
+  workflow_run:
+    workflows: [prek-autofix]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: write
+
+concurrency:
+  # prettier-ignore
+  group: prek-autofix-fix-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: Snuffy2/prek-autofix/fix@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          autofix-token: ${{ secrets.PREK_AUTOFIX_TOKEN }}
+          source-workflow: prek-autofix
