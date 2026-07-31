@@ -10,7 +10,7 @@ on:
 
 jobs:
   prek-autoupdate:
-    uses: Snuffy2/prek-autoupdate/.github/workflows/prek_autoupdate.yml@v1
+    uses: Snuffy2/prek-autoupdate/.github/workflows/prek_autoupdate.yml@v1.0.5
     permissions:
       contents: write
       pull-requests: write
