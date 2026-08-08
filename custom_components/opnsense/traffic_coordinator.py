@@ -58,11 +58,12 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Initialize the live-traffic coordinator.
 
         Args:
-            hass: Home Assistant instance.
-            config_entry: Config entry that owns this coordinator.
-            coordinator: Main coordinator whose interface metadata should be merged.
-            client: OPNsense API client exposing ``stream_interface_traffic``.
-            poll_interval: Poll interval in seconds for the stream call.
+            hass (HomeAssistant): Home Assistant instance.
+            config_entry (ConfigEntry): Config entry that owns this coordinator.
+            coordinator (OPNsenseDataUpdateCoordinator): Main coordinator whose interface metadata
+                should be merged.
+            client (OPNsenseClient): OPNsense API client exposing ``stream_interface_traffic``.
+            poll_interval (int): Poll interval in seconds for the stream call.
         """
         super().__init__(
             hass=hass,
@@ -199,7 +200,8 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Merge a stream payload with coordinator interface metadata.
 
         Args:
-            payload: Mapping payload from the stream with an ``interfaces`` section.
+            payload (Mapping[str, Any]): Mapping payload from the stream with an ``interfaces``
+                section.
 
         Returns:
             bool: ``True`` when metadata and at least one usable interface row was
@@ -262,9 +264,10 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Build merged live traffic interface payload data.
 
         Args:
-            interface_name: Interface identifier from the stream payload.
-            rates: Stream-provided rates for that interface.
-            main_interfaces: Metadata map keyed by interface name from coordinator data.
+            interface_name (Any): Interface identifier from the stream payload.
+            rates (Any): Stream-provided rates for that interface.
+            main_interfaces (Mapping[str, Any]): Metadata map keyed by interface name from
+                coordinator data.
 
         Returns:
             dict[str, Any] | None: Merged metadata and mapped rates, or ``None`` when
@@ -300,7 +303,7 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Mark live traffic unavailable without duplicating transport error logs.
 
         Args:
-            err: Stream interruption retained as the coordinator's last exception.
+            err (Exception): Stream interruption retained as the coordinator's last exception.
         """
         self.last_exception = err
         if self.last_update_success:
@@ -316,7 +319,7 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ``DataUpdateCoordinator.async_set_updated_data``.
 
         Args:
-            data: Merged interface metadata and live traffic rates.
+            data (dict[str, Any]): Merged interface metadata and live traffic rates.
         """
         stream_recovered = not self.last_update_success
         self.data = data
@@ -353,8 +356,8 @@ class OPNsenseLiveTrafficCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Normalize a stream rate key into Home Assistant payload units.
 
         Args:
-            stream_key: Stream field name from ``_STREAM_RATE_FIELD_MAP``.
-            raw_rate: Incoming raw value to coerce and normalize.
+            stream_key (str): Stream field name from ``_STREAM_RATE_FIELD_MAP``.
+            raw_rate (Any): Incoming raw value to coerce and normalize.
 
         Returns:
             float | None: Rounded kilobytes-per-second or packets-per-second value, or

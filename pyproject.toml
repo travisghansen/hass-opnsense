@@ -200,4 +200,5 @@ allow-init-docstring = true
 skip-checking-raises = true
 check-class-attributes = false
 check-style-mismatch = true
-should-document-star-arguments = false
+should-document-star-arguments = true
+omit-stars-when-documenting-varargs = true

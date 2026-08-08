@@ -26,7 +26,11 @@ class _BadStrValue:
     """Value object that raises when converted to a string."""
 
     def __str__(self) -> str:
-        """Raise when the display-name helper converts this value to text."""
+        """Raise when the display-name helper converts this value to text.
+
+        Returns:
+            The returned value.
+        """
         raise ValueError("string conversion failure")
 
 
@@ -38,8 +42,11 @@ class _BadStripValue(str):
     def strip(self, chars: str | None = None) -> str:
         """Raise when display-name normalization strips whitespace.
 
+        Returns:
+            The returned value.
+
         Args:
-            chars: Optional characters to strip, matching ``str.strip``.
+            chars (str | None): Optional characters to strip, matching ``str.strip``.
         """
         raise ValueError("strip failure")
 
@@ -51,7 +58,7 @@ class _FaultyPayload(Mapping[str, object]):
         """Store payload values used by mapping protocol tests.
 
         Args:
-            values: Values returned by the mapping methods.
+            values (dict[str, object]): Values returned by the mapping methods.
         """
         self._values = values
 
@@ -59,8 +66,8 @@ class _FaultyPayload(Mapping[str, object]):
         """Return a value or raise for the deliberately broken key.
 
         Args:
-            key: Mapping key to read.
-            default: Value returned when the key is absent.
+            key (str): Mapping key to read.
+            default (object | None): Value returned when the key is absent.
 
         Returns:
             object | None: Stored value or the supplied default.
@@ -76,7 +83,7 @@ class _FaultyPayload(Mapping[str, object]):
         """Return the stored value for a required mapping key.
 
         Args:
-            key: Mapping key to read.
+            key (str): Mapping key to read.
 
         Returns:
             object: Stored mapping value.
@@ -126,7 +133,12 @@ def test_payload_display_name_skips_get_and_str_failures() -> None:
 def test_init_sets_unique_and_name_suffixes(
     make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
 ) -> None:
-    """Verify unique_id and suffix-only name handling for base entities."""
+    """Verify unique_id and suffix-only name handling for base entities.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+    """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev-123", "url": "http://x"}, title="MyBox")
     coord = dummy_coordinator
     ent = OPNsenseBaseEntity(
@@ -154,7 +166,12 @@ def test_init_sets_unique_and_name_suffixes(
 def test_available_property_toggle(
     make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
 ) -> None:
-    """Entity available property reflects internal availability flag."""
+    """Entity available property reflects internal availability flag.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+    """
     entry = make_config_entry()
     coord = dummy_coordinator
     ent = OPNsenseBaseEntity(config_entry=entry, coordinator=coord, unique_id_suffix="test")
@@ -166,7 +183,12 @@ def test_available_property_toggle(
 def test_device_info_name_prefers_title_and_fallback_to_state(
     make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
 ) -> None:
-    """Device info name prefers config entry title and falls back to state name."""
+    """Device info name prefers config entry title and falls back to state name.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+    """
     # when title present
     entry = make_config_entry(
         {CONF_DEVICE_UNIQUE_ID: "dev-123", "url": "http://x"}, title="BoxTitle"
@@ -190,7 +212,12 @@ def test_device_info_name_prefers_title_and_fallback_to_state(
 def test_get_opnsense_state_value_nested_lookup(
     make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
 ) -> None:
-    """Nested state lookup returns deep values or None when missing."""
+    """Nested state lookup returns deep values or None when missing.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+    """
     entry = make_config_entry()
     coord = dummy_coordinator
     coord.data = {"a": {"b": {"c": 5}}}
@@ -202,7 +229,12 @@ def test_get_opnsense_state_value_nested_lookup(
 def test_entity_helpers_fail_closed_for_non_mapping_coordinator_data(
     make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
 ) -> None:
-    """Entity helper lookups should return ``None`` when coordinator data is malformed."""
+    """Entity helper lookups should return ``None`` when coordinator data is malformed.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+    """
     entry = make_config_entry()
     coord = dummy_coordinator
     coord.data = []
@@ -215,7 +247,12 @@ def test_entity_helpers_fail_closed_for_non_mapping_coordinator_data(
 def test_mark_unavailable_can_clear_attributes(
     make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
 ) -> None:
-    """Marking unavailable can clear stale attributes when requested."""
+    """Marking unavailable can clear stale attributes when requested.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+    """
     entry = make_config_entry()
     coord = dummy_coordinator
     ent = OPNsenseBaseEntity(config_entry=entry, coordinator=coord, unique_id_suffix="test")
@@ -233,7 +270,12 @@ def test_mark_unavailable_can_clear_attributes(
 async def test_async_added_to_hass_sets_client_and_calls_update(
     make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
 ) -> None:
-    """async_added_to_hass attaches client and triggers update handler."""
+    """async_added_to_hass attaches client and triggers update handler.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+    """
     entry = make_config_entry()
     coord = dummy_coordinator
     # provide a runtime client
@@ -264,7 +306,12 @@ async def test_async_added_to_hass_sets_client_and_calls_update(
 async def test_async_added_to_hass_missing_client_raises(
     make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
 ) -> None:
-    """async_added_to_hass logs and returns when runtime client is missing."""
+    """async_added_to_hass logs and returns when runtime client is missing.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+    """
     entry = make_config_entry()
     coord = dummy_coordinator
     # runtime_data has opnsense_client attribute but it's None -> logs and returns
@@ -282,7 +329,12 @@ async def test_async_added_to_hass_missing_client_raises(
 def test_device_info_variants(
     make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
 ) -> None:
-    """Device info reflects identifiers and firmware when present."""
+    """Device info reflects identifiers and firmware when present.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+    """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev-123"})
     coord = dummy_coordinator
     # when coordinator.data is None

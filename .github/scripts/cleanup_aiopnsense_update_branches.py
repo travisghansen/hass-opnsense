@@ -34,13 +34,28 @@ class GithubCleanupClient(Protocol):
     """Protocol for GitHub operations needed by the cleanup routine."""
 
     def list_pulls(self, *, state: str) -> list[dict[str, object]]:
-        """List pull requests by state."""
+        """List pull requests by state.
+
+        Returns:
+            The returned value.
+
+        Args:
+            state (str): The state argument.
+        """
 
     def close_pull(self, pull_number: int) -> None:
-        """Close a pull request by number."""
+        """Close a pull request by number.
+
+        Args:
+            pull_number (int): The pull_number argument.
+        """
 
     def delete_ref(self, ref: str) -> None:
-        """Delete a git ref by name."""
+        """Delete a git ref by name.
+
+        Args:
+            ref (str): The ref argument.
+        """
 
 
 class GithubClient:
@@ -50,8 +65,8 @@ class GithubClient:
         """Initialize the client.
 
         Args:
-            repository: Repository in ``owner/name`` format.
-            token: GitHub token for API calls.
+            repository (str): Repository in ``owner/name`` format.
+            token (str): GitHub token for API calls.
         """
         self.repository = repository
         self.token = token
@@ -60,7 +75,7 @@ class GithubClient:
         """List pull requests by state.
 
         Args:
-            state: Pull request state to request.
+            state (str): Pull request state to request.
 
         Returns:
             Pull request objects from GitHub.
@@ -81,7 +96,7 @@ class GithubClient:
         """Close a pull request.
 
         Args:
-            pull_number: Pull request number to close.
+            pull_number (int): Pull request number to close.
         """
         url = f"{GITHUB_API_URL}/repos/{self.repository}/pulls/{pull_number}"
         self._request("PATCH", url, payload={"state": "closed"})
@@ -90,7 +105,7 @@ class GithubClient:
         """Delete a git ref if it exists.
 
         Args:
-            ref: Ref path such as ``heads/branch-name``.
+            ref (str): Ref path such as ``heads/branch-name``.
         """
         url = f"{GITHUB_API_URL}/repos/{self.repository}/git/refs/{ref}"
         try:
@@ -111,9 +126,9 @@ class GithubClient:
         """Send a GitHub REST request.
 
         Args:
-            method: HTTP method.
-            url: Request URL.
-            payload: Optional JSON payload.
+            method (str): HTTP method.
+            url (str): Request URL.
+            payload (Mapping[str, object] | None): Optional JSON payload.
 
         Returns:
             Decoded payload and Link header.
@@ -141,15 +156,15 @@ def cleanup_update_branches(
     """Clean workflow-owned stale pull requests and branches.
 
     Args:
-        client: GitHub client with list, close, and delete methods.
-        repository: Repository in ``owner/name`` format.
-        branch: Current workflow update branch.
-        branch_prefix: Prefix for workflow-owned update branches.
-        label_name: Label identifying workflow-created PRs.
-        keep_pr_number: Optional PR number to preserve.
-        close_stale_prs: Whether to close open stale update PRs.
-        delete_stale_branch: Whether to delete the current stale branch.
-        delete_merged_branches: Whether to delete branches from merged update PRs.
+        client (GithubCleanupClient): GitHub client with list, close, and delete methods.
+        repository (str): Repository in ``owner/name`` format.
+        branch (str): Current workflow update branch.
+        branch_prefix (str): Prefix for workflow-owned update branches.
+        label_name (str): Label identifying workflow-created PRs.
+        keep_pr_number (int | None): Optional PR number to preserve.
+        close_stale_prs (bool): Whether to close open stale update PRs.
+        delete_stale_branch (bool): Whether to delete the current stale branch.
+        delete_merged_branches (bool): Whether to delete branches from merged update PRs.
 
     Returns:
         Summary of cleanup actions.
@@ -214,11 +229,11 @@ def _is_workflow_pull(
     """Return whether a pull request belongs to this workflow.
 
     Args:
-        pull: Pull request object.
-        repository: Repository in ``owner/name`` format.
-        branch: Current workflow update branch.
-        branch_prefix: Prefix for workflow-owned update branches.
-        label_name: Label identifying workflow-created PRs.
+        pull (Mapping[str, object]): Pull request object.
+        repository (str): Repository in ``owner/name`` format.
+        branch (str): Current workflow update branch.
+        branch_prefix (str): Prefix for workflow-owned update branches.
+        label_name (str): Label identifying workflow-created PRs.
 
     Returns:
         True when the PR head branch is owned by this workflow.
@@ -248,7 +263,7 @@ def _head_ref(pull: Mapping[str, object]) -> str:
     """Return a pull request head ref.
 
     Args:
-        pull: Pull request object.
+        pull (Mapping[str, object]): Pull request object.
 
     Returns:
         Pull request head ref.
@@ -263,7 +278,7 @@ def _pull_number(pull: Mapping[str, object]) -> int:
     """Return a pull request number.
 
     Args:
-        pull: Pull request object.
+        pull (Mapping[str, object]): Pull request object.
 
     Returns:
         Pull request number.
@@ -280,7 +295,7 @@ def _github_headers(token: str) -> dict[str, str]:
     """Build GitHub API request headers.
 
     Args:
-        token: GitHub token.
+        token (str): GitHub token.
 
     Returns:
         Request headers.
@@ -297,7 +312,7 @@ def _is_missing_ref_error(err: HTTPError) -> bool:
     """Return whether a GitHub 422 error reports a missing ref.
 
     Args:
-        err: HTTP error from the GitHub API.
+        err (HTTPError): HTTP error from the GitHub API.
 
     Returns:
         True when the error body says the reference does not exist.
@@ -319,7 +334,7 @@ def _next_link(link_header: str | None) -> str | None:
     """Return the next pagination URL from a GitHub Link header.
 
     Args:
-        link_header: Raw Link header value.
+        link_header (str | None): Raw Link header value.
 
     Returns:
         Next URL when present.
@@ -337,7 +352,7 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     """Parse command-line arguments.
 
     Args:
-        argv: Command-line arguments excluding the executable name.
+        argv (Sequence[str]): Command-line arguments excluding the executable name.
 
     Returns:
         Parsed arguments.
@@ -358,7 +373,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run workflow branch cleanup.
 
     Args:
-        argv: Optional command-line arguments excluding the executable name.
+        argv (Sequence[str] | None): Optional command-line arguments excluding the executable name.
 
     Returns:
         Process exit code.

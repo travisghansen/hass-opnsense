@@ -21,12 +21,26 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def build_device_id_mismatch_issue_id(entry_id: str) -> str:
-    """Build the stable mismatch issue ID for a config entry."""
+    """Build the stable mismatch issue ID for a config entry.
+
+    Returns:
+        The returned value.
+
+    Args:
+        entry_id (str): The entry_id argument.
+    """
     return f"{entry_id}{_DEVICE_ID_MISMATCH_ISSUE_SUFFIX}"
 
 
 def is_valid_device_id(device_id: object) -> TypeGuard[str]:
-    """Return whether a device ID is a usable string identifier."""
+    """Return whether a device ID is a usable string identifier.
+
+    Returns:
+        The returned value.
+
+    Args:
+        device_id (object): The device_id argument.
+    """
     return isinstance(device_id, str) and bool(device_id.strip())
 
 
@@ -42,12 +56,12 @@ def _entry_matches_snapshot(
     """Return whether a re-fetched entry still matches the repair snapshot.
 
     Args:
-        entry: Current config entry, if it still exists.
-        entry_id: Entry ID captured when the repair started.
-        data_snapshot: Original config-entry data mapping.
-        options_snapshot: Original config-entry options mapping.
-        unique_id_snapshot: Original config-entry unique ID.
-        allow_tracked_macs_mutation: Whether tracked-MACS-only changes are ignored.
+        entry (ConfigEntry | None): Current config entry, if it still exists.
+        entry_id (str): Entry ID captured when the repair started.
+        data_snapshot (dict[str, object]): Original config-entry data mapping.
+        options_snapshot (dict[str, object]): Original config-entry options mapping.
+        unique_id_snapshot (str | None): Original config-entry unique ID.
+        allow_tracked_macs_mutation (bool): Whether tracked-MACS-only changes are ignored.
 
     Returns:
         bool: ``True`` when the entry identity and persisted values are unchanged.
@@ -69,7 +83,14 @@ def _entry_matches_snapshot(
 
 
 def _without_tracked_macs_for_recovery(payload: dict[str, object]) -> dict[str, object]:
-    """Return a snapshot copy that ignores setup-time tracked MAC mutations."""
+    """Return a snapshot copy that ignores setup-time tracked MAC mutations.
+
+    Returns:
+        The returned value.
+
+    Args:
+        payload (dict[str, object]): The payload argument.
+    """
     normalized_payload: dict[str, object] = dict(payload)
     normalized_payload.pop(TRACKED_MACS, None)
     return normalized_payload
@@ -85,11 +106,11 @@ def _get_entry_matching_snapshot(
     """Return the current entry only when it still matches the repair snapshot.
 
     Args:
-        hass: Home Assistant instance that owns the config entry.
-        entry_id: Entry ID captured when the repair started.
-        data_snapshot: Original config-entry data mapping.
-        options_snapshot: Original config-entry options mapping.
-        unique_id_snapshot: Original config-entry unique ID.
+        hass (HomeAssistant): Home Assistant instance that owns the config entry.
+        entry_id (str): Entry ID captured when the repair started.
+        data_snapshot (dict[str, object]): Original config-entry data mapping.
+        options_snapshot (dict[str, object]): Original config-entry options mapping.
+        unique_id_snapshot (str | None): Original config-entry unique ID.
 
     Returns:
         ConfigEntry | None: Matching current entry, if it is still owned.
@@ -113,8 +134,8 @@ async def _async_validate_and_probe_device_id(
     """Validate an OPNsense client and probe the current device identifier.
 
     Args:
-        hass: Home Assistant instance that owns the config entry.
-        config_entry: OPNsense config entry used to build the client.
+        hass (HomeAssistant): Home Assistant instance that owns the config entry.
+        config_entry (ConfigEntry): OPNsense config entry used to build the client.
 
     Returns:
         str | None: Device identifier returned by OPNsense.
@@ -146,8 +167,8 @@ async def _async_prepare_entry_for_repair(
     """Check whether an entry can be safely unloaded before repair mutation.
 
     Args:
-        hass: Home Assistant instance that owns the config entry.
-        config_entry: OPNsense config entry being repaired.
+        hass (HomeAssistant): Home Assistant instance that owns the config entry.
+        config_entry (ConfigEntry): OPNsense config entry being repaired.
 
     Returns:
         tuple[bool, bool]: Whether the entry is ready and whether it was loaded.
@@ -178,9 +199,9 @@ def _device_id_repair_abort_reason(
     """Return the abort reason for an invalid replacement device ID.
 
     Args:
-        observed_device_id: Device identifier returned by the firewall.
-        expected_device_id: Replacement identifier stored in the repair issue.
-        current_device_id: Identifier currently stored on the config entry.
+        observed_device_id (object): Device identifier returned by the firewall.
+        expected_device_id (str): Replacement identifier stored in the repair issue.
+        current_device_id (object): Identifier currently stored on the config entry.
 
     Returns:
         str | None: Repair abort reason, or ``None`` when the replacement is valid.
@@ -200,9 +221,9 @@ def async_create_device_id_mismatch_issue(
     """Create a fixable hardware-replacement issue for a normal device entry.
 
     Args:
-        hass: Home Assistant instance that owns the issue registry.
-        config_entry: Device config entry with the stale identifier.
-        observed_device_id: Replacement device identifier observed at runtime.
+        hass (HomeAssistant): Home Assistant instance that owns the issue registry.
+        config_entry (ConfigEntry): Device config entry with the stale identifier.
+        observed_device_id (object): Replacement device identifier observed at runtime.
 
     Returns:
         bool: `True` when the issue was created; otherwise `False` for invalid IDs.
@@ -241,9 +262,9 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         """Initialize a repair flow from issue data.
 
         Args:
-            entry_id: Config-entry ID associated with the repair issue.
-            old_device_id: Device identifier stored before the repair.
-            new_device_id: Replacement identifier expected by the issue.
+            entry_id (str): Config-entry ID associated with the repair issue.
+            old_device_id (str): Device identifier stored before the repair.
+            new_device_id (str): Replacement identifier expected by the issue.
         """
         self._entry_id = entry_id
         self._old_device_id = old_device_id
@@ -258,7 +279,7 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         """Load issue placeholders and display the confirmation step.
 
         Args:
-            user_input: Ignored initialization payload.
+            user_input (dict[str, str] | None): Ignored initialization payload.
 
         Returns:
             RepairsFlowResult: Confirmation form result.
@@ -281,10 +302,11 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         """Reload an updated entry and schedule guarded recovery on any reload failure.
 
         Args:
-            entry: Updated OPNsense config entry to reload.
-            data_snapshot: Persisted data expected before repair completion.
-            options_snapshot: Persisted options expected before repair completion.
-            unique_id_snapshot: Persisted unique ID expected before repair completion.
+            entry (ConfigEntry): Updated OPNsense config entry to reload.
+            data_snapshot (dict[str, object]): Persisted data expected before repair completion.
+            options_snapshot (dict[str, object]): Persisted options expected before repair
+                completion.
+            unique_id_snapshot (str | None): Persisted unique ID expected before repair completion.
 
         Returns:
             RepairsFlowResult: Successful completion or a retryable repair failure.
@@ -319,11 +341,11 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         """Schedule a guarded recovery reload when the repair may have mutated state.
 
         Args:
-            data_snapshot: Snapshot of the entry data used to detect changes.
-            options_snapshot: Snapshot of entry options used to detect changes.
-            unique_id_snapshot: Snapshot of the entry unique ID used to detect changes.
-            entry_id: Config entry ID used to resolve the entry for reload.
-            entry_title: Human-readable entry title for log context.
+            data_snapshot (dict[str, object]): Snapshot of the entry data used to detect changes.
+            options_snapshot (dict[str, object]): Snapshot of entry options used to detect changes.
+            unique_id_snapshot (str | None): Snapshot of the entry unique ID used to detect changes.
+            entry_id (str): Config entry ID used to resolve the entry for reload.
+            entry_title (str): Human-readable entry title for log context.
         """
         current_entry = self.hass.config_entries.async_get_entry(entry_id)
         if not _entry_matches_snapshot(
@@ -348,8 +370,8 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         """Schedule recovery for an entry that changed while it was being unloaded.
 
         Args:
-            entry_id: Config entry ID to schedule for reload.
-            entry_title: Human-readable entry title for log context.
+            entry_id (str): Config entry ID to schedule for reload.
+            entry_title (str): Human-readable entry title for log context.
         """
         try:
             self.hass.config_entries.async_schedule_reload(entry_id)
@@ -366,7 +388,12 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         entry_was_loaded: bool,
         entry: ConfigEntry,
     ) -> None:
-        """Schedule a recovery reload when a previously loaded entry changed."""
+        """Schedule a recovery reload when a previously loaded entry changed.
+
+        Args:
+            entry_was_loaded (bool): The entry_was_loaded argument.
+            entry (ConfigEntry): The entry argument.
+        """
         if entry_was_loaded:
             self._schedule_changed_entry_reload(
                 entry_id=entry.entry_id,
@@ -382,7 +409,18 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         entry_options_snapshot: dict[str, object],
         entry_unique_id_snapshot: str | None,
     ) -> ConfigEntry | None:
-        """Return the entry when the runtime snapshot still matches."""
+        """Return the entry when the runtime snapshot still matches.
+
+        Returns:
+            The returned value.
+
+        Args:
+            current_entry (ConfigEntry | None): The current_entry argument.
+            entry_was_loaded (bool): The entry_was_loaded argument.
+            entry_data_snapshot (dict[str, object]): The entry_data_snapshot argument.
+            entry_options_snapshot (dict[str, object]): The entry_options_snapshot argument.
+            entry_unique_id_snapshot (str | None): The entry_unique_id_snapshot argument.
+        """
         if _entry_matches_snapshot(
             current_entry,
             self._entry_id,
@@ -411,11 +449,11 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         """Strictly re-probe and validate an entry after it has been unloaded.
 
         Args:
-            entry: Unloaded OPNsense config entry to re-probe.
-            entry_was_loaded: Whether the entry was loaded before repair preparation.
-            entry_data_snapshot: Original config-entry data mapping.
-            entry_options_snapshot: Original config-entry options mapping.
-            entry_unique_id_snapshot: Original config-entry unique ID.
+            entry (ConfigEntry): Unloaded OPNsense config entry to re-probe.
+            entry_was_loaded (bool): Whether the entry was loaded before repair preparation.
+            entry_data_snapshot (dict[str, object]): Original config-entry data mapping.
+            entry_options_snapshot (dict[str, object]): Original config-entry options mapping.
+            entry_unique_id_snapshot (str | None): Original config-entry unique ID.
 
         Returns:
             tuple[ConfigEntry, str] | str: Validated entry and device ID, or the
@@ -484,7 +522,8 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         """Confirm and perform the ordered registry rebuild.
 
         Args:
-            user_input: Confirmation payload, or ``None`` to render the form.
+            user_input (dict[str, str] | None): Confirmation payload, or ``None`` to render the
+                form.
 
         Returns:
             RepairsFlowResult: Confirmation form, abort result, or successful completion.
@@ -689,9 +728,10 @@ async def async_create_fix_flow(
     """Create a Device ID replacement flow for a well-formed issue.
 
     Args:
-        hass: Home Assistant instance that owns the repair flow.
-        issue_id: Issue identifier used to select the repair type.
-        data: Issue data containing the entry and device identifiers.
+        hass (HomeAssistant): Home Assistant instance that owns the repair flow.
+        issue_id (str): Issue identifier used to select the repair type.
+        data (dict[str, str | int | float | None] | None): Issue data containing the entry and
+            device identifiers.
 
     Returns:
         RepairsFlow: Device ID repair flow or a generic confirmation flow.

@@ -30,12 +30,27 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 def _is_valid_interface_row(interface_name: Any, interface: Any) -> bool:
-    """Return whether an interface row can produce a binary sensor."""
+    """Return whether an interface row can produce a binary sensor.
+
+    Returns:
+        The returned value.
+
+    Args:
+        interface_name (Any): The interface_name argument.
+        interface (Any): The interface argument.
+    """
     return isinstance(interface_name, str) and isinstance(interface, Mapping)
 
 
 def _is_valid_smart_device_row(smart_device: Any) -> bool:
-    """Return whether a SMART device row can produce a binary sensor."""
+    """Return whether a SMART device row can produce a binary sensor.
+
+    Returns:
+        The returned value.
+
+    Args:
+        smart_device (Any): The smart_device argument.
+    """
     return isinstance(smart_device, Mapping) and bool(get_smart_device_name(smart_device))
 
 
@@ -43,7 +58,7 @@ def _smart_device_slug(device_name: str) -> str:
     """Return the entity key slug for a SMART device name.
 
     Args:
-        device_name: SMART device name to normalize.
+        device_name (str): SMART device name to normalize.
 
     Returns:
         The slugified device name, or ``unknown`` when slugification fails.
@@ -58,8 +73,8 @@ def _build_interface_enabled_binary_sensor_description(
     """Build an interface enabled-state binary sensor description.
 
     Args:
-        interface_name: Interface identifier from the OPNsense state.
-        interface: Interface data used to derive the display name.
+        interface_name (str): Interface identifier from the OPNsense state.
+        interface (Mapping[str, Any]): Interface data used to derive the display name.
 
     Returns:
         A binary sensor description for the interface enabled state.
@@ -78,7 +93,7 @@ def _build_smart_status_binary_sensor_description(
     """Build a SMART status binary sensor description.
 
     Args:
-        device_name: SMART device name used for the entity key and label.
+        device_name (str): SMART device name used for the entity key and label.
 
     Returns:
         A binary sensor description for SMART health state.
@@ -114,8 +129,9 @@ async def _compile_interface_enabled_binary_sensors(
     """Compile per-interface enabled-state binary sensors.
 
     Args:
-        config_entry: Config entry being set up.
-        coordinator: Data update coordinator that caches OPNsense state.
+        config_entry (ConfigEntry): Config entry being set up.
+        coordinator (OPNsenseDataUpdateCoordinator): Data update coordinator that caches OPNsense
+            state.
 
     Returns:
         list: Interface enabled binary sensor entities.
@@ -153,8 +169,9 @@ async def _compile_smart_status_binary_sensors(
     """Compile SMART status binary sensors.
 
     Args:
-        config_entry: Config entry being set up.
-        coordinator: Data update coordinator that caches OPNsense state.
+        config_entry (ConfigEntry): Config entry being set up.
+        coordinator (OPNsenseDataUpdateCoordinator): Data update coordinator that caches OPNsense
+            state.
 
     Returns:
         list: SMART status binary sensor entities.
@@ -191,9 +208,9 @@ async def async_setup_entry(
     """Set up the OPNsense binary sensors.
 
     Args:
-        hass: Home Assistant instance.
-        config_entry: Config entry being set up.
-        async_add_entities: Callback used to register new entities.
+        hass (HomeAssistant): Home Assistant instance.
+        config_entry (ConfigEntry): Config entry being set up.
+        async_add_entities (AddEntitiesCallback): Callback used to register new entities.
     """
     coordinator: OPNsenseDataUpdateCoordinator = getattr(config_entry.runtime_data, COORDINATOR)
     state: Any = coordinator.data
@@ -251,9 +268,10 @@ class OPNsenseBinarySensor(OPNsenseEntity, BinarySensorEntity):
         """Initialize OPNsense Binary Sensor entity.
 
         Args:
-            config_entry: Config entry owning the entity.
-            coordinator: Shared OPNsense data coordinator.
-            entity_description: Description that defines the entity identity.
+            config_entry (ConfigEntry): Config entry owning the entity.
+            coordinator (OPNsenseDataUpdateCoordinator): Shared OPNsense data coordinator.
+            entity_description (BinarySensorEntityDescription): Description that defines the entity
+                identity.
         """
         name_suffix: str | None = (
             entity_description.name if isinstance(entity_description.name, str) else None

@@ -53,7 +53,7 @@ def _is_firewall_sync_enabled(config_entry: ConfigEntry) -> bool:
     by treating an omitted category key as enabled.
 
     Args:
-        config_entry: Config entry containing synchronization settings.
+        config_entry (ConfigEntry): Config entry containing synchronization settings.
 
     Returns:
         bool: ``True`` when firewall and NAT synchronization is enabled.
@@ -66,7 +66,7 @@ def _infer_native_nat_section_from_unique_id(unique_id: str) -> str | None:
     """Infer the NAT section name from a native NAT unique ID.
 
     Args:
-        unique_id: Native NAT unique identifier from the entity registry.
+        unique_id (str): Native NAT unique identifier from the entity registry.
 
     Returns:
         str | None: NAT section name when the unique ID is parseable.
@@ -90,7 +90,7 @@ def _get_telemetry_filesystems(telemetry: object) -> list[Mapping[str, Any]] | N
     """Return valid telemetry filesystem mappings from a migration payload.
 
     Args:
-        telemetry: Raw telemetry payload returned by the OPNsense client.
+        telemetry (object): Raw telemetry payload returned by the OPNsense client.
 
     Returns:
         list[Mapping[str, Any]] | None: Filesystem mappings usable for entity
@@ -122,7 +122,7 @@ def _get_interface_gateway_telemetry_unique_id(unique_id: str) -> str | None:
     """Return a migrated unique ID for interface or gateway telemetry entities.
 
     Args:
-        unique_id: Existing entity-registry unique ID.
+        unique_id (str): Existing entity-registry unique ID.
 
     Returns:
         str | None: Migrated unique ID when a known telemetry marker is found.
@@ -139,8 +139,9 @@ def _get_filesystem_telemetry_unique_id(
     """Return a migrated filesystem ID and whether migration must be deferred.
 
     Args:
-        unique_id: Existing filesystem telemetry entity unique ID.
-        filesystems: Validated telemetry filesystem payload, or ``None`` when
+        unique_id (str): Existing filesystem telemetry entity unique ID.
+        filesystems (list[Mapping[str, Any]] | None): Validated telemetry filesystem payload, or
+            ``None`` when
             the payload was unavailable or malformed.
 
     Returns:
@@ -167,8 +168,10 @@ def _get_filesystem_telemetry_unique_id(
             "root" if mountpoint == "/" else mountpoint.replace("/", "_").strip("_")
         )
         return (
-            f"{telemetry_filesystem_prefix}{TELEMETRY_FILESYSTEM_ENTITY_MARKER}"
-            f"{normalized_mountpoint}",
+            (
+                f"{telemetry_filesystem_prefix}{TELEMETRY_FILESYSTEM_ENTITY_MARKER}"
+                f"{normalized_mountpoint}"
+            ),
             False,
         )
     return None, False
@@ -180,8 +183,8 @@ def _remove_connected_client_entity(
     """Remove a legacy connected-client-count entity from the registry.
 
     Args:
-        entity_registry: Home Assistant entity registry.
-        entity: Legacy connected-client-count entity to remove.
+        entity_registry (er.EntityRegistry): Home Assistant entity registry.
+        entity (er.RegistryEntry): Legacy connected-client-count entity to remove.
 
     Returns:
         bool: ``True`` when the entity is removed or already handled, ``False``
@@ -210,10 +213,10 @@ def _update_migrated_entity(
     """Update an entity-registry unique ID when the value changed.
 
     Args:
-        entity_registry: Home Assistant entity registry.
-        entity: Entity whose unique ID is being migrated.
-        platform: Entity platform used in migration diagnostics.
-        new_unique_id: Target unique ID for the entity.
+        entity_registry (er.EntityRegistry): Home Assistant entity registry.
+        entity (er.RegistryEntry): Entity whose unique ID is being migrated.
+        platform (str): Entity platform used in migration diagnostics.
+        new_unique_id (str): Target unique ID for the entity.
 
     Returns:
         bool: ``True`` when the unique ID update succeeds or is already current,
@@ -257,9 +260,10 @@ def _migrate_sensor_entity(
     """Migrate one version-3 sensor entity and report mutation status.
 
     Args:
-        entity_registry: Home Assistant entity registry.
-        entity: Sensor entity to migrate.
-        filesystems: Validated telemetry filesystem payload, or ``None`` when
+        entity_registry (er.EntityRegistry): Home Assistant entity registry.
+        entity (er.RegistryEntry): Sensor entity to migrate.
+        filesystems (list[Mapping[str, Any]] | None): Validated telemetry filesystem payload, or
+            ``None`` when
             filesystem migration is unavailable.
 
     Returns:
@@ -304,8 +308,8 @@ async def _migrate_1_to_2(hass: HomeAssistant, config_entry: ConfigEntry) -> boo
     """Migrate config entry data from version 1 to version 2.
 
     Args:
-        hass: Home Assistant instance.
-        config_entry: Config entry being migrated.
+        hass (HomeAssistant): Home Assistant instance.
+        config_entry (ConfigEntry): Config entry being migrated.
 
     Returns:
         bool: Always `True` after updating entry data.
@@ -328,9 +332,9 @@ async def _migrate_2_to_3(
     """Migrate config entry identifiers from version 2 to version 3.
 
     Args:
-        hass: Home Assistant instance.
-        config_entry: Config entry being migrated.
-        client: OPNsense client shared across API-backed migration steps.
+        hass (HomeAssistant): Home Assistant instance.
+        config_entry (ConfigEntry): Config entry being migrated.
+        client (OPNsenseClient): OPNsense client shared across API-backed migration steps.
 
     Returns:
         bool: `True` when device/entity identifier migration succeeds.
@@ -427,9 +431,9 @@ async def _migrate_3_to_4(
     """Migrate telemetry entity identifiers from version 3 to version 4.
 
     Args:
-        hass: Home Assistant instance.
-        config_entry: Config entry being migrated.
-        client: OPNsense client shared across API-backed migration steps.
+        hass (HomeAssistant): Home Assistant instance.
+        config_entry (ConfigEntry): Config entry being migrated.
+        client (OPNsenseClient): OPNsense client shared across API-backed migration steps.
 
     Returns:
         bool: `True` when all migration updates complete successfully.
@@ -473,9 +477,9 @@ async def _migrate_4_to_5(
     """Prune stale rule switch entities during migration from 4 to 5.
 
     Args:
-        hass: Home Assistant instance.
-        config_entry: Config entry being migrated.
-        migration_client: Client used to fetch current firewall rules.
+        hass (HomeAssistant): Home Assistant instance.
+        config_entry (ConfigEntry): Config entry being migrated.
+        migration_client (OPNsenseClient | None): Client used to fetch current firewall rules.
 
     Returns:
         bool: `True` when rule entities are removed and entry version is updated.

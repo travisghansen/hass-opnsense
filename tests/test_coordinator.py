@@ -49,7 +49,11 @@ from custom_components.opnsense.repair_reconciliation import REPAIR_MARKER_KEY, 
 
 @pytest.mark.asyncio
 async def test_init_requires_config_entry(fake_client: Any) -> None:
-    """Ensure coordinator initialization requires a config entry."""
+    """Ensure coordinator initialization requires a config entry.
+
+    Args:
+        fake_client (Any): The fake_client argument.
+    """
     with pytest.raises(ValueError):
         OPNsenseDataUpdateCoordinator(
             hass=MagicMock(),
@@ -65,7 +69,12 @@ async def test_init_requires_config_entry(fake_client: Any) -> None:
 async def test_build_categories_respects_flags(
     make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
 ) -> None:
-    """Categories builder respects configuration sync flags."""
+    """Categories builder respects configuration sync flags.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     entry = make_config_entry(
         {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
     )
@@ -90,7 +99,12 @@ async def test_build_categories_respects_flags(
 async def test_build_categories_includes_smart_by_default(
     make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
 ) -> None:
-    """SMART uses the shared granular sync default."""
+    """SMART uses the shared granular sync default.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     client = fake_client()()
 
     entry_default = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
@@ -121,7 +135,11 @@ async def test_build_categories_includes_smart_by_default(
 async def test_get_states_fetches_smart_info_for_each_smart_device(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """SMART attribute data should be fetched per discovered SMART device."""
+    """SMART attribute data should be fetched per discovered SMART device.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     client = MagicMock()
     client.get_smart = AsyncMock(
         return_value=[
@@ -172,7 +190,11 @@ async def test_get_states_fetches_smart_info_for_each_smart_device(
 async def test_get_states_uses_smart_ident_when_device_missing(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """SMART detail lookups should fall back to `ident` when `device` is missing."""
+    """SMART detail lookups should fall back to `ident` when `device` is missing.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     client = MagicMock()
     client.get_smart = AsyncMock(
         return_value=[
@@ -216,7 +238,11 @@ async def test_get_states_uses_smart_ident_when_device_missing(
 async def test_get_states_does_not_catch_smart_info_timeout(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Public aiopnsense SMART errors should propagate through the coordinator."""
+    """Public aiopnsense SMART errors should propagate through the coordinator.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     client = MagicMock()
     client.get_smart = AsyncMock(
         return_value=[
@@ -254,7 +280,11 @@ async def test_get_states_does_not_catch_smart_info_timeout(
 async def test_get_states_skips_smart_info_when_smart_devices_missing(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """SMART attribute data should stay empty without discovered SMART devices."""
+    """SMART attribute data should stay empty without discovered SMART devices.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     client = MagicMock()
     client.get_smart = AsyncMock(return_value={})
     client.get_smart_info = AsyncMock()
@@ -283,7 +313,12 @@ async def test_get_states_skips_smart_info_when_smart_devices_missing(
 async def test_get_states_handles_missing_method_and_calls(
     make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
 ) -> None:
-    """_get_states should skip missing client methods and return available states."""
+    """_get_states should skip missing client methods and return available states.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
         hass=MagicMock(),
@@ -306,7 +341,12 @@ async def test_get_states_handles_missing_method_and_calls(
 async def test_get_states_uses_single_carp_call(
     make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
 ) -> None:
-    """Coordinator should fetch CARP once and populate unified CARP state key."""
+    """Coordinator should fetch CARP once and populate unified CARP state key.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     client = fake_client()()
     client.get_carp = AsyncMock(
         return_value={
@@ -338,7 +378,12 @@ async def test_get_states_uses_single_carp_call(
 async def test_build_categories_for_carp_entries_only_include_system_info_and_carp(
     make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
 ) -> None:
-    """CARP entries should only request system info and CARP state."""
+    """CARP entries should only request system info and CARP state.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     entry = make_config_entry(
         {
             CONF_ENTRY_TYPE: ENTRY_TYPE_CARP,
@@ -380,7 +425,13 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """Mismatched device_unique_id should create an issue and shutdown after threshold."""
+    """Mismatched device_unique_id should create an issue and shutdown after threshold.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "expected"})
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -412,7 +463,7 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
         """Capture the issue payload emitted for a Device ID mismatch.
 
         Args:
-            **kwargs: Issue fields passed to ``issue_registry.async_create_issue``.
+            kwargs (Any): Additional keyword arguments accepted by the test double.
         """
         called["issue"] += 1
         called["issue_kwargs"] = kwargs
@@ -450,7 +501,13 @@ async def test_check_device_unique_id_clears_stale_issue_without_repair_marker(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """Matching IDs should clear stale mismatch issues when no repair marker exists."""
+    """Matching IDs should clear stale mismatch issues when no repair marker exists.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "expected"})
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -488,7 +545,13 @@ async def test_check_device_unique_id_keeps_stale_issue_when_repair_marker_prese
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """Matching IDs should keep stale issues while a repair marker is still active."""
+    """Matching IDs should keep stale issues while a repair marker is still active.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     marker = build_repair_marker("old-dev", "expected")
     entry = make_config_entry(
         {CONF_DEVICE_UNIQUE_ID: "expected", REPAIR_MARKER_KEY: marker},
@@ -549,7 +612,12 @@ async def test_calculate_speed_normal_and_exception() -> None:
 async def test_calculate_entity_speeds_applies_calculations(
     make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
 ) -> None:
-    """Entity speed calculations should add correct rate keys to state."""
+    """Entity speed calculations should add correct rate keys to state.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     entry = make_config_entry(
         {
             CONF_DEVICE_UNIQUE_ID: "id",
@@ -620,7 +688,12 @@ async def test_calculate_entity_speeds_applies_calculations(
 async def test_calculate_entity_speeds_preserves_polling_rates_when_live_traffic_enabled(
     make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
 ) -> None:
-    """Preserve polling interface rates as a fallback when live traffic is enabled."""
+    """Preserve polling interface rates as a fallback when live traffic is enabled.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     entry = make_config_entry(
         {
             CONF_DEVICE_UNIQUE_ID: "id",
@@ -669,7 +742,12 @@ async def test_calculate_entity_speeds_preserves_polling_rates_when_live_traffic
 async def test_calculate_entity_speeds_treats_counter_decrease_as_reset(
     make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
 ) -> None:
-    """Counter resets should not be reported as traffic spikes."""
+    """Counter resets should not be reported as traffic spikes.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     entry = make_config_entry(
         {
             CONF_DEVICE_UNIQUE_ID: "id",
@@ -720,7 +798,12 @@ async def test_calculate_entity_speeds_treats_counter_decrease_as_reset(
 async def test_calculate_entity_speeds_skips_missing_counter_values(
     make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
 ) -> None:
-    """Missing counter values should not abort a coordinator refresh."""
+    """Missing counter values should not abort a coordinator refresh.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     entry = make_config_entry(
         {
             CONF_DEVICE_UNIQUE_ID: "id",
@@ -768,7 +851,12 @@ async def test_calculate_entity_speeds_skips_missing_counter_values(
 async def test_calculate_vpn_speeds_skips_malformed_payloads(
     make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
 ) -> None:
-    """Malformed VPN counter payloads should be ignored without mutating valid rows."""
+    """Malformed VPN counter payloads should be ignored without mutating valid rows.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_VPN: True})
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -813,7 +901,12 @@ async def test_calculate_vpn_speeds_skips_malformed_payloads(
 async def test_calculate_interface_speeds_skips_malformed_payloads(
     make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
 ) -> None:
-    """Malformed interface counter payloads should be ignored without mutating valid rows."""
+    """Malformed interface counter payloads should be ignored without mutating valid rows.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True})
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -852,7 +945,13 @@ async def test_async_update_data_reentrancy_and_full_flow(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """End-to-end coordinator update flow and reentrancy behavior."""
+    """End-to-end coordinator update flow and reentrancy behavior.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True})
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -872,7 +971,11 @@ async def test_async_update_data_reentrancy_and_full_flow(
 
     # full flow: monkeypatch _check_device_unique_id to True and ensure functions called
     async def true_check() -> bool:
-        """Force the Device ID validation step to succeed."""
+        """Force the Device ID validation step to succeed.
+
+        Returns:
+            The returned value.
+        """
         return True
 
     monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
@@ -908,7 +1011,13 @@ async def test_async_update_data_enables_firewall_polling_when_runtime_firmware_
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """Firewall polling should run when sync is enabled, regardless of stored firmware."""
+    """Firewall polling should run when sync is enabled, regardless of stored firmware.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     entry = make_config_entry(
         {
             CONF_DEVICE_UNIQUE_ID: "id",
@@ -965,7 +1074,11 @@ async def test_async_update_data_enables_firewall_polling_when_runtime_firmware_
     )
 
     async def true_check() -> bool:
-        """Force the Device ID validation step to succeed."""
+        """Force the Device ID validation step to succeed.
+
+        Returns:
+            The returned value.
+        """
         return True
 
     monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
@@ -994,7 +1107,13 @@ async def test_build_categories_and_refresh_queue_firewall_for_legacy_firmware(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """Legacy firmware should rely on aiopnsense empty firewall responses."""
+    """Legacy firmware should rely on aiopnsense empty firewall responses.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     entry = make_config_entry(
         {
             CONF_DEVICE_UNIQUE_ID: "id",
@@ -1047,7 +1166,11 @@ async def test_build_categories_and_refresh_queue_firewall_for_legacy_firmware(
     assert "firewall" in [category["state_key"] for category in coord._categories]
 
     async def true_check() -> bool:
-        """Force the Device ID validation step to succeed."""
+        """Force the Device ID validation step to succeed.
+
+        Returns:
+            The returned value.
+        """
         return True
 
     monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
@@ -1071,7 +1194,13 @@ async def test_async_update_data_continues_firewall_polling_after_runtime_downgr
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """Downgraded runtime firmware should still poll firewall state through aiopnsense."""
+    """Downgraded runtime firmware should still poll firewall state through aiopnsense.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     entry = make_config_entry(
         {
             CONF_DEVICE_UNIQUE_ID: "id",
@@ -1128,7 +1257,11 @@ async def test_async_update_data_continues_firewall_polling_after_runtime_downgr
     )
 
     async def true_check() -> bool:
-        """Force the Device ID validation step to succeed."""
+        """Force the Device ID validation step to succeed.
+
+        Returns:
+            The returned value.
+        """
         return True
 
     monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
@@ -1160,7 +1293,13 @@ async def test_async_update_data_fetches_firewall_on_first_refresh_if_firmware_i
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """When stored firmware is missing, first refresh should fetch firewall after learning version."""
+    """When stored firmware is missing, first refresh should fetch firewall after learning version.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     entry = make_config_entry(
         {
             CONF_DEVICE_UNIQUE_ID: "id",
@@ -1214,7 +1353,11 @@ async def test_async_update_data_fetches_firewall_on_first_refresh_if_firmware_i
     )
 
     async def true_check() -> bool:
-        """Force the Device ID validation step to succeed."""
+        """Force the Device ID validation step to succeed.
+
+        Returns:
+            The returned value.
+        """
         return True
 
     monkeypatch.setattr(coord, "_check_device_unique_id", true_check)
@@ -1252,7 +1395,12 @@ async def test_calculate_speed_bytes_case() -> None:
 def test_build_categories_returns_empty_when_no_config(
     make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
 ) -> None:
-    """Categories builder returns empty list when config_entry is missing."""
+    """Categories builder returns empty list when config_entry is missing.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     entry = make_config_entry()
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -1299,10 +1447,11 @@ async def test_build_categories_flag_true_and_false(
     """Verify a sync flag includes or excludes its coordinator state keys.
 
     Args:
-        make_config_entry: Fixture that creates Home Assistant config entries.
-        fake_client: Fixture that creates fake OPNsense client classes.
-        flag: Sync option under test.
-        expected_keys: Coordinator state keys controlled by ``flag``.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates Home Assistant
+            config entries.
+        fake_client (Any): Fixture that creates fake OPNsense client classes.
+        flag (Any): Sync option under test.
+        expected_keys (Any): Coordinator state keys controlled by ``flag``.
     """
     # When flag is True -> expected keys present
     entry_true = make_config_entry(
@@ -1351,7 +1500,12 @@ async def test_build_categories_includes_firewall_when_sync_is_enabled(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """Firewall category should be queued whenever firewall sync is enabled."""
+    """Firewall category should be queued whenever firewall sync is enabled.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     entry = make_config_entry(
         {
             "device_unique_id": "id",
@@ -1377,7 +1531,12 @@ async def test_build_categories_keeps_firewall_polling_for_legacy_firmware(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """Legacy firmware should keep native firewall polling and skip removed backends."""
+    """Legacy firmware should keep native firewall polling and skip removed backends.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     entry = make_config_entry(
         {
             CONF_DEVICE_UNIQUE_ID: "id",
@@ -1412,7 +1571,13 @@ async def test_async_update_data_preserves_only_counter_snapshot(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """Previous state should keep only fields needed for counter rates."""
+    """Previous state should keep only fields needed for counter rates.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     entry = make_config_entry({"device_unique_id": "id", CONF_SYNC_INTERFACES: True})
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -1436,7 +1601,11 @@ async def test_async_update_data_preserves_only_counter_snapshot(
     }
 
     async def true_check() -> bool:
-        """Force Device ID validation to pass for previous-state assertions."""
+        """Force Device ID validation to pass for previous-state assertions.
+
+        Returns:
+            The returned value.
+        """
         return True
 
     async def noop_calc() -> None:
@@ -1468,7 +1637,13 @@ async def test_async_update_data_device_tracker_branch(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """When coordinator is a device tracker coordinator, _async_update_data should return _async_update_dt_data result."""
+    """When coordinator is a device tracker coordinator, _async_update_data should return _async_update_dt_data result.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     entry = make_config_entry({"device_unique_id": "id"})
     client = fake_client()()
     # create coordinator as device tracker coordinator
@@ -1486,7 +1661,11 @@ async def test_async_update_data_device_tracker_branch(
     called = {"dt_called": 0}
 
     async def fake_dt_update() -> dict[str, Any]:
-        """Return a canned device-tracker payload and record the call count."""
+        """Return a canned device-tracker payload and record the call count.
+
+        Returns:
+            The returned value.
+        """
         called["dt_called"] += 1
         return {"dt": True}
 
@@ -1509,7 +1688,13 @@ async def test_async_update_data_returns_empty_when_device_id_check_fails(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """When device unique id check fails, _async_update_data should return an empty dict."""
+    """When device unique id check fails, _async_update_data should return an empty dict.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     entry = make_config_entry({"device_unique_id": "id", CONF_SYNC_INTERFACES: True})
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -1522,7 +1707,11 @@ async def test_async_update_data_returns_empty_when_device_id_check_fails(
     )
 
     async def false_check() -> bool:
-        """Force Device ID validation to fail for the early-return branch."""
+        """Force Device ID validation to fail for the early-return branch.
+
+        Returns:
+            The returned value.
+        """
         return False
 
     # make the Device ID check return False
@@ -1547,7 +1736,14 @@ async def test_calculate_entity_speeds_returns_early_when_missing(
     fake_client: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """_calculate_entity_speeds should return early when previous_update_time is falsy or config_entry is falsy."""
+    """_calculate_entity_speeds should return early when previous_update_time is falsy or config_entry is falsy.
+
+    Args:
+        case (Any): The case argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+    """
     entry = make_config_entry(
         {"device_unique_id": "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
     )
@@ -1603,7 +1799,15 @@ async def test_async_update_dt_data_device_id_branches(
     fake_client: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Verify _async_update_dt_data returns early for missing/mismatched IDs and calls query counts when OK."""
+    """Verify _async_update_dt_data returns early for missing/mismatched IDs and calls query counts when OK.
+
+    Args:
+        returned_device_id (Any): The returned_device_id argument.
+        should_call_counts (Any): The should_call_counts argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+    """
     entry = make_config_entry({"device_unique_id": "id"})
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -1626,8 +1830,12 @@ async def test_async_update_dt_data_device_id_branches(
     async def fake_get_states(categories: list[dict[str, str]]) -> dict[str, Any]:
         """Return the canned state payload used by the device-tracker branch test.
 
+        Returns:
+            The returned value.
+
         Args:
-            categories: Categories requested by the coordinator and ignored by this fake.
+            categories (list[dict[str, str]]): Categories requested by the coordinator and ignored
+                by this fake.
         """
         return fake_state
 
@@ -1655,7 +1863,13 @@ async def test_async_update_dt_data_uses_shared_device_id_mismatch_policy(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """Device-tracker refreshes should use the shared Device ID mismatch policy."""
+    """Device-tracker refreshes should use the shared Device ID mismatch policy.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     entry = make_config_entry({"device_unique_id": "id"})
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -1669,7 +1883,14 @@ async def test_async_update_dt_data_uses_shared_device_id_mismatch_policy(
     )
 
     async def fake_get_states(categories: list[dict[str, str]]) -> dict[str, Any]:
-        """Return a mismatched device ID for the device-tracker refresh."""
+        """Return a mismatched device ID for the device-tracker refresh.
+
+        Returns:
+            The returned value.
+
+        Args:
+            categories (list[dict[str, str]]): The categories argument.
+        """
         return {
             "device_unique_id": "other",
             "host_firmware_version": "fv",
@@ -1684,7 +1905,11 @@ async def test_async_update_dt_data_uses_shared_device_id_mismatch_policy(
         called["shutdown"] += 1
 
     def fake_async_create_issue(**kwargs: Any) -> None:
-        """Record repair issue creation requests."""
+        """Record repair issue creation requests.
+
+        Args:
+            kwargs (Any): Additional keyword arguments accepted by the test double.
+        """
         called["issue"] += 1
         called["issue_kwargs"] = kwargs
 
@@ -1721,7 +1946,13 @@ async def test_check_device_unique_id_mismatch_issue_retries_until_success(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
 ) -> None:
-    """Retry mismatch issue creation and shut down only after it succeeds."""
+    """Retry mismatch issue creation and shut down only after it succeeds.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+    """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
     coord = OPNsenseDataUpdateCoordinator(
         hass=MagicMock(),
@@ -1774,7 +2005,15 @@ async def test_check_device_unique_id_invalid_runtime_id_is_not_counted(
     expected_device_id: object,
     state: dict[str, object],
 ) -> None:
-    """Malformed configured or runtime IDs should reset mismatch count and fail fast."""
+    """Malformed configured or runtime IDs should reset mismatch count and fail fast.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_client (Any): The fake_client argument.
+        expected_device_id (object): The expected_device_id argument.
+        state (dict[str, object]): The state argument.
+    """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: expected_device_id})
     coord = OPNsenseDataUpdateCoordinator(
         hass=MagicMock(),
@@ -1794,7 +2033,11 @@ async def test_check_device_unique_id_invalid_runtime_id_is_not_counted(
         called["shutdown"] += 1
 
     def fake_async_create_issue(**kwargs: Any) -> None:
-        """Record issue creation calls."""
+        """Record issue creation calls.
+
+        Args:
+            kwargs (Any): Additional keyword arguments accepted by the test double.
+        """
         del kwargs
         called["issue"] += 1
 

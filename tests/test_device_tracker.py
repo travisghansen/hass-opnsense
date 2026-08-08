@@ -42,11 +42,13 @@ def _make_scanner_entity(
     """Create a scanner entity with coordinator runtime data wired in.
 
     Args:
-        coordinator: Device tracker coordinator used by the entity.
-        make_config_entry: Fixture that creates a mock config entry.
-        coordinator_data: Optional coordinator data to install before creating the entity.
-        enabled_default: Whether the entity should be enabled by default.
-        mac: MAC address tracked by the entity.
+        coordinator (MagicMock): Device tracker coordinator used by the entity.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock config
+            entry.
+        coordinator_data (object | None): Optional coordinator data to install before creating the
+            entity.
+        enabled_default (bool): Whether the entity should be enabled by default.
+        mac (str): MAC address tracked by the entity.
 
     Returns:
         A scanner entity for the requested MAC address.
@@ -108,7 +110,11 @@ def test_devices_from_arp_entries_skips_malformed_invalid_and_duplicate_macs() -
 def test_compile_tracked_devices_normalizes_and_deduplicates_configured_macs(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Configured MACs should be normalized and deduplicated before entity creation."""
+    """Configured MACs should be normalized and deduplicated before entity creation.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     config_entry = make_config_entry(
         options={
             CONF_DEVICE_TRACKER_ENABLED: True,
@@ -164,7 +170,15 @@ async def test_async_setup_entry_configured_devices(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_reg_factory: Any,
 ) -> None:
-    """Setup creates device tracker entities for configured MACs."""
+    """Setup creates device tracker entities for configured MACs.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_reg_factory (Any): The fake_reg_factory argument.
+    """
     coordinator.data = {
         "arp_table": [
             "not-an-arp-row",
@@ -195,7 +209,8 @@ async def test_async_setup_entry_configured_devices(
         """Async add entities.
 
         Args:
-            ents: Ents provided by pytest or the test case.
+            ents (Iterable[Any]): Ents provided by pytest or the test case.
+            _update_before_add (bool): The _update_before_add argument.
         """
         added.extend(ents)
 
@@ -230,7 +245,15 @@ async def test_async_setup_entry_skips_malformed_arp_rows(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_reg_factory: Any,
 ) -> None:
-    """Malformed ARP rows should not prevent valid device trackers from being created."""
+    """Malformed ARP rows should not prevent valid device trackers from being created.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_reg_factory (Any): The fake_reg_factory argument.
+    """
     coordinator.data = {
         "arp_table": [
             "not-an-arp-row",
@@ -263,7 +286,15 @@ async def test_async_setup_entry_removes_nonmatching_tracked_macs(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_reg_factory: Any,
 ) -> None:
-    """Ensure previously-tracked MACs not present in current devices are removed."""
+    """Ensure previously-tracked MACs not present in current devices are removed.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_reg_factory (Any): The fake_reg_factory argument.
+    """
     coordinator.data = {
         "arp_table": [{"mac": "aa:bb:cc", "ip": "1.2.3.4", "hostname": "dev", "manufacturer": "m"}]
     }
@@ -292,7 +323,8 @@ async def test_async_setup_entry_removes_nonmatching_tracked_macs(
         """Async add entities.
 
         Args:
-            ents: Ents provided by pytest or the test case.
+            ents (Iterable[Any]): Ents provided by pytest or the test case.
+            _update_before_add (bool): The _update_before_add argument.
         """
         added.extend(ents)
 
@@ -312,7 +344,12 @@ async def test_async_setup_entry_removes_nonmatching_tracked_macs(
 def test_handle_coordinator_update_unavailable(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Coordinator with invalid data should mark entity unavailable."""
+    """Coordinator with invalid data should mark entity unavailable.
+
+    Args:
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     coordinator.data = None
     entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
@@ -336,7 +373,12 @@ def test_handle_coordinator_update_unavailable(
 def test_handle_coordinator_update_entry_present(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Coordinator arp entry populates entity attributes correctly."""
+    """Coordinator arp entry populates entity attributes correctly.
+
+    Args:
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     coordinator.data = {
         "arp_table": [
             {
@@ -386,7 +428,15 @@ def test_entity_registry_enabled_default_uses_existing_mac_device(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_reg_factory: Any,
 ) -> None:
-    """Auto-discovered trackers should be enabled when HA can link a MAC device."""
+    """Auto-discovered trackers should be enabled when HA can link a MAC device.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_reg_factory (Any): The fake_reg_factory argument.
+    """
     ent = _make_scanner_entity(
         coordinator=coordinator,
         make_config_entry=make_config_entry,
@@ -416,7 +466,17 @@ def test_suggested_object_id_for_matching_enabled_mac_device(
     hostname: str | None,
     expected_object_id: str,
 ) -> None:
-    """Suggested object IDs should prefer hostnames and otherwise use the MAC."""
+    """Suggested object IDs should prefer hostnames and otherwise use the MAC.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_reg_factory (Any): The fake_reg_factory argument.
+        hostname (str | None): The hostname argument.
+        expected_object_id (str): The expected_object_id argument.
+    """
     ent = OPNsenseScannerEntity(
         config_entry=make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"}),
         coordinator=coordinator,
@@ -437,7 +497,12 @@ def test_entity_registry_enabled_default_respects_configured_enabled_default(
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Configured trackers should keep their requested enabled-by-default state."""
+    """Configured trackers should keep their requested enabled-by-default state.
+
+    Args:
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     ent = _make_scanner_entity(
         coordinator=coordinator,
         make_config_entry=make_config_entry,
@@ -452,7 +517,12 @@ def test_entity_registry_enabled_default_without_mac_stays_disabled(
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Trackers without a MAC cannot link to an enabled MAC device."""
+    """Trackers without a MAC cannot link to an enabled MAC device.
+
+    Args:
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     ent = _make_scanner_entity(
         coordinator=coordinator,
         make_config_entry=make_config_entry,
@@ -478,7 +548,15 @@ def test_entity_registry_enabled_default_pref_disable_new_entities_keeps_device_
     make_config_entry: Callable[..., MockConfigEntry],
     fake_reg_factory: Any,
 ) -> None:
-    """Existing MAC matches should still link while the new-entity preference is enabled."""
+    """Existing MAC matches should still link while the new-entity preference is enabled.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_reg_factory (Any): The fake_reg_factory argument.
+    """
     ent = _make_scanner_entity(
         coordinator=coordinator,
         make_config_entry=make_config_entry,
@@ -506,7 +584,14 @@ def test_entity_registry_enabled_default_fallback_when_no_matching_device(
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Auto-discovered trackers should stay disabled when no matching device exists."""
+    """Auto-discovered trackers should stay disabled when no matching device exists.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     ent = _make_scanner_entity(
         coordinator=coordinator,
         make_config_entry=make_config_entry,
@@ -529,7 +614,15 @@ def test_entity_registry_enabled_default_fallback_when_no_matching_device(
             self._device = _FallbackDevice()
 
         def async_get_device(self, *_args: Any, **_kwargs: Any) -> Any:
-            """Return the fallback device only after it is marked as present."""
+            """Return the fallback device only after it is marked as present.
+
+            Args:
+                _args (Any): Additional positional arguments accepted by the test double.
+                _kwargs (Any): Additional keyword arguments accepted by the test double.
+
+            Returns:
+                The returned value.
+            """
             return self._device if matched_state["has_device"] else None
 
     registry = _TrackingRegistry()
@@ -548,7 +641,15 @@ def test_entity_registry_enabled_default_falls_back_for_disabled_mac_device(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_reg_factory: Any,
 ) -> None:
-    """Disabled matching MAC devices should keep fallback device_info-based linking."""
+    """Disabled matching MAC devices should keep fallback device_info-based linking.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_reg_factory (Any): The fake_reg_factory argument.
+    """
     ent = _make_scanner_entity(
         coordinator=coordinator,
         make_config_entry=make_config_entry,
@@ -597,7 +698,12 @@ def test_device_from_arp_entry_matches_mac_case_insensitively_and_rejects_non_st
 def test_handle_coordinator_update_skips_malformed_arp_entries(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Malformed ARP entries should be skipped while searching for the tracked MAC."""
+    """Malformed ARP entries should be skipped while searching for the tracked MAC.
+
+    Args:
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     ent = _make_scanner_entity(
         coordinator=coordinator,
         make_config_entry=make_config_entry,
@@ -614,7 +720,12 @@ def test_handle_coordinator_update_skips_malformed_arp_entries(
 def test_handle_coordinator_update_skips_nonmatching_mapping_arp_entries(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Nonmatching ARP mapping entries should be skipped while searching."""
+    """Nonmatching ARP mapping entries should be skipped while searching.
+
+    Args:
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     ent = _make_scanner_entity(
         coordinator=coordinator,
         make_config_entry=make_config_entry,
@@ -631,7 +742,12 @@ def test_handle_coordinator_update_skips_nonmatching_mapping_arp_entries(
 def test_handle_coordinator_update_matches_mac_case_insensitively(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Coordinator matching should include uppercase/lowercase MAC variations."""
+    """Coordinator matching should include uppercase/lowercase MAC variations.
+
+    Args:
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     coordinator.data = {
         "arp_table": [{"mac": "AA:BB:CC", "ip": "1.2.3.4", "intf_description": "lan"}],
         "update_time": 0,
@@ -655,7 +771,12 @@ def test_handle_coordinator_update_matches_mac_case_insensitively(
 def test_handle_coordinator_update_reads_raw_arp_ip_key(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Tracker update should still read `ip-address` when `ip` is absent."""
+    """Tracker update should still read `ip-address` when `ip` is absent.
+
+    Args:
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     coordinator.data = {
         "arp_table": [
             {"mac-address": "AA:BB:CC", "ip-address": "10.0.0.12", "intf_description": "lan"}
@@ -694,7 +815,12 @@ def test_update_arp_extra_state_attributes_clears_stale_values() -> None:
 def test_handle_coordinator_update_skips_malformed_arp_rows(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Malformed rows in arp_table should be skipped and valid rows still apply."""
+    """Malformed rows in arp_table should be skipped and valid rows still apply.
+
+    Args:
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     coordinator.data = {
         "arp_table": [
             "not-an-arp-row",
@@ -733,7 +859,12 @@ def test_handle_coordinator_update_skips_malformed_arp_rows(
 def test_handle_coordinator_update_missing_entry_consider_home(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """If missing entry and within consider_home, entity remains connected."""
+    """If missing entry and within consider_home, entity remains connected.
+
+    Args:
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(
         data={CONF_DEVICE_UNIQUE_ID: "dev1"},
@@ -759,7 +890,12 @@ def test_handle_coordinator_update_missing_entry_consider_home(
 def test_handle_coordinator_update_expired_entry_outside_consider_home(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Expired ARP entries outside consider_home should stay disconnected."""
+    """Expired ARP entries outside consider_home should stay disconnected.
+
+    Args:
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     entry = make_config_entry(
         data={CONF_DEVICE_UNIQUE_ID: "dev1"},
         options={CONF_DEVICE_TRACKER_CONSIDER_HOME: 1},
@@ -787,7 +923,12 @@ async def test_restore_last_state_returns_when_no_snapshot(
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Restoring state should return when Home Assistant has no saved snapshot."""
+    """Restoring state should return when Home Assistant has no saved snapshot.
+
+    Args:
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     ent = _make_scanner_entity(coordinator, make_config_entry)
     object.__setattr__(ent, "async_get_last_state", AsyncMock(return_value=None))
 
@@ -802,7 +943,13 @@ async def test_restore_last_state_and_device_info(
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Restoring last state merges saved attributes into the entity."""
+    """Restoring last state merges saved attributes into the entity.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
@@ -866,7 +1013,12 @@ async def test_restore_last_state_uses_datetime_and_skips_empty_attributes(
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Restoring state should preserve datetime values and ignore empty saved attributes."""
+    """Restoring state should preserve datetime values and ignore empty saved attributes.
+
+    Args:
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     last_known_connected_time = datetime.now(UTC)
     ent = _make_scanner_entity(coordinator, make_config_entry)
     last_state = MagicMock()
@@ -899,7 +1051,13 @@ async def test_restore_last_state_restores_tz_aware_connected_time(
     make_config_entry: Callable[..., MockConfigEntry],
     connected_time: datetime | str,
 ) -> None:
-    """Aware datetime values should restore into tracker state."""
+    """Aware datetime values should restore into tracker state.
+
+    Args:
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        connected_time (datetime | str): The connected_time argument.
+    """
     ent = _make_scanner_entity(coordinator, make_config_entry)
     last_state = MagicMock()
     last_state.attributes = {"last_known_connected_time": connected_time}
@@ -927,7 +1085,13 @@ async def test_restore_last_state_ignores_invalid_connected_time(
     make_config_entry: Callable[..., MockConfigEntry],
     connected_time: str | int,
 ) -> None:
-    """Restoring state should ignore invalid saved connection timestamps."""
+    """Restoring state should ignore invalid saved connection timestamps.
+
+    Args:
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        connected_time (str | int): The connected_time argument.
+    """
     ent = _make_scanner_entity(coordinator, make_config_entry)
     last_state = MagicMock()
     last_state.attributes = {"last_known_connected_time": connected_time}
@@ -946,7 +1110,12 @@ async def test_restore_last_state_ignores_non_mapping_attributes(
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Restoring state should ignore snapshots with malformed attributes."""
+    """Restoring state should ignore snapshots with malformed attributes.
+
+    Args:
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     ent = _make_scanner_entity(coordinator, make_config_entry)
     last_state = MagicMock()
     last_state.attributes = ["not", "a", "mapping"]
@@ -963,7 +1132,13 @@ async def test_async_added_to_hass_calls_restore(
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Entity.async_added_to_hass should call state restoration."""
+    """Entity.async_added_to_hass should call state restoration.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
@@ -991,7 +1166,13 @@ async def test_async_internal_added_to_hass_links_existing_mac_device(
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Scanner entity should link to an existing registry device with the same MAC."""
+    """Scanner entity should link to an existing registry device with the same MAC.
+
+    Args:
+        ph_hass (Any): The ph_hass argument.
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"}, entry_id="entry-1")
     entry.add_to_hass(ph_hass)
@@ -1041,7 +1222,13 @@ async def test_async_internal_added_to_hass_keeps_fallback_device_info_without_m
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Scanner entity should keep its fallback device info when no MAC device exists."""
+    """Scanner entity should keep its fallback device info when no MAC device exists.
+
+    Args:
+        ph_hass (Any): The ph_hass argument.
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"}, entry_id="entry-1")
     entry.add_to_hass(ph_hass)
@@ -1081,7 +1268,15 @@ async def test_async_setup_entry_state_not_mapping(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_reg_factory: Any,
 ) -> None:
-    """Setup exits early when coordinator state is not a mapping."""
+    """Setup exits early when coordinator state is not a mapping.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_reg_factory (Any): The fake_reg_factory argument.
+    """
     coordinator.data = "not-a-mapping"
     entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
@@ -1104,7 +1299,13 @@ async def test_async_setup_entry_records_none_for_missing_arp_inventory(
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Missing ARP payload should keep device tracker reconciliation incomplete."""
+    """Missing ARP payload should keep device tracker reconciliation incomplete.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     coordinator.data = {}
     entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
@@ -1112,7 +1313,13 @@ async def test_async_setup_entry_records_none_for_missing_arp_inventory(
     recorded: dict[str, Any] = {}
 
     def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
-        """Capture the desired-entity payload sent to reconciliation."""
+        """Capture the desired-entity payload sent to reconciliation.
+
+        Args:
+            _entry (MockConfigEntry): The _entry argument.
+            _platform (str): The _platform argument.
+            entities (Any | None): The entities argument.
+        """
         recorded["entities"] = entities
 
     monkeypatch.setattr(dt_mod, "record_desired_entities", capture)
@@ -1133,7 +1340,13 @@ async def test_async_setup_entry_records_empty_authoritative_arp_inventory(
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """An explicit empty ARP table is still authoritative for tracker reconciliation."""
+    """An explicit empty ARP table is still authoritative for tracker reconciliation.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
@@ -1141,7 +1354,13 @@ async def test_async_setup_entry_records_empty_authoritative_arp_inventory(
     recorded: dict[str, Any] = {}
 
     def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
-        """Capture the desired-entity payload sent to reconciliation."""
+        """Capture the desired-entity payload sent to reconciliation.
+
+        Args:
+            _entry (MockConfigEntry): The _entry argument.
+            _platform (str): The _platform argument.
+            entities (Any | None): The entities argument.
+        """
         recorded["entities"] = entities
 
     monkeypatch.setattr(dt_mod, "record_desired_entities", capture)
@@ -1162,7 +1381,13 @@ async def test_async_setup_entry_records_none_for_malformed_arp_rows_in_track_al
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Track-all mode should fail reconciliation if any ARP row cannot compile."""
+    """Track-all mode should fail reconciliation if any ARP row cannot compile.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     coordinator.data = {
         "arp_table": [
             "not-an-arp-row",
@@ -1180,7 +1405,13 @@ async def test_async_setup_entry_records_none_for_malformed_arp_rows_in_track_al
     added: list[Any] = []
 
     def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
-        """Capture the desired-entity payload sent to reconciliation."""
+        """Capture the desired-entity payload sent to reconciliation.
+
+        Args:
+            _entry (MockConfigEntry): The _entry argument.
+            _platform (str): The _platform argument.
+            entities (Any | None): The entities argument.
+        """
         recorded["entities"] = entities
 
     monkeypatch.setattr(dt_mod, "record_desired_entities", capture)
@@ -1203,7 +1434,13 @@ async def test_async_setup_entry_records_entities_for_invalid_mapping_rows_in_tr
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Track-all should ignore non-entity mapping rows with unusable MAC values."""
+    """Track-all should ignore non-entity mapping rows with unusable MAC values.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     coordinator.data = {
         "arp_table": [
             {"mac": None},
@@ -1222,7 +1459,13 @@ async def test_async_setup_entry_records_entities_for_invalid_mapping_rows_in_tr
     added: list[Any] = []
 
     def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
-        """Capture the desired-entity payload sent to reconciliation."""
+        """Capture the desired-entity payload sent to reconciliation.
+
+        Args:
+            _entry (MockConfigEntry): The _entry argument.
+            _platform (str): The _platform argument.
+            entities (Any | None): The entities argument.
+        """
         recorded["entities"] = entities
 
     monkeypatch.setattr(dt_mod, "record_desired_entities", capture)
@@ -1246,7 +1489,13 @@ async def test_async_setup_entry_records_entities_for_duplicate_macs_in_track_al
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Track-all mode should treat duplicate normalized MAC rows as authoritative."""
+    """Track-all mode should treat duplicate normalized MAC rows as authoritative.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     coordinator.data = {
         "arp_table": [
             {"mac": "AA-BB-CC-DD-EE-FF", "hostname": "first"},
@@ -1263,7 +1512,13 @@ async def test_async_setup_entry_records_entities_for_duplicate_macs_in_track_al
     added: list[Any] = []
 
     def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
-        """Capture the desired-entity payload sent to reconciliation."""
+        """Capture the desired-entity payload sent to reconciliation.
+
+        Args:
+            _entry (MockConfigEntry): The _entry argument.
+            _platform (str): The _platform argument.
+            entities (Any | None): The entities argument.
+        """
         recorded["entities"] = entities
 
     monkeypatch.setattr(dt_mod, "record_desired_entities", capture)
@@ -1291,7 +1546,13 @@ async def test_async_setup_entry_track_all_completeness_ignored_in_explicit_mac_
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Explicit configured-MAC mode should ignore track-all completeness failures."""
+    """Explicit configured-MAC mode should ignore track-all completeness failures.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     coordinator.data = {
         "arp_table": [
             "not-an-arp-row",
@@ -1311,7 +1572,13 @@ async def test_async_setup_entry_track_all_completeness_ignored_in_explicit_mac_
     added: list[Any] = []
 
     def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
-        """Capture the desired-entity payload sent to reconciliation."""
+        """Capture the desired-entity payload sent to reconciliation.
+
+        Args:
+            _entry (MockConfigEntry): The _entry argument.
+            _platform (str): The _platform argument.
+            entities (Any | None): The entities argument.
+        """
         recorded["entities"] = entities
 
     monkeypatch.setattr(dt_mod, "record_desired_entities", capture)
@@ -1336,7 +1603,15 @@ async def test_async_setup_entry_removes_previous_mac(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_reg_factory: Any,
 ) -> None:
-    """Setup removes previously tracked MAC addresses when reconfiguring."""
+    """Setup removes previously tracked MAC addresses when reconfiguring.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_reg_factory (Any): The fake_reg_factory argument.
+    """
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(
         data={TRACKED_MACS: ["old:mac:1"], CONF_DEVICE_UNIQUE_ID: "dev1"},
@@ -1367,7 +1642,15 @@ async def test_async_setup_entry_preserves_previous_device_during_reconciliation
     make_config_entry: Callable[..., MockConfigEntry],
     fake_reg_factory: Any,
 ) -> None:
-    """Active reconciliation owns stale deletion, including tracker devices."""
+    """Active reconciliation owns stale deletion, including tracker devices.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_reg_factory (Any): The fake_reg_factory argument.
+    """
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(
         data={TRACKED_MACS: ["old:mac:1"], CONF_DEVICE_UNIQUE_ID: "dev1"},
@@ -1394,7 +1677,12 @@ async def test_async_setup_entry_preserves_previous_device_during_reconciliation
 def test_handle_coordinator_update_expires_positive(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Expired ARP entries set entity to disconnected and update attributes."""
+    """Expired ARP entries set entity to disconnected and update attributes.
+
+    Args:
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     coordinator.data = {
         "arp_table": [
             {
@@ -1430,7 +1718,12 @@ def test_handle_coordinator_update_expires_positive(
 def test_handle_coordinator_update_skips_malformed_expires(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Malformed ARP expiry data should not hide other valid ARP attributes."""
+    """Malformed ARP expiry data should not hide other valid ARP attributes.
+
+    Args:
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     coordinator.data = {
         "arp_table": [
             {
@@ -1469,7 +1762,12 @@ def test_handle_coordinator_update_skips_malformed_expires(
 def test_handle_coordinator_update_ip_typeerror(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Handle TypeError when entry IP is None and avoid crashing."""
+    """Handle TypeError when entry IP is None and avoid crashing.
+
+    Args:
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     coordinator.data = {"arp_table": [{"mac": "aa:bb:cc", "ip": None}]}
 
     entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -1492,7 +1790,12 @@ def test_handle_coordinator_update_ip_typeerror(
 def test_handle_coordinator_update_expired_preserve_last_known_ip(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Expired entries preserve last_known_ip when no IP present."""
+    """Expired entries preserve last_known_ip when no IP present.
+
+    Args:
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     coordinator.data = {"arp_table": [{"mac": "aa:bb:cc", "expired": True}]}
 
     entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -1525,7 +1828,15 @@ async def test_async_setup_entry_from_arp_entries(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_reg_factory: Any,
 ) -> None:
-    """Setup from ARP entries creates device trackers for present ARP rows."""
+    """Setup from ARP entries creates device trackers for present ARP rows.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        fake_reg_factory (Any): The fake_reg_factory argument.
+    """
     coordinator.data = {"arp_table": [{"mac": "m1"}, {"mac": "m2", "hostname": "h2"}]}
     entry = make_config_entry(
         data={CONF_DEVICE_UNIQUE_ID: "dev1"},
@@ -1554,7 +1865,14 @@ async def test_async_setup_entry_removes_stale_tracker_entities_and_reparents_sh
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Stale MAC cleanup reassigns shared parents to surviving OPNsense routers."""
+    """Stale MAC cleanup reassigns shared parents to surviving OPNsense routers.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     coordinator.data = {"arp_table": [{"mac": "keep:mac"}]}
     stale_router_mac = "stale:mac:router"
     stale_other_mac = "stale:mac:other"
@@ -1582,7 +1900,16 @@ async def test_async_setup_entry_removes_stale_tracker_entities_and_reparents_sh
     }
 
     def get_entity_id(domain: str, platform: str, unique_id: str) -> str | None:
-        """Return the registered tracker entity for a stale unique ID."""
+        """Return the registered tracker entity for a stale unique ID.
+
+        Returns:
+            The returned value.
+
+        Args:
+            domain (str): The domain argument.
+            platform (str): The platform argument.
+            unique_id (str): The unique_id argument.
+        """
         return entity_ids.get(unique_id)
 
     entity_registry.async_get_entity_id.side_effect = get_entity_id
@@ -1649,7 +1976,15 @@ async def test_async_setup_entry_removes_stale_tracker_entities_and_reparents_sh
         identifiers: set[tuple[str, str]] | None = None,
         connections: set[tuple[str, str]] | None = None,
     ) -> Any:
-        """Return the fake router or stale device for the requested lookup."""
+        """Return the fake router or stale device for the requested lookup.
+
+        Returns:
+            The returned value.
+
+        Args:
+            identifiers (set[tuple[str, str]] | None): The identifiers argument.
+            connections (set[tuple[str, str]] | None): The connections argument.
+        """
         if identifiers is not None:
             key = next(iter(identifiers))
             return identifier_router_map.get(key)
@@ -1711,7 +2046,14 @@ async def test_async_setup_entry_removes_stale_tracker_entities_clears_missing_p
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Clear stale tracker parent assignment when router lookup is no longer available."""
+    """Clear stale tracker parent assignment when router lookup is no longer available.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator (MagicMock): The coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     coordinator.data = {"arp_table": [{"mac": "keep:mac"}]}
     stale_router_mac = "stale:mac:router"
     entry = make_config_entry(
@@ -1743,7 +2085,15 @@ async def test_async_setup_entry_removes_stale_tracker_entities_clears_missing_p
         identifiers: set[tuple[str, str]] | None = None,
         connections: set[tuple[str, str]] | None = None,
     ) -> Any:
-        """Return fake stale tracker devices and missing router lookup results."""
+        """Return fake stale tracker devices and missing router lookup results.
+
+        Returns:
+            The returned value.
+
+        Args:
+            identifiers (set[tuple[str, str]] | None): The identifiers argument.
+            connections (set[tuple[str, str]] | None): The connections argument.
+        """
         if identifiers is not None:
             return None
         if connections is not None:

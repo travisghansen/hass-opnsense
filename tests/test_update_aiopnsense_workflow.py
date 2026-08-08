@@ -28,9 +28,9 @@ class FakeCleanupClient:
         """Initialize fake pull request state.
 
         Args:
-            open_pulls: Pull requests to return for open PR lookups.
-            closed_pulls: Pull requests to return for closed PR lookups.
-            fail_on_close: Whether closing a PR should fail the test.
+            open_pulls (list[dict[str, object]]): Pull requests to return for open PR lookups.
+            closed_pulls (list[dict[str, object]]): Pull requests to return for closed PR lookups.
+            fail_on_close (bool): Whether closing a PR should fail the test.
         """
         self.open_pulls = open_pulls
         self.closed_pulls = closed_pulls
@@ -39,17 +39,32 @@ class FakeCleanupClient:
         self.deleted_refs: list[str] = []
 
     def list_pulls(self, *, state: str) -> list[dict[str, object]]:
-        """Return fake pull requests by state."""
+        """Return fake pull requests by state.
+
+        Returns:
+            The returned value.
+
+        Args:
+            state (str): The state argument.
+        """
         return self.open_pulls if state == "open" else self.closed_pulls
 
     def close_pull(self, pull_number: int) -> None:
-        """Record or reject a closed pull request."""
+        """Record or reject a closed pull request.
+
+        Args:
+            pull_number (int): The pull_number argument.
+        """
         if self.fail_on_close:
             raise AssertionError(f"Unexpected close for PR {pull_number}")
         self.closed_prs.append(pull_number)
 
     def delete_ref(self, ref: str) -> None:
-        """Record a deleted git ref."""
+        """Record a deleted git ref.
+
+        Args:
+            ref (str): The ref argument.
+        """
         self.deleted_refs.append(ref)
 
 
@@ -63,10 +78,10 @@ def _workflow_pull(
     """Return a fake workflow pull request object.
 
     Args:
-        number: Pull request number.
-        ref: Pull request head ref.
-        label: Pull request label name.
-        merged_at: Optional merge timestamp for closed PRs.
+        number (int): Pull request number.
+        ref (str): Pull request head ref.
+        label (str): Pull request label name.
+        merged_at (str | None): Optional merge timestamp for closed PRs.
 
     Returns:
         Fake pull request object shaped like the GitHub REST API response.
@@ -87,7 +102,18 @@ def _write_pin_files(
     prek_version: str | None = None,
     pyproject_text: str | None = None,
 ) -> tuple[Path, Path, Path]:
-    """Write temporary manifest, pyproject, and prek files with aiopnsense pins."""
+    """Write temporary manifest, pyproject, and prek files with aiopnsense pins.
+
+    Returns:
+        The returned value.
+
+    Args:
+        tmp_path (Path): The tmp_path argument.
+        manifest_version (str): The manifest_version argument.
+        pyproject_version (str | None): The pyproject_version argument.
+        prek_version (str | None): The prek_version argument.
+        pyproject_text (str | None): The pyproject_text argument.
+    """
     manifest_path = tmp_path / "manifest.json"
     pyproject_path = tmp_path / "pyproject.toml"
     prek_path = tmp_path / "prek.toml"
@@ -126,24 +152,44 @@ additional_dependencies = [
 
 @pytest.fixture
 def updater_script() -> ModuleType:
-    """Load the aiopnsense pin updater script as a test module."""
+    """Load the aiopnsense pin updater script as a test module.
+
+    Returns:
+        The returned value.
+    """
     return _load_script("update_aiopnsense_pins", SCRIPT_PATH)
 
 
 @pytest.fixture
 def release_notes_script() -> ModuleType:
-    """Load the aiopnsense release-note builder script as a test module."""
+    """Load the aiopnsense release-note builder script as a test module.
+
+    Returns:
+        The returned value.
+    """
     return _load_script("build_aiopnsense_release_notes", RELEASE_NOTES_SCRIPT_PATH)
 
 
 @pytest.fixture
 def cleanup_script() -> ModuleType:
-    """Load the aiopnsense cleanup script as a test module."""
+    """Load the aiopnsense cleanup script as a test module.
+
+    Returns:
+        The returned value.
+    """
     return _load_script("cleanup_aiopnsense_update_branches", CLEANUP_SCRIPT_PATH)
 
 
 def _load_script(module_name: str, script_path: Path) -> ModuleType:
-    """Load a checked-in workflow helper script as a test module."""
+    """Load a checked-in workflow helper script as a test module.
+
+    Returns:
+        The returned value.
+
+    Args:
+        module_name (str): The module_name argument.
+        script_path (Path): The script_path argument.
+    """
     spec = util.spec_from_file_location(module_name, script_path)
     assert spec is not None
     assert spec.loader is not None
@@ -177,7 +223,17 @@ def test_updater_script_pin_update_scenarios(
     expected_update_needed: bool,
     expected_target: str,
 ) -> None:
-    """Updater script should handle stable, prerelease, and drift pin scenarios."""
+    """Updater script should handle stable, prerelease, and drift pin scenarios.
+
+    Args:
+        tmp_path (Path): The tmp_path argument.
+        updater_script (ModuleType): The updater_script argument.
+        manifest_version (str): The manifest_version argument.
+        pyproject_version (str): The pyproject_version argument.
+        latest_version (str): The latest_version argument.
+        expected_update_needed (bool): The expected_update_needed argument.
+        expected_target (str): The expected_target argument.
+    """
     manifest_path, pyproject_path, prek_path = _write_pin_files(
         tmp_path,
         manifest_version=manifest_version,
@@ -208,7 +264,12 @@ def test_updater_script_pin_update_scenarios(
 def test_updater_script_updates_pyproject_pin_without_trailing_comma(
     tmp_path: Path, updater_script: ModuleType
 ) -> None:
-    """Updater script should preserve valid TOML dependency-list formatting."""
+    """Updater script should preserve valid TOML dependency-list formatting.
+
+    Args:
+        tmp_path (Path): The tmp_path argument.
+        updater_script (ModuleType): The updater_script argument.
+    """
     manifest_path, pyproject_path, prek_path = _write_pin_files(
         tmp_path,
         manifest_version="1.0.8",
@@ -235,7 +296,12 @@ ha = [
 def test_updater_script_repairs_prek_mypy_pin_drift(
     tmp_path: Path, updater_script: ModuleType
 ) -> None:
-    """Updater should synchronize a stale isolated mypy-hook dependency pin."""
+    """Updater should synchronize a stale isolated mypy-hook dependency pin.
+
+    Args:
+        tmp_path (Path): The tmp_path argument.
+        updater_script (ModuleType): The updater_script argument.
+    """
     manifest_path, pyproject_path, prek_path = _write_pin_files(
         tmp_path,
         manifest_version="1.1.3",
@@ -260,7 +326,12 @@ def test_updater_script_repairs_prek_mypy_pin_drift(
 def test_updater_script_rejects_missing_prek_mypy_pin(
     tmp_path: Path, updater_script: ModuleType
 ) -> None:
-    """Updater should fail when prek cannot install aiopnsense for mypy."""
+    """Updater should fail when prek cannot install aiopnsense for mypy.
+
+    Args:
+        tmp_path (Path): The tmp_path argument.
+        updater_script (ModuleType): The updater_script argument.
+    """
     manifest_path, pyproject_path, prek_path = _write_pin_files(
         tmp_path,
         manifest_version="1.1.3",
@@ -316,10 +387,25 @@ def test_updater_script_selects_latest_stable_from_pypi_payload(
     payload: dict[str, object],
     expected_latest: str,
 ) -> None:
-    """Updater script should select the latest installable stable PyPI release."""
+    """Updater script should select the latest installable stable PyPI release.
+
+    Args:
+        updater_script (ModuleType): The updater_script argument.
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        payload (dict[str, object]): The payload argument.
+        expected_latest (str): The expected_latest argument.
+    """
 
     def open_pypi_response(*_: object, **__: object) -> StringIO:
-        """Return the fake PyPI response as a readable context manager."""
+        """Return the fake PyPI response as a readable context manager.
+
+        Args:
+            _ (object): Additional positional arguments accepted by the test double.
+            __ (object): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            The returned value.
+        """
         return StringIO(json.dumps(payload))
 
     monkeypatch.setattr(updater_script, "urlopen", open_pypi_response)
@@ -331,7 +417,12 @@ def test_updater_script_rejects_duplicate_pyproject_pins(
     tmp_path: Path,
     updater_script: ModuleType,
 ) -> None:
-    """Updater script should fail clearly when pyproject has ambiguous pins."""
+    """Updater script should fail clearly when pyproject has ambiguous pins.
+
+    Args:
+        tmp_path (Path): The tmp_path argument.
+        updater_script (ModuleType): The updater_script argument.
+    """
     manifest_path, pyproject_path, prek_path = _write_pin_files(
         tmp_path,
         manifest_version="1.0.8",
@@ -356,7 +447,12 @@ def test_release_note_script_builds_sanitized_pr_body(
     tmp_path: Path,
     release_notes_script: ModuleType,
 ) -> None:
-    """Release-note script should build a mention-safe PR body file."""
+    """Release-note script should build a mention-safe PR body file.
+
+    Args:
+        tmp_path (Path): The tmp_path argument.
+        release_notes_script (ModuleType): The release_notes_script argument.
+    """
     releases = [
         {
             "tag_name": "1.0.8",
@@ -403,10 +499,23 @@ def test_release_note_script_handles_url_errors(
     release_notes_script: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Release-note script should report network failures without a traceback."""
+    """Release-note script should report network failures without a traceback.
+
+    Args:
+        tmp_path (Path): The tmp_path argument.
+        release_notes_script (ModuleType): The release_notes_script argument.
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+    """
 
     def raise_url_error(**_: object) -> list[dict[str, object]]:
-        """Raise a urlopen-style network failure."""
+        """Raise a urlopen-style network failure.
+
+        Args:
+            _ (object): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            The returned value.
+        """
         raise release_notes_script.URLError("DNS failure")
 
     monkeypatch.setattr(release_notes_script, "fetch_releases", raise_url_error)
@@ -436,7 +545,11 @@ def test_release_note_script_handles_url_errors(
 def test_cleanup_script_closes_stale_prs_and_deletes_workflow_branches(
     cleanup_script: ModuleType,
 ) -> None:
-    """Cleanup script should close stale PRs and remove workflow-created branches."""
+    """Cleanup script should close stale PRs and remove workflow-created branches.
+
+    Args:
+        cleanup_script (ModuleType): The cleanup_script argument.
+    """
     client = FakeCleanupClient(
         open_pulls=[
             _workflow_pull(number=10),
@@ -474,7 +587,11 @@ def test_cleanup_script_closes_stale_prs_and_deletes_workflow_branches(
 
 
 def test_cleanup_script_keeps_active_update_branch(cleanup_script: ModuleType) -> None:
-    """Cleanup script should not delete the branch for the kept update PR."""
+    """Cleanup script should not delete the branch for the kept update PR.
+
+    Args:
+        cleanup_script (ModuleType): The cleanup_script argument.
+    """
     client = FakeCleanupClient(
         open_pulls=[_workflow_pull(number=12)],
         closed_pulls=[

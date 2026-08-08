@@ -62,7 +62,14 @@ from tests.utilities import patch_opnsense_client
 
 
 def _make_options_flow(config_entry: Any) -> Any:
-    """Create an options flow using Home Assistant's built-in config entry lookup."""
+    """Create an options flow using Home Assistant's built-in config entry lookup.
+
+    Returns:
+        The returned value.
+
+    Args:
+        config_entry (Any): The config_entry argument.
+    """
     if not isinstance(getattr(config_entry, "entry_id", None), str):
         config_entry.entry_id = "test-entry"
     flow = cf_mod.OPNsenseOptionsFlow()
@@ -88,10 +95,12 @@ class _CarpFlowClient:
         """Initialize fake client responses for config-flow tests.
 
         Args:
-            firmware_version: Firmware version returned by the fake client.
-            system_name: System name returned by the fake client.
-            carp_interfaces: CARP interface rows returned by the fake client.
-            validate_error: Optional validation exception raised by the fake client.
+            firmware_version (str): Firmware version returned by the fake client.
+            system_name (str): System name returned by the fake client.
+            carp_interfaces (list[dict[str, str]] | None): CARP interface rows returned by the fake
+                client.
+            validate_error (BaseException | None): Optional validation exception raised by the fake
+                client.
         """
         self.firmware_version = firmware_version
         self.system_name = system_name
@@ -114,20 +123,36 @@ class _CarpFlowClient:
         self.get_device_unique_id = AsyncMock(return_value="dev-id")
 
     async def get_host_firmware_version(self) -> str:
-        """Return fake firmware version."""
+        """Return fake firmware version.
+
+        Returns:
+            The returned value.
+        """
         return self.firmware_version
 
     async def get_system_info(self) -> dict[str, str]:
-        """Return fake responder metadata."""
+        """Return fake responder metadata.
+
+        Returns:
+            The returned value.
+        """
         return {"name": self.system_name}
 
     async def get_carp(self) -> dict[str, Any]:
-        """Return CARP endpoint payload."""
+        """Return CARP endpoint payload.
+
+        Returns:
+            The returned value.
+        """
         return {"interfaces": self.carp_interfaces}
 
 
 def _make_basic_device_input() -> dict[str, Any]:
-    """Build a minimal device-flow input payload."""
+    """Build a minimal device-flow input payload.
+
+    Returns:
+        The returned value.
+    """
     return {
         "url": "https://router.example",
         "username": "user",
@@ -138,7 +163,11 @@ def _make_basic_device_input() -> dict[str, Any]:
 
 
 def _make_basic_carp_input() -> dict[str, Any]:
-    """Build a minimal CARP-flow input payload."""
+    """Build a minimal CARP-flow input payload.
+
+    Returns:
+        The returned value.
+    """
     return {
         "url": "https://router.example",
         "username": "user",
@@ -278,7 +307,12 @@ def test_clean_and_parse_url_success_and_failure() -> None:
     ],
 )
 def test_clean_and_parse_url_normalizes_scheme_and_ports(input_url: str, expected_url: str) -> None:
-    """Normalize URL schemes and ports into their canonical form."""
+    """Normalize URL schemes and ports into their canonical form.
+
+    Args:
+        input_url (str): The input_url argument.
+        expected_url (str): The expected_url argument.
+    """
     user_input = {CONF_URL: input_url}
 
     cf_mod._clean_and_parse_url(user_input)
@@ -296,7 +330,13 @@ def test_clean_and_parse_url_normalizes_scheme_and_ports(input_url: str, expecte
 def test_url_conflict_matches_persisted_default_ports(
     make_config_entry: Callable[..., MockConfigEntry], stored_url: str, normalized_url: str
 ) -> None:
-    """Opposite-kind URL conflicts should match legacy explicit default ports."""
+    """Opposite-kind URL conflicts should match legacy explicit default ports.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        stored_url (str): The stored_url argument.
+        normalized_url (str): The normalized_url argument.
+    """
     existing_entry = make_config_entry(
         data={
             CONF_URL: stored_url,
@@ -360,15 +400,25 @@ async def test_validate_input_exception_mapping(
     exception_factory: type[aiopnsense_exceptions.OPNsenseError],
     expected: str,
 ) -> None:
-    """Ensure validate_input maps public aiopnsense exceptions to form errors."""
+    """Ensure validate_input maps public aiopnsense exceptions to form errors.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        exception_factory (type[aiopnsense_exceptions.OPNsenseError]): The exception_factory
+            argument.
+        expected (str): The expected argument.
+    """
     exc = exception_factory("boom")
 
-    async def _raiser(*args, **kwargs) -> Never:
+    async def _raiser(*args: object, **kwargs: object) -> Never:
         """Raise the prepared exception so input error mapping can be validated.
 
         Args:
-            *args: Additional positional arguments forwarded by the function.
-            **kwargs: Additional keyword arguments forwarded by the function.
+            args (object): Additional positional arguments accepted by the test double.
+            kwargs (object): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            The returned value.
 
         Raises:
             OSError: Raised with the prepared message for the current parametrized case.
@@ -385,15 +435,22 @@ async def test_validate_input_exception_mapping(
 async def test_validate_input_reraises_unmapped_opnsense_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """validate_input should re-raise OPNsense errors without form mappings."""
+    """validate_input should re-raise OPNsense errors without form mappings.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+    """
     exc = OPNsenseError("unmapped")
 
     async def _raiser(*args: object, **kwargs: object) -> Never:
         """Raise an unmapped OPNsense error.
 
         Args:
-            *args: Positional validation arguments ignored by this stub.
-            **kwargs: Keyword validation arguments ignored by this stub.
+            args (object): Additional positional arguments accepted by the test double.
+            kwargs (object): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            The returned value.
 
         Raises:
             OPNsenseError: Always raised to exercise the re-raise path.
@@ -412,13 +469,25 @@ async def test_validate_input_reraises_unmapped_opnsense_error(
 async def test_validate_input_timeout_uses_connect_timeout_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """OPNsense timeout should map to connect_timeout and redact credentials in logs."""
+    """OPNsense timeout should map to connect_timeout and redact credentials in logs.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+    """
     username = "admin"
     password = "supersecret"
     log_error = MagicMock()
 
     async def _raiser(*args: object, **kwargs: object) -> Never:
-        """Raise an OPNsense timeout that includes secrets in the message."""
+        """Raise an OPNsense timeout that includes secrets in the message.
+
+        Args:
+            args (object): Additional positional arguments accepted by the test double.
+            kwargs (object): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            The returned value.
+        """
         raise aiopnsense_exceptions.OPNsenseTimeoutError(
             f"timed out for user={username} pass={password}"
         )
@@ -457,7 +526,11 @@ async def test_async_step_user_shows_menu() -> None:
 async def test_async_step_device_creates_entry_and_sets_entry_type(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Device flow should continue to set a hardware-backed entry type."""
+    """Device flow should continue to set a hardware-backed entry type.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+    """
     client = _CarpFlowClient()
     patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
 
@@ -484,7 +557,11 @@ async def test_async_step_device_creates_entry_and_sets_entry_type(
 async def test_async_step_device_routes_to_granular_sync(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Device flow must still forward granular-sync-enabled submissions."""
+    """Device flow must still forward granular-sync-enabled submissions.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+    """
     client = _CarpFlowClient()
     patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
 
@@ -511,7 +588,12 @@ async def test_async_step_device_routes_to_granular_sync(
 async def test_async_step_device_aborts_on_duplicate_carp_url(
     monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Device flow should reject a normalized URL already used by a CARP entry."""
+    """Device flow should reject a normalized URL already used by a CARP entry.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     client = _CarpFlowClient()
     patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
 
@@ -550,7 +632,12 @@ async def test_async_step_device_aborts_on_duplicate_carp_url(
 async def test_async_step_carp_aborts_on_device_url_conflict(
     monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """CARP flow should reject a URL already used by a device entry."""
+    """CARP flow should reject a URL already used by a device entry.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     client = _CarpFlowClient()
     patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
 
@@ -594,7 +681,14 @@ async def test_async_step_carp_aborts_on_legacy_default_port_duplicate(
     stored_url: str,
     normalized_url: str,
 ) -> None:
-    """CARP setup should reject canonical duplicates stored with default ports."""
+    """CARP setup should reject canonical duplicates stored with default ports.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        stored_url (str): The stored_url argument.
+        normalized_url (str): The normalized_url argument.
+    """
     client = _CarpFlowClient()
     patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
     existing_entry = make_config_entry(
@@ -626,7 +720,12 @@ async def test_async_step_carp_aborts_on_legacy_default_port_duplicate(
 async def test_async_step_device_allows_same_url_for_non_carp_entry(
     monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Device flow should not block URL duplicates when matching entry is not CARP."""
+    """Device flow should not block URL duplicates when matching entry is not CARP.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     client = _CarpFlowClient()
     patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
 
@@ -669,7 +768,11 @@ async def test_async_step_device_allows_same_url_for_non_carp_entry(
 async def test_async_step_carp_validates_without_device_id_and_sets_entry_type(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """CARP flow should validate with device-id disabled and skip granular sync fields."""
+    """CARP flow should validate with device-id disabled and skip granular sync fields.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+    """
     client = _CarpFlowClient()
     patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
 
@@ -737,7 +840,12 @@ async def test_async_step_carp_rejects_malformed_or_blank_vip_rows(
     monkeypatch: pytest.MonkeyPatch,
     interfaces: Any,
 ) -> None:
-    """CARP validation should require a mapping row with usable VHID and subnet."""
+    """CARP validation should require a mapping row with usable VHID and subnet.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        interfaces (Any): The interfaces argument.
+    """
     client = _CarpFlowClient()
     object.__setattr__(client, "get_carp", AsyncMock(return_value={"interfaces": interfaces}))
     patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
@@ -765,7 +873,12 @@ async def test_async_step_carp_accepts_vip_identity_without_physical_interface(
     monkeypatch: pytest.MonkeyPatch,
     interface: dict[str, Any],
 ) -> None:
-    """CARP validation should accept integer/string VHIDs without interface names."""
+    """CARP validation should accept integer/string VHIDs without interface names.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        interface (dict[str, Any]): The interface argument.
+    """
     client = _CarpFlowClient()
     object.__setattr__(client, "get_carp", AsyncMock(return_value={"interfaces": [interface]}))
     patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
@@ -788,7 +901,12 @@ async def test_async_step_carp_rejects_missing_or_blank_responder_name(
     monkeypatch: pytest.MonkeyPatch,
     system_info: Any,
 ) -> None:
-    """CARP validation should require a usable responder name from system info."""
+    """CARP validation should require a usable responder name from system info.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        system_info (Any): The system_info argument.
+    """
     client = _CarpFlowClient()
     object.__setattr__(client, "get_system_info", AsyncMock(return_value=system_info))
     patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
@@ -807,7 +925,11 @@ async def test_async_step_carp_rejects_missing_or_blank_responder_name(
 async def test_async_step_carp_custom_name_does_not_waive_responder_validation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A custom entry name should not bypass required responder metadata."""
+    """A custom entry name should not bypass required responder metadata.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+    """
     client = _CarpFlowClient()
     object.__setattr__(client, "get_system_info", AsyncMock(return_value={"name": "  "}))
     patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
@@ -840,7 +962,11 @@ def test_validation_error_details_maps_carp_responder_unavailable() -> None:
 async def test_async_step_carp_rejects_below_min_firmware(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Below-minimum firmware in CARP mode should map to below_min_firmware."""
+    """Below-minimum firmware in CARP mode should map to below_min_firmware.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+    """
     client = _CarpFlowClient(
         firmware_version="0.1.0",
         validate_error=aiopnsense_exceptions.OPNsenseBelowMinFirmware("too old"),
@@ -860,7 +986,11 @@ async def test_async_step_carp_rejects_below_min_firmware(
 async def test_async_step_carp_aborts_on_duplicate_url(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """CARP flow should use abort-by-URL dedupe for existing entries."""
+    """CARP flow should use abort-by-URL dedupe for existing entries.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+    """
     client = _CarpFlowClient()
     patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
 
@@ -879,10 +1009,22 @@ async def test_async_step_carp_aborts_on_duplicate_url(
 async def test_validate_input_can_map_carp_not_configured_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """validate_input should map CARP payload errors to base key carp_not_configured."""
+    """validate_input should map CARP payload errors to base key carp_not_configured.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+    """
 
     async def _raise(*_args: object, **_kwargs: object) -> Never:
-        """Raise the CARP validation error requested by the test."""
+        """Raise the CARP validation error requested by the test.
+
+        Args:
+            _args (object): Additional positional arguments accepted by the test double.
+            _kwargs (object): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            The returned value.
+        """
         raise cf_mod.OPNsenseCarpNotConfiguredError("No CARP VIPs were returned")
 
     monkeypatch.setattr(cf_mod, "_validate_carp_client_details", _raise)
@@ -939,16 +1081,24 @@ def test_build_carp_options_schema_exposes_scan_interval_only() -> None:
 async def test_get_dt_entries_sorts_and_includes_selected(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
-    """Ensure _get_dt_entries returns selected devices first and ARP entries sorted by IP."""
+    """Ensure _get_dt_entries returns selected devices first and ARP entries sorted by IP.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        fake_client (Any): The fake_client argument.
+    """
     # Create a client class via fixture and attach a get_arp_table implementation
     client_cls = fake_client()
 
     async def _get_arp_table(self: Any, resolve_hostnames: bool = True) -> Any:
         """Return arp table.
 
+        Returns:
+            The returned value.
+
         Args:
-            self: Fake client instance.
-            resolve_hostnames: Resolve hostnames provided by pytest or the test case.
+            self (Any): The self argument.
+            resolve_hostnames (bool): Resolve hostnames provided by pytest or the test case.
         """
         return [
             {"mac": "aa:bb:cc:00:00:01", "hostname": "hostb", "ip": "192.168.1.20"},
@@ -987,19 +1137,39 @@ async def test_get_dt_entries_passes_throw_errors_to_client(
     monkeypatch: pytest.MonkeyPatch,
     fake_client: Any,
 ) -> None:
-    """_get_dt_entries should request throw-errors behavior from the API client."""
+    """_get_dt_entries should request throw-errors behavior from the API client.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        fake_client (Any): The fake_client argument.
+    """
     create_calls: dict[str, Any] = {}
 
     client_cls = fake_client()
 
     async def _get_arp_table(self: Any, resolve_hostnames: bool = True) -> list[dict[str, str]]:
-        """Return no ARP rows for deterministic entry-point assertions."""
+        """Return no ARP rows for deterministic entry-point assertions.
+
+        Returns:
+            The returned value.
+
+        Args:
+            self (Any): The self argument.
+            resolve_hostnames (bool): The resolve_hostnames argument.
+        """
         return []
 
     client_cls.get_arp_table = _get_arp_table
 
     def _init_client(**kwargs: Any) -> Any:
-        """Capture the create_opnsense_client call and return the fake client."""
+        """Capture the create_opnsense_client call and return the fake client.
+
+        Args:
+            kwargs (Any): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            The returned value.
+        """
         create_calls.update(kwargs)
         return client_cls(**kwargs)
 
@@ -1018,15 +1188,23 @@ async def test_get_dt_entries_passes_throw_errors_to_client(
 async def test_get_dt_entries_preserves_missing_selected_devices(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
-    """Selected MACs missing from ARP stay available with a fallback label."""
+    """Selected MACs missing from ARP stay available with a fallback label.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        fake_client (Any): The fake_client argument.
+    """
     client_cls = fake_client()
 
     async def _get_arp_table(self: Any, resolve_hostnames: bool = True) -> Any:
         """Return arp table.
 
+        Returns:
+            The returned value.
+
         Args:
-            self: Fake client instance.
-            resolve_hostnames: Resolve hostnames provided by pytest or the test case.
+            self (Any): The self argument.
+            resolve_hostnames (bool): Resolve hostnames provided by pytest or the test case.
         """
         return [{"mac": "11:22:33:44:55:66", "hostname": "", "ip": "10.0.0.5"}]
 
@@ -1045,7 +1223,12 @@ async def test_get_dt_entries_preserves_missing_selected_devices(
 async def test_get_dt_entries_supports_raw_arp_keys(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
-    """_get_dt_entries should parse raw aiopnsense 1.1.1 ARP keys."""
+    """_get_dt_entries should parse raw aiopnsense 1.1.1 ARP keys.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        fake_client (Any): The fake_client argument.
+    """
     client_cls = fake_client()
 
     async def _get_arp_table(self: Any, resolve_hostnames: bool = True) -> Any:
@@ -1067,7 +1250,12 @@ async def test_get_dt_entries_supports_raw_arp_keys(
 async def test_get_dt_entries_skips_non_mapping_arp_rows(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
-    """Non-mapping ARP rows should be ignored instead of raising mapping errors."""
+    """Non-mapping ARP rows should be ignored instead of raising mapping errors.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        fake_client (Any): The fake_client argument.
+    """
     client_cls = fake_client()
 
     async def _get_arp_table(self: Any, resolve_hostnames: bool = True) -> Any:
@@ -1096,19 +1284,23 @@ async def test_get_dt_entries_skips_non_mapping_arp_rows(
 
 @pytest.mark.asyncio
 async def test_get_dt_entries_closes_client(monkeypatch: pytest.MonkeyPatch) -> None:
-    """_get_dt_entries should close the client and request propagated errors."""
+    """_get_dt_entries should close the client and request propagated errors.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+    """
 
     class _Client:
         """Fake client that records closure for device-tracker entry tests."""
 
         last_instance = None
 
-        def __init__(self, *args, **kwargs) -> None:
+        def __init__(self, *args: object, **kwargs: object) -> None:
             """Capture last created client instance for close assertions.
 
             Args:
-                *args: Unused positional constructor args from factory helper.
-                **kwargs: Unused keyword constructor args from factory helper.
+                args (object): Additional positional arguments accepted by the test double.
+                kwargs (object): Additional keyword arguments accepted by the test double.
             """
             type(self).last_instance = self
             self.throw_errors = kwargs.get("throw_errors")
@@ -1118,7 +1310,7 @@ async def test_get_dt_entries_closes_client(monkeypatch: pytest.MonkeyPatch) -> 
             """Return an empty ARP table for close-path testing.
 
             Args:
-                resolve_hostnames: Hostname-resolution flag passed by caller and ignored.
+                resolve_hostnames (bool): Hostname-resolution flag passed by caller and ignored.
 
             Returns:
                 list: Empty ARP-table payload.
@@ -1139,19 +1331,23 @@ async def test_get_dt_entries_closes_client(monkeypatch: pytest.MonkeyPatch) -> 
 
 @pytest.mark.asyncio
 async def test_validate_client_details_closes_client(monkeypatch: pytest.MonkeyPatch) -> None:
-    """_validate_client_details should always close the temporary client."""
+    """_validate_client_details should always close the temporary client.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+    """
 
     class _Client:
         """Fake client that records closure for validation cleanup tests."""
 
         last_instance = None
 
-        def __init__(self, *args, **kwargs) -> None:
+        def __init__(self, *args: object, **kwargs: object) -> None:
             """Capture last created client instance for close assertions.
 
             Args:
-                *args: Unused positional constructor args from factory helper.
-                **kwargs: Unused keyword constructor args from factory helper.
+                args (object): Additional positional arguments accepted by the test double.
+                kwargs (object): Additional keyword arguments accepted by the test double.
             """
             type(self).last_instance = self
             self.validate = AsyncMock()
@@ -1179,7 +1375,8 @@ async def test_validate_client_details_closes_client(monkeypatch: pytest.MonkeyP
             """Return deterministic device identifier for validation.
 
             Args:
-                _expected_id: Expected device ID from caller and ignored in this stub.
+                _expected_id (str | None): Expected device ID from caller and ignored in this stub.
+                _kwargs (Any): Additional keyword arguments accepted by the test double.
 
             Returns:
                 str: Fake device identifier.
@@ -1207,7 +1404,11 @@ async def test_validate_client_details_closes_client(monkeypatch: pytest.MonkeyP
 async def test_validate_client_details_raises_when_device_id_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """_validate_client_details should reject clients that return no Device ID."""
+    """_validate_client_details should reject clients that return no Device ID.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+    """
 
     class _Client:
         """Fake client that returns no device ID for validation tests."""
@@ -1218,26 +1419,37 @@ async def test_validate_client_details_raises_when_device_id_missing(
             """Capture the created client instance.
 
             Args:
-                *args: Positional constructor arguments ignored by this stub.
-                **kwargs: Keyword constructor arguments ignored by this stub.
+                args (object): Additional positional arguments accepted by the test double.
+                kwargs (object): Additional keyword arguments accepted by the test double.
             """
             type(self).last_instance = self
             self.validate = AsyncMock()
             self.async_close = AsyncMock()
 
         async def get_host_firmware_version(self) -> str:
-            """Return firmware that passes minimum-version validation."""
+            """Return firmware that passes minimum-version validation.
+
+            Returns:
+                The returned value.
+            """
             return "26.1.1"
 
         async def get_system_info(self) -> dict[str, str]:
-            """Return minimal system metadata for validation."""
+            """Return minimal system metadata for validation.
+
+            Returns:
+                The returned value.
+            """
             return {"name": "OPNsense"}
 
         async def get_device_unique_id(self, expected_id: str | None = None) -> str:
             """Return an empty device identifier.
 
+            Returns:
+                The returned value.
+
             Args:
-                expected_id: Expected device ID supplied by validation and ignored.
+                expected_id (str | None): Expected device ID supplied by validation and ignored.
             """
             return ""
 
@@ -1355,7 +1567,13 @@ def test_schema_builders_preserve_submitted_values_before_stored_values() -> Non
 def test_options_schema_clamps_legacy_stored_defaults(
     stored_options: dict[str, Any], field: str, expected: int
 ) -> None:
-    """_build_options_init_schema should clamp legacy stored defaults into range."""
+    """_build_options_init_schema should clamp legacy stored defaults into range.
+
+    Args:
+        stored_options (dict[str, Any]): The stored_options argument.
+        field (str): The field argument.
+        expected (int): The expected argument.
+    """
     oschema = cf_mod._build_options_init_schema(
         user_input=None,
         stored_options=stored_options,
@@ -1370,7 +1588,11 @@ def test_options_schema_clamps_legacy_stored_defaults(
     list(OPTIONS_INIT_NUMBER_BOUNDS),
 )
 def test_options_init_schema_boundaries_match_keyed_lookup(option_key: str) -> None:
-    """Selector bounds for options should come from keyed bounds lookup values."""
+    """Selector bounds for options should come from keyed bounds lookup values.
+
+    Args:
+        option_key (str): The option_key argument.
+    """
     oschema = cf_mod._build_options_init_schema(user_input=None)
     minimum, maximum = OPTIONS_INIT_NUMBER_BOUNDS[option_key]
 
@@ -1391,7 +1613,11 @@ def test_options_init_schema_boundaries_match_keyed_lookup(option_key: str) -> N
     ],
 )
 def test_normalize_int_option_invalid_values_fall_back_to_minimum(value: Any) -> None:
-    """Invalid persisted numeric options should fall back to the selector minimum."""
+    """Invalid persisted numeric options should fall back to the selector minimum.
+
+    Args:
+        value (Any): The value argument.
+    """
     assert cf_mod._normalize_int_option(value, 5, 3600) == 5
 
 
@@ -1406,7 +1632,11 @@ def test_async_get_options_flow_returns_options_flow() -> None:
 async def test_options_flow_init_for_carp_entry_only_allows_scan_interval(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """CARP options init should render scan interval form and skip device-tracker fields."""
+    """CARP options init should render scan interval form and skip device-tracker fields.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     cfg = make_config_entry(
         data={
             CONF_URL: "https://x",
@@ -1435,7 +1665,11 @@ async def test_options_flow_init_for_carp_entry_only_allows_scan_interval(
 async def test_options_flow_init_for_carp_entry_saves_scan_interval(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Submitting CARP options should normalize scan interval and preserve unrelated options."""
+    """Submitting CARP options should normalize scan interval and preserve unrelated options.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     cfg = make_config_entry(
         data={
             CONF_URL: "https://x",
@@ -1490,7 +1724,11 @@ async def test_options_flow_init_with_user_triggers_update() -> None:
 async def test_options_flow_init_for_device_shows_resolved_description_scope(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Device options form render should include normal options-scope description placeholders."""
+    """Device options form render should include normal options-scope description placeholders.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     cfg = make_config_entry(
         data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
         options={},
@@ -1518,7 +1756,12 @@ async def test_options_flow_init_for_device_shows_resolved_description_scope(
     ],
 )
 async def test_options_flow_init_normalizes_numeric_values(field: str, value: float) -> None:
-    """Submitting numeric options should persist integer values."""
+    """Submitting numeric options should persist integer values.
+
+    Args:
+        field (str): The field argument.
+        value (float): The value argument.
+    """
     cfg = MagicMock()
     cfg.data = {CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"}
     cfg.options = {CONF_DEVICE_TRACKER_ENABLED: False}
@@ -1539,7 +1782,11 @@ async def test_options_flow_init_normalizes_numeric_values(field: str, value: fl
 async def test_options_flow_granular_sync_calls_validate_and_updates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """async_step_granular_sync should call validate_input and update entry when no errors."""
+    """async_step_granular_sync should call validate_input and update entry when no errors.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+    """
     cfg = MagicMock()
     cfg.data = {CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"}
     cfg.options = {CONF_DEVICE_TRACKER_ENABLED: False}
@@ -1547,14 +1794,20 @@ async def test_options_flow_granular_sync_calls_validate_and_updates(
     flow = _make_options_flow(cfg)
 
     # monkeypatch validate_input to return no errors
-    async def fake_validate(hass: HomeAssistant, user_input: Any, errors: Any, **kwargs) -> Any:
+    async def fake_validate(
+        hass: HomeAssistant, user_input: Any, errors: Any, **_kwargs: Any
+    ) -> Any:
         """Return an empty error mapping so the options flow can proceed.
 
+        Returns:
+            The returned value.
+
         Args:
-            hass: Home Assistant instance that owns the integration state, entity registry, and services.
-            user_input: Values submitted for the current configuration or options flow step.
-            errors: Mutable error mapping that would normally be populated by validation.
-            **kwargs: Additional validation context forwarded by the caller and ignored here.
+            hass (HomeAssistant): Home Assistant instance that owns the integration state, entity
+                registry, and services.
+            user_input (Any): Values submitted for the current configuration or options flow step.
+            errors (Any): Mutable error mapping that would normally be populated by validation.
+            _kwargs (Any): Additional keyword arguments accepted by the test double.
         """
         return {}
 
@@ -1575,7 +1828,12 @@ async def test_options_flow_granular_sync_calls_validate_and_updates(
 async def test_device_tracker_shows_form_when_no_user_input(
     monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """async_step_device_tracker should show form containing data_schema when called without user_input."""
+    """async_step_device_tracker should show form containing data_schema when called without user_input.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     cfg = make_config_entry(
         data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
         options={CONF_DEVICES: ["11:22:33:44:55:66"]},
@@ -1587,10 +1845,14 @@ async def test_device_tracker_shows_form_when_no_user_input(
     async def fake_get_dt_entries(hass: HomeAssistant, config: Any, selected_devices: Any) -> Any:
         """Return a deterministic mapping of selectable device-tracker entries.
 
+        Returns:
+            The returned value.
+
         Args:
-            hass: Home Assistant instance that owns the integration state, entity registry, and services.
-            config: Integration configuration used to build the selector entries.
-            selected_devices: MAC addresses that should remain selected in the form.
+            hass (HomeAssistant): Home Assistant instance that owns the integration state, entity
+                registry, and services.
+            config (Any): Integration configuration used to build the selector entries.
+            selected_devices (Any): MAC addresses that should remain selected in the form.
         """
         return {"11:22:33:44:55:66": "label1", "aa:bb:cc:dd:ee:ff": "label2"}
 
@@ -1630,7 +1892,14 @@ async def test_device_tracker_handles_arp_lookup_failure(
     exception_factory: type[BaseException],
     expected_base_error: str,
 ) -> None:
-    """ARP lookup failures should not abort device tracker form rendering."""
+    """ARP lookup failures should not abort device tracker form rendering.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        exception_factory (type[BaseException]): The exception_factory argument.
+        expected_base_error (str): The expected_base_error argument.
+    """
     exc = exception_factory("boom")
     cfg = make_config_entry(
         data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
@@ -1640,12 +1909,15 @@ async def test_device_tracker_handles_arp_lookup_failure(
     flow._config = dict(cfg.data)
     flow._options = dict(cfg.options)
 
-    async def _raise(*args, **kwargs) -> Never:
+    async def _raise(*args: object, **kwargs: object) -> Never:
         """Raise the parametrized exception so device-tracker lookup failures can be tested.
 
         Args:
-            *args: Additional positional arguments forwarded by the function.
-            **kwargs: Additional keyword arguments forwarded by the function.
+            args (object): Additional positional arguments accepted by the test double.
+            kwargs (object): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            The returned value.
 
         Raises:
             BaseException: Always raised to exercise error handling in the options flow.
@@ -1666,7 +1938,12 @@ async def test_device_tracker_handles_opnsense_timeout_error(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """OPNsense timeouts should keep picker rendering with the saved MAC fallback."""
+    """OPNsense timeouts should keep picker rendering with the saved MAC fallback.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     cfg = make_config_entry(
         data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
         options={CONF_DEVICES: ["AA-BB-CC-DD-EE-FF"]},
@@ -1676,7 +1953,15 @@ async def test_device_tracker_handles_opnsense_timeout_error(
     flow._options = dict(cfg.options)
 
     async def _raise_timeout(*args: object, **kwargs: object) -> Never:
-        """Raise an OPNsense timeout to exercise connect_timeout mapping."""
+        """Raise an OPNsense timeout to exercise connect_timeout mapping.
+
+        Args:
+            args (object): Additional positional arguments accepted by the test double.
+            kwargs (object): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            The returned value.
+        """
         raise aiopnsense_exceptions.OPNsenseTimeoutError("request timed out")
 
     monkeypatch.setattr(cf_mod, "_get_dt_entries", _raise_timeout)
@@ -1691,7 +1976,12 @@ async def test_device_tracker_handles_opnsense_timeout_error(
 async def test_options_flow_device_tracker_user_input(
     monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """When user submits manual devices, they should be parsed and saved to options."""
+    """When user submits manual devices, they should be parsed and saved to options.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     # Build a fake config_entry using shared factory
     config_entry = make_config_entry(
         data={
@@ -1729,7 +2019,11 @@ async def test_options_flow_device_tracker_user_input(
 async def test_options_flow_device_tracker_track_all_clears_device_list(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Track-all mode from init should persist the legacy empty-device-list behavior."""
+    """Track-all mode from init should persist the legacy empty-device-list behavior.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     config_entry = make_config_entry(
         data={
             CONF_URL: "https://x",
@@ -1761,7 +2055,12 @@ async def test_options_flow_device_tracker_track_all_clears_device_list(
 async def test_options_flow_init_selected_mode_shows_picker_step(
     monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Selected-only mode should continue to the device picker step."""
+    """Selected-only mode should continue to the device picker step.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     config_entry = make_config_entry(
         data={
             CONF_URL: "https://x",
@@ -1787,7 +2086,12 @@ async def test_options_flow_init_selected_mode_shows_picker_step(
 async def test_reconfigure_updates_entry_when_validation_succeeds(
     monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Successful reconfigure submissions should update and abort the flow."""
+    """Successful reconfigure submissions should update and abort the flow.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     config_entry = make_config_entry(
         data={
             CONF_URL: "https://x",
@@ -1839,7 +2143,12 @@ async def test_reconfigure_updates_entry_when_validation_succeeds(
 async def test_reconfigure_device_aborts_on_carp_url_conflict(
     monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Device reconfigure should reject a changed URL used by a CARP entry."""
+    """Device reconfigure should reject a changed URL used by a CARP entry.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     config_entry = make_config_entry(
         data={
             CONF_URL: "https://old.example",
@@ -1893,7 +2202,12 @@ async def test_reconfigure_device_aborts_on_carp_url_conflict(
 async def test_reconfigure_carp_updates_entry_without_unique_id_checks(
     monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """CARP reconfigure should validate with CARP mode and skip unique-id checks."""
+    """CARP reconfigure should validate with CARP mode and skip unique-id checks.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     config_entry = make_config_entry(
         data={
             CONF_URL: "https://x",
@@ -1953,7 +2267,12 @@ async def test_reconfigure_carp_updates_entry_without_unique_id_checks(
 async def test_reconfigure_carp_aborts_on_device_url_conflict(
     monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """CARP reconfigure should reject a changed URL used by a device entry."""
+    """CARP reconfigure should reject a changed URL used by a device entry.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     config_entry = make_config_entry(
         data={
             CONF_URL: "https://old-carp.example",
@@ -2005,7 +2324,12 @@ async def test_reconfigure_carp_aborts_on_device_url_conflict(
 async def test_reconfigure_carp_returns_form_on_validation_error(
     monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """CARP reconfigure validation errors should return form and not update."""
+    """CARP reconfigure validation errors should return form and not update.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     config_entry = make_config_entry(
         data={
             CONF_URL: "https://x",
@@ -2046,7 +2370,12 @@ async def test_reconfigure_carp_returns_form_on_validation_error(
 async def test_reconfigure_carp_skips_duplicate_check_when_url_unchanged(
     monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """CARP reconfigure should skip URL duplicate checks when the URL is unchanged."""
+    """CARP reconfigure should skip URL duplicate checks when the URL is unchanged.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     config_entry = make_config_entry(
         entry_id="carp-entry",
         data={
@@ -2102,7 +2431,12 @@ async def test_reconfigure_carp_skips_duplicate_check_when_url_unchanged(
 async def test_reconfigure_carp_aborts_on_normalized_duplicate_url(
     monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """CARP reconfigure should reject a normalized URL used by another entry."""
+    """CARP reconfigure should reject a normalized URL used by another entry.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     config_entry = make_config_entry(
         entry_id="carp-entry",
         data={
@@ -2155,7 +2489,14 @@ async def test_reconfigure_carp_aborts_on_legacy_default_port_duplicate(
     stored_url: str,
     normalized_url: str,
 ) -> None:
-    """CARP reconfigure should reject another canonical legacy URL duplicate."""
+    """CARP reconfigure should reject another canonical legacy URL duplicate.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        stored_url (str): The stored_url argument.
+        normalized_url (str): The normalized_url argument.
+    """
     config_entry = make_config_entry(
         entry_id="carp-entry",
         data={
@@ -2217,7 +2558,14 @@ async def test_reconfigure_carp_ignores_own_legacy_default_port_url(
     stored_url: str,
     normalized_url: str,
 ) -> None:
-    """CARP reconfigure should not treat its canonical legacy URL as a duplicate."""
+    """CARP reconfigure should not treat its canonical legacy URL as a duplicate.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        stored_url (str): The stored_url argument.
+        normalized_url (str): The normalized_url argument.
+    """
     config_entry = make_config_entry(
         entry_id="carp-entry",
         data={
@@ -2259,7 +2607,12 @@ async def test_reconfigure_carp_ignores_own_legacy_default_port_url(
 async def test_reconfigure_carp_preserves_self_url_when_no_duplicate(
     monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """CARP reconfigure should keep its own normalized URL when no other entry matches."""
+    """CARP reconfigure should keep its own normalized URL when no other entry matches.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     config_entry = make_config_entry(
         entry_id="carp-entry",
         data={
@@ -2303,13 +2656,21 @@ async def test_reconfigure_carp_preserves_self_url_when_no_duplicate(
 async def test_validate_input_granular_sync_uses_native_validation_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Granular sync flow should validate firmware without removed backend checks."""
+    """Granular sync flow should validate firmware without removed backend checks.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+    """
 
     class FakeClient:
         """Client stub that asserts removed backend checks are not called."""
 
         def __init__(self, firmware_version: str) -> None:
-            """Initialize the fake client with a known firmware version."""
+            """Initialize the fake client with a known firmware version.
+
+            Args:
+                firmware_version (str): The firmware_version argument.
+            """
             self.firmware_version = firmware_version
             self.is_plugin_installed = AsyncMock(
                 side_effect=AssertionError("legacy plugin check called")
@@ -2321,17 +2682,33 @@ async def test_validate_input_granular_sync_uses_native_validation_only(
             self.async_close = AsyncMock()
 
         async def get_host_firmware_version(self) -> str:
-            """Return the fake firmware version."""
+            """Return the fake firmware version.
+
+            Returns:
+                The returned value.
+            """
             return self.firmware_version
 
         async def get_system_info(self) -> dict[str, str]:
-            """Return static system metadata for validation."""
+            """Return static system metadata for validation.
+
+            Returns:
+                The returned value.
+            """
             return {"name": "OPNsense"}
 
         async def get_device_unique_id(
             self, _expected_id: str | None = None, **_kwargs: Any
         ) -> str:
-            """Return a stable device unique id."""
+            """Return a stable device unique id.
+
+            Returns:
+                The returned value.
+
+            Args:
+                _expected_id (str | None): The _expected_id argument.
+                _kwargs (Any): Additional keyword arguments accepted by the test double.
+            """
             return "dev-01"
 
     client = FakeClient("25.1")

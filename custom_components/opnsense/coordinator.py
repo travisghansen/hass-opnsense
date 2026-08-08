@@ -70,13 +70,13 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         """Initialize the coordinator for standard or device-tracker polling.
 
         Args:
-            hass: Home Assistant instance.
-            client: OPNsense API client used to fetch data.
-            name: Coordinator name shown in logs.
-            update_interval: Polling interval for coordinator refreshes.
-            device_unique_id: Expected router unique ID from the config entry.
-            config_entry: Config entry that owns this coordinator.
-            device_tracker_coordinator: Whether this coordinator handles device-tracker data.
+            hass (HomeAssistant): Home Assistant instance.
+            client (OPNsenseClient): OPNsense API client used to fetch data.
+            name (str): Coordinator name shown in logs.
+            update_interval (timedelta): Polling interval for coordinator refreshes.
+            device_unique_id (str | None): Expected router unique ID from the config entry.
+            config_entry (ConfigEntry): Config entry that owns this coordinator.
+            device_tracker_coordinator (bool): Whether this coordinator handles device-tracker data.
 
         Raises:
             ValueError: `config_entry` is required but was not provided.
@@ -127,7 +127,8 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         """Fetch state payloads for the requested category call definitions.
 
         Args:
-            categories: Sequence of category mappings with `function` and `state_key` entries.
+            categories (list): Sequence of category mappings with `function` and `state_key`
+                entries.
 
         Returns:
             dict[str, Any]: State mapping keyed by each category `state_key`.
@@ -353,7 +354,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         """Calculate VPN byte-rate metrics for OpenVPN and WireGuard instances.
 
         Args:
-            elapsed_time: Seconds between current and previous coordinator updates.
+            elapsed_time (float): Seconds between current and previous coordinator updates.
         """
         for vpn_type in ("openvpn", "wireguard"):
             cs = ["servers"]
@@ -400,7 +401,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         """Calculate interface packet/byte rate metrics from counter deltas.
 
         Args:
-            elapsed_time: Seconds between current and previous coordinator updates.
+            elapsed_time (float): Seconds between current and previous coordinator updates.
         """
         interfaces = dict_get(self._state, "interfaces", {}) or {}
         if not isinstance(interfaces, Mapping):
@@ -509,10 +510,10 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         """Calculate a rounded per-second rate and derived metric name.
 
         Args:
-            prop_name: Counter property name, such as `inbytes` or `inpkts`.
-            elapsed_time: Seconds elapsed between counter samples.
-            current_parent_value: Current counter value.
-            previous_parent_value: Previous counter value.
+            prop_name (str): Counter property name, such as `inbytes` or `inpkts`.
+            elapsed_time (float): Seconds elapsed between counter samples.
+            current_parent_value (float): Current counter value.
+            previous_parent_value (float): Previous counter value.
 
         Returns:
             tuple[str, int]: Tuple of derived property name and rounded rate value.

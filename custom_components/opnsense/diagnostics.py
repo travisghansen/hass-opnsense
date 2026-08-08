@@ -118,7 +118,14 @@ _SPEEDTEST_LAST_METRICS: frozenset[str] = frozenset({"download", "upload", "late
 
 
 def _normalize_field(field_name: object) -> str:
-    """Normalize a payload field name for sensitivity matching."""
+    """Normalize a payload field name for sensitivity matching.
+
+    Returns:
+        The returned value.
+
+    Args:
+        field_name (object): The field_name argument.
+    """
     if not isinstance(field_name, str):
         return ""
     return (
@@ -132,7 +139,14 @@ def _normalize_field(field_name: object) -> str:
 
 
 def _is_secret_field(field_name: str) -> bool:
-    """Return whether a normalized field contains a secret value."""
+    """Return whether a normalized field contains a secret value.
+
+    Returns:
+        The returned value.
+
+    Args:
+        field_name (str): The field_name argument.
+    """
     if field_name in _NON_SECRET_KEY_FIELDS:
         return False
     return field_name in _SECRET_FIELDS or any(
@@ -141,19 +155,41 @@ def _is_secret_field(field_name: str) -> bool:
 
 
 def _is_sensitive_field(field_name: str) -> bool:
-    """Return whether a normalized field contains a private identifier."""
+    """Return whether a normalized field contains a private identifier.
+
+    Returns:
+        The returned value.
+
+    Args:
+        field_name (str): The field_name argument.
+    """
     return field_name in _SENSITIVE_FIELDS or any(
         field_name.endswith(f"_{sensitive}") for sensitive in _SENSITIVE_FIELDS
     )
 
 
 def _is_alias_metadata_field(field_name: str) -> bool:
-    """Return whether a normalized field contains OPNsense alias display metadata."""
+    """Return whether a normalized field contains OPNsense alias display metadata.
+
+    Returns:
+        The returned value.
+
+    Args:
+        field_name (str): The field_name argument.
+    """
     return field_name.startswith("alias_meta_")
 
 
 def _is_speedtest_server_field(path: tuple[str, ...], field_name: str) -> bool:
-    """Return whether a field is a latest speed-test metric's server description."""
+    """Return whether a field is a latest speed-test metric's server description.
+
+    Returns:
+        The returned value.
+
+    Args:
+        path (tuple[str, ...]): The path argument.
+        field_name (str): The field_name argument.
+    """
     return (
         field_name == "server"
         and len(path) >= 3
@@ -164,7 +200,14 @@ def _is_speedtest_server_field(path: tuple[str, ...], field_name: str) -> bool:
 
 
 def _is_safe_ipv4(value: str) -> bool:
-    """Return whether a value is an allowed local IPv4 address or interface."""
+    """Return whether a value is an allowed local IPv4 address or interface.
+
+    Returns:
+        The returned value.
+
+    Args:
+        value (str): The value argument.
+    """
     try:
         address = ipaddress.ip_interface(value).ip
     except ValueError:
@@ -175,7 +218,14 @@ def _is_safe_ipv4(value: str) -> bool:
 
 
 def _is_safe_ipv6(value: str) -> bool:
-    """Return whether a value is an allowed local IPv6 address or interface."""
+    """Return whether a value is an allowed local IPv6 address or interface.
+
+    Returns:
+        The returned value.
+
+    Args:
+        value (str): The value argument.
+    """
     try:
         address = ipaddress.ip_interface(value).ip
     except ValueError:
@@ -186,14 +236,28 @@ def _is_safe_ipv6(value: str) -> bool:
 
 
 def _is_safe_network_identifier(value: object) -> bool:
-    """Return whether a mapping identifier is safe and useful in diagnostics."""
+    """Return whether a mapping identifier is safe and useful in diagnostics.
+
+    Returns:
+        The returned value.
+
+    Args:
+        value (object): The value argument.
+    """
     return isinstance(value, str) and (
         _MAC_PATTERN.fullmatch(value) is not None or _is_safe_ipv4(value) or _is_safe_ipv6(value)
     )
 
 
 def _validated_ipv6_candidate(candidate: str) -> tuple[str, str] | None:
-    """Return a valid IPv6 candidate and any trailing sentence punctuation."""
+    """Return a valid IPv6 candidate and any trailing sentence punctuation.
+
+    Returns:
+        The returned value.
+
+    Args:
+        candidate (str): The candidate argument.
+    """
     try:
         interface = ipaddress.ip_interface(candidate)
     except ValueError:
@@ -214,7 +278,14 @@ def _validated_ipv6_candidate(candidate: str) -> tuple[str, str] | None:
 
 
 def _coordinator_diagnostics(coordinator: Any | None) -> dict[str, Any] | None:
-    """Build diagnostics from an existing coordinator without refreshing it."""
+    """Build diagnostics from an existing coordinator without refreshing it.
+
+    Returns:
+        The returned value.
+
+    Args:
+        coordinator (Any | None): The coordinator argument.
+    """
     if coordinator is None:
         return None
 
@@ -240,7 +311,12 @@ class _Pseudonymizer:
     counters: dict[str, int] = field(default_factory=dict)
 
     def register(self, kind: str, value: object) -> None:
-        """Register a sensitive value for consistent replacement."""
+        """Register a sensitive value for consistent replacement.
+
+        Args:
+            kind (str): The kind argument.
+            value (object): The value argument.
+        """
         if isinstance(value, bool) or not isinstance(
             value, (str, int, float, date, datetime, time)
         ):
@@ -257,7 +333,14 @@ class _Pseudonymizer:
             self.embedded_identifier_aliases[value] = self.aliases[alias_key]
 
     def alias_for(self, value: object) -> str | None:
-        """Return the registered alias for a supported scalar value."""
+        """Return the registered alias for a supported scalar value.
+
+        Returns:
+            The returned value.
+
+        Args:
+            value (object): The value argument.
+        """
         if isinstance(value, bool) or not isinstance(
             value, (str, int, float, date, datetime, time)
         ):
@@ -267,7 +350,11 @@ class _Pseudonymizer:
         return self.aliases.get((type(value), value))
 
     def register_speedtest_server(self, value: str) -> None:
-        """Register a speed-test server description without affecting other fields."""
+        """Register a speed-test server description without affecting other fields.
+
+        Args:
+            value (str): The value argument.
+        """
         if value in self.speedtest_server_aliases:
             return
         self.counters["speedtest_server"] = self.counters.get("speedtest_server", 0) + 1
@@ -276,7 +363,11 @@ class _Pseudonymizer:
         )
 
     def register_key(self, value: object) -> None:
-        """Register a dynamic mapping key without rendering its value."""
+        """Register a dynamic mapping key without rendering its value.
+
+        Args:
+            value (object): The value argument.
+        """
         if isinstance(value, str):
             self._collect_detected_values(value)
         if (
@@ -293,7 +384,11 @@ class _Pseudonymizer:
             self.key_aliases[token] = f"**REDACTED_KEY_{self.counters['key']}**"
 
     def collect_secret_literals(self, value: Any) -> None:
-        """Collect exact credentials anywhere in raw diagnostics for free-text replacement."""
+        """Collect exact credentials anywhere in raw diagnostics for free-text replacement.
+
+        Args:
+            value (Any): The value argument.
+        """
         if isinstance(value, Mapping):
             for key, item in value.items():
                 if _is_secret_field(_normalize_field(key)):
@@ -306,7 +401,11 @@ class _Pseudonymizer:
                 self.collect_secret_literals(item)
 
     def _register_secret_literals(self, value: Any) -> None:
-        """Register string literals contained by a secret field."""
+        """Register string literals contained by a secret field.
+
+        Args:
+            value (Any): The value argument.
+        """
         if isinstance(value, str):
             if value not in ("", REDACTED):
                 self.register("secret", value)
@@ -321,12 +420,26 @@ class _Pseudonymizer:
                 self._register_secret_literals(item)
 
     def key_alias_for(self, value: object) -> str:
-        """Return the distinct alias registered for a dynamic mapping key."""
+        """Return the distinct alias registered for a dynamic mapping key.
+
+        Returns:
+            The returned value.
+
+        Args:
+            value (object): The value argument.
+        """
         return self.alias_for(value) or self.key_aliases[self._key_token(value)]
 
     @staticmethod
     def _key_token(value: object) -> tuple[object, object]:
-        """Build a non-rendering, type-aware token for a dynamic mapping key."""
+        """Build a non-rendering, type-aware token for a dynamic mapping key.
+
+        Returns:
+            The returned value.
+
+        Args:
+            value (object): The value argument.
+        """
         if isinstance(value, float) and not math.isfinite(value):
             if math.isnan(value):
                 return (float, "nan")
@@ -342,7 +455,13 @@ class _Pseudonymizer:
         force_sensitive: bool = False,
         path: tuple[str, ...] = (),
     ) -> None:
-        """Collect sensitive values recursively before replacing mapping keys."""
+        """Collect sensitive values recursively before replacing mapping keys.
+
+        Args:
+            value (Any): The value argument.
+            force_sensitive (bool): The force_sensitive argument.
+            path (tuple[str, ...]): The path argument.
+        """
         if isinstance(value, Enum):
             self.collect(
                 value.value,
@@ -407,7 +526,16 @@ class _Pseudonymizer:
         force_sensitive: bool = False,
         path: tuple[str, ...] = (),
     ) -> Any:
-        """Return a recursively pseudonymized, JSON-compatible copy."""
+        """Return a recursively pseudonymized, JSON-compatible copy.
+
+        Returns:
+            The returned value.
+
+        Args:
+            value (Any): The value argument.
+            force_sensitive (bool): The force_sensitive argument.
+            path (tuple[str, ...]): The path argument.
+        """
         if isinstance(value, Enum):
             return self.sanitize(
                 value.value,
@@ -472,7 +600,15 @@ class _Pseudonymizer:
 
     @staticmethod
     def _should_redact_key(value: object, *, force_sensitive: bool) -> bool:
-        """Return whether a mapping key needs replacement for privacy or JSON safety."""
+        """Return whether a mapping key needs replacement for privacy or JSON safety.
+
+        Returns:
+            The returned value.
+
+        Args:
+            value (object): The value argument.
+            force_sensitive (bool): The force_sensitive argument.
+        """
         unsupported = not isinstance(value, (str, int, float, bool, type(None)))
         nonfinite = isinstance(value, float) and not math.isfinite(value)
         return (
@@ -480,7 +616,11 @@ class _Pseudonymizer:
         )
 
     def _collect_detected_values(self, value: str) -> None:
-        """Collect formatted identifiers embedded in an arbitrary string."""
+        """Collect formatted identifiers embedded in an arbitrary string.
+
+        Args:
+            value (str): The value argument.
+        """
         for pattern, kind in (
             (_URL_PATTERN, "url"),
             (_EMAIL_PATTERN, "email"),
@@ -517,7 +657,15 @@ class _Pseudonymizer:
             self.register("ipv6", value)
 
     def _kind_for_field(self, field_name: str, value: object) -> str | None:
-        """Return a useful placeholder type for a sensitive field."""
+        """Return a useful placeholder type for a sensitive field.
+
+        Returns:
+            The returned value.
+
+        Args:
+            field_name (str): The field_name argument.
+            value (object): The value argument.
+        """
         if isinstance(value, str):
             if _MAC_PATTERN.fullmatch(value):
                 return None
@@ -546,7 +694,14 @@ class _Pseudonymizer:
         return "value"
 
     def _replace_embedded(self, value: str) -> str:
-        """Replace detected formatted identifiers without scanning unrelated aliases."""
+        """Replace detected formatted identifiers without scanning unrelated aliases.
+
+        Returns:
+            The returned value.
+
+        Args:
+            value (str): The value argument.
+        """
         result = value
         for pattern in (_URL_PATTERN, _EMAIL_PATTERN):
             result = pattern.sub(
@@ -554,7 +709,14 @@ class _Pseudonymizer:
             )
 
         def _replace_ip(match: re.Match[str]) -> str:
-            """Replace a candidate only when it is a valid IP address or interface."""
+            """Replace a candidate only when it is a valid IP address or interface.
+
+            Returns:
+                The returned value.
+
+            Args:
+                match (re.Match[str]): The match argument.
+            """
             candidate = match.group(0)
             try:
                 ipaddress.ip_interface(candidate)
@@ -565,7 +727,14 @@ class _Pseudonymizer:
         result = _IPV4_PATTERN.sub(_replace_ip, result)
 
         def _replace_ipv6(match: re.Match[str]) -> str:
-            """Replace a valid IPv6 core while preserving sentence punctuation."""
+            """Replace a valid IPv6 core while preserving sentence punctuation.
+
+            Returns:
+                The returned value.
+
+            Args:
+                match (re.Match[str]): The match argument.
+            """
             candidate = match.group(0)
             validated = _validated_ipv6_candidate(candidate)
             if validated is None:
@@ -587,7 +756,14 @@ class _Pseudonymizer:
         return result
 
     def _replace_scalar(self, value: Any) -> Any:
-        """Replace registered values in a scalar while preserving its type otherwise."""
+        """Replace registered values in a scalar while preserving its type otherwise.
+
+        Returns:
+            The returned value.
+
+        Args:
+            value (Any): The value argument.
+        """
         if isinstance(value, str):
             alias = self.alias_for(value)
             if alias is not None:
@@ -605,7 +781,15 @@ class _Pseudonymizer:
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: ConfigEntry[OPNsenseData]
 ) -> dict[str, Any]:
-    """Return privacy-safe diagnostics for an OPNsense config entry."""
+    """Return privacy-safe diagnostics for an OPNsense config entry.
+
+    Returns:
+        The returned value.
+
+    Args:
+        hass (HomeAssistant): The hass argument.
+        entry (ConfigEntry[OPNsenseData]): The entry argument.
+    """
     runtime_data = getattr(entry, "runtime_data", None)
     diagnostics: dict[str, Any] = {
         "config_entry": entry.as_dict(),

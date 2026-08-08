@@ -29,12 +29,26 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 def _is_valid_service_row(service: Any) -> bool:
-    """Return whether a service row can be evaluated by the compiler."""
+    """Return whether a service row can be evaluated by the compiler.
+
+    Returns:
+        The returned value.
+
+    Args:
+        service (Any): The service argument.
+    """
     return isinstance(service, Mapping) and _service_identity(service) is not None
 
 
 def _service_identity(service: Mapping[str, Any]) -> str | None:
-    """Return a stable service identity from a row when available."""
+    """Return a stable service identity from a row when available.
+
+    Returns:
+        The returned value.
+
+    Args:
+        service (Mapping[str, Any]): The service argument.
+    """
     service_id = service.get("id")
     if isinstance(service_id, str):
         service_id = service_id.strip()
@@ -51,17 +65,39 @@ def _service_identity(service: Mapping[str, Any]) -> str | None:
 
 
 def _is_valid_vpn_switch_row(instance: Any) -> bool:
-    """Return whether a VPN instance row can produce a switch."""
+    """Return whether a VPN instance row can produce a switch.
+
+    Returns:
+        The returned value.
+
+    Args:
+        instance (Any): The instance argument.
+    """
     return isinstance(instance, MutableMapping) and instance.get("enabled") is not None
 
 
 def _is_valid_unbound_row(dnsbl: Any) -> bool:
-    """Return whether an Unbound blocklist row can produce a switch."""
+    """Return whether an Unbound blocklist row can produce a switch.
+
+    Returns:
+        The returned value.
+
+    Args:
+        dnsbl (Any): The dnsbl argument.
+    """
     return isinstance(dnsbl, MutableMapping) and bool(dnsbl)
 
 
 def _is_valid_firewall_rule_row(rule_key: Any, rule: Any) -> bool:
-    """Return whether a firewall rule row can produce a switch."""
+    """Return whether a firewall rule row can produce a switch.
+
+    Returns:
+        The returned value.
+
+    Args:
+        rule_key (Any): The rule_key argument.
+        rule (Any): The rule argument.
+    """
     if not isinstance(rule, MutableMapping):
         return False
     rule_id = firewall_rule_id_from_payload(rule_key, rule)
@@ -70,7 +106,15 @@ def _is_valid_firewall_rule_row(rule_key: Any, rule: Any) -> bool:
 
 
 def _is_valid_nat_rule_row(rule_key: Any, rule: Any) -> bool:
-    """Return whether a NAT rule row can produce a switch."""
+    """Return whether a NAT rule row can produce a switch.
+
+    Returns:
+        The returned value.
+
+    Args:
+        rule_key (Any): The rule_key argument.
+        rule (Any): The rule argument.
+    """
     if not isinstance(rule, MutableMapping):
         return False
     rule_id = firewall_rule_id_from_payload(rule_key, rule)
@@ -79,7 +123,14 @@ def _is_valid_nat_rule_row(rule_key: Any, rule: Any) -> bool:
 
 
 def _vpn_switch_rows_are_complete(state: MutableMapping[str, Any]) -> bool:
-    """Return whether every VPN row consumed by the switch compiler is valid."""
+    """Return whether every VPN row consumed by the switch compiler is valid.
+
+    Returns:
+        The returned value.
+
+    Args:
+        state (MutableMapping[str, Any]): The state argument.
+    """
     for vpn_type in ("openvpn", "wireguard"):
         for group in ("clients", "servers"):
             instances = dict_get(state, f"{vpn_type}.{group}", {})
@@ -99,10 +150,10 @@ def _create_switch[EntityT: OPNsenseSwitch](
     """Create a switch entity from a description.
 
     Args:
-        entity_cls: Switch entity class to instantiate.
-        config_entry: Config entry owning the entity.
-        coordinator: Shared OPNsense data coordinator.
-        entity_description: Description that defines the entity identity.
+        entity_cls (type[EntityT]): Switch entity class to instantiate.
+        config_entry (ConfigEntry): Config entry owning the entity.
+        coordinator (OPNsenseDataUpdateCoordinator): Shared OPNsense data coordinator.
+        entity_description (SwitchEntityDescription): Description that defines the entity identity.
 
     Returns:
         A configured switch entity instance.
@@ -118,7 +169,7 @@ def _build_service_switch_description(service: Mapping[str, Any]) -> SwitchEntit
     """Build the service switch description.
 
     Args:
-        service: Service record from the OPNsense state payload.
+        service (Mapping[str, Any]): Service record from the OPNsense state payload.
 
     Returns:
         A switch entity description for the service status toggle.
@@ -144,10 +195,10 @@ def _build_vpn_switch_description(
     """Build the VPN switch description.
 
     Args:
-        vpn_type: VPN family name, such as ``openvpn`` or ``wireguard``.
-        clients_servers: Section name identifying clients or servers.
-        uuid: Unique instance identifier from OPNsense.
-        instance: Instance metadata used to build the display name.
+        vpn_type (str): VPN family name, such as ``openvpn`` or ``wireguard``.
+        clients_servers (str): Section name identifying clients or servers.
+        uuid (str): Unique instance identifier from OPNsense.
+        instance (Mapping[str, Any]): Instance metadata used to build the display name.
 
     Returns:
         A switch entity description for the VPN instance.
@@ -206,8 +257,8 @@ def _build_unbound_switch_description(
     """Build an extended Unbound blocklist switch description.
 
     Args:
-        uuid: DNSBL identifier from OPNsense.
-        dnsbl: DNSBL rule data used for naming.
+        uuid (str): DNSBL identifier from OPNsense.
+        dnsbl (Mapping[str, Any]): DNSBL rule data used for naming.
 
     Returns:
         A switch entity description for the DNSBL rule.
@@ -228,8 +279,8 @@ def _build_firewall_rule_switch_description(
     """Build the firewall rule switch description.
 
     Args:
-        rule_id: Firewall rule identifier used for entity identity and toggling.
-        rule: Firewall rule data from the OPNsense payload.
+        rule_id (str): Firewall rule identifier used for entity identity and toggling.
+        rule (Mapping[str, Any]): Firewall rule data from the OPNsense payload.
 
     Returns:
         A switch entity description for the firewall rule toggle.
@@ -257,10 +308,10 @@ def _build_nat_rule_switch_description(
     """Build a NAT rule switch description.
 
     Args:
-        nat_rule_type: NAT section name such as ``source_nat`` or ``d_nat``.
-        name_prefix: Human-readable prefix for the entity name.
-        rule: NAT rule data from the OPNsense payload.
-        rule_id: NAT rule identifier used for entity identity and toggling.
+        nat_rule_type (str): NAT section name such as ``source_nat`` or ``d_nat``.
+        name_prefix (str): Human-readable prefix for the entity name.
+        rule (Mapping[str, Any]): NAT rule data from the OPNsense payload.
+        rule_id (str): NAT rule identifier used for entity identity and toggling.
 
     Returns:
         A switch entity description for the NAT rule toggle.
@@ -282,9 +333,9 @@ async def _compile_service_switches(
     """Compile service switches from OPNsense state.
 
     Args:
-        config_entry: The Home Assistant config entry.
-        coordinator: The data update coordinator.
-        state: The current state data from OPNsense.
+        config_entry (ConfigEntry): The Home Assistant config entry.
+        coordinator (OPNsenseDataUpdateCoordinator): The data update coordinator.
+        state (MutableMapping[str, Any]): The current state data from OPNsense.
 
     Returns:
         list: A list of OPNsenseServiceSwitch entities.
@@ -317,9 +368,9 @@ async def _compile_vpn_switches(
     """Compile VPN switches from OPNsense state.
 
     Args:
-        config_entry: The Home Assistant config entry.
-        coordinator: The data update coordinator.
-        state: The current state data from OPNsense.
+        config_entry (ConfigEntry): The Home Assistant config entry.
+        coordinator (OPNsenseDataUpdateCoordinator): The data update coordinator.
+        state (MutableMapping[str, Any]): The current state data from OPNsense.
 
     Returns:
         list: A list of OPNsenseVPNSwitch entities.
@@ -355,9 +406,9 @@ async def _compile_carp_maintenance_switch(
     """Compile the CARP persistent maintenance mode switch.
 
     Args:
-        config_entry: The Home Assistant config entry.
-        coordinator: The data update coordinator.
-        state: The current state data from OPNsense.
+        config_entry (ConfigEntry): The Home Assistant config entry.
+        coordinator (OPNsenseDataUpdateCoordinator): The data update coordinator.
+        state (MutableMapping[str, Any]): The current state data from OPNsense.
 
     Returns:
         list: A list containing one OPNsenseCarpMaintenanceSwitch entity when
@@ -385,9 +436,9 @@ async def _compile_unbound_switches(
     """Compile Unbound blocklist switches from OPNsense state.
 
     Args:
-        config_entry: The Home Assistant config entry.
-        coordinator: The data update coordinator.
-        state: The current state data from OPNsense.
+        config_entry (ConfigEntry): The Home Assistant config entry.
+        coordinator (OPNsenseDataUpdateCoordinator): The data update coordinator.
+        state (MutableMapping[str, Any]): The current state data from OPNsense.
 
     Returns:
         list: A list of legacy or extended OPNsense unbound blocklist switch entities.
@@ -435,9 +486,9 @@ async def _compile_firewall_rules_switches(
     """Compile firewall rule switches from OPNsense state.
 
     Args:
-        config_entry: The Home Assistant config entry.
-        coordinator: The data update coordinator.
-        state: The current state data from OPNsense.
+        config_entry (ConfigEntry): The Home Assistant config entry.
+        coordinator (OPNsenseDataUpdateCoordinator): The data update coordinator.
+        state (MutableMapping[str, Any]): The current state data from OPNsense.
 
     Returns:
         list: A list of OPNsenseFirewallRuleSwitch entities.
@@ -474,11 +525,11 @@ async def _compile_nat_rule_switches(
     """Compile NAT rule switches from OPNsense state.
 
     Args:
-        config_entry: Config entry owning the entities.
-        coordinator: Shared OPNsense data coordinator.
-        state: Current OPNsense state payload.
-        nat_rule_type: NAT section name such as ``source_nat`` or ``d_nat``.
-        name_prefix: Human-readable prefix for the generated entities.
+        config_entry (ConfigEntry): Config entry owning the entities.
+        coordinator (OPNsenseDataUpdateCoordinator): Shared OPNsense data coordinator.
+        state (MutableMapping[str, Any]): Current OPNsense state payload.
+        nat_rule_type (str): NAT section name such as ``source_nat`` or ``d_nat``.
+        name_prefix (str): Human-readable prefix for the generated entities.
 
     Returns:
         A list of NAT rule switch entities.
@@ -513,9 +564,9 @@ async def _compile_nat_source_rules_switches(
     """Compile NAT source rule switches from OPNsense state.
 
     Args:
-        config_entry: The Home Assistant config entry.
-        coordinator: The data update coordinator.
-        state: The current state data from OPNsense.
+        config_entry (ConfigEntry): The Home Assistant config entry.
+        coordinator (OPNsenseDataUpdateCoordinator): The data update coordinator.
+        state (MutableMapping[str, Any]): The current state data from OPNsense.
 
     Returns:
         list: A list of OPNsenseNATRuleSwitch entities for source NAT rules.
@@ -533,9 +584,9 @@ async def _compile_nat_destination_rules_switches(
     """Compile NAT destination rule switches from OPNsense state.
 
     Args:
-        config_entry: The Home Assistant config entry.
-        coordinator: The data update coordinator.
-        state: The current state data from OPNsense.
+        config_entry (ConfigEntry): The Home Assistant config entry.
+        coordinator (OPNsenseDataUpdateCoordinator): The data update coordinator.
+        state (MutableMapping[str, Any]): The current state data from OPNsense.
 
     Returns:
         list: A list of OPNsenseNATRuleSwitch entities for destination NAT rules.
@@ -553,9 +604,9 @@ async def _compile_nat_one_to_one_rules_switches(
     """Compile NAT one-to-one rule switches from OPNsense state.
 
     Args:
-        config_entry: The Home Assistant config entry.
-        coordinator: The data update coordinator.
-        state: The current state data from OPNsense.
+        config_entry (ConfigEntry): The Home Assistant config entry.
+        coordinator (OPNsenseDataUpdateCoordinator): The data update coordinator.
+        state (MutableMapping[str, Any]): The current state data from OPNsense.
 
     Returns:
         list: A list of OPNsenseNATRuleSwitch entities for one-to-one NAT rules.
@@ -573,9 +624,9 @@ async def _compile_nat_npt_rules_switches(
     """Compile NAT NPTv6 rule switches from OPNsense state.
 
     Args:
-        config_entry: The Home Assistant config entry.
-        coordinator: The data update coordinator.
-        state: The current state data from OPNsense.
+        config_entry (ConfigEntry): The Home Assistant config entry.
+        coordinator (OPNsenseDataUpdateCoordinator): The data update coordinator.
+        state (MutableMapping[str, Any]): The current state data from OPNsense.
 
     Returns:
         list: A list of OPNsenseNATRuleSwitch entities for NPTv6 NAT rules.
@@ -591,9 +642,9 @@ async def async_setup_entry(
     """Set up the OPNsense switches.
 
     Args:
-        hass: The Home Assistant instance.
-        config_entry: The config entry for this integration.
-        async_add_entities: Callback to add entities to Home Assistant.
+        hass (HomeAssistant): The Home Assistant instance.
+        config_entry (ConfigEntry): The config entry for this integration.
+        async_add_entities (AddEntitiesCallback): Callback to add entities to Home Assistant.
     """
     coordinator: OPNsenseDataUpdateCoordinator = getattr(config_entry.runtime_data, COORDINATOR)
     state: dict[str, Any] = coordinator.data
@@ -707,9 +758,9 @@ class OPNsenseSwitch(OPNsenseEntity, SwitchEntity):
         """Initialize OPNsense Switch entities.
 
         Args:
-            config_entry: The Home Assistant config entry.
-            coordinator: The data update coordinator.
-            entity_description: The entity description.
+            config_entry (ConfigEntry): The Home Assistant config entry.
+            coordinator (OPNsenseDataUpdateCoordinator): The data update coordinator.
+            entity_description (SwitchEntityDescription): The entity description.
         """
         name_suffix: str | None = (
             entity_description.name if isinstance(entity_description.name, str) else None
@@ -743,7 +794,7 @@ class OPNsenseSwitch(OPNsenseEntity, SwitchEntity):
         """Set whether to delay coordinator updates.
 
         Args:
-            value: True to delay updates, False to allow them.
+            value (bool): True to delay updates, False to allow them.
         """
         if value and not self._delay_update:
             self._delay_update = True
@@ -760,11 +811,7 @@ class OPNsenseSwitch(OPNsenseEntity, SwitchEntity):
             self._delay_update_remove()
 
         def _clear(_: Any) -> None:
-            """Clear the update delay after the timer fires.
-
-            Args:
-                _: Timer callback timestamp, unused.
-            """
+            """Clear the update delay after the timer fires."""
             self._delay_update = False
             self._delay_update_remove = None
 
@@ -785,9 +832,10 @@ class OPNsenseCarpMaintenanceSwitch(OPNsenseSwitch):
         """Initialize CARP maintenance switch state.
 
         Args:
-            config_entry: Config entry owning the entity.
-            coordinator: Shared OPNsense data coordinator.
-            entity_description: Description that defines the entity identity.
+            config_entry (ConfigEntry): Config entry owning the entity.
+            coordinator (OPNsenseDataUpdateCoordinator): Shared OPNsense data coordinator.
+            entity_description (SwitchEntityDescription): Description that defines the entity
+                identity.
         """
         super().__init__(
             config_entry=config_entry,
@@ -859,7 +907,7 @@ class OPNsenseCarpMaintenanceSwitch(OPNsenseSwitch):
         """Turn CARP persistent maintenance mode on.
 
         Args:
-            **kwargs: Additional keyword arguments from Home Assistant.
+            kwargs (Any): Additional service-call options provided by Home Assistant.
         """
         if self._toggle_in_flight:
             return
@@ -887,7 +935,7 @@ class OPNsenseCarpMaintenanceSwitch(OPNsenseSwitch):
         """Turn CARP persistent maintenance mode off.
 
         Args:
-            **kwargs: Additional keyword arguments from Home Assistant.
+            kwargs (Any): Additional service-call options provided by Home Assistant.
         """
         if self._toggle_in_flight:
             return
@@ -935,9 +983,9 @@ class OPNsenseFirewallRuleSwitch(OPNsenseSwitch):
         """Initialize switch entity.
 
         Args:
-            config_entry: The Home Assistant config entry.
-            coordinator: The data update coordinator.
-            entity_description: The entity description.
+            config_entry (ConfigEntry): The Home Assistant config entry.
+            coordinator (OPNsenseDataUpdateCoordinator): The data update coordinator.
+            entity_description (SwitchEntityDescription): The entity description.
         """
         super().__init__(
             config_entry=config_entry,
@@ -1000,7 +1048,7 @@ class OPNsenseFirewallRuleSwitch(OPNsenseSwitch):
         """Turn the entity on.
 
         Args:
-            **kwargs: Additional keyword arguments from Home Assistant.
+            kwargs (Any): Additional service-call options provided by Home Assistant.
         """
         if self._rule_id is None or not self._client:
             return
@@ -1017,7 +1065,7 @@ class OPNsenseFirewallRuleSwitch(OPNsenseSwitch):
         """Turn the entity off.
 
         Args:
-            **kwargs: Additional keyword arguments from Home Assistant.
+            kwargs (Any): Additional service-call options provided by Home Assistant.
         """
         if self._rule_id is None or not self._client:
             return
@@ -1054,9 +1102,9 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
         """Initialize switch entity.
 
         Args:
-            config_entry: The Home Assistant config entry.
-            coordinator: The data update coordinator.
-            entity_description: The entity description.
+            config_entry (ConfigEntry): The Home Assistant config entry.
+            coordinator (OPNsenseDataUpdateCoordinator): The data update coordinator.
+            entity_description (SwitchEntityDescription): The entity description.
         """
         super().__init__(
             config_entry=config_entry,
@@ -1164,7 +1212,7 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
         """Turn the entity on.
 
         Args:
-            **kwargs: Additional keyword arguments from Home Assistant.
+            kwargs (Any): Additional service-call options provided by Home Assistant.
         """
         if self._rule_id is None or not self._client:
             return
@@ -1181,7 +1229,7 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
         """Turn the entity off.
 
         Args:
-            **kwargs: Additional keyword arguments from Home Assistant.
+            kwargs (Any): Additional service-call options provided by Home Assistant.
         """
         if self._rule_id is None or not self._client:
             return
@@ -1218,9 +1266,9 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         """Initialize switch entity.
 
         Args:
-            config_entry: The Home Assistant config entry.
-            coordinator: The data update coordinator.
-            entity_description: The entity description.
+            config_entry (ConfigEntry): The Home Assistant config entry.
+            coordinator (OPNsenseDataUpdateCoordinator): The data update coordinator.
+            entity_description (SwitchEntityDescription): The entity description.
         """
         super().__init__(
             config_entry=config_entry,
@@ -1277,7 +1325,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         """Turn the entity on.
 
         Args:
-            **kwargs: Additional keyword arguments from Home Assistant.
+            kwargs (Any): Additional service-call options provided by Home Assistant.
         """
         if not isinstance(self._service, MutableMapping) or not self._client:
             return
@@ -1299,7 +1347,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         """Turn the entity off.
 
         Args:
-            **kwargs: Additional keyword arguments from Home Assistant.
+            kwargs (Any): Additional service-call options provided by Home Assistant.
         """
         if not isinstance(self._service, MutableMapping) or not self._client:
             return
@@ -1363,7 +1411,7 @@ class OPNsenseUnboundBlocklistSwitchLegacy(OPNsenseSwitch):
         """Turn the entity on.
 
         Args:
-            **kwargs: Additional keyword arguments from Home Assistant.
+            kwargs (Any): Additional service-call options provided by Home Assistant.
         """
         if not self._client:
             return
@@ -1380,7 +1428,7 @@ class OPNsenseUnboundBlocklistSwitchLegacy(OPNsenseSwitch):
         """Turn the entity off.
 
         Args:
-            **kwargs: Additional keyword arguments from Home Assistant.
+            kwargs (Any): Additional service-call options provided by Home Assistant.
         """
         if not self._client:
             return
@@ -1406,9 +1454,9 @@ class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
         """Initialize switch entity.
 
         Args:
-            config_entry: The Home Assistant config entry.
-            coordinator: The data update coordinator.
-            entity_description: The entity description.
+            config_entry (ConfigEntry): The Home Assistant config entry.
+            coordinator (OPNsenseDataUpdateCoordinator): The data update coordinator.
+            entity_description (SwitchEntityDescription): The entity description.
         """
         super().__init__(
             config_entry=config_entry,
@@ -1450,7 +1498,7 @@ class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
         """Turn the entity on.
 
         Args:
-            **kwargs: Additional keyword arguments from Home Assistant.
+            kwargs (Any): Additional service-call options provided by Home Assistant.
         """
         if not self._client:
             return
@@ -1467,7 +1515,7 @@ class OPNsenseUnboundBlocklistSwitch(OPNsenseSwitch):
         """Turn the entity off.
 
         Args:
-            **kwargs: Additional keyword arguments from Home Assistant.
+            kwargs (Any): Additional service-call options provided by Home Assistant.
         """
         if not self._client:
             return
@@ -1493,9 +1541,9 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
         """Initialize switch entity.
 
         Args:
-            config_entry: The Home Assistant config entry.
-            coordinator: The data update coordinator.
-            entity_description: The entity description.
+            config_entry (ConfigEntry): The Home Assistant config entry.
+            coordinator (OPNsenseDataUpdateCoordinator): The data update coordinator.
+            entity_description (SwitchEntityDescription): The entity description.
         """
         super().__init__(
             config_entry=config_entry,
@@ -1566,7 +1614,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
         """Turn on the VPN switch.
 
         Args:
-            **kwargs: Additional keyword arguments.
+            kwargs (Any): Additional service-call options provided by Home Assistant.
         """
         if self.is_on or not self._client:
             return
@@ -1586,7 +1634,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
         """Turn off the VPN switch.
 
         Args:
-            **kwargs: Additional keyword arguments.
+            kwargs (Any): Additional service-call options provided by Home Assistant.
         """
         if not self.is_on or not self._client:
             return

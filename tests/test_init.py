@@ -78,7 +78,11 @@ class _RegistryEntity:
 
 
 def _make_valid_setup_client() -> MagicMock:
-    """Create a valid OPNsense client mock for setup-entry lifecycle tests."""
+    """Create a valid OPNsense client mock for setup-entry lifecycle tests.
+
+    Returns:
+        The returned value.
+    """
     client = MagicMock()
     client.validate = AsyncMock(return_value=True)
     client.get_device_unique_id = AsyncMock(return_value="dev1")
@@ -88,7 +92,11 @@ def _make_valid_setup_client() -> MagicMock:
 
 
 def _make_setup_coordinator() -> MagicMock:
-    """Create a coordinator mock that succeeds initial setup and supports shutdown."""
+    """Create a coordinator mock that succeeds initial setup and supports shutdown.
+
+    Returns:
+        The returned value.
+    """
     coordinator = MagicMock()
     coordinator.async_config_entry_first_refresh = AsyncMock(return_value=True)
     coordinator.async_shutdown = AsyncMock(return_value=True)
@@ -131,7 +139,13 @@ def test_align_aiopnsense_log_level_preserves_setting(
     aiopnsense_level: int,
     expected_level: int,
 ) -> None:
-    """Aiopnsense logger settings should remain authoritative when already set."""
+    """Aiopnsense logger settings should remain authoritative when already set.
+
+    Args:
+        opnsense_level (int): The opnsense_level argument.
+        aiopnsense_level (int): The aiopnsense_level argument.
+        expected_level (int): The expected_level argument.
+    """
     opnsense_logger = logging.getLogger("custom_components.opnsense")
     aiopnsense_logger = logging.getLogger("aiopnsense")
     original_opnsense_level = opnsense_logger.level
@@ -158,7 +172,16 @@ async def test_async_setup_entry_success(
     fake_coordinator: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """async_setup_entry should succeed with valid client and coordinator."""
+    """async_setup_entry should succeed with valid client and coordinator.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator_capture (Any): The coordinator_capture argument.
+        fake_client (Any): The fake_client argument.
+        fake_coordinator (Any): The fake_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     patch_opnsense_client(monkeypatch, init_mod, fake_client())
     # use shared coordinator capture fixture
     monkeypatch.setattr(
@@ -198,19 +221,38 @@ async def test_async_setup_entry_validates_client_before_probes(
     fake_coordinator: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """async_setup_entry should validate the client before device/firmware probes."""
+    """async_setup_entry should validate the client before device/firmware probes.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator_capture (Any): The coordinator_capture argument.
+        fake_coordinator (Any): The fake_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     probe_calls: list[str] = []
     client = MagicMock()
     client.name = "test-router"
     client.validate = AsyncMock(side_effect=lambda: probe_calls.append("validate"))
 
     async def _get_device_unique_id(expected_id: str | None = None) -> str:
-        """Return test router Device ID after recording probe ordering."""
+        """Return test router Device ID after recording probe ordering.
+
+        Returns:
+            The returned value.
+
+        Args:
+            expected_id (str | None): The expected_id argument.
+        """
         probe_calls.append("get_device_unique_id")
         return "dev1"
 
     async def _get_host_firmware_version() -> str:
-        """Return test firmware after recording probe ordering."""
+        """Return test firmware after recording probe ordering.
+
+        Returns:
+            The returned value.
+        """
         probe_calls.append("get_host_firmware_version")
         return "99.0"
 
@@ -219,7 +261,14 @@ async def test_async_setup_entry_validates_client_before_probes(
     client.async_close = AsyncMock(return_value=True)
 
     def _create_client(**kwargs: Any) -> Any:
-        """Return the probe-tracking client used by this setup-entry test."""
+        """Return the probe-tracking client used by this setup-entry test.
+
+        Args:
+            kwargs (Any): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            The returned value.
+        """
         return client
 
     monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", _create_client)
@@ -275,7 +324,19 @@ async def test_async_setup_entry_live_traffic_coordinator_startup_cases(
     sync_interfaces: bool,
     should_start: bool,
 ) -> None:
-    """Live traffic coordinator creation/launch should honor live and interface toggles."""
+    """Live traffic coordinator creation/launch should honor live and interface toggles.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator_capture (Any): The coordinator_capture argument.
+        fake_client (Any): The fake_client argument.
+        fake_coordinator (Any): The fake_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        sync_live_traffic (bool | None): The sync_live_traffic argument.
+        sync_interfaces (bool): The sync_interfaces argument.
+        should_start (bool): The should_start argument.
+    """
     patch_opnsense_client(monkeypatch, init_mod, fake_client())
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
@@ -287,7 +348,7 @@ async def test_async_setup_entry_live_traffic_coordinator_startup_cases(
         """Create and return a fake live-traffic coordinator.
 
         Args:
-            **_kwargs: Unused constructor args forwarded from setup code.
+            _kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
             Any: A fake coordinator with `async_start` and `async_shutdown` mocks.
@@ -339,7 +400,14 @@ async def test_async_setup_entry_shuts_down_live_traffic_coordinator_when_forwar
     fake_client: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Live coordinator should be started after first refresh and shutdown on setup failure."""
+    """Live coordinator should be started after first refresh and shutdown on setup failure.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        fake_client (Any): The fake_client argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     patch_opnsense_client(monkeypatch, init_mod, fake_client())
     live_traffic_setup_events: list[str] = []
 
@@ -362,7 +430,7 @@ async def test_async_setup_entry_shuts_down_live_traffic_coordinator_when_forwar
         """Create and return a fake live-traffic coordinator.
 
         Args:
-            **_kwargs: Unused constructor args forwarded from setup code.
+            _kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
             Any: A fake coordinator with `async_start` and `async_shutdown` mocks.
@@ -387,8 +455,8 @@ async def test_async_setup_entry_shuts_down_live_traffic_coordinator_when_forwar
         """Raise an error to emulate platform forwarding failures.
 
         Args:
-            *_args: Positional args forwarded by HA setup flow.
-            **_kwargs: Keyword args forwarded by HA setup flow.
+            _args (Any): Additional positional arguments accepted by the test double.
+            _kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Raises:
             RuntimeError: Simulated platform forwarding failure.
@@ -440,14 +508,27 @@ async def test_async_setup_entry_carp_entry_uses_identity_less_runtime(
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """CARP entries use identity-less coordinator state and Sensor-only platform setup."""
+    """CARP entries use identity-less coordinator state and Sensor-only platform setup.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     validate_calls: list[dict[str, Any]] = []
     create_calls: dict[str, Any] = {}
     client = MagicMock()
     client.get_host_firmware_version = AsyncMock(return_value="99.0")
 
     async def _validate(**kwargs: Any) -> bool:
-        """Record setup validation kwargs and return successful validation."""
+        """Record setup validation kwargs and return successful validation.
+
+        Args:
+            kwargs (Any): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            The returned value.
+        """
         validate_calls.append(kwargs)
         return True
 
@@ -456,7 +537,14 @@ async def test_async_setup_entry_carp_entry_uses_identity_less_runtime(
     client.async_close = AsyncMock(return_value=True)
 
     def _create_client(**kwargs: Any) -> Any:
-        """Record how the client factory is called and return the fake client."""
+        """Record how the client factory is called and return the fake client.
+
+        Args:
+            kwargs (Any): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            The returned value.
+        """
         create_calls.update(kwargs)
         return client
 
@@ -468,16 +556,28 @@ async def test_async_setup_entry_carp_entry_uses_identity_less_runtime(
         """Fake coordinator used to exercise CARP setup without polling."""
 
         def __init__(self, **kwargs: Any) -> None:
-            """Capture coordinator construction kwargs for CARP assertions."""
+            """Capture coordinator construction kwargs for CARP assertions.
+
+            Args:
+                kwargs (Any): Additional keyword arguments accepted by the test double.
+            """
             captured.update(kwargs)
             self.data = {"carp": {"interfaces": [{"vhid": 1, "subnet": "192.0.2.1"}]}}
 
         async def async_config_entry_first_refresh(self) -> bool:
-            """Complete the coordinator's initial refresh protocol."""
+            """Complete the coordinator's initial refresh protocol.
+
+            Returns:
+                The returned value.
+            """
             return True
 
         async def async_shutdown(self) -> bool:
-            """Complete the coordinator's shutdown protocol."""
+            """Complete the coordinator's shutdown protocol.
+
+            Returns:
+                The returned value.
+            """
             return True
 
     monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", _CarpCoordinator)
@@ -523,7 +623,14 @@ async def test_async_setup_entry_carp_validation_firmware_errors_fail_setup(
     make_config_entry: Callable[..., MockConfigEntry],
     exc: type[Exception],
 ) -> None:
-    """CARP setup must fail fast on firmware validation exceptions."""
+    """CARP setup must fail fast on firmware validation exceptions.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        exc (type[Exception]): The exc argument.
+    """
     coordinator = AsyncMock()
     coordinator.async_config_entry_first_refresh = AsyncMock(return_value=True)
     coordinator.async_shutdown = AsyncMock(return_value=True)
@@ -571,7 +678,14 @@ async def test_async_setup_entry_carp_entry_retries_on_transient_validation_fail
     make_config_entry: Callable[..., MockConfigEntry],
     exc: type[BaseException],
 ) -> None:
-    """CARP setup should retry on transient validation transport failures."""
+    """CARP setup should retry on transient validation transport failures.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (HomeAssistant): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        exc (type[BaseException]): The exc argument.
+    """
     client = MagicMock()
     client.validate = AsyncMock(side_effect=exc("transient"))
     client.async_close = AsyncMock(return_value=True)
@@ -608,7 +722,13 @@ async def test_async_setup_entry_carp_reraises_connection_error_subclass(
     ph_hass: HomeAssistant,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """CARP setup must preserve specialized connection failures."""
+    """CARP setup must preserve specialized connection failures.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (HomeAssistant): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
 
     class SpecializedConnectionError(OPNsenseConnectionError):
         """Connection failure carrying more specific client semantics."""
@@ -654,7 +774,14 @@ async def test_async_setup_entry_carp_requires_usable_initial_vip_inventory(
     make_config_entry: Callable[..., MockConfigEntry],
     initial_data: dict[str, Any],
 ) -> None:
-    """CARP setup should retry when the first refresh has no usable VIP inventory."""
+    """CARP setup should retry when the first refresh has no usable VIP inventory.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        initial_data (dict[str, Any]): The initial_data argument.
+    """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
         init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
@@ -699,7 +826,14 @@ async def test_async_setup_entry_carp_accepts_usable_initial_vip_inventory(
     make_config_entry: Callable[..., MockConfigEntry],
     interface: dict[str, Any],
 ) -> None:
-    """CARP setup should forward platforms when the first inventory has a usable VIP."""
+    """CARP setup should forward platforms when the first inventory has a usable VIP.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        interface (dict[str, Any]): The interface argument.
+    """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
         init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
@@ -736,7 +870,13 @@ async def test_async_setup_entry_carp_first_refresh_failure_cleans_up(
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """CARP setup should stop its coordinator, close the client, and remove hass data."""
+    """CARP setup should stop its coordinator, close the client, and remove hass data.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
         init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
@@ -774,7 +914,13 @@ async def test_async_setup_entry_carp_platform_forward_failure_cleans_up(
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """CARP platform-forward failures should clean up runtime state and the client."""
+    """CARP platform-forward failures should clean up runtime state and the client.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
         init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
@@ -819,7 +965,13 @@ async def test_async_setup_entry_carp_registers_update_listener_after_forwarding
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """CARP update-listener registration should follow platform forwarding."""
+    """CARP update-listener registration should follow platform forwarding.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     call_order: list[str] = []
     client = _make_valid_setup_client()
     monkeypatch.setattr(
@@ -841,19 +993,38 @@ async def test_async_setup_entry_carp_registers_update_listener_after_forwarding
     remove_listener = MagicMock()
 
     def _add_update_listener(listener: Any) -> MagicMock:
-        """Record listener registration and return its removal callback."""
+        """Record listener registration and return its removal callback.
+
+        Returns:
+            The returned value.
+
+        Args:
+            listener (Any): The listener argument.
+        """
         call_order.append("add_listener")
         return remove_listener
 
     def _async_on_unload(unregister: MagicMock) -> None:
-        """Record unload-callback registration."""
+        """Record unload-callback registration.
+
+        Args:
+            unregister (MagicMock): The unregister argument.
+        """
         call_order.append("async_on_unload")
 
     entry.add_update_listener = MagicMock(side_effect=_add_update_listener)
     entry.async_on_unload = MagicMock(side_effect=_async_on_unload)
 
     async def _forward_entry_setups(*_args: Any, **_kwargs: Any) -> bool:
-        """Record CARP platform forwarding and report success."""
+        """Record CARP platform forwarding and report success.
+
+        Args:
+            _args (Any): Additional positional arguments accepted by the test double.
+            _kwargs (Any): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            The returned value.
+        """
         call_order.append("forward")
         return True
 
@@ -882,13 +1053,27 @@ async def test_async_setup_entry_closes_client_when_validation_fails(
     make_config_entry: Callable[..., MockConfigEntry],
     error: OPNsenseError,
 ) -> None:
-    """async_setup_entry should close a constructed client when validation fails."""
+    """async_setup_entry should close a constructed client when validation fails.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        error (OPNsenseError): The error argument.
+    """
     client = MagicMock()
     client.validate = AsyncMock(side_effect=error)
     client.async_close = AsyncMock(return_value=True)
 
     def _create_client(**kwargs: Any) -> Any:
-        """Return the validation-failing client for this setup-entry test."""
+        """Return the validation-failing client for this setup-entry test.
+
+        Args:
+            kwargs (Any): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            The returned value.
+        """
         return client
 
     monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", _create_client)
@@ -920,13 +1105,26 @@ async def test_async_setup_entry_does_not_catch_raw_validation_timeout(
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Setup should close the client and re-raise a raw validation timeout."""
+    """Setup should close the client and re-raise a raw validation timeout.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     client = MagicMock()
     client.validate = AsyncMock(side_effect=TimeoutError)
     client.async_close = AsyncMock(return_value=True)
 
     def _create_client(**kwargs: Any) -> Any:
-        """Return the timeout-raising client for this setup-entry test."""
+        """Return the timeout-raising client for this setup-entry test.
+
+        Args:
+            kwargs (Any): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            The returned value.
+        """
         return client
 
     monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", _create_client)
@@ -962,13 +1160,27 @@ async def test_async_setup_entry_retries_on_transient_validation_failures(
     make_config_entry: Callable[..., MockConfigEntry],
     exc: type[BaseException],
 ) -> None:
-    """Transient validation connection failures should trigger ConfigEntryNotReady."""
+    """Transient validation connection failures should trigger ConfigEntryNotReady.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (HomeAssistant): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        exc (type[BaseException]): The exc argument.
+    """
     client = MagicMock()
     client.validate = AsyncMock(side_effect=exc("timed out"))
     client.async_close = AsyncMock(return_value=True)
 
     def _create_client(**kwargs: Any) -> Any:
-        """Return the timeout-raising client for this setup-entry test."""
+        """Return the timeout-raising client for this setup-entry test.
+
+        Args:
+            kwargs (Any): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            The returned value.
+        """
         return client
 
     monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", _create_client)
@@ -1018,13 +1230,27 @@ async def test_async_setup_entry_does_not_retry_non_transient_validation_failure
     make_config_entry: Callable[..., MockConfigEntry],
     exc: type[BaseException],
 ) -> None:
-    """Non-transient validation failures should bubble as hard errors."""
+    """Non-transient validation failures should bubble as hard errors.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (HomeAssistant): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        exc (type[BaseException]): The exc argument.
+    """
     client = MagicMock()
     client.validate = AsyncMock(side_effect=exc("invalid"))
     client.async_close = AsyncMock(return_value=True)
 
     def _create_client(**kwargs: Any) -> Any:
-        """Return the auth-failing client for this setup-entry test."""
+        """Return the auth-failing client for this setup-entry test.
+
+        Args:
+            kwargs (Any): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            The returned value.
+        """
         return client
 
     monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", _create_client)
@@ -1067,7 +1293,14 @@ async def test_async_setup_entry_with_repair_marker_recreates_issue_on_early_pro
     make_config_entry: Callable[..., MockConfigEntry],
     failure_step: str,
 ) -> None:
-    """A valid repair marker should create its mismatch issue before probe failures."""
+    """A valid repair marker should create its mismatch issue before probe failures.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        failure_step (str): The failure_step argument.
+    """
     create_client = _make_valid_setup_client()
     if failure_step == "validate":
         create_client.validate = AsyncMock(side_effect=OPNsenseTimeoutError("validate timeout"))
@@ -1081,7 +1314,14 @@ async def test_async_setup_entry_with_repair_marker_recreates_issue_on_early_pro
         )
 
     def _create_client(**kwargs: Any) -> Any:
-        """Return the marker-aware client used by this setup failure test."""
+        """Return the marker-aware client used by this setup failure test.
+
+        Args:
+            kwargs (Any): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            The returned value.
+        """
         del kwargs
         return create_client
 
@@ -1158,10 +1398,23 @@ async def test_async_setup_entry_reraises_client_creation_error(
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """async_setup_entry should re-raise client creation errors before close handling."""
+    """async_setup_entry should re-raise client creation errors before close handling.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
 
     def _create_client(**kwargs: Any) -> Any:
-        """Raise a backend error before a client instance exists."""
+        """Raise a backend error before a client instance exists.
+
+        Args:
+            kwargs (Any): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            The returned value.
+        """
         raise OPNsenseError("boom")
 
     monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", _create_client)
@@ -1205,7 +1458,17 @@ async def test_async_setup_entry_continues_after_ignored_validation_error(
     error_type: type[OPNsenseError],
     message: str,
 ) -> None:
-    """async_setup_entry should keep probing after ignored validation exceptions."""
+    """async_setup_entry should keep probing after ignored validation exceptions.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator_capture (Any): The coordinator_capture argument.
+        fake_coordinator (Any): The fake_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        error_type (type[OPNsenseError]): The error_type argument.
+        message (str): The message argument.
+    """
     probe_calls: list[str] = []
     client = MagicMock()
     client.name = "test-router"
@@ -1213,12 +1476,23 @@ async def test_async_setup_entry_continues_after_ignored_validation_error(
     client.async_close = AsyncMock(return_value=True)
 
     async def _get_device_unique_id(expected_id: str | None = None) -> str:
-        """Return test router Device ID after recording probe ordering."""
+        """Return test router Device ID after recording probe ordering.
+
+        Returns:
+            The returned value.
+
+        Args:
+            expected_id (str | None): The expected_id argument.
+        """
         probe_calls.append("get_device_unique_id")
         return "dev1"
 
     async def _get_host_firmware_version() -> str:
-        """Return test firmware after recording probe ordering."""
+        """Return test firmware after recording probe ordering.
+
+        Returns:
+            The returned value.
+        """
         probe_calls.append("get_host_firmware_version")
         return "99.0"
 
@@ -1226,7 +1500,14 @@ async def test_async_setup_entry_continues_after_ignored_validation_error(
     client.get_host_firmware_version = _get_host_firmware_version
 
     def _create_client(**kwargs: Any) -> Any:
-        """Return the firmware-failing client for this setup-entry test."""
+        """Return the firmware-failing client for this setup-entry test.
+
+        Args:
+            kwargs (Any): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            The returned value.
+        """
         return client
 
     monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", _create_client)
@@ -1283,7 +1564,20 @@ async def test_async_setup_entry_device_id_mismatch(
     should_create_issue: bool,
     setup_succeeds: bool,
 ) -> None:
-    """async_setup_entry should handle malformed and mismatched device IDs safely."""
+    """async_setup_entry should handle malformed and mismatched device IDs safely.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator_capture (Any): The coordinator_capture argument.
+        fake_client (Any): The fake_client argument.
+        fake_coordinator (Any): The fake_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        stored_device_id (object): The stored_device_id argument.
+        router_device_id (Any): The router_device_id argument.
+        should_create_issue (bool): The should_create_issue argument.
+        setup_succeeds (bool): The setup_succeeds argument.
+    """
     create_client = MagicMock(side_effect=fake_client(device_id=router_device_id))
     patch_opnsense_client(monkeypatch, init_mod, create_client)
     # use shared coordinator capture fixture
@@ -1309,7 +1603,11 @@ async def test_async_setup_entry_device_id_mismatch(
     issue_kwargs: dict[str, Any] = {}
 
     def _capture_issue(**kwargs: Any) -> None:
-        """Capture the startup Device ID repair issue payload."""
+        """Capture the startup Device ID repair issue payload.
+
+        Args:
+            kwargs (Any): Additional keyword arguments accepted by the test double.
+        """
         issue_kwargs.update(kwargs)
 
     monkeypatch.setattr(ir, "async_create_issue", _capture_issue)
@@ -1349,7 +1647,12 @@ async def test_async_setup_entry_device_id_mismatch(
 async def test_async_update_listener_not_reload(
     monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """_async_update_listener should set SHOULD_RELOAD True and not call reload when flag False."""
+    """_async_update_listener should set SHOULD_RELOAD True and not call reload when flag False.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     entry = make_config_entry(entry_id="e", unique_id="u")
     # ensure runtime_data exists and set SHOULD_RELOAD to False
     setattr(entry.runtime_data, SHOULD_RELOAD, False)
@@ -1369,7 +1672,12 @@ async def test_async_update_listener_not_reload(
 async def test_async_remove_config_entry_device_branches(
     monkeypatch: pytest.MonkeyPatch, hass: HomeAssistant
 ) -> None:
-    """Verify removal logic for config entry device registry branches."""
+    """Verify removal logic for config entry device registry branches.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        hass (HomeAssistant): The hass argument.
+    """
     device = MagicMock()
     device.via_device_id = True
     device.id = "d1"
@@ -1396,7 +1704,11 @@ async def test_async_remove_config_entry_device_branches(
 async def test_async_remove_config_entry_device_no_linked_entities(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When no linked entities exist for a device, removal should succeed (return True)."""
+    """When no linked entities exist for a device, removal should succeed (return True).
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+    """
     # device not linked via via_device_id and has an id
     device = MagicMock()
     device.via_device_id = False
@@ -1418,7 +1730,12 @@ async def test_async_remove_config_entry_device_no_linked_entities(
 async def test_async_unload_entry_and_pop(
     ph_hass: Any, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """async_unload_entry removes entry from hass.data and closes the client."""
+    """async_unload_entry removes entry from hass.data and closes the client.
+
+    Args:
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     entry = make_config_entry(entry_id="e_unload")
     entry.as_dict = lambda: {"id": "x"}
     # use the constant names used by the integration
@@ -1434,7 +1751,15 @@ async def test_async_unload_entry_and_pop(
         unload_order.append("live_shutdown")
 
     def _record_platform_unload(_entry: Any, _platforms: Any) -> bool:
-        """Record platform unload order and return success."""
+        """Record platform unload order and return success.
+
+        Returns:
+            The returned value.
+
+        Args:
+            _entry (Any): The _entry argument.
+            _platforms (Any): The _platforms argument.
+        """
         unload_order.append("platforms_unloaded")
         return True
 
@@ -1458,7 +1783,11 @@ async def test_async_unload_entry_and_pop(
 
 @pytest.mark.asyncio
 async def test_migrate_1_to_2_updates_entry(ph_hass: Any) -> None:
-    """_migrate_1_to_2 migrates tls_insecure to verify_ssl and updates version."""
+    """_migrate_1_to_2 migrates tls_insecure to verify_ssl and updates version.
+
+    Args:
+        ph_hass (Any): The ph_hass argument.
+    """
     cfg = MagicMock()
     cfg.data = {CONF_TLS_INSECURE: True}
     # ensure verify_ssl missing
@@ -1491,7 +1820,11 @@ async def test_migrate_1_to_2_updates_entry(ph_hass: Any) -> None:
 
 @pytest.mark.asyncio
 async def test_async_migrate_entry_version_gt5(ph_hass: Any) -> None:
-    """async_migrate_entry returns False for versions greater than supported."""
+    """async_migrate_entry returns False for versions greater than supported.
+
+    Args:
+        ph_hass (Any): The ph_hass argument.
+    """
     cfg = MagicMock()
     cfg.version = 6
     # should return False
@@ -1504,7 +1837,13 @@ async def test_async_migrate_entry_version_gt5(ph_hass: Any) -> None:
 async def test_async_migrate_entry_does_not_call_migrate_3_to_4_when_version_not_3(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any, version: Any
 ) -> None:
-    """When entry.version is not 3, _migrate_3_to_4 must not be called."""
+    """When entry.version is not 3, _migrate_3_to_4 must not be called.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        version (Any): The version argument.
+    """
     mock_m3 = AsyncMock(return_value=True)
     monkeypatch.setattr(init_mod, "_migrate_3_to_4", mock_m3)
 
@@ -1522,7 +1861,12 @@ async def test_async_migrate_entry_does_not_call_migrate_3_to_4_when_version_not
 async def test_async_migrate_entry_uses_throw_errors_for_migration_client(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any
 ) -> None:
-    """Migration should create the OPNsense client with throw_errors enabled."""
+    """Migration should create the OPNsense client with throw_errors enabled.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+    """
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -1562,7 +1906,12 @@ async def test_async_migrate_entry_uses_throw_errors_for_migration_client(
 async def test_migrate_4_to_5_removes_rule_switch_entities(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any
 ) -> None:
-    """_migrate_4_to_5 removes stale rule switch entities and updates config entry version."""
+    """_migrate_4_to_5 removes stale rule switch entities and updates config entry version.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+    """
     slugified_prefix: str = slugify("router unit")
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
     entry = MockConfigEntry(
@@ -1640,7 +1989,12 @@ async def test_migrate_4_to_5_removes_rule_switch_entities(
 async def test_migrate_4_to_5_uses_rule_key_when_uuid_is_missing(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any
 ) -> None:
-    """_migrate_4_to_5 should keep non-uuid rules by mapping key."""
+    """_migrate_4_to_5 should keep non-uuid rules by mapping key.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+    """
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -1701,7 +2055,12 @@ async def test_migrate_4_to_5_sync_disabled_skips_firewall_fetch_removes_native_
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
 ) -> None:
-    """_migrate_4_to_5 should remove native firewall and NAT rules when sync is disabled."""
+    """_migrate_4_to_5 should remove native firewall and NAT rules when sync is disabled.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+    """
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
     data: dict[str, Any] = {
         CONF_DEVICE_UNIQUE_ID: "deviceid",
@@ -1773,7 +2132,12 @@ async def test_migrate_4_to_5_sync_disabled_skips_firewall_fetch_removes_native_
 async def test_migrate_4_to_5_granular_entry_defaults_missing_category_key_to_enabled(
     monkeypatch: pytest.MonkeyPatch, ph_hass: HomeAssistant
 ) -> None:
-    """Granular migration preserves firewall sync for entries missing the category key."""
+    """Granular migration preserves firewall sync for entries missing the category key.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (HomeAssistant): The ph_hass argument.
+    """
     update_entry = MagicMock(return_value=True)
     monkeypatch.setattr(ph_hass.config_entries, "async_update_entry", update_entry)
     entry = MockConfigEntry(
@@ -1824,7 +2188,12 @@ async def test_migrate_4_to_5_non_granular_entry_missing_category_key_preserves_
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: HomeAssistant,
 ) -> None:
-    """A non-granular entry without a category key should preserve current rule entities."""
+    """A non-granular entry without a category key should preserve current rule entities.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (HomeAssistant): The ph_hass argument.
+    """
     update_entry = MagicMock(return_value=True)
     monkeypatch.setattr(ph_hass.config_entries, "async_update_entry", update_entry)
     entry = MockConfigEntry(
@@ -1926,7 +2295,12 @@ async def test_migrate_4_to_5_non_granular_entry_missing_category_key_preserves_
 def test_is_firewall_sync_enabled_uses_category_then_default(
     data: dict[str, Any], expected: bool
 ) -> None:
-    """Migration sync state should preserve explicit and runtime defaults."""
+    """Migration sync state should preserve explicit and runtime defaults.
+
+    Args:
+        data (dict[str, Any]): The data argument.
+        expected (bool): The expected argument.
+    """
     entry = MagicMock()
     entry.data = data
 
@@ -1951,7 +2325,14 @@ async def test_migrate_4_to_5_defers_when_device_unique_id_is_missing(
     sync_firewall_and_nat: bool,
     device_unique_id: str | None,
 ) -> None:
-    """_migrate_4_to_5 should defer when migration lacks a device unique ID."""
+    """_migrate_4_to_5 should defer when migration lacks a device unique ID.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (HomeAssistant): The ph_hass argument.
+        sync_firewall_and_nat (bool): The sync_firewall_and_nat argument.
+        device_unique_id (str | None): The device_unique_id argument.
+    """
     update_entry = MagicMock(return_value=True)
     monkeypatch.setattr(ph_hass.config_entries, "async_update_entry", update_entry)
     entry_data: dict[str, Any] = {
@@ -2005,7 +2386,12 @@ async def test_migrate_4_to_5_defers_when_migration_client_is_missing(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: HomeAssistant,
 ) -> None:
-    """_migrate_4_to_5 should defer enabled sync without a migration client."""
+    """_migrate_4_to_5 should defer enabled sync without a migration client.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (HomeAssistant): The ph_hass argument.
+    """
     update_entry = MagicMock(return_value=True)
     monkeypatch.setattr(ph_hass.config_entries, "async_update_entry", update_entry)
     entry = MockConfigEntry(
@@ -2034,7 +2420,13 @@ async def test_migrate_4_to_5_defers_when_migration_client_is_missing(
 async def test_migrate_4_to_5_defers_when_firewall_rules_unavailable(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any, firewall_result: Any
 ) -> None:
-    """_migrate_4_to_5 should not version-bump when firewall rules cannot be fetched."""
+    """_migrate_4_to_5 should not version-bump when firewall rules cannot be fetched.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        firewall_result (Any): The firewall_result argument.
+    """
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -2080,7 +2472,12 @@ async def test_migrate_4_to_5_defers_when_firewall_rules_unavailable(
 async def test_migrate_4_to_5_completes_when_firewall_privileges_are_missing(
     monkeypatch: pytest.MonkeyPatch, ph_hass: HomeAssistant
 ) -> None:
-    """Migration should not block unrelated entities on missing firewall privileges."""
+    """Migration should not block unrelated entities on missing firewall privileges.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (HomeAssistant): The ph_hass argument.
+    """
     update_entry = MagicMock(return_value=True)
     monkeypatch.setattr(ph_hass.config_entries, "async_update_entry", update_entry)
     entry = MockConfigEntry(
@@ -2138,7 +2535,13 @@ async def test_migrate_4_to_5_completes_when_firewall_privileges_are_missing(
 async def test_migrate_4_to_5_skips_native_pruning_when_rules_payload_unavailable(
     monkeypatch: pytest.MonkeyPatch, ph_hass: HomeAssistant, firewall_payload: object
 ) -> None:
-    """_migrate_4_to_5 should complete migration with legacy cleanup only when rules are unavailable."""
+    """_migrate_4_to_5 should complete migration with legacy cleanup only when rules are unavailable.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (HomeAssistant): The ph_hass argument.
+        firewall_payload (object): The firewall_payload argument.
+    """
     update_entry = MagicMock(return_value=True)
     monkeypatch.setattr(ph_hass.config_entries, "async_update_entry", update_entry)
     entry = MockConfigEntry(
@@ -2193,7 +2596,13 @@ async def test_migrate_4_to_5_skips_native_pruning_when_rules_payload_unavailabl
 async def test_migrate_4_to_5_legacy_entity_remove_failure_aborts_migration(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any, exc: BaseException
 ) -> None:
-    """_migrate_4_to_5 returns False when entity removal raises handled exceptions."""
+    """_migrate_4_to_5 returns False when entity removal raises handled exceptions.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        exc (BaseException): The exc argument.
+    """
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -2237,7 +2646,12 @@ async def test_migrate_4_to_5_legacy_entity_remove_failure_aborts_migration(
 async def test_migrate_4_to_5_sync_enabled_prunes_stale_native_nat_rule_entities(
     monkeypatch: pytest.MonkeyPatch, ph_hass: HomeAssistant
 ) -> None:
-    """_migrate_4_to_5 should prune stale native NAT IDs for explicit empty NAT sections."""
+    """_migrate_4_to_5 should prune stale native NAT IDs for explicit empty NAT sections.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (HomeAssistant): The ph_hass argument.
+    """
     update_entry = MagicMock(return_value=True)
     monkeypatch.setattr(ph_hass.config_entries, "async_update_entry", update_entry)
     entry = MockConfigEntry(
@@ -2349,7 +2763,12 @@ async def test_migrate_4_to_5_sync_enabled_prunes_stale_native_nat_rule_entities
 async def test_migrate_4_to_5_version_bump_failure_aborts_migration(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any
 ) -> None:
-    """_migrate_4_to_5 returns False when async_update_entry fails."""
+    """_migrate_4_to_5 returns False when async_update_entry fails.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+    """
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=False)
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -2393,9 +2812,9 @@ async def test_async_setup_calls_services_and_handles_exceptions(
     """Verify ``async_setup`` invokes the service hook and propagates errors.
 
     Args:
-        monkeypatch: Pytest monkeypatch fixture.
-        ph_hass: Home Assistant test instance.
-        should_raise: Whether the service hook should raise an error.
+        monkeypatch (pytest.MonkeyPatch): Pytest monkeypatch fixture.
+        ph_hass (Any): Home Assistant test instance.
+        should_raise (Any): Whether the service hook should raise an error.
     """
     mock_align = MagicMock()
     if should_raise:
@@ -2445,7 +2864,17 @@ async def test_async_update_listener_reload_and_remove(
     entry_unique_id: str | None,
     entity_unique_id_prefix: str,
 ) -> None:
-    """Remove disabled entities using the same identity prefix as entity creation."""
+    """Remove disabled entities using the same identity prefix as entity creation.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        entry_id (str): The entry_id argument.
+        entry_data (dict[str, Any]): The entry_data argument.
+        entry_unique_id (str | None): The entry_unique_id argument.
+        entity_unique_id_prefix (str): The entity_unique_id_prefix argument.
+    """
     # Prepare entry with SHOULD_RELOAD True and granular sync option disabled to force removal_prefixes
     entry = make_config_entry(
         entry_id=entry_id,
@@ -2464,7 +2893,12 @@ async def test_async_update_listener_reload_and_remove(
         """Minimal entity registry entry used by listener cleanup tests."""
 
         def __init__(self, entity_id: Any, unique_id: Any) -> None:
-            """Store the entity and unique IDs used by the update-listener test."""
+            """Store the entity and unique IDs used by the update-listener test.
+
+            Args:
+                entity_id (Any): The entity_id argument.
+                unique_id (Any): The unique_id argument.
+            """
             self.entity_id = entity_id
             self.unique_id = unique_id
             self.domain = Platform.SENSOR
@@ -2508,7 +2942,15 @@ async def test_async_update_listener_handles_native_firewall_entities_by_sync_st
     sync_enabled: bool,
     expect_removed: bool,
 ) -> None:
-    """Remove native firewall entities only when Firewall/NAT sync is disabled."""
+    """Remove native firewall entities only when Firewall/NAT sync is disabled.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        sync_enabled (bool): The sync_enabled argument.
+        expect_removed (bool): The expect_removed argument.
+    """
     entry = make_config_entry(
         data={
             CONF_DEVICE_UNIQUE_ID: "dev1",
@@ -2526,7 +2968,12 @@ async def test_async_update_listener_handles_native_firewall_entities_by_sync_st
         """Simple entity record for registry cleanup assertions."""
 
         def __init__(self, entity_id: str, unique_id: str) -> None:
-            """Store entity and unique IDs for the test."""
+            """Store entity and unique IDs for the test.
+
+            Args:
+                entity_id (str): The entity_id argument.
+                unique_id (str): The unique_id argument.
+            """
             self.entity_id = entity_id
             self.unique_id = unique_id
 
@@ -2567,7 +3014,13 @@ async def test_async_update_listener_skips_native_firewall_entities_when_firewal
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Native entities should remain when sync is enabled for this entry."""
+    """Native entities should remain when sync is enabled for this entry.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     entry = make_config_entry(
         data={
             CONF_DEVICE_UNIQUE_ID: "dev1",
@@ -2585,7 +3038,12 @@ async def test_async_update_listener_skips_native_firewall_entities_when_firewal
         """Simple entity record for registry cleanup assertions."""
 
         def __init__(self, entity_id: str, unique_id: str) -> None:
-            """Store entity and unique IDs for the test."""
+            """Store entity and unique IDs for the test.
+
+            Args:
+                entity_id (str): The entity_id argument.
+                unique_id (str): The unique_id argument.
+            """
             self.entity_id = entity_id
             self.unique_id = unique_id
 
@@ -2623,7 +3081,13 @@ async def test_async_update_listener_uses_shared_default_for_smart_entity_prunin
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Missing SMART sync config should preserve registered SMART entities."""
+    """Missing SMART sync config should preserve registered SMART entities.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     entry = make_config_entry(
         data={CONF_DEVICE_UNIQUE_ID: "dev1"},
         unique_id="u123",
@@ -2682,7 +3146,17 @@ async def test_async_update_listener_device_removal_param(
     tracker_device_id: Any,
     expect_updated: Any,
 ) -> None:
-    """Remove only this config entry from tracked devices when tracking is disabled."""
+    """Remove only this config entry from tracked devices when tracking is disabled.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        dt_enabled (Any): The dt_enabled argument.
+        via_device_id (Any): The via_device_id argument.
+        tracker_device_id (Any): The tracker_device_id argument.
+        expect_updated (Any): The expect_updated argument.
+    """
     # create an entry with the device tracker option set per parameter
     entry = make_config_entry(
         data={CONF_DEVICE_UNIQUE_ID: "dev1"},
@@ -2752,7 +3226,13 @@ async def test_async_update_listener_detaches_no_parent_tracker_device(
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Trackers with no parent remain detached from removed config entry."""
+    """Trackers with no parent remain detached from removed config entry.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     entry = make_config_entry(
         data={CONF_DEVICE_UNIQUE_ID: "router-mac"},
         options={CONF_DEVICE_TRACKER_ENABLED: False},
@@ -2821,7 +3301,13 @@ async def test_async_update_listener_detaches_tracker_device_without_entity(
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Detach a router-linked tracker device after its entity was already removed."""
+    """Detach a router-linked tracker device after its entity was already removed.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     entry = make_config_entry(
         data={CONF_DEVICE_UNIQUE_ID: "router-mac"},
         options={CONF_DEVICE_TRACKER_ENABLED: False},
@@ -2879,7 +3365,13 @@ async def test_async_update_listener_detaches_tracker_when_router_and_entity_are
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Detach a MAC tracker whose removed router remains as a stale parent."""
+    """Detach a MAC tracker whose removed router remains as a stale parent.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     entry = make_config_entry(
         data={CONF_DEVICE_UNIQUE_ID: "router-mac"},
         options={CONF_DEVICE_TRACKER_ENABLED: False},
@@ -2935,7 +3427,13 @@ async def test_async_update_listener_preserves_existing_tracker_parent_when_pare
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Keep a shared tracker parent when disabling tracking if that parent still exists."""
+    """Keep a shared tracker parent when disabling tracking if that parent still exists.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     entry = make_config_entry(
         data={CONF_DEVICE_UNIQUE_ID: "router-mac"},
         options={CONF_DEVICE_TRACKER_ENABLED: False},
@@ -2997,7 +3495,13 @@ async def test_async_update_listener_reparents_tracker_link_to_remaining_opnsens
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Disabling tracking reassigns shared tracker parent to surviving OPNsense router."""
+    """Disabling tracking reassigns shared tracker parent to surviving OPNsense router.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     entry = make_config_entry(
         data={CONF_DEVICE_UNIQUE_ID: "router-mac"},
         options={CONF_DEVICE_TRACKER_ENABLED: False},
@@ -3162,7 +3666,16 @@ async def test_async_setup_entry_firmware_below_min(
     fake_coordinator: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """async_setup_entry returns False for devices with firmware below minimum supported."""
+    """async_setup_entry returns False for devices with firmware below minimum supported.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator_capture (Any): The coordinator_capture argument.
+        fake_client (Any): The fake_client argument.
+        fake_coordinator (Any): The fake_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     # fake client where Device ID matches but firmware is below min
     patch_opnsense_client(monkeypatch, init_mod, fake_client(firmware_version="1.0"))
     monkeypatch.setattr(
@@ -3196,7 +3709,16 @@ async def test_async_setup_entry_firmware_between_min_and_ltd(
     fake_coordinator: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """async_setup_entry logs a warning issue for firmware between min and LTD but continues."""
+    """async_setup_entry logs a warning issue for firmware between min and LTD but continues.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator_capture (Any): The coordinator_capture argument.
+        fake_client (Any): The fake_client argument.
+        fake_coordinator (Any): The fake_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     patch_opnsense_client(monkeypatch, init_mod, fake_client(firmware_version="25.1"))
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
@@ -3238,7 +3760,12 @@ async def test_async_setup_entry_firmware_between_min_and_ltd(
 async def test_migrate_2_to_3_missing_device_id(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
-    """_migrate_2_to_3 returns False when the client provides no Device ID."""
+    """_migrate_2_to_3 returns False when the client provides no Device ID.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        fake_client (Any): The fake_client argument.
+    """
     client = fake_client(device_id=None)()
     cfg = MagicMock()
     cfg.data = {
@@ -3259,7 +3786,12 @@ async def test_migrate_2_to_3_missing_device_id(
 
 @pytest.mark.asyncio
 async def test_migrate_2_to_3_success(monkeypatch: pytest.MonkeyPatch, fake_client: Any) -> None:
-    """_migrate_2_to_3 updates device and entity identifiers when client reports new Device ID."""
+    """_migrate_2_to_3 updates device and entity identifiers when client reports new Device ID.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        fake_client (Any): The fake_client argument.
+    """
     client = fake_client(device_id="newdev")()
 
     # fake device entries and entity entries
@@ -3319,7 +3851,12 @@ async def test_migrate_2_to_3_success(monkeypatch: pytest.MonkeyPatch, fake_clie
 async def test_migrate_2_to_3_normalizes_legacy_entity_unique_ids_with_slugify(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
-    """_migrate_2_to_3 should slugify legacy unique IDs with colons and case."""
+    """_migrate_2_to_3 should slugify legacy unique IDs with colons and case.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        fake_client (Any): The fake_client argument.
+    """
     client = fake_client(device_id="newdev")()
 
     ent = MagicMock()
@@ -3363,7 +3900,12 @@ async def test_migrate_2_to_3_normalizes_legacy_entity_unique_ids_with_slugify(
 async def test_migrate_2_to_3_returns_false_when_update_entry_fails(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
-    """_migrate_2_to_3 should fail when config entry update returns False."""
+    """_migrate_2_to_3 should fail when config entry update returns False.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        fake_client (Any): The fake_client argument.
+    """
     client = fake_client(device_id="newdev")()
 
     monkeypatch.setattr(er, "async_get", lambda hass: MagicMock())
@@ -3399,7 +3941,16 @@ async def test_async_setup_entry_awesomeversion_exception(
     fake_coordinator: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """async_setup_entry should continue when AwesomeVersion comparison raises an exception."""
+    """async_setup_entry should continue when AwesomeVersion comparison raises an exception.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator_capture (Any): The coordinator_capture argument.
+        fake_client (Any): The fake_client argument.
+        fake_coordinator (Any): The fake_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
 
     # fake client where Device ID matches but awesomeversion comparison raises
     # monkeypatch AwesomeVersion to a class that raises on comparison
@@ -3407,11 +3958,19 @@ async def test_async_setup_entry_awesomeversion_exception(
         """AwesomeVersion replacement that raises on comparisons."""
 
         def __init__(self, v: Any) -> None:
-            """Store the version string used by the comparison stub."""
+            """Store the version string used by the comparison stub.
+
+            Args:
+                v (Any): The v argument.
+            """
             self.v = v
 
         def __lt__(self, other: Any) -> None:
-            """Raise a compare exception so setup falls back to the safe path."""
+            """Raise a compare exception so setup falls back to the safe path.
+
+            Args:
+                other (Any): The other argument.
+            """
             raise awesomeversion.exceptions.AwesomeVersionCompareException
 
     patch_opnsense_client(monkeypatch, init_mod, fake_client())
@@ -3439,7 +3998,12 @@ async def test_async_setup_entry_awesomeversion_exception(
 async def test_async_unload_entry_unload_fails(
     ph_hass: Any, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """async_unload_entry returns False and keeps runtime resources when unload fails."""
+    """async_unload_entry returns False and keeps runtime resources when unload fails.
+
+    Args:
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     entry = make_config_entry(entry_id="e_unload_fail")
     entry.as_dict = lambda: {"id": "x"}
     setattr(entry.runtime_data, LOADED_PLATFORMS, ["p1"])
@@ -3466,7 +4030,12 @@ async def test_async_unload_entry_unload_fails(
 async def test_migrate_3_to_4_filesystem_and_remove(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
-    """_migrate_3_to_4 handles filesystem telemetry renames and removes connected_client_count entities."""
+    """_migrate_3_to_4 handles filesystem telemetry renames and removes connected_client_count entities.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        fake_client (Any): The fake_client argument.
+    """
     client = fake_client(telemetry={"filesystems": [{"device": "/dev/sda1", "mountpoint": "/"}]})()
 
     # entities: one that maps telemetry_filesystems, one that is connected_client_count
@@ -3517,7 +4086,12 @@ async def test_migrate_3_to_4_filesystem_and_remove(
 async def test_migrate_3_to_4_preserves_mixed_marker_precedence(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
-    """Mixed legacy markers follow the original migration branch precedence."""
+    """Mixed legacy markers follow the original migration branch precedence.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        fake_client (Any): The fake_client argument.
+    """
     client = fake_client(telemetry={"filesystems": []})()
 
     gateway_entity = MagicMock(
@@ -3570,7 +4144,12 @@ async def test_migrate_3_to_4_preserves_mixed_marker_precedence(
 async def test_migrate_3_to_4_filesystem_preserves_unique_id_prefix(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
-    """Filesystem remap should only replace the suffix after telemetry_filesystems_."""
+    """Filesystem remap should only replace the suffix after telemetry_filesystems_.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        fake_client (Any): The fake_client argument.
+    """
     client = fake_client(telemetry={"filesystems": [{"device": "/dev/sda1", "mountpoint": "/"}]})()
 
     e1 = MagicMock()
@@ -3615,7 +4194,12 @@ async def test_migrate_3_to_4_filesystem_preserves_unique_id_prefix(
 async def test_migrate_3_to_4_filesystem_skips_and_non_root_mountpoint(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
-    """_migrate_3_to_4 skips unmapped entities and maps non-root filesystem mountpoints."""
+    """_migrate_3_to_4 skips unmapped entities and maps non-root filesystem mountpoints.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        fake_client (Any): The fake_client argument.
+    """
     client = fake_client(
         telemetry={
             "filesystems": [
@@ -3681,7 +4265,11 @@ async def test_migrate_3_to_4_filesystem_skips_and_non_root_mountpoint(
 async def test_migrate_3_to_4_skips_filesystems_when_telemetry_is_not_mapping(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """_migrate_3_to_4 should defer filesystem remaps when telemetry is invalid."""
+    """_migrate_3_to_4 should defer filesystem remaps when telemetry is invalid.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+    """
 
     class Client:
         """Fake client returning invalid telemetry during migration."""
@@ -3749,7 +4337,13 @@ async def test_migrate_3_to_4_skips_filesystems_when_telemetry_is_not_mapping(
 async def test_migrate_3_to_4_defers_filesystems_when_payload_is_invalid(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any, telemetry: dict[str, Any]
 ) -> None:
-    """_migrate_3_to_4 should defer filesystem remaps when telemetry is invalid."""
+    """_migrate_3_to_4 should defer filesystem remaps when telemetry is invalid.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        fake_client (Any): The fake_client argument.
+        telemetry (dict[str, Any]): The telemetry argument.
+    """
     client = fake_client(telemetry=telemetry)()
 
     filesystem_entity = MagicMock()
@@ -3786,7 +4380,12 @@ async def test_migrate_3_to_4_defers_filesystems_when_payload_is_invalid(
 async def test_migrate_3_to_4_returns_false_when_update_entry_fails(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
-    """_migrate_3_to_4 should fail when config entry update returns False."""
+    """_migrate_3_to_4 should fail when config entry update returns False.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        fake_client (Any): The fake_client argument.
+    """
     client = fake_client(telemetry={})()
     monkeypatch.setattr(er, "async_get", lambda hass: MagicMock())
     monkeypatch.setattr(er, "async_entries_for_config_entry", lambda registry, config_entry_id: [])
@@ -3814,7 +4413,12 @@ async def test_migrate_3_to_4_returns_false_when_update_entry_fails(
 async def test_migrate_2_to_3_handles_entity_update_value_error(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
-    """When entity_registry.async_update_entity raises ValueError, migration continues."""
+    """When entity_registry.async_update_entity raises ValueError, migration continues.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        fake_client (Any): The fake_client argument.
+    """
     client = fake_client(device_id="newdev")()
 
     # single entity that will cause async_update_entity to raise
@@ -3860,7 +4464,13 @@ async def test_migrate_2_to_3_handles_entity_update_value_error(
 async def test_migrate_3_to_4_handles_remove_exceptions(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any, exc: BaseException | None
 ) -> None:
-    """If entity_registry.async_remove raises KeyError/ValueError, migration fails."""
+    """If entity_registry.async_remove raises KeyError/ValueError, migration fails.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        fake_client (Any): The fake_client argument.
+        exc (BaseException | None): The exc argument.
+    """
     client = fake_client(telemetry={})()
 
     e = MagicMock()
@@ -3896,7 +4506,12 @@ async def test_migrate_3_to_4_handles_remove_exceptions(
 async def test_migrate_3_to_4_handles_update_value_error(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
-    """If entity_registry.async_update_entity raises ValueError, migration fails."""
+    """If entity_registry.async_update_entity raises ValueError, migration fails.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        fake_client (Any): The fake_client argument.
+    """
     client = fake_client(telemetry={})()
 
     e = MagicMock()
@@ -3941,7 +4556,14 @@ async def test_migrate_3_to_4_handles_update_value_error(
 async def test_async_migrate_entry_returns_false_when_submigration_fails(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any, version: Any, failing_fn: Any
 ) -> None:
-    """async_migrate_entry should return False when a sub-migration returns False."""
+    """async_migrate_entry should return False when a sub-migration returns False.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        version (Any): The version argument.
+        failing_fn (Any): The failing_fn argument.
+    """
     # make the targeted sub-migration return False
     monkeypatch.setattr(init_mod, failing_fn, AsyncMock(return_value=False))
     client = MagicMock()
@@ -3973,7 +4595,13 @@ async def test_async_migrate_entry_returns_false_when_submigration_fails(
 async def test_async_migrate_entry_defers_when_migration_client_raises_opnsense_error(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any, exc: type[BaseException]
 ) -> None:
-    """async_migrate_entry should return False when migration-client creation fails."""
+    """async_migrate_entry should return False when migration-client creation fails.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        exc (type[BaseException]): The exc argument.
+    """
     migration_exc = exc("temporary failure")
     create_client = MagicMock(side_effect=migration_exc)
     monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", create_client)
@@ -4000,7 +4628,13 @@ async def test_async_migrate_entry_defers_when_migration_client_raises_opnsense_
 async def test_async_migrate_entry_defers_when_v2_to_3_fails_with_opnsense_error(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any, exc: type[BaseException]
 ) -> None:
-    """async_migrate_entry should return False when v2->v3 raises OPNsense errors."""
+    """async_migrate_entry should return False when v2->v3 raises OPNsense errors.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        exc (type[BaseException]): The exc argument.
+    """
     client = MagicMock()
     client.async_close = AsyncMock()
     monkeypatch.setattr(
@@ -4030,7 +4664,13 @@ async def test_async_migrate_entry_defers_when_v2_to_3_fails_with_opnsense_error
 async def test_async_migrate_entry_defers_when_v3_to_4_fails_with_opnsense_error(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any, exc: type[BaseException]
 ) -> None:
-    """async_migrate_entry should return False when v3->v4 raises OPNsense errors."""
+    """async_migrate_entry should return False when v3->v4 raises OPNsense errors.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        exc (type[BaseException]): The exc argument.
+    """
     client = MagicMock()
     client.async_close = AsyncMock()
     monkeypatch.setattr(
@@ -4060,7 +4700,13 @@ async def test_async_migrate_entry_defers_when_v3_to_4_fails_with_opnsense_error
 async def test_async_migrate_entry_returns_false_when_migration_client_missing(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any, version: int
 ) -> None:
-    """async_migrate_entry should fail client-backed migrations without a client."""
+    """async_migrate_entry should fail client-backed migrations without a client.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        version (int): The version argument.
+    """
     monkeypatch.setattr(
         init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: None
     )
@@ -4088,7 +4734,16 @@ async def test_async_setup_entry_firmware_above_ltd_calls_delete(
     fake_coordinator: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """async_setup_entry deletes previous issues when firmware is at or above LTD."""
+    """async_setup_entry deletes previous issues when firmware is at or above LTD.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator_capture (Any): The coordinator_capture argument.
+        fake_client (Any): The fake_client argument.
+        fake_coordinator (Any): The fake_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     patch_opnsense_client(
         monkeypatch, init_mod, fake_client(firmware_version=OPNSENSE_LTD_FIRMWARE)
     )
@@ -4123,7 +4778,16 @@ async def test_async_setup_entry_firmware_at_or_above_ltd_deletes_previous_issue
     fake_coordinator: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """async_setup_entry cleans up previous firmware-related issues for LTD and min thresholds."""
+    """async_setup_entry cleans up previous firmware-related issues for LTD and min thresholds.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator_capture (Any): The coordinator_capture argument.
+        fake_client (Any): The fake_client argument.
+        fake_coordinator (Any): The fake_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     patch_opnsense_client(
         monkeypatch, init_mod, fake_client(firmware_version=OPNSENSE_LTD_FIRMWARE)
     )
@@ -4171,7 +4835,16 @@ async def test_async_setup_entry_delete_uses_actual_firmware_string(
     fake_coordinator: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """async_setup_entry uses the client's firmware string when deleting previous issues."""
+    """async_setup_entry uses the client's firmware string when deleting previous issues.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator_capture (Any): The coordinator_capture argument.
+        fake_client (Any): The fake_client argument.
+        fake_coordinator (Any): The fake_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     firmware_str = "99.9"
     patch_opnsense_client(monkeypatch, init_mod, fake_client(firmware_version=firmware_str))
     monkeypatch.setattr(
@@ -4217,7 +4890,16 @@ async def test_async_setup_entry_delete_not_called_for_between_min_and_ltd(
     fake_coordinator: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """async_setup_entry should not call delete_issue for firmware between min and LTD."""
+    """async_setup_entry should not call delete_issue for firmware between min and LTD.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator_capture (Any): The coordinator_capture argument.
+        fake_client (Any): The fake_client argument.
+        fake_coordinator (Any): The fake_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     patch_opnsense_client(monkeypatch, init_mod, fake_client(firmware_version="25.1"))
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
@@ -4264,7 +4946,16 @@ async def test_async_setup_entry_with_device_tracker_enabled(
     fake_coordinator: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Device tracker option creates a device-tracker coordinator and triggers initial refresh."""
+    """Device tracker option creates a device-tracker coordinator and triggers initial refresh.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        coordinator_capture (Any): The coordinator_capture argument.
+        fake_client (Any): The fake_client argument.
+        fake_coordinator (Any): The fake_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     patch_opnsense_client(monkeypatch, init_mod, fake_client())
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
@@ -4296,7 +4987,13 @@ async def test_async_setup_entry_recreates_marker_issue_when_main_refresh_fails(
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Marker-backed main refresh failures should recreate the mismatch issue."""
+    """Marker-backed main refresh failures should recreate the mismatch issue.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
         init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
@@ -4360,7 +5057,13 @@ async def test_async_setup_entry_cleans_up_when_device_tracker_refresh_fails(
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """async_setup_entry should clean up when device-tracker setup fails."""
+    """async_setup_entry should clean up when device-tracker setup fails.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
         init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
@@ -4375,7 +5078,14 @@ async def test_async_setup_entry_cleans_up_when_device_tracker_refresh_fails(
     coordinators = [main_coordinator, device_tracker_coordinator]
 
     def _coordinator_factory(**_kwargs: Any) -> Any:
-        """Return setup coordinators in creation order."""
+        """Return setup coordinators in creation order.
+
+        Args:
+            _kwargs (Any): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            The returned value.
+        """
         return coordinators.pop(0)
 
     monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", _coordinator_factory)
@@ -4410,7 +5120,13 @@ async def test_async_setup_entry_recreates_marker_issue_when_device_tracker_refr
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Marker-backed device-tracker setup failures should recreate the mismatch issue."""
+    """Marker-backed device-tracker setup failures should recreate the mismatch issue.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
         init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
@@ -4425,7 +5141,14 @@ async def test_async_setup_entry_recreates_marker_issue_when_device_tracker_refr
     coordinators = [main_coordinator, device_tracker_coordinator]
 
     def _coordinator_factory(**_kwargs: Any) -> Any:
-        """Return setup coordinators in creation order."""
+        """Return setup coordinators in creation order.
+
+        Args:
+            _kwargs (Any): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            The returned value.
+        """
         return coordinators.pop(0)
 
     monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", _coordinator_factory)
@@ -4485,7 +5208,13 @@ async def test_async_setup_entry_cleans_up_when_platform_forwarding_fails(
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """async_setup_entry should clean up when platform forwarding fails."""
+    """async_setup_entry should clean up when platform forwarding fails.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
         init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
@@ -4533,7 +5262,13 @@ async def test_async_setup_entry_recreates_marker_issue_when_platform_forwarding
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Marker-backed reconciliation should recreate issue if forwarding fails."""
+    """Marker-backed reconciliation should recreate issue if forwarding fails.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
         init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
@@ -4598,7 +5333,13 @@ async def test_async_setup_entry_recreates_marker_issue_when_platform_forwarding
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Marker cleanup failures should keep runtime after forwarding exception."""
+    """Marker cleanup failures should keep runtime after forwarding exception.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
         init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
@@ -4663,7 +5404,13 @@ async def test_reconciliation_incomplete_platform_does_not_finalize_or_clear_mar
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """An unreported forwarded platform retains the marker and skips pruning."""
+    """An unreported forwarded platform retains the marker and skips pruning.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
         init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
@@ -4713,7 +5460,15 @@ async def _run_reconciliation_cleanup_unload(
     unload_result: bool | BaseException,
     preserve_runtime: bool,
 ) -> None:
-    """Run a reconciliation cleanup attempt with a configurable unload outcome."""
+    """Run a reconciliation cleanup attempt with a configurable unload outcome.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        unload_result (bool | BaseException): The unload_result argument.
+        preserve_runtime (bool): The preserve_runtime argument.
+    """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
         init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
@@ -4723,7 +5478,14 @@ async def _run_reconciliation_cleanup_unload(
     coordinators: list[Any] = [coordinator, tracker_coordinator]
 
     def _coordinator_factory(**_kwargs: Any) -> Any:
-        """Return the base and tracker coordinators in setup order."""
+        """Return the base and tracker coordinators in setup order.
+
+        Args:
+            _kwargs (Any): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            The returned value.
+        """
         return coordinators.pop(0)
 
     monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", _coordinator_factory)
@@ -4791,7 +5553,15 @@ async def test_reconciliation_cleanup_unload_outcomes(
     unload_result: bool | BaseException,
     preserve_runtime: bool,
 ) -> None:
-    """Reconciliation cleanup handles unload outcomes with explicit runtime lifecycle expectations."""
+    """Reconciliation cleanup handles unload outcomes with explicit runtime lifecycle expectations.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        unload_result (bool | BaseException): The unload_result argument.
+        preserve_runtime (bool): The preserve_runtime argument.
+    """
     await _run_reconciliation_cleanup_unload(
         monkeypatch=monkeypatch,
         ph_hass=ph_hass,
@@ -4806,7 +5576,12 @@ async def test_unload_setup_platforms_after_reconciliation_failure_returns_false
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """A platform unload failure should be surfaced as a failed cleanup result."""
+    """A platform unload failure should be surfaced as a failed cleanup result.
+
+    Args:
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     entry = make_config_entry()
     ph_hass.config_entries.async_unload_platforms = AsyncMock(return_value=False)
 
@@ -4821,7 +5596,12 @@ async def test_unload_setup_platforms_after_reconciliation_failure_returns_false
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Unloading exceptions should be converted into a false cleanup outcome."""
+    """Unloading exceptions should be converted into a false cleanup outcome.
+
+    Args:
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     entry = make_config_entry()
     ph_hass.config_entries.async_unload_platforms = AsyncMock(
         side_effect=HomeAssistantError("unload error")
@@ -4839,7 +5619,13 @@ async def test_cleanup_reconciliation_failure_returns_platform_unload_result(
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Marker creation should precede unload and the helper should return its unload result."""
+    """Marker creation should precede unload and the helper should return its unload result.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     entry = make_config_entry()
     events: list[str] = []
     repair_marker = MagicMock()
@@ -4875,7 +5661,13 @@ async def test_reconciliation_marker_clear_false_retains_marker(
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """A rejected marker-clear update leaves persisted repair intent retryable."""
+    """A rejected marker-clear update leaves persisted repair intent retryable.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
         init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
@@ -4921,7 +5713,14 @@ async def test_reconciliation_marker_clear_exception_retains_marker(
     make_config_entry: Callable[..., MockConfigEntry],
     clear_error: BaseException,
 ) -> None:
-    """Handled marker-clear failures preserve repair intent for retry."""
+    """Handled marker-clear failures preserve repair intent for retry.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        clear_error (BaseException): The clear_error argument.
+    """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
         init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
@@ -4963,7 +5762,13 @@ async def test_async_setup_entry_deletes_stale_device_id_mismatch_issue(
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """A matching device ID should clear any stale startup mismatch issue."""
+    """A matching device ID should clear any stale startup mismatch issue.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
         init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
@@ -5001,7 +5806,13 @@ async def test_async_setup_entry_preserves_marker_and_skips_stale_issue_delete(
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """An active repair marker should skip stale mismatch issue deletion until reconcile completes."""
+    """An active repair marker should skip stale mismatch issue deletion until reconcile completes.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
         init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
@@ -5068,7 +5879,16 @@ async def test_async_setup_entry_deletes_stale_mismatch_issue_only_on_matching_v
     router_device_id: Any,
     expects_delete_issue: bool,
 ) -> None:
-    """Only delete stale mismatch issues when configured and observed IDs are both valid and equal."""
+    """Only delete stale mismatch issues when configured and observed IDs are both valid and equal.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        fake_client (Any): The fake_client argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        router_device_id (Any): The router_device_id argument.
+        expects_delete_issue (bool): The expects_delete_issue argument.
+    """
     create_client = MagicMock(side_effect=fake_client(device_id=router_device_id))
     patch_opnsense_client(monkeypatch, init_mod, create_client)
     coordinator = _make_setup_coordinator()
@@ -5107,7 +5927,13 @@ async def test_reconciliation_prepare_failure_recreates_marker_issue_without_unl
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Reconciliation preflight failures emit retryable marker issue and skip platform unload."""
+    """Reconciliation preflight failures emit retryable marker issue and skip platform unload.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
         init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
@@ -5173,11 +5999,25 @@ async def test_async_setup_entry_recreates_marker_issue_on_probe_mismatch_before
     make_config_entry: Callable[..., MockConfigEntry],
     router_device_id: Any,
 ) -> None:
-    """Marker-backed mismatch should recreate the issue and stop before platform setup."""
+    """Marker-backed mismatch should recreate the issue and stop before platform setup.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        router_device_id (Any): The router_device_id argument.
+    """
     client = _make_valid_setup_client()
 
     async def _get_device_unique_id(expected_id: str | None = None) -> Any:
-        """Return a probe value that triggers marker-based probe mismatch."""
+        """Return a probe value that triggers marker-based probe mismatch.
+
+        Returns:
+            The returned value.
+
+        Args:
+            expected_id (str | None): The expected_id argument.
+        """
         return router_device_id
 
     client.get_device_unique_id = _get_device_unique_id
@@ -5236,7 +6076,13 @@ async def test_async_setup_entry_rejects_entry_with_malformed_repair_marker(
     ph_hass: HomeAssistant,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Malformed repair marker payloads should abort setup and avoid client creation."""
+    """Malformed repair marker payloads should abort setup and avoid client creation.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (HomeAssistant): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     client = _make_valid_setup_client()
     create_client = MagicMock(return_value=client)
     monkeypatch.setattr(
@@ -5287,7 +6133,16 @@ async def test_async_setup_entry_rejects_entry_when_marker_and_entry_mismatch(
     entry_unique_id: str,
     marker_device_id: str,
 ) -> None:
-    """Repair marker new-device ID must match both stored config and unique id."""
+    """Repair marker new-device ID must match both stored config and unique id.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (HomeAssistant): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        config_device_id (str): The config_device_id argument.
+        entry_unique_id (str): The entry_unique_id argument.
+        marker_device_id (str): The marker_device_id argument.
+    """
     client = _make_valid_setup_client()
     client.get_device_unique_id = AsyncMock(return_value=config_device_id)
     create_client = MagicMock(return_value=client)
@@ -5337,7 +6192,14 @@ async def test_async_setup_entry_keeps_runtime_when_reconciliation_cleanup_raise
     make_config_entry: Callable[..., MockConfigEntry],
     cleanup_error: HomeAssistantError | KeyError,
 ) -> None:
-    """Reconciliation cleanup exceptions should keep runtime state and return False."""
+    """Reconciliation cleanup exceptions should keep runtime state and return False.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (HomeAssistant): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        cleanup_error (HomeAssistantError | KeyError): The cleanup_error argument.
+    """
     client = _make_valid_setup_client()
     create_client = MagicMock(return_value=client)
     monkeypatch.setattr(
@@ -5405,7 +6267,13 @@ async def test_async_setup_entry_registers_update_listener_after_forwarding(
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Update listener registration should happen after platform forwarding."""
+    """Update listener registration should happen after platform forwarding.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+    """
     call_order: list[str] = []
 
     client = _make_valid_setup_client()
@@ -5432,7 +6300,7 @@ async def test_async_setup_entry_registers_update_listener_after_forwarding(
         """Record listener registration and return the removal callback.
 
         Args:
-            listener: Update listener registered on the config entry.
+            listener (Any): Update listener registered on the config entry.
 
         Returns:
             MagicMock: Callback used to unregister the listener.
@@ -5444,7 +6312,7 @@ async def test_async_setup_entry_registers_update_listener_after_forwarding(
         """Record when Home Assistant registers the unload callback.
 
         Args:
-            unregister: Unload callback passed by the config entry.
+            unregister (MagicMock): Unload callback passed by the config entry.
         """
         call_order.append("async_on_unload")
 
@@ -5455,8 +6323,8 @@ async def test_async_setup_entry_registers_update_listener_after_forwarding(
         """Record platform forwarding and report success.
 
         Args:
-            *_args: Positional setup arguments ignored by the stub.
-            **_kwargs: Keyword setup arguments ignored by the stub.
+            _args (Any): Additional positional arguments accepted by the test double.
+            _kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
             bool: Always ``True`` for the test setup path.
@@ -5482,7 +6350,12 @@ async def test_async_setup_entry_registers_update_listener_after_forwarding(
 async def test_migrate_2_to_3_handles_identifier_collision(
     monkeypatch: pytest.MonkeyPatch, fake_client: Any
 ) -> None:
-    """_migrate_2_to_3 continues when DeviceIdentifierCollisionError occurs while updating devices."""
+    """_migrate_2_to_3 continues when DeviceIdentifierCollisionError occurs while updating devices.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        fake_client (Any): The fake_client argument.
+    """
     # migration should continue if DeviceIdentifierCollisionError raised when updating device
     client = fake_client(device_id="newdev")()
 
@@ -5497,9 +6370,17 @@ async def test_migrate_2_to_3_handles_identifier_collision(
         def __init__(self) -> None:
             """Provide a fake device registry object for the collision test."""
 
-        def async_update_device(self, *a, **k) -> Never:
+        def async_update_device(self, *a: object, **k: object) -> Never:
             # DeviceIdentifierCollisionError requires an existing_device argument
-            """Raise the collision error expected by the registry migration test."""
+            """Raise the collision error expected by the registry migration test.
+
+            Args:
+                a (object): Additional positional arguments accepted by the test double.
+                k (object): Additional keyword arguments accepted by the test double.
+
+            Returns:
+                The returned value.
+            """
             raise dr.DeviceIdentifierCollisionError(dev.identifiers, MagicMock(id="other"))
 
     monkeypatch.setattr(dr, "async_get", lambda hass: DeviceRegistry())
@@ -5531,7 +6412,12 @@ async def test_migrate_2_to_3_handles_identifier_collision(
 async def test_migrate_3_to_4_defers_without_updating_entities_when_later_filesystem_invalid(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any
 ) -> None:
-    """A valid filesystem before a malformed filesystem should not partially migrate or bump version."""
+    """A valid filesystem before a malformed filesystem should not partially migrate or bump version.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        ph_hass (Any): The ph_hass argument.
+    """
     client = MagicMock()
     client.get_telemetry = AsyncMock(
         return_value={

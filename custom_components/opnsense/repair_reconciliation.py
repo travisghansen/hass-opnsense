@@ -38,7 +38,15 @@ class RepairMarker:
 
 
 def build_repair_marker(old_device_id: str, new_device_id: str) -> dict[str, object]:
-    """Build the current persisted Device ID repair marker."""
+    """Build the current persisted Device ID repair marker.
+
+    Returns:
+        The returned value.
+
+    Args:
+        old_device_id (str): The old_device_id argument.
+        new_device_id (str): The new_device_id argument.
+    """
     return {
         "version": _REPAIR_MARKER_VERSION,
         "old_device_id": old_device_id,
@@ -47,12 +55,26 @@ def build_repair_marker(old_device_id: str, new_device_id: str) -> dict[str, obj
 
 
 def has_repair_marker(entry: ConfigEntry) -> bool:
-    """Return whether the entry contains a persisted repair marker."""
+    """Return whether the entry contains a persisted repair marker.
+
+    Returns:
+        The returned value.
+
+    Args:
+        entry (ConfigEntry): The entry argument.
+    """
     return REPAIR_MARKER_KEY in entry.data
 
 
 def parse_repair_marker(entry: ConfigEntry) -> RepairMarker | None:
-    """Parse and validate the entry's persisted repair marker."""
+    """Parse and validate the entry's persisted repair marker.
+
+    Returns:
+        The returned value.
+
+    Args:
+        entry (ConfigEntry): The entry argument.
+    """
     value = entry.data.get(REPAIR_MARKER_KEY)
     if not isinstance(value, Mapping):
         return None
@@ -73,7 +95,14 @@ def parse_repair_marker(entry: ConfigEntry) -> RepairMarker | None:
 
 
 def _platform_domain_value(platform_domain: PlatformDomain) -> str:
-    """Return the string entity domain for a platform value."""
+    """Return the string entity domain for a platform value.
+
+    Returns:
+        The returned value.
+
+    Args:
+        platform_domain (PlatformDomain): The platform_domain argument.
+    """
     return platform_domain.value if isinstance(platform_domain, Platform) else platform_domain
 
 
@@ -167,6 +196,10 @@ class RepairReconciliation:
 
         If ``entities`` is ``None``, the platform discovery payload was missing
         or malformed and should not be treated as complete.
+
+        Args:
+            platform_domain (PlatformDomain): The platform_domain argument.
+            entities (Iterable[Entity] | None): The entities argument.
         """
         if entities is None:
             return
@@ -189,7 +222,11 @@ class RepairReconciliation:
         )
 
     def require_platforms_complete(self, platform_domains: Iterable[PlatformDomain]) -> None:
-        """Fail unless every forwarded platform reported its final entity list."""
+        """Fail unless every forwarded platform reported its final entity list.
+
+        Args:
+            platform_domains (Iterable[PlatformDomain]): The platform_domains argument.
+        """
         required_domains = {
             _platform_domain_value(platform_domain) for platform_domain in platform_domains
         }
@@ -267,13 +304,26 @@ def record_desired_entities(
     platform_domain: PlatformDomain,
     entities: Iterable[Entity] | None,
 ) -> None:
-    """Record a final platform entity list when reconciliation is active."""
+    """Record a final platform entity list when reconciliation is active.
+
+    Args:
+        config_entry (ConfigEntry): The config_entry argument.
+        platform_domain (PlatformDomain): The platform_domain argument.
+        entities (Iterable[Entity] | None): The entities argument.
+    """
     reconciliation = config_entry.runtime_data.repair_reconciliation
     if isinstance(reconciliation, RepairReconciliation) and reconciliation.active:
         reconciliation.record_desired_entities(platform_domain, entities)
 
 
 def is_reconciliation_active(config_entry: ConfigEntry) -> bool:
-    """Return whether this setup is performing Device ID reconciliation."""
+    """Return whether this setup is performing Device ID reconciliation.
+
+    Returns:
+        The returned value.
+
+    Args:
+        config_entry (ConfigEntry): The config_entry argument.
+    """
     reconciliation = config_entry.runtime_data.repair_reconciliation
     return isinstance(reconciliation, RepairReconciliation) and reconciliation.active

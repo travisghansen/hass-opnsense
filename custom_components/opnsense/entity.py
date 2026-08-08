@@ -37,10 +37,10 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseEntityCoordinator]):
         """Return a stable display label from a dynamic state payload.
 
         Args:
-            payload: Mapping payload that may contain one of the display fields.
-            fallback: Value to use when none of the fields contain a displayable value.
-            *fields: Ordered field names to prefer for the display label.
-            allow_scalar: Whether non-container scalar values should be stringified.
+            payload (Mapping[str, Any]): Mapping payload that may contain one of the display fields.
+            fallback (str): Value to use when none of the fields contain a displayable value.
+            fields (str): Ordered payload field names to prefer for the display label.
+            allow_scalar (bool): Whether non-container scalar values should be stringified.
 
         Returns:
             String display label from the first usable field, otherwise the fallback.
@@ -81,10 +81,13 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseEntityCoordinator]):
         """Initialize a base OPNsense entity bound to a coordinator.
 
         Args:
-            config_entry: Config entry that owns this entity and contains device metadata.
-            coordinator: Coordinator providing state data and refresh updates.
-            unique_id_suffix: Optional suffix appended to the router unique ID for this entity.
-            name_suffix: Optional display-name suffix shown in Home Assistant.
+            config_entry (ConfigEntry): Config entry that owns this entity and contains device
+                metadata.
+            coordinator (OPNsenseEntityCoordinator): Coordinator providing state data and refresh
+                updates.
+            unique_id_suffix (str | None): Optional suffix appended to the router unique ID for this
+                entity.
+            name_suffix (str | None): Optional display-name suffix shown in Home Assistant.
         """
         self.config_entry: ConfigEntry = config_entry
         self.coordinator: OPNsenseEntityCoordinator = coordinator
@@ -113,7 +116,7 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseEntityCoordinator]):
         """Read a nested value from coordinator state data.
 
         Args:
-            path: Dot-delimited key path inside the coordinator state payload.
+            path (str): Dot-delimited key path inside the coordinator state payload.
 
         Returns:
             Any | None: Value at the requested path, or `None` when missing.
@@ -135,7 +138,7 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseEntityCoordinator]):
         """Return a nested mapping from coordinator data.
 
         Args:
-            path: Dot-delimited key path inside the coordinator state payload.
+            path (str): Dot-delimited key path inside the coordinator state payload.
 
         Returns:
             MutableMapping[str, Any] | None: Nested mapping at ``path``, or ``None``
@@ -151,7 +154,7 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseEntityCoordinator]):
         """Return a nested list from coordinator data.
 
         Args:
-            path: Dot-delimited key path inside the coordinator state payload.
+            path (str): Dot-delimited key path inside the coordinator state payload.
 
         Returns:
             list[Any] | None: Nested list at ``path``, or ``None`` when missing or malformed.
@@ -166,7 +169,7 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseEntityCoordinator]):
         """Mark the entity unavailable and publish the state.
 
         Args:
-            clear_attributes: Whether to clear extra state attributes while marking
+            clear_attributes (bool): Whether to clear extra state attributes while marking
                 the entity unavailable.
         """
         self._available = False

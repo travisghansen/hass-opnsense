@@ -120,7 +120,13 @@ def _align_aiopnsense_log_level() -> None:
 def _async_create_marker_repair_issue(
     hass: HomeAssistant, entry: ConfigEntry, repair_marker: RepairMarker
 ) -> None:
-    """Create a marker-backed nonpersistent mismatch issue for reconciliation retries."""
+    """Create a marker-backed nonpersistent mismatch issue for reconciliation retries.
+
+    Args:
+        hass (HomeAssistant): The hass argument.
+        entry (ConfigEntry): The entry argument.
+        repair_marker (RepairMarker): The repair_marker argument.
+    """
     ir.async_create_issue(
         hass=hass,
         domain=DOMAIN,
@@ -148,7 +154,14 @@ async def _async_first_refresh_with_marker_issue(
     coordinator: OPNsenseDataUpdateCoordinator,
     repair_marker: RepairMarker | None,
 ) -> None:
-    """Refresh coordinator and recreate a marker-backed issue when setup must retry."""
+    """Refresh coordinator and recreate a marker-backed issue when setup must retry.
+
+    Args:
+        hass (HomeAssistant): The hass argument.
+        entry (ConfigEntry): The entry argument.
+        coordinator (OPNsenseDataUpdateCoordinator): The coordinator argument.
+        repair_marker (RepairMarker | None): The repair_marker argument.
+    """
     try:
         await coordinator.async_config_entry_first_refresh()
     except ConfigEntryNotReady:
@@ -164,7 +177,18 @@ def _resolve_device_id_probe_state(
     router_device_id: str | None,
     repair_marker: RepairMarker | None,
 ) -> bool:
-    """Handle marker and mismatch-issue decisions after Device ID probe."""
+    """Handle marker and mismatch-issue decisions after Device ID probe.
+
+    Returns:
+        The returned value.
+
+    Args:
+        hass (HomeAssistant): The hass argument.
+        entry (ConfigEntry): The entry argument.
+        config_device_id (str | None): The config_device_id argument.
+        router_device_id (str | None): The router_device_id argument.
+        repair_marker (RepairMarker | None): The repair_marker argument.
+    """
     if repair_marker is not None and router_device_id != repair_marker.new_device_id:
         _async_create_marker_repair_issue(hass, entry, repair_marker)
         _LOGGER.error(
@@ -200,7 +224,16 @@ def _resolve_device_id_probe_state(
 async def _unload_setup_platforms_after_reconciliation_failure(
     hass: HomeAssistant, entry: ConfigEntry, platforms: list[Platform]
 ) -> bool:
-    """Unload forwarded setup platforms when reconciliation aborts."""
+    """Unload forwarded setup platforms when reconciliation aborts.
+
+    Returns:
+        The returned value.
+
+    Args:
+        hass (HomeAssistant): The hass argument.
+        entry (ConfigEntry): The entry argument.
+        platforms (list[Platform]): The platforms argument.
+    """
     try:
         unloaded: bool = await hass.config_entries.async_unload_platforms(entry, platforms)
     except HomeAssistantError, KeyError, TimeoutError:
@@ -224,7 +257,17 @@ async def _cleanup_reconciliation_failure(
     platforms: list[Platform],
     repair_marker: RepairMarker,
 ) -> bool:
-    """Persist marker-backed repair issue and unload any partially loaded platforms."""
+    """Persist marker-backed repair issue and unload any partially loaded platforms.
+
+    Returns:
+        The returned value.
+
+    Args:
+        hass (HomeAssistant): The hass argument.
+        entry (ConfigEntry): The entry argument.
+        platforms (list[Platform]): The platforms argument.
+        repair_marker (RepairMarker): The repair_marker argument.
+    """
     _async_create_marker_repair_issue(hass, entry, repair_marker)
     return await _unload_setup_platforms_after_reconciliation_failure(hass, entry, platforms)
 
@@ -233,8 +276,8 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
     """Handle config-entry option updates and schedule integration reload.
 
     Args:
-        hass: Home Assistant instance.
-        entry: OPNsense config entry whose options were updated.
+        hass (HomeAssistant): Home Assistant instance.
+        entry (ConfigEntry): OPNsense config entry whose options were updated.
     """
     # _LOGGER.debug("[async_update_listener] entry: %s", entry.as_dict())
     if getattr(entry.runtime_data, SHOULD_RELOAD, True):
@@ -382,8 +425,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up domain-level OPNsense services.
 
     Args:
-        hass: Home Assistant instance.
-        config: YAML configuration mapping (unused for config-entry setup).
+        hass (HomeAssistant): Home Assistant instance.
+        config (ConfigType): YAML configuration mapping (unused for config-entry setup).
 
     Returns:
         bool: Always `True` after service setup succeeds.
@@ -397,8 +440,8 @@ async def _async_setup_carp_entry(hass: HomeAssistant, entry: ConfigEntry) -> bo
     """Set up a CARP integration entry with a runtime ID-less coordinator.
 
     Args:
-        hass: Home Assistant instance that owns the config entry.
-        entry: CARP config entry being set up.
+        hass (HomeAssistant): Home Assistant instance that owns the config entry.
+        entry (ConfigEntry): CARP config entry being set up.
 
     Returns:
         bool: ``True`` after the coordinator refresh and platform setup succeed.
@@ -474,8 +517,8 @@ async def _async_create_validated_client(hass: HomeAssistant, entry: ConfigEntry
     """Create and validate a client, closing it when validation fails.
 
     Args:
-        hass: Home Assistant instance.
-        entry: Config entry containing OPNsense connection credentials.
+        hass (HomeAssistant): Home Assistant instance.
+        entry (ConfigEntry): Config entry containing OPNsense connection credentials.
 
     Returns:
         OPNsenseClient: A validated client ready for coordinator setup.
@@ -513,8 +556,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up an OPNsense config entry and its runtime resources.
 
     Args:
-        hass: Home Assistant instance.
-        entry: Config entry containing OPNsense connection credentials and options.
+        hass (HomeAssistant): Home Assistant instance.
+        entry (ConfigEntry): Config entry containing OPNsense connection credentials and options.
 
     Returns:
         bool: `True` when setup and initial refresh succeed. Returns `False` when
@@ -792,9 +835,9 @@ async def async_remove_config_entry_device(
     """Decide whether a device can be removed from this config entry.
 
     Args:
-        hass: Home Assistant instance.
-        config_entry: Config entry owning the target device.
-        device_entry: Device registry entry proposed for removal.
+        hass (HomeAssistant): Home Assistant instance.
+        config_entry (ConfigEntry): Config entry owning the target device.
+        device_entry (dr.DeviceEntry): Device registry entry proposed for removal.
 
     Returns:
         bool: `True` when the device has no linked entities and is not a tracker child.
@@ -814,8 +857,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload all platforms and runtime resources for a config entry.
 
     Args:
-        hass: Home Assistant instance.
-        entry: Config entry to unload.
+        hass (HomeAssistant): Home Assistant instance.
+        entry (ConfigEntry): Config entry to unload.
 
     Returns:
         bool: `True` when platforms unload successfully, otherwise `False`.
@@ -841,8 +884,8 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
     """Migrate a stored config entry to the latest supported schema.
 
     Args:
-        hass: Home Assistant instance.
-        config_entry: Config entry to migrate.
+        hass (HomeAssistant): Home Assistant instance.
+        config_entry (ConfigEntry): Config entry to migrate.
 
     Returns:
         bool: `True` when all required migration steps succeed.

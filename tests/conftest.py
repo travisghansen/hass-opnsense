@@ -26,22 +26,44 @@ from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID
 class FakeClientSession:
     """Minimal fake client session used by tests in lieu of aiohttp.ClientSession."""
 
-    def __init__(self, *args, **kwargs) -> None:
-        """Initialize the fake client session (no-op)."""
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        """Initialize the fake client session (no-op).
+
+        Args:
+            args (object): Additional positional arguments accepted by the test double.
+            kwargs (object): Additional keyword arguments accepted by the test double.
+        """
 
     async def __aenter__(self) -> Any:
-        """Enter async context and return the session-like object."""
+        """Enter async context and return the session-like object.
+
+        Returns:
+            The returned value.
+        """
         return self
 
     async def __aexit__(
         self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: object
     ) -> bool:
-        """Exit async context, close the session and propagate exceptions."""
+        """Exit async context, close the session and propagate exceptions.
+
+        Returns:
+            The returned value.
+
+        Args:
+            exc_type (type[BaseException] | None): The exc_type argument.
+            exc (BaseException | None): The exc argument.
+            tb (object): The tb argument.
+        """
         await self.close()
         return False
 
     async def close(self) -> bool:
-        """Close the fake session (no-op)."""
+        """Close the fake session (no-op).
+
+        Returns:
+            The returned value.
+        """
         return True
 
 
@@ -55,6 +77,10 @@ def _ensure_async_create_task_mock(real: Any, side_effect: Any) -> None:
     2. Use ``object.__setattr__`` to bypass attribute protections.
     3. If an existing callable exists, wrap it with
        ``MagicMock(side_effect=lambda coro: orig(coro))``.
+
+    Args:
+        real (Any): The real argument.
+        side_effect (Any): The side_effect argument.
     """
     with contextlib.suppress(AttributeError, TypeError):
         real.async_create_task = MagicMock(side_effect=side_effect)
@@ -80,10 +106,22 @@ def _ensure_async_create_task_mock(real: Any, side_effect: Any) -> None:
 
 @pytest.fixture(autouse=True)
 def _patch_async_create_clientsession(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Patch shared client-session construction so tests never open network resources."""
+    """Patch shared client-session construction so tests never open network resources.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+    """
 
     def create_clientsession(*args: Any, **kwargs: Any) -> FakeClientSession:
-        """Return a fake client session for all patched session helper surfaces."""
+        """Return a fake client session for all patched session helper surfaces.
+
+        Args:
+            args (Any): Additional positional arguments accepted by the test double.
+            kwargs (Any): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            The returned value.
+        """
         return FakeClientSession()
 
     monkeypatch.setattr(
@@ -111,7 +149,12 @@ def _patch_async_create_clientsession(monkeypatch: pytest.MonkeyPatch) -> None:
         """Test cookie jar replacement with a no-op initializer."""
 
         def __init__(self, *args: Any, **kwargs: Any) -> None:
-            """Ignore args and return a usable object for patch coverage."""
+            """Ignore args and return a usable object for patch coverage.
+
+            Args:
+                args (Any): Additional positional arguments accepted by the test double.
+                kwargs (Any): Additional keyword arguments accepted by the test double.
+            """
 
     monkeypatch.setattr(aiohttp, "CookieJar", _FakeCookieJar, raising=True)
 
@@ -124,6 +167,9 @@ def coordinator_capture() -> Any:
         instances: A list that each created coordinator is appended to.
         factory: A callable for monkeypatch that creates the fake coordinator,
             records it in ``instances``, and returns it.
+
+    Returns:
+        The returned value.
     """
 
     class _C:
@@ -135,15 +181,21 @@ def coordinator_capture() -> Any:
             # Return a factory function bound to coord_cls that captures instances.
             """Factory.
 
+            Returns:
+                The returned value.
+
             Args:
-                coord_cls: Coord cls provided by pytest or the test case.
+                coord_cls (Any): Coord cls provided by pytest or the test case.
             """
 
-            def _f(**kwargs) -> Any:
+            def _f(**kwargs: object) -> Any:
                 """F.
 
                 Args:
-                    **kwargs: Additional keyword arguments forwarded by the function.
+                    kwargs (object): Additional keyword arguments accepted by the test double.
+
+                Returns:
+                    The returned value.
                 """
                 inst = (coord_cls or MagicMock)(**kwargs)
                 self.instances.append(inst)
@@ -162,10 +214,23 @@ def fake_stream_response_factory() -> Any:
     and ``ok`` attributes, async context-manager support, and a
     ``content.iter_chunked()`` async generator for yielding the supplied byte
     chunks.
+
+    Returns:
+        The returned value.
     """
 
     def _make(chunks: list[bytes], status: int = 200, reason: str = "OK", ok: bool = True) -> Any:
-        """Create a fake streamed HTTP response with the supplied byte chunks."""
+        """Create a fake streamed HTTP response with the supplied byte chunks.
+
+        Returns:
+            The returned value.
+
+        Args:
+            chunks (list[bytes]): The chunks argument.
+            status (int): The status argument.
+            reason (str): The reason argument.
+            ok (bool): The ok argument.
+        """
 
         class _Resp:
             def __init__(self) -> None:
@@ -175,7 +240,11 @@ def fake_stream_response_factory() -> Any:
                 self.ok = ok
 
             async def __aenter__(self) -> Any:
-                """Enter the fake response context and return the response object."""
+                """Enter the fake response context and return the response object.
+
+                Returns:
+                    The returned value.
+                """
                 return self
 
             async def __aexit__(
@@ -183,31 +252,44 @@ def fake_stream_response_factory() -> Any:
             ) -> bool:
                 """Exit the fake response context without suppressing exceptions.
 
+                Returns:
+                    The returned value.
+
                 Args:
-                    exc_type: Exception type raised inside the context manager, if any.
-                    exc: Exception instance raised inside the context manager, if any.
-                    tb: Traceback associated with ``exc``, if any.
+                    exc_type (type[BaseException] | None): Exception type raised inside the context
+                        manager, if any.
+                    exc (BaseException | None): Exception instance raised inside the context
+                        manager, if any.
+                    tb (object): Traceback associated with ``exc``, if any.
                 """
                 return False
 
             @property
             def content(self) -> Any:
-                """Expose a minimal async stream reader for the supplied chunks."""
+                """Expose a minimal async stream reader for the supplied chunks.
+
+                Returns:
+                    The returned value.
+                """
 
                 class C:
                     def __init__(self, chunks: list[bytes]) -> None:
                         """Store the chunks that the fake stream reader will yield.
 
                         Args:
-                            chunks: Raw byte chunks to emit through ``iter_chunked``.
+                            chunks (list[bytes]): Raw byte chunks to emit through ``iter_chunked``.
                         """
                         self._chunks = chunks
 
                     async def iter_chunked(self, _n: Any) -> AsyncIterator[Any]:
                         """Yield each preloaded chunk regardless of requested chunk size.
 
+                        Yields:
+                            Any: The next yielded value.
+
                         Args:
-                            _n: Chunk size requested by the caller and ignored by this fake stream.
+                            _n (Any): Chunk size requested by the caller and ignored by this fake
+                                stream.
                         """
                         for c in self._chunks:
                             yield c
@@ -221,7 +303,11 @@ def fake_stream_response_factory() -> Any:
 
 @pytest.fixture
 def coordinator() -> Any:
-    """Provide a lightweight coordinator mock for tests. Use MagicMock so that registering listeners (which happens synchronously) does not produce AsyncMock "never awaited" warnings. Tests that need async behavior can set specific async methods on the mock to AsyncMock."""
+    """Provide a lightweight coordinator mock for tests. Use MagicMock so that registering listeners (which happens synchronously) does not produce AsyncMock "never awaited" warnings. Tests that need async behavior can set specific async methods on the mock to AsyncMock.
+
+    Returns:
+        The returned value.
+    """
     return MagicMock()
 
 
@@ -236,7 +322,11 @@ class DummyCoordinator(MagicMock):
 
 @pytest.fixture
 def dummy_coordinator() -> Any:
-    """Provide a fresh DummyCoordinator instance for a test. Tests can request this fixture when they need a lightweight coordinator mock that behaves like the previous `DummyCoordinator()` constructor."""
+    """Provide a fresh DummyCoordinator instance for a test. Tests can request this fixture when they need a lightweight coordinator mock that behaves like the previous `DummyCoordinator()` constructor.
+
+    Returns:
+        The returned value.
+    """
     return DummyCoordinator()
 
 
@@ -260,25 +350,24 @@ def fake_client() -> Any:
         """Build a fake client class configured with deterministic test responses.
 
         Args:
-            device_id: Device identifier returned by the fake client.
-            firmware_version: Firmware version returned by the fake client.
-            telemetry: Telemetry payload returned by ``get_telemetry``.
-            close_result: Result returned by ``async_close``.
+            device_id (Any): Device identifier returned by the fake client.
+            firmware_version (str): Firmware version returned by the fake client.
+            telemetry (dict | None): Telemetry payload returned by ``get_telemetry``.
+            close_result (bool): Result returned by ``async_close``.
 
         Returns:
             Any: Fake OPNsense client class with deterministic responses.
         """
 
         class FakeClient:
-            def __init__(self, **kwargs) -> None:
+            def __init__(self, **kwargs: object) -> None:
                 # allow explicit overrides via kwargs when tests call the production
                 # client factory with parameters; prefer explicit args passed to
                 # the fixture factory above.
                 """Initialize the fake client instance used by coordinator tests.
 
                 Args:
-                    **kwargs: Constructor arguments accepted for compatibility
-                        with the production client signature and ignored here.
+                    kwargs (object): Additional keyword arguments accepted by the test double.
                 """
                 self._device_id = device_id
                 self._firmware = firmware_version
@@ -290,26 +379,45 @@ def fake_client() -> Any:
             async def get_device_unique_id(self, expected_id: str | None = None) -> Any:
                 """Return the fake device identifier configured for this client.
 
+                Returns:
+                    The returned value.
+
                 Args:
-                    expected_id: Expected device identifier supplied by the caller
+                    expected_id (str | None): Expected device identifier supplied by the caller
                         and ignored by this fake implementation.
                 """
                 return self._device_id
 
             async def validate(self) -> bool:
-                """Perform a no-op validation check for setup-time assertions."""
+                """Perform a no-op validation check for setup-time assertions.
+
+                Returns:
+                    The returned value.
+                """
                 return True
 
             async def get_host_firmware_version(self) -> Any:
-                """Return the configured firmware version for test assertions."""
+                """Return the configured firmware version for test assertions.
+
+                Returns:
+                    The returned value.
+                """
                 return self._firmware
 
             async def async_close(self) -> Any:
-                """Return the configured close result for shutdown tests."""
+                """Return the configured close result for shutdown tests.
+
+                Returns:
+                    The returned value.
+                """
                 return self._close_result
 
             async def get_telemetry(self) -> Any:
-                """Return the preloaded telemetry payload for coordinator tests."""
+                """Return the preloaded telemetry payload for coordinator tests.
+
+                Returns:
+                    The returned value.
+                """
                 return self._telemetry
 
             async def reset_query_counts(self) -> None:
@@ -318,46 +426,81 @@ def fake_client() -> Any:
                 self._query_counts_reset = True
 
             async def get_query_counts(self) -> int:
-                """Return the stored number of fake REST/API query calls."""
+                """Return the stored number of fake REST/API query calls.
+
+                Returns:
+                    The returned value.
+                """
                 return self._query_counts
 
             async def get_interfaces(self) -> Any:
-                """Return a minimal interface payload with traffic counters."""
+                """Return a minimal interface payload with traffic counters.
+
+                Returns:
+                    The returned value.
+                """
                 return {"eth0": {"inbytes": 200, "outbytes": 100}}
 
             async def get_vnstat(self) -> Any:
-                """Return an empty vnStat payload for tests that expect no interfaces."""
+                """Return an empty vnStat payload for tests that expect no interfaces.
+
+                Returns:
+                    The returned value.
+                """
                 return {"interface_count": 0, "interfaces": {}}
 
             async def get_smart(self) -> Any:
-                """Return an empty SMART payload for coordinator tests."""
+                """Return an empty SMART payload for coordinator tests.
+
+                Returns:
+                    The returned value.
+                """
                 return []
 
             async def get_nut_ups_status(self) -> Any:
-                """Return an empty NUT UPS status mapping for coordinator tests."""
+                """Return an empty NUT UPS status mapping for coordinator tests.
+
+                Returns:
+                    The returned value.
+                """
                 return {}
 
             async def get_smart_info(self, device: str, info_type: str = "a") -> dict[str, Any]:
                 """Return an empty SMART info payload for coordinator tests.
 
+                Returns:
+                    The returned value.
+
                 Args:
-                    device: SMART device name requested by the coordinator.
-                    info_type: SMART info selector requested by the coordinator.
+                    device (str): SMART device name requested by the coordinator.
+                    info_type (str): SMART info selector requested by the coordinator.
                 """
                 assert device is not None
                 assert info_type is not None
                 return {}
 
             async def get_openvpn(self) -> Any:
-                """Return an empty OpenVPN payload for coordinator tests."""
+                """Return an empty OpenVPN payload for coordinator tests.
+
+                Returns:
+                    The returned value.
+                """
                 return {"servers": {}}
 
             async def get_wireguard(self) -> Any:
-                """Return an empty WireGuard payload for coordinator tests."""
+                """Return an empty WireGuard payload for coordinator tests.
+
+                Returns:
+                    The returned value.
+                """
                 return {"servers": {}}
 
             async def get_carp(self) -> dict[str, Any]:
-                """Return one fake CARP payload with interfaces and aggregate summary."""
+                """Return one fake CARP payload with interfaces and aggregate summary.
+
+                Returns:
+                    The returned value.
+                """
                 return {
                     "interfaces": [],
                     "status_summary": {
@@ -386,6 +529,9 @@ def fake_reg_factory() -> Any:
 
     The returned registry object exposes configurable lookup, update, and
     removal methods so tests can assert registry cleanup behavior.
+
+    Returns:
+        The returned value.
     """
 
     def _make(
@@ -396,11 +542,14 @@ def fake_reg_factory() -> Any:
     ) -> Any:
         """Create a fake device registry with configurable lookup and removal behavior.
 
+        Returns:
+            The returned value.
+
         Args:
-            device_exists: Whether ``async_get_device`` should return a device record.
-            device_id: Device identifier returned when ``device_exists`` is true.
-            config_entries: Config entries already linked to the fake device.
-            disabled_by: Disable source reported by the fake device entry.
+            device_exists (bool): Whether ``async_get_device`` should return a device record.
+            device_id (str): Device identifier returned when ``device_exists`` is true.
+            config_entries (set[str] | None): Config entries already linked to the fake device.
+            disabled_by (str | None): Disable source reported by the fake device entry.
         """
         registry = MagicMock()
         registry.async_get_device.side_effect = lambda *args, **kwargs: (
@@ -420,7 +569,11 @@ def fake_reg_factory() -> Any:
 
 @pytest.fixture
 def fake_flow_client() -> Any:
-    """Return a factory that constructs a lightweight FakeClient used in flow tests."""
+    """Return a factory that constructs a lightweight FakeClient used in flow tests.
+
+    Returns:
+        The returned value.
+    """
 
     def _make(
         device_id: str = "unique-id",
@@ -428,9 +581,12 @@ def fake_flow_client() -> Any:
     ) -> Any:
         """Build a lightweight flow-test client class with configurable identity.
 
+        Returns:
+            The returned value.
+
         Args:
-            device_id: Device identifier returned by the fake client.
-            firmware: Firmware version returned by the fake client.
+            device_id (str): Device identifier returned by the fake client.
+            firmware (str): Firmware version returned by the fake client.
         """
 
         class FakeFlowClient:
@@ -443,30 +599,42 @@ def fake_flow_client() -> Any:
 
             last_instance: FakeFlowClient | None = None
 
-            def __init__(self, *args, **kwargs) -> None:
+            def __init__(self, *args: object, **kwargs: object) -> None:
                 """Initialize FakeFlowClient.
 
                 Args:
-                    *args: Additional positional arguments forwarded by the function.
-                    **kwargs: Additional keyword arguments forwarded by the function.
+                    args (object): Additional positional arguments accepted by the test double.
+                    kwargs (object): Additional keyword arguments accepted by the test double.
                 """
                 FakeFlowClient.last_instance = self
                 self._device_id = device_id
                 self._firmware = firmware
 
             async def get_host_firmware_version(self) -> str:
-                """Return the configured firmware version for flow validation."""
+                """Return the configured firmware version for flow validation.
+
+                Returns:
+                    The returned value.
+                """
                 return self._firmware
 
             async def get_system_info(self) -> dict:
-                """Return minimal system information for config-flow validation."""
+                """Return minimal system information for config-flow validation.
+
+                Returns:
+                    The returned value.
+                """
                 return {"name": "OPNsense"}
 
             async def get_device_unique_id(self, expected_id: str | None = None) -> str:
                 """Return the fake device identifier configured for the flow test.
 
+                Returns:
+                    The returned value.
+
                 Args:
-                    expected_id: Expected device identifier supplied by the caller and ignored.
+                    expected_id (str | None): Expected device identifier supplied by the caller and
+                        ignored.
                 """
                 return self._device_id
 
@@ -481,27 +649,39 @@ def fake_flow_client() -> Any:
 
 @pytest.fixture
 def fake_coordinator() -> Any:
-    """Return a simple FakeCoordinator class tests can pass to coordinator_capture.factory. The class records when its refresh/shutdown methods are called and accepts kwargs such as `device_tracker_coordinator` to mirror prior test-local coordinator implementations."""
+    """Return a simple FakeCoordinator class tests can pass to coordinator_capture.factory. The class records when its refresh/shutdown methods are called and accepts kwargs such as `device_tracker_coordinator` to mirror prior test-local coordinator implementations.
+
+    Returns:
+        The returned value.
+    """
 
     class FakeCoordinator:
-        def __init__(self, **kwargs) -> None:
+        def __init__(self, **kwargs: object) -> None:
             # mirror existing tests which inspect this flag
             """Initialize FakeCoordinator.
 
             Args:
-                **kwargs: Additional keyword arguments forwarded by the function.
+                kwargs (object): Additional keyword arguments accepted by the test double.
             """
             self._is_device_tracker = kwargs.get("device_tracker_coordinator", False)
 
         async def async_config_entry_first_refresh(self) -> bool:
             # mark that initial refresh happened for assertions
-            """Async config entry first refresh."""
+            """Async config entry first refresh.
+
+            Returns:
+                The returned value.
+            """
             self.refreshed = True
             return True
 
         async def async_shutdown(self) -> bool:
             # record that shutdown was invoked
-            """Async shutdown."""
+            """Async shutdown.
+
+            Returns:
+                The returned value.
+            """
             self.shut = True
             return True
 
@@ -515,6 +695,9 @@ def make_config_entry() -> Any:
     The returned factory accepts overrides for the entry data, metadata, and
     runtime data so each test can construct a config entry that matches the
     scenario under test.
+
+    Returns:
+        The returned value.
     """
 
     def _make(
@@ -529,14 +712,19 @@ def make_config_entry() -> Any:
     ) -> MockConfigEntry:
         """Create a ``MockConfigEntry`` with sensible defaults for integration tests.
 
+        Returns:
+            The returned value.
+
         Args:
-            data: Config entry data mapping, or a default device ID when omitted.
-            title: Optional config entry title.
-            unique_id: Identifier for unique.
-            entry_id: Config entry identifier for the integration instance being referenced.
-            version: Optional config entry version override.
-            options: Options mapping that stores the integration settings being updated.
-            runtime_data: Optional runtime data object attached to the entry.
+            data (dict | None): Config entry data mapping, or a default device ID when omitted.
+            title (str | None): Optional config entry title.
+            unique_id (str | None): Identifier for unique.
+            entry_id (str | None): Config entry identifier for the integration instance being
+                referenced.
+            version (int | None): Optional config entry version override.
+            options (dict | None): Options mapping that stores the integration settings being
+                updated.
+            runtime_data (Any | None): Optional runtime data object attached to the entry.
         """
         data = data or {CONF_DEVICE_UNIQUE_ID: "test-device-123"}
         entry = MockConfigEntry(
@@ -561,14 +749,24 @@ def make_config_entry() -> Any:
 
 @pytest.fixture
 def ph_hass(hass: HomeAssistant) -> HomeAssistant:
-    """Return the PHCC Home Assistant fixture with task creation observable by tests."""
+    """Return the PHCC Home Assistant fixture with task creation observable by tests.
+
+    Returns:
+        The returned value.
+
+    Args:
+        hass (HomeAssistant): The hass argument.
+    """
 
     # Helper used to schedule coroutines on the running loop when possible.
     def _schedule_or_return(coro: Any) -> Any:
         """Schedule or return.
 
+        Returns:
+            The returned value.
+
         Args:
-            coro: Coro provided by pytest or the test case.
+            coro (Any): Coro provided by pytest or the test case.
         """
         try:
             loop = asyncio.get_running_loop()
@@ -584,5 +782,9 @@ def ph_hass(hass: HomeAssistant) -> HomeAssistant:
 
 @pytest.fixture
 def expected_lingering_timers() -> bool:
-    """Allow switch delay timers that tests intentionally leave scheduled."""
+    """Allow switch delay timers that tests intentionally leave scheduled.
+
+    Returns:
+        The returned value.
+    """
     return True
