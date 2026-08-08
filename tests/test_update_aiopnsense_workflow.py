@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 import tomllib
 from types import ModuleType
+from typing import Never
 
 import pytest
 
@@ -507,14 +508,17 @@ def test_release_note_script_handles_url_errors(
         monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
     """
 
-    def raise_url_error(**_: object) -> list[dict[str, object]]:
+    def raise_url_error(**_: object) -> Never:
         """Raise a urlopen-style network failure.
 
         Args:
             _ (object): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            Never returns normally because ``URLError`` is always raised.
+
+        Raises:
+            URLError: Always raised to simulate a network failure.
         """
         raise release_notes_script.URLError("DNS failure")
 

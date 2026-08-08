@@ -50,7 +50,7 @@ class _OpaqueDiagnosticValue:
         """Fail if diagnostics attempts to render the private object.
 
         Returns:
-            The returned value.
+            Never returns normally because rendering raises ``AssertionError``.
         """
         raise AssertionError("opaque diagnostics values must not be rendered")
 

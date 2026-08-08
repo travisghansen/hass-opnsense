@@ -472,7 +472,7 @@ async def test_get_clients_registry_errors_raise_for_explicit_targets(
                 _k (object): Additional keyword arguments accepted by the test double.
 
             Returns:
-                The returned value.
+                Never returns normally because the supplied exception is always raised.
 
             Raises:
                 Exception: Raised with the exception instance supplied to ``_raises``.

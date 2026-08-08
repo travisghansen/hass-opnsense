@@ -6379,7 +6379,7 @@ async def test_migrate_2_to_3_handles_identifier_collision(
                 k (object): Additional keyword arguments accepted by the test double.
 
             Returns:
-                The returned value.
+                Never returns normally because the collision error is always raised.
             """
             raise dr.DeviceIdentifierCollisionError(dev.identifiers, MagicMock(id="other"))
 

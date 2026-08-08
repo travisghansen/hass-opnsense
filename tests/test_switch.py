@@ -2885,8 +2885,7 @@ def test_switch_handlers_fail_closed_for_malformed_nested_payloads(
     """Switch handlers should mark unavailable instead of raising on malformed payloads.
 
     Args:
-        entity (type[OPNsenseFirewallRuleSwitch | OPNsenseNATRuleSwitch | OPNsenseServiceSwitch | OPNsenseUnboundBlocklistSwitchLegacy | OPNsenseUnboundBlocklistSwitch | OPNsenseVPNSwitch]): T
-            he entity argument.
+        entity (type[OPNsenseFirewallRuleSwitch | OPNsenseNATRuleSwitch | OPNsenseServiceSwitch | OPNsenseUnboundBlocklistSwitchLegacy | OPNsenseUnboundBlocklistSwitch | OPNsenseVPNSwitch]): The entity argument.
         state (dict[str, Any]): The state argument.
         coordinator (MagicMock): The coordinator argument.
         make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
@@ -2959,8 +2958,7 @@ def test_switch_handlers_fail_closed_for_missing_mapping_entries(
     """Switch handlers should mark unavailable when expected entries are malformed.
 
     Args:
-        entity (type[OPNsenseFirewallRuleSwitch | OPNsenseNATRuleSwitch | OPNsenseUnboundBlocklistSwitch]): T
-            he entity argument.
+        entity (type[OPNsenseFirewallRuleSwitch | OPNsenseNATRuleSwitch | OPNsenseUnboundBlocklistSwitch]): The entity argument.
         key (str): The key argument.
         state (Any): The state argument.
         coordinator (MagicMock): The coordinator argument.
@@ -3486,8 +3484,7 @@ async def test_dynamic_switch_compile_helpers_skip_malformed_containers(
 
     Args:
         make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        compile_helper (Callable[[MockConfigEntry, OPNsenseDataUpdateCoordinator, Any], Any]): The c
-            ompile_helper argument.
+        compile_helper (Callable[[MockConfigEntry, OPNsenseDataUpdateCoordinator, Any], Any]): The compile_helper argument.
         state (Any): The state argument.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -3743,6 +3740,8 @@ async def test_unbound_turn_on_off_failure_logs(
     ent._client.disable_unbound_blocklist = AsyncMock(return_value=False)
     await ent.async_turn_on()
     # still should not raise and is_on remains False
+    assert ent.is_on is False
+    await ent.async_turn_off()
     assert ent.is_on is False
 
 
