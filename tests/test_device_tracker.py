@@ -1161,12 +1161,12 @@ async def test_async_added_to_hass_calls_restore(
 
 
 @pytest.mark.asyncio
-async def test_async_internal_added_to_hass_links_existing_mac_device(
+async def test_async_internal_added_to_hass_creates_integration_device_for_existing_mac(
     ph_hass: Any,
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Scanner entity should link to an existing registry device with the same MAC.
+    """Scanner entity should create its integration device for an existing MAC.
 
     Args:
         ph_hass (Any): Home Assistant test instance used to register and inspect entities.
@@ -1215,10 +1215,11 @@ async def test_async_internal_added_to_hass_links_existing_mac_device(
 
     await ent.async_internal_added_to_hass()
 
-    assert ent.registry_entry.device_id == existing_device.id
-    updated_device = device_reg.async_get(existing_device.id)
-    assert updated_device is not None
-    assert entry.entry_id in updated_device.config_entries
+    linked_device = device_reg.async_get(ent.registry_entry.device_id)
+    assert linked_device is not None
+    assert linked_device.id != existing_device.id
+    assert (dr.CONNECTION_NETWORK_MAC, mac_address) in linked_device.connections
+    assert entry.entry_id in linked_device.config_entries
 
 
 @pytest.mark.asyncio
