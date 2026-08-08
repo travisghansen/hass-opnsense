@@ -69,6 +69,13 @@ additional_dependencies = [
 ]
 
 [[repos]]
+repo = "https://github.com/jsh9/pydoclint"
+rev = "0.9.1"
+
+[[repos.hooks]]
+id = "pydoclint"
+
+[[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"
 rev = "v0.16.0"
 

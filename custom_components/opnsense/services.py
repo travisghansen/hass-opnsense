@@ -61,8 +61,9 @@ def _service_validation_error(
     """Return a localized service validation error.
 
     Args:
-        translation_key: Translation key from the integration ``exceptions`` section.
-        translation_placeholders: Values to interpolate into the translated message.
+        translation_key (str): Translation key from the integration ``exceptions`` section.
+        translation_placeholders (dict[str, Any] | None): Values to interpolate into the translated
+            message.
 
     Returns:
         ServiceValidationError: Home Assistant service validation error with translation metadata.
@@ -112,7 +113,7 @@ def _service_control_schema(extra_fields: dict[Any, Any] | None = None) -> vol.S
     """Build a schema for service start, stop, and restart actions.
 
     Args:
-        extra_fields: Additional fields to include in the schema.
+        extra_fields (dict[Any, Any] | None): Additional fields to include in the schema.
 
     Returns:
         vol.Schema: Service control schema with identifier validation.
@@ -125,7 +126,7 @@ def _targeted_schema(fields: dict[Any, Any] | None = None) -> vol.Schema:
     """Build a schema that includes optional OPNsense target selectors.
 
     Args:
-        fields: Service-specific fields to include before target selectors.
+        fields (dict[Any, Any] | None): Service-specific fields to include before target selectors.
 
     Returns:
         vol.Schema: Service schema with common target selector fields.
@@ -143,11 +144,12 @@ def _register_service(
     """Register an OPNsense service with Home Assistant.
 
     Args:
-        hass: Home Assistant instance.
-        service: OPNsense service/action name.
-        service_func: Handler for the service call.
-        schema: Voluptuous schema for validating service data.
-        supports_response: Response support declaration for action response data.
+        hass (HomeAssistant): Home Assistant instance.
+        service (str): OPNsense service/action name.
+        service_func (ServiceHandler): Handler for the service call.
+        schema (vol.Schema): Voluptuous schema for validating service data.
+        supports_response (SupportsResponse | None): Response support declaration for action
+            response data.
     """
     kwargs: dict[str, Any] = {
         "domain": DOMAIN,
@@ -164,7 +166,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     """Create the OPNsense HA Services/Actions.
 
     Args:
-        hass: Home Assistant instance receiving the service registrations.
+        hass (HomeAssistant): Home Assistant instance receiving the service registrations.
     """
     _register_service(
         hass,
@@ -292,13 +294,16 @@ async def _get_clients(
     """Resolve the OPNsense clients targeted by the current request.
 
     Args:
-        hass: Home Assistant instance that owns the integration state, entity registry, and
-        services.
-        opndevice_id: Device identifier used to target the correct OPNsense device or config entry.
-        opnentity_id: Entity identifier used to resolve the matching OPNsense entity.
+        hass (HomeAssistant): Home Assistant instance that owns the integration state, entity
+            registry, and
+            services.
+        opndevice_id (str | None): Device identifier used to target the correct OPNsense device or
+            config entry.
+        opnentity_id (str | None): Entity identifier used to resolve the matching OPNsense entity.
 
     Raises:
-        ServiceValidationError: If explicit target selectors do not resolve to configured clients.
+        _service_validation_error: If explicit target selectors do not resolve to configured
+            clients.
 
     Returns:
         list[OPNsenseServiceClient]: Clients selected by the request.
@@ -350,9 +355,9 @@ def _resolve_target_entry_ids(
     """Resolve selected device/entity registry targets to config entry IDs.
 
     Args:
-        hass: Home Assistant instance that owns the registries.
-        opndevice_id: Optional device registry target.
-        opnentity_id: Optional entity registry target.
+        hass (HomeAssistant): Home Assistant instance that owns the registries.
+        opndevice_id (str | None): Optional device registry target.
+        opnentity_id (str | None): Optional entity registry target.
 
     Returns:
         list[str]: Unique config entry IDs resolved from selected targets.
@@ -383,8 +388,8 @@ def _append_entry_id(entry_ids: list[str], entry_id: str | None) -> None:
     """Append a resolved config entry ID once.
 
     Args:
-        entry_ids: Existing config entry IDs.
-        entry_id: Config entry ID resolved from a registry target.
+        entry_ids (list[str]): Existing config entry IDs.
+        entry_id (str | None): Config entry ID resolved from a registry target.
     """
     if entry_id and entry_id not in entry_ids:
         entry_ids.append(entry_id)
@@ -394,8 +399,8 @@ def _append_device_entry_ids(entry_ids: list[str], device_entry: Any | None) -> 
     """Append config entry IDs resolved from a device registry entry.
 
     Args:
-        entry_ids: Existing config entry IDs.
-        device_entry: Device registry entry resolved from an explicit device target.
+        entry_ids (list[str]): Existing config entry IDs.
+        device_entry (Any | None): Device registry entry resolved from an explicit device target.
     """
     if device_entry is None:
         return
@@ -411,8 +416,8 @@ async def _get_target_clients(
     """Return OPNsense clients targeted by a Home Assistant service call.
 
     Args:
-        hass: Home Assistant instance.
-        call: Service call payload received from Home Assistant.
+        hass (HomeAssistant): Home Assistant instance.
+        call (ServiceCall): Service call payload received from Home Assistant.
 
     Returns:
         list[OPNsenseServiceClient]: Selected OPNsense clients.
@@ -428,13 +433,13 @@ def _get_service_identifier(call: ServiceCall) -> str:
     """Return the OPNsense service identifier from a service call.
 
     Args:
-        call: Service call payload received from Home Assistant.
+        call (ServiceCall): Service call payload received from Home Assistant.
 
     Returns:
         str: OPNsense service identifier.
 
     Raises:
-        ServiceValidationError: If no service identifier is present.
+        _service_validation_error: If no service identifier is present.
     """
     service_identifier = call.data.get("service_id", call.data.get("service_name"))
     if not service_identifier:
@@ -455,17 +460,19 @@ async def _run_boolean_client_action(
     """Run a boolean-returning action across all selected clients.
 
     Args:
-        clients: OPNsense clients selected for the service call.
-        log_prefix: Prefix used in the debug log message.
-        action_name: Optional action variant to include after the log prefix.
-        target_name: Human-readable target field name for logs.
-        target_value: Target value passed to the client action.
-        failure_translation_key: Translation key to raise if no clients or any action fails.
-        failure_translation_placeholders: Values to interpolate into the translated error.
-        action: Awaitable client action returning success state.
+        clients (list[OPNsenseServiceClient]): OPNsense clients selected for the service call.
+        log_prefix (str): Prefix used in the debug log message.
+        action_name (str | None): Optional action variant to include after the log prefix.
+        target_name (str): Human-readable target field name for logs.
+        target_value (Any): Target value passed to the client action.
+        failure_translation_key (str): Translation key to raise if no clients or any action fails.
+        failure_translation_placeholders (dict[str, Any]): Values to interpolate into the translated
+            error.
+        action (BooleanClientAction): Awaitable client action returning success state.
 
     Raises:
-        ServiceValidationError: If no selected clients report success or any selected client fails.
+        _service_validation_error: If no selected clients report success or any selected client
+            fails.
     """
     all_clients_succeeded = bool(clients)
     for client in clients:
@@ -496,18 +503,20 @@ async def _collect_mapping_results(
     """Collect non-empty mapping responses from selected clients.
 
     Args:
-        clients: OPNsense clients selected for the service call.
-        log_prefix: Prefix used in the debug log message.
-        failure_translation_key: Translation key to raise if no clients return data.
-        failure_translation_placeholders: Values to interpolate into the translated error.
-        action: Awaitable client action returning a mapping payload.
-        action_context: Optional values to include in debug logs.
+        clients (list[OPNsenseServiceClient]): OPNsense clients selected for the service call.
+        log_prefix (str): Prefix used in the debug log message.
+        failure_translation_key (str): Translation key to raise if no clients return data.
+        failure_translation_placeholders (dict[str, Any] | None): Values to interpolate into the
+            translated error.
+        action (Callable[[OPNsenseServiceClient], Awaitable[Any]]): Awaitable client action
+            returning a mapping payload.
+        action_context (dict[str, Any] | None): Optional values to include in debug logs.
 
     Returns:
         list[dict[str, Any]]: Per-client mapping results with ``client_name`` included.
 
     Raises:
-        ServiceValidationError: If no selected client returns a non-empty mapping.
+        _service_validation_error: If no selected client returns a non-empty mapping.
     """
     response_list: list[dict[str, Any]] = []
     for client in clients:
@@ -540,14 +549,15 @@ async def _collect_kill_state_results(
     """Collect dropped state counts from selected clients.
 
     Args:
-        clients: OPNsense clients selected for the service call.
-        ip_addr: IP address whose firewall states should be killed.
+        clients (list[OPNsenseServiceClient]): OPNsense clients selected for the service call.
+        ip_addr (str): IP address whose firewall states should be killed.
 
     Returns:
         list[dict[str, Any]]: Successful per-client dropped state counts.
 
     Raises:
-        ServiceValidationError: If no selected clients report success or any selected client fails.
+        _service_validation_error: If no selected clients report success or any selected client
+            fails.
     """
     all_clients_succeeded = bool(clients)
     response_list: list[dict[str, Any]] = []
@@ -582,14 +592,14 @@ async def _collect_voucher_results(
     """Collect generated vouchers from selected clients.
 
     Args:
-        clients: OPNsense clients selected for the service call.
-        call_data: Validated Home Assistant voucher-generation service payload.
+        clients (list[OPNsenseServiceClient]): OPNsense clients selected for the service call.
+        call_data (dict[str, Any]): Validated Home Assistant voucher-generation service payload.
 
     Returns:
         list[Any]: Voucher response items with client names added to mapping entries.
 
     Raises:
-        ServiceValidationError: If no OPNsense clients are selected or the voucher server fails.
+        _service_validation_error: If no OPNsense clients are selected or the voucher server fails.
     """
     if not clients:
         raise _service_validation_error(_TRANSLATION_KEY_GENERATE_VOUCHERS_FAILED)
@@ -626,9 +636,10 @@ async def _service_close_notice(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle the close notice service call.
 
     Args:
-        hass: Home Assistant instance that owns the integration state, entity registry, and
-        services.
-        call: Service call payload received from Home Assistant.
+        hass (HomeAssistant): Home Assistant instance that owns the integration state, entity
+            registry, and
+            services.
+        call (ServiceCall): Service call payload received from Home Assistant.
     """
     clients = await _get_target_clients(hass, call)
     for client in clients:
@@ -644,13 +655,11 @@ async def _service_start_service(hass: HomeAssistant, call: ServiceCall) -> None
     """Handle the start service call.
 
     Args:
-        hass: Home Assistant instance that owns the integration state, entity registry, and
-        services.
-        call: Service call payload received from Home Assistant.
+        hass (HomeAssistant): Home Assistant instance that owns the integration state, entity
+            registry, and
+            services.
+        call (ServiceCall): Service call payload received from Home Assistant.
 
-    Raises:
-        ServiceValidationError: If the service call payload is missing a valid target or
-        required value.
     """
     service_identifier = _get_service_identifier(call)
     clients = await _get_target_clients(hass, call)
@@ -670,13 +679,11 @@ async def _service_stop_service(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle the stop service call.
 
     Args:
-        hass: Home Assistant instance that owns the integration state, entity registry, and
-        services.
-        call: Service call payload received from Home Assistant.
+        hass (HomeAssistant): Home Assistant instance that owns the integration state, entity
+            registry, and
+            services.
+        call (ServiceCall): Service call payload received from Home Assistant.
 
-    Raises:
-        ServiceValidationError: If the service call payload is missing a valid target or
-        required value.
     """
     service_identifier = _get_service_identifier(call)
     clients = await _get_target_clients(hass, call)
@@ -696,13 +703,11 @@ async def _service_restart_service(hass: HomeAssistant, call: ServiceCall) -> No
     """Handle the restart service call.
 
     Args:
-        hass: Home Assistant instance that owns the integration state, entity registry, and
-        services.
-        call: Service call payload received from Home Assistant.
+        hass (HomeAssistant): Home Assistant instance that owns the integration state, entity
+            registry, and
+            services.
+        call (ServiceCall): Service call payload received from Home Assistant.
 
-    Raises:
-        ServiceValidationError: If the service call payload is missing a valid target or
-        required value.
     """
     service_identifier = _get_service_identifier(call)
     clients = await _get_target_clients(hass, call)
@@ -734,9 +739,10 @@ async def _service_system_halt(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle the system halt service call.
 
     Args:
-        hass: Home Assistant instance that owns the integration state, entity registry, and
-        services.
-        call: Service call payload received from Home Assistant.
+        hass (HomeAssistant): Home Assistant instance that owns the integration state, entity
+            registry, and
+            services.
+        call (ServiceCall): Service call payload received from Home Assistant.
     """
     clients = await _get_target_clients(hass, call)
     for client in clients:
@@ -748,9 +754,10 @@ async def _service_system_reboot(hass: HomeAssistant, call: ServiceCall) -> None
     """Handle the system reboot service call.
 
     Args:
-        hass: Home Assistant instance that owns the integration state, entity registry, and
-        services.
-        call: Service call payload received from Home Assistant.
+        hass (HomeAssistant): Home Assistant instance that owns the integration state, entity
+            registry, and
+            services.
+        call (ServiceCall): Service call payload received from Home Assistant.
     """
     clients = await _get_target_clients(hass, call)
     for client in clients:
@@ -762,9 +769,10 @@ async def _service_send_wol(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle the send Wake-on-LAN service call.
 
     Args:
-        hass: Home Assistant instance that owns the integration state, entity registry, and
-        services.
-        call: Service call payload received from Home Assistant.
+        hass (HomeAssistant): Home Assistant instance that owns the integration state, entity
+            registry, and
+            services.
+        call (ServiceCall): Service call payload received from Home Assistant.
     """
     clients = await _get_target_clients(hass, call)
     for client in clients:
@@ -781,13 +789,11 @@ async def _service_reload_interface(hass: HomeAssistant, call: ServiceCall) -> N
     """Handle the reload interface service call.
 
     Args:
-        hass: Home Assistant instance that owns the integration state, entity registry, and
-        services.
-        call: Service call payload received from Home Assistant.
+        hass (HomeAssistant): Home Assistant instance that owns the integration state, entity
+            registry, and
+            services.
+        call (ServiceCall): Service call payload received from Home Assistant.
 
-    Raises:
-        ServiceValidationError: If the service call payload is missing a valid target or
-        required value.
     """
     clients = await _get_target_clients(hass, call)
     interface = call.data.get("interface")
@@ -807,13 +813,10 @@ async def _service_generate_vouchers(hass: HomeAssistant, call: ServiceCall) -> 
     """Handle the generate vouchers service call.
 
     Args:
-        hass: Home Assistant instance that owns the integration state, entity registry, and
-        services.
-        call: Service call payload received from Home Assistant.
-
-    Raises:
-        ServiceValidationError: If the service call payload is missing a valid target or
-        required value.
+        hass (HomeAssistant): Home Assistant instance that owns the integration state, entity
+            registry, and
+            services.
+        call (ServiceCall): Service call payload received from Home Assistant.
 
     Returns:
         ServiceResponse: Generated voucher values grouped under ``vouchers``.
@@ -831,13 +834,10 @@ async def _service_kill_states(hass: HomeAssistant, call: ServiceCall) -> Servic
     """Handle the kill states service call.
 
     Args:
-        hass: Home Assistant instance that owns the integration state, entity registry, and
-        services.
-        call: Service call payload received from Home Assistant.
-
-    Raises:
-        ServiceValidationError: If the service call payload is missing a valid target or
-        required value.
+        hass (HomeAssistant): Home Assistant instance that owns the integration state, entity
+            registry, and
+            services.
+        call (ServiceCall): Service call payload received from Home Assistant.
 
     Returns:
         ServiceResponse: Dropped-state results grouped under ``dropped_states``.
@@ -853,8 +853,8 @@ async def _service_run_speedtest(hass: HomeAssistant, call: ServiceCall) -> Serv
     """Run speedtest and return speedtest results in action response data.
 
     Args:
-        hass: Home Assistant instance.
-        call: Service call payload that may contain ``device_id`` or ``entity_id``.
+        hass (HomeAssistant): Home Assistant instance.
+        call (ServiceCall): Service call payload that may contain ``device_id`` or ``entity_id``.
 
     Returns:
         ServiceResponse: Response payload containing per-client speedtest results.
@@ -876,9 +876,10 @@ async def _service_get_vnstat_metrics(hass: HomeAssistant, call: ServiceCall) ->
     """Return parsed vnStat metrics for a selected period as action response data.
 
     Args:
-        hass: Home Assistant instance.
-        call: Service call payload containing the required ``period`` and optional OPNsense
-        device/entity selectors.
+        hass (HomeAssistant): Home Assistant instance.
+        call (ServiceCall): Service call payload containing the required ``period`` and optional
+            OPNsense
+            device/entity selectors.
 
     Returns:
         ServiceResponse: Parsed per-client vnStat payloads from the requested endpoint.
@@ -902,13 +903,11 @@ async def _service_toggle_alias(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle the toggle alias service call.
 
     Args:
-        hass: Home Assistant instance that owns the integration state, entity registry, and
-        services.
-        call: Service call payload received from Home Assistant.
+        hass (HomeAssistant): Home Assistant instance that owns the integration state, entity
+            registry, and
+            services.
+        call (ServiceCall): Service call payload received from Home Assistant.
 
-    Raises:
-        ServiceValidationError: If the service call payload is missing a valid target or
-        required value.
     """
     clients = await _get_target_clients(hass, call)
     alias: str = call.data["alias"]

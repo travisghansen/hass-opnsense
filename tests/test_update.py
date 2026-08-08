@@ -37,15 +37,15 @@ def _firmware_update_state(
     """Build firmware update state for version parsing tests.
 
     Args:
-        product_version: Installed product version value.
-        product_latest: Latest product version value.
-        product_series: Product series value.
-        status: Firmware status value.
-        upgrade_packages: Optional package check payload.
-        upgrade_major_version: Optional major upgrade version.
+        product_version (Any): Installed product version value.
+        product_latest (Any): Latest product version value.
+        product_series (Any): Product series value.
+        status (str): Firmware status value.
+        upgrade_packages (Any): Optional package check payload.
+        upgrade_major_version (Any): Optional major upgrade version.
 
     Returns:
-        Firmware update state with the requested product and status payload.
+        dict[str, Any]: Firmware update state with the requested product and status payload.
     """
     firmware_update_info: dict[str, Any] = {
         "product": {
@@ -76,10 +76,10 @@ class _FirmwareInstallClient:
         """Initialize a fake firmware install client.
 
         Args:
-            status_responses: Queued responses returned by ``upgrade_status``.
-            status_response: Repeated response returned by ``upgrade_status``.
-            status_error: Error raised by ``upgrade_status``.
-            firmware_info: Payload returned by ``get_firmware_update_info``.
+            status_responses (list[Any] | None): Queued responses returned by ``upgrade_status``.
+            status_response (Any): Repeated response returned by ``upgrade_status``.
+            status_error (BaseException | None): Error raised by ``upgrade_status``.
+            firmware_info (dict[str, Any] | None): Payload returned by ``get_firmware_update_info``.
         """
         self.status_responses = list(status_responses or [])
         self.status_response = status_response
@@ -94,11 +94,11 @@ class _FirmwareInstallClient:
         """Simulate accepting an upgrade request before polling.
 
         Args:
-            _upgrade_type: Upgrade mode requested by the entity and ignored by
+            _upgrade_type (Any): Upgrade mode requested by the entity and ignored by
                 this fake client.
 
         Returns:
-            Payload indicating that the upgrade request started.
+            dict[str, Any]: Payload indicating that the upgrade request started.
         """
         return {"started": True}
 
@@ -106,10 +106,10 @@ class _FirmwareInstallClient:
         """Return or raise the configured polling result.
 
         Raises:
-            BaseException: The configured ``status_error``, when provided.
+            self.status_error: The configured polling error, when provided.
 
         Returns:
-            The next queued status response, or the configured repeated response.
+            Any: The next queued status response, or the configured repeated response.
         """
         if self.status_error is not None:
             raise self.status_error
@@ -121,7 +121,7 @@ class _FirmwareInstallClient:
         """Return configured firmware metadata.
 
         Returns:
-            Firmware update metadata.
+            dict[str, Any]: Firmware update metadata.
         """
         return self.firmware_info
 
@@ -136,7 +136,13 @@ async def test_async_setup_entry_adds_firmware_update_entity_contract(
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
 ) -> None:
-    """async_setup_entry creates the firmware update entity with its public contract."""
+    """async_setup_entry creates the firmware update entity with its public contract.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
+    """
     entry = make_config_entry(
         {
             CONF_DEVICE_UNIQUE_ID: "test-device-123",
@@ -150,7 +156,12 @@ async def test_async_setup_entry_adds_firmware_update_entity_contract(
         entities: list[OPNsenseFirmwareUpdatesAvailableUpdate],
         _update_before_add: bool = False,
     ) -> None:
-        """Capture entities added by the platform setup callback."""
+        """Capture entities added by the platform setup callback.
+
+        Args:
+            entities (list[OPNsenseFirmwareUpdatesAvailableUpdate]): Registry records exposed to the repair helper.
+            _update_before_add (bool): Parameterized update before add used by the add entities scenario.
+        """
         added_entities.extend(entities)
 
     await async_setup_entry(hass, entry, cast("AddEntitiesCallback", async_add_entities))
@@ -174,7 +185,13 @@ async def test_async_setup_entry_skips_disabled_firmware_update_sync(
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
 ) -> None:
-    """async_setup_entry should not add firmware entities when sync is disabled."""
+    """async_setup_entry should not add firmware entities when sync is disabled.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
+    """
     entry = make_config_entry(
         {
             CONF_DEVICE_UNIQUE_ID: "test-device-123",
@@ -188,7 +205,12 @@ async def test_async_setup_entry_skips_disabled_firmware_update_sync(
         entities: list[OPNsenseFirmwareUpdatesAvailableUpdate],
         _update_before_add: bool = False,
     ) -> None:
-        """Capture entities added by the platform setup callback."""
+        """Capture entities added by the platform setup callback.
+
+        Args:
+            entities (list[OPNsenseFirmwareUpdatesAvailableUpdate]): Registry records exposed to the repair helper.
+            _update_before_add (bool): Parameterized update before add used by the add entities scenario.
+        """
         added_entities.extend(entities)
 
     await async_setup_entry(hass, entry, cast("AddEntitiesCallback", async_add_entities))
@@ -212,7 +234,13 @@ def test_is_update_available_false_for_missing_or_error_state(
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
 ) -> None:
-    """Update entity should be unavailable when firmware update state is unusable."""
+    """Update entity should be unavailable when firmware update state is unusable.
+
+    Args:
+        coordinator_data (dict[str, Any] | None): Parameterized coordinator data used by the test is update available false for missing or error state scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
+    """
     entry = make_config_entry(
         {
             "url": "https://opnsense.example",
@@ -243,7 +271,13 @@ def test_is_update_available_true_for_valid_status(
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
 ) -> None:
-    """Valid firmware statuses should keep the update entity available."""
+    """Valid firmware statuses should keep the update entity available.
+
+    Args:
+        status (str): Parameterized status used by the test is update available true for valid status scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
+    """
     entry = make_config_entry(
         {
             "url": "https://opnsense.example",
@@ -364,7 +398,14 @@ def test_handle_coordinator_update_publishes_latest_version(
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
 ) -> None:
-    """Publish the expected latest version across representative firmware payloads."""
+    """Publish the expected latest version across representative firmware payloads.
+
+    Args:
+        state (dict[str, Any]): Simulated payload used to exercise the scenario.
+        expected_latest (str | None): Expected latest asserted by the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
+    """
     entry = make_config_entry({"url": "https://opnsense.example"})
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,
@@ -383,7 +424,12 @@ def test_handle_coordinator_update_publishes_latest_version(
 def test_handle_coordinator_update_sets_attributes(
     make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
 ) -> None:
-    """_handle_coordinator_update should populate versions and extra attributes."""
+    """_handle_coordinator_update should populate versions and extra attributes.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
+    """
     entry = make_config_entry()
     coord = dummy_coordinator
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
@@ -455,6 +501,15 @@ def test_handle_coordinator_update_upgrade_sets_release_url(
 
     This also asserts correct product class derivation from ``product_series``,
     which affects the generated release URL.
+
+    Args:
+        product_version (str): Parameterized product version used by the test handle coordinator update upgrade sets release url scenario.
+        product_latest (str): Parameterized product latest used by the test handle coordinator update upgrade sets release url scenario.
+        product_series (str): Parameterized product series used by the test handle coordinator update upgrade sets release url scenario.
+        upgrade_major_version (str): Parameterized upgrade major version used by the test handle coordinator update upgrade sets release url scenario.
+        expected_url_path (str): Expected url path asserted by the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -498,7 +553,14 @@ async def test_handle_coordinator_update_update_normalizes_product_latest(
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
 ) -> None:
-    """When status is 'update', product_latest should be normalized (underscores -> dots)."""
+    """When status is 'update', product_latest should be normalized (underscores -> dots).
+
+    Args:
+        product_latest_input (str): Parameterized product latest input used by the test handle coordinator update update normalizes product latest scenario.
+        expected_latest_normalized (str): Expected latest normalized asserted by the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
+    """
     entry = make_config_entry()
     coord = dummy_coordinator
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
@@ -536,7 +598,12 @@ def test_handle_coordinator_update_release_url_fallback_when_product_class_none(
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
 ) -> None:
-    """An unmapped firmware series should use the OPNsense UI changelog."""
+    """An unmapped firmware series should use the OPNsense UI changelog.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
+    """
     entry = make_config_entry(
         {
             CONF_DEVICE_UNIQUE_ID: "test-device-123",
@@ -625,7 +692,17 @@ def test_get_release_notes_variants(
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
 ) -> None:
-    """Parameterize release-notes generation for update/upgrade/default paths."""
+    """Parameterize release-notes generation for update/upgrade/default paths.
+
+    Args:
+        state (MutableMapping[str, Any]): Simulated payload used to exercise the scenario.
+        latest (str | None): Parameterized latest used by the test get release notes variants scenario.
+        product_version (str | None): Parameterized product version used by the test get release notes variants scenario.
+        expect_exact (bool): Parameterized expect exact used by the test get release notes variants scenario.
+        expected (Any): Parameterized expected used by the test get release notes variants scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
+    """
     entry = make_config_entry()
     coord = dummy_coordinator
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
@@ -650,7 +727,12 @@ def test_get_release_notes_variants(
 def test_get_release_notes_upgrade_uses_target_version_in_header(
     make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
 ) -> None:
-    """Upgrade release notes should use product_latest as the target version."""
+    """Upgrade release notes should use product_latest as the target version.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
+    """
     entry = make_config_entry()
     coord = dummy_coordinator
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
@@ -685,7 +767,13 @@ async def test_async_install_reboots_when_needed(
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
 ) -> None:
-    """async_install should trigger a reboot when the update requires it."""
+    """async_install should trigger a reboot when the update requires it.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
+    """
     entry = make_config_entry()
     coord = dummy_coordinator
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
@@ -722,7 +810,12 @@ async def test_async_install_reboots_when_needed(
 async def test_async_install_does_nothing_on_non_update_status(
     make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
 ) -> None:
-    """async_install should early-return and not call upgrade_firmware when status is not update/upgrade."""
+    """async_install should early-return and not call upgrade_firmware when status is not update/upgrade.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
+    """
     entry = make_config_entry()
     coord = dummy_coordinator
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
@@ -751,7 +844,13 @@ async def test_async_install_early_returns_and_no_client(
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
 ) -> None:
-    """async_install should return early when there's no client available."""
+    """async_install should return early when there's no client available.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
+    """
     entry = make_config_entry()
     coord = dummy_coordinator
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
@@ -775,7 +874,12 @@ def test_get_versions_malformed_state_returns_empty_versions(
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
 ) -> None:
-    """_get_versions returns empty version data for malformed firmware state."""
+    """_get_versions returns empty version data for malformed firmware state.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
+    """
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,
@@ -795,7 +899,12 @@ def test_get_release_notes_malformed_state_returns_none(
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
 ) -> None:
-    """_get_release_notes returns None for malformed firmware state."""
+    """_get_release_notes returns None for malformed firmware state.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
+    """
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,
@@ -822,7 +931,14 @@ async def test_async_install_handles_masked_polling_response(
     dummy_coordinator: MagicMock,
     upgrade_status_response: Any,
 ) -> None:
-    """async_install should handle masked aiopnsense polling failures."""
+    """async_install should handle masked aiopnsense polling failures.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
+        upgrade_status_response (Any): Parameterized upgrade status response used by the test install handles masked polling response scenario.
+    """
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,
@@ -847,7 +963,13 @@ async def test_async_install_terminates_after_invalid_polling_responses(
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
 ) -> None:
-    """Malformed polling responses should terminate without fetching info or rebooting."""
+    """Malformed polling responses should terminate without fetching info or rebooting.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
+    """
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,
@@ -894,7 +1016,15 @@ async def test_async_install_polling_error_raises(
     error_type: type[OPNsenseError],
     message: str,
 ) -> None:
-    """async_install should not hide errors raised by aiopnsense while polling."""
+    """async_install should not hide errors raised by aiopnsense while polling.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
+        error_type (type[OPNsenseError]): Parameterized error type used by the test install polling error raises scenario.
+        message (str): Parameterized message used by the test install polling error raises scenario.
+    """
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,
@@ -916,7 +1046,12 @@ async def test_async_install_polling_error_raises(
 def test_get_installed_version_none_on_error(
     make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
 ) -> None:
-    """_get_installed_version returns None on malformed or missing state."""
+    """_get_installed_version returns None on malformed or missing state.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
+    """
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,
@@ -932,7 +1067,12 @@ def test_get_installed_version_none_on_error(
 async def test_async_release_notes_returns_value(
     make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
 ) -> None:
-    """async_release_notes returns generated release notes when state present."""
+    """async_release_notes returns generated release notes when state present.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
+    """
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
         config_entry=entry,

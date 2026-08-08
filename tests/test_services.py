@@ -48,16 +48,20 @@ def _patch_clients(monkeypatch: pytest.MonkeyPatch, clients: list[Any]) -> None:
     """Patch service client resolution to return selected fake clients.
 
     Args:
-        monkeypatch: Pytest monkeypatch fixture used to patch the services module.
-        clients: Fake OPNsense clients returned by ``_get_clients``.
+        monkeypatch (pytest.MonkeyPatch): Pytest monkeypatch fixture used to patch the services
+            module.
+        clients (list[Any]): Fake OPNsense clients returned by ``_get_clients``.
     """
 
     async def fake_get(*_args: Any, **_kwargs: Any) -> list[Any]:
         """Return the selected fake clients for a service handler test.
 
         Args:
-            *_args: Positional arguments forwarded to ``_get_clients`` and ignored.
-            **_kwargs: Keyword arguments forwarded to ``_get_clients`` and ignored.
+            _args (Any): Additional positional arguments accepted by the test double.
+            _kwargs (Any): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            list[Any]: Simulated collection used by the fake get scenario.
         """
         return clients
 
@@ -65,7 +69,11 @@ def _patch_clients(monkeypatch: pytest.MonkeyPatch, clients: list[Any]) -> None:
 
 
 def _voucher_call_data() -> dict[str, str]:
-    """Return a valid voucher service payload."""
+    """Return a valid voucher service payload.
+
+    Returns:
+        dict[str, str]: Simulated collection used by the voucher call data scenario.
+    """
     return {"validity": "1", "expirytime": "2", "count": "2", "vouchergroup": "g1"}
 
 
@@ -73,7 +81,7 @@ def _service_call(data: dict[str, Any]) -> MagicMock:
     """Return a fake Home Assistant service call with data.
 
     Args:
-        data: Service call data exposed through the fake call.
+        data (dict[str, Any]): Service call data exposed through the fake call.
 
     Returns:
         MagicMock: Fake Home Assistant service call.
@@ -87,7 +95,7 @@ def _iter_service_field_names(service_definition: dict[str, Any]) -> set[str]:
     """Return all top-level and section service field names.
 
     Args:
-        service_definition: Service definition loaded from ``services.yaml``.
+        service_definition (dict[str, Any]): Service definition loaded from ``services.yaml``.
 
     Returns:
         set[str]: Field names that should have service translations.
@@ -110,9 +118,10 @@ def _patch_device_registry_entry(
     """Patch device registry lookup to return a fake device entry.
 
     Args:
-        monkeypatch: Pytest monkeypatch fixture used to patch the services module.
-        primary_config_entry: Config entry ID exposed by the fake device entry.
-        config_entries: Config entry IDs exposed by the fake device entry.
+        monkeypatch (pytest.MonkeyPatch): Pytest monkeypatch fixture used to patch the services
+            module.
+        primary_config_entry (str | None): Config entry ID exposed by the fake device entry.
+        config_entries (set[str] | None): Config entry IDs exposed by the fake device entry.
     """
     device_entry = SimpleNamespace(
         primary_config_entry=primary_config_entry,
@@ -130,8 +139,9 @@ def _patch_entity_registry_entry(
     """Patch entity registry lookup to return a fake entity entry.
 
     Args:
-        monkeypatch: Pytest monkeypatch fixture used to patch the services module.
-        config_entry_id: Config entry ID exposed by the fake entity entry.
+        monkeypatch (pytest.MonkeyPatch): Pytest monkeypatch fixture used to patch the services
+            module.
+        config_entry_id (str | None): Config entry ID exposed by the fake entity entry.
     """
     entity_entry = SimpleNamespace(config_entry_id=config_entry_id)
     entity_registry = MagicMock()
@@ -143,7 +153,8 @@ def _patch_missing_device_registry_entry(monkeypatch: pytest.MonkeyPatch) -> Non
     """Patch device registry lookup to return no device entry.
 
     Args:
-        monkeypatch: Pytest monkeypatch fixture used to patch the services module.
+        monkeypatch (pytest.MonkeyPatch): Pytest monkeypatch fixture used to patch the services
+            module.
     """
     device_registry = MagicMock()
     device_registry.async_get.return_value = None
@@ -159,10 +170,11 @@ def _add_entry_for_client(
     """Register a MockConfigEntry in Home Assistant for a test client id.
 
     Args:
-        hass: Home Assistant instance receiving the config entry.
-        make_config_entry: Factory that creates MockConfigEntry objects.
-        entry_id: Config entry identifier to register and map to the client.
-        client_kind: Config entry type; defaults to normal device entry.
+        hass (HomeAssistant): Home Assistant instance receiving the config entry.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory that creates MockConfigEntry
+            objects.
+        entry_id (str): Config entry identifier to register and map to the client.
+        client_kind (str): Config entry type; defaults to normal device entry.
     """
     entry_data = {CONF_ENTRY_TYPE: client_kind} if client_kind == ENTRY_TYPE_CARP else {}
     entry = make_config_entry(data=entry_data, entry_id=entry_id)
@@ -295,7 +307,13 @@ async def test_get_clients_single_and_multiple(
     ph_hass: HomeAssistant,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """_get_clients resolves action clients from runtime state and explicit targets."""
+    """_get_clients resolves action clients from runtime state and explicit targets.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        ph_hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+    """
     hass_local = ph_hass
     client = MagicMock()
     client.name = "one"
@@ -329,7 +347,13 @@ async def test_get_clients_untargeted_resolution_skips_carp_entries(
     ph_hass: HomeAssistant,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Untargeted resolution returns normal-device clients and omits CARP clients."""
+    """Untargeted resolution returns normal-device clients and omits CARP clients.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        ph_hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+    """
     hass_local = ph_hass
     normal_client = MagicMock(name="normal")
     normal_client.name = "normal"
@@ -356,7 +380,14 @@ async def test_get_clients_explicit_carp_target_raises_no_target_clients(
     make_config_entry: Callable[..., MockConfigEntry],
     target_kind: str,
 ) -> None:
-    """Explicit CARP targets must raise no_target_clients even when other entries exist."""
+    """Explicit CARP targets must raise no_target_clients even when other entries exist.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        ph_hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        target_kind (str): Service target form exercised by the parameterized test.
+    """
     hass_local = ph_hass
     normal_client = MagicMock(name="normal")
     normal_client.name = "normal"
@@ -392,7 +423,13 @@ async def test_get_clients_only_carp_entries_reject_explicit_targets(
     make_config_entry: Callable[..., MockConfigEntry],
     target_kwargs: dict[str, str],
 ) -> None:
-    """Explicit targets fail when runtime state contains only CARP entries."""
+    """Explicit targets fail when runtime state contains only CARP entries.
+
+    Args:
+        ph_hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        target_kwargs (dict[str, str]): Parameterized target kwargs used by the test get clients only carp entries reject explicit targets scenario.
+    """
     hass_local = ph_hass
     carp_client = MagicMock(name="carp")
     hass_local.data = {DOMAIN: {"carp": carp_client}}
@@ -408,7 +445,11 @@ async def test_get_clients_only_carp_entries_reject_explicit_targets(
 async def test_get_clients_registry_errors_raise_for_explicit_targets(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Registry lookup errors must not broaden explicit targets to all clients."""
+    """Registry lookup errors must not broaden explicit targets to all clients.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass_local = MagicMock(spec=HomeAssistant)
     c1, c2 = MagicMock(name="c1"), MagicMock(name="c2")
     hass_local.data = {DOMAIN: {"e1": c1, "e2": c2}}
@@ -416,19 +457,25 @@ async def test_get_clients_registry_errors_raise_for_explicit_targets(
     def _raises(exc: BaseException | None) -> Any:
         """Raises.
 
+        Returns:
+            Any: Simulated result used by the raises scenario.
+
         Args:
-            exc: Exc provided by pytest or the test case.
+            exc (BaseException | None): Exc provided by pytest or the test case.
         """
 
-        def _r(*_a, **_k) -> Never:
+        def _r(*_a: object, **_k: object) -> Never:
             """Raise the provided registry exception for the patched helper.
 
             Args:
-                *_a: Additional positional arguments forwarded by the function.
-                **_k: Additional keyword arguments forwarded by the function.
+                _a (object): Additional positional arguments accepted by the test double.
+                _k (object): Additional keyword arguments accepted by the test double.
+
+            Returns:
+                Never: Never returns normally because the supplied exception is always raised.
 
             Raises:
-                Exception: Raised with the exception instance supplied to ``_raises``.
+                exc: The exception instance supplied to ``_raises``.
             """
             assert isinstance(exc, BaseException)
             raise exc
@@ -445,7 +492,11 @@ async def test_get_clients_registry_errors_raise_for_explicit_targets(
 async def test_get_clients_unresolved_explicit_target_raises(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Explicit target selectors must not broaden to all configured clients."""
+    """Explicit target selectors must not broaden to all configured clients.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass_local = MagicMock(spec=HomeAssistant)
     c1, c2 = MagicMock(name="c1"), MagicMock(name="c2")
     hass_local.data = {DOMAIN: {"e1": c1, "e2": c2}}
@@ -460,7 +511,11 @@ async def test_get_clients_unresolved_explicit_target_raises(
 async def test_get_clients_registry_entries_without_config_entry_raise(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Explicit registry targets without config entries must not broaden to all clients."""
+    """Explicit registry targets without config entries must not broaden to all clients.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass_local = MagicMock(spec=HomeAssistant)
     c1, c2 = MagicMock(name="c1"), MagicMock(name="c2")
     hass_local.data = {DOMAIN: {"e1": c1, "e2": c2}}
@@ -479,7 +534,11 @@ async def test_get_clients_registry_entries_without_config_entry_raise(
 async def test_get_clients_unloaded_registry_entry_id_raises_no_target_clients(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Explicit targets resolving to unloaded config entries should fail with no_target_clients."""
+    """Explicit targets resolving to unloaded config entries should fail with no_target_clients.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass_local = MagicMock(spec=HomeAssistant)
     c1, c2 = MagicMock(name="c1"), MagicMock(name="c2")
     hass_local.data = {DOMAIN: {"e1": c1, "e2": c2}}
@@ -508,7 +567,12 @@ async def test_get_clients_empty_data_raises_for_explicit_target() -> None:
 async def test_service_start_stop_restart_success_and_failure(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any
 ) -> None:
-    """Start/stop/restart service handlers call client methods correctly."""
+    """Start/stop/restart service handlers call client methods correctly.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        ph_hass (Any): Home Assistant instance hosting the scenario.
+    """
     hass = ph_hass
     hass.data = {}
     c1 = MagicMock()
@@ -564,7 +628,12 @@ async def test_service_start_stop_restart_success_and_failure(
 async def test_service_restart_only_if_running_and_reload_interface(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any
 ) -> None:
-    """Restart service honors only_if_running and reload_interface behavior."""
+    """Restart service honors only_if_running and reload_interface behavior.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        ph_hass (Any): Home Assistant instance hosting the scenario.
+    """
     c1 = MagicMock()
     c1.name = "c1"
     c1.restart_service_if_running = AsyncMock(return_value=True)
@@ -613,7 +682,15 @@ async def test_service_start_stop_restart_failure_variants(
     method_attr: str,
     client_order: str,
 ) -> None:
-    """Service control handlers fail if any selected client reports failure."""
+    """Service control handlers fail if any selected client reports failure.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        ph_hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        method_name (str): Parameterized method name used by the test service start stop restart failure variants scenario.
+        method_attr (str): Parameterized method attr used by the test service start stop restart failure variants scenario.
+        client_order (str): Parameterized client order used by the test service start stop restart failure variants scenario.
+    """
     hass = ph_hass
     hass.data = {}
     ok_client = MagicMock()
@@ -649,7 +726,13 @@ async def test_service_start_stop_restart_require_service_identifier(
     ph_hass: Any,
     method_name: str,
 ) -> None:
-    """Service control handlers require either service_id or service_name."""
+    """Service control handlers require either service_id or service_name.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        ph_hass (Any): Home Assistant instance hosting the scenario.
+        method_name (str): Parameterized method name used by the test service start stop restart require service identifier scenario.
+    """
     client = MagicMock()
     client.name = "c1"
     client.start_service = AsyncMock(return_value=True)
@@ -673,7 +756,12 @@ async def test_service_start_stop_restart_require_service_identifier(
 async def test_generate_vouchers_success_and_server_error(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any
 ) -> None:
-    """Generating vouchers returns assembled list and handles server errors."""
+    """Generating vouchers returns assembled list and handles server errors.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        ph_hass (Any): Home Assistant instance hosting the scenario.
+    """
     hass = ph_hass
     hass.data = {}
     vouchers = [{"code": "A1"}, {"code": "B2"}]
@@ -700,7 +788,12 @@ async def test_generate_vouchers_no_clients_raises(
     ph_hass: Any,
     fake_get_empty: None,
 ) -> None:
-    """Generating vouchers requires at least one selected OPNsense client."""
+    """Generating vouchers requires at least one selected OPNsense client.
+
+    Args:
+        ph_hass (Any): Home Assistant instance hosting the scenario.
+        fake_get_empty (None): Parameterized fake get empty used by the test generate vouchers no clients raises scenario.
+    """
     call = _service_call(_voucher_call_data())
 
     with pytest.raises(ServiceValidationError):
@@ -712,7 +805,12 @@ async def test_generate_vouchers_empty_selected_client_response_returns_empty(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
 ) -> None:
-    """A selected client returning no vouchers is a valid empty voucher response."""
+    """A selected client returning no vouchers is a valid empty voucher response.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        ph_hass (Any): Home Assistant instance hosting the scenario.
+    """
     client = MagicMock()
     client.name = "svc1"
     client.generate_vouchers = AsyncMock(return_value=[])
@@ -737,7 +835,14 @@ async def test_generate_vouchers_preserves_existing_edge_response_behavior(
     client_response: object,
     expected_vouchers: list[Any],
 ) -> None:
-    """Voucher generation preserves non-list skip and non-mapping passthrough behavior."""
+    """Voucher generation preserves non-list skip and non-mapping passthrough behavior.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        ph_hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        client_response (object): Parameterized client response used by the test generate vouchers preserves existing edge response behavior scenario.
+        expected_vouchers (list[Any]): Expected vouchers asserted by the scenario.
+    """
     client = MagicMock()
     client.name = "svc1"
     client.generate_vouchers = AsyncMock(return_value=client_response)
@@ -755,7 +860,12 @@ async def test_generate_vouchers_does_not_mutate_client_voucher_response(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: HomeAssistant,
 ) -> None:
-    """Client voucher mappings are copied before adding Home Assistant metadata."""
+    """Client voucher mappings are copied before adding Home Assistant metadata.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        ph_hass (HomeAssistant): Home Assistant instance hosting the scenario.
+    """
     voucher = {"code": "A1", "client": "upstream"}
     client = MagicMock()
     client.name = "svc1"
@@ -774,7 +884,12 @@ async def test_generate_vouchers_does_not_mutate_client_voucher_response(
 async def test_kill_states_success_and_failure(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any
 ) -> None:
-    """Killing states returns dropped state counts and handles failures."""
+    """Killing states returns dropped state counts and handles failures.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        ph_hass (Any): Home Assistant instance hosting the scenario.
+    """
     hass = ph_hass
     hass.data = {}
     c1 = MagicMock()
@@ -804,7 +919,12 @@ async def test_kill_states_success_and_failure(
 async def test_run_speedtest_success_and_unavailable(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any
 ) -> None:
-    """run_speedtest should return per-client results and raise when unavailable."""
+    """run_speedtest should return per-client results and raise when unavailable.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        ph_hass (Any): Home Assistant instance hosting the scenario.
+    """
     hass = ph_hass
     hass.data = {}
     c1 = MagicMock()
@@ -840,7 +960,12 @@ async def test_run_speedtest_success_and_unavailable(
 async def test_get_vnstat_metrics_success_and_unavailable(
     monkeypatch: pytest.MonkeyPatch, ph_hass: Any
 ) -> None:
-    """get_vnstat_metrics should return parsed per-client data or raise when unavailable."""
+    """get_vnstat_metrics should return parsed per-client data or raise when unavailable.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        ph_hass (Any): Home Assistant instance hosting the scenario.
+    """
     hass = ph_hass
     hass.data = {}
     c1 = MagicMock()
@@ -906,7 +1031,16 @@ async def test_service_system_reboot_does_not_call_carp_clients(
     include_normal: bool,
     expect_error: bool,
 ) -> None:
-    """system_reboot must run only non-CARP clients and skip CARP targets/errors."""
+    """system_reboot must run only non-CARP clients and skip CARP targets/errors.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        ph_hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        target_kwargs (dict[str, str]): Parameterized target kwargs used by the test service system reboot does not call carp clients scenario.
+        include_normal (bool): Parameterized include normal used by the test service system reboot does not call carp clients scenario.
+        expect_error (bool): Parameterized expect error used by the test service system reboot does not call carp clients scenario.
+    """
     hass = ph_hass
     normal_client = MagicMock(name="normal")
     normal_client.name = "normal"
@@ -948,7 +1082,11 @@ async def test_service_system_reboot_does_not_call_carp_clients(
 
 @pytest.fixture
 def fake_get_empty(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Fixture that monkeypatches services_mod._get_clients to return an empty list."""
+    """Fixture that monkeypatches services_mod._get_clients to return an empty list.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     _patch_clients(monkeypatch, [])
 
 
@@ -966,7 +1104,13 @@ async def test_service_no_clients_raises(
     fake_get_empty: None,
     service_handler: Callable[..., Awaitable[None]],
 ) -> None:
-    """Service start/stop/restart should raise when no clients are available."""
+    """Service start/stop/restart should raise when no clients are available.
+
+    Args:
+        ph_hass (Any): Home Assistant instance hosting the scenario.
+        fake_get_empty (None): Parameterized fake get empty used by the test service no clients raises scenario.
+        service_handler (Callable[..., Awaitable[None]]): Parameterized service handler used by the test service no clients raises scenario.
+    """
     hass = ph_hass
     hass.data = {}
 
@@ -978,7 +1122,11 @@ async def test_service_no_clients_raises(
 
 @pytest.mark.asyncio
 async def test_close_send_wol_and_system_calls(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Close/send_wol/system calls are forwarded to clients."""
+    """Close/send_wol/system calls are forwarded to clients.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     c = MagicMock()
     c.name = "one"
     c.close_notice = AsyncMock(return_value=None)
@@ -1008,7 +1156,11 @@ async def test_close_send_wol_and_system_calls(monkeypatch: pytest.MonkeyPatch) 
 
 @pytest.mark.asyncio
 async def test_toggle_alias_success_and_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Toggle alias success and failure paths raise or not appropriately."""
+    """Toggle alias success and failure paths raise or not appropriately.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     c1 = MagicMock()
     c1.name = "c1"
     c1.toggle_alias = AsyncMock(return_value=True)

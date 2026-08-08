@@ -107,7 +107,7 @@ def normalize_mac_address(mac: str) -> str | None:
     """Normalize MAC addresses to lowercase colon-separated format.
 
     Args:
-        mac: Raw MAC address input.
+        mac (str): Raw MAC address input.
 
     Returns:
         str | None: Normalized MAC (`aa:bb:cc:dd:ee:ff`) when valid, otherwise ``None``.
@@ -126,8 +126,9 @@ def _get_device_tracking_mode(
     """Return the UI tracking mode for the current options.
 
     Args:
-        device_tracker_enabled: Whether device tracker is enabled in options.
-        selected_devices: Persisted tracked MAC addresses from the config entry options.
+        device_tracker_enabled (bool): Whether device tracker is enabled in options.
+        selected_devices (Iterable[str] | None): Persisted tracked MAC addresses from the config
+            entry options.
 
     Returns:
         str: The UI mode matching the stored options.
@@ -143,8 +144,9 @@ def _resolve_device_tracking_mode(
     """Resolve the UI tracking mode from submitted or stored options.
 
     Args:
-        options: Persisted or in-progress options mapping.
-        user_input: Optional submitted form values that may include the transient UI mode.
+        options (Mapping[str, Any]): Persisted or in-progress options mapping.
+        user_input (Mapping[str, Any] | None): Optional submitted form values that may include the
+            transient UI mode.
 
     Returns:
         str: Selected UI tracking mode.
@@ -163,7 +165,7 @@ def _parse_manual_devices(manual_devices: str | None) -> list[str]:
     """Parse manually entered MAC addresses from the options form.
 
     Args:
-        manual_devices: Comma- or newline-separated MAC address input.
+        manual_devices (str | None): Comma- or newline-separated MAC address input.
 
     Returns:
         list[str]: Valid normalized MAC addresses in input order.
@@ -183,7 +185,8 @@ def _merge_selected_devices(*device_groups: Iterable[str]) -> list[str]:
     """Merge MAC addresses while preserving order and removing duplicates.
 
     Args:
-        *device_groups: MAC address iterables to merge.
+        device_groups (Iterable[str]): Device-group collections to merge into the selected-device
+            set.
 
     Returns:
         list[str]: Unique MAC addresses in first-seen order.
@@ -201,8 +204,8 @@ def _apply_device_tracking_mode(options: MutableMapping[str, Any], tracking_mode
     """Apply UI tracking mode to persisted options.
 
     Args:
-        options: Options mapping to update.
-        tracking_mode: Selected UI tracking mode.
+        options (MutableMapping[str, Any]): Options mapping to update.
+        tracking_mode (str): Selected UI tracking mode.
 
     Returns:
         None: This function mutates ``options`` in place.
@@ -216,9 +219,9 @@ def _normalize_int_option(value: Any, minimum: int, maximum: int) -> int:
     """Convert an option value to an integer within a bounded range.
 
     Args:
-        value: Raw option value from storage or form submission.
-        minimum: Inclusive lower bound.
-        maximum: Inclusive upper bound.
+        value (Any): Raw option value from storage or form submission.
+        minimum (int): Inclusive lower bound.
+        maximum (int): Inclusive upper bound.
 
     Returns:
         int: Value coerced to ``int`` and clamped to the requested bounds.
@@ -234,7 +237,7 @@ def _build_selected_device_entries(selected_devices: Iterable[str]) -> DeviceEnt
     """Build selector entries from currently configured devices.
 
     Args:
-        selected_devices: Persisted tracked MAC addresses from the options entry.
+        selected_devices (Iterable[str]): Persisted tracked MAC addresses from the options entry.
 
     Returns:
         DeviceEntries: Mapping of normalized MAC addresses to fallback labels.
@@ -252,7 +255,7 @@ def _format_detected_device_label(entry: Mapping[str, Any]) -> str:
     """Format a device label from an ARP table entry.
 
     Args:
-        entry: ARP entry returned by the OPNsense client.
+        entry (Mapping[str, Any]): ARP entry returned by the OPNsense client.
 
     Returns:
         str: Human-readable device label for the options form.
@@ -288,9 +291,9 @@ def _device_entry_sort_key(
     """Return the sort key for device selector entries.
 
     Args:
-        mac: MAC address for the selector option.
-        label: User-facing selector label.
-        ip_by_mac: Detected IP addresses keyed by MAC address.
+        mac (str): MAC address for the selector option.
+        label (str): User-facing selector label.
+        ip_by_mac (Mapping[str, str]): Detected IP addresses keyed by MAC address.
 
     Returns:
         tuple[int, tuple[int, int] | str]: Key used to sort fallback labels first and
@@ -310,7 +313,7 @@ def is_ip_address(value: str) -> bool:
     """Validate whether a string contains an IPv4 or IPv6 address.
 
     Args:
-        value: Candidate IP address string.
+        value (str): Candidate IP address string.
 
     Returns:
         bool: `True` when `value` parses as a valid IP address.
@@ -327,8 +330,8 @@ def cleanse_sensitive_data(message: str, secrets: list | None = None) -> str:
     """Redact secret values from a log message.
 
     Args:
-        message: Message text that may include credentials.
-        secrets: Secret values to replace, including raw and URL-encoded forms.
+        message (str): Message text that may include credentials.
+        secrets (list | None): Secret values to replace, including raw and URL-encoded forms.
 
     Returns:
         str: Message with matching secrets replaced by `[redacted]`.
@@ -352,11 +355,11 @@ async def validate_input(
     """Validate user input and map failures to config-flow error keys.
 
     Args:
-        hass: Home Assistant instance.
-        user_input: Input payload being validated for this flow step.
-        errors: Mutable error mapping populated by this validator.
-        expected_id: Expected device unique ID for reconfigure and options validation.
-        carp: Validate CARP VIP-specific client details instead of standard details.
+        hass (HomeAssistant): Home Assistant instance.
+        user_input (MutableMapping[str, Any]): Input payload being validated for this flow step.
+        errors (dict[str, Any]): Mutable error mapping populated by this validator.
+        expected_id (str | None): Expected device unique ID for reconfigure and options validation.
+        carp (bool): Validate CARP VIP-specific client details instead of standard details.
 
     Returns:
         dict[str, Any]: Updated error mapping suitable for form rendering.
@@ -387,8 +390,8 @@ def _get_validation_error_details(
     """Return config-flow error details for a validation exception.
 
     Args:
-        error: Validation exception raised while validating the input.
-        user_input: User input containing optional secrets for log redaction.
+        error (OPNsenseError): Validation exception raised while validating the input.
+        user_input (Mapping[str, Any]): User input containing optional secrets for log redaction.
 
     Returns:
         tuple[str, str] | None: Error key and log message when mapped, otherwise ``None``.
@@ -396,8 +399,10 @@ def _get_validation_error_details(
     if isinstance(error, OPNsenseBelowMinFirmware):
         return (
             "below_min_firmware",
-            f"OPNsense Firmware of {user_input.get(CONF_FIRMWARE_VERSION)} is below the "
-            f"minimum supported version of {OPNSENSE_MIN_FIRMWARE}",
+            (
+                f"OPNsense Firmware of {user_input.get(CONF_FIRMWARE_VERSION)} is below the "
+                f"minimum supported version of {OPNSENSE_MIN_FIRMWARE}"
+            ),
         )
     if isinstance(error, OPNsenseUnknownFirmware):
         return (
@@ -436,7 +441,17 @@ def _get_validation_error_details(
 
 
 def _normalize_url(url: str) -> str:
-    """Normalize and validate an OPNsense base URL."""
+    """Normalize and validate an OPNsense base URL.
+
+    Returns:
+        str: Canonical OPNsense URL without a trailing slash.
+
+    Args:
+        url (str): OPNsense base URL to normalize.
+
+    Raises:
+        OPNsenseInvalidURL: If the URL has no host or contains an invalid port.
+    """
     fix_url = url.strip()
     if "://" not in fix_url:
         fix_url = "https://" + fix_url
@@ -464,7 +479,11 @@ def _normalize_url(url: str) -> str:
 
 
 def _clean_and_parse_url(user_input: MutableMapping[str, Any]) -> None:
-    """Normalize and validate the configured OPNsense base URL."""
+    """Normalize and validate the configured OPNsense base URL.
+
+    Args:
+        user_input (MutableMapping[str, Any]): Config-flow values submitted by the user.
+    """
     user_input[CONF_URL] = _normalize_url(user_input.get(CONF_URL, ""))
     _LOGGER.debug("[config_flow] Cleaned URL: %s", user_input[CONF_URL])
 
@@ -477,13 +496,11 @@ async def _validate_client_details(
     """Validate and enrich OPNsense client details from a flow submission.
 
     Args:
-        hass: Home Assistant instance.
-        user_input: Mutable user input mapping to validate and enrich.
-        expected_id: Expected device unique ID for reconfigure/options validation.
+        hass (HomeAssistant): Home Assistant instance.
+        user_input (MutableMapping[str, Any]): Mutable user input mapping to validate and enrich.
+        expected_id (str | None): Expected device unique ID for reconfigure/options validation.
 
     Raises:
-        OPNsenseUnknownFirmware: Firmware could not be parsed or compared safely.
-        OPNsenseBelowMinFirmware: Firmware is below the minimum supported version.
         OPNsenseMissingDeviceUniqueID: Backend did not return a device unique ID.
     """
     _clean_and_parse_url(user_input)
@@ -526,11 +543,13 @@ async def _validate_carp_client_details(
     """Validate and enrich a CARP VIP flow submission without a device-ID probe.
 
     Args:
-        hass: Home Assistant instance used to create the OPNsense client.
-        user_input: Mutable flow payload updated with normalized and discovered values.
+        hass (HomeAssistant): Home Assistant instance used to create the OPNsense client.
+        user_input (MutableMapping[str, Any]): Mutable flow payload updated with normalized and
+            discovered values.
 
     Raises:
-        OPNsenseError: If URL, client, responder, or CARP VIP validation fails.
+        OPNsenseCarpNotConfiguredError: If the router has no usable CARP VIPs.
+        OPNsenseCarpResponderUnavailableError: If responder information is unavailable.
     """
     _clean_and_parse_url(user_input)
 
@@ -576,9 +595,9 @@ def _record_validation_error(errors: MutableMapping[str, Any], key: str, message
     """Log an error and set the form-level `base` error key.
 
     Args:
-        errors: Mutable errors mapping for the current flow step.
-        key: Translation key to store in `errors["base"]`.
-        message: Log message describing the validation failure.
+        errors (MutableMapping[str, Any]): Mutable errors mapping for the current flow step.
+        key (str): Translation key to store in `errors["base"]`.
+        message (str): Log message describing the validation failure.
     """
     _LOGGER.error(message)
     errors["base"] = key
@@ -592,9 +611,12 @@ def _build_user_input_schema(
     """Build user input schema.
 
     Args:
-        user_input: Values submitted for the current configuration or options flow step.
-        stored_values: Stored config-entry values used to prefill the form.
-        reconf: Whether the schema is being built for the reconfigure flow instead of initial setup.
+        user_input (Mapping[str, Any] | None): Values submitted for the current configuration or
+            options flow step.
+        stored_values (Mapping[str, Any] | None): Stored config-entry values used to prefill the
+            form.
+        reconf (bool): Whether the schema is being built for the reconfigure flow instead of initial
+            setup.
 
     Returns:
         vol.Schema: Form schema for the base connection step.
@@ -644,8 +666,10 @@ def _build_carp_input_schema(
     """Build the CARP-only user input schema.
 
     Args:
-        user_input: Values submitted for the current configuration or options flow step.
-        stored_values: Stored config-entry values used to prefill the form.
+        user_input (Mapping[str, Any] | None): Values submitted for the current configuration or
+            options flow step.
+        stored_values (Mapping[str, Any] | None): Stored config-entry values used to prefill the
+            form.
 
     Returns:
         vol.Schema: Form schema for a CARP flow connection step.
@@ -686,8 +710,9 @@ def _build_carp_options_schema(
     """Build the scan-interval-only options schema for a CARP VIP entry.
 
     Args:
-        user_input: Values submitted for the current options-flow step.
-        stored_options: Existing config-entry options used to prefill the form.
+        user_input (Mapping[str, Any] | None): Values submitted for the current options-flow step.
+        stored_options (Mapping[str, Any] | None): Existing config-entry options used to prefill the
+            form.
 
     Returns:
         vol.Schema: Options schema containing the CARP scan interval selector.
@@ -720,8 +745,10 @@ def _build_granular_sync_schema(
     """Build granular sync schema.
 
     Args:
-        user_input: Values submitted for the current configuration or options flow step.
-        stored_values: Stored sync option values used to prefill the granular sync form.
+        user_input (Mapping[str, Any] | None): Values submitted for the current configuration or
+            options flow step.
+        stored_values (Mapping[str, Any] | None): Stored sync option values used to prefill the
+            granular sync form.
 
     Returns:
         vol.Schema: Form schema containing all granular sync toggles.
@@ -750,9 +777,12 @@ def _build_options_init_schema(
     """Build options init schema.
 
     Args:
-        user_input: Values submitted for the current configuration or options flow step.
-        stored_config: Config-entry data used when an option has not been overridden yet.
-        stored_options: Existing options used to populate the initial options-flow form.
+        user_input (Mapping[str, Any] | None): Values submitted for the current configuration or
+            options flow step.
+        stored_config (Mapping[str, Any] | None): Config-entry data used when an option has not been
+            overridden yet.
+        stored_options (Mapping[str, Any] | None): Existing options used to populate the initial
+            options-flow form.
 
     Returns:
         vol.Schema: Form schema for the options-flow initial step.
@@ -842,8 +872,8 @@ def _build_device_tracker_schema(
     """Build the device tracker options schema.
 
     Args:
-        selected_devices: Previously configured MAC addresses.
-        dt_entries: Device choices built from the current ARP table and stored MACs.
+        selected_devices (list[str]): Previously configured MAC addresses.
+        dt_entries (DeviceEntries): Device choices built from the current ARP table and stored MACs.
 
     Returns:
         vol.Schema: Device tracker form schema.
@@ -871,10 +901,11 @@ async def _get_dt_entries(
     """Return device-tracker selector entries.
 
     Args:
-        hass: Home Assistant instance.
-        config: Config entry data used to build the OPNsense client.
-        selected_devices: Persisted MAC addresses that should remain selectable even when
-        not currently present in the ARP table.
+        hass (HomeAssistant): Home Assistant instance.
+        config (Mapping[str, Any]): Config entry data used to build the OPNsense client.
+        selected_devices (Iterable[str]): Persisted MAC addresses that should remain selectable even
+            when
+            not currently present in the ARP table.
 
     Returns:
         DeviceEntries: Mapping of MAC addresses to user-facing labels.
@@ -939,9 +970,9 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         """Abort when another entry reuses the same normalized URL.
 
         Args:
-            url: Normalized OPNsense URL being configured.
-            carp: Whether the submitted entry is a CARP entry.
-            exclude_entry_id: Config entry to exclude during reconfiguration.
+            url (str): Normalized OPNsense URL being configured.
+            carp (bool): Whether the submitted entry is a CARP entry.
+            exclude_entry_id (str | None): Config entry to exclude during reconfiguration.
 
         Returns:
             ConfigFlowResult | None: Conflict abort result, if applicable.
@@ -970,7 +1001,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         """Handle the initial user config step.
 
         Args:
-            user_input: Ignored initial menu payload.
+            user_input (MutableMapping[str, Any] | None): Ignored initial menu payload.
 
         Returns:
             ConfigFlowResult: Menu containing device and CARP setup choices.
@@ -983,7 +1014,8 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         """Handle the device setup flow.
 
         Args:
-            user_input: Submitted device connection and synchronization settings.
+            user_input (MutableMapping[str, Any] | None): Submitted device connection and
+                synchronization settings.
 
         Returns:
             ConfigFlowResult: Device form, granular-sync form, entry, or abort result.
@@ -1033,7 +1065,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         """Handle CARP setup flow.
 
         Args:
-            user_input: Submitted CARP VIP connection settings.
+            user_input (MutableMapping[str, Any] | None): Submitted CARP VIP connection settings.
 
         Returns:
             ConfigFlowResult: CARP form, created entry, or duplicate/conflict abort result.
@@ -1081,7 +1113,8 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         """Handle the granular sync configuration step.
 
         Args:
-            user_input: Submitted granular sync payload, or `None` for first render.
+            user_input (MutableMapping[str, Any] | None): Submitted granular sync payload, or `None`
+                for first render.
 
         Returns:
             ConfigFlowResult: Next flow step or created config entry.
@@ -1116,7 +1149,8 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         """Handle reconfigure flow step for an existing entry.
 
         Args:
-            user_input: Submitted reconfigure payload, or `None` for first render.
+            user_input (MutableMapping[str, Any] | None): Submitted reconfigure payload, or `None`
+                for first render.
 
         Returns:
             ConfigFlowResult: Updated-and-reloaded entry result or form response.
@@ -1204,7 +1238,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         """Handle YAML import by delegating to the device step.
 
         Args:
-            user_input: Imported configuration payload.
+            user_input (MutableMapping[str, Any]): Imported configuration payload.
 
         Returns:
             ConfigFlowResult: Result returned from `async_step_device`.
@@ -1217,7 +1251,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         """Create options flow handler for an existing config entry.
 
         Args:
-            config_entry: Config entry whose options are being edited.
+            config_entry (ConfigEntry): Config entry whose options are being edited.
 
         Returns:
             OPNsenseOptionsFlow: Options flow instance bound to the entry.
@@ -1251,7 +1285,8 @@ class OPNsenseOptionsFlow(OptionsFlow):
         """Handle the initial options-flow step.
 
         Args:
-            user_input: Submitted options payload, or `None` for first render.
+            user_input (MutableMapping[str, Any] | None): Submitted options payload, or `None` for
+                first render.
 
         Returns:
             ConfigFlowResult: Next options step or saved options entry result.
@@ -1334,7 +1369,8 @@ class OPNsenseOptionsFlow(OptionsFlow):
         """Handle granular sync options in options flow.
 
         Args:
-            user_input: Submitted granular sync payload, or `None` for first render.
+            user_input (MutableMapping[str, Any] | None): Submitted granular sync payload, or `None`
+                for first render.
 
         Returns:
             ConfigFlowResult: Next options step or saved options entry result.
@@ -1374,10 +1410,13 @@ class OPNsenseOptionsFlow(OptionsFlow):
         """Handle the device tracker options step.
 
         Args:
-            user_input: User-submitted form data.
+            user_input (MutableMapping[str, Any] | None): User-submitted form data.
 
         Returns:
             ConfigFlowResult: The next form step or the saved options entry.
+
+        Raises:
+            OPNsenseError: If loading available device trackers from OPNsense fails.
         """
         errors: dict[str, Any] = {}
         selected_devices: list[str] = _merge_selected_devices(self._options.get(CONF_DEVICES, []))

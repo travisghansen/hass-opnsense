@@ -41,7 +41,7 @@ def _version_key(version: str) -> tuple[tuple[int, int | str], ...]:
     """Return a tolerant comparison key for aiopnsense version strings.
 
     Args:
-        version: Version string to normalize.
+        version (str): Version string to normalize.
 
     Returns:
         Tuple suitable for comparing common dotted release versions.
@@ -54,8 +54,8 @@ def _latest_is_newer(current: str, latest: str) -> bool:
     """Return whether the latest version is newer than the current version.
 
     Args:
-        current: Current pinned version.
-        latest: Latest available version.
+        current (str): Current pinned version.
+        latest (str): Latest available version.
 
     Returns:
         True when latest sorts after current.
@@ -71,7 +71,7 @@ def _stable_version_key(version: str) -> tuple[tuple[int, int | str], ...]:
     """Return a comparison key for the stable part of a version string.
 
     Args:
-        version: Version string to normalize.
+        version (str): Version string to normalize.
 
     Returns:
         Tuple suitable for comparing the stable release version.
@@ -85,7 +85,7 @@ def _is_prerelease(version: str) -> bool:
     """Return whether a version string appears to be a prerelease.
 
     Args:
-        version: Version string to evaluate.
+        version (str): Version string to evaluate.
 
     Returns:
         True when the version has a common prerelease marker.
@@ -102,7 +102,7 @@ def fetch_latest_version() -> str:
     Raises:
         ValueError: If PyPI does not return a usable version.
     """
-    with urlopen(PYPI_URL, timeout=30) as response:  # noqa: S310
+    with urlopen(PYPI_URL, timeout=30) as response:
         payload = json.load(response)
 
     return _select_latest_stable_version(payload)
@@ -112,7 +112,7 @@ def _select_latest_stable_version(payload: Mapping[str, object]) -> str:
     """Select the newest stable version from a PyPI JSON payload.
 
     Args:
-        payload: PyPI JSON response payload.
+        payload (Mapping[str, object]): PyPI JSON response payload.
 
     Returns:
         Newest non-prerelease version from the release list.
@@ -142,7 +142,7 @@ def _release_has_usable_file(files: object) -> bool:
     """Return whether a PyPI release has at least one non-yanked file.
 
     Args:
-        files: Release file list from a PyPI JSON response.
+        files (object): Release file list from a PyPI JSON response.
 
     Returns:
         True when at least one file can be installed.
@@ -156,7 +156,7 @@ def _read_manifest_version(manifest_path: Path) -> str:
     """Read the aiopnsense pin version from a Home Assistant manifest.
 
     Args:
-        manifest_path: Path to the integration manifest.
+        manifest_path (Path): Path to the integration manifest.
 
     Returns:
         Current aiopnsense version.
@@ -181,7 +181,7 @@ def _read_pyproject_version(pyproject_path: Path) -> str:
     """Read the aiopnsense pin version from dependency groups in pyproject.
 
     Args:
-        pyproject_path: Path to pyproject.toml.
+        pyproject_path (Path): Path to pyproject.toml.
 
     Returns:
         Current aiopnsense version.
@@ -212,7 +212,7 @@ def _read_prek_version(prek_path: Path) -> str:
     """Read the aiopnsense pin from the prek mypy hook dependencies.
 
     Args:
-        prek_path: Path to prek.toml.
+        prek_path (Path): Path to prek.toml.
 
     Returns:
         Current aiopnsense version used by the isolated mypy hook.
@@ -252,7 +252,7 @@ def _is_aiopnsense_pin(requirement: object) -> bool:
     """Return whether a dependency entry is an aiopnsense exact pin.
 
     Args:
-        requirement: Dependency entry read from JSON or TOML.
+        requirement (object): Dependency entry read from JSON or TOML.
 
     Returns:
         True when the entry is an exact aiopnsense pin.
@@ -264,8 +264,8 @@ def _write_manifest_version(manifest_path: Path, latest_version: str) -> None:
     """Write the aiopnsense pin version into the manifest.
 
     Args:
-        manifest_path: Path to the integration manifest.
-        latest_version: Version to pin.
+        manifest_path (Path): Path to the integration manifest.
+        latest_version (str): Version to pin.
 
     Raises:
         ValueError: If there is not exactly one pinned aiopnsense requirement.
@@ -298,8 +298,8 @@ def _write_pyproject_version(pyproject_path: Path, latest_version: str) -> None:
     """Write the aiopnsense pin version into pyproject while preserving layout.
 
     Args:
-        pyproject_path: Path to pyproject.toml.
-        latest_version: Version to pin.
+        pyproject_path (Path): Path to pyproject.toml.
+        latest_version (str): Version to pin.
 
     Raises:
         ValueError: If there is not exactly one pinned aiopnsense dependency line.
@@ -317,8 +317,8 @@ def _write_prek_version(prek_path: Path, latest_version: str) -> None:
     """Write the aiopnsense pin into the prek mypy hook dependencies.
 
     Args:
-        prek_path: Path to prek.toml.
-        latest_version: Version to pin.
+        prek_path (Path): Path to prek.toml.
+        latest_version (str): Version to pin.
 
     Raises:
         ValueError: If there is not exactly one aiopnsense dependency line.
@@ -343,11 +343,11 @@ def update_pins(
     """Evaluate and optionally update aiopnsense dependency pins.
 
     Args:
-        manifest_path: Path to manifest.json.
-        pyproject_path: Path to pyproject.toml.
-        prek_path: Path to prek.toml.
-        latest_version: Latest aiopnsense version available for evaluation.
-        write: Whether to rewrite dependency files when an update is needed.
+        manifest_path (Path): Path to manifest.json.
+        pyproject_path (Path): Path to pyproject.toml.
+        prek_path (Path): Path to prek.toml.
+        latest_version (str): Latest aiopnsense version available for evaluation.
+        write (bool): Whether to rewrite dependency files when an update is needed.
 
     Returns:
         Evaluation result for workflow outputs and tests.
@@ -379,8 +379,8 @@ def _write_github_outputs(result: UpdateResult, output_path: Path) -> None:
     """Append update result values to the GitHub Actions output file.
 
     Args:
-        result: Update result to write.
-        output_path: Path from the GITHUB_OUTPUT environment variable.
+        result (UpdateResult): Update result to write.
+        output_path (Path): Path from the GITHUB_OUTPUT environment variable.
     """
     with output_path.open("a") as output_file:
         output_file.write(f"current={result.current}\n")
@@ -394,7 +394,7 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     """Parse command-line arguments.
 
     Args:
-        argv: Command-line arguments excluding the executable name.
+        argv (Sequence[str]): Command-line arguments excluding the executable name.
 
     Returns:
         Parsed arguments.
@@ -413,7 +413,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run the aiopnsense dependency pin updater.
 
     Args:
-        argv: Optional command-line arguments excluding the executable name.
+        argv (Sequence[str] | None): Optional command-line arguments excluding the executable name.
 
     Returns:
         Process exit code.

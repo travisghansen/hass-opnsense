@@ -38,7 +38,15 @@ class RepairMarker:
 
 
 def build_repair_marker(old_device_id: str, new_device_id: str) -> dict[str, object]:
-    """Build the current persisted Device ID repair marker."""
+    """Build the current persisted Device ID repair marker.
+
+    Returns:
+        dict[str, object]: Serialized marker for the pending device-ID repair.
+
+    Args:
+        old_device_id (str): Previously stored OPNsense device identifier.
+        new_device_id (str): Device identifier returned by the simulated OPNsense probe.
+    """
     return {
         "version": _REPAIR_MARKER_VERSION,
         "old_device_id": old_device_id,
@@ -47,12 +55,26 @@ def build_repair_marker(old_device_id: str, new_device_id: str) -> dict[str, obj
 
 
 def has_repair_marker(entry: ConfigEntry) -> bool:
-    """Return whether the entry contains a persisted repair marker."""
+    """Return whether the entry contains a persisted repair marker.
+
+    Returns:
+        bool: Whether the has repair marker condition is satisfied.
+
+    Args:
+        entry (ConfigEntry): OPNsense config entry participating in the operation.
+    """
     return REPAIR_MARKER_KEY in entry.data
 
 
 def parse_repair_marker(entry: ConfigEntry) -> RepairMarker | None:
-    """Parse and validate the entry's persisted repair marker."""
+    """Parse and validate the entry's persisted repair marker.
+
+    Returns:
+        RepairMarker | None: Validated repair marker, or None for invalid data.
+
+    Args:
+        entry (ConfigEntry): OPNsense config entry participating in the operation.
+    """
     value = entry.data.get(REPAIR_MARKER_KEY)
     if not isinstance(value, Mapping):
         return None
@@ -73,7 +95,14 @@ def parse_repair_marker(entry: ConfigEntry) -> RepairMarker | None:
 
 
 def _platform_domain_value(platform_domain: PlatformDomain) -> str:
-    """Return the string entity domain for a platform value."""
+    """Return the string entity domain for a platform value.
+
+    Returns:
+        str: Home Assistant platform domain represented as text.
+
+    Args:
+        platform_domain (PlatformDomain): Platform domain to convert to registry text.
+    """
     return platform_domain.value if isinstance(platform_domain, Platform) else platform_domain
 
 
@@ -91,7 +120,11 @@ class RepairReconciliation:
     _candidate_entity_ids: set[str] = field(default_factory=set)
 
     def prepare(self) -> None:
-        """Preflight every target collision, then migrate identifiers in place."""
+        """Preflight every target collision, then migrate identifiers in place.
+
+        Raises:
+            RepairReconciliationError: If a target collides or registry migration fails.
+        """
         entity_registry = er.async_get(self.hass)
         device_registry = dr.async_get(self.hass)
         candidates = er.async_entries_for_config_entry(entity_registry, self.config_entry.entry_id)
@@ -167,6 +200,10 @@ class RepairReconciliation:
 
         If ``entities`` is ``None``, the platform discovery payload was missing
         or malformed and should not be treated as complete.
+
+        Args:
+            platform_domain (PlatformDomain): Platform whose desired entity IDs were compiled.
+            entities (Iterable[Entity] | None): Registry records exposed to the repair helper.
         """
         if entities is None:
             return
@@ -189,7 +226,15 @@ class RepairReconciliation:
         )
 
     def require_platforms_complete(self, platform_domains: Iterable[PlatformDomain]) -> None:
-        """Fail unless every forwarded platform reported its final entity list."""
+        """Fail unless every forwarded platform reported its final entity list.
+
+        Args:
+            platform_domains (Iterable[PlatformDomain]): Platforms that must finish inventory
+                compilation.
+
+        Raises:
+            RepairReconciliationError: If any forwarded platform has incomplete discovery.
+        """
         required_domains = {
             _platform_domain_value(platform_domain) for platform_domain in platform_domains
         }
@@ -199,7 +244,11 @@ class RepairReconciliation:
             raise RepairReconciliationError(f"platform discovery incomplete: {missing}")
 
     def finalize(self) -> None:
-        """Remove stale candidates and detach only unreferenced obsolete devices."""
+        """Remove stale candidates and detach only unreferenced obsolete devices.
+
+        Raises:
+            RepairReconciliationError: If registry finalization fails.
+        """
         entity_registry = er.async_get(self.hass)
         device_registry = dr.async_get(self.hass)
         try:
@@ -267,13 +316,26 @@ def record_desired_entities(
     platform_domain: PlatformDomain,
     entities: Iterable[Entity] | None,
 ) -> None:
-    """Record a final platform entity list when reconciliation is active."""
+    """Record a final platform entity list when reconciliation is active.
+
+    Args:
+        config_entry (ConfigEntry): OPNsense config entry participating in the operation.
+        platform_domain (PlatformDomain): Platform whose desired entity IDs were compiled.
+        entities (Iterable[Entity] | None): Registry records exposed to the repair helper.
+    """
     reconciliation = config_entry.runtime_data.repair_reconciliation
     if isinstance(reconciliation, RepairReconciliation) and reconciliation.active:
         reconciliation.record_desired_entities(platform_domain, entities)
 
 
 def is_reconciliation_active(config_entry: ConfigEntry) -> bool:
-    """Return whether this setup is performing Device ID reconciliation."""
+    """Return whether this setup is performing Device ID reconciliation.
+
+    Returns:
+        bool: Whether the is reconciliation active condition is satisfied.
+
+    Args:
+        config_entry (ConfigEntry): OPNsense config entry participating in the operation.
+    """
     reconciliation = config_entry.runtime_data.repair_reconciliation
     return isinstance(reconciliation, RepairReconciliation) and reconciliation.active

@@ -29,7 +29,7 @@ def _version_key(version: str) -> tuple[tuple[int, int | str], ...]:
     """Return a tolerant comparison key for release versions.
 
     Args:
-        version: Version string to normalize.
+        version (str): Version string to normalize.
 
     Returns:
         Tuple suitable for comparing common dotted release versions.
@@ -42,7 +42,7 @@ def _is_prerelease(version: str) -> bool:
     """Return whether a version string appears to be a prerelease.
 
     Args:
-        version: Version string to evaluate.
+        version (str): Version string to evaluate.
 
     Returns:
         True when the version has a common prerelease marker.
@@ -54,7 +54,7 @@ def _stable_version(version: str) -> str:
     """Return the stable base of a version string.
 
     Args:
-        version: Version string to normalize.
+        version (str): Version string to normalize.
 
     Returns:
         Stable release portion of the version.
@@ -67,7 +67,7 @@ def _sanitize_release_body(body: str) -> str:
     """Return release text that is safe to embed in a generated PR body.
 
     Args:
-        body: Release text from GitHub.
+        body (str): Release text from GitHub.
 
     Returns:
         Sanitized release text.
@@ -89,9 +89,9 @@ def build_release_notes(
     """Build sanitized release notes for the updated version range.
 
     Args:
-        releases: GitHub releases from the aiopnsense repository.
-        current_version: Currently pinned aiopnsense version.
-        latest_version: Target aiopnsense version.
+        releases (Sequence[Mapping[str, object]]): GitHub releases from the aiopnsense repository.
+        current_version (str): Currently pinned aiopnsense version.
+        latest_version (str): Target aiopnsense version.
 
     Returns:
         Markdown release notes for matching stable releases.
@@ -148,12 +148,12 @@ def write_pr_body(
     """Write the generated aiopnsense update PR body.
 
     Args:
-        body_path: Path to write the markdown body to.
-        releases: GitHub releases from the aiopnsense repository.
-        current_version: Currently pinned manifest version.
-        pyproject_current_version: Currently pinned pyproject version.
-        prek_current_version: Currently pinned prek mypy-hook version.
-        latest_version: Target aiopnsense version.
+        body_path (Path): Path to write the markdown body to.
+        releases (Sequence[Mapping[str, object]]): GitHub releases from the aiopnsense repository.
+        current_version (str): Currently pinned manifest version.
+        pyproject_current_version (str): Currently pinned pyproject version.
+        prek_current_version (str): Currently pinned prek mypy-hook version.
+        latest_version (str): Target aiopnsense version.
     """
     release_notes = build_release_notes(
         releases=releases,
@@ -182,9 +182,9 @@ def fetch_releases(*, owner: str, repo: str, token: str | None = None) -> list[d
     """Fetch releases from the GitHub REST API.
 
     Args:
-        owner: Repository owner.
-        repo: Repository name.
-        token: Optional GitHub token.
+        owner (str): Repository owner.
+        repo (str): Repository name.
+        token (str | None): Optional GitHub token.
 
     Returns:
         List of GitHub release objects.
@@ -206,7 +206,7 @@ def _github_headers(token: str | None) -> dict[str, str]:
     """Build GitHub API request headers.
 
     Args:
-        token: Optional GitHub token.
+        token (str | None): Optional GitHub token.
 
     Returns:
         Request headers.
@@ -225,7 +225,7 @@ def _next_link(link_header: str | None) -> str | None:
     """Return the next pagination URL from a GitHub Link header.
 
     Args:
-        link_header: Raw Link header value.
+        link_header (str | None): Raw Link header value.
 
     Returns:
         Next URL when present.
@@ -243,7 +243,7 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     """Parse command-line arguments.
 
     Args:
-        argv: Command-line arguments excluding the executable name.
+        argv (Sequence[str]): Command-line arguments excluding the executable name.
 
     Returns:
         Parsed arguments.
@@ -263,7 +263,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Build the update PR body file.
 
     Args:
-        argv: Optional command-line arguments excluding the executable name.
+        argv (Sequence[str] | None): Optional command-line arguments excluding the executable name.
 
     Returns:
         Process exit code.

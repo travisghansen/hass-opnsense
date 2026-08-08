@@ -21,7 +21,7 @@ class _FakeStreamClient(OPNsenseClient):
         """Store streamed payloads and track stream invocations.
 
         Args:
-            payloads: Pre-baked payloads emitted by
+            payloads (list[dict[str, Any]]): Pre-baked payloads emitted by
                 :meth:`stream_interface_traffic`.
         """
         self._payloads = payloads
@@ -31,7 +31,7 @@ class _FakeStreamClient(OPNsenseClient):
         """Return an async iterator for the configured payload sequence.
 
         Args:
-            poll_interval: Requested polling interval in seconds.
+            poll_interval (int): Requested polling interval in seconds.
 
         Returns:
             AsyncIterator[dict[str, Any]]: Iterator over the configured stream payloads.
@@ -42,7 +42,7 @@ class _FakeStreamClient(OPNsenseClient):
             """Yield payloads from the configured stream.
 
             Yields:
-                dict[str, Any]: Payload frames from ``self._payloads``.
+                dict[str, Any]: The next yielded value.
             """
             for payload in self._payloads:
                 yield payload
@@ -58,7 +58,18 @@ def _build_test_coordinator(
     client: Any | None = None,
     poll_interval: int = 1,
 ) -> tuple[OPNsenseLiveTrafficCoordinator, MagicMock]:
-    """Build a traffic coordinator and its parent coordinator with defaults."""
+    """Build a traffic coordinator and its parent coordinator with defaults.
+
+    Returns:
+        tuple[OPNsenseLiveTrafficCoordinator, MagicMock]: Simulated collection used by the build test coordinator scenario.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        entry_data (dict[str, Any] | None): Parameterized entry data used by the build test coordinator scenario.
+        main_coordinator_data (dict[str, Any] | None): Parameterized main coordinator data used by the build test coordinator scenario.
+        client (Any | None): Parameterized client used by the build test coordinator scenario.
+        poll_interval (int): Parameterized poll interval used by the build test coordinator scenario.
+    """
     if entry_data is None:
         entry_data = {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_LIVE_TRAFFIC: True}
     if main_coordinator_data is None:
@@ -89,14 +100,22 @@ def _build_test_coordinator(
     ],
 )
 def test_live_traffic_coordinator_rejects_invalid_rates(raw_rate: Any) -> None:
-    """Rate conversion errors should be treated as unavailable values."""
+    """Rate conversion errors should be treated as unavailable values.
+
+    Args:
+        raw_rate (Any): Parameterized raw rate used by the test live traffic coordinator rejects invalid rates scenario.
+    """
     assert OPNsenseLiveTrafficCoordinator._map_stream_rate("rx_bytes_per_second", raw_rate) is None
 
 
 def test_live_traffic_coordinator_marks_update_failed_when_main_state_missing(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Missing live metadata should immediately mark coordinator updates as failed."""
+    """Missing live metadata should immediately mark coordinator updates as failed.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+    """
     coordinator, main_coordinator = _build_test_coordinator(
         make_config_entry,
         main_coordinator_data={"interfaces": {"wan": {"name": "WAN"}}},
@@ -119,7 +138,11 @@ def test_live_traffic_coordinator_marks_update_failed_when_main_state_missing(
 def test_live_traffic_coordinator_recovers_when_main_state_returns(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """A later valid metadata payload should restore live coordinator success."""
+    """A later valid metadata payload should restore live coordinator success.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+    """
     coordinator, main_coordinator = _build_test_coordinator(
         make_config_entry,
         main_coordinator_data={"interfaces": {"wan": {"name": "WAN"}}},
@@ -149,7 +172,11 @@ def test_live_traffic_coordinator_recovers_when_main_state_returns(
 def test_live_traffic_coordinator_all_skipped_payload_marks_failed_and_preserves_previous_data(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Skipped stream rows should fail the update while preserving prior live data."""
+    """Skipped stream rows should fail the update while preserving prior live data.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+    """
     coordinator, _ = _build_test_coordinator(
         make_config_entry,
         main_coordinator_data={"interfaces": {"wan": {"name": "WAN"}}},
@@ -170,7 +197,11 @@ def test_live_traffic_coordinator_all_skipped_payload_marks_failed_and_preserves
 def test_live_traffic_coordinator_publishes_each_sample(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Live samples should publish every pushed update to listeners."""
+    """Live samples should publish every pushed update to listeners.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+    """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_LIVE_TRAFFIC: True})
     main_coordinator = MagicMock()
     main_coordinator.data = {"interfaces": {"wan": {"name": "WAN"}}}
@@ -193,7 +224,11 @@ def test_live_traffic_coordinator_publishes_each_sample(
 async def test_live_traffic_coordinator_merges_rates_with_interface_metadata(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Rate payloads should merge into live coordinator data with interface metadata."""
+    """Rate payloads should merge into live coordinator data with interface metadata.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+    """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_LIVE_TRAFFIC: True})
     main_coordinator = MagicMock()
     main_coordinator.data = {
@@ -283,7 +318,11 @@ async def test_live_traffic_coordinator_merges_rates_with_interface_metadata(
 async def test_live_traffic_coordinator_start_is_idempotent(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """A second async_start call should not replace an active background task."""
+    """A second async_start call should not replace an active background task.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+    """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
     main_coordinator = MagicMock()
     main_coordinator.data = {"interfaces": {"wan": {"name": "WAN"}}}
@@ -295,9 +334,9 @@ async def test_live_traffic_coordinator_start_is_idempotent(
         """Capture an async task created by the test harness.
 
         Args:
-            _hass: Home Assistant instance from the coordinator API.
-            _coro: Coroutine body scheduled by the coordinator.
-            _name: Task name requested by the caller (unused in this test).
+            _hass (Any): Home Assistant instance from the coordinator API.
+            _coro (Any): Coroutine body scheduled by the coordinator.
+            _name (str): Task name requested by the caller (unused in this test).
 
         Returns:
             asyncio.Task[None]: The created asyncio task.
@@ -332,7 +371,11 @@ async def test_live_traffic_coordinator_start_is_idempotent(
 async def test_live_traffic_coordinator_records_update_error_on_missing_payload(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """No valid stream payload should mark coordinator update as failed."""
+    """No valid stream payload should mark coordinator update as failed.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+    """
     client = _FakeStreamClient(payloads=[])
     coordinator, _ = _build_test_coordinator(make_config_entry, client=client)
 
@@ -393,7 +436,13 @@ def test_live_traffic_coordinator_rejects_bad_payload_context_matrix(
     payload: Any,
     main_coordinator_data: dict[str, Any] | Any,
 ) -> None:
-    """Malformed payload/context combinations should be rejected without publishing."""
+    """Malformed payload/context combinations should be rejected without publishing.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        payload (Any): Repair payload containing persisted device identifiers.
+        main_coordinator_data (dict[str, Any] | Any): Parameterized main coordinator data used by the test live traffic coordinator rejects bad payload context matrix scenario.
+    """
     coordinator, _ = _build_test_coordinator(
         make_config_entry,
         main_coordinator_data=main_coordinator_data,
@@ -407,10 +456,17 @@ def test_live_traffic_coordinator_rejects_bad_payload_context_matrix(
 async def test_live_traffic_coordinator_consumes_stream_cancelled_error(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """CancelledError from the stream should propagate to the caller."""
+    """CancelledError from the stream should propagate to the caller.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+    """
 
     async def _stream() -> AsyncIterator[dict[str, Any]]:
         """Raise ``asyncio.CancelledError`` as soon as stream iteration starts.
+
+        Yields:
+            dict[str, Any]: The next yielded value.
 
         Raises:
             asyncio.CancelledError: Stream iteration is intentionally cancelled.
@@ -439,13 +495,21 @@ async def test_live_traffic_coordinator_consumes_stream_records_update_error(
     make_config_entry: Callable[..., MockConfigEntry],
     stream_exception: Exception,
 ) -> None:
-    """Stream exceptions should mark the coordinator update as failed."""
+    """Stream exceptions should mark the coordinator update as failed.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        stream_exception (Exception): Parameterized stream exception used by the test live traffic coordinator consumes stream records update error scenario.
+    """
 
     async def _stream() -> AsyncIterator[dict[str, Any]]:
         """Raise a stream error as soon as stream iteration starts.
 
+        Yields:
+            dict[str, Any]: The next yielded value.
+
         Raises:
-            Exception: Stream iteration raises a transport or payload exception.
+            stream_exception: The configured transport or payload exception.
         """
         raise stream_exception
         yield {}
@@ -465,7 +529,12 @@ async def test_live_traffic_run_breaks_when_shutdown_requested_inside_consume_st
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """A shutdown request set during stream consumption should exit without sleeping."""
+    """A shutdown request set during stream consumption should exit without sleeping.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+    """
     coordinator, _ = _build_test_coordinator(make_config_entry)
 
     async def _consume_and_request_shutdown() -> bool:
@@ -496,7 +565,12 @@ async def test_live_traffic_run_sleeps_poll_interval_when_live_traffic_disabled(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """When live traffic is disabled, the retry loop should wait poll interval before exit."""
+    """When live traffic is disabled, the retry loop should wait poll interval before exit.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+    """
     coordinator, _ = _build_test_coordinator(make_config_entry, poll_interval=2)
     coordinator.last_update_success = False
     monkeypatch.setattr(coordinator, "_read_live_traffic_flag", MagicMock(return_value=False))
@@ -513,7 +587,7 @@ async def test_live_traffic_run_sleeps_poll_interval_when_live_traffic_disabled(
         """Wait expected interval and then request shutdown.
 
         Args:
-            duration: Delay requested by the coordinator's run loop.
+            duration (float): Delay requested by the coordinator's run loop.
         """
         assert duration == 2
         coordinator._shutdown_requested = True
@@ -533,7 +607,12 @@ async def test_live_traffic_run_reconnects_after_finite_valid_stream(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """A finite valid stream should reconnect while retaining published data."""
+    """A finite valid stream should reconnect while retaining published data.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+    """
     client = _FakeStreamClient(
         [
             {
@@ -550,7 +629,11 @@ async def test_live_traffic_run_reconnects_after_finite_valid_stream(
     sleep_calls: list[int] = []
 
     async def _fake_sleep(delay: int) -> None:
-        """Capture reconnect delays and stop after the recovery cycle."""
+        """Capture reconnect delays and stop after the recovery cycle.
+
+        Args:
+            delay (int): Parameterized delay used by the fake sleep scenario.
+        """
         sleep_calls.append(delay)
         if len(sleep_calls) == 2:
             coordinator._shutdown_requested = True
@@ -571,7 +654,12 @@ async def test_live_traffic_run_applies_and_caps_backoff_sequence(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """The retry loop should walk the full backoff sequence and cap at the maximum."""
+    """The retry loop should walk the full backoff sequence and cap at the maximum.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+    """
     client = _FakeStreamClient(payloads=[])
     coordinator, _ = _build_test_coordinator(make_config_entry, client=client)
 
@@ -581,7 +669,7 @@ async def test_live_traffic_run_applies_and_caps_backoff_sequence(
         """Record sleep delay and request shutdown after retry backoff caps.
 
         Args:
-            delay: Delay requested by the coordinator's retry sleep helper.
+            delay (int): Delay requested by the coordinator's retry sleep helper.
         """
         sleep_calls.append(delay)
         if len(sleep_calls) >= 5:

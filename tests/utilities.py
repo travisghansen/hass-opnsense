@@ -14,7 +14,7 @@ def stub_async_write_ha_state(entity: Any) -> None:
     """Replace Home Assistant state writes with a no-op for unit-level entity tests.
 
     Args:
-        entity: Entity instance under test.
+        entity (Any): Entity instance under test.
     """
     object.__setattr__(entity, "async_write_ha_state", lambda: None)
 
@@ -23,9 +23,9 @@ def patch_opnsense_client(monkeypatch: pytest.MonkeyPatch, module: Any, client_c
     """Patch OPNsense client construction with a deterministic constructor.
 
     Args:
-        monkeypatch: Pytest monkeypatch fixture.
-        module: Target module exposing client construction helpers.
-        client_ctor: Callable/class used to construct fake clients for tests.
+        monkeypatch (pytest.MonkeyPatch): Pytest monkeypatch fixture.
+        module (Any): Target module exposing client construction helpers.
+        client_ctor (Any): Callable/class used to construct fake clients for tests.
     """
 
     def _create_opnsense_client(
@@ -41,13 +41,14 @@ def patch_opnsense_client(monkeypatch: pytest.MonkeyPatch, module: Any, client_c
         """Create a fake OPNsense client using the provided constructor.
 
         Args:
-            hass: Home Assistant instance passed by production code.
-            url: OPNsense base URL from caller input.
-            username: Username from caller input.
-            password: Password from caller input.
-            verify_ssl: Optional TLS verification value passed by shared helper callers.
-            throw_errors: Error propagation behavior passed by shared helper callers.
-            name: Optional client display name passed by caller.
+            hass (Any): Home Assistant instance passed by production code.
+            url (str): OPNsense base URL from caller input.
+            username (str): Username from caller input.
+            password (str): Password from caller input.
+            verify_ssl (bool | None): Optional TLS verification value passed by shared helper
+                callers.
+            throw_errors (bool): Error propagation behavior passed by shared helper callers.
+            name (str | None): Optional client display name passed by caller.
 
         Returns:
             Any: Fake client instance returned by `client_ctor`.
@@ -71,9 +72,9 @@ def patch_opnsense_client(monkeypatch: pytest.MonkeyPatch, module: Any, client_c
         """Create a fake OPNsense client from a config entry.
 
         Args:
-            hass: Home Assistant instance passed by production code.
-            config_entry: Config entry with connection settings.
-            throw_errors: Error propagation behavior passed by shared helper callers.
+            hass (Any): Home Assistant instance passed by production code.
+            config_entry (Any): Config entry with connection settings.
+            throw_errors (bool): Error propagation behavior passed by shared helper callers.
 
         Returns:
             Any: Fake client instance returned by `client_ctor`.

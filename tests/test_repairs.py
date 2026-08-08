@@ -37,7 +37,18 @@ def _make_entry(
     state: ConfigEntryState = ConfigEntryState.NOT_LOADED,
     options: dict[str, Any] | None = None,
 ) -> MockConfigEntry:
-    """Build a config entry with connection data used by the repair tests."""
+    """Build a config entry with connection data used by the repair tests.
+
+    Returns:
+        MockConfigEntry: Simulated result used by the make entry scenario.
+
+    Args:
+        entry_id (str): Config entry identifier used by the repair scenario.
+        device_id (str): Home Assistant device registry identifier to validate.
+        unique_id (str | None): Entity or config-entry unique identifier for the scenario.
+        state (ConfigEntryState): Simulated payload used to exercise the scenario.
+        options (dict[str, Any] | None): Config entry options used by the repair scenario.
+    """
     data: dict[str, Any] = {
         "url": "https://router.example",
         "username": "api-user",
@@ -53,7 +64,15 @@ def _make_entry(
 
 
 def _make_carp_entry(*, entry_id: str = "carp-entry", unique_id: str = "other") -> MockConfigEntry:
-    """Build a device-ID-less CARP config entry for repair boundary tests."""
+    """Build a device-ID-less CARP config entry for repair boundary tests.
+
+    Returns:
+        MockConfigEntry: Simulated result used by the make carp entry scenario.
+
+    Args:
+        entry_id (str): Config entry identifier used by the repair scenario.
+        unique_id (str): Entity or config-entry unique identifier for the scenario.
+    """
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -74,7 +93,17 @@ def _make_flow(
     old_device_id: str | None = None,
     new_device_id: str = "other",
 ) -> repairs.DeviceIDMismatchRepairFlow:
-    """Create a configured repair flow for direct step testing."""
+    """Create a configured repair flow for direct step testing.
+
+    Returns:
+        repairs.DeviceIDMismatchRepairFlow: Simulated result used by the make flow scenario.
+
+    Args:
+        hass (Any): Home Assistant instance hosting the scenario.
+        entry (MockConfigEntry): OPNsense config entry participating in the operation.
+        old_device_id (str | None): Previously stored OPNsense device identifier.
+        new_device_id (str): Device identifier returned by the simulated OPNsense probe.
+    """
     if old_device_id is None:
         old_device_id = entry.data[CONF_DEVICE_UNIQUE_ID]
     flow = repairs.DeviceIDMismatchRepairFlow(
@@ -90,7 +119,12 @@ def _make_flow(
 
 
 def _configure_hass(hass: Any, entry: MockConfigEntry) -> None:
-    """Configure the config-entry manager methods shared by flow tests."""
+    """Configure the config-entry manager methods shared by flow tests.
+
+    Args:
+        hass (Any): Home Assistant instance hosting the scenario.
+        entry (MockConfigEntry): OPNsense config entry participating in the operation.
+    """
     hass.config_entries = MagicMock()
     hass.config_entries.async_get_entry.return_value = entry
     hass.config_entries.async_entries.return_value = [entry]
@@ -105,21 +139,46 @@ def _patch_registries(
     entities: list[Any] | None = None,
     devices: list[Any] | None = None,
 ) -> tuple[MagicMock, MagicMock]:
-    """Return registry spies proving the confirmation flow does not mutate registries."""
+    """Return registry spies proving the confirmation flow does not mutate registries.
+
+    Returns:
+        tuple[MagicMock, MagicMock]: Simulated collection used by the patch registries scenario.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        entities (list[Any] | None): Registry records exposed to the repair helper.
+        devices (list[Any] | None): Registry records exposed to the repair helper.
+    """
     entries = list(entities or [])
     devices = list(devices or [])
     entity_registry = MagicMock()
     device_registry = MagicMock()
 
     def _get_entry(entity_id: str) -> Any:
-        """Return a matching entity from the provided entity fixture list."""
+        """Return a matching entity from the provided entity fixture list.
+
+        Returns:
+            Any: Simulated result used by the get entry scenario.
+
+        Args:
+            entity_id (str): Entity identifier looked up in the mocked registry.
+        """
         for entry in entries:
             if getattr(entry, "entity_id", None) == entity_id:
                 return entry
         return None
 
     def _get_entity_id(domain: str, platform: str, unique_id: str) -> str | None:
-        """Return the stored entity_id matching domain, platform, and unique_id."""
+        """Return the stored entity_id matching domain, platform, and unique_id.
+
+        Returns:
+            str | None: Simulated result used by the get entity id scenario.
+
+        Args:
+            domain (str): Registry filter used by the simulated lookup.
+            platform (str): Registry filter used by the simulated lookup.
+            unique_id (str): Entity or config-entry unique identifier for the scenario.
+        """
         for entity in entries:
             if (
                 getattr(entity, "domain", None) == domain
@@ -130,18 +189,42 @@ def _patch_registries(
         return None
 
     def _get_device(identifiers: set[tuple[str, str]] | frozenset[tuple[str, str]]) -> Any:
-        """Return a matching device fixture whose identifiers cover the query."""
+        """Return a matching device fixture whose identifiers cover the query.
+
+        Returns:
+            Any: Simulated result used by the get device scenario.
+
+        Args:
+            identifiers (set[tuple[str, str]] | frozenset[tuple[str, str]]): Identifier set used
+                to locate the matching device fixture.
+        """
         for device in devices:
             if getattr(device, "identifiers", frozenset()).issuperset(identifiers):
                 return device
         return None
 
     def _entities_for_config_entry(_registry: Any, _config_entry_id: Any) -> list[Any]:
-        """Return configured entities for a config-entry-based lookup."""
+        """Return configured entities for a config-entry-based lookup.
+
+        Returns:
+            list[Any]: Simulated collection used by the entities for config entry scenario.
+
+        Args:
+            _registry (Any): Entity registry supplied by Home Assistant for the lookup.
+            _config_entry_id (Any): Config entry identifier whose entities are requested.
+        """
         return entries
 
     def _devices_for_config_entry(_registry: Any, _config_entry_id: Any) -> list[Any]:
-        """Return configured devices for a config-entry-based lookup."""
+        """Return configured devices for a config-entry-based lookup.
+
+        Returns:
+            list[Any]: Simulated collection used by the devices for config entry scenario.
+
+        Args:
+            _registry (Any): Device registry supplied by Home Assistant for the lookup.
+            _config_entry_id (Any): Config entry identifier whose devices are requested.
+        """
         return devices
 
     entity_registry.async_get = MagicMock(side_effect=_get_entry)
@@ -167,7 +250,14 @@ def _patch_registries(
 
 
 def _patch_issue_registry(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
-    """Patch issue lookups used to render confirmation placeholders."""
+    """Patch issue lookups used to render confirmation placeholders.
+
+    Returns:
+        MagicMock: Simulated result used by the patch issue registry scenario.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     issue_registry = MagicMock()
     issue_registry.async_get_issue.return_value = SimpleNamespace(
         translation_placeholders={
@@ -188,11 +278,26 @@ def _patch_probe_client(
     probe_error: BaseException | None = None,
     events: list[str] | None = None,
 ) -> MagicMock:
-    """Patch strict client construction and return the client mock."""
+    """Patch strict client construction and return the client mock.
+
+    Returns:
+        MagicMock: Simulated result used by the patch probe client scenario.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        observed_device_id (Any): Device identifier returned by the simulated OPNsense probe.
+        validate_error (BaseException | None): Failure injected into the simulated operation.
+        probe_error (BaseException | None): Failure injected into the simulated operation.
+        events (list[str] | None): Optional list recording repair operation order.
+    """
     client = MagicMock()
 
     async def _probe() -> Any:
-        """Return the configured replacement identifier."""
+        """Return the configured replacement identifier.
+
+        Returns:
+            Any: Simulated result used by the probe scenario.
+        """
         if events is not None:
             events.append("probe")
         return observed_device_id
@@ -224,7 +329,11 @@ def _patch_probe_client(
 async def test_initial_flow_renders_replacement_ids_and_confirmation_warning(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Initial step should show old/new IDs and a destructive-rebuild confirmation."""
+    """Initial step should show old/new IDs and a destructive-rebuild confirmation.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry()
     _patch_issue_registry(monkeypatch)
@@ -248,7 +357,11 @@ async def test_initial_flow_renders_replacement_ids_and_confirmation_warning(
 async def test_confirmation_reprobes_with_strict_client_and_closes_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Confirmation should re-probe the current ID with throw_errors enabled."""
+    """Confirmation should re-probe the current ID with throw_errors enabled.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry()
     _configure_hass(hass, entry)
@@ -277,7 +390,11 @@ async def test_confirmation_reprobes_with_strict_client_and_closes_it(
 async def test_async_validate_and_probe_ignores_missing_device_unique_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A missing Device ID from validate should still allow a direct probe call."""
+    """A missing Device ID from validate should still allow a direct probe call.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry()
     client = _patch_probe_client(
@@ -298,7 +415,11 @@ async def test_async_validate_and_probe_ignores_missing_device_unique_id(
 async def test_stale_observed_device_id_aborts_without_mutations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A stale issue with matching observed ID should abort without destructive work."""
+    """A stale issue with matching observed ID should abort without destructive work.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry(state=ConfigEntryState.LOADED)
     _configure_hass(hass, entry)
@@ -326,7 +447,11 @@ async def test_stale_observed_device_id_aborts_without_mutations(
 async def test_observed_device_id_mismatch_with_issue_expected_id_aborts_before_unload_or_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Observed IDs that do not match issue expectation must abort without mutation."""
+    """Observed IDs that do not match issue expectation must abort without mutation.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry(state=ConfigEntryState.LOADED)
     _configure_hass(hass, entry)
@@ -353,7 +478,11 @@ async def test_observed_device_id_mismatch_with_issue_expected_id_aborts_before_
 async def test_old_device_id_mismatch_aborts_without_mutations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A stale issue with mismatched old_device_id should abort without mutation."""
+    """A stale issue with mismatched old_device_id should abort without mutation.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry(state=ConfigEntryState.LOADED)
     _configure_hass(hass, entry)
@@ -388,7 +517,11 @@ async def test_old_device_id_mismatch_aborts_without_mutations(
 async def test_duplicate_entry_aborts_before_unload_or_registry_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Duplicates created during unload must abort before config or registry mutation."""
+    """Duplicates created during unload must abort before config or registry mutation.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry(state=ConfigEntryState.LOADED)
     duplicate = _make_entry(entry_id="entry-2", device_id="other", unique_id="other")
@@ -397,7 +530,14 @@ async def test_duplicate_entry_aborts_before_unload_or_registry_mutation(
     hass.config_entries.async_entries.side_effect = lambda domain: entries
 
     def _unload(entry_id: str) -> bool:
-        """Create a competing entry after the initial duplicate check."""
+        """Create a competing entry after the initial duplicate check.
+
+        Returns:
+            bool: Whether the unload condition is satisfied.
+
+        Args:
+            entry_id (str): Config entry identifier used by the repair scenario.
+        """
         del entry_id
         entries.append(duplicate)
         return True
@@ -431,7 +571,11 @@ async def test_duplicate_entry_aborts_before_unload_or_registry_mutation(
 async def test_loaded_entry_duplicate_after_unload_schedules_changed_entry_reload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A duplicate that appears after unload should schedule a guarded reload."""
+    """A duplicate that appears after unload should schedule a guarded reload.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry(state=ConfigEntryState.LOADED)
     duplicate = _make_entry(entry_id="entry-2", device_id="other", unique_id="other")
@@ -439,7 +583,14 @@ async def test_loaded_entry_duplicate_after_unload_schedules_changed_entry_reloa
     entries_calls: list[str] = []
 
     def _entries(domain: str) -> list[Any]:
-        """Return a duplicate config entry only after unload and snapshot checks."""
+        """Return a duplicate config entry only after unload and snapshot checks.
+
+        Returns:
+            list[Any]: Simulated collection used by the entries scenario.
+
+        Args:
+            domain (str): Registry filter used by the simulated lookup.
+        """
         del domain
         entries_calls.append("entries")
         if len(entries_calls) == 1:
@@ -470,7 +621,11 @@ async def test_loaded_entry_duplicate_after_unload_schedules_changed_entry_reloa
 async def test_observed_duplicate_id_aborts_before_unload_or_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An existing entry with the observed ID should abort before unload."""
+    """An existing entry with the observed ID should abort before unload.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry()
     duplicate = _make_entry(entry_id="entry-2", device_id="other", unique_id="other")
@@ -499,7 +654,11 @@ async def test_observed_duplicate_id_aborts_before_unload_or_mutation(
 async def test_carp_entry_with_matching_unique_id_is_not_device_duplicate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A CARP entry identity must not block a physical-device ID repair."""
+    """A CARP entry identity must not block a physical-device ID repair.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry()
     carp_entry = _make_carp_entry()
@@ -519,14 +678,25 @@ async def test_carp_entry_with_matching_unique_id_is_not_device_duplicate(
 async def test_loaded_entry_unloads_before_marker_update_and_reload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A loaded entry unloads before marker persistence and reload."""
+    """A loaded entry unloads before marker persistence and reload.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry(state=ConfigEntryState.LOADED)
     events: list[str] = []
     _configure_hass(hass, entry)
 
     def _unload(entry_id: str) -> bool:
-        """Record unload before returning success."""
+        """Record unload before returning success.
+
+        Returns:
+            bool: Whether the unload condition is satisfied.
+
+        Args:
+            entry_id (str): Config entry identifier used by the repair scenario.
+        """
         events.append("unload")
         return True
 
@@ -538,12 +708,23 @@ async def test_loaded_entry_unloads_before_marker_update_and_reload(
 
         @property
         def unique_id(self) -> str:
-            """Record the duplicate candidate comparison."""
+            """Record the duplicate candidate comparison.
+
+            Returns:
+                str: Simulated result used by the unique id scenario.
+            """
             events.append("duplicate_check")
             return "different"
 
     def _entries(domain: str) -> list[Any]:
-        """Record the duplicate scan and return only non-conflicting entries."""
+        """Record the duplicate scan and return only non-conflicting entries.
+
+        Returns:
+            list[Any]: Simulated collection used by the entries scenario.
+
+        Args:
+            domain (str): Registry filter used by the simulated lookup.
+        """
         events.append("duplicate_scan")
         return [entry, _OtherEntry()]
 
@@ -560,7 +741,15 @@ async def test_loaded_entry_unloads_before_marker_update_and_reload(
     )
 
     def _update_entry(*args: Any, **kwargs: Any) -> bool:
-        """Record the config update and report that it changed the entry."""
+        """Record the config update and report that it changed the entry.
+
+        Args:
+            args (Any): Additional positional arguments accepted by the test double.
+            kwargs (Any): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            bool: Whether the update entry condition is satisfied.
+        """
         del args, kwargs
         events.append("config_update")
         return True
@@ -568,7 +757,14 @@ async def test_loaded_entry_unloads_before_marker_update_and_reload(
     hass.config_entries.async_update_entry.side_effect = _update_entry
 
     async def _reload(entry_id: str) -> bool:
-        """Record reload scheduling and signal success."""
+        """Record reload scheduling and signal success.
+
+        Returns:
+            bool: Whether the reload condition is satisfied.
+
+        Args:
+            entry_id (str): Config entry identifier used by the repair scenario.
+        """
         del entry_id
         events.append("reload")
         return True
@@ -579,7 +775,14 @@ async def test_loaded_entry_unloads_before_marker_update_and_reload(
     flow = _make_flow(hass, entry)
 
     def _create_entry(**_: Any) -> dict[str, str]:
-        """Record creation after the reload was scheduled."""
+        """Record creation after the reload was scheduled.
+
+        Args:
+            _ (Any): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            dict[str, str]: Simulated collection used by the create entry scenario.
+        """
         events.append("create")
         return {"type": "create_entry"}
 
@@ -615,7 +818,11 @@ async def test_loaded_entry_unloads_before_marker_update_and_reload(
 async def test_loaded_entry_reprobe_after_unload_rejects_router_swap_without_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A router change after unload must be re-probed and must not persist stale IDs."""
+    """A router change after unload must be re-probed and must not persist stale IDs.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry(state=ConfigEntryState.LOADED)
     _configure_hass(hass, entry)
@@ -628,7 +835,11 @@ async def test_loaded_entry_reprobe_after_unload_rejects_router_swap_without_mut
     probe_calls: list[int] = []
 
     async def _probe_then_swap() -> str:
-        """Return a stale ID before unload and a swapped ID after unload."""
+        """Return a stale ID before unload and a swapped ID after unload.
+
+        Returns:
+            str: Simulated result used by the probe then swap scenario.
+        """
         probe_calls.append(1)
         if len(probe_calls) == 1:
             return "other"
@@ -656,7 +867,11 @@ async def test_loaded_entry_reprobe_after_unload_rejects_router_swap_without_mut
 async def test_loaded_entry_reprobe_after_unload_rejects_probe_failure_without_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A strict re-probe failure after unload must abort and recover without mutation."""
+    """A strict re-probe failure after unload must abort and recover without mutation.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry(state=ConfigEntryState.LOADED)
     _configure_hass(hass, entry)
@@ -669,7 +884,14 @@ async def test_loaded_entry_reprobe_after_unload_rejects_probe_failure_without_m
     probe_calls: list[int] = []
 
     async def _probe_then_fail() -> str:
-        """Return a stale ID before unload and fail on the re-probe."""
+        """Return a stale ID before unload and fail on the re-probe.
+
+        Returns:
+            str: Simulated result used by the probe then fail scenario.
+
+        Raises:
+            OPNsenseConnectionError: Raised on the second probe to simulate an offline firewall.
+        """
         probe_calls.append(1)
         if len(probe_calls) == 1:
             return "other"
@@ -697,7 +919,11 @@ async def test_loaded_entry_reprobe_after_unload_rejects_probe_failure_without_m
 async def test_loaded_entry_reprobe_after_unload_rejects_raw_timeout_without_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A raw timeout on reprobe after unload should recover and return cannot_connect."""
+    """A raw timeout on reprobe after unload should recover and return cannot_connect.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry(state=ConfigEntryState.LOADED)
     _configure_hass(hass, entry)
@@ -737,7 +963,11 @@ async def test_loaded_entry_reprobe_after_unload_rejects_raw_timeout_without_mut
 async def test_entry_swap_reprobe_snapshot_stability_checks_after_unload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An entry that mutates while reprobing must abort before persistence."""
+    """An entry that mutates while reprobing must abort before persistence.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry(state=ConfigEntryState.LOADED)
     _configure_hass(hass, entry)
@@ -750,7 +980,11 @@ async def test_entry_swap_reprobe_snapshot_stability_checks_after_unload(
     probe_calls: list[int] = []
 
     async def _probe_then_mutate_entry() -> str:
-        """Mutate entry persistence during the second probe cycle."""
+        """Mutate entry persistence during the second probe cycle.
+
+        Returns:
+            str: Simulated result used by the probe then mutate entry scenario.
+        """
         probe_calls.append(1)
         if len(probe_calls) == 2:
             object.__setattr__(
@@ -793,7 +1027,13 @@ async def test_invalid_probe_result_aborts_without_mutations(
     probe_error: BaseException | None,
     observed_device_id: Any,
 ) -> None:
-    """Invalid strict-probe results should abort and close the client."""
+    """Invalid strict-probe results should abort and close the client.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        probe_error (BaseException | None): Failure injected into the simulated operation.
+        observed_device_id (Any): Device identifier returned by the simulated OPNsense probe.
+    """
     hass = MagicMock()
     entry = _make_entry()
     _configure_hass(hass, entry)
@@ -834,7 +1074,12 @@ async def test_firmware_validation_failure_aborts_before_mutations(
     monkeypatch: pytest.MonkeyPatch,
     validation_error: BaseException,
 ) -> None:
-    """Firmware validation failures must stop the repair before any mutation."""
+    """Firmware validation failures must stop the repair before any mutation.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        validation_error (BaseException): Failure injected into the simulated operation.
+    """
     hass = MagicMock()
     entry = _make_entry(state=ConfigEntryState.LOADED)
     _configure_hass(hass, entry)
@@ -874,7 +1119,12 @@ async def test_unload_failure_aborts_before_registry_mutation(
     monkeypatch: pytest.MonkeyPatch,
     unload_result: bool | BaseException,
 ) -> None:
-    """Unloading failures must abort before mutating registries or reload state."""
+    """Unloading failures must abort before mutating registries or reload state.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        unload_result (bool | BaseException): Configured lifecycle outcome for the repair scenario.
+    """
     hass = MagicMock()
     entry = _make_entry(state=ConfigEntryState.LOADED)
     _configure_hass(hass, entry)
@@ -915,7 +1165,12 @@ async def test_nonrecoverable_entry_state_aborts_before_unload_or_mutation(
     monkeypatch: pytest.MonkeyPatch,
     state: ConfigEntryState,
 ) -> None:
-    """Non-recoverable entry states must not reach unload or repair mutation."""
+    """Non-recoverable entry states must not reach unload or repair mutation.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        state (ConfigEntryState): Simulated payload used to exercise the scenario.
+    """
     hass = MagicMock()
     entry = _make_entry(state=state)
     _configure_hass(hass, entry)
@@ -943,7 +1198,11 @@ async def test_nonrecoverable_entry_state_aborts_before_unload_or_mutation(
 async def test_entry_removed_during_unload_aborts_before_registry_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A removed entry after unload must not allow stale registry mutations."""
+    """A removed entry after unload must not allow stale registry mutations.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry(state=ConfigEntryState.LOADED)
     _configure_hass(hass, entry)
@@ -976,7 +1235,13 @@ async def test_entry_changed_during_probe_or_unload_aborts_without_mutation(
     mutation_stage: str,
     field: str,
 ) -> None:
-    """Config-entry changes during awaited work must stop the destructive repair."""
+    """Config-entry changes during awaited work must stop the destructive repair.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        mutation_stage (str): Repair transaction stage at which failure is injected.
+        field (str): Config-entry field expected to roll back.
+    """
     hass = MagicMock()
     entry = _make_entry(
         state=ConfigEntryState.LOADED if mutation_stage == "unload" else ConfigEntryState.NOT_LOADED
@@ -1001,7 +1266,11 @@ async def test_entry_changed_during_probe_or_unload_aborts_without_mutation(
     if mutation_stage == "probe":
 
         async def _probe_and_mutate() -> str:
-            """Mutate the entry before the probe completes."""
+            """Mutate the entry before the probe completes.
+
+            Returns:
+                str: Simulated result used by the probe and mutate scenario.
+            """
             _mutate_entry()
             return "other"
 
@@ -1009,7 +1278,14 @@ async def test_entry_changed_during_probe_or_unload_aborts_without_mutation(
     else:
 
         def _unload_and_mutate(entry_id: str) -> bool:
-            """Mutate the entry while unloading it."""
+            """Mutate the entry while unloading it.
+
+            Returns:
+                bool: Whether the unload and mutate condition is satisfied.
+
+            Args:
+                entry_id (str): Config entry identifier used by the repair scenario.
+            """
             _mutate_entry()
             return True
 
@@ -1036,7 +1312,11 @@ async def test_entry_changed_during_probe_or_unload_aborts_without_mutation(
 async def test_nested_mutable_options_mutation_during_probe_aborts_without_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Mutating a nested options list in-place during probe must still abort safely."""
+    """Mutating a nested options list in-place during probe must still abort safely.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     nested_devices = ["aa:bb:cc:dd:ee:01"]
     entry = _make_entry(
@@ -1075,7 +1355,11 @@ async def test_nested_mutable_options_mutation_during_probe_aborts_without_mutat
 async def test_update_preserves_connection_and_options_while_replacing_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Entry update should replace only the device ID and unique ID."""
+    """Entry update should replace only the device ID and unique ID.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry(options={"scan_interval": 45})
     _configure_hass(hass, entry)
@@ -1105,7 +1389,11 @@ async def test_update_preserves_connection_and_options_while_replacing_id(
 async def test_success_deletes_issue_and_reloads(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Successful rebuild should async-reload and let the manager delete the issue."""
+    """Successful rebuild should async-reload and let the manager delete the issue.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry()
     _configure_hass(hass, entry)
@@ -1127,7 +1415,11 @@ async def test_success_deletes_issue_and_reloads(
 async def test_entry_update_failure_aborts_without_registry_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Entry-update failure must abort before any registry mutation."""
+    """Entry-update failure must abort before any registry mutation.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry()
     _configure_hass(hass, entry)
@@ -1166,7 +1458,11 @@ async def test_entry_update_failure_aborts_without_registry_mutation(
 async def test_entry_update_false_aborts_before_registry_mutation_and_recovers_loaded_entry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A no-op entry update must leave registries untouched and reload a prior loaded entry."""
+    """A no-op entry update must leave registries untouched and reload a prior loaded entry.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry(state=ConfigEntryState.LOADED)
     _configure_hass(hass, entry)
@@ -1201,7 +1497,11 @@ async def test_entry_update_false_aborts_before_registry_mutation_and_recovers_l
 async def test_loaded_entry_update_exception_recovers_without_registry_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An update exception after unload should schedule guarded recovery."""
+    """An update exception after unload should schedule guarded recovery.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry(state=ConfigEntryState.LOADED)
     _configure_hass(hass, entry)
@@ -1227,7 +1527,11 @@ async def test_loaded_entry_update_exception_recovers_without_registry_mutation(
 async def test_expected_id_retry_rechecks_snapshot_after_unload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A retry must not clean registries after its entry changes during unload."""
+    """A retry must not clean registries after its entry changes during unload.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry(state=ConfigEntryState.LOADED, device_id="other", unique_id="other")
     object.__setattr__(
@@ -1243,7 +1547,14 @@ async def test_expected_id_retry_rechecks_snapshot_after_unload(
     )
 
     def _unload_and_mutate(entry_id: str) -> bool:
-        """Mutate persisted data while the retry is awaiting unload."""
+        """Mutate persisted data while the retry is awaiting unload.
+
+        Returns:
+            bool: Whether the unload and mutate condition is satisfied.
+
+        Args:
+            entry_id (str): Config entry identifier used by the repair scenario.
+        """
         del entry_id
         object.__setattr__(entry, "data", {**entry.data, "url": "https://changed.example"})
         return True
@@ -1277,7 +1588,12 @@ async def test_reload_failure_keeps_entry_update_and_keeps_issue(
     monkeypatch: pytest.MonkeyPatch,
     reload_result: bool | Exception,
 ) -> None:
-    """Reload failures should keep the new ID and schedule a follow-up reload."""
+    """Reload failures should keep the new ID and schedule a follow-up reload.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        reload_result (bool | Exception): Configured lifecycle outcome for the repair scenario.
+    """
     hass = MagicMock()
     entry = _make_entry()
     _configure_hass(hass, entry)
@@ -1299,7 +1615,16 @@ async def test_reload_failure_keeps_entry_update_and_keeps_issue(
         data: dict[str, Any],
         unique_id: str,
     ) -> bool:
-        """Apply the requested entry mutation to the in-memory test object."""
+        """Apply the requested entry mutation to the in-memory test object.
+
+        Returns:
+            bool: Whether the update entry condition is satisfied.
+
+        Args:
+            config_entry (MockConfigEntry): OPNsense config entry participating in the operation.
+            data (dict[str, Any]): Simulated payload used to exercise the scenario.
+            unique_id (str): Entity or config-entry unique identifier for the scenario.
+        """
         del config_entry
         object.__setattr__(entry, "data", dict(data))
         object.__setattr__(entry, "unique_id", unique_id)
@@ -1349,7 +1674,12 @@ async def test_retry_keeps_issue_when_recovery_reload_fails(
     monkeypatch: pytest.MonkeyPatch,
     reload_result: bool | Exception,
 ) -> None:
-    """Keep the repair available when reloading an already-updated entry fails."""
+    """Keep the repair available when reloading an already-updated entry fails.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        reload_result (bool | Exception): Configured lifecycle outcome for the repair scenario.
+    """
     hass = MagicMock()
     entry = _make_entry(device_id="other", unique_id="other")
     _configure_hass(hass, entry)
@@ -1377,7 +1707,11 @@ async def test_retry_keeps_issue_when_recovery_reload_fails(
 async def test_removed_entry_aborts_without_mutations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A deleted config entry should abort before creating a strict client."""
+    """A deleted config entry should abort before creating a strict client.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry()
     _configure_hass(hass, entry)
@@ -1430,7 +1764,12 @@ async def test_fix_flow_factory_validates_issue_suffix_and_payload(
     data: dict[str, str | int | float | None],
     expects_replacement_flow: bool,
 ) -> None:
-    """Only well-formed Device ID issues should construct the destructive flow."""
+    """Only well-formed Device ID issues should construct the destructive flow.
+
+    Args:
+        data (dict[str, str | int | float | None]): Simulated payload used to exercise the scenario.
+        expects_replacement_flow (bool): Whether invalid input should start replacement setup.
+    """
     hass = MagicMock()
     flow = await repairs.async_create_fix_flow(hass, "entry-1_device_id_mismatched", data)
     if expects_replacement_flow:
@@ -1475,7 +1814,14 @@ async def test_async_create_device_id_mismatch_issue_ignores_invalid_ids(
     observed_device_id: str,
     expect_issue: bool,
 ) -> None:
-    """Do not create mismatches when configured or observed IDs are malformed."""
+    """Do not create mismatches when configured or observed IDs are malformed.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        entry_device_id (str): Device identifier stored in the config entry.
+        observed_device_id (str): Device identifier returned by the simulated OPNsense probe.
+        expect_issue (bool): Whether the scenario should create a repair issue.
+    """
     entry = _make_entry(device_id=entry_device_id)
     called: dict[str, int] = {"count": 0}
 
@@ -1500,7 +1846,11 @@ async def test_async_create_device_id_mismatch_issue_ignores_invalid_ids(
 def test_async_create_device_id_mismatch_issue_ignores_carp_entry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """CARP entries do not participate in physical Device ID mismatch repairs."""
+    """CARP entries do not participate in physical Device ID mismatch repairs.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     issue_create = MagicMock()
     monkeypatch.setattr(repairs.ir, "async_create_issue", issue_create)
 
@@ -1521,7 +1871,12 @@ async def test_stored_expected_id_unloaded_entry_retries_recovery_reload(
     monkeypatch: pytest.MonkeyPatch,
     reload_result: bool | Exception,
 ) -> None:
-    """An unloaded expected-ID retry should still keep recovery reload on failure."""
+    """An unloaded expected-ID retry should still keep recovery reload on failure.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        reload_result (bool | Exception): Configured lifecycle outcome for the repair scenario.
+    """
     hass = MagicMock()
     entry = _make_entry(
         state=ConfigEntryState.NOT_LOADED,
@@ -1550,7 +1905,11 @@ async def test_stored_expected_id_unloaded_entry_retries_recovery_reload(
 async def test_markerless_retry_requires_entry_unique_id_match(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Markerless retry must validate both stored and unique IDs before reloading."""
+    """Markerless retry must validate both stored and unique IDs before reloading.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry(
         state=ConfigEntryState.NOT_LOADED,
@@ -1583,7 +1942,11 @@ async def test_markerless_retry_requires_entry_unique_id_match(
 async def test_schedule_changed_entry_reload_handles_schedule_errors(
     schedule_error: Exception,
 ) -> None:
-    """Recovery scheduling for changed entries should tolerate schedule failures."""
+    """Recovery scheduling for changed entries should tolerate schedule failures.
+
+    Args:
+        schedule_error (Exception): Failure injected into the simulated operation.
+    """
     hass = MagicMock()
     entry = _make_entry()
     hass.config_entries = MagicMock()
@@ -1636,7 +1999,11 @@ async def test_schedule_recovery_reload_skips_when_snapshot_changes() -> None:
 async def test_schedule_recovery_reload_ignores_schedule_errors(
     schedule_error: HomeAssistantError | KeyError,
 ) -> None:
-    """Failure to schedule recovery should not crash the flow."""
+    """Failure to schedule recovery should not crash the flow.
+
+    Args:
+        schedule_error (HomeAssistantError | KeyError): Failure injected into the simulated operation.
+    """
     hass = MagicMock()
     entry = _make_entry()
     hass.config_entries = MagicMock()
@@ -1659,7 +2026,11 @@ async def test_schedule_recovery_reload_ignores_schedule_errors(
 async def test_repair_persists_marker_without_registry_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The repair flow persists intent and leaves registry work to setup reconciliation."""
+    """The repair flow persists intent and leaves registry work to setup reconciliation.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry()
     _configure_hass(hass, entry)
@@ -1687,7 +2058,11 @@ async def test_repair_persists_marker_without_registry_mutation(
 async def test_valid_marker_retry_reprobes_and_reloads(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A matching persisted marker resumes only after a fresh strict probe."""
+    """A matching persisted marker resumes only after a fresh strict probe.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry(device_id="other", unique_id="other")
     object.__setattr__(
@@ -1724,7 +2099,14 @@ async def test_marker_retry_reprobe_error_and_id_checks_abort_without_mutation(
     observed_device_id: Any | None,
     expected_reason: str,
 ) -> None:
-    """Marker retries should abort safely for probe failures and ID mismatches."""
+    """Marker retries should abort safely for probe failures and ID mismatches.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        probe_error (BaseException | None): Failure injected into the simulated operation.
+        observed_device_id (Any | None): Device identifier returned by the simulated OPNsense probe.
+        expected_reason (str): Expected reconciliation failure reason.
+    """
     hass = MagicMock()
     entry = _make_entry(device_id="other", unique_id="other")
     object.__setattr__(
@@ -1755,7 +2137,11 @@ async def test_marker_retry_reprobe_error_and_id_checks_abort_without_mutation(
 async def test_marker_retry_reprobe_match_but_cannot_unload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When a marker retry reprobe matches, unload failures must yield cannot_unload."""
+    """When a marker retry reprobe matches, unload failures must yield cannot_unload.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry(
         device_id="other",
@@ -1785,7 +2171,11 @@ async def test_marker_retry_reprobe_match_but_cannot_unload(
 async def test_completed_retry_without_marker_reloads_without_probe(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An already-completed repair retries reload without reopening the hardware boundary."""
+    """An already-completed repair retries reload without reopening the hardware boundary.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry(device_id="other", unique_id="other")
     _configure_hass(hass, entry)
@@ -1803,7 +2193,11 @@ async def test_completed_retry_without_marker_reloads_without_probe(
 async def test_retry_rejects_invalid_or_mismatched_marker(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A malformed or stale marker cannot resume a repair flow."""
+    """A malformed or stale marker cannot resume a repair flow.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry(device_id="other", unique_id="other")
     object.__setattr__(entry, "data", {**entry.data, REPAIR_MARKER_KEY: {"version": 1}})
@@ -1830,7 +2224,12 @@ def test_entry_matches_snapshot_invariants(
     scenario: str,
     allow_tracked_macs_mutation: bool,
 ) -> None:
-    """Snapshot matching is strict by default, lenient only for tracked-MAC recovery checks."""
+    """Snapshot matching is strict by default, lenient only for tracked-MAC recovery checks.
+
+    Args:
+        scenario (str): Parameterized scenario definition.
+        allow_tracked_macs_mutation (bool): Whether the scenario permits tracked-MAC changes.
+    """
     entry = _make_entry()
     entry_options_snapshot = dict(entry.options)
 
@@ -1885,7 +2284,11 @@ def test_entry_matches_snapshot_invariants(
 async def test_confirmation_cannot_unload_timeout_aborts_with_cannot_unload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """TimeoutError from async_unload should abort repair as cannot_unload."""
+    """TimeoutError from async_unload should abort repair as cannot_unload.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+    """
     hass = MagicMock()
     entry = _make_entry(state=ConfigEntryState.LOADED)
     _configure_hass(hass, entry)

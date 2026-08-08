@@ -29,10 +29,10 @@ def dict_get(data: MutableMapping[str, Any], path: str, default: Any | None = No
     """Parse a dotted path to get a value from nested mapping or list data.
 
     Args:
-        data: Mutable mapping containing the value to retrieve.
-        path: Dotted path through nested mappings and lists. Numeric segments are
+        data (MutableMapping[str, Any]): Mutable mapping containing the value to retrieve.
+        path (str): Dotted path through nested mappings and lists. Numeric segments are
             converted to integer indexes or keys.
-        default: Value returned when any path segment is unavailable.
+        default (Any | None): Value returned when any path segment is unavailable.
 
     Returns:
         Any | None: Value found at the path, or ``default`` when absent.
@@ -61,14 +61,28 @@ def dict_get(data: MutableMapping[str, Any], path: str, default: Any | None = No
 
 
 def normalize_arp_mac(mac: object) -> str:
-    """Normalize a MAC address from an ARP payload."""
+    """Normalize a MAC address from an ARP payload.
+
+    Returns:
+        str: Canonical lowercase MAC address without separators.
+
+    Args:
+        mac (object): ARP-table MAC value to normalize.
+    """
     if not isinstance(mac, str):
         return ""
     return mac.strip().lower().replace("-", ":")
 
 
 def get_arp_mac(entry: Mapping[str, Any]) -> str:
-    """Return a normalized MAC address from an ARP payload."""
+    """Return a normalized MAC address from an ARP payload.
+
+    Returns:
+        str: Retrieved arp mac data.
+
+    Args:
+        entry (Mapping[str, Any]): OPNsense config entry participating in the operation.
+    """
     mac: object = entry.get("mac")
     if not isinstance(mac, str) or not mac.strip():
         mac = entry.get("mac-address")
@@ -76,7 +90,14 @@ def get_arp_mac(entry: Mapping[str, Any]) -> str:
 
 
 def get_arp_ip(entry: Mapping[str, Any]) -> str:
-    """Return an IP address from an ARP payload."""
+    """Return an IP address from an ARP payload.
+
+    Returns:
+        str: Retrieved arp ip data.
+
+    Args:
+        entry (Mapping[str, Any]): OPNsense config entry participating in the operation.
+    """
     ip: object = entry.get("ip")
     if not isinstance(ip, str) or not ip.strip():
         ip = entry.get("ip-address")
@@ -84,7 +105,14 @@ def get_arp_ip(entry: Mapping[str, Any]) -> str:
 
 
 def get_smart_device_name(smart_device: Mapping[str, Any]) -> str:
-    """Return a SMART device identifier, preferring ``device`` over ``ident``."""
+    """Return a SMART device identifier, preferring ``device`` over ``ident``.
+
+    Returns:
+        str: Retrieved smart device name data.
+
+    Args:
+        smart_device (Mapping[str, Any]): OPNsense payload object being evaluated.
+    """
     device_name = smart_device.get("device")
     if not isinstance(device_name, str) or not device_name.strip():
         device_name = smart_device.get("ident")
@@ -94,7 +122,15 @@ def get_smart_device_name(smart_device: Mapping[str, Any]) -> str:
 
 
 def firewall_rule_id_from_payload(rule_key: object, rule: object) -> str | None:
-    """Get a firewall rule ID from an aiopnsense rule payload."""
+    """Get a firewall rule ID from an aiopnsense rule payload.
+
+    Returns:
+        str | None: Stable firewall rule identifier, when the payload provides one.
+
+    Args:
+        rule_key (object): Mapping key associated with the firewall rule.
+        rule (object): Firewall rule payload containing identifier fields.
+    """
     if not isinstance(rule, Mapping):
         return None
 
@@ -111,8 +147,8 @@ def firewall_rule_switch_unique_ids_from_payload(
     """Build current firewall rule switch unique IDs from a firewall payload.
 
     Args:
-        device_unique_id: Device unique ID prefix used by this config entry.
-        rules: Firewall rule mapping returned by aiopnsense.
+        device_unique_id (str): Device unique ID prefix used by this config entry.
+        rules (Mapping[Any, Any]): Firewall rule mapping returned by aiopnsense.
 
     Returns:
         set[str]: Unique IDs for firewall rule switches still present in the payload.
@@ -140,9 +176,9 @@ def firewall_nat_switch_unique_ids_from_payload(
     """Build current native NAT rule switch unique IDs from a firewall NAT payload.
 
     Args:
-        device_unique_id: Device unique ID prefix used by this config entry.
-        nat_rule_type: NAT section name such as ``source_nat`` or ``d_nat``.
-        nat_rules: NAT rule mapping from a firewall payload section.
+        device_unique_id (str): Device unique ID prefix used by this config entry.
+        nat_rule_type (str): NAT section name such as ``source_nat`` or ``d_nat``.
+        nat_rules (Mapping[Any, Any]): NAT rule mapping from a firewall payload section.
 
     Returns:
         set[str]: Unique IDs for NAT rule switches still present in the payload.
@@ -163,7 +199,7 @@ def is_private_ip(url: str) -> bool:
     """Check whether the host address in a URL is private.
 
     Args:
-        url: URL whose hostname should be inspected.
+        url (str): URL whose hostname should be inspected.
 
     Returns:
         bool: ``True`` when the URL hostname is a private IP address.
@@ -194,13 +230,13 @@ def create_opnsense_client(
     """Create an OPNsense client with Home Assistant session settings.
 
     Args:
-        hass: Home Assistant instance used to create the aiohttp session.
-        url: OPNsense base URL.
-        username: OPNsense API username.
-        password: OPNsense API password.
-        verify_ssl: Whether the client should verify TLS certificates.
-        throw_errors: Whether aiopnsense should propagate request/decorator errors.
-        name: Optional client display name used for logging and diagnostics.
+        hass (HomeAssistant): Home Assistant instance used to create the aiohttp session.
+        url (str): OPNsense base URL.
+        username (str): OPNsense API username.
+        password (str): OPNsense API password.
+        verify_ssl (bool | None): Whether the client should verify TLS certificates.
+        throw_errors (bool): Whether aiopnsense should propagate request/decorator errors.
+        name (str | None): Optional client display name used for logging and diagnostics.
 
     Returns:
         OPNsenseClient: Configured aiopnsense client.
@@ -233,9 +269,9 @@ def create_opnsense_client_from_config_entry(
     """Create an OPNsense client from a Home Assistant config entry.
 
     Args:
-        hass: Home Assistant instance used to create the aiohttp session.
-        config_entry: Config entry containing the OPNsense connection settings.
-        throw_errors: Whether aiopnsense should propagate request/decorator errors.
+        hass (HomeAssistant): Home Assistant instance used to create the aiohttp session.
+        config_entry (ConfigEntry): Config entry containing the OPNsense connection settings.
+        throw_errors (bool): Whether aiopnsense should propagate request/decorator errors.
 
     Returns:
         OPNsenseClient: Configured aiopnsense client.
@@ -260,10 +296,10 @@ def find_replacement_router_device_id(
     """Find a replacement OPNsense router Device ID for a shared tracked device.
 
     Args:
-        shared_config_entry_id: The config entry currently being detached.
-        shared_device_entry: Device registry entry shared by multiple integrations.
-        config_entries: HA config-entry registry object.
-        device_registry: HA device registry for router lookup by identifier.
+        shared_config_entry_id (str): The config entry currently being detached.
+        shared_device_entry (DeviceEntry): Device registry entry shared by multiple integrations.
+        config_entries (ConfigEntries): HA config-entry registry object.
+        device_registry (DeviceRegistry): HA device registry for router lookup by identifier.
 
     Returns:
         str | None: Replacement router ``device_id`` if a surviving OPNsense entry
@@ -298,12 +334,13 @@ def detach_shared_router_parent(
     """Detach a shared tracker device from a removed router config entry.
 
     Args:
-        shared_config_entry_id: The config entry being detached from the shared device.
-        shared_device_entry: Shared device entry associated with one or more OPNsense
+        shared_config_entry_id (str): The config entry being detached from the shared device.
+        shared_device_entry (DeviceEntry): Shared device entry associated with one or more OPNsense
             integrations.
-        router_device_id: The current router device ID for the detaching integration.
-        config_entries: HA config-entry registry used for surviving router lookup.
-        device_registry: HA device registry used for updating tracker relationships.
+        router_device_id (str | None): The current router device ID for the detaching integration.
+        config_entries (ConfigEntries): HA config-entry registry used for surviving router lookup.
+        device_registry (DeviceRegistry): HA device registry used for updating tracker
+            relationships.
 
     Returns:
         tuple[bool, str | None]: ``True`` when device was parented through the
@@ -350,7 +387,7 @@ def is_carp_entry(config_entry: ConfigEntry) -> bool:
     """Return whether a config entry represents a CARP virtual endpoint.
 
     Args:
-        config_entry: Config entry to classify.
+        config_entry (ConfigEntry): Config entry to classify.
 
     Returns:
         bool: ``True`` when the entry type is CARP.
@@ -362,7 +399,7 @@ def config_entry_identity(config_entry: ConfigEntry) -> str:
     """Return the stable Home Assistant identity prefix for a config entry.
 
     Args:
-        config_entry: Config entry whose device or entry identity is needed.
+        config_entry (ConfigEntry): Config entry whose device or entry identity is needed.
 
     Returns:
         str: Device unique ID for normal entries, otherwise the entry ID.
@@ -380,7 +417,7 @@ def is_usable_carp_vip(value: object) -> bool:
     """Return whether a CARP row has a valid VHID and usable subnet identity.
 
     Args:
-        value: Raw CARP VIP row returned by the OPNsense API.
+        value (object): Raw CARP VIP row returned by the OPNsense API.
 
     Returns:
         bool: ``True`` when the VHID is numeric and within the CARP range 1 through
@@ -404,7 +441,7 @@ def coerce_bool(value: Any) -> bool | None:
     """Normalize values that may represent booleans.
 
     Args:
-        value: Arbitrary state value returned by backend APIs.
+        value (Any): Arbitrary state value returned by backend APIs.
 
     Returns:
         bool | None: Parsed boolean interpretation for common numeric/string variants.

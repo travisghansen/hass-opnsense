@@ -52,10 +52,10 @@ def _normalize_mac_for_device_tracker(mac_address: str) -> str:
     """Normalize a user-facing or payload MAC with canonical fallback.
 
     Args:
-        mac_address: A raw MAC-like input.
+        mac_address (str): A raw MAC-like input.
 
     Returns:
-        Canonical MAC when possible, otherwise permissive lower-case normalized value.
+        str: Canonical MAC when possible, otherwise permissive lower-case normalized value.
     """
     normalized_mac = normalize_mac_address(mac_address)
     if normalized_mac is not None:
@@ -70,11 +70,11 @@ def _device_data_from_arp_entry(
     """Build tracked device data from an ARP table entry.
 
     Args:
-        mac_address: MAC address used as the tracked-device identity.
-        arp_entry: ARP entry containing optional metadata.
+        mac_address (str): MAC address used as the tracked-device identity.
+        arp_entry (MutableMapping[str, Any]): ARP entry containing optional metadata.
 
     Returns:
-        A device dictionary populated with the MAC address and metadata.
+        dict[str, Any]: A device dictionary populated with the MAC address and metadata.
     """
     device: dict[str, Any] = {"mac": mac_address}
 
@@ -93,11 +93,11 @@ def _device_from_arp_entry(mac_address: str, arp_entries: list[Any]) -> dict[str
     """Build tracked device data from a configured MAC and matching ARP entry.
 
     Args:
-        mac_address: Configured MAC address for the tracker entity.
-        arp_entries: Raw ARP entries returned by OPNsense.
+        mac_address (str): Configured MAC address for the tracker entity.
+        arp_entries (list[Any]): Raw ARP entries returned by OPNsense.
 
     Returns:
-        A device dictionary for the matching ARP entry, or a MAC-only fallback.
+        dict[str, Any]: A device dictionary for the matching ARP entry, or a MAC-only fallback.
     """
     device: dict[str, Any] = {"mac": mac_address}
     normalized_mac = _normalize_mac_for_device_tracker(mac_address)
@@ -116,10 +116,11 @@ def _devices_from_arp_entries(arp_entries: list[Any]) -> tuple[list[dict[str, An
     """Build tracked device data from unique ARP table MAC addresses.
 
     Args:
-        arp_entries: Raw ARP entries returned by OPNsense.
+        arp_entries (list[Any]): Raw ARP entries returned by OPNsense.
 
     Returns:
-        A tuple of device dictionaries and the unique MAC addresses found.
+        tuple[list[dict[str, Any]], list[str]]: A tuple of device dictionaries and the unique
+            MAC addresses found.
     """
     devices: list[dict[str, Any]] = []
     mac_addresses: list[str] = []
@@ -143,10 +144,10 @@ def _track_all_arp_entries_are_complete(arp_entries: list[Any]) -> bool:
     """Return whether every non-entity ARP row is skippable in track-all mode.
 
     Args:
-        arp_entries: Raw ARP entries returned by OPNsense.
+        arp_entries (list[Any]): Raw ARP entries returned by OPNsense.
 
     Returns:
-        ``True`` when every row is a mapping and any row with a normalizable MAC
+        bool: ``True`` when every row is a mapping and any row with a normalizable MAC
         contributes a unique MAC address.
     """
     seen_macs: set[str] = set()
@@ -169,10 +170,10 @@ def _hostname_from_arp_entry(entry: MutableMapping[str, Any]) -> str | None:
     """Return the normalized hostname from an ARP entry.
 
     Args:
-        entry: ARP entry to normalize.
+        entry (MutableMapping[str, Any]): ARP entry to normalize.
 
     Returns:
-        The stripped hostname, or ``None`` when no usable hostname exists.
+        str | None: The stripped hostname, or ``None`` when no usable hostname exists.
     """
     hostname = entry.get("hostname")
     if not isinstance(hostname, str):
@@ -185,10 +186,11 @@ def _arp_expires_attribute(value: object) -> str | datetime | None:
     """Return the Home Assistant attribute value for an ARP expiry.
 
     Args:
-        value: Raw expiry value from OPNsense.
+        value (object): Raw expiry value from OPNsense.
 
     Returns:
-        ``"Never"`` for permanent entries, a datetime for relative expiry, or ``None``.
+        str | datetime | None: ``"Never"`` for permanent entries, a datetime for relative
+            expiry, or ``None``.
     """
     if value == -1:
         return "Never"
@@ -204,8 +206,8 @@ def _update_arp_extra_state_attributes(
     """Update optional ARP extra state attributes from a coordinator entry.
 
     Args:
-        attributes: Entity attributes to mutate in place.
-        entry: ARP entry providing optional metadata.
+        attributes (dict[str, Any]): Entity attributes to mutate in place.
+        entry (MutableMapping[str, Any]): ARP entry providing optional metadata.
     """
     for attr in ("interface", "expires", "type"):
         attributes.pop(attr, None)
@@ -230,11 +232,12 @@ def _compile_tracked_devices(
     """Compile device tracker source data from options and ARP entries.
 
     Args:
-        config_entry: Config entry containing device-tracker options.
-        arp_entries: Raw ARP entries returned by OPNsense.
+        config_entry (ConfigEntry): Config entry containing device-tracker options.
+        arp_entries (list[Any]): Raw ARP entries returned by OPNsense.
 
     Returns:
-        A tuple of devices, MAC addresses, and the default enabled flag.
+        tuple[list[dict[str, Any]], list[str], bool]: A tuple of devices, MAC addresses, and
+            the default enabled flag.
     """
     if not config_entry.options.get(CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED):
         return [], [], False
@@ -271,9 +274,9 @@ async def async_setup_entry(
     """Set up device tracker entities for the OPNsense component.
 
     Args:
-        hass: Home Assistant instance.
-        config_entry: Config entry being set up.
-        async_add_entities: Callback used to register new entities.
+        hass (HomeAssistant): Home Assistant instance.
+        config_entry (ConfigEntry): Config entry being set up.
+        async_add_entities (AddEntitiesCallback): Callback used to register new entities.
     """
     dev_reg = async_get_dev_reg(hass)
 
@@ -349,11 +352,12 @@ def _cleanup_stale_tracked_devices(
     """Remove stale tracker entities and reparent shared tracker devices.
 
     Args:
-        hass: Home Assistant runtime object.
-        config_entry: Active integration config entry for this setup run.
-        device_registry: Device registry used to query and mutate tracked devices.
-        previous_mac_addresses: Previously persisted MAC addresses from config entry data.
-        current_mac_addresses: MAC addresses currently discovered during setup.
+        hass (HomeAssistant): Home Assistant runtime object.
+        config_entry (ConfigEntry): Active integration config entry for this setup run.
+        device_registry (DeviceRegistry): Device registry used to query and mutate tracked devices.
+        previous_mac_addresses (list[Any]): Previously persisted MAC addresses from config entry
+            data.
+        current_mac_addresses (list[str]): MAC addresses currently discovered during setup.
     """
     stale_mac_addresses = set(previous_mac_addresses) - set(current_mac_addresses)
     if not stale_mac_addresses:
@@ -422,12 +426,12 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         """Set up the OPNsense scanner entity.
 
         Args:
-            config_entry: Config entry owning the entity.
-            coordinator: Shared OPNsense data coordinator.
-            enabled_default: Whether the entity is enabled by default.
-            mac: MAC address tracked by the entity.
-            mac_vendor: Vendor name reported for the MAC address.
-            hostname: Hostname reported by OPNsense.
+            config_entry (ConfigEntry): Config entry owning the entity.
+            coordinator (OPNsenseDataUpdateCoordinator): Shared OPNsense data coordinator.
+            enabled_default (bool): Whether the entity is enabled by default.
+            mac (str): MAC address tracked by the entity.
+            mac_vendor (str | None): Vendor name reported for the MAC address.
+            hostname (str | None): Hostname reported by OPNsense.
         """
         super().__init__(config_entry, coordinator, unique_id_suffix=f"mac_{mac}")
         self._mac_vendor: str | None = mac_vendor
@@ -445,7 +449,11 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         self._fallback_device_info_consumed: bool = False
 
     def _has_matching_enabled_mac_device(self) -> bool:
-        """Return whether a matching MAC device exists and is not disabled."""
+        """Return whether a matching MAC device exists and is not disabled.
+
+        Returns:
+            bool: Whether the has matching enabled mac device condition is satisfied.
+        """
         if self.mac_address is None:
             return False
 
@@ -467,7 +475,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         """Return if the tracker is connected.
 
         Returns:
-            ``True`` when the device is currently considered connected.
+            bool: ``True`` when the device is currently considered connected.
         """
         return self._is_connected
 
@@ -476,7 +484,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         """Return a stable object-id hint when linking to an existing device.
 
         Returns:
-            The Home Assistant entity unique ID.
+            str | None: The Home Assistant entity unique ID.
         """
         return self._attr_unique_id
 
@@ -485,7 +493,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         """Return a stable object-id hint when linking to an existing device.
 
         Returns:
-            Hostname when available, otherwise MAC, but only for the
+            str | None: Hostname when available, otherwise MAC, but only for the
             auto-link path (enabled matching MAC + new-entity preference disabled).
         """
         if (
@@ -502,7 +510,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         """Return if the entity registry is enabled by default.
 
         Returns:
-            ``True`` when the entity should be enabled by default.
+            bool: ``True`` when the entity should be enabled by default.
         """
         if self._attr_entity_registry_enabled_default:
             return True
@@ -606,7 +614,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         associated tracker device or preserves disabled-device behavior.
 
         Returns:
-            ``None`` for an existing enabled MAC-matched device, except when
+            DeviceInfo | None: ``None`` for an existing enabled MAC-matched device, except when
             ``pref_disable_new_entities`` is enabled, otherwise fallback
             device registry metadata for the tracked MAC address.
         """

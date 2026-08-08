@@ -42,7 +42,12 @@ from custom_components.opnsense.helpers import (
     ],
 )
 def test_dict_get_traverses_list_indexes(path: str, expected: str) -> None:
-    """Traverse list indexes safely when resolving dotted paths."""
+    """Traverse list indexes safely when resolving dotted paths.
+
+    Args:
+        path (str): Nested data path resolved by the helper.
+        expected (str): Outcome asserted by the parameterized scenario.
+    """
     data = {"items": [{"name": "first"}, {"name": "second"}]}
 
     assert dict_get(data, path, "missing") == expected
@@ -68,7 +73,12 @@ def test_dict_get_traverses_list_indexes(path: str, expected: str) -> None:
     ],
 )
 def test_coerce_bool_parses_bool_like_values(value: Any, expected: bool) -> None:
-    """Verify bool-like values are converted to booleans."""
+    """Verify bool-like values are converted to booleans.
+
+    Args:
+        value (Any): Input value exercised by the helper.
+        expected (bool): Outcome asserted by the parameterized scenario.
+    """
     assert coerce_bool(value) is expected
 
 
@@ -82,7 +92,11 @@ def test_coerce_bool_parses_bool_like_values(value: Any, expected: bool) -> None
     ],
 )
 def test_coerce_bool_returns_none_for_unknown_values(value: Any) -> None:
-    """Verify unknown values are not coerced into a boolean."""
+    """Verify unknown values are not coerced into a boolean.
+
+    Args:
+        value (Any): Input value exercised by the helper.
+    """
     assert coerce_bool(value) is None
 
 
@@ -95,7 +109,12 @@ def test_coerce_bool_returns_none_for_unknown_values(value: Any) -> None:
     ],
 )
 def test_normalize_arp_mac(value: object, expected: str) -> None:
-    """Normalize ARP MAC values into the shared representation."""
+    """Normalize ARP MAC values into the shared representation.
+
+    Args:
+        value (object): Input value exercised by the helper.
+        expected (str): Outcome asserted by the parameterized scenario.
+    """
     assert normalize_arp_mac(value) == expected
 
 
@@ -122,7 +141,12 @@ def test_normalize_arp_mac(value: object, expected: str) -> None:
     ],
 )
 def test_get_arp_mac(entry: dict[str, Any], expected: str) -> None:
-    """Read normalized and raw ARP MAC keys through one helper."""
+    """Read normalized and raw ARP MAC keys through one helper.
+
+    Args:
+        entry (dict[str, Any]): Registry or payload entry being formatted.
+        expected (str): Outcome asserted by the parameterized scenario.
+    """
     assert get_arp_mac(entry) == expected
 
 
@@ -145,7 +169,12 @@ def test_get_arp_mac(entry: dict[str, Any], expected: str) -> None:
     ],
 )
 def test_get_arp_ip(entry: dict[str, Any], expected: str) -> None:
-    """Read and strip normalized and raw ARP IP keys through one helper."""
+    """Read and strip normalized and raw ARP IP keys through one helper.
+
+    Args:
+        entry (dict[str, Any]): Registry or payload entry being formatted.
+        expected (str): Outcome asserted by the parameterized scenario.
+    """
     assert get_arp_ip(entry) == expected
 
 
@@ -163,7 +192,12 @@ def test_get_arp_ip(entry: dict[str, Any], expected: str) -> None:
     ],
 )
 def test_get_smart_device_name(entry: dict[str, Any], expected: str) -> None:
-    """Read SMART device identifiers from the shared helper."""
+    """Read SMART device identifiers from the shared helper.
+
+    Args:
+        entry (dict[str, Any]): Registry or payload entry being formatted.
+        expected (str): Outcome asserted by the parameterized scenario.
+    """
     assert get_smart_device_name(entry) == expected
 
 
@@ -178,7 +212,11 @@ def test_get_smart_device_name(entry: dict[str, Any], expected: str) -> None:
 def test_is_usable_carp_vip_accepts_normalized_identity_without_interface(
     value: dict[str, Any],
 ) -> None:
-    """CARP VIP usability should accept integer/string VHIDs without interface names."""
+    """CARP VIP usability should accept integer/string VHIDs without interface names.
+
+    Args:
+        value (dict[str, Any]): Input value exercised by the helper.
+    """
     assert is_usable_carp_vip(value) is True
 
 
@@ -198,7 +236,11 @@ def test_is_usable_carp_vip_accepts_normalized_identity_without_interface(
     ],
 )
 def test_is_usable_carp_vip_rejects_missing_or_blank_identity(value: Any) -> None:
-    """CARP VIP usability should reject malformed or blank identity rows."""
+    """CARP VIP usability should reject malformed or blank identity rows.
+
+    Args:
+        value (Any): Input value exercised by the helper.
+    """
     assert is_usable_carp_vip(value) is False
 
 
@@ -217,19 +259,40 @@ def test_create_opnsense_client_builds_client_with_expected_options(
     throw_errors: bool,
     name: str | None,
 ) -> None:
-    """Create OPNsense clients with the caller-specific session and client options."""
+    """Create OPNsense clients with the caller-specific session and client options.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        throw_errors (bool): Whether the created client should propagate API errors.
+        name (str | None): Optional logging name assigned to the created client.
+    """
     created: dict[str, Any] = {}
     session = MagicMock(spec=aiohttp.ClientSession)
     hass = MagicMock()
 
-    def _async_create_clientsession(hass: Any, **kwargs: Any) -> aiohttp.ClientSession:
-        """Capture session construction options and return a fake session."""
+    def _async_create_clientsession(hass: Any, **_kwargs: Any) -> aiohttp.ClientSession:
+        """Capture session construction options and return a fake session.
+
+        Returns:
+            aiohttp.ClientSession: aiohttp session supplied to client construction.
+
+        Args:
+            hass (Any): Home Assistant test instance used by the helper.
+            _kwargs (Any): Additional keyword arguments accepted by the test double.
+        """
         created["hass"] = hass
-        created["session_kwargs"] = kwargs
+        created["session_kwargs"] = _kwargs
         return session
 
     def _client(**kwargs: Any) -> MagicMock:
-        """Capture OPNsense client construction options and return a fake client."""
+        """Capture OPNsense client construction options and return a fake client.
+
+        Args:
+            kwargs (Any): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            MagicMock: Mock client or dependency configured for the scenario.
+        """
         created["client_kwargs"] = kwargs
         return MagicMock()
 
@@ -237,7 +300,11 @@ def test_create_opnsense_client_builds_client_with_expected_options(
         """Fake aiohttp cookie jar that records its safety setting."""
 
         def __init__(self, *, unsafe: bool) -> None:
-            """Capture the unsafe flag without requiring a running event loop."""
+            """Capture the unsafe flag without requiring a running event loop.
+
+            Args:
+                unsafe (bool): Whether the fake cookie jar accepts unsafe origins.
+            """
             created["cookie_jar_unsafe"] = unsafe
 
     monkeypatch.setattr(helpers_mod, "async_create_clientsession", _async_create_clientsession)
@@ -304,7 +371,14 @@ def test_create_opnsense_client_from_config_entry_forwards_entry_data(
     throw_errors: bool,
     expected_verify_ssl: bool,
 ) -> None:
-    """Create OPNsense clients from config entries through the shared helper."""
+    """Create OPNsense clients from config entries through the shared helper.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        entry_data (dict[str, Any]): Configuration data used to create the client.
+        throw_errors (bool): Whether the created client should propagate API errors.
+        expected_verify_ssl (bool): TLS verification setting expected on the client.
+    """
     captured: dict[str, Any] = {}
     hass = MagicMock()
     client = MagicMock()
@@ -314,7 +388,14 @@ def test_create_opnsense_client_from_config_entry_forwards_entry_data(
     )
 
     def _create_opnsense_client(**kwargs: Any) -> MagicMock:
-        """Capture forwarded client settings."""
+        """Capture forwarded client settings.
+
+        Args:
+            kwargs (Any): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            MagicMock: Mock client or dependency configured for the scenario.
+        """
         captured.update(kwargs)
         return client
 
@@ -354,7 +435,13 @@ def test_firewall_rule_id_from_payload(
     rule: object,
     expected: str | None,
 ) -> None:
-    """Read rule IDs from payload with fallback to the payload key when safe."""
+    """Read rule IDs from payload with fallback to the payload key when safe.
+
+    Args:
+        rule_key (object): Rule identifier rendered by the helper.
+        rule (object): Firewall or NAT rule rendered by the helper.
+        expected (str | None): Outcome asserted by the parameterized scenario.
+    """
     assert firewall_rule_id_from_payload(rule_key, rule) == expected
 
 
@@ -395,7 +482,11 @@ def test_firewall_nat_switch_unique_ids_from_payload_builds_nat_ids() -> None:
 def test_entry_type_and_identity_helpers(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Validate config entry identity rules for device and CARP entries."""
+    """Validate config entry identity rules for device and CARP entries.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+    """
     device_entry = make_config_entry(
         entry_id="device-entry",
         data={CONF_DEVICE_UNIQUE_ID: "aa_bb_cc_dd_ee_ff"},
