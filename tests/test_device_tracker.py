@@ -1181,11 +1181,12 @@ async def test_async_internal_added_to_hass_links_existing_mac_device(
     )
     existing_entry.add_to_hass(ph_hass)
     setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
+    mac_address = "aa:bb:cc:dd:ee:ff"
     ent = OPNsenseScannerEntity(
         config_entry=entry,
         coordinator=coordinator,
         enabled_default=False,
-        mac="aa:bb:cc",
+        mac=mac_address,
         mac_vendor=None,
         hostname=None,
     )
@@ -1195,7 +1196,11 @@ async def test_async_internal_added_to_hass_links_existing_mac_device(
     device_reg = dr.async_get(ph_hass)
     existing_device = device_reg.async_get_or_create(
         config_entry_id="existing-entry",
-        connections={(dr.CONNECTION_NETWORK_MAC, "aa:bb:cc")},
+        connections={(dr.CONNECTION_NETWORK_MAC, mac_address)},
+    )
+    assert (
+        device_reg.async_get_device(connections={(dr.CONNECTION_NETWORK_MAC, mac_address)})
+        == existing_device
     )
     entity_reg = er.async_get(ph_hass)
     unique_id = ent.unique_id
