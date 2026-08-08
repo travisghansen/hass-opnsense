@@ -33,11 +33,11 @@ def _is_valid_interface_row(interface_name: Any, interface: Any) -> bool:
     """Return whether an interface row can produce a binary sensor.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the is valid interface row condition is satisfied.
 
     Args:
-        interface_name (Any): The interface_name argument.
-        interface (Any): The interface argument.
+        interface_name (Any): OPNsense interface identifier to evaluate.
+        interface (Any): OPNsense interface payload to evaluate.
     """
     return isinstance(interface_name, str) and isinstance(interface, Mapping)
 
@@ -46,10 +46,10 @@ def _is_valid_smart_device_row(smart_device: Any) -> bool:
     """Return whether a SMART device row can produce a binary sensor.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the is valid smart device row condition is satisfied.
 
     Args:
-        smart_device (Any): The smart_device argument.
+        smart_device (Any): OPNsense payload object being evaluated.
     """
     return isinstance(smart_device, Mapping) and bool(get_smart_device_name(smart_device))
 

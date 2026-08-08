@@ -444,10 +444,10 @@ def _normalize_url(url: str) -> str:
     """Normalize and validate an OPNsense base URL.
 
     Returns:
-        str: The returned value.
+        str: Canonical OPNsense URL without a trailing slash.
 
     Args:
-        url (str): The url argument.
+        url (str): OPNsense base URL to normalize.
 
     Raises:
         OPNsenseInvalidURL: If the URL has no host or contains an invalid port.
@@ -482,7 +482,7 @@ def _clean_and_parse_url(user_input: MutableMapping[str, Any]) -> None:
     """Normalize and validate the configured OPNsense base URL.
 
     Args:
-        user_input (MutableMapping[str, Any]): The user_input argument.
+        user_input (MutableMapping[str, Any]): Config-flow values submitted by the user.
     """
     user_input[CONF_URL] = _normalize_url(user_input.get(CONF_URL, ""))
     _LOGGER.debug("[config_flow] Cleaned URL: %s", user_input[CONF_URL])

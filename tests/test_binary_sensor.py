@@ -45,10 +45,10 @@ def capture_reconciled_desired_entities(
     """Capture reconciliation desired entities during setup.
 
     Returns:
-        dict[str, Any]: The returned value.
+        dict[str, Any]: Simulated collection used by the capture reconciled desired entities scenario.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
     """
     captured: dict[str, Any] = {}
 
@@ -60,9 +60,9 @@ def capture_reconciled_desired_entities(
         """Capture entities passed to ``record_desired_entities``.
 
         Args:
-            _entry (MockConfigEntry): The _entry argument.
-            _platform (str): The _platform argument.
-            entities (Any | None): The entities argument.
+            _entry (MockConfigEntry): Parameterized entry used by the capture scenario.
+            _platform (str): Parameterized platform used by the capture scenario.
+            entities (Any | None): Registry records exposed to the repair helper.
         """
         captured["entities"] = entities
 
@@ -81,14 +81,14 @@ def setup_binary_sensor_reconciliation_entry(
     """Create a binary-sensor test entry with coordinator/runtime pre-wired.
 
     Returns:
-        MockConfigEntry: The returned value.
+        MockConfigEntry: Simulated result used by the setup binary sensor reconciliation entry scenario.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        coordinator_data (dict[str, Any]): The coordinator_data argument.
-        sync_interfaces (bool): The sync_interfaces argument.
-        sync_smart (bool): The sync_smart argument.
-        sync_notices (bool): The sync_notices argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        coordinator_data (dict[str, Any]): Parameterized coordinator data used by the setup binary sensor reconciliation entry scenario.
+        sync_interfaces (bool): Parameterized sync interfaces used by the setup binary sensor reconciliation entry scenario.
+        sync_smart (bool): Parameterized sync smart used by the setup binary sensor reconciliation entry scenario.
+        sync_notices (bool): Parameterized sync notices used by the setup binary sensor reconciliation entry scenario.
     """
     entry = make_config_entry(
         {
@@ -138,7 +138,7 @@ async def test_async_setup_entry_creates_entities_when_enabled(
     """Create notices binary sensor when notices sync is enabled.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_NOTICES: True})
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -152,7 +152,7 @@ async def test_async_setup_entry_creates_entities_when_enabled(
 
         Args:
             ents (Iterable[Any]): Ents provided by pytest or the test case.
-            _update_before_add (bool): The _update_before_add argument.
+            _update_before_add (bool): Parameterized update before add used by the add entities scenario.
         """
         created.extend(ents)
 
@@ -191,13 +191,13 @@ async def test_async_setup_entry_records_none_or_authoritative_empty_for_invento
     """Track missing and authoritative-empty reconciliation inventories.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        coordinator_data (dict[str, Any]): The coordinator_data argument.
-        sync_interfaces (bool): The sync_interfaces argument.
-        sync_smart (bool): The sync_smart argument.
-        sync_notices (bool): The sync_notices argument.
-        expected (Any): The expected argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        coordinator_data (dict[str, Any]): Parameterized coordinator data used by the test setup entry records none or authoritative empty for inventory scenario.
+        sync_interfaces (bool): Parameterized sync interfaces used by the test setup entry records none or authoritative empty for inventory scenario.
+        sync_smart (bool): Parameterized sync smart used by the test setup entry records none or authoritative empty for inventory scenario.
+        sync_notices (bool): Parameterized sync notices used by the test setup entry records none or authoritative empty for inventory scenario.
+        expected (Any): Parameterized expected used by the test setup entry records none or authoritative empty for inventory scenario.
     """
     entry = setup_binary_sensor_reconciliation_entry(
         make_config_entry,
@@ -247,12 +247,12 @@ async def test_async_setup_entry_marks_malformed_binary_sensor_rows_incomplete(
     """Malformed rows keep reconciliation incomplete while valid rows still compile.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        coordinator_data (dict[str, Any]): The coordinator_data argument.
-        sync_interfaces (bool): The sync_interfaces argument.
-        sync_smart (bool): The sync_smart argument.
-        expected_key (str): The expected_key argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        coordinator_data (dict[str, Any]): Parameterized coordinator data used by the test setup entry marks malformed binary sensor rows incomplete scenario.
+        sync_interfaces (bool): Parameterized sync interfaces used by the test setup entry marks malformed binary sensor rows incomplete scenario.
+        sync_smart (bool): Parameterized sync smart used by the test setup entry marks malformed binary sensor rows incomplete scenario.
+        expected_key (str): Expected key asserted by the scenario.
     """
     entry = setup_binary_sensor_reconciliation_entry(
         make_config_entry,
@@ -280,8 +280,8 @@ async def test_async_setup_entry_skips_when_coordinator_state_not_mapping(
     """Non-mapping coordinator state should skip setup bookkeeping and entity creation.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     entry = setup_binary_sensor_reconciliation_entry(
         make_config_entry,
@@ -297,8 +297,8 @@ async def test_async_setup_entry_skips_when_coordinator_state_not_mapping(
         """Capture entities.
 
         Args:
-            ents (Iterable[Any]): The ents argument.
-            _update_before_add (bool): The _update_before_add argument.
+            ents (Iterable[Any]): Parameterized ents used by the add entities scenario.
+            _update_before_add (bool): Parameterized update before add used by the add entities scenario.
         """
         created.extend(ents)
 
@@ -319,7 +319,7 @@ async def test_async_setup_entry_skips_when_disabled(
     """Skip creating entities when sync options are disabled.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     entry = make_config_entry(
         {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_NOTICES: False, CONF_SYNC_SMART: False}
@@ -335,7 +335,7 @@ async def test_async_setup_entry_skips_when_disabled(
 
         Args:
             ents (Iterable[Any]): Ents provided by pytest or the test case.
-            _update_before_add (bool): The _update_before_add argument.
+            _update_before_add (bool): Parameterized update before add used by the add entities scenario.
         """
         created.extend(ents)
 
@@ -350,7 +350,7 @@ async def test_async_setup_entry_creates_disabled_interface_enabled_sensors(
     """Create disabled-by-default enabled-state binary sensors for interfaces.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     entry = make_config_entry(
         {
@@ -375,7 +375,7 @@ async def test_async_setup_entry_creates_disabled_interface_enabled_sensors(
 
         Args:
             ents (Iterable[Any]): Ents provided by pytest or the test case.
-            _update_before_add (bool): The _update_before_add argument.
+            _update_before_add (bool): Parameterized update before add used by the add entities scenario.
         """
         created.extend(ents)
 
@@ -399,7 +399,7 @@ async def test_async_setup_entry_creates_smart_status_problem_binary_sensors(
     """Create SMART status binary sensors with health-log attributes.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     entry = make_config_entry(
         {
@@ -440,7 +440,7 @@ async def test_async_setup_entry_creates_smart_status_problem_binary_sensors(
 
         Args:
             ents (Iterable[Any]): Ents provided by pytest or the test case.
-            _update_before_add (bool): The _update_before_add argument.
+            _update_before_add (bool): Parameterized update before add used by the add entities scenario.
         """
         created.extend(ents)
 
@@ -483,7 +483,7 @@ async def test_async_setup_entry_creates_smart_status_binary_sensors_from_ident_
     """SMART status entities should be compiled when rows provide `ident` only.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     entry = make_config_entry(
         {
@@ -505,8 +505,8 @@ async def test_async_setup_entry_creates_smart_status_binary_sensors_from_ident_
         """Add entities.
 
         Args:
-            ents (Iterable[Any]): The ents argument.
-            _update_before_add (bool): The _update_before_add argument.
+            ents (Iterable[Any]): Parameterized ents used by the add entities scenario.
+            _update_before_add (bool): Parameterized update before add used by the add entities scenario.
         """
         created.extend(ents)
 
@@ -528,8 +528,8 @@ async def test_compile_smart_status_binary_sensors_skips_invalid_state(
     """Skip SMART status binary sensors from invalid coordinator state.
 
     Args:
-        coord_data (Any): The coord_data argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coord_data (Any): Parameterized coord data used by the test compile smart status binary sensors skips invalid state scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -545,7 +545,7 @@ async def test_compile_smart_status_binary_sensors_skips_malformed_devices(
     """Skip malformed SMART rows while compiling valid status binary sensors.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -617,9 +617,9 @@ def test_smart_status_binary_sensor_unavailable_for_invalid_payloads(
     """SMART status binary sensors should reject invalid state and status payloads.
 
     Args:
-        state (Any): The state argument.
-        key (str): The key argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        state (Any): Simulated payload used to exercise the scenario.
+        key (str): Parameterized key used by the test smart status binary sensor unavailable for invalid payloads scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     sensor = _build_smart_status_binary_sensor(make_config_entry, state, key)
 
@@ -645,10 +645,10 @@ def test_smart_status_binary_sensor_parses_supported_status_shapes(
     """SMART status binary sensors should parse supported status shapes.
 
     Args:
-        smart_state (dict[str, Any] | None): The smart_state argument.
-        smart_info (dict[str, Any]): The smart_info argument.
-        expected_is_on (bool): The expected_is_on argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        smart_state (dict[str, Any] | None): Parameterized smart state used by the test smart status binary sensor parses supported status shapes scenario.
+        smart_info (dict[str, Any]): Parameterized smart info used by the test smart status binary sensor parses supported status shapes scenario.
+        expected_is_on (bool): Expected is on asserted by the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     smart_device: dict[str, Any] = {"device": "nvme0"}
     if smart_state is not None:
@@ -677,7 +677,7 @@ def test_smart_status_binary_sensor_uses_ident_when_device_missing(
     """SMART status binary sensors should match rows using `ident` when `device` is absent.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     sensor = _build_smart_status_binary_sensor(
         make_config_entry,
@@ -699,7 +699,7 @@ def test_smart_status_binary_sensor_strips_device_name_before_smart_info_lookup(
     """SMART status binary sensors should normalize padded device names before lookup.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     sensor = _build_smart_status_binary_sensor(
         make_config_entry,
@@ -722,7 +722,7 @@ async def test_async_setup_entry_skips_interfaces_when_interface_sync_disabled(
     """Skip interface enabled binary sensors when interface sync is disabled.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     entry = make_config_entry(
         {
@@ -742,7 +742,7 @@ async def test_async_setup_entry_skips_interfaces_when_interface_sync_disabled(
 
         Args:
             ents (Iterable[Any]): Ents provided by pytest or the test case.
-            _update_before_add (bool): The _update_before_add argument.
+            _update_before_add (bool): Parameterized update before add used by the add entities scenario.
         """
         created.extend(ents)
 
@@ -760,8 +760,8 @@ async def test_compile_interface_enabled_binary_sensors_skips_invalid_state(
     """Skip compiling interface enabled sensors from invalid coordinator state.
 
     Args:
-        coord_data (Any): The coord_data argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coord_data (Any): Parameterized coord data used by the test compile interface enabled binary sensors skips invalid state scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -777,7 +777,7 @@ async def test_compile_interface_enabled_binary_sensors_skips_malformed_interfac
     """Skip malformed interfaces while compiling valid interface enabled sensors.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -846,11 +846,11 @@ def test_interface_enabled_binary_sensor_state_handling(
     """Interface enabled binary sensor should expose or reject enabled state payloads.
 
     Args:
-        desc_key (Any): The desc_key argument.
-        coord_data (Any): The coord_data argument.
-        expected_available (bool): The expected_available argument.
-        expected_is_on (bool | None): The expected_is_on argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        desc_key (Any): Parameterized desc key used by the test interface enabled binary sensor state handling scenario.
+        coord_data (Any): Parameterized coord data used by the test interface enabled binary sensor state handling scenario.
+        expected_available (bool): Expected available asserted by the scenario.
+        expected_is_on (bool | None): Expected is on asserted by the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     entry = make_config_entry()
     desc = BinarySensorEntityDescription(key=desc_key, name="Interface WAN Enabled")
@@ -877,7 +877,7 @@ def test_interface_enabled_binary_sensor_extra_attributes(
     """Interface enabled binary sensor should expose useful interface attributes.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     entry = make_config_entry()
     desc = BinarySensorEntityDescription(key="interface.wan.enabled", name="Interface WAN Enabled")
@@ -948,12 +948,12 @@ def test_pending_notices_sensor_update_paths_param(
     """Parameterized tests for pending notices sensor update paths. Covers: non-mapping (None), present with list, and present but missing list.
 
     Args:
-        coord_data (Any): The coord_data argument.
-        expect_write_called (Any): The expect_write_called argument.
-        expect_available (Any): The expect_available argument.
-        expect_is_on (Any): The expect_is_on argument.
-        expect_pending (Any): The expect_pending argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coord_data (Any): Parameterized coord data used by the test pending notices sensor update paths param scenario.
+        expect_write_called (Any): Parameterized expect write called used by the test pending notices sensor update paths param scenario.
+        expect_available (Any): Parameterized expect available used by the test pending notices sensor update paths param scenario.
+        expect_is_on (Any): Parameterized expect is on used by the test pending notices sensor update paths param scenario.
+        expect_pending (Any): Parameterized expect pending used by the test pending notices sensor update paths param scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     entry = make_config_entry()
     desc = BinarySensorEntityDescription(

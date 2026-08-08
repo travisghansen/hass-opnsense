@@ -37,24 +37,24 @@ class GithubCleanupClient(Protocol):
         """List pull requests by state.
 
         Returns:
-            The returned value.
+            list[dict[str, object]]: Pull requests in the requested lifecycle state.
 
         Args:
-            state (str): The state argument.
+            state (str): Simulated payload used to exercise the scenario.
         """
 
     def close_pull(self, pull_number: int) -> None:
         """Close a pull request by number.
 
         Args:
-            pull_number (int): The pull_number argument.
+            pull_number (int): Pull request number returned by the mocked GitHub response.
         """
 
     def delete_ref(self, ref: str) -> None:
         """Delete a git ref by name.
 
         Args:
-            ref (str): The ref argument.
+            ref (str): Git branch reference returned by the mocked GitHub response.
         """
 
 

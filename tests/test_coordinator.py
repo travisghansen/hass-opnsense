@@ -52,7 +52,7 @@ async def test_init_requires_config_entry(fake_client: Any) -> None:
     """Ensure coordinator initialization requires a config entry.
 
     Args:
-        fake_client (Any): The fake_client argument.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     with pytest.raises(ValueError):
         OPNsenseDataUpdateCoordinator(
@@ -72,8 +72,8 @@ async def test_build_categories_respects_flags(
     """Categories builder respects configuration sync flags.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     entry = make_config_entry(
         {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
@@ -102,8 +102,8 @@ async def test_build_categories_includes_smart_by_default(
     """SMART uses the shared granular sync default.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     client = fake_client()()
 
@@ -138,7 +138,7 @@ async def test_get_states_fetches_smart_info_for_each_smart_device(
     """SMART attribute data should be fetched per discovered SMART device.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     client = MagicMock()
     client.get_smart = AsyncMock(
@@ -193,7 +193,7 @@ async def test_get_states_uses_smart_ident_when_device_missing(
     """SMART detail lookups should fall back to `ident` when `device` is missing.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     client = MagicMock()
     client.get_smart = AsyncMock(
@@ -241,7 +241,7 @@ async def test_get_states_does_not_catch_smart_info_timeout(
     """Public aiopnsense SMART errors should propagate through the coordinator.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     client = MagicMock()
     client.get_smart = AsyncMock(
@@ -283,7 +283,7 @@ async def test_get_states_skips_smart_info_when_smart_devices_missing(
     """SMART attribute data should stay empty without discovered SMART devices.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     client = MagicMock()
     client.get_smart = AsyncMock(return_value={})
@@ -316,8 +316,8 @@ async def test_get_states_handles_missing_method_and_calls(
     """_get_states should skip missing client methods and return available states.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     client = fake_client()()
     coord = OPNsenseDataUpdateCoordinator(
@@ -344,8 +344,8 @@ async def test_get_states_uses_single_carp_call(
     """Coordinator should fetch CARP once and populate unified CARP state key.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     client = fake_client()()
     client.get_carp = AsyncMock(
@@ -381,8 +381,8 @@ async def test_build_categories_for_carp_entries_only_include_system_info_and_ca
     """CARP entries should only request system info and CARP state.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     entry = make_config_entry(
         {
@@ -428,9 +428,9 @@ async def test_check_device_unique_id_mismatch_triggers_issue(
     """Mismatched device_unique_id should create an issue and shutdown after threshold.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "expected"})
     client = fake_client()()
@@ -504,9 +504,9 @@ async def test_check_device_unique_id_clears_stale_issue_without_repair_marker(
     """Matching IDs should clear stale mismatch issues when no repair marker exists.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "expected"})
     client = fake_client()()
@@ -548,9 +548,9 @@ async def test_check_device_unique_id_keeps_stale_issue_when_repair_marker_prese
     """Matching IDs should keep stale issues while a repair marker is still active.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     marker = build_repair_marker("old-dev", "expected")
     entry = make_config_entry(
@@ -615,8 +615,8 @@ async def test_calculate_entity_speeds_applies_calculations(
     """Entity speed calculations should add correct rate keys to state.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     entry = make_config_entry(
         {
@@ -691,8 +691,8 @@ async def test_calculate_entity_speeds_preserves_polling_rates_when_live_traffic
     """Preserve polling interface rates as a fallback when live traffic is enabled.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     entry = make_config_entry(
         {
@@ -745,8 +745,8 @@ async def test_calculate_entity_speeds_treats_counter_decrease_as_reset(
     """Counter resets should not be reported as traffic spikes.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     entry = make_config_entry(
         {
@@ -801,8 +801,8 @@ async def test_calculate_entity_speeds_skips_missing_counter_values(
     """Missing counter values should not abort a coordinator refresh.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     entry = make_config_entry(
         {
@@ -854,8 +854,8 @@ async def test_calculate_vpn_speeds_skips_malformed_payloads(
     """Malformed VPN counter payloads should be ignored without mutating valid rows.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_VPN: True})
     client = fake_client()()
@@ -904,8 +904,8 @@ async def test_calculate_interface_speeds_skips_malformed_payloads(
     """Malformed interface counter payloads should be ignored without mutating valid rows.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True})
     client = fake_client()()
@@ -948,9 +948,9 @@ async def test_async_update_data_reentrancy_and_full_flow(
     """End-to-end coordinator update flow and reentrancy behavior.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True})
     client = fake_client()()
@@ -974,7 +974,7 @@ async def test_async_update_data_reentrancy_and_full_flow(
         """Force the Device ID validation step to succeed.
 
         Returns:
-            bool: The returned value.
+            bool: Whether the true check condition is satisfied.
         """
         return True
 
@@ -1014,9 +1014,9 @@ async def test_async_update_data_enables_firewall_polling_when_runtime_firmware_
     """Firewall polling should run when sync is enabled, regardless of stored firmware.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     entry = make_config_entry(
         {
@@ -1077,7 +1077,7 @@ async def test_async_update_data_enables_firewall_polling_when_runtime_firmware_
         """Force the Device ID validation step to succeed.
 
         Returns:
-            bool: The returned value.
+            bool: Whether the true check condition is satisfied.
         """
         return True
 
@@ -1110,9 +1110,9 @@ async def test_build_categories_and_refresh_queue_firewall_for_legacy_firmware(
     """Legacy firmware should rely on aiopnsense empty firewall responses.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     entry = make_config_entry(
         {
@@ -1169,7 +1169,7 @@ async def test_build_categories_and_refresh_queue_firewall_for_legacy_firmware(
         """Force the Device ID validation step to succeed.
 
         Returns:
-            bool: The returned value.
+            bool: Whether the true check condition is satisfied.
         """
         return True
 
@@ -1197,9 +1197,9 @@ async def test_async_update_data_continues_firewall_polling_after_runtime_downgr
     """Downgraded runtime firmware should still poll firewall state through aiopnsense.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     entry = make_config_entry(
         {
@@ -1260,7 +1260,7 @@ async def test_async_update_data_continues_firewall_polling_after_runtime_downgr
         """Force the Device ID validation step to succeed.
 
         Returns:
-            bool: The returned value.
+            bool: Whether the true check condition is satisfied.
         """
         return True
 
@@ -1296,9 +1296,9 @@ async def test_async_update_data_fetches_firewall_on_first_refresh_if_firmware_i
     """When stored firmware is missing, first refresh should fetch firewall after learning version.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     entry = make_config_entry(
         {
@@ -1356,7 +1356,7 @@ async def test_async_update_data_fetches_firewall_on_first_refresh_if_firmware_i
         """Force the Device ID validation step to succeed.
 
         Returns:
-            bool: The returned value.
+            bool: Whether the true check condition is satisfied.
         """
         return True
 
@@ -1398,8 +1398,8 @@ def test_build_categories_returns_empty_when_no_config(
     """Categories builder returns empty list when config_entry is missing.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     entry = make_config_entry()
     client = fake_client()()
@@ -1503,8 +1503,8 @@ async def test_build_categories_includes_firewall_when_sync_is_enabled(
     """Firewall category should be queued whenever firewall sync is enabled.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     entry = make_config_entry(
         {
@@ -1534,8 +1534,8 @@ async def test_build_categories_keeps_firewall_polling_for_legacy_firmware(
     """Legacy firmware should keep native firewall polling and skip removed backends.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     entry = make_config_entry(
         {
@@ -1574,9 +1574,9 @@ async def test_async_update_data_preserves_only_counter_snapshot(
     """Previous state should keep only fields needed for counter rates.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     entry = make_config_entry({"device_unique_id": "id", CONF_SYNC_INTERFACES: True})
     client = fake_client()()
@@ -1604,7 +1604,7 @@ async def test_async_update_data_preserves_only_counter_snapshot(
         """Force Device ID validation to pass for previous-state assertions.
 
         Returns:
-            bool: The returned value.
+            bool: Whether the true check condition is satisfied.
         """
         return True
 
@@ -1640,9 +1640,9 @@ async def test_async_update_data_device_tracker_branch(
     """When coordinator is a device tracker coordinator, _async_update_data should return _async_update_dt_data result.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     entry = make_config_entry({"device_unique_id": "id"})
     client = fake_client()()
@@ -1664,7 +1664,7 @@ async def test_async_update_data_device_tracker_branch(
         """Return a canned device-tracker payload and record the call count.
 
         Returns:
-            dict[str, Any]: The returned value.
+            dict[str, Any]: Simulated collection used by the fake dt update scenario.
         """
         called["dt_called"] += 1
         return {"dt": True}
@@ -1691,9 +1691,9 @@ async def test_async_update_data_returns_empty_when_device_id_check_fails(
     """When device unique id check fails, _async_update_data should return an empty dict.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     entry = make_config_entry({"device_unique_id": "id", CONF_SYNC_INTERFACES: True})
     client = fake_client()()
@@ -1710,7 +1710,7 @@ async def test_async_update_data_returns_empty_when_device_id_check_fails(
         """Force Device ID validation to fail for the early-return branch.
 
         Returns:
-            bool: The returned value.
+            bool: Whether the false check condition is satisfied.
         """
         return False
 
@@ -1739,10 +1739,10 @@ async def test_calculate_entity_speeds_returns_early_when_missing(
     """_calculate_entity_speeds should return early when previous_update_time is falsy or config_entry is falsy.
 
     Args:
-        case (Any): The case argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        case (Any): Parameterized scenario definition.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
     """
     entry = make_config_entry(
         {"device_unique_id": "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
@@ -1802,11 +1802,11 @@ async def test_async_update_dt_data_device_id_branches(
     """Verify _async_update_dt_data returns early for missing/mismatched IDs and calls query counts when OK.
 
     Args:
-        returned_device_id (Any): The returned_device_id argument.
-        should_call_counts (Any): The should_call_counts argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        returned_device_id (Any): Device identifier returned by the simulated OPNsense probe.
+        should_call_counts (Any): Whether endpoint call counts should be asserted.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
     """
     entry = make_config_entry({"device_unique_id": "id"})
     client = fake_client()()
@@ -1831,7 +1831,7 @@ async def test_async_update_dt_data_device_id_branches(
         """Return the canned state payload used by the device-tracker branch test.
 
         Returns:
-            dict[str, Any]: The returned value.
+            dict[str, Any]: Simulated collection used by the fake get states scenario.
 
         Args:
             categories (list[dict[str, str]]): Categories requested by the coordinator and ignored
@@ -1866,9 +1866,9 @@ async def test_async_update_dt_data_uses_shared_device_id_mismatch_policy(
     """Device-tracker refreshes should use the shared Device ID mismatch policy.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     entry = make_config_entry({"device_unique_id": "id"})
     client = fake_client()()
@@ -1886,10 +1886,10 @@ async def test_async_update_dt_data_uses_shared_device_id_mismatch_policy(
         """Return a mismatched device ID for the device-tracker refresh.
 
         Returns:
-            dict[str, Any]: The returned value.
+            dict[str, Any]: Simulated collection used by the fake get states scenario.
 
         Args:
-            categories (list[dict[str, str]]): The categories argument.
+            categories (list[dict[str, str]]): Parameterized categories used by the fake get states scenario.
         """
         return {
             "device_unique_id": "other",
@@ -1949,9 +1949,9 @@ async def test_check_device_unique_id_mismatch_issue_retries_until_success(
     """Retry mismatch issue creation and shut down only after it succeeds.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
     coord = OPNsenseDataUpdateCoordinator(
@@ -2008,11 +2008,11 @@ async def test_check_device_unique_id_invalid_runtime_id_is_not_counted(
     """Malformed configured or runtime IDs should reset mismatch count and fail fast.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_client (Any): The fake_client argument.
-        expected_device_id (object): The expected_device_id argument.
-        state (dict[str, object]): The state argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
+        expected_device_id (object): Device identifier expected after reconciliation.
+        state (dict[str, object]): Simulated payload used to exercise the scenario.
     """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: expected_device_id})
     coord = OPNsenseDataUpdateCoordinator(

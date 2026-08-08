@@ -32,10 +32,10 @@ def _is_valid_service_row(service: Any) -> bool:
     """Return whether a service row can be evaluated by the compiler.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the is valid service row condition is satisfied.
 
     Args:
-        service (Any): The service argument.
+        service (Any): OPNsense service payload to validate.
     """
     return isinstance(service, Mapping) and _service_identity(service) is not None
 
@@ -44,10 +44,10 @@ def _service_identity(service: Mapping[str, Any]) -> str | None:
     """Return a stable service identity from a row when available.
 
     Returns:
-        str | None: The returned value.
+        str | None: Stable service identifier, when present.
 
     Args:
-        service (Mapping[str, Any]): The service argument.
+        service (Mapping[str, Any]): OPNsense service payload containing identity fields.
     """
     service_id = service.get("id")
     if isinstance(service_id, str):
@@ -68,10 +68,10 @@ def _is_valid_vpn_switch_row(instance: Any) -> bool:
     """Return whether a VPN instance row can produce a switch.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the is valid vpn switch row condition is satisfied.
 
     Args:
-        instance (Any): The instance argument.
+        instance (Any): OPNsense payload object being evaluated.
     """
     return isinstance(instance, MutableMapping) and instance.get("enabled") is not None
 
@@ -80,10 +80,10 @@ def _is_valid_unbound_row(dnsbl: Any) -> bool:
     """Return whether an Unbound blocklist row can produce a switch.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the is valid unbound row condition is satisfied.
 
     Args:
-        dnsbl (Any): The dnsbl argument.
+        dnsbl (Any): Unbound DNS blocklist payload to validate.
     """
     return isinstance(dnsbl, MutableMapping) and bool(dnsbl)
 
@@ -92,11 +92,11 @@ def _is_valid_firewall_rule_row(rule_key: Any, rule: Any) -> bool:
     """Return whether a firewall rule row can produce a switch.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the is valid firewall rule row condition is satisfied.
 
     Args:
-        rule_key (Any): The rule_key argument.
-        rule (Any): The rule argument.
+        rule_key (Any): Mapping key associated with the firewall rule.
+        rule (Any): Firewall rule payload to validate.
     """
     if not isinstance(rule, MutableMapping):
         return False
@@ -109,11 +109,11 @@ def _is_valid_nat_rule_row(rule_key: Any, rule: Any) -> bool:
     """Return whether a NAT rule row can produce a switch.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the is valid nat rule row condition is satisfied.
 
     Args:
-        rule_key (Any): The rule_key argument.
-        rule (Any): The rule argument.
+        rule_key (Any): Mapping key associated with the NAT rule.
+        rule (Any): NAT rule payload to validate.
     """
     if not isinstance(rule, MutableMapping):
         return False
@@ -126,10 +126,10 @@ def _vpn_switch_rows_are_complete(state: MutableMapping[str, Any]) -> bool:
     """Return whether every VPN row consumed by the switch compiler is valid.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the vpn switch rows are complete condition is satisfied.
 
     Args:
-        state (MutableMapping[str, Any]): The state argument.
+        state (MutableMapping[str, Any]): Simulated payload used to exercise the scenario.
     """
     for vpn_type in ("openvpn", "wireguard"):
         for group in ("clients", "servers"):

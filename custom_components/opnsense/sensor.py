@@ -121,10 +121,10 @@ def _is_valid_vnstat_interface_row(interface_name: Any) -> TypeIs[str]:
     """Return whether a vnStat interface key can produce sensors.
 
     Returns:
-        TypeIs[str]: The returned value.
+        TypeIs[str]: Whether the is valid vnstat interface row condition is satisfied.
 
     Args:
-        interface_name (Any): The interface_name argument.
+        interface_name (Any): OPNsense interface identifier to evaluate.
     """
     return isinstance(interface_name, str)
 
@@ -133,10 +133,10 @@ def _is_valid_smart_device_row(smart_device: Any) -> bool:
     """Return whether a SMART device row can produce a sensor.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the is valid smart device row condition is satisfied.
 
     Args:
-        smart_device (Any): The smart_device argument.
+        smart_device (Any): OPNsense payload object being evaluated.
     """
     return isinstance(smart_device, Mapping) and bool(get_smart_device_name(smart_device))
 
@@ -145,10 +145,10 @@ def _is_valid_filesystem_row(filesystem: Any) -> bool:
     """Return whether a filesystem row can produce a sensor.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the is valid filesystem row condition is satisfied.
 
     Args:
-        filesystem (Any): The filesystem argument.
+        filesystem (Any): OPNsense payload object being evaluated.
     """
     return (
         isinstance(filesystem, Mapping)
@@ -177,10 +177,10 @@ def _is_valid_carp_interface_row(interface: Any) -> bool:
     """Return whether a CARP interface row can produce a sensor.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the is valid carp interface row condition is satisfied.
 
     Args:
-        interface (Any): The interface argument.
+        interface (Any): OPNsense interface payload to evaluate.
     """
     return (
         isinstance(interface, MutableMapping)
@@ -193,10 +193,10 @@ def _is_valid_mutable_mapping_row(row: Any) -> bool:
     """Return whether a dynamic inventory row is a mutable mapping.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the is valid mutable mapping row condition is satisfied.
 
     Args:
-        row (Any): The row argument.
+        row (Any): OPNsense payload object being evaluated.
     """
     return isinstance(row, MutableMapping)
 
@@ -205,10 +205,10 @@ def _is_valid_vpn_sensor_row(instance: Any) -> bool:
     """Return whether a VPN instance row can produce sensors.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the is valid vpn sensor row condition is satisfied.
 
     Args:
-        instance (Any): The instance argument.
+        instance (Any): OPNsense payload object being evaluated.
     """
     return isinstance(instance, MutableMapping) and len(instance) > 0
 
@@ -217,10 +217,10 @@ def _vnstat_rows_are_complete(state: MutableMapping[str, Any]) -> bool:
     """Return whether every consumed vnStat interface row is valid.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the vnstat rows are complete condition is satisfied.
 
     Args:
-        state (MutableMapping[str, Any]): The state argument.
+        state (MutableMapping[str, Any]): Simulated payload used to exercise the scenario.
     """
     interfaces = dict_get(state, "vnstat.interfaces", {})
     return isinstance(interfaces, MutableMapping) and all(
@@ -232,10 +232,10 @@ def _vpn_sensor_rows_are_complete(state: MutableMapping[str, Any]) -> bool:
     """Return whether every VPN row consumed by the sensor compiler is valid.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the vpn sensor rows are complete condition is satisfied.
 
     Args:
-        state (MutableMapping[str, Any]): The state argument.
+        state (MutableMapping[str, Any]): Simulated payload used to exercise the scenario.
     """
     for vpn_type, groups in (
         ("openvpn", ("servers",)),
@@ -254,10 +254,10 @@ def _telemetry_rows_are_complete(telemetry: Any) -> bool:
     """Return whether telemetry inventories and all consumed rows are valid.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the telemetry rows are complete condition is satisfied.
 
     Args:
-        telemetry (Any): The telemetry argument.
+        telemetry (Any): OPNsense payload object being evaluated.
     """
     return (
         isinstance(telemetry, MutableMapping)

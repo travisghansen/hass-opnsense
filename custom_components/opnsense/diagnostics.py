@@ -121,10 +121,10 @@ def _normalize_field(field_name: object) -> str:
     """Normalize a payload field name for sensitivity matching.
 
     Returns:
-        str: The returned value.
+        str: Lowercase field name with separators removed.
 
     Args:
-        field_name (object): The field_name argument.
+        field_name (object): Diagnostic field name being classified.
     """
     if not isinstance(field_name, str):
         return ""
@@ -142,10 +142,10 @@ def _is_secret_field(field_name: str) -> bool:
     """Return whether a normalized field contains a secret value.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the is secret field condition is satisfied.
 
     Args:
-        field_name (str): The field_name argument.
+        field_name (str): Diagnostic field name being classified.
     """
     if field_name in _NON_SECRET_KEY_FIELDS:
         return False
@@ -158,10 +158,10 @@ def _is_sensitive_field(field_name: str) -> bool:
     """Return whether a normalized field contains a private identifier.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the is sensitive field condition is satisfied.
 
     Args:
-        field_name (str): The field_name argument.
+        field_name (str): Diagnostic field name being classified.
     """
     return field_name in _SENSITIVE_FIELDS or any(
         field_name.endswith(f"_{sensitive}") for sensitive in _SENSITIVE_FIELDS
@@ -172,10 +172,10 @@ def _is_alias_metadata_field(field_name: str) -> bool:
     """Return whether a normalized field contains OPNsense alias display metadata.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the is alias metadata field condition is satisfied.
 
     Args:
-        field_name (str): The field_name argument.
+        field_name (str): Diagnostic field name being classified.
     """
     return field_name.startswith("alias_meta_")
 
@@ -184,11 +184,11 @@ def _is_speedtest_server_field(path: tuple[str, ...], field_name: str) -> bool:
     """Return whether a field is a latest speed-test metric's server description.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the is speedtest server field condition is satisfied.
 
     Args:
-        path (tuple[str, ...]): The path argument.
-        field_name (str): The field_name argument.
+        path (tuple[str, ...]): Nested diagnostic path being classified.
+        field_name (str): Diagnostic field name being classified.
     """
     return (
         field_name == "server"
@@ -203,10 +203,10 @@ def _is_safe_ipv4(value: str) -> bool:
     """Return whether a value is an allowed local IPv4 address or interface.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the is safe ipv4 condition is satisfied.
 
     Args:
-        value (str): The value argument.
+        value (str): Diagnostic value being inspected or transformed.
     """
     try:
         address = ipaddress.ip_interface(value).ip
@@ -221,10 +221,10 @@ def _is_safe_ipv6(value: str) -> bool:
     """Return whether a value is an allowed local IPv6 address or interface.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the is safe ipv6 condition is satisfied.
 
     Args:
-        value (str): The value argument.
+        value (str): Diagnostic value being inspected or transformed.
     """
     try:
         address = ipaddress.ip_interface(value).ip
@@ -239,10 +239,10 @@ def _is_safe_network_identifier(value: object) -> bool:
     """Return whether a mapping identifier is safe and useful in diagnostics.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the is safe network identifier condition is satisfied.
 
     Args:
-        value (object): The value argument.
+        value (object): Diagnostic value being inspected or transformed.
     """
     return isinstance(value, str) and (
         _MAC_PATTERN.fullmatch(value) is not None or _is_safe_ipv4(value) or _is_safe_ipv6(value)
@@ -253,10 +253,10 @@ def _validated_ipv6_candidate(candidate: str) -> tuple[str, str] | None:
     """Return a valid IPv6 candidate and any trailing sentence punctuation.
 
     Returns:
-        tuple[str, str] | None: The returned value.
+        tuple[str, str] | None: Canonical IPv6 value and suffix, when valid.
 
     Args:
-        candidate (str): The candidate argument.
+        candidate (str): Potential sensitive identifier being classified.
     """
     try:
         interface = ipaddress.ip_interface(candidate)
@@ -281,10 +281,10 @@ def _coordinator_diagnostics(coordinator: Any | None) -> dict[str, Any] | None:
     """Build diagnostics from an existing coordinator without refreshing it.
 
     Returns:
-        dict[str, Any] | None: The returned value.
+        dict[str, Any] | None: Coordinator payload safe to include in diagnostics.
 
     Args:
-        coordinator (Any | None): The coordinator argument.
+        coordinator (Any | None): Coordinator supplying simulated OPNsense data.
     """
     if coordinator is None:
         return None
@@ -314,8 +314,8 @@ class _Pseudonymizer:
         """Register a sensitive value for consistent replacement.
 
         Args:
-            kind (str): The kind argument.
-            value (object): The value argument.
+            kind (str): Sensitive-value category assigned to the alias.
+            value (object): Diagnostic value being inspected or transformed.
         """
         if isinstance(value, bool) or not isinstance(
             value, (str, int, float, date, datetime, time)
@@ -336,10 +336,10 @@ class _Pseudonymizer:
         """Return the registered alias for a supported scalar value.
 
         Returns:
-            str | None: The returned value.
+            str | None: Existing correlated alias for the sensitive value.
 
         Args:
-            value (object): The value argument.
+            value (object): Diagnostic value being inspected or transformed.
         """
         if isinstance(value, bool) or not isinstance(
             value, (str, int, float, date, datetime, time)
@@ -353,7 +353,7 @@ class _Pseudonymizer:
         """Register a speed-test server description without affecting other fields.
 
         Args:
-            value (str): The value argument.
+            value (str): Diagnostic value being inspected or transformed.
         """
         if value in self.speedtest_server_aliases:
             return
@@ -366,7 +366,7 @@ class _Pseudonymizer:
         """Register a dynamic mapping key without rendering its value.
 
         Args:
-            value (object): The value argument.
+            value (object): Diagnostic value being inspected or transformed.
         """
         if isinstance(value, str):
             self._collect_detected_values(value)
@@ -387,7 +387,7 @@ class _Pseudonymizer:
         """Collect exact credentials anywhere in raw diagnostics for free-text replacement.
 
         Args:
-            value (Any): The value argument.
+            value (Any): Diagnostic value being inspected or transformed.
         """
         if isinstance(value, Mapping):
             for key, item in value.items():
@@ -404,7 +404,7 @@ class _Pseudonymizer:
         """Register string literals contained by a secret field.
 
         Args:
-            value (Any): The value argument.
+            value (Any): Diagnostic value being inspected or transformed.
         """
         if isinstance(value, str):
             if value not in ("", REDACTED):
@@ -423,10 +423,10 @@ class _Pseudonymizer:
         """Return the distinct alias registered for a dynamic mapping key.
 
         Returns:
-            str: The returned value.
+            str: Stable alias for a sensitive mapping key.
 
         Args:
-            value (object): The value argument.
+            value (object): Diagnostic value being inspected or transformed.
         """
         return self.alias_for(value) or self.key_aliases[self._key_token(value)]
 
@@ -435,10 +435,10 @@ class _Pseudonymizer:
         """Build a non-rendering, type-aware token for a dynamic mapping key.
 
         Returns:
-            tuple[object, object]: The returned value.
+            tuple[object, object]: Comparable token preserving the key's type and value.
 
         Args:
-            value (object): The value argument.
+            value (object): Diagnostic value being inspected or transformed.
         """
         if isinstance(value, float) and not math.isfinite(value):
             if math.isnan(value):
@@ -458,9 +458,9 @@ class _Pseudonymizer:
         """Collect sensitive values recursively before replacing mapping keys.
 
         Args:
-            value (Any): The value argument.
-            force_sensitive (bool): The force_sensitive argument.
-            path (tuple[str, ...]): The path argument.
+            value (Any): Diagnostic value being inspected or transformed.
+            force_sensitive (bool): Whether the diagnostic value must be redacted.
+            path (tuple[str, ...]): Nested diagnostic path being classified.
         """
         if isinstance(value, Enum):
             self.collect(
@@ -529,12 +529,12 @@ class _Pseudonymizer:
         """Return a recursively pseudonymized, JSON-compatible copy.
 
         Returns:
-            Any: The returned value.
+            Any: Recursively sanitized diagnostic value.
 
         Args:
-            value (Any): The value argument.
-            force_sensitive (bool): The force_sensitive argument.
-            path (tuple[str, ...]): The path argument.
+            value (Any): Diagnostic value being inspected or transformed.
+            force_sensitive (bool): Whether the diagnostic value must be redacted.
+            path (tuple[str, ...]): Nested diagnostic path being classified.
         """
         if isinstance(value, Enum):
             return self.sanitize(
@@ -603,11 +603,11 @@ class _Pseudonymizer:
         """Return whether a mapping key needs replacement for privacy or JSON safety.
 
         Returns:
-            bool: The returned value.
+            bool: Whether the should redact key condition is satisfied.
 
         Args:
-            value (object): The value argument.
-            force_sensitive (bool): The force_sensitive argument.
+            value (object): Diagnostic value being inspected or transformed.
+            force_sensitive (bool): Whether the diagnostic value must be redacted.
         """
         unsupported = not isinstance(value, (str, int, float, bool, type(None)))
         nonfinite = isinstance(value, float) and not math.isfinite(value)
@@ -619,7 +619,7 @@ class _Pseudonymizer:
         """Collect formatted identifiers embedded in an arbitrary string.
 
         Args:
-            value (str): The value argument.
+            value (str): Diagnostic value being inspected or transformed.
         """
         for pattern, kind in (
             (_URL_PATTERN, "url"),
@@ -660,11 +660,11 @@ class _Pseudonymizer:
         """Return a useful placeholder type for a sensitive field.
 
         Returns:
-            str | None: The returned value.
+            str | None: Sensitive-value category associated with the field.
 
         Args:
-            field_name (str): The field_name argument.
-            value (object): The value argument.
+            field_name (str): Diagnostic field name being classified.
+            value (object): Diagnostic value being inspected or transformed.
         """
         if isinstance(value, str):
             if _MAC_PATTERN.fullmatch(value):
@@ -697,10 +697,10 @@ class _Pseudonymizer:
         """Replace detected formatted identifiers without scanning unrelated aliases.
 
         Returns:
-            str: The returned value.
+            str: Text with embedded sensitive identifiers replaced by aliases.
 
         Args:
-            value (str): The value argument.
+            value (str): Diagnostic value being inspected or transformed.
         """
         result = value
         for pattern in (_URL_PATTERN, _EMAIL_PATTERN):
@@ -712,10 +712,10 @@ class _Pseudonymizer:
             """Replace a candidate only when it is a valid IP address or interface.
 
             Returns:
-                str: The returned value.
+                str: Alias replacing the matched IPv4 address.
 
             Args:
-                match (re.Match[str]): The match argument.
+                match (re.Match[str]): Regular-expression match being redacted.
             """
             candidate = match.group(0)
             try:
@@ -730,10 +730,10 @@ class _Pseudonymizer:
             """Replace a valid IPv6 core while preserving sentence punctuation.
 
             Returns:
-                str: The returned value.
+                str: Alias replacing the matched IPv6 address.
 
             Args:
-                match (re.Match[str]): The match argument.
+                match (re.Match[str]): Regular-expression match being redacted.
             """
             candidate = match.group(0)
             validated = _validated_ipv6_candidate(candidate)
@@ -759,10 +759,10 @@ class _Pseudonymizer:
         """Replace registered values in a scalar while preserving its type otherwise.
 
         Returns:
-            Any: The returned value.
+            Any: Sanitized scalar with its original type preserved when possible.
 
         Args:
-            value (Any): The value argument.
+            value (Any): Diagnostic value being inspected or transformed.
         """
         if isinstance(value, str):
             alias = self.alias_for(value)
@@ -784,11 +784,11 @@ async def async_get_config_entry_diagnostics(
     """Return privacy-safe diagnostics for an OPNsense config entry.
 
     Returns:
-        dict[str, Any]: The returned value.
+        dict[str, Any]: Retrieved config entry diagnostics data.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        entry (ConfigEntry[OPNsenseData]): The entry argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        entry (ConfigEntry[OPNsenseData]): OPNsense config entry participating in the operation.
     """
     runtime_data = getattr(entry, "runtime_data", None)
     diagnostics: dict[str, Any] = {

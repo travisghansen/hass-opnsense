@@ -39,10 +39,10 @@ class _OpaqueDiagnosticValue:
         """Preserve identity when snapshotting the immutable test value.
 
         Returns:
-            Self: The returned value.
+            Self: Simulated result used by the deepcopy scenario.
 
         Args:
-            memo (dict[int, Any]): The memo argument.
+            memo (dict[int, Any]): Copy memo preserving recursive object identity.
         """
         return self
 
@@ -67,12 +67,12 @@ def _coordinator(
     """Create a coordinator-shaped object for diagnostics tests.
 
     Returns:
-        SimpleNamespace: The returned value.
+        SimpleNamespace: Simulated result used by the coordinator scenario.
 
     Args:
-        data (dict[str, Any]): The data argument.
-        success (bool): The success argument.
-        exception (Exception | None): The exception argument.
+        data (dict[str, Any]): Simulated payload used to exercise the scenario.
+        success (bool): Whether the simulated API result succeeded.
+        exception (Exception | None): Exception attached to the simulated API result.
     """
     return SimpleNamespace(
         data=data,
@@ -87,8 +87,8 @@ async def test_config_entry_diagnostics_pseudonymizes_full_runtime(
     """Diagnostics should retain operational state without exposing identifiers.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        make_config_entry (Any): The make_config_entry argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Any): Factory for the config entry under test.
     """
     router_mac = "aa:bb:cc:dd:ee:ff"
     router_ip = "192.168.1.10"
@@ -278,8 +278,8 @@ async def test_config_entry_diagnostics_supports_optional_coordinators(
     """Diagnostics should use a stable shape when optional coordinators are absent.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        make_config_entry (Any): The make_config_entry argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Any): Factory for the config entry under test.
     """
     entry = make_config_entry(
         data={CONF_ENTRY_TYPE: ENTRY_TYPE_CARP, "url": "https://carp.example.test"},
@@ -318,8 +318,8 @@ async def test_config_entry_diagnostics_pseudonymizes_speedtest_servers_only(
     """Latest speed-test server descriptions should use correlated typed aliases.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        make_config_entry (Any): The make_config_entry argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Any): Factory for the config entry under test.
     """
     server = "Example ISP - Private City, ST"
     speedtest = {
@@ -375,9 +375,9 @@ async def test_config_entry_diagnostics_preserves_malformed_speedtest_servers(
     """Malformed latest speed-test server values should use normal scalar sanitization.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        make_config_entry (Any): The make_config_entry argument.
-        server (object): The server argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Any): Factory for the config entry under test.
+        server (object): Simulated runtime object exposed to diagnostics.
     """
     entry = make_config_entry(data={}, title="Router")
     entry.runtime_data = SimpleNamespace(
@@ -404,9 +404,9 @@ async def test_config_entry_diagnostics_supports_missing_runtime_data(
     """Diagnostics should retain a stable shape before runtime setup completes.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        make_config_entry (Any): The make_config_entry argument.
-        runtime_data (object): The runtime_data argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Any): Factory for the config entry under test.
+        runtime_data (object): Simulated runtime object exposed to diagnostics.
     """
     entry = make_config_entry(
         data={
@@ -439,8 +439,8 @@ async def test_config_entry_diagnostics_redacts_credentials_embedded_in_text(
     """Diagnostics should replace config credentials repeated in coordinator text.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        make_config_entry (Any): The make_config_entry argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Any): Factory for the config entry under test.
     """
     username = "diagnostics-user"
     password = "diagnostics-password"
@@ -494,8 +494,8 @@ async def test_config_entry_diagnostics_replaces_identifier_literals_in_free_tex
     """Diagnostics should correlate identifier fields with bounded text replacements.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        make_config_entry (Any): The make_config_entry argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Any): Factory for the config entry under test.
     """
     serial = "SN-1234"
     user = "private-user"
@@ -540,8 +540,8 @@ async def test_config_entry_diagnostics_correlates_certificate_issuer_references
     """Certificate issuer references should correlate while UUID issuers stay readable.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        make_config_entry (Any): The make_config_entry argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Any): Factory for the config entry under test.
     """
     caref = "63cc8aa07ef1c"
     certificate_uuid = "123e4567-e89b-42d3-a456-426614174000"
@@ -577,8 +577,8 @@ async def test_config_entry_diagnostics_collects_runtime_secrets_before_redactio
     """Diagnostics should remove runtime and nested secrets repeated in free text.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        make_config_entry (Any): The make_config_entry argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Any): Factory for the config entry under test.
     """
     preshared_key = "runtime-secret"
     client_key = "nested-client-secret"
@@ -614,8 +614,8 @@ async def test_config_entry_diagnostics_replaces_only_safe_embedded_secrets(
     """Short secrets should not corrupt ordinary text or generated aliases.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        make_config_entry (Any): The make_config_entry argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Any): Factory for the config entry under test.
     """
     entry = make_config_entry(
         data={
@@ -667,8 +667,8 @@ async def test_config_entry_diagnostics_ipv6_sentence_punctuation(
     """Diagnostics should redact public IPv6 before preserving sentence punctuation.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        make_config_entry (Any): The make_config_entry argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Any): Factory for the config entry under test.
     """
     public_ipv6 = "2001:db8::10"
     safe_addresses = ("fe80::1", "fd12:3456:789a::1", "::1")
@@ -698,7 +698,7 @@ def test_validated_ipv6_candidate_rejects_invalid_and_ipv4_candidates(candidate:
     """IPv6 candidate validation should reject malformed and IPv4 input.
 
     Args:
-        candidate (str): The candidate argument.
+        candidate (str): Potential sensitive identifier being classified.
     """
     assert _validated_ipv6_candidate(candidate) is None
 
@@ -729,8 +729,8 @@ async def test_config_entry_diagnostics_redacts_keys_and_sensitive_containers(
     """Diagnostics should redact secrets while retaining useful interface labels.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        make_config_entry (Any): The make_config_entry argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Any): Factory for the config entry under test.
     """
     entry = make_config_entry(
         data={"url": "https://router.example.test"},
@@ -778,8 +778,8 @@ async def test_config_entry_diagnostics_preserves_alias_metadata(
     """Diagnostics should preserve every alias metadata key and value.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        make_config_entry (Any): The make_config_entry argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Any): Factory for the config entry under test.
     """
     alias_metadata = [
         {
@@ -811,8 +811,8 @@ async def test_config_entry_diagnostics_numeric_ids_and_high_cardinality(
     """Diagnostics should preserve local IDs and labels at high cardinality.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        make_config_entry (Any): The make_config_entry argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Any): Factory for the config entry under test.
     """
     leases = {
         f"private-lease-{index}": {
@@ -864,8 +864,8 @@ async def test_config_entry_diagnostics_preserves_dynamic_keys_and_operational_t
     """Diagnostics should preserve evolving keys and operational string values.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        make_config_entry (Any): The make_config_entry argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Any): Factory for the config entry under test.
     """
     entry = make_config_entry(data={"url": "https://router.example.test"}, title="Router")
     entry.runtime_data = SimpleNamespace(
@@ -914,8 +914,8 @@ async def test_config_entry_diagnostics_plural_numeric_ids_and_distinct_dynamic_
     """Diagnostics should preserve numeric IDs and safely encode unsupported keys.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        make_config_entry (Any): The make_config_entry argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Any): Factory for the config entry under test.
     """
     opaque_key = _OpaqueDiagnosticValue()
     entry = make_config_entry(data={"url": "https://router.example.test"}, title="Router")
@@ -957,8 +957,8 @@ async def test_config_entry_diagnostics_preserves_real_payload_shapes(
     """Diagnostics should retain coordinator schemas and local operational labels.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        make_config_entry (Any): The make_config_entry argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Any): Factory for the config entry under test.
     """
     entry = make_config_entry(data={"url": "https://router.example.test"}, title="Router")
     entry.runtime_data = SimpleNamespace(
@@ -1043,8 +1043,8 @@ async def test_config_entry_diagnostics_typed_identifier_keys_are_order_independ
     """Diagnostics should redact public IPs while preserving local MAC identifiers.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        make_config_entry (Any): The make_config_entry argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Any): Factory for the config entry under test.
     """
     key_first_ip = "192.0.2.10"
     field_first_ip = "192.0.2.20"
@@ -1118,8 +1118,8 @@ async def test_config_entry_diagnostics_uses_simple_correlated_aliases(
     """Diagnostics should use simple aliases correlated within each download.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        make_config_entry (Any): The make_config_entry argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Any): Factory for the config entry under test.
     """
     private_serial = "private-appliance-serial"
     payload = {
@@ -1164,8 +1164,8 @@ async def test_config_entry_diagnostics_preserves_post_refresh_counters(
     """Diagnostics should preserve current coordinator counter and rate schema keys.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        make_config_entry (Any): The make_config_entry argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Any): Factory for the config entry under test.
     """
     current_time = 1_721_572_200.5
     interface_sample = {
@@ -1260,8 +1260,8 @@ async def test_config_entry_diagnostics_preserves_evolving_operational_schema(
     """Diagnostics should keep unclassified API schema while hiding private values.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        make_config_entry (Any): The make_config_entry argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Any): Factory for the config entry under test.
     """
     main_payload = {
         "telemetry": {"mbuf": {"used": 12, "total": 24, "status": "ok"}},
@@ -1347,8 +1347,8 @@ async def test_config_entry_diagnostics_temporal_privacy_and_strict_json(
     """Diagnostics should preserve temporal data and normalize non-finite floats.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        make_config_entry (Any): The make_config_entry argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Any): Factory for the config entry under test.
     """
     private_datetime = datetime(1990, 5, 4, 3, 2, 1, tzinfo=UTC)
     private_date = date(1990, 5, 4)
@@ -1414,8 +1414,8 @@ async def test_config_entry_diagnostics_preserves_temporal_and_unit_metadata(
     """Diagnostics should retain unfamiliar temporal and unit metadata.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        make_config_entry (Any): The make_config_entry argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Any): Factory for the config entry under test.
     """
     payload = {
         "date": "not-a-date",
@@ -1443,7 +1443,7 @@ def test_pseudonymizer_ignores_non_finite_alias_values(value: float) -> None:
     """Non-finite floats should never be registered or resolved as aliases.
 
     Args:
-        value (float): The value argument.
+        value (float): Diagnostic value being inspected or transformed.
     """
     pseudonymizer = _Pseudonymizer()
 
@@ -1458,7 +1458,7 @@ def test_pseudonymizer_ignores_empty_and_redacted_alias_values(value: str) -> No
     """Empty and already-redacted values should not consume alias counters.
 
     Args:
-        value (str): The value argument.
+        value (str): Diagnostic value being inspected or transformed.
     """
     pseudonymizer = _Pseudonymizer()
 
@@ -1517,7 +1517,7 @@ def test_pseudonymizer_classifies_email_and_user_fields(field_name: str) -> None
     """Email and user fields should use the user alias classification.
 
     Args:
-        field_name (str): The field_name argument.
+        field_name (str): Diagnostic field name being classified.
     """
     pseudonymizer = _Pseudonymizer()
 

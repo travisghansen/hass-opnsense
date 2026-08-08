@@ -64,10 +64,10 @@ def normalize_arp_mac(mac: object) -> str:
     """Normalize a MAC address from an ARP payload.
 
     Returns:
-        str: The returned value.
+        str: Canonical lowercase MAC address without separators.
 
     Args:
-        mac (object): The mac argument.
+        mac (object): ARP-table MAC value to normalize.
     """
     if not isinstance(mac, str):
         return ""
@@ -78,10 +78,10 @@ def get_arp_mac(entry: Mapping[str, Any]) -> str:
     """Return a normalized MAC address from an ARP payload.
 
     Returns:
-        str: The returned value.
+        str: Retrieved arp mac data.
 
     Args:
-        entry (Mapping[str, Any]): The entry argument.
+        entry (Mapping[str, Any]): OPNsense config entry participating in the operation.
     """
     mac: object = entry.get("mac")
     if not isinstance(mac, str) or not mac.strip():
@@ -93,10 +93,10 @@ def get_arp_ip(entry: Mapping[str, Any]) -> str:
     """Return an IP address from an ARP payload.
 
     Returns:
-        str: The returned value.
+        str: Retrieved arp ip data.
 
     Args:
-        entry (Mapping[str, Any]): The entry argument.
+        entry (Mapping[str, Any]): OPNsense config entry participating in the operation.
     """
     ip: object = entry.get("ip")
     if not isinstance(ip, str) or not ip.strip():
@@ -108,10 +108,10 @@ def get_smart_device_name(smart_device: Mapping[str, Any]) -> str:
     """Return a SMART device identifier, preferring ``device`` over ``ident``.
 
     Returns:
-        str: The returned value.
+        str: Retrieved smart device name data.
 
     Args:
-        smart_device (Mapping[str, Any]): The smart_device argument.
+        smart_device (Mapping[str, Any]): OPNsense payload object being evaluated.
     """
     device_name = smart_device.get("device")
     if not isinstance(device_name, str) or not device_name.strip():
@@ -125,11 +125,11 @@ def firewall_rule_id_from_payload(rule_key: object, rule: object) -> str | None:
     """Get a firewall rule ID from an aiopnsense rule payload.
 
     Returns:
-        str | None: The returned value.
+        str | None: Stable firewall rule identifier, when the payload provides one.
 
     Args:
-        rule_key (object): The rule_key argument.
-        rule (object): The rule argument.
+        rule_key (object): Mapping key associated with the firewall rule.
+        rule (object): Firewall rule payload containing identifier fields.
     """
     if not isinstance(rule, Mapping):
         return None

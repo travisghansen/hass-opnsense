@@ -81,7 +81,7 @@ def _make_valid_setup_client() -> MagicMock:
     """Create a valid OPNsense client mock for setup-entry lifecycle tests.
 
     Returns:
-        MagicMock: The returned value.
+        MagicMock: Mock client or dependency configured for the scenario.
     """
     client = MagicMock()
     client.validate = AsyncMock(return_value=True)
@@ -95,7 +95,7 @@ def _make_setup_coordinator() -> MagicMock:
     """Create a coordinator mock that succeeds initial setup and supports shutdown.
 
     Returns:
-        MagicMock: The returned value.
+        MagicMock: Mock client or dependency configured for the scenario.
     """
     coordinator = MagicMock()
     coordinator.async_config_entry_first_refresh = AsyncMock(return_value=True)
@@ -142,9 +142,9 @@ def test_align_aiopnsense_log_level_preserves_setting(
     """Aiopnsense logger settings should remain authoritative when already set.
 
     Args:
-        opnsense_level (int): The opnsense_level argument.
-        aiopnsense_level (int): The aiopnsense_level argument.
-        expected_level (int): The expected_level argument.
+        opnsense_level (int): Log level configured for the integration logger.
+        aiopnsense_level (int): Log level configured for the aiopnsense logger.
+        expected_level (int): Effective logger level expected by the scenario.
     """
     opnsense_logger = logging.getLogger("custom_components.opnsense")
     aiopnsense_logger = logging.getLogger("aiopnsense")
@@ -175,12 +175,12 @@ async def test_async_setup_entry_success(
     """async_setup_entry should succeed with valid client and coordinator.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator_capture (Any): The coordinator_capture argument.
-        fake_client (Any): The fake_client argument.
-        fake_coordinator (Any): The fake_coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        coordinator_capture (Any): Capture object recording constructed coordinators.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
+        fake_coordinator (Any): Mock coordinator installed for the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     patch_opnsense_client(monkeypatch, init_mod, fake_client())
     # use shared coordinator capture fixture
@@ -224,11 +224,11 @@ async def test_async_setup_entry_validates_client_before_probes(
     """async_setup_entry should validate the client before device/firmware probes.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator_capture (Any): The coordinator_capture argument.
-        fake_coordinator (Any): The fake_coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        coordinator_capture (Any): Capture object recording constructed coordinators.
+        fake_coordinator (Any): Mock coordinator installed for the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     probe_calls: list[str] = []
     client = MagicMock()
@@ -239,10 +239,10 @@ async def test_async_setup_entry_validates_client_before_probes(
         """Return test router Device ID after recording probe ordering.
 
         Returns:
-            str: The returned value.
+            str: Synthetic identifier, URL, or text exposed by the test double.
 
         Args:
-            expected_id (str | None): The expected_id argument.
+            expected_id (str | None): Identifier expected from the lookup.
         """
         probe_calls.append("get_device_unique_id")
         return "dev1"
@@ -251,7 +251,7 @@ async def test_async_setup_entry_validates_client_before_probes(
         """Return test firmware after recording probe ordering.
 
         Returns:
-            str: The returned value.
+            str: Synthetic identifier, URL, or text exposed by the test double.
         """
         probe_calls.append("get_host_firmware_version")
         return "99.0"
@@ -267,7 +267,7 @@ async def test_async_setup_entry_validates_client_before_probes(
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            Any: The returned value.
+            Any: Configured object produced by the local test double.
 
         """
         return client
@@ -328,15 +328,15 @@ async def test_async_setup_entry_live_traffic_coordinator_startup_cases(
     """Live traffic coordinator creation/launch should honor live and interface toggles.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator_capture (Any): The coordinator_capture argument.
-        fake_client (Any): The fake_client argument.
-        fake_coordinator (Any): The fake_coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        sync_live_traffic (bool | None): The sync_live_traffic argument.
-        sync_interfaces (bool): The sync_interfaces argument.
-        should_start (bool): The should_start argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        coordinator_capture (Any): Capture object recording constructed coordinators.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
+        fake_coordinator (Any): Mock coordinator installed for the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        sync_live_traffic (bool | None): Whether live-traffic synchronization is enabled.
+        sync_interfaces (bool): Whether interface synchronization is enabled.
+        should_start (bool): Whether the startup event should trigger setup.
     """
     patch_opnsense_client(monkeypatch, init_mod, fake_client())
     monkeypatch.setattr(
@@ -404,10 +404,10 @@ async def test_async_setup_entry_shuts_down_live_traffic_coordinator_when_forwar
     """Live coordinator should be started after first refresh and shutdown on setup failure.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        fake_client (Any): The fake_client argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     patch_opnsense_client(monkeypatch, init_mod, fake_client())
     live_traffic_setup_events: list[str] = []
@@ -512,9 +512,9 @@ async def test_async_setup_entry_carp_entry_uses_identity_less_runtime(
     """CARP entries use identity-less coordinator state and Sensor-only platform setup.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     validate_calls: list[dict[str, Any]] = []
     create_calls: dict[str, Any] = {}
@@ -528,7 +528,7 @@ async def test_async_setup_entry_carp_entry_uses_identity_less_runtime(
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            bool: The returned value.
+            bool: Success or match result produced by the simulated operation.
         """
         validate_calls.append(kwargs)
         return True
@@ -544,7 +544,7 @@ async def test_async_setup_entry_carp_entry_uses_identity_less_runtime(
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            Any: The returned value.
+            Any: Configured object produced by the local test double.
         """
         create_calls.update(kwargs)
         return client
@@ -569,7 +569,7 @@ async def test_async_setup_entry_carp_entry_uses_identity_less_runtime(
             """Complete the coordinator's initial refresh protocol.
 
             Returns:
-                bool: The returned value.
+                bool: Success or match result produced by the simulated operation.
             """
             return True
 
@@ -577,7 +577,7 @@ async def test_async_setup_entry_carp_entry_uses_identity_less_runtime(
             """Complete the coordinator's shutdown protocol.
 
             Returns:
-                bool: The returned value.
+                bool: Success or match result produced by the simulated operation.
             """
             return True
 
@@ -627,10 +627,10 @@ async def test_async_setup_entry_carp_validation_firmware_errors_fail_setup(
     """CARP setup must fail fast on firmware validation exceptions.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        exc (type[Exception]): The exc argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        exc (type[Exception]): Exception supplied to the simulated context exit.
     """
     coordinator = AsyncMock()
     coordinator.async_config_entry_first_refresh = AsyncMock(return_value=True)
@@ -682,10 +682,10 @@ async def test_async_setup_entry_carp_entry_retries_on_transient_validation_fail
     """CARP setup should retry on transient validation transport failures.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (HomeAssistant): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        exc (type[BaseException]): The exc argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (HomeAssistant): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        exc (type[BaseException]): Exception supplied to the simulated context exit.
     """
     client = MagicMock()
     client.validate = AsyncMock(side_effect=exc("transient"))
@@ -726,9 +726,9 @@ async def test_async_setup_entry_carp_reraises_connection_error_subclass(
     """CARP setup must preserve specialized connection failures.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (HomeAssistant): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (HomeAssistant): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
 
     class SpecializedConnectionError(OPNsenseConnectionError):
@@ -778,10 +778,10 @@ async def test_async_setup_entry_carp_requires_usable_initial_vip_inventory(
     """CARP setup should retry when the first refresh has no usable VIP inventory.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        initial_data (dict[str, Any]): The initial_data argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        initial_data (dict[str, Any]): Initial configuration data submitted to the flow.
     """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
@@ -830,10 +830,10 @@ async def test_async_setup_entry_carp_accepts_usable_initial_vip_inventory(
     """CARP setup should forward platforms when the first inventory has a usable VIP.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        interface (dict[str, Any]): The interface argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        interface (dict[str, Any]): Synthetic interface record returned by the client.
     """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
@@ -874,9 +874,9 @@ async def test_async_setup_entry_carp_first_refresh_failure_cleans_up(
     """CARP setup should stop its coordinator, close the client, and remove hass data.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
@@ -918,9 +918,9 @@ async def test_async_setup_entry_carp_platform_forward_failure_cleans_up(
     """CARP platform-forward failures should clean up runtime state and the client.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
@@ -969,9 +969,9 @@ async def test_async_setup_entry_carp_registers_update_listener_after_forwarding
     """CARP update-listener registration should follow platform forwarding.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     call_order: list[str] = []
     client = _make_valid_setup_client()
@@ -997,10 +997,10 @@ async def test_async_setup_entry_carp_registers_update_listener_after_forwarding
         """Record listener registration and return its removal callback.
 
         Returns:
-            MagicMock: The returned value.
+            MagicMock: Mock client or dependency configured for the scenario.
 
         Args:
-            listener (Any): The listener argument.
+            listener (Any): Update listener registered by the integration.
         """
         call_order.append("add_listener")
         return remove_listener
@@ -1009,7 +1009,7 @@ async def test_async_setup_entry_carp_registers_update_listener_after_forwarding
         """Record unload-callback registration.
 
         Args:
-            unregister (MagicMock): The unregister argument.
+            unregister (MagicMock): Whether the listener should be unregistered.
         """
         call_order.append("async_on_unload")
 
@@ -1024,7 +1024,7 @@ async def test_async_setup_entry_carp_registers_update_listener_after_forwarding
             _kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            bool: The returned value.
+            bool: Success or match result produced by the simulated operation.
         """
         call_order.append("forward")
         return True
@@ -1057,10 +1057,10 @@ async def test_async_setup_entry_closes_client_when_validation_fails(
     """async_setup_entry should close a constructed client when validation fails.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        error (OPNsenseError): The error argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        error (OPNsenseError): Failure raised by the simulated operation.
     """
     client = MagicMock()
     client.validate = AsyncMock(side_effect=error)
@@ -1073,7 +1073,7 @@ async def test_async_setup_entry_closes_client_when_validation_fails(
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            Any: The returned value.
+            Any: Configured object produced by the local test double.
         """
         return client
 
@@ -1109,9 +1109,9 @@ async def test_async_setup_entry_does_not_catch_raw_validation_timeout(
     """Setup should close the client and re-raise a raw validation timeout.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     client = MagicMock()
     client.validate = AsyncMock(side_effect=TimeoutError)
@@ -1124,7 +1124,7 @@ async def test_async_setup_entry_does_not_catch_raw_validation_timeout(
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            Any: The returned value.
+            Any: Configured object produced by the local test double.
         """
         return client
 
@@ -1164,10 +1164,10 @@ async def test_async_setup_entry_retries_on_transient_validation_failures(
     """Transient validation connection failures should trigger ConfigEntryNotReady.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (HomeAssistant): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        exc (type[BaseException]): The exc argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (HomeAssistant): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        exc (type[BaseException]): Exception supplied to the simulated context exit.
     """
     client = MagicMock()
     client.validate = AsyncMock(side_effect=exc("timed out"))
@@ -1180,7 +1180,7 @@ async def test_async_setup_entry_retries_on_transient_validation_failures(
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            Any: The returned value.
+            Any: Configured object produced by the local test double.
         """
         return client
 
@@ -1234,10 +1234,10 @@ async def test_async_setup_entry_does_not_retry_non_transient_validation_failure
     """Non-transient validation failures should bubble as hard errors.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (HomeAssistant): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        exc (type[BaseException]): The exc argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (HomeAssistant): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        exc (type[BaseException]): Exception supplied to the simulated context exit.
     """
     client = MagicMock()
     client.validate = AsyncMock(side_effect=exc("invalid"))
@@ -1250,7 +1250,7 @@ async def test_async_setup_entry_does_not_retry_non_transient_validation_failure
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            Any: The returned value.
+            Any: Configured object produced by the local test double.
         """
         return client
 
@@ -1297,10 +1297,10 @@ async def test_async_setup_entry_with_repair_marker_recreates_issue_on_early_pro
     """A valid repair marker should create its mismatch issue before probe failures.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        failure_step (str): The failure_step argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        failure_step (str): Setup phase configured to fail.
     """
     create_client = _make_valid_setup_client()
     if failure_step == "validate":
@@ -1321,7 +1321,7 @@ async def test_async_setup_entry_with_repair_marker_recreates_issue_on_early_pro
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            Any: The returned value.
+            Any: Configured object produced by the local test double.
         """
         del kwargs
         return create_client
@@ -1402,9 +1402,9 @@ async def test_async_setup_entry_reraises_client_creation_error(
     """async_setup_entry should re-raise client creation errors before close handling.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
 
     def _create_client(**kwargs: Any) -> Any:
@@ -1414,7 +1414,7 @@ async def test_async_setup_entry_reraises_client_creation_error(
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            Any: The returned value.
+            Any: Configured object produced by the local test double.
 
         Raises:
             OPNsenseError: Always raised to simulate client creation failure.
@@ -1465,13 +1465,13 @@ async def test_async_setup_entry_continues_after_ignored_validation_error(
     """async_setup_entry should keep probing after ignored validation exceptions.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator_capture (Any): The coordinator_capture argument.
-        fake_coordinator (Any): The fake_coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        error_type (type[OPNsenseError]): The error_type argument.
-        message (str): The message argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        coordinator_capture (Any): Capture object recording constructed coordinators.
+        fake_coordinator (Any): Mock coordinator installed for the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        error_type (type[OPNsenseError]): Exception class expected from the scenario.
+        message (str): Log or exception message expected by the scenario.
     """
     probe_calls: list[str] = []
     client = MagicMock()
@@ -1483,10 +1483,10 @@ async def test_async_setup_entry_continues_after_ignored_validation_error(
         """Return test router Device ID after recording probe ordering.
 
         Returns:
-            str: The returned value.
+            str: Synthetic identifier, URL, or text exposed by the test double.
 
         Args:
-            expected_id (str | None): The expected_id argument.
+            expected_id (str | None): Identifier expected from the lookup.
         """
         probe_calls.append("get_device_unique_id")
         return "dev1"
@@ -1495,7 +1495,7 @@ async def test_async_setup_entry_continues_after_ignored_validation_error(
         """Return test firmware after recording probe ordering.
 
         Returns:
-            str: The returned value.
+            str: Synthetic identifier, URL, or text exposed by the test double.
         """
         probe_calls.append("get_host_firmware_version")
         return "99.0"
@@ -1510,7 +1510,7 @@ async def test_async_setup_entry_continues_after_ignored_validation_error(
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            Any: The returned value.
+            Any: Configured object produced by the local test double.
         """
         return client
 
@@ -1571,16 +1571,16 @@ async def test_async_setup_entry_device_id_mismatch(
     """async_setup_entry should handle malformed and mismatched device IDs safely.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator_capture (Any): The coordinator_capture argument.
-        fake_client (Any): The fake_client argument.
-        fake_coordinator (Any): The fake_coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        stored_device_id (object): The stored_device_id argument.
-        router_device_id (Any): The router_device_id argument.
-        should_create_issue (bool): The should_create_issue argument.
-        setup_succeeds (bool): The setup_succeeds argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        coordinator_capture (Any): Capture object recording constructed coordinators.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
+        fake_coordinator (Any): Mock coordinator installed for the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        stored_device_id (object): Device identifier already stored in the registry.
+        router_device_id (Any): Identifier of the router device in the registry.
+        should_create_issue (bool): Whether the scenario should create a repair issue.
+        setup_succeeds (bool): Whether the simulated platform setup succeeds.
     """
     create_client = MagicMock(side_effect=fake_client(device_id=router_device_id))
     patch_opnsense_client(monkeypatch, init_mod, create_client)
@@ -1654,8 +1654,8 @@ async def test_async_update_listener_not_reload(
     """_async_update_listener should set SHOULD_RELOAD True and not call reload when flag False.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     entry = make_config_entry(entry_id="e", unique_id="u")
     # ensure runtime_data exists and set SHOULD_RELOAD to False
@@ -1679,8 +1679,8 @@ async def test_async_remove_config_entry_device_branches(
     """Verify removal logic for config entry device registry branches.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        hass (HomeAssistant): The hass argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        hass (HomeAssistant): Home Assistant test instance used by the helper.
     """
     device = MagicMock()
     device.via_device_id = True
@@ -1711,7 +1711,7 @@ async def test_async_remove_config_entry_device_no_linked_entities(
     """When no linked entities exist for a device, removal should succeed (return True).
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
     """
     # device not linked via via_device_id and has an id
     device = MagicMock()
@@ -1737,8 +1737,8 @@ async def test_async_unload_entry_and_pop(
     """async_unload_entry removes entry from hass.data and closes the client.
 
     Args:
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     entry = make_config_entry(entry_id="e_unload")
     entry.as_dict = lambda: {"id": "x"}
@@ -1758,11 +1758,11 @@ async def test_async_unload_entry_and_pop(
         """Record platform unload order and return success.
 
         Returns:
-            bool: The returned value.
+            bool: Success or match result produced by the simulated operation.
 
         Args:
-            _entry (Any): The _entry argument.
-            _platforms (Any): The _platforms argument.
+            _entry (Any): Config entry passed to the listener callback.
+            _platforms (Any): Platforms forwarded by the setup test double.
         """
         unload_order.append("platforms_unloaded")
         return True
@@ -1790,7 +1790,7 @@ async def test_migrate_1_to_2_updates_entry(ph_hass: Any) -> None:
     """_migrate_1_to_2 migrates tls_insecure to verify_ssl and updates version.
 
     Args:
-        ph_hass (Any): The ph_hass argument.
+        ph_hass (Any): Patched Home Assistant test instance.
     """
     cfg = MagicMock()
     cfg.data = {CONF_TLS_INSECURE: True}
@@ -1827,7 +1827,7 @@ async def test_async_migrate_entry_version_gt5(ph_hass: Any) -> None:
     """async_migrate_entry returns False for versions greater than supported.
 
     Args:
-        ph_hass (Any): The ph_hass argument.
+        ph_hass (Any): Patched Home Assistant test instance.
     """
     cfg = MagicMock()
     cfg.version = 6
@@ -1844,9 +1844,9 @@ async def test_async_migrate_entry_does_not_call_migrate_3_to_4_when_version_not
     """When entry.version is not 3, _migrate_3_to_4 must not be called.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        version (Any): The version argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        version (Any): Migration or firmware version exercised by the scenario.
     """
     mock_m3 = AsyncMock(return_value=True)
     monkeypatch.setattr(init_mod, "_migrate_3_to_4", mock_m3)
@@ -1868,8 +1868,8 @@ async def test_async_migrate_entry_uses_throw_errors_for_migration_client(
     """Migration should create the OPNsense client with throw_errors enabled.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
     """
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
     entry = MockConfigEntry(
@@ -1913,8 +1913,8 @@ async def test_migrate_4_to_5_removes_rule_switch_entities(
     """_migrate_4_to_5 removes stale rule switch entities and updates config entry version.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
     """
     slugified_prefix: str = slugify("router unit")
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
@@ -1996,8 +1996,8 @@ async def test_migrate_4_to_5_uses_rule_key_when_uuid_is_missing(
     """_migrate_4_to_5 should keep non-uuid rules by mapping key.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
     """
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
     entry = MockConfigEntry(
@@ -2062,8 +2062,8 @@ async def test_migrate_4_to_5_sync_disabled_skips_firewall_fetch_removes_native_
     """_migrate_4_to_5 should remove native firewall and NAT rules when sync is disabled.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
     """
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
     data: dict[str, Any] = {
@@ -2139,8 +2139,8 @@ async def test_migrate_4_to_5_granular_entry_defaults_missing_category_key_to_en
     """Granular migration preserves firewall sync for entries missing the category key.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (HomeAssistant): The ph_hass argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (HomeAssistant): Patched Home Assistant test instance.
     """
     update_entry = MagicMock(return_value=True)
     monkeypatch.setattr(ph_hass.config_entries, "async_update_entry", update_entry)
@@ -2195,8 +2195,8 @@ async def test_migrate_4_to_5_non_granular_entry_missing_category_key_preserves_
     """A non-granular entry without a category key should preserve current rule entities.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (HomeAssistant): The ph_hass argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (HomeAssistant): Patched Home Assistant test instance.
     """
     update_entry = MagicMock(return_value=True)
     monkeypatch.setattr(ph_hass.config_entries, "async_update_entry", update_entry)
@@ -2302,8 +2302,8 @@ def test_is_firewall_sync_enabled_uses_category_then_default(
     """Migration sync state should preserve explicit and runtime defaults.
 
     Args:
-        data (dict[str, Any]): The data argument.
-        expected (bool): The expected argument.
+        data (dict[str, Any]): Synthetic integration data used by the scenario.
+        expected (bool): Outcome asserted by the parameterized scenario.
     """
     entry = MagicMock()
     entry.data = data
@@ -2332,10 +2332,10 @@ async def test_migrate_4_to_5_defers_when_device_unique_id_is_missing(
     """_migrate_4_to_5 should defer when migration lacks a device unique ID.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (HomeAssistant): The ph_hass argument.
-        sync_firewall_and_nat (bool): The sync_firewall_and_nat argument.
-        device_unique_id (str | None): The device_unique_id argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (HomeAssistant): Patched Home Assistant test instance.
+        sync_firewall_and_nat (bool): Whether firewall and NAT synchronization is enabled.
+        device_unique_id (str | None): Unique identifier assigned to the test device.
     """
     update_entry = MagicMock(return_value=True)
     monkeypatch.setattr(ph_hass.config_entries, "async_update_entry", update_entry)
@@ -2393,8 +2393,8 @@ async def test_migrate_4_to_5_defers_when_migration_client_is_missing(
     """_migrate_4_to_5 should defer enabled sync without a migration client.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (HomeAssistant): The ph_hass argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (HomeAssistant): Patched Home Assistant test instance.
     """
     update_entry = MagicMock(return_value=True)
     monkeypatch.setattr(ph_hass.config_entries, "async_update_entry", update_entry)
@@ -2427,9 +2427,9 @@ async def test_migrate_4_to_5_defers_when_firewall_rules_unavailable(
     """_migrate_4_to_5 should not version-bump when firewall rules cannot be fetched.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        firewall_result (Any): The firewall_result argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        firewall_result (Any): Simulated firewall-rule query result.
     """
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
     entry = MockConfigEntry(
@@ -2479,8 +2479,8 @@ async def test_migrate_4_to_5_completes_when_firewall_privileges_are_missing(
     """Migration should not block unrelated entities on missing firewall privileges.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (HomeAssistant): The ph_hass argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (HomeAssistant): Patched Home Assistant test instance.
     """
     update_entry = MagicMock(return_value=True)
     monkeypatch.setattr(ph_hass.config_entries, "async_update_entry", update_entry)
@@ -2542,9 +2542,9 @@ async def test_migrate_4_to_5_skips_native_pruning_when_rules_payload_unavailabl
     """_migrate_4_to_5 should complete migration with legacy cleanup only when rules are unavailable.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (HomeAssistant): The ph_hass argument.
-        firewall_payload (object): The firewall_payload argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (HomeAssistant): Patched Home Assistant test instance.
+        firewall_payload (object): Synthetic firewall-rule API payload.
     """
     update_entry = MagicMock(return_value=True)
     monkeypatch.setattr(ph_hass.config_entries, "async_update_entry", update_entry)
@@ -2603,9 +2603,9 @@ async def test_migrate_4_to_5_legacy_entity_remove_failure_aborts_migration(
     """_migrate_4_to_5 returns False when entity removal raises handled exceptions.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        exc (BaseException): The exc argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        exc (BaseException): Exception supplied to the simulated context exit.
     """
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=True)
     entry = MockConfigEntry(
@@ -2653,8 +2653,8 @@ async def test_migrate_4_to_5_sync_enabled_prunes_stale_native_nat_rule_entities
     """_migrate_4_to_5 should prune stale native NAT IDs for explicit empty NAT sections.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (HomeAssistant): The ph_hass argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (HomeAssistant): Patched Home Assistant test instance.
     """
     update_entry = MagicMock(return_value=True)
     monkeypatch.setattr(ph_hass.config_entries, "async_update_entry", update_entry)
@@ -2770,8 +2770,8 @@ async def test_migrate_4_to_5_version_bump_failure_aborts_migration(
     """_migrate_4_to_5 returns False when async_update_entry fails.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
     """
     ph_hass.config_entries.async_update_entry = MagicMock(return_value=False)
     entry = MockConfigEntry(
@@ -2871,13 +2871,13 @@ async def test_async_update_listener_reload_and_remove(
     """Remove disabled entities using the same identity prefix as entity creation.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        entry_id (str): The entry_id argument.
-        entry_data (dict[str, Any]): The entry_data argument.
-        entry_unique_id (str | None): The entry_unique_id argument.
-        entity_unique_id_prefix (str): The entity_unique_id_prefix argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        entry_id (str): Configuration entry identifier under test.
+        entry_data (dict[str, Any]): Configuration data used to create the client.
+        entry_unique_id (str | None): Unique identifier assigned to the configuration entry.
+        entity_unique_id_prefix (str): Prefix expected on migrated entity unique IDs.
     """
     # Prepare entry with SHOULD_RELOAD True and granular sync option disabled to force removal_prefixes
     entry = make_config_entry(
@@ -2900,8 +2900,8 @@ async def test_async_update_listener_reload_and_remove(
             """Store the entity and unique IDs used by the update-listener test.
 
             Args:
-                entity_id (Any): The entity_id argument.
-                unique_id (Any): The unique_id argument.
+                entity_id (Any): Registry entity identifier under test.
+                unique_id (Any): Registry unique identifier under test.
             """
             self.entity_id = entity_id
             self.unique_id = unique_id
@@ -2949,11 +2949,11 @@ async def test_async_update_listener_handles_native_firewall_entities_by_sync_st
     """Remove native firewall entities only when Firewall/NAT sync is disabled.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        sync_enabled (bool): The sync_enabled argument.
-        expect_removed (bool): The expect_removed argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        sync_enabled (bool): Whether the relevant synchronization option is enabled.
+        expect_removed (bool): Whether the legacy registry entry should be removed.
     """
     entry = make_config_entry(
         data={
@@ -2975,8 +2975,8 @@ async def test_async_update_listener_handles_native_firewall_entities_by_sync_st
             """Store entity and unique IDs for the test.
 
             Args:
-                entity_id (str): The entity_id argument.
-                unique_id (str): The unique_id argument.
+                entity_id (str): Registry entity identifier under test.
+                unique_id (str): Registry unique identifier under test.
             """
             self.entity_id = entity_id
             self.unique_id = unique_id
@@ -3021,9 +3021,9 @@ async def test_async_update_listener_skips_native_firewall_entities_when_firewal
     """Native entities should remain when sync is enabled for this entry.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     entry = make_config_entry(
         data={
@@ -3045,8 +3045,8 @@ async def test_async_update_listener_skips_native_firewall_entities_when_firewal
             """Store entity and unique IDs for the test.
 
             Args:
-                entity_id (str): The entity_id argument.
-                unique_id (str): The unique_id argument.
+                entity_id (str): Registry entity identifier under test.
+                unique_id (str): Registry unique identifier under test.
             """
             self.entity_id = entity_id
             self.unique_id = unique_id
@@ -3088,9 +3088,9 @@ async def test_async_update_listener_uses_shared_default_for_smart_entity_prunin
     """Missing SMART sync config should preserve registered SMART entities.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     entry = make_config_entry(
         data={CONF_DEVICE_UNIQUE_ID: "dev1"},
@@ -3153,13 +3153,13 @@ async def test_async_update_listener_device_removal_param(
     """Remove only this config entry from tracked devices when tracking is disabled.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dt_enabled (Any): The dt_enabled argument.
-        via_device_id (Any): The via_device_id argument.
-        tracker_device_id (Any): The tracker_device_id argument.
-        expect_updated (Any): The expect_updated argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        dt_enabled (Any): Whether device tracking is enabled for the scenario.
+        via_device_id (Any): Existing parent-device reference in the registry.
+        tracker_device_id (Any): Identifier of the device-tracker registry device.
+        expect_updated (Any): Whether the registry device should be updated.
     """
     # create an entry with the device tracker option set per parameter
     entry = make_config_entry(
@@ -3233,9 +3233,9 @@ async def test_async_update_listener_detaches_no_parent_tracker_device(
     """Trackers with no parent remain detached from removed config entry.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     entry = make_config_entry(
         data={CONF_DEVICE_UNIQUE_ID: "router-mac"},
@@ -3308,9 +3308,9 @@ async def test_async_update_listener_detaches_tracker_device_without_entity(
     """Detach a router-linked tracker device after its entity was already removed.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     entry = make_config_entry(
         data={CONF_DEVICE_UNIQUE_ID: "router-mac"},
@@ -3372,9 +3372,9 @@ async def test_async_update_listener_detaches_tracker_when_router_and_entity_are
     """Detach a MAC tracker whose removed router remains as a stale parent.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     entry = make_config_entry(
         data={CONF_DEVICE_UNIQUE_ID: "router-mac"},
@@ -3434,9 +3434,9 @@ async def test_async_update_listener_preserves_existing_tracker_parent_when_pare
     """Keep a shared tracker parent when disabling tracking if that parent still exists.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     entry = make_config_entry(
         data={CONF_DEVICE_UNIQUE_ID: "router-mac"},
@@ -3502,9 +3502,9 @@ async def test_async_update_listener_reparents_tracker_link_to_remaining_opnsens
     """Disabling tracking reassigns shared tracker parent to surviving OPNsense router.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     entry = make_config_entry(
         data={CONF_DEVICE_UNIQUE_ID: "router-mac"},
@@ -3673,12 +3673,12 @@ async def test_async_setup_entry_firmware_below_min(
     """async_setup_entry returns False for devices with firmware below minimum supported.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator_capture (Any): The coordinator_capture argument.
-        fake_client (Any): The fake_client argument.
-        fake_coordinator (Any): The fake_coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        coordinator_capture (Any): Capture object recording constructed coordinators.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
+        fake_coordinator (Any): Mock coordinator installed for the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     # fake client where Device ID matches but firmware is below min
     patch_opnsense_client(monkeypatch, init_mod, fake_client(firmware_version="1.0"))
@@ -3716,12 +3716,12 @@ async def test_async_setup_entry_firmware_between_min_and_ltd(
     """async_setup_entry logs a warning issue for firmware between min and LTD but continues.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator_capture (Any): The coordinator_capture argument.
-        fake_client (Any): The fake_client argument.
-        fake_coordinator (Any): The fake_coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        coordinator_capture (Any): Capture object recording constructed coordinators.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
+        fake_coordinator (Any): Mock coordinator installed for the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     patch_opnsense_client(monkeypatch, init_mod, fake_client(firmware_version="25.1"))
     monkeypatch.setattr(
@@ -3767,8 +3767,8 @@ async def test_migrate_2_to_3_missing_device_id(
     """_migrate_2_to_3 returns False when the client provides no Device ID.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
     """
     client = fake_client(device_id=None)()
     cfg = MagicMock()
@@ -3793,8 +3793,8 @@ async def test_migrate_2_to_3_success(monkeypatch: pytest.MonkeyPatch, fake_clie
     """_migrate_2_to_3 updates device and entity identifiers when client reports new Device ID.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
     """
     client = fake_client(device_id="newdev")()
 
@@ -3858,8 +3858,8 @@ async def test_migrate_2_to_3_normalizes_legacy_entity_unique_ids_with_slugify(
     """_migrate_2_to_3 should slugify legacy unique IDs with colons and case.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
     """
     client = fake_client(device_id="newdev")()
 
@@ -3907,8 +3907,8 @@ async def test_migrate_2_to_3_returns_false_when_update_entry_fails(
     """_migrate_2_to_3 should fail when config entry update returns False.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
     """
     client = fake_client(device_id="newdev")()
 
@@ -3948,12 +3948,12 @@ async def test_async_setup_entry_awesomeversion_exception(
     """async_setup_entry should continue when AwesomeVersion comparison raises an exception.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator_capture (Any): The coordinator_capture argument.
-        fake_client (Any): The fake_client argument.
-        fake_coordinator (Any): The fake_coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        coordinator_capture (Any): Capture object recording constructed coordinators.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
+        fake_coordinator (Any): Mock coordinator installed for the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
 
     # fake client where Device ID matches but awesomeversion comparison raises
@@ -3965,7 +3965,7 @@ async def test_async_setup_entry_awesomeversion_exception(
             """Store the version string used by the comparison stub.
 
             Args:
-                v (Any): The v argument.
+                v (Any): Value wrapped by the local comparison sentinel.
             """
             self.v = v
 
@@ -3973,7 +3973,7 @@ async def test_async_setup_entry_awesomeversion_exception(
             """Raise a compare exception so setup falls back to the safe path.
 
             Args:
-                other (Any): The other argument.
+                other (Any): Object compared with the sentinel value.
 
             Raises:
                 awesomeversion.exceptions.AwesomeVersionCompareException: Always raised to
@@ -4009,8 +4009,8 @@ async def test_async_unload_entry_unload_fails(
     """async_unload_entry returns False and keeps runtime resources when unload fails.
 
     Args:
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     entry = make_config_entry(entry_id="e_unload_fail")
     entry.as_dict = lambda: {"id": "x"}
@@ -4041,8 +4041,8 @@ async def test_migrate_3_to_4_filesystem_and_remove(
     """_migrate_3_to_4 handles filesystem telemetry renames and removes connected_client_count entities.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
     """
     client = fake_client(telemetry={"filesystems": [{"device": "/dev/sda1", "mountpoint": "/"}]})()
 
@@ -4097,8 +4097,8 @@ async def test_migrate_3_to_4_preserves_mixed_marker_precedence(
     """Mixed legacy markers follow the original migration branch precedence.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
     """
     client = fake_client(telemetry={"filesystems": []})()
 
@@ -4155,8 +4155,8 @@ async def test_migrate_3_to_4_filesystem_preserves_unique_id_prefix(
     """Filesystem remap should only replace the suffix after telemetry_filesystems_.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
     """
     client = fake_client(telemetry={"filesystems": [{"device": "/dev/sda1", "mountpoint": "/"}]})()
 
@@ -4205,8 +4205,8 @@ async def test_migrate_3_to_4_filesystem_skips_and_non_root_mountpoint(
     """_migrate_3_to_4 skips unmapped entities and maps non-root filesystem mountpoints.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
     """
     client = fake_client(
         telemetry={
@@ -4276,7 +4276,7 @@ async def test_migrate_3_to_4_skips_filesystems_when_telemetry_is_not_mapping(
     """_migrate_3_to_4 should defer filesystem remaps when telemetry is invalid.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
     """
 
     class Client:
@@ -4348,9 +4348,9 @@ async def test_migrate_3_to_4_defers_filesystems_when_payload_is_invalid(
     """_migrate_3_to_4 should defer filesystem remaps when telemetry is invalid.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        fake_client (Any): The fake_client argument.
-        telemetry (dict[str, Any]): The telemetry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
+        telemetry (dict[str, Any]): Synthetic telemetry payload returned by the client.
     """
     client = fake_client(telemetry=telemetry)()
 
@@ -4391,8 +4391,8 @@ async def test_migrate_3_to_4_returns_false_when_update_entry_fails(
     """_migrate_3_to_4 should fail when config entry update returns False.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
     """
     client = fake_client(telemetry={})()
     monkeypatch.setattr(er, "async_get", lambda hass: MagicMock())
@@ -4424,8 +4424,8 @@ async def test_migrate_2_to_3_handles_entity_update_value_error(
     """When entity_registry.async_update_entity raises ValueError, migration continues.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
     """
     client = fake_client(device_id="newdev")()
 
@@ -4475,9 +4475,9 @@ async def test_migrate_3_to_4_handles_remove_exceptions(
     """If entity_registry.async_remove raises KeyError/ValueError, migration fails.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        fake_client (Any): The fake_client argument.
-        exc (BaseException | None): The exc argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
+        exc (BaseException | None): Exception supplied to the simulated context exit.
     """
     client = fake_client(telemetry={})()
 
@@ -4517,8 +4517,8 @@ async def test_migrate_3_to_4_handles_update_value_error(
     """If entity_registry.async_update_entity raises ValueError, migration fails.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
     """
     client = fake_client(telemetry={})()
 
@@ -4567,10 +4567,10 @@ async def test_async_migrate_entry_returns_false_when_submigration_fails(
     """async_migrate_entry should return False when a sub-migration returns False.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        version (Any): The version argument.
-        failing_fn (Any): The failing_fn argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        version (Any): Migration or firmware version exercised by the scenario.
+        failing_fn (Any): Integration operation replaced with a failing test double.
     """
     # make the targeted sub-migration return False
     monkeypatch.setattr(init_mod, failing_fn, AsyncMock(return_value=False))
@@ -4606,9 +4606,9 @@ async def test_async_migrate_entry_defers_when_migration_client_raises_opnsense_
     """async_migrate_entry should return False when migration-client creation fails.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        exc (type[BaseException]): The exc argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        exc (type[BaseException]): Exception supplied to the simulated context exit.
     """
     migration_exc = exc("temporary failure")
     create_client = MagicMock(side_effect=migration_exc)
@@ -4639,9 +4639,9 @@ async def test_async_migrate_entry_defers_when_v2_to_3_fails_with_opnsense_error
     """async_migrate_entry should return False when v2->v3 raises OPNsense errors.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        exc (type[BaseException]): The exc argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        exc (type[BaseException]): Exception supplied to the simulated context exit.
     """
     client = MagicMock()
     client.async_close = AsyncMock()
@@ -4675,9 +4675,9 @@ async def test_async_migrate_entry_defers_when_v3_to_4_fails_with_opnsense_error
     """async_migrate_entry should return False when v3->v4 raises OPNsense errors.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        exc (type[BaseException]): The exc argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        exc (type[BaseException]): Exception supplied to the simulated context exit.
     """
     client = MagicMock()
     client.async_close = AsyncMock()
@@ -4711,9 +4711,9 @@ async def test_async_migrate_entry_returns_false_when_migration_client_missing(
     """async_migrate_entry should fail client-backed migrations without a client.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        version (int): The version argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        version (int): Migration or firmware version exercised by the scenario.
     """
     monkeypatch.setattr(
         init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: None
@@ -4745,12 +4745,12 @@ async def test_async_setup_entry_firmware_above_ltd_calls_delete(
     """async_setup_entry deletes previous issues when firmware is at or above LTD.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator_capture (Any): The coordinator_capture argument.
-        fake_client (Any): The fake_client argument.
-        fake_coordinator (Any): The fake_coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        coordinator_capture (Any): Capture object recording constructed coordinators.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
+        fake_coordinator (Any): Mock coordinator installed for the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     patch_opnsense_client(
         monkeypatch, init_mod, fake_client(firmware_version=OPNSENSE_LTD_FIRMWARE)
@@ -4789,12 +4789,12 @@ async def test_async_setup_entry_firmware_at_or_above_ltd_deletes_previous_issue
     """async_setup_entry cleans up previous firmware-related issues for LTD and min thresholds.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator_capture (Any): The coordinator_capture argument.
-        fake_client (Any): The fake_client argument.
-        fake_coordinator (Any): The fake_coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        coordinator_capture (Any): Capture object recording constructed coordinators.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
+        fake_coordinator (Any): Mock coordinator installed for the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     patch_opnsense_client(
         monkeypatch, init_mod, fake_client(firmware_version=OPNSENSE_LTD_FIRMWARE)
@@ -4846,12 +4846,12 @@ async def test_async_setup_entry_delete_uses_actual_firmware_string(
     """async_setup_entry uses the client's firmware string when deleting previous issues.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator_capture (Any): The coordinator_capture argument.
-        fake_client (Any): The fake_client argument.
-        fake_coordinator (Any): The fake_coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        coordinator_capture (Any): Capture object recording constructed coordinators.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
+        fake_coordinator (Any): Mock coordinator installed for the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     firmware_str = "99.9"
     patch_opnsense_client(monkeypatch, init_mod, fake_client(firmware_version=firmware_str))
@@ -4901,12 +4901,12 @@ async def test_async_setup_entry_delete_not_called_for_between_min_and_ltd(
     """async_setup_entry should not call delete_issue for firmware between min and LTD.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator_capture (Any): The coordinator_capture argument.
-        fake_client (Any): The fake_client argument.
-        fake_coordinator (Any): The fake_coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        coordinator_capture (Any): Capture object recording constructed coordinators.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
+        fake_coordinator (Any): Mock coordinator installed for the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     patch_opnsense_client(monkeypatch, init_mod, fake_client(firmware_version="25.1"))
     monkeypatch.setattr(
@@ -4957,12 +4957,12 @@ async def test_async_setup_entry_with_device_tracker_enabled(
     """Device tracker option creates a device-tracker coordinator and triggers initial refresh.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator_capture (Any): The coordinator_capture argument.
-        fake_client (Any): The fake_client argument.
-        fake_coordinator (Any): The fake_coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        coordinator_capture (Any): Capture object recording constructed coordinators.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
+        fake_coordinator (Any): Mock coordinator installed for the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     patch_opnsense_client(monkeypatch, init_mod, fake_client())
     monkeypatch.setattr(
@@ -4998,9 +4998,9 @@ async def test_async_setup_entry_recreates_marker_issue_when_main_refresh_fails(
     """Marker-backed main refresh failures should recreate the mismatch issue.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
@@ -5068,9 +5068,9 @@ async def test_async_setup_entry_cleans_up_when_device_tracker_refresh_fails(
     """async_setup_entry should clean up when device-tracker setup fails.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
@@ -5092,7 +5092,7 @@ async def test_async_setup_entry_cleans_up_when_device_tracker_refresh_fails(
             _kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            Any: The returned value.
+            Any: Configured object produced by the local test double.
         """
         return coordinators.pop(0)
 
@@ -5131,9 +5131,9 @@ async def test_async_setup_entry_recreates_marker_issue_when_device_tracker_refr
     """Marker-backed device-tracker setup failures should recreate the mismatch issue.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
@@ -5155,7 +5155,7 @@ async def test_async_setup_entry_recreates_marker_issue_when_device_tracker_refr
             _kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            Any: The returned value.
+            Any: Configured object produced by the local test double.
         """
         return coordinators.pop(0)
 
@@ -5219,9 +5219,9 @@ async def test_async_setup_entry_cleans_up_when_platform_forwarding_fails(
     """async_setup_entry should clean up when platform forwarding fails.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
@@ -5273,9 +5273,9 @@ async def test_async_setup_entry_recreates_marker_issue_when_platform_forwarding
     """Marker-backed reconciliation should recreate issue if forwarding fails.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
@@ -5344,9 +5344,9 @@ async def test_async_setup_entry_recreates_marker_issue_when_platform_forwarding
     """Marker cleanup failures should keep runtime after forwarding exception.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
@@ -5415,9 +5415,9 @@ async def test_reconciliation_incomplete_platform_does_not_finalize_or_clear_mar
     """An unreported forwarded platform retains the marker and skips pruning.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
@@ -5471,11 +5471,11 @@ async def _run_reconciliation_cleanup_unload(
     """Run a reconciliation cleanup attempt with a configurable unload outcome.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        unload_result (bool | BaseException): The unload_result argument.
-        preserve_runtime (bool): The preserve_runtime argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        unload_result (bool | BaseException): Success value or failure produced by platform unload.
+        preserve_runtime (bool): Whether failed unload should retain runtime state.
     """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
@@ -5492,7 +5492,7 @@ async def _run_reconciliation_cleanup_unload(
             _kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            Any: The returned value.
+            Any: Configured object produced by the local test double.
         """
         return coordinators.pop(0)
 
@@ -5564,11 +5564,11 @@ async def test_reconciliation_cleanup_unload_outcomes(
     """Reconciliation cleanup handles unload outcomes with explicit runtime lifecycle expectations.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        unload_result (bool | BaseException): The unload_result argument.
-        preserve_runtime (bool): The preserve_runtime argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        unload_result (bool | BaseException): Success value or failure produced by platform unload.
+        preserve_runtime (bool): Whether failed unload should retain runtime state.
     """
     await _run_reconciliation_cleanup_unload(
         monkeypatch=monkeypatch,
@@ -5587,8 +5587,8 @@ async def test_unload_setup_platforms_after_reconciliation_failure_returns_false
     """A platform unload failure should be surfaced as a failed cleanup result.
 
     Args:
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     entry = make_config_entry()
     ph_hass.config_entries.async_unload_platforms = AsyncMock(return_value=False)
@@ -5607,8 +5607,8 @@ async def test_unload_setup_platforms_after_reconciliation_failure_returns_false
     """Unloading exceptions should be converted into a false cleanup outcome.
 
     Args:
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     entry = make_config_entry()
     ph_hass.config_entries.async_unload_platforms = AsyncMock(
@@ -5630,9 +5630,9 @@ async def test_cleanup_reconciliation_failure_returns_platform_unload_result(
     """Marker creation should precede unload and the helper should return its unload result.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     entry = make_config_entry()
     events: list[str] = []
@@ -5672,9 +5672,9 @@ async def test_reconciliation_marker_clear_false_retains_marker(
     """A rejected marker-clear update leaves persisted repair intent retryable.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
@@ -5724,10 +5724,10 @@ async def test_reconciliation_marker_clear_exception_retains_marker(
     """Handled marker-clear failures preserve repair intent for retry.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        clear_error (BaseException): The clear_error argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        clear_error (BaseException): Issue-clear failure injected by the scenario.
     """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
@@ -5773,9 +5773,9 @@ async def test_async_setup_entry_deletes_stale_device_id_mismatch_issue(
     """A matching device ID should clear any stale startup mismatch issue.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
@@ -5817,9 +5817,9 @@ async def test_async_setup_entry_preserves_marker_and_skips_stale_issue_delete(
     """An active repair marker should skip stale mismatch issue deletion until reconcile completes.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
@@ -5890,12 +5890,12 @@ async def test_async_setup_entry_deletes_stale_mismatch_issue_only_on_matching_v
     """Only delete stale mismatch issues when configured and observed IDs are both valid and equal.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        fake_client (Any): The fake_client argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        router_device_id (Any): The router_device_id argument.
-        expects_delete_issue (bool): The expects_delete_issue argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        router_device_id (Any): Identifier of the router device in the registry.
+        expects_delete_issue (bool): Whether setup should clear the repair issue.
     """
     create_client = MagicMock(side_effect=fake_client(device_id=router_device_id))
     patch_opnsense_client(monkeypatch, init_mod, create_client)
@@ -5938,9 +5938,9 @@ async def test_reconciliation_prepare_failure_recreates_marker_issue_without_unl
     """Reconciliation preflight failures emit retryable marker issue and skip platform unload.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
@@ -6010,10 +6010,10 @@ async def test_async_setup_entry_recreates_marker_issue_on_probe_mismatch_before
     """Marker-backed mismatch should recreate the issue and stop before platform setup.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        router_device_id (Any): The router_device_id argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        router_device_id (Any): Identifier of the router device in the registry.
     """
     client = _make_valid_setup_client()
 
@@ -6021,10 +6021,10 @@ async def test_async_setup_entry_recreates_marker_issue_on_probe_mismatch_before
         """Return a probe value that triggers marker-based probe mismatch.
 
         Returns:
-            Any: The returned value.
+            Any: Configured object produced by the local test double.
 
         Args:
-            expected_id (str | None): The expected_id argument.
+            expected_id (str | None): Identifier expected from the lookup.
         """
         return router_device_id
 
@@ -6087,9 +6087,9 @@ async def test_async_setup_entry_rejects_entry_with_malformed_repair_marker(
     """Malformed repair marker payloads should abort setup and avoid client creation.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (HomeAssistant): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (HomeAssistant): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     client = _make_valid_setup_client()
     create_client = MagicMock(return_value=client)
@@ -6144,12 +6144,12 @@ async def test_async_setup_entry_rejects_entry_when_marker_and_entry_mismatch(
     """Repair marker new-device ID must match both stored config and unique id.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (HomeAssistant): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        config_device_id (str): The config_device_id argument.
-        entry_unique_id (str): The entry_unique_id argument.
-        marker_device_id (str): The marker_device_id argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (HomeAssistant): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        config_device_id (str): Identifier of the integration configuration device.
+        entry_unique_id (str): Unique identifier assigned to the configuration entry.
+        marker_device_id (str): Identifier of the migration marker device.
     """
     client = _make_valid_setup_client()
     client.get_device_unique_id = AsyncMock(return_value=config_device_id)
@@ -6203,10 +6203,10 @@ async def test_async_setup_entry_keeps_runtime_when_reconciliation_cleanup_raise
     """Reconciliation cleanup exceptions should keep runtime state and return False.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (HomeAssistant): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        cleanup_error (HomeAssistantError | KeyError): The cleanup_error argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (HomeAssistant): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        cleanup_error (HomeAssistantError | KeyError): Registry cleanup failure injected by the scenario.
     """
     client = _make_valid_setup_client()
     create_client = MagicMock(return_value=client)
@@ -6278,9 +6278,9 @@ async def test_async_setup_entry_registers_update_listener_after_forwarding(
     """Update listener registration should happen after platform forwarding.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     call_order: list[str] = []
 
@@ -6361,8 +6361,8 @@ async def test_migrate_2_to_3_handles_identifier_collision(
     """_migrate_2_to_3 continues when DeviceIdentifierCollisionError occurs while updating devices.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
     """
     # migration should continue if DeviceIdentifierCollisionError raised when updating device
     client = fake_client(device_id="newdev")()
@@ -6427,8 +6427,8 @@ async def test_migrate_3_to_4_defers_without_updating_entities_when_later_filesy
     """A valid filesystem before a malformed filesystem should not partially migrate or bump version.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
     """
     client = MagicMock()
     client.get_telemetry = AsyncMock(

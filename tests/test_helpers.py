@@ -45,8 +45,8 @@ def test_dict_get_traverses_list_indexes(path: str, expected: str) -> None:
     """Traverse list indexes safely when resolving dotted paths.
 
     Args:
-        path (str): The path argument.
-        expected (str): The expected argument.
+        path (str): Nested data path resolved by the helper.
+        expected (str): Outcome asserted by the parameterized scenario.
     """
     data = {"items": [{"name": "first"}, {"name": "second"}]}
 
@@ -76,8 +76,8 @@ def test_coerce_bool_parses_bool_like_values(value: Any, expected: bool) -> None
     """Verify bool-like values are converted to booleans.
 
     Args:
-        value (Any): The value argument.
-        expected (bool): The expected argument.
+        value (Any): Input value exercised by the helper.
+        expected (bool): Outcome asserted by the parameterized scenario.
     """
     assert coerce_bool(value) is expected
 
@@ -95,7 +95,7 @@ def test_coerce_bool_returns_none_for_unknown_values(value: Any) -> None:
     """Verify unknown values are not coerced into a boolean.
 
     Args:
-        value (Any): The value argument.
+        value (Any): Input value exercised by the helper.
     """
     assert coerce_bool(value) is None
 
@@ -112,8 +112,8 @@ def test_normalize_arp_mac(value: object, expected: str) -> None:
     """Normalize ARP MAC values into the shared representation.
 
     Args:
-        value (object): The value argument.
-        expected (str): The expected argument.
+        value (object): Input value exercised by the helper.
+        expected (str): Outcome asserted by the parameterized scenario.
     """
     assert normalize_arp_mac(value) == expected
 
@@ -144,8 +144,8 @@ def test_get_arp_mac(entry: dict[str, Any], expected: str) -> None:
     """Read normalized and raw ARP MAC keys through one helper.
 
     Args:
-        entry (dict[str, Any]): The entry argument.
-        expected (str): The expected argument.
+        entry (dict[str, Any]): Registry or payload entry being formatted.
+        expected (str): Outcome asserted by the parameterized scenario.
     """
     assert get_arp_mac(entry) == expected
 
@@ -172,8 +172,8 @@ def test_get_arp_ip(entry: dict[str, Any], expected: str) -> None:
     """Read and strip normalized and raw ARP IP keys through one helper.
 
     Args:
-        entry (dict[str, Any]): The entry argument.
-        expected (str): The expected argument.
+        entry (dict[str, Any]): Registry or payload entry being formatted.
+        expected (str): Outcome asserted by the parameterized scenario.
     """
     assert get_arp_ip(entry) == expected
 
@@ -195,8 +195,8 @@ def test_get_smart_device_name(entry: dict[str, Any], expected: str) -> None:
     """Read SMART device identifiers from the shared helper.
 
     Args:
-        entry (dict[str, Any]): The entry argument.
-        expected (str): The expected argument.
+        entry (dict[str, Any]): Registry or payload entry being formatted.
+        expected (str): Outcome asserted by the parameterized scenario.
     """
     assert get_smart_device_name(entry) == expected
 
@@ -215,7 +215,7 @@ def test_is_usable_carp_vip_accepts_normalized_identity_without_interface(
     """CARP VIP usability should accept integer/string VHIDs without interface names.
 
     Args:
-        value (dict[str, Any]): The value argument.
+        value (dict[str, Any]): Input value exercised by the helper.
     """
     assert is_usable_carp_vip(value) is True
 
@@ -239,7 +239,7 @@ def test_is_usable_carp_vip_rejects_missing_or_blank_identity(value: Any) -> Non
     """CARP VIP usability should reject malformed or blank identity rows.
 
     Args:
-        value (Any): The value argument.
+        value (Any): Input value exercised by the helper.
     """
     assert is_usable_carp_vip(value) is False
 
@@ -262,9 +262,9 @@ def test_create_opnsense_client_builds_client_with_expected_options(
     """Create OPNsense clients with the caller-specific session and client options.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        throw_errors (bool): The throw_errors argument.
-        name (str | None): The name argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        throw_errors (bool): Whether the created client should propagate API errors.
+        name (str | None): Optional logging name assigned to the created client.
     """
     created: dict[str, Any] = {}
     session = MagicMock(spec=aiohttp.ClientSession)
@@ -274,10 +274,10 @@ def test_create_opnsense_client_builds_client_with_expected_options(
         """Capture session construction options and return a fake session.
 
         Returns:
-            aiohttp.ClientSession: The returned value.
+            aiohttp.ClientSession: aiohttp session supplied to client construction.
 
         Args:
-            hass (Any): The hass argument.
+            hass (Any): Home Assistant test instance used by the helper.
             _kwargs (Any): Additional keyword arguments accepted by the test double.
         """
         created["hass"] = hass
@@ -291,7 +291,7 @@ def test_create_opnsense_client_builds_client_with_expected_options(
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            MagicMock: The returned value.
+            MagicMock: Mock client or dependency configured for the scenario.
         """
         created["client_kwargs"] = kwargs
         return MagicMock()
@@ -303,7 +303,7 @@ def test_create_opnsense_client_builds_client_with_expected_options(
             """Capture the unsafe flag without requiring a running event loop.
 
             Args:
-                unsafe (bool): The unsafe argument.
+                unsafe (bool): Whether the fake cookie jar accepts unsafe origins.
             """
             created["cookie_jar_unsafe"] = unsafe
 
@@ -374,10 +374,10 @@ def test_create_opnsense_client_from_config_entry_forwards_entry_data(
     """Create OPNsense clients from config entries through the shared helper.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        entry_data (dict[str, Any]): The entry_data argument.
-        throw_errors (bool): The throw_errors argument.
-        expected_verify_ssl (bool): The expected_verify_ssl argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        entry_data (dict[str, Any]): Configuration data used to create the client.
+        throw_errors (bool): Whether the created client should propagate API errors.
+        expected_verify_ssl (bool): TLS verification setting expected on the client.
     """
     captured: dict[str, Any] = {}
     hass = MagicMock()
@@ -394,7 +394,7 @@ def test_create_opnsense_client_from_config_entry_forwards_entry_data(
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            MagicMock: The returned value.
+            MagicMock: Mock client or dependency configured for the scenario.
         """
         captured.update(kwargs)
         return client
@@ -438,9 +438,9 @@ def test_firewall_rule_id_from_payload(
     """Read rule IDs from payload with fallback to the payload key when safe.
 
     Args:
-        rule_key (object): The rule_key argument.
-        rule (object): The rule argument.
-        expected (str | None): The expected argument.
+        rule_key (object): Rule identifier rendered by the helper.
+        rule (object): Firewall or NAT rule rendered by the helper.
+        expected (str | None): Outcome asserted by the parameterized scenario.
     """
     assert firewall_rule_id_from_payload(rule_key, rule) == expected
 
@@ -485,7 +485,7 @@ def test_entry_type_and_identity_helpers(
     """Validate config entry identity rules for device and CARP entries.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     device_entry = make_config_entry(
         entry_id="device-entry",

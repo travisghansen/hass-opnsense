@@ -42,10 +42,10 @@ class _EntityRegistry:
         """Return an entry by entity ID.
 
         Returns:
-            Any | None: The returned value.
+            Any | None: Simulated result used by the get scenario.
 
         Args:
-            entity_id (str): The entity_id argument.
+            entity_id (str): Entity identifier looked up in the mocked registry.
         """
         return next((entry for entry in self.entries if entry.entity_id == entity_id), None)
 
@@ -53,12 +53,12 @@ class _EntityRegistry:
         """Return the entity ID matching a full registry identity.
 
         Returns:
-            str | None: The returned value.
+            str | None: Simulated result used by the get entity id scenario.
 
         Args:
-            domain (str): The domain argument.
-            platform (str): The platform argument.
-            unique_id (str): The unique_id argument.
+            domain (str): Registry filter used by the simulated lookup.
+            platform (str): Registry filter used by the simulated lookup.
+            unique_id (str): Entity or config-entry unique identifier for the scenario.
         """
         entry = next(
             (
@@ -74,10 +74,10 @@ class _EntityRegistry:
         """Apply supported registry changes in place.
 
         Returns:
-            Any: The returned value.
+            Any: Simulated result used by the update entity scenario.
 
         Args:
-            entity_id (str): The entity_id argument.
+            entity_id (str): Entity identifier looked up in the mocked registry.
             _changes (Any): Registry changes applied by the test double.
 
         Raises:
@@ -96,7 +96,7 @@ class _EntityRegistry:
         """Remove an entity by ID.
 
         Args:
-            entity_id (str): The entity_id argument.
+            entity_id (str): Entity identifier looked up in the mocked registry.
         """
         self.removed.append(entity_id)
         self.entries[:] = [entry for entry in self.entries if entry.entity_id != entity_id]
@@ -118,10 +118,10 @@ class _DeviceRegistry:
         """Return a device matching an identifier.
 
         Returns:
-            Any | None: The returned value.
+            Any | None: Simulated result used by the get device scenario.
 
         Args:
-            identifiers (set[tuple[str, str]]): The identifiers argument.
+            identifiers (set[tuple[str, str]]): Parameterized identifiers used by the get device scenario.
         """
         return next((device for device in self.devices if device.identifiers & identifiers), None)
 
@@ -129,10 +129,10 @@ class _DeviceRegistry:
         """Apply identifiers or config-entry removal.
 
         Returns:
-            Any: The returned value.
+            Any: Simulated result used by the update device scenario.
 
         Args:
-            device_id (str): The device_id argument.
+            device_id (str): Home Assistant device registry identifier to validate.
             _changes (Any): Registry changes applied by the test double.
         """
         self.updates.append((device_id, _changes))
@@ -161,10 +161,10 @@ class _ConfigEntries:
         """Return a stored config entry.
 
         Returns:
-            object | None: The returned value.
+            object | None: Simulated result used by the get entry scenario.
 
         Args:
-            entry_id (str): The entry_id argument.
+            entry_id (str): Config entry identifier used by the repair scenario.
         """
         return self._entries.get(entry_id)
 
@@ -176,8 +176,8 @@ class _DesiredTrackerEntity(Entity):
         """Initialize the desired tracker identity.
 
         Args:
-            unique_id (str): The unique_id argument.
-            mac_address (str): The mac_address argument.
+            unique_id (str): Entity or config-entry unique identifier for the scenario.
+            mac_address (str): Parameterized mac address used by the init scenario.
         """
         self._attr_unique_id = unique_id
         self._mac_address = mac_address
@@ -187,7 +187,7 @@ class _DesiredTrackerEntity(Entity):
         """Return the tracker MAC address.
 
         Returns:
-            str: The returned value.
+            str: Simulated result used by the mac address scenario.
         """
         return self._mac_address
 
@@ -196,11 +196,11 @@ def _other_config_entry(entry_id: str, unique_id: str) -> MockConfigEntry:
     """Create a config entry carrying OPNsense device unique identifier.
 
     Returns:
-        MockConfigEntry: The returned value.
+        MockConfigEntry: Simulated result used by the other config entry scenario.
 
     Args:
-        entry_id (str): The entry_id argument.
-        unique_id (str): The unique_id argument.
+        entry_id (str): Config entry identifier used by the repair scenario.
+        unique_id (str): Entity or config-entry unique identifier for the scenario.
     """
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -215,12 +215,12 @@ def _entry(unique_id: str, *, entity_id: str, device_id: str | None = None, **_a
     """Create a registry-entry stand-in.
 
     Returns:
-        Any: The returned value.
+        Any: Simulated result used by the entry scenario.
 
     Args:
-        unique_id (str): The unique_id argument.
-        entity_id (str): The entity_id argument.
-        device_id (str | None): The device_id argument.
+        unique_id (str): Entity or config-entry unique identifier for the scenario.
+        entity_id (str): Entity identifier looked up in the mocked registry.
+        device_id (str | None): Home Assistant device registry identifier to validate.
         _attrs (Any): Additional registry-entry attributes.
     """
     return SimpleNamespace(
@@ -238,10 +238,10 @@ def _config_entry_with_runtime_data(runtime_data: Any) -> MockConfigEntry:
     """Create an entry carrying explicit runtime reconciliation wiring.
 
     Returns:
-        MockConfigEntry: The returned value.
+        MockConfigEntry: Simulated result used by the config entry with runtime data scenario.
 
     Args:
-        runtime_data (Any): The runtime_data argument.
+        runtime_data (Any): Simulated runtime object exposed to diagnostics.
     """
     entry = _other_config_entry("entry-1", "new")
     object.__setattr__(entry, "runtime_data", runtime_data)
@@ -259,14 +259,14 @@ def _device(
     """Create a device-registry stand-in.
 
     Returns:
-        Any: The returned value.
+        Any: Simulated result used by the device scenario.
 
     Args:
-        device_id (str): The device_id argument.
-        identifier (str): The identifier argument.
-        config_entries (set[str] | None): The config_entries argument.
-        via_device_id (str | None): The via_device_id argument.
-        connections (set[tuple[str, str]] | None): The connections argument.
+        device_id (str): Home Assistant device registry identifier to validate.
+        identifier (str): Parameterized identifier used by the device scenario.
+        config_entries (set[str] | None): Parameterized config entries used by the device scenario.
+        via_device_id (str | None): Parameterized via device id used by the device scenario.
+        connections (set[tuple[str, str]] | None): Parameterized connections used by the device scenario.
     """
     return SimpleNamespace(
         id=device_id,
@@ -286,13 +286,13 @@ def _subject(
     """Create reconciliation with patched mutable registries.
 
     Returns:
-        tuple[RepairReconciliation, _EntityRegistry, _DeviceRegistry]: The returned value.
+        tuple[RepairReconciliation, _EntityRegistry, _DeviceRegistry]: Simulated collection used by the subject scenario.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        entities (list[Any]): The entities argument.
-        devices (list[Any]): The devices argument.
-        extra_config_entries (dict[str, MockConfigEntry] | None): The extra_config_entries argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        entities (list[Any]): Registry records exposed to the repair helper.
+        devices (list[Any]): Registry records exposed to the repair helper.
+        extra_config_entries (dict[str, MockConfigEntry] | None): Parameterized extra config entries used by the subject scenario.
     """
     entity_registry = _EntityRegistry(entities)
     device_registry = _DeviceRegistry(devices)
@@ -340,7 +340,7 @@ def test_parse_repair_marker_rejects_invalid_values(value: object) -> None:
     """Malformed markers must never start reconciliation.
 
     Args:
-        value (object): The value argument.
+        value (object): Diagnostic value being inspected or transformed.
     """
     entry = MockConfigEntry(domain=DOMAIN, data={REPAIR_MARKER_KEY: value})
 
@@ -364,7 +364,7 @@ def test_prepare_migrates_exact_prefix_in_place_and_preserves_metadata(
     """Only the exact slugged old prefix changes, preserving registry identity and metadata.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
     """
     migrated = _entry(
         "old_id_interface_lan_with_under_scores",
@@ -392,7 +392,7 @@ def test_prepare_rejects_full_identity_collision(monkeypatch: pytest.MonkeyPatch
     """A collision is determined by domain, platform, and unique ID.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
     """
     candidate = _entry("old_id_status", entity_id="sensor.old")
     collision = _entry("new_id_status", entity_id="sensor.other")
@@ -408,7 +408,7 @@ def test_prepare_migrates_primary_device_or_rejects_foreign_collision(
     """The primary device migrates in place, while a foreign target blocks repair.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
     """
     old = _device("main", "old_id")
     reconciliation, _, _ = _subject(monkeypatch, [], [old])
@@ -438,7 +438,7 @@ def test_prepare_keeps_all_identifiers_except_old_domain_on_main_device(
     """Preserve unrelated identifiers when the target already has both old and new IDs.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
     """
     main_device = _device(
         "main",
@@ -477,7 +477,7 @@ def test_finalize_removes_only_stale_snapshot_and_preserves_device_associations(
     """Finalization removes stale pre-repair rows but never new rows or used devices.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
     """
     surviving = _entry("old_id_keep", entity_id="sensor.keep", device_id="used")
     stale = _entry("old_id_stale", entity_id="sensor.stale", device_id="obsolete")
@@ -515,7 +515,7 @@ def test_finalize_preserves_desired_disabled_tracker_device_by_mac(
     """A desired disabled tracker keeps its MAC device without an entity device ID.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
     """
     tracker = _entry(
         "old_id_mac_aa_bb_cc_dd_ee_ff",
@@ -555,7 +555,7 @@ def test_prepare_and_finalize_are_idempotent_after_partial_retry(
     """A retry safely handles already-migrated and still-old candidates.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
     """
     first = _entry("old_id_first", entity_id="sensor.first")
     second = _entry("old_id_second", entity_id="sensor.second")
@@ -598,9 +598,9 @@ def test_prepare_wraps_registry_identifier_migration_failure(
     """Update errors during identifier migration are wrapped as repair errors.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        failure_factory (tuple[Callable[[], Exception], type[Exception]]): The failure_factory
-            argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        failure_factory (tuple[Callable[[], Exception], type[Exception]]): Factory and expected
+            exception type for the parameterized registry failure.
     """
     candidate = _entry("old_id_sensor", entity_id="sensor.old")
     reconciliation, entity_registry, _ = _subject(monkeypatch, [candidate], [])
@@ -624,7 +624,7 @@ def test_finalize_wraps_detach_failure_as_registry_error(
     """Finalization surfaces detach failures as a repair reconciliation error.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
     """
     stale = _entry("old_id_stale", entity_id="sensor.stale")
     reconciliation, _, device_registry = _subject(
@@ -668,7 +668,7 @@ def test_finalize_reassigns_shared_tracker_parent_to_remaining_router(
     """Shared tracker devices are reparented when another router still owns shared trackers.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
     """
     stale = _entry("old_id_stale", entity_id="sensor.stale", device_id="shared-device")
     surviving_entry = _other_config_entry("entry-2", "survivor_router")
@@ -703,7 +703,7 @@ def test_finalize_clears_parent_from_shared_tracker_when_no_replacement_exists(
     """Shared tracker parent reference is cleared when no surviving router can be resolved.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
     """
     stale = _entry("old_id_stale", entity_id="sensor.stale", device_id="shared-device")
     current_router = _device("current_router", "new_id")

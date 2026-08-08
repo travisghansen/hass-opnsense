@@ -64,7 +64,7 @@ async def test_async_setup_entry_invalid_state(
     """async_setup_entry should do nothing when coordinator.data is invalid.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry()
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -78,7 +78,7 @@ async def test_async_setup_entry_invalid_state(
 
         Args:
             entities (Iterable[Any]): Entities provided by pytest or the test case.
-            _update_before_add (bool): The _update_before_add argument.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         nonlocal called
         called = True
@@ -94,7 +94,7 @@ async def test_carp_entry_setup_has_exact_read_only_vip_inventory(
     """CARP entries should expose only the responder, summary, and VIP sensors.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry(
         data={"entry_type": "carp"},
@@ -125,8 +125,8 @@ async def test_carp_entry_setup_has_exact_read_only_vip_inventory(
         """Collect entities created by the sensor platform.
 
         Args:
-            entities (Iterable[Any]): The entities argument.
-            _update_before_add (bool): The _update_before_add argument.
+            entities (Iterable[Any]): Entities captured by the platform add callback.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         created.extend(entities)
 
@@ -188,9 +188,9 @@ async def test_carp_status_description_preserves_entry_mode_naming(
     """CARP status should keep legacy device naming and translated CARP naming.
 
     Args:
-        entry_data (dict[str, Any]): The entry_data argument.
-        expected_translation_key (str | None): The expected_translation_key argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        entry_data (dict[str, Any]): Config-entry data used for this scenario.
+        expected_translation_key (str | None): Expected translation key exposed by the entity.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry(data=entry_data)
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -212,7 +212,7 @@ async def test_carp_entry_failover_keeps_vip_identity_and_updates_responder(
     """CARP failover should update the responder while retaining each VIP entity.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry(
         data={"entry_type": "carp"},
@@ -247,8 +247,8 @@ async def test_carp_entry_failover_keeps_vip_identity_and_updates_responder(
         """Collect entities created by the sensor platform.
 
         Args:
-            entities (Iterable[Any]): The entities argument.
-            _update_before_add (bool): The _update_before_add argument.
+            entities (Iterable[Any]): Entities captured by the platform add callback.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         created.extend(entities)
 
@@ -306,8 +306,8 @@ def test_carp_vip_sensor_clears_attributes_when_becoming_unavailable(
     """A CARP VIP should not retain attributes after its payload becomes unusable.
 
     Args:
-        unavailable_scenario (str): The unavailable_scenario argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        unavailable_scenario (str): Coordinator-data variant that should make the entity unavailable.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry(data={"entry_type": "carp"}, entry_id="carp-entry")
     interface = {
@@ -360,8 +360,8 @@ def test_carp_active_responder_unavailable_without_name(
     """The active responder sensor should fail closed for missing or blank names.
 
     Args:
-        system_info (dict[str, Any]): The system_info argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        system_info (dict[str, Any]): System metadata used to construct entity device information.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry(data={"entry_type": "carp"}, entry_id="carp-entry")
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -391,7 +391,7 @@ def test_carp_active_responder_unavailable_without_system_info(
     """The active responder should fail closed when system information is absent.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coordinator.data = {}
@@ -418,7 +418,7 @@ def test_carp_value_normalization_handles_empty_and_conversion_errors() -> None:
             """Raise a representative conversion error.
 
             Returns:
-                str: The returned value.
+                str: No value because conversion always raises.
 
             Raises:
                 ValueError: Always raised to simulate a failed string conversion.
@@ -437,8 +437,8 @@ def test_carp_vip_subnet_normalization_fallbacks(subnet: str, expected: str) -> 
     """CARP subnet normalization should handle blanks and non-IP identifiers.
 
     Args:
-        subnet (str): The subnet argument.
-        expected (str): The expected argument.
+        subnet (str): Subnet value exercised by the tracker scenario.
+        expected (str): Expected result asserted for the parameterized case.
     """
     assert sensor_module._normalize_carp_vip_subnet(subnet) == expected
 
@@ -448,7 +448,7 @@ def test_parse_carp_vip_sensor_key_rejects_blank_components(key: str) -> None:
     """CARP VIP keys with blank identity components should be rejected.
 
     Args:
-        key (str): The key argument.
+        key (str): Entity or payload key exercised by the parameterized case.
     """
     assert sensor_module._parse_carp_vip_sensor_key(key) is None
 
@@ -465,8 +465,8 @@ async def test_compile_carp_vip_sensors_rejects_malformed_containers(
     """CARP VIP compilation should reject malformed state and interface containers.
 
     Args:
-        state (Any): The state argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        state (Any): Coordinator payload used for this test scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coordinator.data = state
@@ -483,7 +483,7 @@ async def test_compile_carp_vip_sensors_skips_bad_rows_and_duplicates(
     """CARP VIP compilation should skip malformed, incomplete, and duplicate rows.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     valid = {"vhid": "1", "subnet": "192.0.2.1", "status": "MASTER"}
     state = {
@@ -505,7 +505,7 @@ def test_carp_vip_sensor_skips_malformed_and_nonmatching_rows(
     """CARP VIP updates should ignore unusable rows and fail closed without a match.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coordinator.data = {
@@ -535,7 +535,7 @@ def test_carp_vip_sensor_non_string_status_uses_failure_icon(
     """CARP VIP sensors should use the failure icon for non-string states.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     sensor = OPNsenseCarpVipSensor(
         config_entry=make_config_entry(data={"entry_type": "carp"}),
@@ -554,7 +554,7 @@ async def test_static_key_sensor_cpu_and_boot_and_certificates(
     """Static key sensors should expose CPU, boot time, and certificate counts.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coordinator.data = {
@@ -592,7 +592,7 @@ async def test_compile_gateway_sensors_creates_disabled_address_sensor(
     """Gateway address sensors should be created and disabled by default.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -627,7 +627,7 @@ async def test_compile_gateway_sensors_keeps_gateway_id_in_entity_key(
     """Gateway display name should not be used as the entity key.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry({"device_unique_id": "router-id"})
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -674,9 +674,9 @@ def test_carp_sensor_unavailable_variants(
     """Parameterised unavailable variants for CARP sensor.
 
     Args:
-        coord_data (Any): The coord_data argument.
-        desc_subnet (Any): The desc_subnet argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coord_data (Any): Coordinator payload used for this test scenario.
+        desc_subnet (Any): Subnet embedded in the entity description.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord.data = coord_data
@@ -698,7 +698,7 @@ def test_carp_sensor_state_wrong_type(make_config_entry: Callable[..., MockConfi
     """CARP sensor should be unavailable when coordinator.data is not a mapping (e.g., list).
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord.data = []
@@ -734,9 +734,9 @@ def test_sensors_unavailable_on_non_mapping_state(
     """Sensors should mark themselves unavailable when coordinator.data is not a mapping.
 
     Args:
-        desc_key (Any): The desc_key argument.
-        cls (Any): The cls argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        desc_key (Any): Entity description key selected for the scenario.
+        cls (Any): Entity class expected to handle the selected description.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord.data = []
@@ -782,9 +782,9 @@ def test_vnstat_sensor_fails_closed_for_malformed_payloads(
     """Vnstat sensors should become unavailable for malformed payload shapes.
 
     Args:
-        coord_data (Any): The coord_data argument.
-        desc_key (str): The desc_key argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coord_data (Any): Coordinator payload used for this test scenario.
+        desc_key (str): Entity description key selected for the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -831,12 +831,12 @@ def test_gateway_sensor_value_parsing(
     """Parameterized checks for gateway value parsing and availability.
 
     Args:
-        prop_name (Any): The prop_name argument.
-        input_value (Any): The input_value argument.
-        expected_available (bool): The expected_available argument.
-        expected_value (Any): The expected_value argument.
-        expect_down_icon (Any): The expect_down_icon argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        prop_name (Any): Entity property inspected by the test.
+        input_value (Any): Raw value passed through the formatting helper.
+        expected_available (bool): Expected entity availability for the scenario.
+        expected_value (Any): Expected entity value asserted by the test.
+        expect_down_icon (Any): Expected icon for a down-state entity.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
     gw = {"name": "gw1", prop_name: input_value}
@@ -877,7 +877,7 @@ def test_gateway_sensor_resolves_display_name_when_mapping_key_differs(
     """Gateway sensor should resolve payload when description key uses display name.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -920,10 +920,10 @@ async def test_gateway_compile_and_lookup_normalizes_display_name(
     """Compile and lookup should agree on normalized gateway display names.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        gateway_key (str): The gateway_key argument.
-        gateway_name (Any): The gateway_name argument.
-        expected_display_name (str): The expected_display_name argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        gateway_key (str): Gateway identifier selected from coordinator data.
+        gateway_name (Any): Gateway display-name value supplied by the coordinator.
+        expected_display_name (str): Expected human-readable entity name.
     """
     entry = make_config_entry()
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -971,8 +971,8 @@ async def test_compile_vpn_sensors_falls_back_to_uuid_when_name_is_unusable(
     """VPN sensor compilation should use uuid for display name when `name` is unusable.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        instance (dict[str, Any]): The instance argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        instance (dict[str, Any]): VPN instance payload compiled into an entity.
     """
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coordinator.data = {
@@ -1000,7 +1000,7 @@ def test_vpn_sensor_key_malformed_key_marked_unavailable(
     """Malformed VPN sensor keys should fail closed to unavailable instead of raising.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord.data = {"openvpn": {"servers": {"uuid1": {"name": "ovpn", "status": "up"}}}}
@@ -1027,7 +1027,7 @@ def test_gateway_sensor_missing_and_missing_prop(
     """Gateway sensor should be unavailable when gateway missing or property missing.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
 
@@ -1062,7 +1062,7 @@ def test_gateway_lookup_handles_invalid_payloads_and_casefold_match(
     """Gateway lookup should skip invalid payloads and fall back to case-insensitive names.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -1095,8 +1095,8 @@ def test_gateway_sensor_invalid_description_key_unavailable(
     """Gateway sensor should be unavailable when its description key cannot be parsed.
 
     Args:
-        description_key (str): The description_key argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        description_key (str): Sensor description key selected for the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -1120,7 +1120,7 @@ def test_gateway_sensor_invalid_icon_key_uses_description_icon(
     """Gateway sensor icon should fall back when its description key cannot be parsed.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -1178,11 +1178,11 @@ def test_carp_sensor_attributes_and_icon(
     """Parameterized attribute and icon checks for CARP sensor.
 
     Args:
-        carp_entry (Any): The carp_entry argument.
-        expected_value (Any): The expected_value argument.
-        expected_icon (Any): The expected_icon argument.
-        expect_keys (Any): The expect_keys argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        carp_entry (Any): CARP interface payload supplied to switch compilation.
+        expected_value (Any): Expected entity value asserted by the test.
+        expected_icon (Any): Expected icon selected for the scenario.
+        expect_keys (Any): Expected keys present in the compiled entity collection.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
 
@@ -1345,10 +1345,10 @@ def test_carp_status_sensor_states_and_attributes(
     """Validate aggregate CARP status sensor state, icon, and attributes.
 
     Args:
-        summary (dict[str, Any]): The summary argument.
-        expected_value (str): The expected_value argument.
-        expected_icon (str): The expected_icon argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        summary (dict[str, Any]): Aggregate lease mapping supplied by the coordinator.
+        expected_value (str): Expected entity value asserted by the test.
+        expected_icon (str): Expected icon selected for the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -1384,7 +1384,7 @@ def test_carp_status_sensor_normalizes_state_spacing_and_icon(
     """CARP status sensor should normalize spacing/underscores for non-special values.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -1434,8 +1434,8 @@ def test_carp_status_sensor_fails_closed_for_missing_state(
     """CARP status sensor should be unavailable when summary state is missing.
 
     Args:
-        summary_state (Any): The summary_state argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        summary_state (Any): Aggregate lease state supplied for the summary sensor.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -1476,9 +1476,9 @@ def test_build_carp_interface_sensor_key(
     """Build helper should produce stable CARP interface keys for edge cases.
 
     Args:
-        interface_name (str | None): The interface_name argument.
-        subnet (str): The subnet argument.
-        expected_key (str): The expected_key argument.
+        interface_name (str | None): Interface name used to derive the sensor identity.
+        subnet (str): Subnet value exercised by the tracker scenario.
+        expected_key (str): Expected description key selected by entity compilation.
     """
     assert sensor_module._build_carp_interface_sensor_key(interface_name, subnet) == expected_key
 
@@ -1500,8 +1500,8 @@ def test_build_carp_vip_sensor_key_normalizes_equivalent_subnet_text(
     """Equivalent subnet text forms should map to the same CARP VIP key.
 
     Args:
-        subnet (str): The subnet argument.
-        equivalent_subnet (str): The equivalent_subnet argument.
+        subnet (str): Subnet value exercised by the tracker scenario.
+        equivalent_subnet (str): Equivalent subnet representation used to verify stable identity.
     """
     assert sensor_module._build_carp_vip_sensor_key(
         "7", subnet
@@ -1527,9 +1527,9 @@ async def test_carp_vip_sensor_matches_canonicalized_subnet_identity_on_updates(
     """CARP VIP updates should match across textual subnet variants.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        initial_subnet (str): The initial_subnet argument.
-        updated_subnet (str): The updated_subnet argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        initial_subnet (str): Subnet value present before the coordinator refresh.
+        updated_subnet (str): Subnet value supplied by the refreshed coordinator payload.
     """
     entry = make_config_entry(
         data={"entry_type": "carp"},
@@ -1558,8 +1558,8 @@ async def test_carp_vip_sensor_matches_canonicalized_subnet_identity_on_updates(
         """Collect entities created by async_setup_entry.
 
         Args:
-            entities (Iterable[Any]): The entities argument.
-            _update_before_add (bool): The _update_before_add argument.
+            entities (Iterable[Any]): Entities captured by the platform add callback.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         created.extend(entities)
 
@@ -1606,8 +1606,8 @@ def test_parse_carp_interface_sensor_key(
     """Parse helper should extract valid slugs and reject malformed keys.
 
     Args:
-        key (str): The key argument.
-        expected (tuple[str, str] | None): The expected argument.
+        key (str): Entity or payload key exercised by the parameterized case.
+        expected (tuple[str, str] | None): Expected result asserted for the parameterized case.
     """
     assert sensor_module._parse_carp_interface_sensor_key(key) == expected
 
@@ -1619,7 +1619,7 @@ async def test_compile_carp_interface_sensor_name_includes_interface(
     """Compiled CARP interface sensor names should include interface and VIP address.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -1651,7 +1651,7 @@ async def test_compile_carp_interface_sensor_fallbacks_to_unknown_interface(
     """Compiled CARP interface sensor key should use unknown for unslugifiable interface names.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -1681,7 +1681,7 @@ def test_carp_interface_sensor_unavailable_for_malformed_key(
     """CARP interface sensor should be unavailable when description key is malformed.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coordinator.data = {
@@ -1712,7 +1712,7 @@ def test_carp_interface_sensor_disambiguates_same_subnet_by_interface(
     """CARP interface sensor should match both subnet and interface slug.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coordinator.data = {
@@ -1789,11 +1789,11 @@ def test_compiled_sensor_variants(
     """Table-driven checks for several sensor types using a common sample state.
 
     Args:
-        desc_key (Any): The desc_key argument.
-        cls (Any): The cls argument.
-        main_check (Any): The main_check argument.
-        extra_check (Any): The extra_check argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        desc_key (Any): Entity description key selected for the scenario.
+        cls (Any): Entity class expected to handle the selected description.
+        main_check (Any): Assertion callback for the entity primary value.
+        extra_check (Any): Assertion callback for additional entity attributes.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {
         "carp": {
@@ -1924,13 +1924,13 @@ def test_vpn_sensor_variants(
     """Parameterised tests for OPNsenseVPNSensor to hit key branches in the update handler.
 
     Args:
-        state (dict[str, Any]): The state argument.
-        desc_key (Any): The desc_key argument.
-        expected_available (bool): The expected_available argument.
-        expected_value (Any): The expected_value argument.
-        expect_clients (Any): The expect_clients argument.
-        expect_extra_keys (Any): The expect_extra_keys argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        state (dict[str, Any]): Coordinator payload used for this test scenario.
+        desc_key (Any): Entity description key selected for the scenario.
+        expected_available (bool): Expected entity availability for the scenario.
+        expected_value (Any): Expected entity value asserted by the test.
+        expect_clients (Any): Expected client details in the sensor attributes.
+        expect_extra_keys (Any): Expected keys present in the entity extra attributes.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
 
@@ -1966,7 +1966,7 @@ def test_vpn_sensor_unavailable_when_instance_container_is_not_mapping(
     """Malformed VPN instance container should mark VPNSensor unavailable.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -1995,7 +1995,7 @@ def test_vpn_sensor_skips_malformed_client_rows(
     """Malformed nested VPN client rows should be skipped and valid clients still parsed.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {
         "openvpn": {
@@ -2042,8 +2042,8 @@ def test_vpn_sensor_handles_exceptions_from_instance_get(
     requested exception so the handler exercises its defensive exception path.
 
     Args:
-        exc_type (type[Exception]): The exc_type argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        exc_type (type[Exception]): Specific client exception raised by the failure scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
 
     class BrokenInstance(dict):
@@ -2066,7 +2066,7 @@ def test_vpn_sensor_handles_exceptions_from_instance_get(
                 kwargs (object): Additional keyword arguments accepted by the test double.
 
             Returns:
-                Never: The returned value.
+                Never: No value because the test double always raises.
 
             Raises:
                 self._exc: Always raised to exercise sensor exception handling.
@@ -2114,9 +2114,9 @@ def test_vpn_sensor_fails_closed_for_malformed_instance_members(
     """VPN sensor should mark unavailable when matched instance members are malformed.
 
     Args:
-        coord_data (dict[str, Any]): The coord_data argument.
-        key (str): The key argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coord_data (dict[str, Any]): Coordinator payload used for this test scenario.
+        key (str): Entity or payload key exercised by the parameterized case.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -2159,11 +2159,11 @@ def test_temp_sensor_basic_variants(
     """Temp sensor should handle non-mapping/missing and successful value extraction.
 
     Args:
-        coord_data (Any): The coord_data argument.
-        expected_available (bool): The expected_available argument.
-        expected_value (Any): The expected_value argument.
-        expect_device (Any): The expect_device argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coord_data (Any): Coordinator payload used for this test scenario.
+        expected_available (bool): Expected entity availability for the scenario.
+        expected_value (Any): Expected entity value asserted by the test.
+        expect_device (Any): Expected device association for the sensor.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
 
@@ -2203,8 +2203,8 @@ def test_temp_sensor_invalid_description_key_marked_unavailable(
     """Invalid temp sensor keys should fail closed to unavailable instead of raising.
 
     Args:
-        description_key (str): The description_key argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        description_key (str): Sensor description key selected for the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord.data = {"telemetry": {"temps": {"sensor1": {"temperature": 55, "device_id": "dev0"}}}}
@@ -2229,7 +2229,7 @@ def test_temp_sensor_malformed_temps_container_on_update(
     """Temp sensor should become unavailable when a later update has malformed temps.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
 
@@ -2262,8 +2262,8 @@ def test_temp_sensor_handles_index_exceptions(
     """Temp sensor should mark itself unavailable when indexing temp raises exceptions.
 
     Args:
-        exc_type (type[Exception]): The exc_type argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        exc_type (type[Exception]): Specific client exception raised by the failure scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
 
     class BrokenTemp:
@@ -2281,7 +2281,7 @@ def test_temp_sensor_handles_index_exceptions(
             """Bool.
 
             Returns:
-                bool: The returned value.
+                bool: Truthy result allowing the mapping access failure to run.
             """
             return True
 
@@ -2321,7 +2321,7 @@ def test_temp_sensor_fails_closed_for_malformed_telemetry_payload(
     """Temp sensor should mark unavailable when telemetry is not a mapping.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -2346,7 +2346,7 @@ def test_filesystem_sensor_fails_closed_for_malformed_telemetry_payload(
     """Filesystem sensor should mark unavailable when telemetry is not a mapping.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -2389,8 +2389,8 @@ def test_filesystem_sensor_fails_closed_for_malformed_filesystems(
     """Filesystem sensor should become unavailable for malformed filesystem payloads.
 
     Args:
-        coord_data (Any): The coord_data argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coord_data (Any): Coordinator payload used for this test scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -2442,10 +2442,10 @@ def test_vpn_sensor_icon_variants(
     """Verify VPNSensor.icon for status up/down and fallback to description icon for non-status.
 
     Args:
-        desc_key (Any): The desc_key argument.
-        state (dict[str, Any]): The state argument.
-        expect_close_icon (Any): The expect_close_icon argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        desc_key (Any): Entity description key selected for the scenario.
+        state (dict[str, Any]): Coordinator payload used for this test scenario.
+        expect_close_icon (Any): Expected icon for a closed-state entity.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
 
@@ -2495,7 +2495,7 @@ def test_build_vpn_rate_sensor_description_suggests_megabits_per_second(
     """VPN byte-rate sensors should prefer megabits per second for display.
 
     Args:
-        prop_name (str): The prop_name argument.
+        prop_name (str): Entity property inspected by the test.
     """
     description = sensor_module._build_vpn_sensor_description(
         "wireguard",
@@ -2527,8 +2527,8 @@ def test_slugify_filesystem_mountpoint(input_value: Any, expected: str) -> None:
     """slugify_filesystem_mountpoint should convert mountpoints to slugs.
 
     Args:
-        input_value (Any): The input_value argument.
-        expected (str): The expected argument.
+        input_value (Any): Raw value passed through the formatting helper.
+        expected (str): Expected result asserted for the parameterized case.
     """
     assert slugify_filesystem_mountpoint(input_value) == expected
 
@@ -2549,8 +2549,8 @@ def test_normalize_filesystem_mountpoint(input_value: Any, expected: str) -> Non
     """normalize_filesystem_mountpoint should strip trailing slashes and handle root.
 
     Args:
-        input_value (Any): The input_value argument.
-        expected (str): The expected argument.
+        input_value (Any): Raw value passed through the formatting helper.
+        expected (str): Expected result asserted for the parameterized case.
     """
     assert normalize_filesystem_mountpoint(input_value) == expected
 
@@ -2576,11 +2576,11 @@ def test_static_cpu_zero_variants(
     that reuses the previous sensor value.
 
     Args:
-        cpu_map (dict): The cpu_map argument.
-        previous (int | None): The previous argument.
-        expected_available (bool): The expected_available argument.
-        expected_value (int | None): The expected_value argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        cpu_map (dict): CPU usage mapping supplied by the coordinator.
+        previous (int | None): Previously stored CPU counter used to calculate the next value.
+        expected_available (bool): Expected entity availability for the scenario.
+        expected_value (int | None): Expected entity value asserted by the test.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord.data = {"telemetry": {"cpu": cpu_map}}
@@ -2609,7 +2609,7 @@ def test_gateway_empty_string_unavailable(
     """Gateway sensor should be unavailable for empty status strings.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {"gateways": {"gw1": {"name": "gw1", "status": ""}}}
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -2632,7 +2632,7 @@ def test_interface_status_icon_up(make_config_entry: Callable[..., MockConfigEnt
     """Interface status sensor shows an 'up' icon when status is up.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {"interfaces": {"lan": {"name": "LAN", "status": "up", "interface": "lan0"}}}
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -2657,7 +2657,7 @@ def test_interface_sensor_with_dotted_key_parses_interface_name(
     """Interface sensor should parse dotted interface keys.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {
         "interfaces": {
@@ -2698,7 +2698,7 @@ async def test_interface_rate_sensor_unavailable_when_counter_disappears_mid_ref
     """Interface rate sensors should become unavailable when a derived counter disappears.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {
         "interfaces": {
@@ -2754,8 +2754,8 @@ def test_interface_sensor_invalid_description_key_unavailable(
     """Interface sensor should be unavailable when its description key cannot be parsed.
 
     Args:
-        description_key (str): The description_key argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        description_key (str): Sensor description key selected for the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -2783,7 +2783,7 @@ def test_interface_sensor_invalid_icon_key_uses_description_icon(
     """Interface sensor icon should fall back when its description key cannot be parsed.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -2808,7 +2808,7 @@ def test_gateway_sensor_with_dotted_key_parses_gateway_name_and_icon(
     """Gateway sensor should parse dotted gateway names and status icon logic.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {
         "gateways": {
@@ -2893,13 +2893,13 @@ def test_interface_sensor_enabled_state_handling(
     """Interface sensors should handle false and unknown enabled states.
 
     Args:
-        description_key (str): The description_key argument.
-        description_name (str): The description_name argument.
-        interface_values (dict[str, Any]): The interface_values argument.
-        expected_available (bool): The expected_available argument.
-        expected_native_value (Any): The expected_native_value argument.
-        expected_enabled_attribute (bool | None): The expected_enabled_attribute argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        description_key (str): Sensor description key selected for the scenario.
+        description_name (str): Human-readable description name expected for the sensor.
+        interface_values (dict[str, Any]): Interface payload used to evaluate sensor availability and value.
+        expected_available (bool): Expected entity availability for the scenario.
+        expected_native_value (Any): Expected native sensor value asserted by the test.
+        expected_enabled_attribute (bool | None): Expected enabled attribute in the sensor state.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {
         "interfaces": {
@@ -2954,8 +2954,8 @@ def test_interface_sensor_fails_closed_for_missing_interface_payloads(
     """Interface sensor should be unavailable when interface state cannot be found.
 
     Args:
-        coord_data (dict[str, Any]): The coord_data argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coord_data (dict[str, Any]): Coordinator payload used for this test scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -2990,9 +2990,9 @@ def test_dhcp_leases_all_non_mapping(
     """DHCP Leases 'all' sensor should be unavailable when leases or lease_interfaces are not mappings.
 
     Args:
-        leases_val (Any): The leases_val argument.
-        lease_interfaces_val (Any): The lease_interfaces_val argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        leases_val (Any): Lease collection supplied to the DHCP sensor compiler.
+        lease_interfaces_val (Any): Per-interface lease mapping supplied to the compiler.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
 
@@ -3018,8 +3018,8 @@ def test_dhcp_leases_sensor_handles_none_payload(
     """DHCP leases sensors should be unavailable when coordinator data contains a null DHCP payload.
 
     Args:
-        key (str): The key argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        key (str): Entity or payload key exercised by the parameterized case.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
 
@@ -3054,8 +3054,8 @@ def test_dhcp_leases_interface_sensor_handles_non_mapping_leases(
     """DHCP interface leases sensor should be unavailable when leases are not a mapping.
 
     Args:
-        leases (Any): The leases argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        leases (Any): Lease records supplied to the DHCP sensor compiler.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
 
@@ -3089,7 +3089,7 @@ def test_dhcp_leases_interface_sensor_handles_non_list_interface(
     """DHCP interface lease sensor should be unavailable when interface leases are not a list.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
 
@@ -3140,9 +3140,9 @@ def test_dhcp_leases_sensor_fails_closed_for_scalar_lease_rows(
     """DHCP leases sensors should mark unavailable when a lease row is malformed.
 
     Args:
-        key (str): The key argument.
-        coord_data (dict[str, Any]): The coord_data argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        key (str): Entity or payload key exercised by the parameterized case.
+        coord_data (dict[str, Any]): Coordinator payload used for this test scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -3181,8 +3181,8 @@ def test_dhcp_leases_handles_exceptions(
     requested exception so the aggregation loop exercises its exception path.
 
     Args:
-        exc_type (type[Exception]): The exc_type argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        exc_type (type[Exception]): Specific client exception raised by the failure scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
 
     class BrokenLease:
@@ -3204,7 +3204,7 @@ def test_dhcp_leases_handles_exceptions(
                 kwargs (object): Additional keyword arguments accepted by the test double.
 
             Returns:
-                Never: The returned value.
+                Never: No value because the test double always raises.
 
             Raises:
                 self._exc: Always raised to exercise lease sensor handling.
@@ -3240,8 +3240,8 @@ def test_dhcp_lease_interfaces_items_raises(
     """Ensure exceptions raised by lease_interfaces.items() are caught and sensor becomes unavailable.
 
     Args:
-        exc_type (type[Exception]): The exc_type argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        exc_type (type[Exception]): Specific client exception raised by the failure scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
 
     class BrokenLeaseInterfaces(dict):
@@ -3251,7 +3251,7 @@ def test_dhcp_lease_interfaces_items_raises(
             """Raise the parametrized exception when lease interfaces are iterated.
 
             Returns:
-                Never: The returned value.
+                Never: No value because the test double always raises.
 
             Raises:
                 exc_type: Always raised to test interface iteration failures.
@@ -3287,8 +3287,8 @@ def test_dhcp_leases_iterable_raises_on_iter(
     """Ensure exceptions raised while iterating the leases list are caught and sensor becomes unavailable.
 
     Args:
-        exc_type (type[Exception]): The exc_type argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        exc_type (type[Exception]): Specific client exception raised by the failure scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
 
     class BrokenLeaseList(list):
@@ -3298,7 +3298,7 @@ def test_dhcp_leases_iterable_raises_on_iter(
             """Raise the parametrized exception when the lease list is iterated.
 
             Returns:
-                Never: The returned value.
+                Never: No value because the test double always raises.
 
             Raises:
                 exc_type: Always raised to test iterable failure handling.
@@ -3336,7 +3336,7 @@ def test_dhcp_leases_inner_except_writes_unavailable(
     proves the inner exception branch executed before the state update.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
 
     class BrokenLease:
@@ -3350,7 +3350,7 @@ def test_dhcp_leases_inner_except_writes_unavailable(
                 kwargs (object): Additional keyword arguments accepted by the test double.
 
             Returns:
-                Never: The returned value.
+                Never: No value because the test double always raises.
 
             Raises:
                 TypeError: If a supplied argument has an unsupported type.
@@ -3393,7 +3393,7 @@ def test_dhcp_leases_items_except_writes_unavailable(
     """Verify exceptions from lease_interfaces.items() cause unavailable state and write.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
 
     class BrokenLeaseInterfaces(dict):
@@ -3403,7 +3403,7 @@ def test_dhcp_leases_items_except_writes_unavailable(
             """Raise ``KeyError`` when interface items are requested.
 
             Returns:
-                Never: The returned value.
+                Never: No value because the test double always raises.
 
             Raises:
                 KeyError: Always raised to exercise item-iteration fallback handling.
@@ -3450,8 +3450,8 @@ def test_dhcp_leases_per_interface_handles_exceptions(
     lease object raises inside the surrounding exception handler.
 
     Args:
-        exc_type (type[Exception]): The exc_type argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        exc_type (type[Exception]): Specific client exception raised by the failure scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
 
     class BrokenLease(dict):
@@ -3474,7 +3474,7 @@ def test_dhcp_leases_per_interface_handles_exceptions(
                 kwargs (object): Additional keyword arguments accepted by the test double.
 
             Returns:
-                Never: The returned value.
+                Never: No value because the test double always raises.
 
             Raises:
                 self._exc: Always raised to test per-interface error handling.
@@ -3512,10 +3512,10 @@ def capture_reconciled_desired_entities(
     """Capture reconciliation desired entities during setup.
 
     Returns:
-        dict[str, Any]: The returned value.
+        dict[str, Any]: Mutable capture populated by the reconciliation callback.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
     """
     captured: dict[str, Any] = {}
 
@@ -3527,9 +3527,9 @@ def capture_reconciled_desired_entities(
         """Capture entities passed to ``record_desired_entities``.
 
         Args:
-            _entry (MockConfigEntry): The _entry argument.
-            _platform (str): The _platform argument.
-            entities (Any | None): The entities argument.
+            _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
+            _platform (str): Platform name passed through the mocked loader.
+            entities (Any | None): Entities captured by the platform add callback.
         """
         captured["entities"] = entities
 
@@ -3697,11 +3697,11 @@ async def test_async_setup_entry_handles_partial_or_malformed_dynamic_sensor_pay
     """Partial or malformed dynamic sensor payloads should not block setup.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        state (dict[str, Any]): The state argument.
-        expected_key (str | None): The expected_key argument.
-        expected_name (str | None): The expected_name argument.
-        absent_classes (tuple[type[object], ...]): The absent_classes argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        state (dict[str, Any]): Coordinator payload used for this test scenario.
+        expected_key (str | None): Expected description key selected by entity compilation.
+        expected_name (str | None): Expected entity name asserted by the test.
+        absent_classes (tuple[type[object], ...]): Entity classes expected to be absent from compilation.
     """
     entry, _coord = _setup_entry_with_all_syncs(state, make_config_entry)
     created: list[Any] = []
@@ -3711,7 +3711,7 @@ async def test_async_setup_entry_handles_partial_or_malformed_dynamic_sensor_pay
 
         Args:
             entities (Iterable[Any]): Entities provided by pytest or the test case.
-            _update_before_add (bool): The _update_before_add argument.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         created.extend(entities)
 
@@ -3744,10 +3744,10 @@ async def test_async_setup_entry_records_none_for_partial_vpn_inventory(
     """A valid VPN side alone must not mark sensor reconciliation complete.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        state (dict[str, Any]): The state argument.
-        description (str): The description argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        state (dict[str, Any]): Coordinator payload used for this test scenario.
+        description (str): Scenario label used to identify the parameterized case.
     """
     config_entry = make_config_entry(
         {
@@ -3774,9 +3774,9 @@ async def test_async_setup_entry_records_none_for_partial_vpn_inventory(
         """Capture the desired-entity payload sent to reconciliation.
 
         Args:
-            _entry (MockConfigEntry): The _entry argument.
-            _platform (str): The _platform argument.
-            entities (Any | None): The entities argument.
+            _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
+            _platform (str): Platform name passed through the mocked loader.
+            entities (Any | None): Entities captured by the platform add callback.
         """
         recorded["entities"] = entities
 
@@ -3853,11 +3853,11 @@ async def test_async_setup_entry_marks_malformed_sensor_rows_incomplete(
     """Malformed rows prevent reconciliation while valid sibling rows still compile.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        state (dict[str, Any]): The state argument.
-        sync_option (str): The sync_option argument.
-        expected_key (str): The expected_key argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        state (dict[str, Any]): Coordinator payload used for this test scenario.
+        sync_option (str): Config option enabled for the entity-compilation scenario.
+        expected_key (str): Expected description key selected by entity compilation.
     """
     config_entry = setup_sensor_reconciliation_entry(
         make_config_entry,
@@ -3885,8 +3885,8 @@ async def test_async_setup_entry_ignores_unconsumed_openvpn_client_rows(
     """OpenVPN client rows do not affect sensor reconciliation or compilation.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = setup_sensor_reconciliation_entry(
         make_config_entry,
@@ -4140,19 +4140,19 @@ async def test_async_setup_entry_records_none_or_authoritative_empty_for_invento
     """Track missing vs authoritative-empty inventories across sensor sync payloads.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        state (dict[str, Any]): The state argument.
-        sync_telemetry (bool): The sync_telemetry argument.
-        sync_vnstat (bool): The sync_vnstat argument.
-        sync_speedtest (bool): The sync_speedtest argument.
-        sync_smart (bool): The sync_smart argument.
-        sync_gateways (bool): The sync_gateways argument.
-        sync_interfaces (bool): The sync_interfaces argument.
-        sync_carp (bool): The sync_carp argument.
-        sync_dhcp_leases (bool): The sync_dhcp_leases argument.
-        sync_vpn (bool): The sync_vpn argument.
-        expected (str | list[Any] | None): The expected argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        state (dict[str, Any]): Coordinator payload used for this test scenario.
+        sync_telemetry (bool): Whether telemetry sensor compilation is enabled.
+        sync_vnstat (bool): Whether vnStat sensor compilation is enabled.
+        sync_speedtest (bool): Whether Speedtest sensor compilation is enabled.
+        sync_smart (bool): Whether SMART sensor compilation is enabled.
+        sync_gateways (bool): Whether gateway sensor compilation is enabled.
+        sync_interfaces (bool): Whether interface sensor compilation is enabled.
+        sync_carp (bool): Whether CARP entity compilation is enabled.
+        sync_dhcp_leases (bool): Whether DHCP lease sensor compilation is enabled.
+        sync_vpn (bool): Whether VPN entity compilation is enabled.
+        expected (str | list[Any] | None): Expected result asserted for the parameterized case.
     """
     config_entry = setup_sensor_reconciliation_entry(
         make_config_entry,
@@ -4247,8 +4247,8 @@ async def test_async_setup_entry_records_none_when_smart_info_is_required(
     """SMART sync remains incomplete when `get_smart_info` is supported but payload is missing.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     client = MagicMock(spec=["get_smart", "get_smart_info"])
     client.get_smart = MagicMock()
@@ -4293,10 +4293,10 @@ async def test_dynamic_sensor_compile_helpers_skip_malformed_containers(
     """Malformed dynamic sensor containers should compile to no entities.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        compile_helper (Callable[[MockConfigEntry, OPNsenseDataUpdateCoordinator, Any], Any]): The c
-            ompile_helper argument.
-        state (Any): The state argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        compile_helper (Callable[[MockConfigEntry, OPNsenseDataUpdateCoordinator, Any], Any]):
+            Entity compiler exercised against malformed DHCP lease data.
+        state (Any): Coordinator payload used for this test scenario.
     """
     entry = make_config_entry()
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -4312,7 +4312,7 @@ async def test_compile_vpn_sensors_skips_malformed_containers(
     """Malformed VPN setup containers should not produce any VPN sensors.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state: dict[str, Any] = {
         "openvpn": {"servers": {"empty-server": {}}},
@@ -4336,7 +4336,7 @@ async def test_dhcp_leases_compile_helper_uses_all_sensor_for_malformed_interfac
     """Malformed DHCP lease interface containers should still create aggregate sensor.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state: dict[str, Any] = {"dhcp_leases": {"lease_interfaces": "bad"}}
     entry = make_config_entry()
@@ -4355,7 +4355,7 @@ class _BadDHCPLeaseInterfaces(dict):
         """Raise when the compiler queries interface items.
 
         Returns:
-            Never: The returned value.
+            Never: No value because the test double always raises.
 
         Raises:
             RuntimeError: Always raised to simulate a failed interface lookup.
@@ -4369,7 +4369,7 @@ async def test_dhcp_leases_compile_helper_skips_on_items_failure(
     """items() failures should be ignored but still produce the aggregate DHCP sensor.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state: dict[str, Any] = {
         "dhcp_leases": {
@@ -4392,7 +4392,7 @@ async def test_filesystem_compile_helper_skips_rows_without_mountpoint(
     """Filesystem rows without a usable mountpoint should not create entities.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state: dict[str, Any] = {
         "telemetry": {
@@ -4415,7 +4415,7 @@ def test_filesystem_sensor_skips_malformed_rows(
     """Malformed filesystem rows should be skipped while reading a valid filesystem.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {
         "telemetry": {
@@ -4465,7 +4465,7 @@ def test_filesystem_sensor_handles_partial_matching_row(
     """Partial matching filesystem rows should not raise while updating state.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {
         "telemetry": {
@@ -4516,8 +4516,8 @@ def test_filesystem_sensor_unavailable_with_malformed_containers(
     """Missing or malformed filesystem state should mark the sensor unavailable.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        state (Any): The state argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        state (Any): Coordinator payload used for this test scenario.
     """
     entry = make_config_entry()
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -4546,7 +4546,7 @@ async def test_compile_and_handle_many_entities(
     """Compile a complex state and verify many sensor branches are handled.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {
         "telemetry": {
@@ -4640,7 +4640,7 @@ async def test_compile_and_handle_many_entities(
 
             Args:
                 entities (Iterable[Any]): Entities provided by pytest or the test case.
-                _update_before_add (bool): The _update_before_add argument.
+                _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
             """
             created.extend(entities)
 
@@ -4680,7 +4680,7 @@ async def test_async_setup_entry_creates_entities(
     """async_setup_entry should create sensor entities for available telemetry and interfaces.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state: dict[str, Any] = {
         "telemetry": {"filesystems": [], "temps": {}},
@@ -4696,7 +4696,7 @@ async def test_async_setup_entry_creates_entities(
 
         Args:
             ents (Iterable[Any]): Ents provided by pytest or the test case.
-            _update_before_add (bool): The _update_before_add argument.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         created.extend(ents)
 
@@ -4870,7 +4870,7 @@ async def test_compile_vpn_sensors_skips_empty_instances(
     """Empty VPN instances should be skipped during VPN sensor setup.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state: dict[str, Any] = {
         "openvpn": {"servers": {"server-uuid": {}}},
@@ -4891,7 +4891,7 @@ def test_filesystem_sensor_handles_partial_telemetry_row(
     """Filesystem sensor should tolerate partial telemetry rows and keep available state.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {
         "telemetry": {
@@ -4934,7 +4934,7 @@ def test_filesystem_sensor_unavailable_when_used_percent_missing(
     """Filesystem sensor should become unavailable when the matched row lacks usage.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {
         "telemetry": {
@@ -4972,7 +4972,7 @@ async def test_async_setup_entry_creates_vnstat_sensors(
     """VnStat sensors should be created with expected state classes and values.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {
         "telemetry": {"filesystems": [], "temps": {}},
@@ -5022,7 +5022,7 @@ async def test_async_setup_entry_creates_vnstat_sensors(
 
         Args:
             ents (Iterable[Any]): Ents provided by pytest or the test case.
-            _update_before_add (bool): The _update_before_add argument.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         created.extend(ents)
 
@@ -5085,7 +5085,7 @@ async def test_async_setup_entry_skips_vnstat_sensors_when_no_interfaces(
     """No vnStat entities should be created when vnStat interface payload is empty.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {
         "telemetry": {"filesystems": [], "temps": {}},
@@ -5101,7 +5101,7 @@ async def test_async_setup_entry_skips_vnstat_sensors_when_no_interfaces(
 
         Args:
             ents (Iterable[Any]): Ents provided by pytest or the test case.
-            _update_before_add (bool): The _update_before_add argument.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         created.extend(ents)
 
@@ -5116,7 +5116,7 @@ async def test_async_setup_entry_creates_speedtest_sensors(
     """Speedtest sensors should be created when speedtest data is available.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {
         "speedtest": {
@@ -5198,7 +5198,7 @@ async def test_async_setup_entry_creates_speedtest_sensors(
 
         Args:
             entities (Iterable[Any]): Entities provided by pytest or the test case.
-            _update_before_add (bool): The _update_before_add argument.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         created.extend(entities)
 
@@ -5232,7 +5232,7 @@ async def test_generated_sensor_entity_contract(
     """Representative generated sensors should keep their entity-description contract.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
 
     def assert_entity_description_fields(
@@ -5242,8 +5242,8 @@ async def test_generated_sensor_entity_contract(
         """Assert a representative generated entity description contract.
 
         Args:
-            key (str): The key argument.
-            expected (dict[str, Any]): The expected argument.
+            key (str): Entity or payload key exercised by the parameterized case.
+            expected (dict[str, Any]): Expected result asserted for the parameterized case.
         """
         description = entities_by_key[key].entity_description
         for field_name, expected_value in expected.items():
@@ -5310,8 +5310,8 @@ async def test_generated_sensor_entity_contract(
         """Collect entities created during setup.
 
         Args:
-            entities (Iterable[Any]): The entities argument.
-            _update_before_add (bool): The _update_before_add argument.
+            entities (Iterable[Any]): Entities captured by the platform add callback.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         created.extend(entities)
 
@@ -5523,7 +5523,7 @@ async def _async_setup_smart_entities(
 
         Args:
             entities (Iterable[Any]): Entities provided by pytest or the test case.
-            _update_before_add (bool): The _update_before_add argument.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         created.extend(entities)
 
@@ -5538,7 +5538,7 @@ async def test_async_setup_entry_creates_disabled_smart_disk_sensors(
     """SMART temperature sensors should be created per device and disabled by default.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {
         "smart": [
@@ -5618,7 +5618,7 @@ async def test_async_setup_entry_creates_smart_disk_sensors_by_default(
     """SMART disk sensors should use the shared granular sync default.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     smart_entities = await _async_setup_smart_entities(
         make_config_entry,
@@ -5655,7 +5655,7 @@ async def test_async_setup_entry_creates_smart_disk_sensors_from_ident_only_rows
     """SMART temperature sensors should be compiled when rows provide `ident` only.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     smart_entities = await _async_setup_smart_entities(
         make_config_entry,
@@ -5696,7 +5696,7 @@ async def test_async_setup_entry_creates_smart_temperature_sensors_from_smart_in
     """SMART temperature sensors should use get_smart_info attribute data.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     smart_entities = await _async_setup_smart_entities(
         make_config_entry,
@@ -5750,7 +5750,7 @@ async def test_async_setup_entry_keeps_smart_entities_when_smart_info_present_bu
     """SMART entities should be created when `smart_info` exists and update to available.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     smart_entities = await _async_setup_smart_entities(
         make_config_entry,
@@ -5798,7 +5798,7 @@ async def test_async_setup_entry_keeps_smart_entities_when_initial_smart_info_mi
     """SMART temperature entities should still be created before attribute data arrives.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     smart_entities = await _async_setup_smart_entities(
         make_config_entry,
@@ -5827,7 +5827,7 @@ async def test_async_setup_entry_skips_malformed_smart_values(
     """SMART temperature sensors should still be created for discovered devices.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     smart_entities = await _async_setup_smart_entities(
         make_config_entry,
@@ -5862,8 +5862,8 @@ async def test_compile_smart_sensors_skips_invalid_state_shapes(
     """SMART sensor compilation should ignore invalid coordinator state shapes.
 
     Args:
-        state (Any): The state argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        state (Any): Coordinator payload used for this test scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry({"device_unique_id": "id", CONF_SYNC_SMART: True})
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -5880,7 +5880,7 @@ async def test_compile_smart_sensors_creates_entities_when_smart_info_present(
     """SMART sensor compilation should create entities when `smart_info` exists.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry({"device_unique_id": "id", CONF_SYNC_SMART: True})
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -5901,7 +5901,7 @@ async def test_compile_smart_sensors_skips_when_smart_info_key_missing(
     """SMART sensor compilation should not run when `smart_info` state is absent.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry({"device_unique_id": "id", CONF_SYNC_SMART: True})
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -5922,7 +5922,7 @@ async def test_compile_smart_sensors_keeps_entities_when_device_info_malformed(
     """SMART sensor compilation should keep entities even before attribute data is usable.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry({"device_unique_id": "id", CONF_SYNC_SMART: True})
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -5948,7 +5948,7 @@ def test_smart_sensor_unavailable_when_device_or_property_missing(
     """SMART disk sensors should be unavailable when their row or field is absent.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     sensor = _build_smart_sensor(
         make_config_entry,
@@ -5994,7 +5994,7 @@ def test_smart_sensor_strips_device_name_before_smart_info_lookup(
     """SMART disk sensors should normalize padded device names before lookup.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     sensor = _build_smart_sensor(
         make_config_entry,
@@ -6017,7 +6017,7 @@ def test_smart_sensor_uses_ident_when_device_missing(
     """SMART sensors should identify rows using `ident` when `device` is absent.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     sensor = _build_smart_sensor(
         make_config_entry,
@@ -6056,9 +6056,9 @@ def test_smart_sensor_unavailable_when_state_or_key_invalid(
     """SMART disk sensors should be unavailable for invalid state and entity keys.
 
     Args:
-        state (dict[str, Any] | list[Any]): The state argument.
-        key (str): The key argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        state (dict[str, Any] | list[Any]): Coordinator payload used for this test scenario.
+        key (str): Entity or payload key exercised by the parameterized case.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     sensor = _build_smart_sensor(make_config_entry, state, key)
     _prepare_smart_sensor(sensor, "sensor.smart_nvme0")
@@ -6073,7 +6073,7 @@ def test_smart_sensor_finds_device_after_ignored_rows(
     """SMART disk sensors should skip invalid rows while searching for a device.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     sensor = _build_smart_sensor(
         make_config_entry,
@@ -6111,8 +6111,8 @@ def test_smart_sensor_unavailable_when_property_malformed(
     """SMART disk sensors should be unavailable for malformed values.
 
     Args:
-        value (object): The value argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        value (object): Raw coordinator value supplied to the sensor.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     sensor = _build_smart_sensor(
         make_config_entry,
@@ -6143,9 +6143,9 @@ def test_speedtest_sensor_unavailable_variants(
     """Speedtest sensors should be unavailable for malformed key/state/value variants.
 
     Args:
-        state (dict[str, Any] | list[Any]): The state argument.
-        key (str): The key argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        state (dict[str, Any] | list[Any]): Coordinator payload used for this test scenario.
+        key (str): Entity or payload key exercised by the parameterized case.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -6174,7 +6174,7 @@ def test_speedtest_sensor_attribute_filtering(
     """Speedtest sensors should only include non-None attributes.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {
         "speedtest": {
@@ -6249,7 +6249,7 @@ async def test_async_setup_entry_skips_speedtest_sensors_when_unavailable(
     """Speedtest sensors should not be created when speedtest is unavailable.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {"speedtest": {"available": False}}
     entry = make_config_entry(
@@ -6277,7 +6277,7 @@ async def test_async_setup_entry_skips_speedtest_sensors_when_unavailable(
 
         Args:
             entities (Iterable[Any]): Entities provided by pytest or the test case.
-            _update_before_add (bool): The _update_before_add argument.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         created.extend(entities)
 
@@ -6292,7 +6292,7 @@ async def test_compile_interface_sensors_values_end(
     """Extra test to ensure interface sensors report expected numeric values.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {
         "interfaces": {
@@ -6336,7 +6336,7 @@ async def test_compile_interface_sensors_routes_rate_keys_to_live_traffic_coordi
     """Rate interface sensors should read from the live traffic coordinator when enabled.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     main_state = {
         "interfaces": {
@@ -6402,7 +6402,7 @@ async def test_compile_interface_sensors_routes_rate_keys_to_main_coordinator_wh
     """Rate interface sensors should stay on the main coordinator when live traffic is disabled.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {
         "interfaces": {
@@ -6454,7 +6454,7 @@ async def test_compile_dotted_interface_rate_sensor_prefers_live_traffic_data_wh
     """Rate sensors for dotted interface names should read from live traffic when usable.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     main_state = {
         "interfaces": {
@@ -6509,7 +6509,7 @@ async def test_interface_rate_sensor_falls_back_when_live_traffic_is_unavailable
     """Interface rate sensors should fall back to polling when live traffic fails.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {
         "interfaces": {

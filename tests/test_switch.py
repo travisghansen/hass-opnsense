@@ -53,10 +53,10 @@ def make_coord(data: Any) -> Any:
     """Create a MagicMock that behaves like an OPNsenseDataUpdateCoordinator for tests.
 
     Returns:
-        Any: The returned value.
+        Any: Mock coordinator configured with the supplied payload.
 
     Args:
-        data (Any): The data argument.
+        data (Any): Input data used to build the test object.
     """
     m = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     m.data = data
@@ -72,12 +72,12 @@ def make_carp_config_entry(
     """Create a config entry with CARP test coordinator runtime data.
 
     Returns:
-        MockConfigEntry: The returned value.
+        MockConfigEntry: Config entry wired to the test coordinator.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        coordinator (Any): The coordinator argument.
-        data (dict[str, Any] | None): The data argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        coordinator (Any): Mock coordinator supplying entity data and client behavior.
+        data (dict[str, Any] | None): Input data used to build the test object.
     """
     config_entry = make_config_entry(
         data={CONF_DEVICE_UNIQUE_ID: "dev1", **(data or {})},
@@ -95,12 +95,12 @@ def make_carp_maintenance_switch(
     """Create a CARP maintenance switch entity for tests.
 
     Returns:
-        OPNsenseCarpMaintenanceSwitch: The returned value.
+        OPNsenseCarpMaintenanceSwitch: CARP maintenance entity bound to the test entry.
 
     Args:
-        ph_hass (HomeAssistant): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        coordinator (Any): The coordinator argument.
+        ph_hass (HomeAssistant): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        coordinator (Any): Mock coordinator supplying entity data and client behavior.
     """
     config_entry = make_carp_config_entry(make_config_entry, coordinator)
     entity = OPNsenseCarpMaintenanceSwitch(
@@ -123,10 +123,10 @@ def capture_reconciled_desired_entities(
     """Capture reconciliation desired entities during setup.
 
     Returns:
-        dict[str, Any]: The returned value.
+        dict[str, Any]: Mutable capture populated by the reconciliation callback.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
     """
     captured: dict[str, Any] = {}
 
@@ -138,9 +138,9 @@ def capture_reconciled_desired_entities(
         """Capture entities passed to ``record_desired_entities``.
 
         Args:
-            _entry (MockConfigEntry): The _entry argument.
-            _platform (str): The _platform argument.
-            entities (Any | None): The entities argument.
+            _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
+            _platform (str): Platform name passed through the mocked loader.
+            entities (Any | None): Entities captured by the platform add callback.
         """
         captured["entities"] = entities
 
@@ -161,16 +161,16 @@ def setup_switch_reconciliation_entry(
     """Create a switch test entry with coordinator/runtime pre-wired.
 
     Returns:
-        MockConfigEntry: The returned value.
+        MockConfigEntry: Config entry wired to the test coordinator.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        coordinator (Any): The coordinator argument.
-        sync_firewall_and_nat (bool): The sync_firewall_and_nat argument.
-        sync_services (bool): The sync_services argument.
-        sync_vpn (bool): The sync_vpn argument.
-        sync_carp (bool): The sync_carp argument.
-        sync_unbound (bool): The sync_unbound argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        coordinator (Any): Mock coordinator supplying entity data and client behavior.
+        sync_firewall_and_nat (bool): Whether firewall and NAT switch compilation is enabled.
+        sync_services (bool): Whether service switch compilation is enabled.
+        sync_vpn (bool): Whether VPN entity compilation is enabled.
+        sync_carp (bool): Whether CARP entity compilation is enabled.
+        sync_unbound (bool): Whether Unbound entity compilation is enabled.
     """
     config_entry = make_config_entry(
         {
@@ -236,14 +236,14 @@ async def test_async_setup_entry_records_none_or_authoritative_empty_for_invento
     """Track missing vs authoritative-empty inventories across switch sync payloads.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        state (dict[str, Any]): The state argument.
-        sync_firewall_and_nat (bool): The sync_firewall_and_nat argument.
-        sync_services (bool): The sync_services argument.
-        sync_vpn (bool): The sync_vpn argument.
-        sync_unbound (bool): The sync_unbound argument.
-        expected (Any): The expected argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        state (dict[str, Any]): Coordinator payload used for this test scenario.
+        sync_firewall_and_nat (bool): Whether firewall and NAT switch compilation is enabled.
+        sync_services (bool): Whether service switch compilation is enabled.
+        sync_vpn (bool): Whether VPN entity compilation is enabled.
+        sync_unbound (bool): Whether Unbound entity compilation is enabled.
+        expected (Any): Expected result asserted for the parameterized case.
     """
     config_entry = setup_switch_reconciliation_entry(
         make_config_entry,
@@ -288,10 +288,10 @@ async def test_async_setup_entry_records_none_for_partial_vpn_inventory(
     """A valid VPN side alone must not mark switch reconciliation complete.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        state (dict[str, Any]): The state argument.
-        description (str): The description argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        state (dict[str, Any]): Coordinator payload used for this test scenario.
+        description (str): Scenario label used to identify the parameterized case.
     """
     coordinator = make_coord(state)
     config_entry = make_config_entry(
@@ -313,9 +313,9 @@ async def test_async_setup_entry_records_none_for_partial_vpn_inventory(
         """Capture the desired-entity payload sent to reconciliation.
 
         Args:
-            _entry (MockConfigEntry): The _entry argument.
-            _platform (str): The _platform argument.
-            entities (Any | None): The entities argument.
+            _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
+            _platform (str): Platform name passed through the mocked loader.
+            entities (Any | None): Entities captured by the platform add callback.
         """
         recorded["entities"] = entities
 
@@ -323,8 +323,8 @@ async def test_async_setup_entry_records_none_for_partial_vpn_inventory(
         """Capture switch entities emitted by setup.
 
         Args:
-            ents (Iterable[Any]): The ents argument.
-            _update_before_add (bool): The _update_before_add argument.
+            ents (Iterable[Any]): Entities captured by the platform add callback.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         created.extend(ents)
 
@@ -379,8 +379,8 @@ async def test_async_setup_entry_records_none_for_malformed_firewall_nat_invento
     """Missing NAT subsections should force incomplete firewall reconciliation.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {
         "firewall": {
@@ -400,9 +400,9 @@ async def test_async_setup_entry_records_none_for_malformed_firewall_nat_invento
         """Capture the desired-entity payload sent to reconciliation.
 
         Args:
-            _entry (MockConfigEntry): The _entry argument.
-            _platform (str): The _platform argument.
-            entities (Any | None): The entities argument.
+            _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
+            _platform (str): Platform name passed through the mocked loader.
+            entities (Any | None): Entities captured by the platform add callback.
         """
         recorded["entities"] = entities
 
@@ -410,8 +410,8 @@ async def test_async_setup_entry_records_none_for_malformed_firewall_nat_invento
         """Capture switch entities emitted by setup.
 
         Args:
-            ents (Iterable[Any]): The ents argument.
-            _update_before_add (bool): The _update_before_add argument.
+            ents (Iterable[Any]): Entities captured by the platform add callback.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         created.extend(ents)
 
@@ -510,11 +510,11 @@ async def test_async_setup_entry_marks_malformed_switch_rows_incomplete(
     """Malformed rows prevent reconciliation while valid sibling rows still compile.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        state (dict[str, Any]): The state argument.
-        sync_option (str): The sync_option argument.
-        expected_key (str): The expected_key argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        state (dict[str, Any]): Coordinator payload used for this test scenario.
+        sync_option (str): Config option enabled for the entity-compilation scenario.
+        expected_key (str): Expected description key selected by entity compilation.
     """
     config_entry = setup_switch_reconciliation_entry(
         make_config_entry,
@@ -553,10 +553,10 @@ async def test_async_setup_entry_records_none_for_invalid_carp_summary(
     """CARP reconciliation should be incomplete without a status_summary mapping.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        state (dict[str, Any]): The state argument.
-        expected_entities (int | None): The expected_entities argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        state (dict[str, Any]): Coordinator payload used for this test scenario.
+        expected_entities (int | None): Expected entity count, or no count assertion when omitted.
     """
     config_entry = setup_switch_reconciliation_entry(
         make_config_entry,
@@ -570,9 +570,9 @@ async def test_async_setup_entry_records_none_for_invalid_carp_summary(
         """Capture the desired-entity payload sent to reconciliation.
 
         Args:
-            _entry (MockConfigEntry): The _entry argument.
-            _platform (str): The _platform argument.
-            entities (Any | None): The entities argument.
+            _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
+            _platform (str): Platform name passed through the mocked loader.
+            entities (Any | None): Entities captured by the platform add callback.
         """
         captured["entities"] = entities
 
@@ -580,8 +580,8 @@ async def test_async_setup_entry_records_none_for_invalid_carp_summary(
         """Capture switch entities emitted by setup.
 
         Args:
-            ents (Iterable[Any]): The ents argument.
-            _update_before_add (bool): The _update_before_add argument.
+            ents (Iterable[Any]): Entities captured by the platform add callback.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         created.extend(ents)
 
@@ -613,15 +613,15 @@ async def collect_setup_carp_switches(
     """Run switch setup and return CARP maintenance switches.
 
     Returns:
-        list[OPNsenseCarpMaintenanceSwitch]: The returned value.
+        list[OPNsenseCarpMaintenanceSwitch]: CARP maintenance entities compiled during setup.
 
     Args:
-        ph_hass (HomeAssistant): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        coordinator (Any): The coordinator argument.
-        config_data (dict[str, Any] | None): The config_data argument.
-        firmware (Any): The firmware argument.
-        include_summary (bool): The include_summary argument.
+        ph_hass (HomeAssistant): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        coordinator (Any): Mock coordinator supplying entity data and client behavior.
+        config_data (dict[str, Any] | None): Config-entry data used for this scenario.
+        firmware (Any): Firmware version exposed by the coordinator payload.
+        include_summary (bool): Whether the coordinator payload includes aggregate lease data.
     """
     calls: dict[str, list[Any]] = {}
 
@@ -667,8 +667,8 @@ async def test_compile_carp_maintenance_switch(
     """CARP maintenance switch should compile when CARP summary data exists.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {"carp": {"status_summary": {"maintenance_mode": False, "enabled": True}}}
     config_entry = make_carp_config_entry(make_config_entry, coordinator)
@@ -689,8 +689,8 @@ async def test_compile_carp_maintenance_switch_skips_missing_summary(
     """CARP maintenance switch should not compile without CARP summary data.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_carp_config_entry(make_config_entry, coordinator)
 
@@ -730,11 +730,11 @@ async def test_async_setup_entry_carp_maintenance_switch_sync_gate(
     """CARP maintenance switch should follow the CARP sync flag.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (HomeAssistant): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        config_data (dict[str, Any]): The config_data argument.
-        expected_count (int): The expected_count argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (HomeAssistant): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        config_data (dict[str, Any]): Config-entry data used for this scenario.
+        expected_count (int): Expected number of compiled entities.
     """
     carp_switches = await collect_setup_carp_switches(
         ph_hass,
@@ -765,12 +765,12 @@ async def test_async_setup_entry_carp_maintenance_switch_uses_summary_shape(
     """CARP maintenance switch should compile from CARP summary shape.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (HomeAssistant): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        firmware (Any): The firmware argument.
-        include_summary (bool): The include_summary argument.
-        expected_count (int): The expected_count argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (HomeAssistant): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        firmware (Any): Firmware version exposed by the coordinator payload.
+        include_summary (bool): Whether the coordinator payload includes aggregate lease data.
+        expected_count (int): Expected number of compiled entities.
     """
     carp_switches = await collect_setup_carp_switches(
         ph_hass,
@@ -790,8 +790,8 @@ async def test_carp_maintenance_switch_state_and_toggle(
     """CARP maintenance switch should mirror summary state and toggle maintenance mode.
 
     Args:
-        ph_hass (HomeAssistant): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        ph_hass (HomeAssistant): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {"carp": {"status_summary": {"maintenance_mode": False, "enabled": True}}}
     coordinator = make_coord(state)
@@ -828,8 +828,8 @@ async def test_carp_maintenance_switch_ignores_updates_during_delay(
     """CARP maintenance switch should keep optimistic state during update delay.
 
     Args:
-        ph_hass (HomeAssistant): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        ph_hass (HomeAssistant): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {"carp": {"status_summary": {"maintenance_mode": True, "enabled": True}}}
     coordinator = make_coord(state)
@@ -862,11 +862,11 @@ async def test_carp_maintenance_switch_refreshes_before_toggle(
     """CARP maintenance should not toggle when refreshed state already matches.
 
     Args:
-        ph_hass (HomeAssistant): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        method_name (str): The method_name argument.
-        initial_state (bool): The initial_state argument.
-        refreshed_state (bool): The refreshed_state argument.
+        ph_hass (HomeAssistant): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        method_name (str): Client method configured for the tested failure path.
+        initial_state (bool): Switch state before the tested action.
+        refreshed_state (bool): Switch state returned by the refresh after the action.
     """
     state = {"carp": {"status_summary": {"maintenance_mode": initial_state, "enabled": True}}}
     coordinator = make_coord(state)
@@ -910,12 +910,12 @@ async def test_carp_maintenance_switch_ignores_service_calls_during_delay(
     """CARP maintenance should not toggle again while optimistic state is pending.
 
     Args:
-        ph_hass (HomeAssistant): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        first_method_name (str): The first_method_name argument.
-        second_method_name (str): The second_method_name argument.
-        initial_state (bool): The initial_state argument.
-        optimistic_state (bool): The optimistic_state argument.
+        ph_hass (HomeAssistant): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        first_method_name (str): First client method invoked by the tested action.
+        second_method_name (str): Second client method invoked by the tested action.
+        initial_state (bool): Switch state before the tested action.
+        optimistic_state (bool): Optimistic switch state expected before coordinator refresh.
     """
     state = {"carp": {"status_summary": {"maintenance_mode": initial_state, "enabled": True}}}
     coordinator = make_coord(state)
@@ -950,10 +950,10 @@ async def test_carp_maintenance_switch_serializes_overlapping_requests(
     """CARP maintenance toggles should only execute one backend call at a time.
 
     Args:
-        ph_hass (HomeAssistant): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        method_name (str): The method_name argument.
-        initial_state (bool): The initial_state argument.
+        ph_hass (HomeAssistant): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        method_name (str): Client method configured for the tested failure path.
+        initial_state (bool): Switch state before the tested action.
     """
     state = {"carp": {"status_summary": {"maintenance_mode": initial_state, "enabled": True}}}
     coordinator = make_coord(state)
@@ -977,7 +977,7 @@ async def test_carp_maintenance_switch_serializes_overlapping_requests(
         """Pause toggles so both requests can overlap before completion.
 
         Returns:
-            bool: The returned value.
+            bool: Successful toggle result released after synchronization.
         """
         nonlocal toggle_calls
         toggle_calls += 1
@@ -1022,10 +1022,10 @@ async def test_carp_maintenance_switch_turn_returns_without_client(
     """CARP maintenance switch should not refresh or toggle without a client.
 
     Args:
-        ph_hass (HomeAssistant): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        method_name (str): The method_name argument.
-        maintenance_mode (bool): The maintenance_mode argument.
+        ph_hass (HomeAssistant): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        method_name (str): Client method configured for the tested failure path.
+        maintenance_mode (bool): Maintenance mode reported by the coordinator or action result.
     """
     state = {"carp": {"status_summary": {"maintenance_mode": maintenance_mode, "enabled": True}}}
     coordinator = make_coord(state)
@@ -1054,10 +1054,10 @@ async def test_carp_maintenance_switch_turn_returns_without_toggle_method(
     """CARP maintenance switch should not refresh or toggle without toggle support.
 
     Args:
-        ph_hass (HomeAssistant): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        method_name (str): The method_name argument.
-        maintenance_mode (bool): The maintenance_mode argument.
+        ph_hass (HomeAssistant): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        method_name (str): Client method configured for the tested failure path.
+        maintenance_mode (bool): Maintenance mode reported by the coordinator or action result.
     """
     state = {"carp": {"status_summary": {"maintenance_mode": maintenance_mode, "enabled": True}}}
     coordinator = make_coord(state)
@@ -1088,11 +1088,11 @@ async def test_carp_maintenance_switch_failed_toggle_keeps_state(
     """CARP maintenance switch should keep current state when toggle fails.
 
     Args:
-        ph_hass (HomeAssistant): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        method_name (str): The method_name argument.
-        maintenance_mode (bool): The maintenance_mode argument.
-        expected_state (bool): The expected_state argument.
+        ph_hass (HomeAssistant): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        method_name (str): Client method configured for the tested failure path.
+        maintenance_mode (bool): Maintenance mode reported by the coordinator or action result.
+        expected_state (bool): Expected switch state after the operation.
     """
     state = {"carp": {"status_summary": {"maintenance_mode": maintenance_mode, "enabled": True}}}
     coordinator = make_coord(state)
@@ -1116,8 +1116,8 @@ async def test_carp_maintenance_switch_unavailable_without_summary(
     """CARP maintenance switch should become unavailable without summary data.
 
     Args:
-        ph_hass (HomeAssistant): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        ph_hass (HomeAssistant): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator = make_coord({"carp": {}})
     entity = make_carp_maintenance_switch(ph_hass, make_config_entry, coordinator)
@@ -1136,9 +1136,9 @@ async def test_carp_maintenance_switch_unavailable_clears_attrs(
     """CARP entity should clear stale attrs when state becomes unavailable.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (HomeAssistant): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (HomeAssistant): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {
         "carp": {
@@ -1184,8 +1184,8 @@ async def test_carp_maintenance_switch_unavailable_without_mapping_state(
     """CARP maintenance switch should become unavailable without mapping state.
 
     Args:
-        ph_hass (HomeAssistant): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        ph_hass (HomeAssistant): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator = make_coord([])
     entity = make_carp_maintenance_switch(ph_hass, make_config_entry, coordinator)
@@ -1215,10 +1215,10 @@ async def test_carp_maintenance_switch_unavailable_for_untrusted_summary(
     """CARP maintenance switch should be unavailable when summary state is unreliable.
 
     Args:
-        ph_hass (HomeAssistant): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        maintenance_state (str): The maintenance_state argument.
-        maintenance_mode (Any): The maintenance_mode argument.
+        ph_hass (HomeAssistant): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        maintenance_state (str): CARP maintenance state supplied by the coordinator.
+        maintenance_mode (Any): Maintenance mode reported by the coordinator or action result.
     """
     coordinator = make_coord(
         {
@@ -1247,8 +1247,8 @@ async def test_carp_maintenance_switch_icon(
     """CARP maintenance switch should use an alert icon while maintenance is on.
 
     Args:
-        ph_hass (HomeAssistant): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        ph_hass (HomeAssistant): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {"carp": {"status_summary": {"maintenance_mode": True, "enabled": True}}}
     coordinator = make_coord(state)
@@ -1387,12 +1387,12 @@ async def test_switch_toggle_variants(
     """Generic param test for switches that support enable/disable-style clients.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        compile_fn (Any): The compile_fn argument.
-        state (MutableMapping[str, Any]): The state argument.
-        client_methods (Any): The client_methods argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        compile_fn (Any): Entity compiler exercised by the parameterized case.
+        state (MutableMapping[str, Any]): Coordinator payload used for this test scenario.
+        client_methods (Any): Mock client methods configured for the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry(
         data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"},
@@ -1469,9 +1469,9 @@ async def test_async_setup_entry_all_flags(
     """Async setup should create entities for all enabled sync flags.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     calls = {}
 
@@ -1480,7 +1480,7 @@ async def test_async_setup_entry_all_flags(
 
         Args:
             entities (Iterable[Any]): Sequence of switch entities added by ``async_setup_entry``.
-            _update_before_add (bool): The _update_before_add argument.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         calls["len"] = len(list(entities))
 
@@ -1560,9 +1560,9 @@ async def test_async_setup_entry_new_firewall_api(
     """Async setup should create native firewall entities from available payload data.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     calls = {}
 
@@ -1571,7 +1571,7 @@ async def test_async_setup_entry_new_firewall_api(
 
         Args:
             entities (Iterable[Any]): Sequence of switch entities added by ``async_setup_entry``.
-            _update_before_add (bool): The _update_before_add argument.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         calls["len"] = len(list(entities))
 
@@ -1654,9 +1654,9 @@ async def test_async_setup_entry_new_firewall_api_without_firmware_uses_firewall
     """Available firewall state should drive setup when firmware is missing.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     calls = {}
 
@@ -1664,8 +1664,8 @@ async def test_async_setup_entry_new_firewall_api_without_firmware_uses_firewall
         """Capture entities created during setup for assertion.
 
         Args:
-            entities (Iterable[Any]): The entities argument.
-            _update_before_add (bool): The _update_before_add argument.
+            entities (Iterable[Any]): Entities captured by the platform add callback.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         calls["len"] = len(list(entities))
 
@@ -1720,9 +1720,9 @@ async def test_async_setup_entry_uses_firewall_state_for_old_firmware(
     """Available firewall state should drive setup regardless of firmware metadata.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     calls: dict[str, list[Any]] = {}
 
@@ -1730,8 +1730,8 @@ async def test_async_setup_entry_uses_firewall_state_for_old_firmware(
         """Capture entities emitted by setup for assertion.
 
         Args:
-            entities (Iterable[Any]): The entities argument.
-            _update_before_add (bool): The _update_before_add argument.
+            entities (Iterable[Any]): Entities captured by the platform add callback.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         calls["entities"] = list(entities)
 
@@ -1800,9 +1800,9 @@ async def test_async_setup_entry_uses_firewall_state_when_firmware_unknown(
     """Available firewall state should drive setup when firmware is unknown.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     calls: dict[str, list[Any]] = {}
 
@@ -1810,8 +1810,8 @@ async def test_async_setup_entry_uses_firewall_state_when_firmware_unknown(
         """Capture entities emitted by setup for assertion.
 
         Args:
-            entities (Iterable[Any]): The entities argument.
-            _update_before_add (bool): The _update_before_add argument.
+            entities (Iterable[Any]): Entities captured by the platform add callback.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         calls["entities"] = list(entities)
 
@@ -1870,9 +1870,9 @@ async def test_async_setup_entry_compiles_available_native_sections_independentl
     """A malformed NAT section should not suppress valid firewall rule entities.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     calls: dict[str, list[Any]] = {}
 
@@ -1880,8 +1880,8 @@ async def test_async_setup_entry_compiles_available_native_sections_independentl
         """Capture entities emitted by setup for assertion.
 
         Args:
-            entities (Iterable[Any]): The entities argument.
-            _update_before_add (bool): The _update_before_add argument.
+            entities (Iterable[Any]): Entities captured by the platform add callback.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         calls["entities"] = list(entities)
 
@@ -1928,7 +1928,7 @@ def test_vpn_icon_property(make_config_entry: Callable[..., MockConfigEntry]) ->
     """VPN switch exposes the expected icon when available and on.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     desc = SwitchEntityDescription(key="openvpn.clients.c1", name="VPNC")
     coord = make_coord({})
@@ -1951,9 +1951,9 @@ async def test_unbound_and_vpn_variations(
     """Compile and exercise unbound and VPN switch variations.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry(
         data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"},
@@ -1994,7 +1994,7 @@ async def test_unbound_and_vpn_variations(
 
             Args:
                 ents (Iterable[Any]): Sequence of switch entities emitted by setup.
-                _update_before_add (bool): The _update_before_add argument.
+                _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
             """
             created.extend(ents)
 
@@ -2053,9 +2053,9 @@ def test_delay_update_setter(
     """Delay update setter captures and removes scheduled removers correctly.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     desc = SwitchEntityDescription(key="service.s1.status", name="DelayTest")
     config_entry = make_config_entry(
@@ -2085,7 +2085,7 @@ def test_delay_update_setter(
                 kwargs (Any): Additional keyword arguments accepted by the test double.
 
             Returns:
-                Callable[[], None]: The returned value.
+                Callable[[], None]: Remover callback for the fake scheduled action.
             """
 
             def remover() -> None:
@@ -2118,10 +2118,10 @@ async def test_vpn_turn_on_off_calls_client_and_sets_delay(
     """VPN switch should call toggle_vpn_instance, update state, and enable delay_update.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
 
     # replace async_call_later so tests don't schedule real callbacks
@@ -2131,7 +2131,7 @@ async def test_vpn_turn_on_off_calls_client_and_sets_delay(
         """Return a no-op remover instead of scheduling a delayed callback.
 
         Returns:
-            Callable[[], None]: The returned value.
+            Callable[[], None]: No-op remover for the unscheduled callback.
 
         Args:
             hass (HomeAssistant): Home Assistant instance that would own the scheduled callback.
@@ -2184,9 +2184,9 @@ async def test_compile_unbound_extended_and_toggle(
     """Compile extended unbound blocklist switches and exercise toggle behavior.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     # create state with two extended blocklists
     state = {
@@ -2243,8 +2243,8 @@ async def test_compile_unbound_switches_skips_empty_rows(
     """Empty legacy and extended Unbound rows should be skipped during compile.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {
         "unbound_blocklist": {
@@ -2270,8 +2270,8 @@ async def test_compile_unbound_switches_handles_legacy_and_extended_payloads(
     """Compile legacy and extended unbound switches from payload shape.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {
         "unbound_blocklist": {
@@ -2298,8 +2298,8 @@ async def test_async_setup_entry_marks_empty_unbound_rows_incomplete(
     """Empty Unbound rows should not be authoritative while valid siblings still compile.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     state = {
         "unbound_blocklist": {
@@ -2339,10 +2339,10 @@ async def test_vpn_turn_on_off_noops_when_preconditions_fail(
     """VPN async_turn_on/async_turn_off should be no-ops when preconditions are not met.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     # replace async_call_later to avoid scheduling
     monkeypatch.setattr(
@@ -2397,13 +2397,13 @@ async def test_vpn_async_turn_off_variations(
     """Parameterize async_turn_off behavior for success, failure, and missing client.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        client_result (Any): The client_result argument.
-        expected_is_on (Any): The expected_is_on argument.
-        expected_delay (Any): The expected_delay argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        client_result (Any): Result returned by the mocked client operation.
+        expected_is_on (Any): Expected result of the entity is_on property.
+        expected_delay (Any): Expected delay passed to the mocked refresh path.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     # avoid scheduling real async_call_later during tests
     monkeypatch.setattr(
@@ -2460,9 +2460,9 @@ async def test_unbound_missing_sets_unavailable(
     """Unbound switch becomes unavailable when expected data is missing.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
@@ -2487,9 +2487,9 @@ async def test_unbound_skips_update_when_delay_set(
     """When delay_update is set, the unbound handler should skip updating state.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
@@ -2569,14 +2569,14 @@ async def test_delay_skips_update_parametrized(
     """Parametrized test asserting handlers return early when delay_update is set.
 
     Args:
-        kind (Any): The kind argument.
-        compile_fn (Any): The compile_fn argument.
-        state (MutableMapping[str, Any]): The state argument.
-        selector (Any): The selector argument.
-        options (Any): The options argument.
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        kind (Any): VPN entity kind selected by the parameterized case.
+        compile_fn (Any): Entity compiler exercised by the parameterized case.
+        state (MutableMapping[str, Any]): Coordinator payload used for this test scenario.
+        selector (Any): Selector used to locate the compiled entity under test.
+        options (Any): Config-entry options controlling entity compilation.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry(
         data={CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"}, options=options
@@ -2707,8 +2707,8 @@ async def test_compile_helpers_bad_input(
     """Compilation helpers return empty lists on bad/non-mapping input.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
@@ -2728,10 +2728,10 @@ async def test_async_setup_entry_missing_state(
     """Async setup should handle missing coordinator state without adding entities.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     calls = {}
 
@@ -2740,7 +2740,7 @@ async def test_async_setup_entry_missing_state(
 
         Args:
             entities (Iterable[Any]): Sequence of switch entities added by ``async_setup_entry``.
-            _update_before_add (bool): The _update_before_add argument.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         calls["len"] = len(list(entities))
 
@@ -2763,8 +2763,8 @@ async def test_switch_handle_error_sets_unavailable(
     """Service handler marks entity unavailable when rule lookup returns non-mapping values.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     hass_local = MagicMock(spec=HomeAssistant)
     loop = asyncio.new_event_loop()
@@ -2791,7 +2791,7 @@ async def test_switch_handle_error_sets_unavailable(
             """Return a non-mapping value to exercise service error handling.
 
             Returns:
-                MutableMapping[str, Any] | None: The returned value.
+                MutableMapping[str, Any] | None: Deliberately invalid service payload for error handling.
             """
             return cast("MutableMapping[str, Any] | None", 5)
 
@@ -2812,8 +2812,8 @@ def test_service_switch_missing_service_marks_unavailable(
     """Service switch should clear stale availability when the service disappears.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
@@ -2885,10 +2885,10 @@ def test_switch_handlers_fail_closed_for_malformed_nested_payloads(
     """Switch handlers should mark unavailable instead of raising on malformed payloads.
 
     Args:
-        entity (type[OPNsenseFirewallRuleSwitch | OPNsenseNATRuleSwitch | OPNsenseServiceSwitch | OPNsenseUnboundBlocklistSwitchLegacy | OPNsenseUnboundBlocklistSwitch | OPNsenseVPNSwitch]): The entity argument.
-        state (dict[str, Any]): The state argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        entity (type[OPNsenseFirewallRuleSwitch | OPNsenseNATRuleSwitch | OPNsenseServiceSwitch | OPNsenseUnboundBlocklistSwitchLegacy | OPNsenseUnboundBlocklistSwitch | OPNsenseVPNSwitch]): Entity class exercised by the parameterized switch scenario.
+        state (dict[str, Any]): Coordinator payload used for this test scenario.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     keys = {
         OPNsenseFirewallRuleSwitch: "firewall.rule.r1",
@@ -2958,11 +2958,11 @@ def test_switch_handlers_fail_closed_for_missing_mapping_entries(
     """Switch handlers should mark unavailable when expected entries are malformed.
 
     Args:
-        entity (type[OPNsenseFirewallRuleSwitch | OPNsenseNATRuleSwitch | OPNsenseUnboundBlocklistSwitch]): The entity argument.
-        key (str): The key argument.
-        state (Any): The state argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        entity (type[OPNsenseFirewallRuleSwitch | OPNsenseNATRuleSwitch | OPNsenseUnboundBlocklistSwitch]): Entity class exercised by the parameterized switch scenario.
+        key (str): Entity or payload key exercised by the parameterized case.
+        state (Any): Coordinator payload used for this test scenario.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
@@ -3007,11 +3007,11 @@ def test_rule_switch_handlers_fail_closed_when_enabled_lookup_raises(
     """Rule switches should be unavailable when reading the enabled flag fails.
 
     Args:
-        entity (type[OPNsenseFirewallRuleSwitch | OPNsenseNATRuleSwitch]): The entity argument.
-        key (str): The key argument.
-        state (dict[str, Any]): The state argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        entity (type[OPNsenseFirewallRuleSwitch | OPNsenseNATRuleSwitch]): Entity class exercised by the parameterized switch scenario.
+        key (str): Entity or payload key exercised by the parameterized case.
+        state (dict[str, Any]): Coordinator payload used for this test scenario.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
 
     class BrokenRule(dict):
@@ -3027,7 +3027,7 @@ def test_rule_switch_handlers_fail_closed_when_enabled_lookup_raises(
                 kwargs (Any): Additional keyword arguments accepted by the test double.
 
             Returns:
-                Any: The returned value.
+                Any: Mock coordinator configured with the supplied payload.
 
             Raises:
                 TypeError: Always raised to simulate a failed enabled-flag lookup.
@@ -3062,8 +3062,8 @@ async def test_service_switch_malformed_services_container_on_update(
     """Service switch should become unavailable when services container becomes malformed.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     hass_local = MagicMock(spec=HomeAssistant)
     loop = asyncio.new_event_loop()
@@ -3103,7 +3103,7 @@ def test_entity_icons(make_config_entry: Callable[..., MockConfigEntry]) -> None
     """Switch entities expose the correct platform icons based on type.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     # firewall icon
     f_desc = SwitchEntityDescription(key="firewall.rule.r1", name="Firewall")
@@ -3218,14 +3218,14 @@ async def test_vpn_toggle_parametrized(
     """Parameterized VPN client/server/toggle behaviors. Covers: client present and toggle succeeds, server present and toggle succeeds, and client toggle failure (should not set is_on).
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        state (MutableMapping[str, Any]): The state argument.
-        entity_key (str): The entity_key argument.
-        expect_name (Any): The expect_name argument.
-        toggle_return (Any): The toggle_return argument.
-        expect_on (Any): The expect_on argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        state (MutableMapping[str, Any]): Coordinator payload used for this test scenario.
+        entity_key (str): Entity description key selected for the scenario.
+        expect_name (Any): Expected entity name for the scenario.
+        toggle_return (Any): Return value produced by the mocked toggle operation.
+        expect_on (Any): Expected on-state asserted after the switch action.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
@@ -3273,8 +3273,8 @@ async def test_compile_service_skips_locked(
     """Service compilation skips locked and malformed services.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
@@ -3314,10 +3314,10 @@ async def test_async_setup_entry_respects_config_flags(
     """Async setup respects per-entry configuration flags when creating entities.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     calls = {}
 
@@ -3326,7 +3326,7 @@ async def test_async_setup_entry_respects_config_flags(
 
         Args:
             entities (Iterable[Any]): Entities emitted by ``async_setup_entry`` for this config.
-            _update_before_add (bool): The _update_before_add argument.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         calls["len"] = len(list(entities))
 
@@ -3370,11 +3370,11 @@ async def test_async_setup_entry_uses_vpn_description_or_uuid_when_name_is_missi
     """Missing VPN names should fall back to description or the instance UUID.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        client_payload (dict[str, Any]): The client_payload argument.
-        expected_name (str): The expected_name argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        client_payload (dict[str, Any]): Payload returned by the mocked client operation.
+        expected_name (str): Expected entity name asserted by the test.
     """
     coordinator.data = {
         "openvpn": {
@@ -3427,9 +3427,9 @@ async def test_async_setup_entry_skips_malformed_switch_rows(
     """Malformed switch rows should not prevent valid switches from being created.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator.data = {
         "host_firmware_version": "25.7.8",
@@ -3486,9 +3486,9 @@ async def test_dynamic_switch_compile_helpers_skip_malformed_containers(
     """Malformed dynamic switch containers should compile to no entities.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        compile_helper (Callable[[MockConfigEntry, OPNsenseDataUpdateCoordinator, Any], Any]): The compile_helper argument.
-        state (Any): The state argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        compile_helper (Callable[[MockConfigEntry, OPNsenseDataUpdateCoordinator, Any], Any]): Helper used to compile entities from the coordinator payload.
+        state (Any): Coordinator payload used for this test scenario.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -3506,9 +3506,9 @@ async def test_async_setup_entry_unbound_skips_when_firmware_unparseable(
     """Unparsable firmware should use runtime Unbound state shape for setup.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     calls: dict[str, list[Any]] = {}
 
@@ -3516,8 +3516,8 @@ async def test_async_setup_entry_unbound_skips_when_firmware_unparseable(
         """Capture entities emitted by setup for assertion.
 
         Args:
-            entities (Iterable[Any]): The entities argument.
-            _update_before_add (bool): The _update_before_add argument.
+            entities (Iterable[Any]): Entities captured by the platform add callback.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         calls["entities"] = list(entities)
 
@@ -3552,9 +3552,9 @@ async def test_async_setup_entry_unbound_uses_state_shape_for_unknown_firmware_e
     """Unknown firmware should allow extended Unbound switches when decisive state exists.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     calls: dict[str, list[Any]] = {}
 
@@ -3562,8 +3562,8 @@ async def test_async_setup_entry_unbound_uses_state_shape_for_unknown_firmware_e
         """Capture entities emitted by setup for assertion.
 
         Args:
-            entities (Iterable[Any]): The entities argument.
-            _update_before_add (bool): The _update_before_add argument.
+            entities (Iterable[Any]): Entities captured by the platform add callback.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         calls["entities"] = list(entities)
 
@@ -3601,9 +3601,9 @@ async def test_async_setup_entry_unbound_skips_when_firmware_unparseable_and_no_
     """Unknown firmware should skip Unbound switches without decisive state.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     calls: dict[str, list[Any]] = {}
 
@@ -3611,8 +3611,8 @@ async def test_async_setup_entry_unbound_skips_when_firmware_unparseable_and_no_
         """Capture entities emitted by setup for assertion.
 
         Args:
-            entities (Iterable[Any]): The entities argument.
-            _update_before_add (bool): The _update_before_add argument.
+            entities (Iterable[Any]): Entities captured by the platform add callback.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         calls["entities"] = list(entities)
 
@@ -3642,9 +3642,9 @@ async def test_vpn_servers_properties_and_toggle(
     """VPN server switches expose properties and support toggle behavior.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
@@ -3678,7 +3678,7 @@ async def test_vpn_servers_properties_and_toggle(
 
             Args:
                 ents (Iterable[Any]): Sequence of switch entities emitted by setup.
-                _update_before_add (bool): The _update_before_add argument.
+                _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
             """
             created.extend(ents)
 
@@ -3722,9 +3722,9 @@ async def test_unbound_turn_on_off_failure_logs(
     """Unbound turn on/off failures are handled without raising and leave state unchanged.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
@@ -3781,14 +3781,14 @@ async def test_client_failure_does_not_set_on(
     """Generic test to ensure failing client methods (return False) don't flip is_on.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        compile_fn (Any): The compile_fn argument.
-        state (MutableMapping[str, Any]): The state argument.
-        client_attr (Any): The client_attr argument.
-        turn_method (Any): The turn_method argument.
-        expect_is_on (Any): The expect_is_on argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        compile_fn (Any): Entity compiler exercised by the parameterized case.
+        state (MutableMapping[str, Any]): Coordinator payload used for this test scenario.
+        client_attr (Any): Client attribute inspected by the test.
+        turn_method (Any): Switch action method invoked by the parameterized case.
+        expect_is_on (Any): Expected result of the switch is_on property.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
@@ -3830,8 +3830,8 @@ async def test_compile_vpn_with_non_mapping_state(
     """VPN compilation returns empty list when provided non-mapping state.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
@@ -3850,8 +3850,8 @@ def test_vpn_handle_coordinator_update_state_not_mapping(
     """VPN entity becomes unavailable if coordinator.data is not a mapping.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     # Create a VPN entity and simulate coordinator.data not being a mapping
     desc = SwitchEntityDescription(key="openvpn.clients.c1", name="VPNC")
@@ -3875,8 +3875,8 @@ def test_unbound_blocklist_switch_update_handles_malformed_container(
     """Malformed Unbound blocklist containers should mark the switch unavailable.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     desc = SwitchEntityDescription(key="unbound_blocklist.switch.u1", name="Unbound u1")
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -3900,8 +3900,8 @@ def test_unbound_legacy_switch_update_handles_malformed_container(
     """Malformed legacy Unbound blocklist containers should mark the legacy switch unavailable.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     desc = SwitchEntityDescription(key="unbound_blocklist.switch", name="Unbound Blocklist")
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -3934,9 +3934,9 @@ def test_vpn_switch_update_handles_malformed_instance_container(
     """Malformed VPN containers should mark the switch unavailable.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        state (dict[str, Any]): The state argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        state (dict[str, Any]): Coordinator payload used for this test scenario.
     """
     desc = SwitchEntityDescription(key="openvpn.clients.c1", name="VPNC")
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -3961,9 +3961,9 @@ async def test_compile_vpn_wireguard_variations(
     """Ensure wireguard clients and servers compile into switches properly.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
@@ -3997,8 +3997,8 @@ def test_vpn_instance_non_mapping_sets_unavailable(
     """VPN instance that's not a mapping should mark the entity unavailable.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     desc = SwitchEntityDescription(key="openvpn.clients.c1", name="VPNC")
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -4024,8 +4024,8 @@ def test_vpn_handle_numeric_string_uuid_looks_up_string_key(
     """Numeric-style UUIDs are resolved without coercing coordinator keys.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     desc = SwitchEntityDescription(key="openvpn.clients.1", name="VPN1")
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -4056,9 +4056,9 @@ async def test_service_async_turn_on_off_failure(
     """Service start/stop failures do not set the switch on or crash.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
@@ -4088,9 +4088,9 @@ async def test_vpn_toggle_failure_does_not_set_on(
     """VPN toggle failure should not set the switch state to on.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
@@ -4116,7 +4116,7 @@ async def test_service_locked_skipped(make_config_entry: Callable[..., MockConfi
     """Locked services are omitted from compiled switch lists.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry({})
     setattr(config_entry.runtime_data, COORDINATOR, None)
@@ -4135,7 +4135,7 @@ async def test_vpn_entries_skip_non_mapping_and_missing_enabled(
     """VPN compilation skips entries that are non-mapping or missing 'enabled'.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry({})
     setattr(config_entry.runtime_data, COORDINATOR, None)
@@ -4160,9 +4160,9 @@ def test_vpn_handle_exceptions_sets_unavailable(
     """VPN handler should mark entity unavailable when instance indexing raises exceptions.
 
     Args:
-        exc_type (type[Exception]): The exc_type argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        exc_type (type[Exception]): Specific client exception raised by the failure scenario.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     desc = SwitchEntityDescription(key="openvpn.clients.ex", name="VPNEx")
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -4182,7 +4182,7 @@ def test_vpn_handle_exceptions_sets_unavailable(
             """Raise the parameterized exception when the VPN handler indexes the mapping.
 
             Args:
-                _k (Any): The _k argument.
+                _k (Any): Ignored mapping key accepted by the test double.
 
             Raises:
                 exc_type: Always raised with the exception type selected by the test case.
@@ -4209,9 +4209,9 @@ def test_service_handle_exceptions_sets_unavailable(
     """Service handler should mark entity unavailable when indexing raises exceptions.
 
     Args:
-        exc_type (type[Exception]): The exc_type argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        exc_type (type[Exception]): Specific client exception raised by the failure scenario.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     desc = SwitchEntityDescription(key="service.svcx.status", name="SvcEx")
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -4230,7 +4230,7 @@ def test_service_handle_exceptions_sets_unavailable(
             """Raise the parameterized exception when the service handler indexes the mapping.
 
             Args:
-                _k (Any): The _k argument.
+                _k (Any): Ignored mapping key accepted by the test double.
 
             Raises:
                 exc_type: Always raised with the exception type selected by the test case.
@@ -4249,8 +4249,8 @@ def test_service_handle_malformed_payload_makes_switch_unavailable(
     """Service switches should become unavailable when service payload becomes malformed.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     desc = SwitchEntityDescription(key="service.svc1.status", name="Svc")
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -4279,9 +4279,9 @@ async def test_unbound_legacy_switch_toggle_failures(
     """Test unbound legacy switch handles client method failures.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
@@ -4322,9 +4322,9 @@ async def test_unbound_extended_switch_toggle_failures(
     """Test unbound extended switch handles client method failures.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     # create state with extended blocklist
     state = {
@@ -4379,8 +4379,8 @@ async def test_compile_firewall_rules_switches(
     """Test compilation of firewall rule switches for new API.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     state = {
@@ -4428,10 +4428,10 @@ async def test_firewall_rule_interface_name_override(
     """Interface should be overridden to 'Floating' when multiple interfaces are present.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        if_value (Any): The if_value argument.
-        expected_interface (Any): The expected_interface argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        if_value (Any): Interface identifier value supplied by the coordinator.
+        expected_interface (Any): Expected interface identifier exposed by the entity.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     state = {
@@ -4461,8 +4461,8 @@ async def test_firewall_rule_uses_interface_key_if_no_percent_key(
     """If "%interface" is missing, the "interface" key should be used.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     state = {
@@ -4490,8 +4490,8 @@ async def test_firewall_rule_skips_non_string_interface(
     """Rules with non-string interface values should be skipped.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     state = {
@@ -4567,13 +4567,13 @@ async def test_compile_nat_rule_switches(
     """Test compilation of NAT rule switches across all supported families.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        compile_func (Callable[..., Any]): The compile_func argument.
-        nat_family (str): The nat_family argument.
-        rule_id (str): The rule_id argument.
-        description (str): The description argument.
-        expected_key (str): The expected_key argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        compile_func (Callable[..., Any]): Entity compiler invoked to build the switch collection.
+        nat_family (str): NAT rule family used to select inbound or outbound compilation.
+        rule_id (str): Firewall or NAT rule identifier targeted by the switch.
+        description (str): Scenario label used to identify the parameterized case.
+        expected_key (str): Expected description key selected by entity compilation.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     state = {
@@ -4657,13 +4657,13 @@ async def test_compile_nat_rule_switches_skips_invalid_interface(
     """NAT rule compilation should skip malformed interface values.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        compile_func (Callable[..., Any]): The compile_func argument.
-        nat_family (str): The nat_family argument.
-        expected_key (str): The expected_key argument.
-        invalid_interface_key (str | None): The invalid_interface_key argument.
-        invalid_interface_value (Any): The invalid_interface_value argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        compile_func (Callable[..., Any]): Entity compiler invoked to build the switch collection.
+        nat_family (str): NAT rule family used to select inbound or outbound compilation.
+        expected_key (str): Expected description key selected by entity compilation.
+        invalid_interface_key (str | None): Interface field containing the malformed value, when applicable.
+        invalid_interface_value (Any): Malformed interface payload used to test validation.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     invalid_rule: dict[str, Any] = {
@@ -4701,8 +4701,8 @@ async def test_compile_nat_rule_switches_uses_rule_key_for_missing_uuid(
     """Use the NAT payload mapping key when uuid is missing.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     state = {
@@ -4733,9 +4733,9 @@ async def test_nat_rule_switch_with_dotted_rule_key_uses_full_rule_id(
     """Preserve dots in NAT rule IDs derived from payload keys.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (HomeAssistant): The ph_hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (HomeAssistant): Home Assistant test instance used to register and inspect entities.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     state = {
@@ -4779,8 +4779,8 @@ async def test_compile_new_api_empty_state(
     """Test compilation functions handle empty/missing state gracefully.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
 
@@ -4808,8 +4808,8 @@ async def test_async_setup_entry_records_none_for_malformed_service_identity_row
     """Service identity must be stable even if some rows are malformed.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator = make_coord(
         {
@@ -4839,9 +4839,9 @@ async def test_async_setup_entry_records_none_for_malformed_service_identity_row
         """Capture desired entities input for reconciliation.
 
         Args:
-            _entry (MockConfigEntry): The _entry argument.
-            _platform (str): The _platform argument.
-            entities (Any | None): The entities argument.
+            _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
+            _platform (str): Platform name passed through the mocked loader.
+            entities (Any | None): Entities captured by the platform add callback.
         """
         recorded["entities"] = entities
 
@@ -4849,8 +4849,8 @@ async def test_async_setup_entry_records_none_for_malformed_service_identity_row
         """Capture compiled switch entities.
 
         Args:
-            ents (Iterable[Any]): The ents argument.
-            _update_before_add (bool): The _update_before_add argument.
+            ents (Iterable[Any]): Entities captured by the platform add callback.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         created.extend(ents)
 
@@ -4869,8 +4869,8 @@ def test_service_switch_get_service_matches_normalized_identity(
     """Service switch should remain available when service ids need normalization.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
@@ -4911,11 +4911,11 @@ async def test_service_switch_controls_normalized_identity(
     """Service switch should control services when identity is trimmed id or fallback name.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        ph_hass (Any): The ph_hass argument.
-        service (Mapping[str, Any]): The service argument.
-        identity (str): The identity argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        service (Mapping[str, Any]): Service payload used to construct and update the switch.
+        identity (str): Stable identity fragment expected in the entity unique ID.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)

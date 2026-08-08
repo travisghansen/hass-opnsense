@@ -113,7 +113,7 @@ def test_compile_tracked_devices_normalizes_and_deduplicates_configured_macs(
     """Configured MACs should be normalized and deduplicated before entity creation.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     config_entry = make_config_entry(
         options={
@@ -173,11 +173,11 @@ async def test_async_setup_entry_configured_devices(
     """Setup creates device tracker entities for configured MACs.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_reg_factory (Any): The fake_reg_factory argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        fake_reg_factory (Any): Factory for the in-memory entity registry test double.
     """
     coordinator.data = {
         "arp_table": [
@@ -210,7 +210,7 @@ async def test_async_setup_entry_configured_devices(
 
         Args:
             ents (Iterable[Any]): Ents provided by pytest or the test case.
-            _update_before_add (bool): The _update_before_add argument.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         added.extend(ents)
 
@@ -248,11 +248,11 @@ async def test_async_setup_entry_skips_malformed_arp_rows(
     """Malformed ARP rows should not prevent valid device trackers from being created.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_reg_factory (Any): The fake_reg_factory argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        fake_reg_factory (Any): Factory for the in-memory entity registry test double.
     """
     coordinator.data = {
         "arp_table": [
@@ -289,11 +289,11 @@ async def test_async_setup_entry_removes_nonmatching_tracked_macs(
     """Ensure previously-tracked MACs not present in current devices are removed.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_reg_factory (Any): The fake_reg_factory argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        fake_reg_factory (Any): Factory for the in-memory entity registry test double.
     """
     coordinator.data = {
         "arp_table": [{"mac": "aa:bb:cc", "ip": "1.2.3.4", "hostname": "dev", "manufacturer": "m"}]
@@ -324,7 +324,7 @@ async def test_async_setup_entry_removes_nonmatching_tracked_macs(
 
         Args:
             ents (Iterable[Any]): Ents provided by pytest or the test case.
-            _update_before_add (bool): The _update_before_add argument.
+            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
         """
         added.extend(ents)
 
@@ -347,8 +347,8 @@ def test_handle_coordinator_update_unavailable(
     """Coordinator with invalid data should mark entity unavailable.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator.data = None
     entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -376,8 +376,8 @@ def test_handle_coordinator_update_entry_present(
     """Coordinator arp entry populates entity attributes correctly.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator.data = {
         "arp_table": [
@@ -431,11 +431,11 @@ def test_entity_registry_enabled_default_uses_existing_mac_device(
     """Auto-discovered trackers should be enabled when HA can link a MAC device.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_reg_factory (Any): The fake_reg_factory argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        fake_reg_factory (Any): Factory for the in-memory entity registry test double.
     """
     ent = _make_scanner_entity(
         coordinator=coordinator,
@@ -469,13 +469,13 @@ def test_suggested_object_id_for_matching_enabled_mac_device(
     """Suggested object IDs should prefer hostnames and otherwise use the MAC.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_reg_factory (Any): The fake_reg_factory argument.
-        hostname (str | None): The hostname argument.
-        expected_object_id (str): The expected_object_id argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        fake_reg_factory (Any): Factory for the in-memory entity registry test double.
+        hostname (str | None): Hostname used to derive the tracker object ID.
+        expected_object_id (str): Expected object ID derived from the tracker identity.
     """
     ent = OPNsenseScannerEntity(
         config_entry=make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"}),
@@ -500,8 +500,8 @@ def test_entity_registry_enabled_default_respects_configured_enabled_default(
     """Configured trackers should keep their requested enabled-by-default state.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     ent = _make_scanner_entity(
         coordinator=coordinator,
@@ -520,8 +520,8 @@ def test_entity_registry_enabled_default_without_mac_stays_disabled(
     """Trackers without a MAC cannot link to an enabled MAC device.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     ent = _make_scanner_entity(
         coordinator=coordinator,
@@ -551,11 +551,11 @@ def test_entity_registry_enabled_default_pref_disable_new_entities_keeps_device_
     """Existing MAC matches should still link while the new-entity preference is enabled.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_reg_factory (Any): The fake_reg_factory argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        fake_reg_factory (Any): Factory for the in-memory entity registry test double.
     """
     ent = _make_scanner_entity(
         coordinator=coordinator,
@@ -587,10 +587,10 @@ def test_entity_registry_enabled_default_fallback_when_no_matching_device(
     """Auto-discovered trackers should stay disabled when no matching device exists.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     ent = _make_scanner_entity(
         coordinator=coordinator,
@@ -621,7 +621,7 @@ def test_entity_registry_enabled_default_fallback_when_no_matching_device(
                 _kwargs (Any): Additional keyword arguments accepted by the test double.
 
             Returns:
-                Any: The returned value.
+                Any: Matching fake registry object, or ``None`` when absent.
             """
             return self._device if matched_state["has_device"] else None
 
@@ -644,11 +644,11 @@ def test_entity_registry_enabled_default_falls_back_for_disabled_mac_device(
     """Disabled matching MAC devices should keep fallback device_info-based linking.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_reg_factory (Any): The fake_reg_factory argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        fake_reg_factory (Any): Factory for the in-memory entity registry test double.
     """
     ent = _make_scanner_entity(
         coordinator=coordinator,
@@ -701,8 +701,8 @@ def test_handle_coordinator_update_skips_malformed_arp_entries(
     """Malformed ARP entries should be skipped while searching for the tracked MAC.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     ent = _make_scanner_entity(
         coordinator=coordinator,
@@ -723,8 +723,8 @@ def test_handle_coordinator_update_skips_nonmatching_mapping_arp_entries(
     """Nonmatching ARP mapping entries should be skipped while searching.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     ent = _make_scanner_entity(
         coordinator=coordinator,
@@ -745,8 +745,8 @@ def test_handle_coordinator_update_matches_mac_case_insensitively(
     """Coordinator matching should include uppercase/lowercase MAC variations.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator.data = {
         "arp_table": [{"mac": "AA:BB:CC", "ip": "1.2.3.4", "intf_description": "lan"}],
@@ -774,8 +774,8 @@ def test_handle_coordinator_update_reads_raw_arp_ip_key(
     """Tracker update should still read `ip-address` when `ip` is absent.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator.data = {
         "arp_table": [
@@ -818,8 +818,8 @@ def test_handle_coordinator_update_skips_malformed_arp_rows(
     """Malformed rows in arp_table should be skipped and valid rows still apply.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator.data = {
         "arp_table": [
@@ -862,8 +862,8 @@ def test_handle_coordinator_update_missing_entry_consider_home(
     """If missing entry and within consider_home, entity remains connected.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(
@@ -893,8 +893,8 @@ def test_handle_coordinator_update_expired_entry_outside_consider_home(
     """Expired ARP entries outside consider_home should stay disconnected.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry(
         data={CONF_DEVICE_UNIQUE_ID: "dev1"},
@@ -926,8 +926,8 @@ async def test_restore_last_state_returns_when_no_snapshot(
     """Restoring state should return when Home Assistant has no saved snapshot.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     ent = _make_scanner_entity(coordinator, make_config_entry)
     object.__setattr__(ent, "async_get_last_state", AsyncMock(return_value=None))
@@ -946,9 +946,9 @@ async def test_restore_last_state_and_device_info(
     """Restoring last state merges saved attributes into the entity.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -1016,8 +1016,8 @@ async def test_restore_last_state_uses_datetime_and_skips_empty_attributes(
     """Restoring state should preserve datetime values and ignore empty saved attributes.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     last_known_connected_time = datetime.now(UTC)
     ent = _make_scanner_entity(coordinator, make_config_entry)
@@ -1054,9 +1054,9 @@ async def test_restore_last_state_restores_tz_aware_connected_time(
     """Aware datetime values should restore into tracker state.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        connected_time (datetime | str): The connected_time argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        connected_time (datetime | str): Connection timestamp value supplied for tracker normalization.
     """
     ent = _make_scanner_entity(coordinator, make_config_entry)
     last_state = MagicMock()
@@ -1088,9 +1088,9 @@ async def test_restore_last_state_ignores_invalid_connected_time(
     """Restoring state should ignore invalid saved connection timestamps.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        connected_time (str | int): The connected_time argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        connected_time (str | int): Connection timestamp value supplied for tracker normalization.
     """
     ent = _make_scanner_entity(coordinator, make_config_entry)
     last_state = MagicMock()
@@ -1113,8 +1113,8 @@ async def test_restore_last_state_ignores_non_mapping_attributes(
     """Restoring state should ignore snapshots with malformed attributes.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     ent = _make_scanner_entity(coordinator, make_config_entry)
     last_state = MagicMock()
@@ -1135,9 +1135,9 @@ async def test_async_added_to_hass_calls_restore(
     """Entity.async_added_to_hass should call state restoration.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -1169,9 +1169,9 @@ async def test_async_internal_added_to_hass_links_existing_mac_device(
     """Scanner entity should link to an existing registry device with the same MAC.
 
     Args:
-        ph_hass (Any): The ph_hass argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"}, entry_id="entry-1")
@@ -1230,9 +1230,9 @@ async def test_async_internal_added_to_hass_keeps_fallback_device_info_without_m
     """Scanner entity should keep its fallback device info when no MAC device exists.
 
     Args:
-        ph_hass (Any): The ph_hass argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"}, entry_id="entry-1")
@@ -1276,11 +1276,11 @@ async def test_async_setup_entry_state_not_mapping(
     """Setup exits early when coordinator state is not a mapping.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_reg_factory (Any): The fake_reg_factory argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        fake_reg_factory (Any): Factory for the in-memory entity registry test double.
     """
     coordinator.data = "not-a-mapping"
     entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -1307,9 +1307,9 @@ async def test_async_setup_entry_records_none_for_missing_arp_inventory(
     """Missing ARP payload should keep device tracker reconciliation incomplete.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator.data = {}
     entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -1321,9 +1321,9 @@ async def test_async_setup_entry_records_none_for_missing_arp_inventory(
         """Capture the desired-entity payload sent to reconciliation.
 
         Args:
-            _entry (MockConfigEntry): The _entry argument.
-            _platform (str): The _platform argument.
-            entities (Any | None): The entities argument.
+            _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
+            _platform (str): Platform name passed through the mocked loader.
+            entities (Any | None): Entities captured by the platform add callback.
         """
         recorded["entities"] = entities
 
@@ -1348,9 +1348,9 @@ async def test_async_setup_entry_records_empty_authoritative_arp_inventory(
     """An explicit empty ARP table is still authoritative for tracker reconciliation.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -1362,9 +1362,9 @@ async def test_async_setup_entry_records_empty_authoritative_arp_inventory(
         """Capture the desired-entity payload sent to reconciliation.
 
         Args:
-            _entry (MockConfigEntry): The _entry argument.
-            _platform (str): The _platform argument.
-            entities (Any | None): The entities argument.
+            _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
+            _platform (str): Platform name passed through the mocked loader.
+            entities (Any | None): Entities captured by the platform add callback.
         """
         recorded["entities"] = entities
 
@@ -1389,9 +1389,9 @@ async def test_async_setup_entry_records_none_for_malformed_arp_rows_in_track_al
     """Track-all mode should fail reconciliation if any ARP row cannot compile.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator.data = {
         "arp_table": [
@@ -1413,9 +1413,9 @@ async def test_async_setup_entry_records_none_for_malformed_arp_rows_in_track_al
         """Capture the desired-entity payload sent to reconciliation.
 
         Args:
-            _entry (MockConfigEntry): The _entry argument.
-            _platform (str): The _platform argument.
-            entities (Any | None): The entities argument.
+            _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
+            _platform (str): Platform name passed through the mocked loader.
+            entities (Any | None): Entities captured by the platform add callback.
         """
         recorded["entities"] = entities
 
@@ -1442,9 +1442,9 @@ async def test_async_setup_entry_records_entities_for_invalid_mapping_rows_in_tr
     """Track-all should ignore non-entity mapping rows with unusable MAC values.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator.data = {
         "arp_table": [
@@ -1467,9 +1467,9 @@ async def test_async_setup_entry_records_entities_for_invalid_mapping_rows_in_tr
         """Capture the desired-entity payload sent to reconciliation.
 
         Args:
-            _entry (MockConfigEntry): The _entry argument.
-            _platform (str): The _platform argument.
-            entities (Any | None): The entities argument.
+            _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
+            _platform (str): Platform name passed through the mocked loader.
+            entities (Any | None): Entities captured by the platform add callback.
         """
         recorded["entities"] = entities
 
@@ -1497,9 +1497,9 @@ async def test_async_setup_entry_records_entities_for_duplicate_macs_in_track_al
     """Track-all mode should treat duplicate normalized MAC rows as authoritative.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator.data = {
         "arp_table": [
@@ -1520,9 +1520,9 @@ async def test_async_setup_entry_records_entities_for_duplicate_macs_in_track_al
         """Capture the desired-entity payload sent to reconciliation.
 
         Args:
-            _entry (MockConfigEntry): The _entry argument.
-            _platform (str): The _platform argument.
-            entities (Any | None): The entities argument.
+            _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
+            _platform (str): Platform name passed through the mocked loader.
+            entities (Any | None): Entities captured by the platform add callback.
         """
         recorded["entities"] = entities
 
@@ -1554,9 +1554,9 @@ async def test_async_setup_entry_track_all_completeness_ignored_in_explicit_mac_
     """Explicit configured-MAC mode should ignore track-all completeness failures.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator.data = {
         "arp_table": [
@@ -1580,9 +1580,9 @@ async def test_async_setup_entry_track_all_completeness_ignored_in_explicit_mac_
         """Capture the desired-entity payload sent to reconciliation.
 
         Args:
-            _entry (MockConfigEntry): The _entry argument.
-            _platform (str): The _platform argument.
-            entities (Any | None): The entities argument.
+            _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
+            _platform (str): Platform name passed through the mocked loader.
+            entities (Any | None): Entities captured by the platform add callback.
         """
         recorded["entities"] = entities
 
@@ -1611,11 +1611,11 @@ async def test_async_setup_entry_removes_previous_mac(
     """Setup removes previously tracked MAC addresses when reconfiguring.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_reg_factory (Any): The fake_reg_factory argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        fake_reg_factory (Any): Factory for the in-memory entity registry test double.
     """
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(
@@ -1650,11 +1650,11 @@ async def test_async_setup_entry_preserves_previous_device_during_reconciliation
     """Active reconciliation owns stale deletion, including tracker devices.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_reg_factory (Any): The fake_reg_factory argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        fake_reg_factory (Any): Factory for the in-memory entity registry test double.
     """
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(
@@ -1685,8 +1685,8 @@ def test_handle_coordinator_update_expires_positive(
     """Expired ARP entries set entity to disconnected and update attributes.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator.data = {
         "arp_table": [
@@ -1726,8 +1726,8 @@ def test_handle_coordinator_update_skips_malformed_expires(
     """Malformed ARP expiry data should not hide other valid ARP attributes.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator.data = {
         "arp_table": [
@@ -1770,8 +1770,8 @@ def test_handle_coordinator_update_ip_typeerror(
     """Handle TypeError when entry IP is None and avoid crashing.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator.data = {"arp_table": [{"mac": "aa:bb:cc", "ip": None}]}
 
@@ -1798,8 +1798,8 @@ def test_handle_coordinator_update_expired_preserve_last_known_ip(
     """Expired entries preserve last_known_ip when no IP present.
 
     Args:
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator.data = {"arp_table": [{"mac": "aa:bb:cc", "expired": True}]}
 
@@ -1836,11 +1836,11 @@ async def test_async_setup_entry_from_arp_entries(
     """Setup from ARP entries creates device trackers for present ARP rows.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        fake_reg_factory (Any): The fake_reg_factory argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        fake_reg_factory (Any): Factory for the in-memory entity registry test double.
     """
     coordinator.data = {"arp_table": [{"mac": "m1"}, {"mac": "m2", "hostname": "h2"}]}
     entry = make_config_entry(
@@ -1873,10 +1873,10 @@ async def test_async_setup_entry_removes_stale_tracker_entities_and_reparents_sh
     """Stale MAC cleanup reassigns shared parents to surviving OPNsense routers.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator.data = {"arp_table": [{"mac": "keep:mac"}]}
     stale_router_mac = "stale:mac:router"
@@ -1908,12 +1908,12 @@ async def test_async_setup_entry_removes_stale_tracker_entities_and_reparents_sh
         """Return the registered tracker entity for a stale unique ID.
 
         Returns:
-            str | None: The returned value.
+            str | None: Registered entity ID for the stale unique ID, if present.
 
         Args:
-            domain (str): The domain argument.
-            platform (str): The platform argument.
-            unique_id (str): The unique_id argument.
+            domain (str): Entity domain used for the fake registry lookup.
+            platform (str): Integration platform used for the fake registry lookup.
+            unique_id (str): Stale tracker unique ID resolved by the fake registry.
         """
         return entity_ids.get(unique_id)
 
@@ -1984,11 +1984,11 @@ async def test_async_setup_entry_removes_stale_tracker_entities_and_reparents_sh
         """Return the fake router or stale device for the requested lookup.
 
         Returns:
-            Any: The returned value.
+            Any: Matching fake registry object, or ``None`` when absent.
 
         Args:
-            identifiers (set[tuple[str, str]] | None): The identifiers argument.
-            connections (set[tuple[str, str]] | None): The connections argument.
+            identifiers (set[tuple[str, str]] | None): Device identifiers used for the fake registry lookup.
+            connections (set[tuple[str, str]] | None): Device connections used for the fake registry lookup.
         """
         if identifiers is not None:
             key = next(iter(identifiers))
@@ -2054,10 +2054,10 @@ async def test_async_setup_entry_removes_stale_tracker_entities_clears_missing_p
     """Clear stale tracker parent assignment when router lookup is no longer available.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        ph_hass (Any): The ph_hass argument.
-        coordinator (MagicMock): The coordinator argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coordinator.data = {"arp_table": [{"mac": "keep:mac"}]}
     stale_router_mac = "stale:mac:router"
@@ -2093,11 +2093,11 @@ async def test_async_setup_entry_removes_stale_tracker_entities_clears_missing_p
         """Return fake stale tracker devices and missing router lookup results.
 
         Returns:
-            Any: The returned value.
+            Any: Matching fake registry object, or ``None`` when absent.
 
         Args:
-            identifiers (set[tuple[str, str]] | None): The identifiers argument.
-            connections (set[tuple[str, str]] | None): The connections argument.
+            identifiers (set[tuple[str, str]] | None): Device identifiers used for the fake registry lookup.
+            connections (set[tuple[str, str]] | None): Device connections used for the fake registry lookup.
         """
         if identifiers is not None:
             return None

@@ -43,10 +43,10 @@ class FakeCleanupClient:
         """Return fake pull requests by state.
 
         Returns:
-            list[dict[str, object]]: The returned value.
+            list[dict[str, object]]: Pull request records stored by the fake GitHub client.
 
         Args:
-            state (str): The state argument.
+            state (str): Pull request state recorded by the fake GitHub client.
         """
         return self.open_pulls if state == "open" else self.closed_pulls
 
@@ -54,7 +54,7 @@ class FakeCleanupClient:
         """Record or reject a closed pull request.
 
         Args:
-            pull_number (int): The pull_number argument.
+            pull_number (int): Pull request number queried by the fake GitHub client.
 
         Raises:
             AssertionError: The fake was configured to reject close requests.
@@ -67,7 +67,7 @@ class FakeCleanupClient:
         """Record a deleted git ref.
 
         Args:
-            ref (str): The ref argument.
+            ref (str): Git reference queried by the fake GitHub client.
         """
         self.deleted_refs.append(ref)
 
@@ -109,14 +109,14 @@ def _write_pin_files(
     """Write temporary manifest, pyproject, and prek files with aiopnsense pins.
 
     Returns:
-        tuple[Path, Path, Path]: The returned value.
+        tuple[Path, Path, Path]: Paths to the generated manifest, pyproject, and prek files.
 
     Args:
-        tmp_path (Path): The tmp_path argument.
-        manifest_version (str): The manifest_version argument.
-        pyproject_version (str | None): The pyproject_version argument.
-        prek_version (str | None): The prek_version argument.
-        pyproject_text (str | None): The pyproject_text argument.
+        tmp_path (Path): pytest temporary directory containing test configuration files.
+        manifest_version (str): aiopnsense version written to the test manifest.
+        pyproject_version (str | None): aiopnsense version written to the test pyproject.
+        prek_version (str | None): aiopnsense version written to the test prek configuration.
+        pyproject_text (str | None): Optional complete pyproject content for the fixture.
     """
     manifest_path = tmp_path / "manifest.json"
     pyproject_path = tmp_path / "pyproject.toml"
@@ -159,7 +159,7 @@ def updater_script() -> ModuleType:
     """Load the aiopnsense pin updater script as a test module.
 
     Returns:
-        ModuleType: The returned value.
+        ModuleType: Imported workflow helper module.
     """
     return _load_script("update_aiopnsense_pins", SCRIPT_PATH)
 
@@ -169,7 +169,7 @@ def release_notes_script() -> ModuleType:
     """Load the aiopnsense release-note builder script as a test module.
 
     Returns:
-        ModuleType: The returned value.
+        ModuleType: Imported workflow helper module.
     """
     return _load_script("build_aiopnsense_release_notes", RELEASE_NOTES_SCRIPT_PATH)
 
@@ -179,7 +179,7 @@ def cleanup_script() -> ModuleType:
     """Load the aiopnsense cleanup script as a test module.
 
     Returns:
-        ModuleType: The returned value.
+        ModuleType: Imported workflow helper module.
     """
     return _load_script("cleanup_aiopnsense_update_branches", CLEANUP_SCRIPT_PATH)
 
@@ -188,11 +188,11 @@ def _load_script(module_name: str, script_path: Path) -> ModuleType:
     """Load a checked-in workflow helper script as a test module.
 
     Returns:
-        ModuleType: The returned value.
+        ModuleType: Imported workflow helper module.
 
     Args:
-        module_name (str): The module_name argument.
-        script_path (Path): The script_path argument.
+        module_name (str): Import name assigned to the loaded workflow helper.
+        script_path (Path): Filesystem path of the workflow helper to load.
     """
     spec = util.spec_from_file_location(module_name, script_path)
     assert spec is not None
@@ -230,13 +230,13 @@ def test_updater_script_pin_update_scenarios(
     """Updater script should handle stable, prerelease, and drift pin scenarios.
 
     Args:
-        tmp_path (Path): The tmp_path argument.
-        updater_script (ModuleType): The updater_script argument.
-        manifest_version (str): The manifest_version argument.
-        pyproject_version (str): The pyproject_version argument.
-        latest_version (str): The latest_version argument.
-        expected_update_needed (bool): The expected_update_needed argument.
-        expected_target (str): The expected_target argument.
+        tmp_path (Path): pytest temporary directory containing test configuration files.
+        updater_script (ModuleType): Loaded aiopnsense pin-updater helper module.
+        manifest_version (str): aiopnsense version written to the test manifest.
+        pyproject_version (str): aiopnsense version written to the test pyproject.
+        latest_version (str): Release version reported by the mocked package index.
+        expected_update_needed (bool): Whether pin evaluation should request an update.
+        expected_target (str): Version target expected from pin evaluation.
     """
     manifest_path, pyproject_path, prek_path = _write_pin_files(
         tmp_path,
@@ -271,8 +271,8 @@ def test_updater_script_updates_pyproject_pin_without_trailing_comma(
     """Updater script should preserve valid TOML dependency-list formatting.
 
     Args:
-        tmp_path (Path): The tmp_path argument.
-        updater_script (ModuleType): The updater_script argument.
+        tmp_path (Path): pytest temporary directory containing test configuration files.
+        updater_script (ModuleType): Loaded aiopnsense pin-updater helper module.
     """
     manifest_path, pyproject_path, prek_path = _write_pin_files(
         tmp_path,
@@ -303,8 +303,8 @@ def test_updater_script_repairs_prek_mypy_pin_drift(
     """Updater should synchronize a stale isolated mypy-hook dependency pin.
 
     Args:
-        tmp_path (Path): The tmp_path argument.
-        updater_script (ModuleType): The updater_script argument.
+        tmp_path (Path): pytest temporary directory containing test configuration files.
+        updater_script (ModuleType): Loaded aiopnsense pin-updater helper module.
     """
     manifest_path, pyproject_path, prek_path = _write_pin_files(
         tmp_path,
@@ -333,8 +333,8 @@ def test_updater_script_rejects_missing_prek_mypy_pin(
     """Updater should fail when prek cannot install aiopnsense for mypy.
 
     Args:
-        tmp_path (Path): The tmp_path argument.
-        updater_script (ModuleType): The updater_script argument.
+        tmp_path (Path): pytest temporary directory containing test configuration files.
+        updater_script (ModuleType): Loaded aiopnsense pin-updater helper module.
     """
     manifest_path, pyproject_path, prek_path = _write_pin_files(
         tmp_path,
@@ -394,10 +394,10 @@ def test_updater_script_selects_latest_stable_from_pypi_payload(
     """Updater script should select the latest installable stable PyPI release.
 
     Args:
-        updater_script (ModuleType): The updater_script argument.
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        payload (dict[str, object]): The payload argument.
-        expected_latest (str): The expected_latest argument.
+        updater_script (ModuleType): Loaded aiopnsense pin-updater helper module.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        payload (dict[str, object]): Synthetic API response payload.
+        expected_latest (str): Latest release version expected from the response.
     """
 
     def open_pypi_response(*_: object, **__: object) -> StringIO:
@@ -408,7 +408,7 @@ def test_updater_script_selects_latest_stable_from_pypi_payload(
             __ (object): Additional keyword arguments accepted by the test double.
 
         Returns:
-            StringIO: The returned value.
+            StringIO: In-memory stream containing the mocked HTTP response.
         """
         return StringIO(json.dumps(payload))
 
@@ -424,8 +424,8 @@ def test_updater_script_rejects_duplicate_pyproject_pins(
     """Updater script should fail clearly when pyproject has ambiguous pins.
 
     Args:
-        tmp_path (Path): The tmp_path argument.
-        updater_script (ModuleType): The updater_script argument.
+        tmp_path (Path): pytest temporary directory containing test configuration files.
+        updater_script (ModuleType): Loaded aiopnsense pin-updater helper module.
     """
     manifest_path, pyproject_path, prek_path = _write_pin_files(
         tmp_path,
@@ -454,8 +454,8 @@ def test_release_note_script_builds_sanitized_pr_body(
     """Release-note script should build a mention-safe PR body file.
 
     Args:
-        tmp_path (Path): The tmp_path argument.
-        release_notes_script (ModuleType): The release_notes_script argument.
+        tmp_path (Path): pytest temporary directory containing test configuration files.
+        release_notes_script (ModuleType): Loaded release-notes workflow helper module.
     """
     releases = [
         {
@@ -506,9 +506,9 @@ def test_release_note_script_handles_url_errors(
     """Release-note script should report network failures without a traceback.
 
     Args:
-        tmp_path (Path): The tmp_path argument.
-        release_notes_script (ModuleType): The release_notes_script argument.
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        tmp_path (Path): pytest temporary directory containing test configuration files.
+        release_notes_script (ModuleType): Loaded release-notes workflow helper module.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
     """
 
     def raise_url_error(**_: object) -> Never:
@@ -555,7 +555,7 @@ def test_cleanup_script_closes_stale_prs_and_deletes_workflow_branches(
     """Cleanup script should close stale PRs and remove workflow-created branches.
 
     Args:
-        cleanup_script (ModuleType): The cleanup_script argument.
+        cleanup_script (ModuleType): Loaded branch-cleanup workflow helper module.
     """
     client = FakeCleanupClient(
         open_pulls=[
@@ -597,7 +597,7 @@ def test_cleanup_script_keeps_active_update_branch(cleanup_script: ModuleType) -
     """Cleanup script should not delete the branch for the kept update PR.
 
     Args:
-        cleanup_script (ModuleType): The cleanup_script argument.
+        cleanup_script (ModuleType): Loaded branch-cleanup workflow helper module.
     """
     client = FakeCleanupClient(
         open_pulls=[_workflow_pull(number=12)],

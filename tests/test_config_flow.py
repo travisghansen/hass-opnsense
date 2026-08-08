@@ -65,10 +65,10 @@ def _make_options_flow(config_entry: Any) -> Any:
     """Create an options flow using Home Assistant's built-in config entry lookup.
 
     Returns:
-        Any: The returned value.
+        Any: Configured object produced by the local test double.
 
     Args:
-        config_entry (Any): The config_entry argument.
+        config_entry (Any): Configuration entry exercised by the scenario.
     """
     if not isinstance(getattr(config_entry, "entry_id", None), str):
         config_entry.entry_id = "test-entry"
@@ -126,7 +126,7 @@ class _CarpFlowClient:
         """Return fake firmware version.
 
         Returns:
-            str: The returned value.
+            str: Synthetic identifier, URL, or text exposed by the test double.
         """
         return self.firmware_version
 
@@ -134,7 +134,7 @@ class _CarpFlowClient:
         """Return fake responder metadata.
 
         Returns:
-            dict[str, str]: The returned value.
+            dict[str, str]: Synthetic string-valued API record.
         """
         return {"name": self.system_name}
 
@@ -142,7 +142,7 @@ class _CarpFlowClient:
         """Return CARP endpoint payload.
 
         Returns:
-            dict[str, Any]: The returned value.
+            dict[str, Any]: Synthetic integration or API data mapping.
         """
         return {"interfaces": self.carp_interfaces}
 
@@ -151,7 +151,7 @@ def _make_basic_device_input() -> dict[str, Any]:
     """Build a minimal device-flow input payload.
 
     Returns:
-        dict[str, Any]: The returned value.
+        dict[str, Any]: Synthetic integration or API data mapping.
     """
     return {
         "url": "https://router.example",
@@ -166,7 +166,7 @@ def _make_basic_carp_input() -> dict[str, Any]:
     """Build a minimal CARP-flow input payload.
 
     Returns:
-        dict[str, Any]: The returned value.
+        dict[str, Any]: Synthetic integration or API data mapping.
     """
     return {
         "url": "https://router.example",
@@ -310,8 +310,8 @@ def test_clean_and_parse_url_normalizes_scheme_and_ports(input_url: str, expecte
     """Normalize URL schemes and ports into their canonical form.
 
     Args:
-        input_url (str): The input_url argument.
-        expected_url (str): The expected_url argument.
+        input_url (str): User-entered OPNsense URL.
+        expected_url (str): Canonical URL expected after normalization.
     """
     user_input = {CONF_URL: input_url}
 
@@ -333,9 +333,9 @@ def test_url_conflict_matches_persisted_default_ports(
     """Opposite-kind URL conflicts should match legacy explicit default ports.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        stored_url (str): The stored_url argument.
-        normalized_url (str): The normalized_url argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        stored_url (str): URL currently stored on the configuration entry.
+        normalized_url (str): Canonical URL expected in stored configuration.
     """
     existing_entry = make_config_entry(
         data={
@@ -403,10 +403,10 @@ async def test_validate_input_exception_mapping(
     """Ensure validate_input maps public aiopnsense exceptions to form errors.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        exception_factory (type[aiopnsense_exceptions.OPNsenseError]): The exception_factory
-            argument.
-        expected (str): The expected argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        exception_factory (type[aiopnsense_exceptions.OPNsenseError]): OPNsense exception class
+            exercised by the parameterized form-error mapping case.
+        expected (str): Outcome asserted by the parameterized scenario.
     """
     exc = exception_factory("boom")
 
@@ -418,7 +418,7 @@ async def test_validate_input_exception_mapping(
             kwargs (object): Additional keyword arguments accepted by the test double.
 
         Returns:
-            Never: The returned value.
+            Never: This test double always raises and never returns.
 
         Raises:
             exc: Always raised with the prepared exception for the current parametrized case.
@@ -438,7 +438,7 @@ async def test_validate_input_reraises_unmapped_opnsense_error(
     """validate_input should re-raise OPNsense errors without form mappings.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
     """
     exc = OPNsenseError("unmapped")
 
@@ -450,7 +450,7 @@ async def test_validate_input_reraises_unmapped_opnsense_error(
             kwargs (object): Additional keyword arguments accepted by the test double.
 
         Returns:
-            Never: The returned value.
+            Never: This test double always raises and never returns.
 
         Raises:
             exc: Always raised to exercise the re-raise path.
@@ -472,7 +472,7 @@ async def test_validate_input_timeout_uses_connect_timeout_error(
     """OPNsense timeout should map to connect_timeout and redact credentials in logs.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
     """
     username = "admin"
     password = "supersecret"
@@ -486,7 +486,7 @@ async def test_validate_input_timeout_uses_connect_timeout_error(
             kwargs (object): Additional keyword arguments accepted by the test double.
 
         Returns:
-            Never: The returned value.
+            Never: This test double always raises and never returns.
 
         Raises:
             aiopnsense_exceptions.OPNsenseTimeoutError: Always raised with a message containing
@@ -533,7 +533,7 @@ async def test_async_step_device_creates_entry_and_sets_entry_type(
     """Device flow should continue to set a hardware-backed entry type.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
     """
     client = _CarpFlowClient()
     patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
@@ -564,7 +564,7 @@ async def test_async_step_device_routes_to_granular_sync(
     """Device flow must still forward granular-sync-enabled submissions.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
     """
     client = _CarpFlowClient()
     patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
@@ -595,8 +595,8 @@ async def test_async_step_device_aborts_on_duplicate_carp_url(
     """Device flow should reject a normalized URL already used by a CARP entry.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     client = _CarpFlowClient()
     patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
@@ -639,8 +639,8 @@ async def test_async_step_carp_aborts_on_device_url_conflict(
     """CARP flow should reject a URL already used by a device entry.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     client = _CarpFlowClient()
     patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
@@ -688,10 +688,10 @@ async def test_async_step_carp_aborts_on_legacy_default_port_duplicate(
     """CARP setup should reject canonical duplicates stored with default ports.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        stored_url (str): The stored_url argument.
-        normalized_url (str): The normalized_url argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        stored_url (str): URL currently stored on the configuration entry.
+        normalized_url (str): Canonical URL expected in stored configuration.
     """
     client = _CarpFlowClient()
     patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
@@ -727,8 +727,8 @@ async def test_async_step_device_allows_same_url_for_non_carp_entry(
     """Device flow should not block URL duplicates when matching entry is not CARP.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     client = _CarpFlowClient()
     patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
@@ -775,7 +775,7 @@ async def test_async_step_carp_validates_without_device_id_and_sets_entry_type(
     """CARP flow should validate with device-id disabled and skip granular sync fields.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
     """
     client = _CarpFlowClient()
     patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
@@ -847,8 +847,8 @@ async def test_async_step_carp_rejects_malformed_or_blank_vip_rows(
     """CARP validation should require a mapping row with usable VHID and subnet.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        interfaces (Any): The interfaces argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        interfaces (Any): Synthetic interface collection returned by the client.
     """
     client = _CarpFlowClient()
     object.__setattr__(client, "get_carp", AsyncMock(return_value={"interfaces": interfaces}))
@@ -880,8 +880,8 @@ async def test_async_step_carp_accepts_vip_identity_without_physical_interface(
     """CARP validation should accept integer/string VHIDs without interface names.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        interface (dict[str, Any]): The interface argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        interface (dict[str, Any]): Synthetic interface record returned by the client.
     """
     client = _CarpFlowClient()
     object.__setattr__(client, "get_carp", AsyncMock(return_value={"interfaces": [interface]}))
@@ -908,8 +908,8 @@ async def test_async_step_carp_rejects_missing_or_blank_responder_name(
     """CARP validation should require a usable responder name from system info.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        system_info (Any): The system_info argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        system_info (Any): Synthetic system-information response.
     """
     client = _CarpFlowClient()
     object.__setattr__(client, "get_system_info", AsyncMock(return_value=system_info))
@@ -932,7 +932,7 @@ async def test_async_step_carp_custom_name_does_not_waive_responder_validation(
     """A custom entry name should not bypass required responder metadata.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
     """
     client = _CarpFlowClient()
     object.__setattr__(client, "get_system_info", AsyncMock(return_value={"name": "  "}))
@@ -969,7 +969,7 @@ async def test_async_step_carp_rejects_below_min_firmware(
     """Below-minimum firmware in CARP mode should map to below_min_firmware.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
     """
     client = _CarpFlowClient(
         firmware_version="0.1.0",
@@ -993,7 +993,7 @@ async def test_async_step_carp_aborts_on_duplicate_url(
     """CARP flow should use abort-by-URL dedupe for existing entries.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
     """
     client = _CarpFlowClient()
     patch_opnsense_client(monkeypatch, cf_mod, lambda **_kwargs: client)
@@ -1016,7 +1016,7 @@ async def test_validate_input_can_map_carp_not_configured_error(
     """validate_input should map CARP payload errors to base key carp_not_configured.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
     """
 
     async def _raise(*_args: object, **_kwargs: object) -> Never:
@@ -1027,7 +1027,7 @@ async def test_validate_input_can_map_carp_not_configured_error(
             _kwargs (object): Additional keyword arguments accepted by the test double.
 
         Returns:
-            Never: The returned value.
+            Never: This test double always raises and never returns.
 
         Raises:
             cf_mod.OPNsenseCarpNotConfiguredError: Always raised to exercise CARP error mapping.
@@ -1091,8 +1091,8 @@ async def test_get_dt_entries_sorts_and_includes_selected(
     """Ensure _get_dt_entries returns selected devices first and ARP entries sorted by IP.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
     """
     # Create a client class via fixture and attach a get_arp_table implementation
     client_cls = fake_client()
@@ -1101,10 +1101,10 @@ async def test_get_dt_entries_sorts_and_includes_selected(
         """Return arp table.
 
         Returns:
-            Any: The returned value.
+            Any: Configured object produced by the local test double.
 
         Args:
-            self (Any): The self argument.
+            self (Any): Flow instance receiving the patched method call.
             resolve_hostnames (bool): Resolve hostnames provided by pytest or the test case.
         """
         return [
@@ -1147,8 +1147,8 @@ async def test_get_dt_entries_passes_throw_errors_to_client(
     """_get_dt_entries should request throw-errors behavior from the API client.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
     """
     create_calls: dict[str, Any] = {}
 
@@ -1158,11 +1158,11 @@ async def test_get_dt_entries_passes_throw_errors_to_client(
         """Return no ARP rows for deterministic entry-point assertions.
 
         Returns:
-            list[dict[str, str]]: The returned value.
+            list[dict[str, str]]: Synthetic string-valued API records.
 
         Args:
-            self (Any): The self argument.
-            resolve_hostnames (bool): The resolve_hostnames argument.
+            self (Any): Flow instance receiving the patched method call.
+            resolve_hostnames (bool): Whether the simulated query requests hostname resolution.
         """
         return []
 
@@ -1175,7 +1175,7 @@ async def test_get_dt_entries_passes_throw_errors_to_client(
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            Any: The returned value.
+            Any: Configured object produced by the local test double.
         """
         create_calls.update(kwargs)
         return client_cls(**kwargs)
@@ -1198,8 +1198,8 @@ async def test_get_dt_entries_preserves_missing_selected_devices(
     """Selected MACs missing from ARP stay available with a fallback label.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
     """
     client_cls = fake_client()
 
@@ -1207,10 +1207,10 @@ async def test_get_dt_entries_preserves_missing_selected_devices(
         """Return arp table.
 
         Returns:
-            Any: The returned value.
+            Any: Configured object produced by the local test double.
 
         Args:
-            self (Any): The self argument.
+            self (Any): Flow instance receiving the patched method call.
             resolve_hostnames (bool): Resolve hostnames provided by pytest or the test case.
         """
         return [{"mac": "11:22:33:44:55:66", "hostname": "", "ip": "10.0.0.5"}]
@@ -1233,8 +1233,8 @@ async def test_get_dt_entries_supports_raw_arp_keys(
     """_get_dt_entries should parse raw aiopnsense 1.1.1 ARP keys.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
     """
     client_cls = fake_client()
 
@@ -1260,8 +1260,8 @@ async def test_get_dt_entries_skips_non_mapping_arp_rows(
     """Non-mapping ARP rows should be ignored instead of raising mapping errors.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        fake_client (Any): The fake_client argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
     """
     client_cls = fake_client()
 
@@ -1294,7 +1294,7 @@ async def test_get_dt_entries_closes_client(monkeypatch: pytest.MonkeyPatch) -> 
     """_get_dt_entries should close the client and request propagated errors.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
     """
 
     class _Client:
@@ -1341,7 +1341,7 @@ async def test_validate_client_details_closes_client(monkeypatch: pytest.MonkeyP
     """_validate_client_details should always close the temporary client.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
     """
 
     class _Client:
@@ -1414,7 +1414,7 @@ async def test_validate_client_details_raises_when_device_id_missing(
     """_validate_client_details should reject clients that return no Device ID.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
     """
 
     class _Client:
@@ -1437,7 +1437,7 @@ async def test_validate_client_details_raises_when_device_id_missing(
             """Return firmware that passes minimum-version validation.
 
             Returns:
-                str: The returned value.
+                str: Synthetic identifier, URL, or text exposed by the test double.
             """
             return "26.1.1"
 
@@ -1445,7 +1445,7 @@ async def test_validate_client_details_raises_when_device_id_missing(
             """Return minimal system metadata for validation.
 
             Returns:
-                dict[str, str]: The returned value.
+                dict[str, str]: Synthetic string-valued API record.
             """
             return {"name": "OPNsense"}
 
@@ -1453,7 +1453,7 @@ async def test_validate_client_details_raises_when_device_id_missing(
             """Return an empty device identifier.
 
             Returns:
-                str: The returned value.
+                str: Synthetic identifier, URL, or text exposed by the test double.
 
             Args:
                 expected_id (str | None): Expected device ID supplied by validation and ignored.
@@ -1577,9 +1577,9 @@ def test_options_schema_clamps_legacy_stored_defaults(
     """_build_options_init_schema should clamp legacy stored defaults into range.
 
     Args:
-        stored_options (dict[str, Any]): The stored_options argument.
-        field (str): The field argument.
-        expected (int): The expected argument.
+        stored_options (dict[str, Any]): Existing options migrated by the scenario.
+        field (str): Options field whose stored value is checked.
+        expected (int): Outcome asserted by the parameterized scenario.
     """
     oschema = cf_mod._build_options_init_schema(
         user_input=None,
@@ -1598,7 +1598,7 @@ def test_options_init_schema_boundaries_match_keyed_lookup(option_key: str) -> N
     """Selector bounds for options should come from keyed bounds lookup values.
 
     Args:
-        option_key (str): The option_key argument.
+        option_key (str): Configuration option removed by the migration.
     """
     oschema = cf_mod._build_options_init_schema(user_input=None)
     minimum, maximum = OPTIONS_INIT_NUMBER_BOUNDS[option_key]
@@ -1623,7 +1623,7 @@ def test_normalize_int_option_invalid_values_fall_back_to_minimum(value: Any) ->
     """Invalid persisted numeric options should fall back to the selector minimum.
 
     Args:
-        value (Any): The value argument.
+        value (Any): Input value exercised by the helper.
     """
     assert cf_mod._normalize_int_option(value, 5, 3600) == 5
 
@@ -1642,7 +1642,7 @@ async def test_options_flow_init_for_carp_entry_only_allows_scan_interval(
     """CARP options init should render scan interval form and skip device-tracker fields.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     cfg = make_config_entry(
         data={
@@ -1675,7 +1675,7 @@ async def test_options_flow_init_for_carp_entry_saves_scan_interval(
     """Submitting CARP options should normalize scan interval and preserve unrelated options.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     cfg = make_config_entry(
         data={
@@ -1734,7 +1734,7 @@ async def test_options_flow_init_for_device_shows_resolved_description_scope(
     """Device options form render should include normal options-scope description placeholders.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     cfg = make_config_entry(
         data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
@@ -1766,8 +1766,8 @@ async def test_options_flow_init_normalizes_numeric_values(field: str, value: fl
     """Submitting numeric options should persist integer values.
 
     Args:
-        field (str): The field argument.
-        value (float): The value argument.
+        field (str): Options field whose stored value is checked.
+        value (float): Input value exercised by the helper.
     """
     cfg = MagicMock()
     cfg.data = {CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"}
@@ -1792,7 +1792,7 @@ async def test_options_flow_granular_sync_calls_validate_and_updates(
     """async_step_granular_sync should call validate_input and update entry when no errors.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
     """
     cfg = MagicMock()
     cfg.data = {CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"}
@@ -1807,7 +1807,7 @@ async def test_options_flow_granular_sync_calls_validate_and_updates(
         """Return an empty error mapping so the options flow can proceed.
 
         Returns:
-            Any: The returned value.
+            Any: Configured object produced by the local test double.
 
         Args:
             hass (HomeAssistant): Home Assistant instance that owns the integration state, entity
@@ -1838,8 +1838,8 @@ async def test_device_tracker_shows_form_when_no_user_input(
     """async_step_device_tracker should show form containing data_schema when called without user_input.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     cfg = make_config_entry(
         data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
@@ -1853,7 +1853,7 @@ async def test_device_tracker_shows_form_when_no_user_input(
         """Return a deterministic mapping of selectable device-tracker entries.
 
         Returns:
-            Any: The returned value.
+            Any: Configured object produced by the local test double.
 
         Args:
             hass (HomeAssistant): Home Assistant instance that owns the integration state, entity
@@ -1902,10 +1902,10 @@ async def test_device_tracker_handles_arp_lookup_failure(
     """ARP lookup failures should not abort device tracker form rendering.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        exception_factory (type[BaseException]): The exception_factory argument.
-        expected_base_error (str): The expected_base_error argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        exception_factory (type[BaseException]): Factory creating the injected backend failure.
+        expected_base_error (str): Base-flow error expected after validation.
     """
     exc = exception_factory("boom")
     cfg = make_config_entry(
@@ -1924,7 +1924,7 @@ async def test_device_tracker_handles_arp_lookup_failure(
             kwargs (object): Additional keyword arguments accepted by the test double.
 
         Returns:
-            Never: The returned value.
+            Never: This test double always raises and never returns.
 
         Raises:
             exc: Always raised to exercise error handling in the options flow.
@@ -1948,8 +1948,8 @@ async def test_device_tracker_handles_opnsense_timeout_error(
     """OPNsense timeouts should keep picker rendering with the saved MAC fallback.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     cfg = make_config_entry(
         data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
@@ -1967,7 +1967,7 @@ async def test_device_tracker_handles_opnsense_timeout_error(
             kwargs (object): Additional keyword arguments accepted by the test double.
 
         Returns:
-            Never: The returned value.
+            Never: This test double always raises and never returns.
 
         Raises:
             aiopnsense_exceptions.OPNsenseTimeoutError: Always raised to exercise timeout mapping.
@@ -1989,8 +1989,8 @@ async def test_options_flow_device_tracker_user_input(
     """When user submits manual devices, they should be parsed and saved to options.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     # Build a fake config_entry using shared factory
     config_entry = make_config_entry(
@@ -2032,7 +2032,7 @@ async def test_options_flow_device_tracker_track_all_clears_device_list(
     """Track-all mode from init should persist the legacy empty-device-list behavior.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     config_entry = make_config_entry(
         data={
@@ -2068,8 +2068,8 @@ async def test_options_flow_init_selected_mode_shows_picker_step(
     """Selected-only mode should continue to the device picker step.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     config_entry = make_config_entry(
         data={
@@ -2099,8 +2099,8 @@ async def test_reconfigure_updates_entry_when_validation_succeeds(
     """Successful reconfigure submissions should update and abort the flow.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     config_entry = make_config_entry(
         data={
@@ -2156,8 +2156,8 @@ async def test_reconfigure_device_aborts_on_carp_url_conflict(
     """Device reconfigure should reject a changed URL used by a CARP entry.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     config_entry = make_config_entry(
         data={
@@ -2215,8 +2215,8 @@ async def test_reconfigure_carp_updates_entry_without_unique_id_checks(
     """CARP reconfigure should validate with CARP mode and skip unique-id checks.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     config_entry = make_config_entry(
         data={
@@ -2280,8 +2280,8 @@ async def test_reconfigure_carp_aborts_on_device_url_conflict(
     """CARP reconfigure should reject a changed URL used by a device entry.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     config_entry = make_config_entry(
         data={
@@ -2337,8 +2337,8 @@ async def test_reconfigure_carp_returns_form_on_validation_error(
     """CARP reconfigure validation errors should return form and not update.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     config_entry = make_config_entry(
         data={
@@ -2383,8 +2383,8 @@ async def test_reconfigure_carp_skips_duplicate_check_when_url_unchanged(
     """CARP reconfigure should skip URL duplicate checks when the URL is unchanged.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     config_entry = make_config_entry(
         entry_id="carp-entry",
@@ -2444,8 +2444,8 @@ async def test_reconfigure_carp_aborts_on_normalized_duplicate_url(
     """CARP reconfigure should reject a normalized URL used by another entry.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     config_entry = make_config_entry(
         entry_id="carp-entry",
@@ -2502,10 +2502,10 @@ async def test_reconfigure_carp_aborts_on_legacy_default_port_duplicate(
     """CARP reconfigure should reject another canonical legacy URL duplicate.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        stored_url (str): The stored_url argument.
-        normalized_url (str): The normalized_url argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        stored_url (str): URL currently stored on the configuration entry.
+        normalized_url (str): Canonical URL expected in stored configuration.
     """
     config_entry = make_config_entry(
         entry_id="carp-entry",
@@ -2571,10 +2571,10 @@ async def test_reconfigure_carp_ignores_own_legacy_default_port_url(
     """CARP reconfigure should not treat its canonical legacy URL as a duplicate.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        stored_url (str): The stored_url argument.
-        normalized_url (str): The normalized_url argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        stored_url (str): URL currently stored on the configuration entry.
+        normalized_url (str): Canonical URL expected in stored configuration.
     """
     config_entry = make_config_entry(
         entry_id="carp-entry",
@@ -2620,8 +2620,8 @@ async def test_reconfigure_carp_preserves_self_url_when_no_duplicate(
     """CARP reconfigure should keep its own normalized URL when no other entry matches.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     config_entry = make_config_entry(
         entry_id="carp-entry",
@@ -2669,7 +2669,7 @@ async def test_validate_input_granular_sync_uses_native_validation_only(
     """Granular sync flow should validate firmware without removed backend checks.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
     """
 
     class FakeClient:
@@ -2679,7 +2679,7 @@ async def test_validate_input_granular_sync_uses_native_validation_only(
             """Initialize the fake client with a known firmware version.
 
             Args:
-                firmware_version (str): The firmware_version argument.
+                firmware_version (str): Firmware version exposed by the fake client.
             """
             self.firmware_version = firmware_version
             self.is_plugin_installed = AsyncMock(
@@ -2695,7 +2695,7 @@ async def test_validate_input_granular_sync_uses_native_validation_only(
             """Return the fake firmware version.
 
             Returns:
-                str: The returned value.
+                str: Synthetic identifier, URL, or text exposed by the test double.
             """
             return self.firmware_version
 
@@ -2703,7 +2703,7 @@ async def test_validate_input_granular_sync_uses_native_validation_only(
             """Return static system metadata for validation.
 
             Returns:
-                dict[str, str]: The returned value.
+                dict[str, str]: Synthetic string-valued API record.
             """
             return {"name": "OPNsense"}
 
@@ -2713,10 +2713,10 @@ async def test_validate_input_granular_sync_uses_native_validation_only(
             """Return a stable device unique id.
 
             Returns:
-                str: The returned value.
+                str: Synthetic identifier, URL, or text exposed by the test double.
 
             Args:
-                _expected_id (str | None): The _expected_id argument.
+                _expected_id (str | None): Device identifier expected by the callback.
                 _kwargs (Any): Additional keyword arguments accepted by the test double.
             """
             return "dev-01"

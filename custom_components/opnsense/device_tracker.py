@@ -452,7 +452,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         """Return whether a matching MAC device exists and is not disabled.
 
         Returns:
-            bool: The returned value.
+            bool: Whether the has matching enabled mac device condition is satisfied.
         """
         if self.mac_address is None:
             return False

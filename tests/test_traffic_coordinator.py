@@ -61,14 +61,14 @@ def _build_test_coordinator(
     """Build a traffic coordinator and its parent coordinator with defaults.
 
     Returns:
-        tuple[OPNsenseLiveTrafficCoordinator, MagicMock]: The returned value.
+        tuple[OPNsenseLiveTrafficCoordinator, MagicMock]: Simulated collection used by the build test coordinator scenario.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        entry_data (dict[str, Any] | None): The entry_data argument.
-        main_coordinator_data (dict[str, Any] | None): The main_coordinator_data argument.
-        client (Any | None): The client argument.
-        poll_interval (int): The poll_interval argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        entry_data (dict[str, Any] | None): Parameterized entry data used by the build test coordinator scenario.
+        main_coordinator_data (dict[str, Any] | None): Parameterized main coordinator data used by the build test coordinator scenario.
+        client (Any | None): Parameterized client used by the build test coordinator scenario.
+        poll_interval (int): Parameterized poll interval used by the build test coordinator scenario.
     """
     if entry_data is None:
         entry_data = {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_LIVE_TRAFFIC: True}
@@ -103,7 +103,7 @@ def test_live_traffic_coordinator_rejects_invalid_rates(raw_rate: Any) -> None:
     """Rate conversion errors should be treated as unavailable values.
 
     Args:
-        raw_rate (Any): The raw_rate argument.
+        raw_rate (Any): Parameterized raw rate used by the test live traffic coordinator rejects invalid rates scenario.
     """
     assert OPNsenseLiveTrafficCoordinator._map_stream_rate("rx_bytes_per_second", raw_rate) is None
 
@@ -114,7 +114,7 @@ def test_live_traffic_coordinator_marks_update_failed_when_main_state_missing(
     """Missing live metadata should immediately mark coordinator updates as failed.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     coordinator, main_coordinator = _build_test_coordinator(
         make_config_entry,
@@ -141,7 +141,7 @@ def test_live_traffic_coordinator_recovers_when_main_state_returns(
     """A later valid metadata payload should restore live coordinator success.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     coordinator, main_coordinator = _build_test_coordinator(
         make_config_entry,
@@ -175,7 +175,7 @@ def test_live_traffic_coordinator_all_skipped_payload_marks_failed_and_preserves
     """Skipped stream rows should fail the update while preserving prior live data.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     coordinator, _ = _build_test_coordinator(
         make_config_entry,
@@ -200,7 +200,7 @@ def test_live_traffic_coordinator_publishes_each_sample(
     """Live samples should publish every pushed update to listeners.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_LIVE_TRAFFIC: True})
     main_coordinator = MagicMock()
@@ -227,7 +227,7 @@ async def test_live_traffic_coordinator_merges_rates_with_interface_metadata(
     """Rate payloads should merge into live coordinator data with interface metadata.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_LIVE_TRAFFIC: True})
     main_coordinator = MagicMock()
@@ -321,7 +321,7 @@ async def test_live_traffic_coordinator_start_is_idempotent(
     """A second async_start call should not replace an active background task.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
     main_coordinator = MagicMock()
@@ -374,7 +374,7 @@ async def test_live_traffic_coordinator_records_update_error_on_missing_payload(
     """No valid stream payload should mark coordinator update as failed.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     client = _FakeStreamClient(payloads=[])
     coordinator, _ = _build_test_coordinator(make_config_entry, client=client)
@@ -439,9 +439,9 @@ def test_live_traffic_coordinator_rejects_bad_payload_context_matrix(
     """Malformed payload/context combinations should be rejected without publishing.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        payload (Any): The payload argument.
-        main_coordinator_data (dict[str, Any] | Any): The main_coordinator_data argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        payload (Any): Repair payload containing persisted device identifiers.
+        main_coordinator_data (dict[str, Any] | Any): Parameterized main coordinator data used by the test live traffic coordinator rejects bad payload context matrix scenario.
     """
     coordinator, _ = _build_test_coordinator(
         make_config_entry,
@@ -459,7 +459,7 @@ async def test_live_traffic_coordinator_consumes_stream_cancelled_error(
     """CancelledError from the stream should propagate to the caller.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
 
     async def _stream() -> AsyncIterator[dict[str, Any]]:
@@ -498,8 +498,8 @@ async def test_live_traffic_coordinator_consumes_stream_records_update_error(
     """Stream exceptions should mark the coordinator update as failed.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        stream_exception (Exception): The stream_exception argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        stream_exception (Exception): Parameterized stream exception used by the test live traffic coordinator consumes stream records update error scenario.
     """
 
     async def _stream() -> AsyncIterator[dict[str, Any]]:
@@ -532,8 +532,8 @@ async def test_live_traffic_run_breaks_when_shutdown_requested_inside_consume_st
     """A shutdown request set during stream consumption should exit without sleeping.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     coordinator, _ = _build_test_coordinator(make_config_entry)
 
@@ -568,8 +568,8 @@ async def test_live_traffic_run_sleeps_poll_interval_when_live_traffic_disabled(
     """When live traffic is disabled, the retry loop should wait poll interval before exit.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     coordinator, _ = _build_test_coordinator(make_config_entry, poll_interval=2)
     coordinator.last_update_success = False
@@ -610,8 +610,8 @@ async def test_live_traffic_run_reconnects_after_finite_valid_stream(
     """A finite valid stream should reconnect while retaining published data.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     client = _FakeStreamClient(
         [
@@ -632,7 +632,7 @@ async def test_live_traffic_run_reconnects_after_finite_valid_stream(
         """Capture reconnect delays and stop after the recovery cycle.
 
         Args:
-            delay (int): The delay argument.
+            delay (int): Parameterized delay used by the fake sleep scenario.
         """
         sleep_calls.append(delay)
         if len(sleep_calls) == 2:
@@ -657,8 +657,8 @@ async def test_live_traffic_run_applies_and_caps_backoff_sequence(
     """The retry loop should walk the full backoff sequence and cap at the maximum.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     client = _FakeStreamClient(payloads=[])
     coordinator, _ = _build_test_coordinator(make_config_entry, client=client)

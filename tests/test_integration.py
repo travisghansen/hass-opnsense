@@ -80,7 +80,7 @@ class _FakeFlowClient:
         """Return the firmware version configured for this fake flow client.
 
         Returns:
-            str: The returned value.
+            str: Synthetic identifier, URL, or text exposed by the test double.
         """
         return self._firmware
 
@@ -88,7 +88,7 @@ class _FakeFlowClient:
         """Return a minimal system info payload used by flow validation.
 
         Returns:
-            MutableMapping[str, Any]: The returned value.
+            MutableMapping[str, Any]: Mutable synthetic state mapping.
         """
         return {"name": "OPNsenseTest"}
 
@@ -96,7 +96,7 @@ class _FakeFlowClient:
         """Return the fake router identifier used by the flow tests.
 
         Returns:
-            str: The returned value.
+            str: Synthetic identifier, URL, or text exposed by the test double.
 
         Args:
             expected_id (str | None): Expected device identifier supplied by the caller and
@@ -109,10 +109,10 @@ class _FakeFlowClient:
         """Return two static ARP entries for device-tracker options tests.
 
         Returns:
-            list[dict[str, Any]]: The returned value.
+            list[dict[str, Any]]: Synthetic API records returned by the fake client.
 
         Args:
-            resolve_hostnames (bool): The resolve_hostnames argument.
+            resolve_hostnames (bool): Whether the simulated query requests hostname resolution.
         """
         return [
             {"mac": "aa:bb:cc:dd:ee:ff", "hostname": "host1", "ip": "192.168.1.10"},
@@ -148,7 +148,7 @@ class _FakeRuntimeClient:
         """Return the fake runtime device identifier for setup and refresh calls.
 
         Returns:
-            str: The returned value.
+            str: Synthetic identifier, URL, or text exposed by the test double.
 
         Args:
             expected_id (str | None): Expected device identifier supplied by the caller and
@@ -160,7 +160,7 @@ class _FakeRuntimeClient:
         """Return the fake firmware version used by setup and coordinator refreshes.
 
         Returns:
-            str: The returned value.
+            str: Synthetic identifier, URL, or text exposed by the test double.
         """
         return self._firmware
 
@@ -181,7 +181,7 @@ class _FakeRuntimeClient:
         """Return a fixed query-count value for coordinator assertions.
 
         Returns:
-            int: The returned value.
+            int: Synthetic numeric identifier or count.
         """
         return 0
 
@@ -189,7 +189,7 @@ class _FakeRuntimeClient:
         """Return minimal system information for the initial refresh path.
 
         Returns:
-            dict[str, str]: The returned value.
+            dict[str, str]: Synthetic string-valued API record.
         """
         return {"name": "sys"}
 
@@ -219,7 +219,7 @@ def _patch_live_traffic_coordinator(monkeypatch: pytest.MonkeyPatch) -> None:
     """Use a no-op stream coordinator with this module's lightweight fake hass.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
     """
     monkeypatch.setattr(init_mod, "OPNsenseLiveTrafficCoordinator", _FakeLiveTrafficCoordinator)
 
@@ -258,7 +258,7 @@ def _make_basic_user_input() -> dict[str, Any]:
     """Create basic user input.
 
     Returns:
-        dict[str, Any]: The returned value.
+        dict[str, Any]: Synthetic integration or API data mapping.
     """
     return {
         CONF_URL: "https://router.example",
@@ -274,7 +274,7 @@ def _build_mock_hass() -> Any:
     """Construct a lightweight hass stand‑in with required attributes.
 
     Returns:
-        Any: The returned value.
+        Any: Configured object produced by the local test double.
     """
     hass = MagicMock()
     hass.data = {}
@@ -291,7 +291,7 @@ def _build_mock_hass() -> Any:
             """Return config entries matching domain.
 
             Returns:
-                list[MockConfigEntry]: The returned value.
+                list[MockConfigEntry]: Mock configuration entries visible to the integration.
 
             Args:
                 domain (str | None): Domain name used to filter registry entries.
@@ -317,7 +317,7 @@ def _build_mock_hass() -> Any:
             """Async update entry.
 
             Returns:
-                bool: The returned value.
+                bool: Success or match result produced by the simulated operation.
 
             Args:
                 entry (MockConfigEntry): Config entry being set up, unloaded, migrated, or reloaded.
@@ -344,7 +344,7 @@ def _build_mock_hass() -> Any:
             """Async forward entry setups.
 
             Returns:
-                bool: The returned value.
+                bool: Success or match result produced by the simulated operation.
 
             Args:
                 entry (MockConfigEntry): Config entry being set up, unloaded, migrated, or reloaded.
@@ -358,7 +358,7 @@ def _build_mock_hass() -> Any:
             """Async unload platforms.
 
             Returns:
-                bool: The returned value.
+                bool: Success or match result produced by the simulated operation.
 
             Args:
                 entry (MockConfigEntry): Config entry being set up, unloaded, migrated, or reloaded.
@@ -387,8 +387,8 @@ async def test_e2e_basic_config_flow_and_setup(
     """E2E: basic config flow (single step) followed by entry setup.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     # Patch client for config flow
     patch_opnsense_client(monkeypatch, cf_mod, lambda **k: _FakeFlowClient(device_id="dev-basic"))
@@ -466,9 +466,9 @@ async def test_e2e_granular_sync_and_options_device_tracker(
           instantiates two coordinators.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        coordinator_capture (Any): The coordinator_capture argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        coordinator_capture (Any): Capture object recording constructed coordinators.
     """
     # Patch flow client
     patch_opnsense_client(monkeypatch, cf_mod, lambda **k: _FakeFlowClient(device_id="dev-gran"))
@@ -594,8 +594,8 @@ async def test_e2e_reload_and_unload(
           removed.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     # Patch config flow client
     patch_opnsense_client(monkeypatch, cf_mod, lambda **k: _FakeFlowClient(device_id="dev-rel"))
@@ -680,8 +680,8 @@ async def test_e2e_full_migration_chain(
         - v4 to v5 removes legacy switch entities and stale native firewall rule switches.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
     """
     # Build hass mock with update_entry bypass logic
     hass = _build_mock_hass()
@@ -694,8 +694,8 @@ async def test_e2e_full_migration_chain(
             """Initialize FakeDevice.
 
             Args:
-                id_ (str): The id_ argument.
-                identifiers (set[tuple[str, str]]): The identifiers argument.
+                id_ (str): Device identifier requested from the fake registry.
+                identifiers (set[tuple[str, str]]): Identifier set requested from the fake registry.
             """
             self.id = id_
             self.identifiers = identifiers
@@ -715,7 +715,7 @@ async def test_e2e_full_migration_chain(
             """Async update device.
 
             Returns:
-                Any: The returned value.
+                Any: Configured object produced by the local test double.
 
             Args:
                 device_id (str): Device identifier used to target the correct OPNsense device or
@@ -798,7 +798,7 @@ async def test_e2e_full_migration_chain(
             """Async update entity.
 
             Returns:
-                Any: The returned value.
+                Any: Configured object produced by the local test double.
 
             Args:
                 entity_id (str): Entity identifier used to resolve the matching OPNsense entity.
@@ -852,7 +852,7 @@ async def test_e2e_full_migration_chain(
             """Return the migrated device identifier used by the migration test.
 
             Returns:
-                str: The returned value.
+                str: Synthetic identifier, URL, or text exposed by the test double.
             """
             return "newmacid"
 
@@ -864,7 +864,7 @@ async def test_e2e_full_migration_chain(
             """Return a placeholder firmware version for migration compatibility.
 
             Returns:
-                str: The returned value.
+                str: Synthetic identifier, URL, or text exposed by the test double.
             """
             return "25.1"
 
@@ -872,7 +872,7 @@ async def test_e2e_full_migration_chain(
             """Return minimal telemetry so migration code can inspect filesystems.
 
             Returns:
-                dict[str, Any]: The returned value.
+                dict[str, Any]: Synthetic integration or API data mapping.
             """
             return {"filesystems": []}  # keep simple to avoid extra branches
 
@@ -880,7 +880,7 @@ async def test_e2e_full_migration_chain(
             """Return current aiopnsense firewall rules for stale-switch pruning.
 
             Returns:
-                dict[str, Any]: The returned value.
+                dict[str, Any]: Synthetic integration or API data mapping.
             """
             return {"rules": {"row-key": {"uuid": "current"}}}
 

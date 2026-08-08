@@ -123,9 +123,9 @@ def _async_create_marker_repair_issue(
     """Create a marker-backed nonpersistent mismatch issue for reconciliation retries.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        entry (ConfigEntry): The entry argument.
-        repair_marker (RepairMarker): The repair_marker argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        entry (ConfigEntry): OPNsense config entry participating in the operation.
+        repair_marker (RepairMarker): Pending device-ID repair marker, if any.
     """
     ir.async_create_issue(
         hass=hass,
@@ -157,10 +157,10 @@ async def _async_first_refresh_with_marker_issue(
     """Refresh coordinator and recreate a marker-backed issue when setup must retry.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        entry (ConfigEntry): The entry argument.
-        coordinator (OPNsenseDataUpdateCoordinator): The coordinator argument.
-        repair_marker (RepairMarker | None): The repair_marker argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        entry (ConfigEntry): OPNsense config entry participating in the operation.
+        coordinator (OPNsenseDataUpdateCoordinator): Coordinator supplying simulated OPNsense data.
+        repair_marker (RepairMarker | None): Pending device-ID repair marker, if any.
 
     Raises:
         ConfigEntryNotReady: If the coordinator cannot complete its first refresh.
@@ -183,14 +183,14 @@ def _resolve_device_id_probe_state(
     """Handle marker and mismatch-issue decisions after Device ID probe.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the resolve device id probe state condition is satisfied.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        entry (ConfigEntry): The entry argument.
-        config_device_id (str | None): The config_device_id argument.
-        router_device_id (str | None): The router_device_id argument.
-        repair_marker (RepairMarker | None): The repair_marker argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        entry (ConfigEntry): OPNsense config entry participating in the operation.
+        config_device_id (str | None): Device identifier stored in the config entry.
+        router_device_id (str | None): Device identifier reported by OPNsense.
+        repair_marker (RepairMarker | None): Pending device-ID repair marker, if any.
     """
     if repair_marker is not None and router_device_id != repair_marker.new_device_id:
         _async_create_marker_repair_issue(hass, entry, repair_marker)
@@ -230,12 +230,13 @@ async def _unload_setup_platforms_after_reconciliation_failure(
     """Unload forwarded setup platforms when reconciliation aborts.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the unload-setup-platforms-after-reconciliation-failure condition is
+            satisfied.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        entry (ConfigEntry): The entry argument.
-        platforms (list[Platform]): The platforms argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        entry (ConfigEntry): OPNsense config entry participating in the operation.
+        platforms (list[Platform]): Integration platforms involved in setup or unload.
     """
     try:
         unloaded: bool = await hass.config_entries.async_unload_platforms(entry, platforms)
@@ -263,13 +264,13 @@ async def _cleanup_reconciliation_failure(
     """Persist marker-backed repair issue and unload any partially loaded platforms.
 
     Returns:
-        bool: The returned value.
+        bool: Whether the cleanup reconciliation failure condition is satisfied.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        entry (ConfigEntry): The entry argument.
-        platforms (list[Platform]): The platforms argument.
-        repair_marker (RepairMarker): The repair_marker argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        entry (ConfigEntry): OPNsense config entry participating in the operation.
+        platforms (list[Platform]): Integration platforms involved in setup or unload.
+        repair_marker (RepairMarker): Pending device-ID repair marker, if any.
     """
     _async_create_marker_repair_issue(hass, entry, repair_marker)
     return await _unload_setup_platforms_after_reconciliation_failure(hass, entry, platforms)

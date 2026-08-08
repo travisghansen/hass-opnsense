@@ -139,9 +139,9 @@ async def test_async_setup_entry_adds_firmware_update_entity_contract(
     """async_setup_entry creates the firmware update entity with its public contract.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry(
         {
@@ -159,8 +159,8 @@ async def test_async_setup_entry_adds_firmware_update_entity_contract(
         """Capture entities added by the platform setup callback.
 
         Args:
-            entities (list[OPNsenseFirmwareUpdatesAvailableUpdate]): The entities argument.
-            _update_before_add (bool): The _update_before_add argument.
+            entities (list[OPNsenseFirmwareUpdatesAvailableUpdate]): Registry records exposed to the repair helper.
+            _update_before_add (bool): Parameterized update before add used by the add entities scenario.
         """
         added_entities.extend(entities)
 
@@ -188,9 +188,9 @@ async def test_async_setup_entry_skips_disabled_firmware_update_sync(
     """async_setup_entry should not add firmware entities when sync is disabled.
 
     Args:
-        hass (HomeAssistant): The hass argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry(
         {
@@ -208,8 +208,8 @@ async def test_async_setup_entry_skips_disabled_firmware_update_sync(
         """Capture entities added by the platform setup callback.
 
         Args:
-            entities (list[OPNsenseFirmwareUpdatesAvailableUpdate]): The entities argument.
-            _update_before_add (bool): The _update_before_add argument.
+            entities (list[OPNsenseFirmwareUpdatesAvailableUpdate]): Registry records exposed to the repair helper.
+            _update_before_add (bool): Parameterized update before add used by the add entities scenario.
         """
         added_entities.extend(entities)
 
@@ -237,9 +237,9 @@ def test_is_update_available_false_for_missing_or_error_state(
     """Update entity should be unavailable when firmware update state is unusable.
 
     Args:
-        coordinator_data (dict[str, Any] | None): The coordinator_data argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        coordinator_data (dict[str, Any] | None): Parameterized coordinator data used by the test is update available false for missing or error state scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry(
         {
@@ -274,9 +274,9 @@ def test_is_update_available_true_for_valid_status(
     """Valid firmware statuses should keep the update entity available.
 
     Args:
-        status (str): The status argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        status (str): Parameterized status used by the test is update available true for valid status scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry(
         {
@@ -401,10 +401,10 @@ def test_handle_coordinator_update_publishes_latest_version(
     """Publish the expected latest version across representative firmware payloads.
 
     Args:
-        state (dict[str, Any]): The state argument.
-        expected_latest (str | None): The expected_latest argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        state (dict[str, Any]): Simulated payload used to exercise the scenario.
+        expected_latest (str | None): Expected latest asserted by the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry({"url": "https://opnsense.example"})
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
@@ -427,8 +427,8 @@ def test_handle_coordinator_update_sets_attributes(
     """_handle_coordinator_update should populate versions and extra attributes.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -503,13 +503,13 @@ def test_handle_coordinator_update_upgrade_sets_release_url(
     which affects the generated release URL.
 
     Args:
-        product_version (str): The product_version argument.
-        product_latest (str): The product_latest argument.
-        product_series (str): The product_series argument.
-        upgrade_major_version (str): The upgrade_major_version argument.
-        expected_url_path (str): The expected_url_path argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        product_version (str): Parameterized product version used by the test handle coordinator update upgrade sets release url scenario.
+        product_latest (str): Parameterized product latest used by the test handle coordinator update upgrade sets release url scenario.
+        product_series (str): Parameterized product series used by the test handle coordinator update upgrade sets release url scenario.
+        upgrade_major_version (str): Parameterized upgrade major version used by the test handle coordinator update upgrade sets release url scenario.
+        expected_url_path (str): Expected url path asserted by the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -556,10 +556,10 @@ async def test_handle_coordinator_update_update_normalizes_product_latest(
     """When status is 'update', product_latest should be normalized (underscores -> dots).
 
     Args:
-        product_latest_input (str): The product_latest_input argument.
-        expected_latest_normalized (str): The expected_latest_normalized argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        product_latest_input (str): Parameterized product latest input used by the test handle coordinator update update normalizes product latest scenario.
+        expected_latest_normalized (str): Expected latest normalized asserted by the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -601,8 +601,8 @@ def test_handle_coordinator_update_release_url_fallback_when_product_class_none(
     """An unmapped firmware series should use the OPNsense UI changelog.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry(
         {
@@ -695,13 +695,13 @@ def test_get_release_notes_variants(
     """Parameterize release-notes generation for update/upgrade/default paths.
 
     Args:
-        state (MutableMapping[str, Any]): The state argument.
-        latest (str | None): The latest argument.
-        product_version (str | None): The product_version argument.
-        expect_exact (bool): The expect_exact argument.
-        expected (Any): The expected argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        state (MutableMapping[str, Any]): Simulated payload used to exercise the scenario.
+        latest (str | None): Parameterized latest used by the test get release notes variants scenario.
+        product_version (str | None): Parameterized product version used by the test get release notes variants scenario.
+        expect_exact (bool): Parameterized expect exact used by the test get release notes variants scenario.
+        expected (Any): Parameterized expected used by the test get release notes variants scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -730,8 +730,8 @@ def test_get_release_notes_upgrade_uses_target_version_in_header(
     """Upgrade release notes should use product_latest as the target version.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -770,9 +770,9 @@ async def test_async_install_reboots_when_needed(
     """async_install should trigger a reboot when the update requires it.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -813,8 +813,8 @@ async def test_async_install_does_nothing_on_non_update_status(
     """async_install should early-return and not call upgrade_firmware when status is not update/upgrade.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -847,9 +847,9 @@ async def test_async_install_early_returns_and_no_client(
     """async_install should return early when there's no client available.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -877,8 +877,8 @@ def test_get_versions_malformed_state_returns_empty_versions(
     """_get_versions returns empty version data for malformed firmware state.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
@@ -902,8 +902,8 @@ def test_get_release_notes_malformed_state_returns_none(
     """_get_release_notes returns None for malformed firmware state.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
@@ -934,10 +934,10 @@ async def test_async_install_handles_masked_polling_response(
     """async_install should handle masked aiopnsense polling failures.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
-        upgrade_status_response (Any): The upgrade_status_response argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
+        upgrade_status_response (Any): Parameterized upgrade status response used by the test install handles masked polling response scenario.
     """
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
@@ -966,9 +966,9 @@ async def test_async_install_terminates_after_invalid_polling_responses(
     """Malformed polling responses should terminate without fetching info or rebooting.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
@@ -1019,11 +1019,11 @@ async def test_async_install_polling_error_raises(
     """async_install should not hide errors raised by aiopnsense while polling.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
-        error_type (type[OPNsenseError]): The error_type argument.
-        message (str): The message argument.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
+        error_type (type[OPNsenseError]): Parameterized error type used by the test install polling error raises scenario.
+        message (str): Parameterized message used by the test install polling error raises scenario.
     """
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
@@ -1049,8 +1049,8 @@ def test_get_installed_version_none_on_error(
     """_get_installed_version returns None on malformed or missing state.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(
@@ -1070,8 +1070,8 @@ async def test_async_release_notes_returns_value(
     """async_release_notes returns generated release notes when state present.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry()
     ent = OPNsenseFirmwareUpdatesAvailableUpdate(

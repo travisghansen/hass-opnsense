@@ -29,7 +29,7 @@ class _BadStrValue:
         """Raise when the display-name helper converts this value to text.
 
         Returns:
-            str: The returned value.
+            str: Simulated result used by the str scenario.
 
         Raises:
             ValueError: Always raised to simulate failed string conversion.
@@ -46,7 +46,7 @@ class _BadStripValue(str):
         """Raise when display-name normalization strips whitespace.
 
         Returns:
-            str: The returned value.
+            str: Simulated result used by the strip scenario.
 
         Args:
             chars (str | None): Optional characters to strip, matching ``str.strip``.
@@ -142,8 +142,8 @@ def test_init_sets_unique_and_name_suffixes(
     """Verify unique_id and suffix-only name handling for base entities.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev-123", "url": "http://x"}, title="MyBox")
     coord = dummy_coordinator
@@ -175,8 +175,8 @@ def test_available_property_toggle(
     """Entity available property reflects internal availability flag.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -192,8 +192,8 @@ def test_device_info_name_prefers_title_and_fallback_to_state(
     """Device info name prefers config entry title and falls back to state name.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     # when title present
     entry = make_config_entry(
@@ -221,8 +221,8 @@ def test_get_opnsense_state_value_nested_lookup(
     """Nested state lookup returns deep values or None when missing.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -238,8 +238,8 @@ def test_entity_helpers_fail_closed_for_non_mapping_coordinator_data(
     """Entity helper lookups should return ``None`` when coordinator data is malformed.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -256,8 +256,8 @@ def test_mark_unavailable_can_clear_attributes(
     """Marking unavailable can clear stale attributes when requested.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -279,8 +279,8 @@ async def test_async_added_to_hass_sets_client_and_calls_update(
     """async_added_to_hass attaches client and triggers update handler.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -315,8 +315,8 @@ async def test_async_added_to_hass_missing_client_raises(
     """async_added_to_hass logs and returns when runtime client is missing.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry()
     coord = dummy_coordinator
@@ -338,8 +338,8 @@ def test_device_info_variants(
     """Device info reflects identifiers and firmware when present.
 
     Args:
-        make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
-        dummy_coordinator (MagicMock): The dummy_coordinator argument.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
     """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev-123"})
     coord = dummy_coordinator

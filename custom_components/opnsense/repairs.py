@@ -24,10 +24,10 @@ def build_device_id_mismatch_issue_id(entry_id: str) -> str:
     """Build the stable mismatch issue ID for a config entry.
 
     Returns:
-        str: The returned value.
+        str: Repair issue identifier scoped to the config entry.
 
     Args:
-        entry_id (str): The entry_id argument.
+        entry_id (str): Config entry identifier used by the repair scenario.
     """
     return f"{entry_id}{_DEVICE_ID_MISMATCH_ISSUE_SUFFIX}"
 
@@ -36,10 +36,10 @@ def is_valid_device_id(device_id: object) -> TypeGuard[str]:
     """Return whether a device ID is a usable string identifier.
 
     Returns:
-        TypeGuard[str]: The returned value.
+        TypeGuard[str]: Whether the is valid device id condition is satisfied.
 
     Args:
-        device_id (object): The device_id argument.
+        device_id (object): Home Assistant device registry identifier to validate.
     """
     return isinstance(device_id, str) and bool(device_id.strip())
 
@@ -86,10 +86,10 @@ def _without_tracked_macs_for_recovery(payload: dict[str, object]) -> dict[str, 
     """Return a snapshot copy that ignores setup-time tracked MAC mutations.
 
     Returns:
-        dict[str, object]: The returned value.
+        dict[str, object]: Recovery options with tracked MAC addresses removed.
 
     Args:
-        payload (dict[str, object]): The payload argument.
+        payload (dict[str, object]): Repair payload containing persisted device identifiers.
     """
     normalized_payload: dict[str, object] = dict(payload)
     normalized_payload.pop(TRACKED_MACS, None)
@@ -389,8 +389,8 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         """Schedule a recovery reload when a previously loaded entry changed.
 
         Args:
-            entry_was_loaded (bool): The entry_was_loaded argument.
-            entry (ConfigEntry): The entry argument.
+            entry_was_loaded (bool): Whether the entry was loaded before repair began.
+            entry (ConfigEntry): OPNsense config entry participating in the operation.
         """
         if entry_was_loaded:
             self._schedule_changed_entry_reload(
@@ -410,14 +410,16 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         """Return the entry when the runtime snapshot still matches.
 
         Returns:
-            ConfigEntry | None: The returned value.
+            ConfigEntry | None: Current entry when it still matches the captured snapshot.
 
         Args:
-            current_entry (ConfigEntry | None): The current_entry argument.
-            entry_was_loaded (bool): The entry_was_loaded argument.
-            entry_data_snapshot (dict[str, object]): The entry_data_snapshot argument.
-            entry_options_snapshot (dict[str, object]): The entry_options_snapshot argument.
-            entry_unique_id_snapshot (str | None): The entry_unique_id_snapshot argument.
+            current_entry (ConfigEntry | None): Config entry currently registered with Home
+                Assistant.
+            entry_was_loaded (bool): Whether the entry was loaded when the snapshot was captured.
+            entry_data_snapshot (dict[str, object]): Config entry data captured before mutation.
+            entry_options_snapshot (dict[str, object]): Config entry options captured before
+                mutation.
+            entry_unique_id_snapshot (str | None): Unique ID captured before mutation.
         """
         if _entry_matches_snapshot(
             current_entry,
