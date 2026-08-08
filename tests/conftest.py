@@ -38,7 +38,7 @@ class FakeClientSession:
         """Enter async context and return the session-like object.
 
         Returns:
-            The returned value.
+            Any: The returned value.
         """
         return self
 
@@ -48,7 +48,7 @@ class FakeClientSession:
         """Exit async context, close the session and propagate exceptions.
 
         Returns:
-            The returned value.
+            bool: The returned value.
 
         Args:
             exc_type (type[BaseException] | None): The exc_type argument.
@@ -62,7 +62,7 @@ class FakeClientSession:
         """Close the fake session (no-op).
 
         Returns:
-            The returned value.
+            bool: The returned value.
         """
         return True
 
@@ -120,7 +120,7 @@ def _patch_async_create_clientsession(monkeypatch: pytest.MonkeyPatch) -> None:
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            FakeClientSession: The returned value.
         """
         return FakeClientSession()
 
@@ -169,7 +169,7 @@ def coordinator_capture() -> Any:
             records it in ``instances``, and returns it.
 
     Returns:
-        The returned value.
+        Any: The returned value.
     """
 
     class _C:
@@ -182,7 +182,7 @@ def coordinator_capture() -> Any:
             """Factory.
 
             Returns:
-                The returned value.
+                Any: The returned value.
 
             Args:
                 coord_cls (Any): Coord cls provided by pytest or the test case.
@@ -195,7 +195,7 @@ def coordinator_capture() -> Any:
                     kwargs (object): Additional keyword arguments accepted by the test double.
 
                 Returns:
-                    The returned value.
+                    Any: The returned value.
                 """
                 inst = (coord_cls or MagicMock)(**kwargs)
                 self.instances.append(inst)
@@ -216,14 +216,14 @@ def fake_stream_response_factory() -> Any:
     chunks.
 
     Returns:
-        The returned value.
+        Any: The returned value.
     """
 
     def _make(chunks: list[bytes], status: int = 200, reason: str = "OK", ok: bool = True) -> Any:
         """Create a fake streamed HTTP response with the supplied byte chunks.
 
         Returns:
-            The returned value.
+            Any: The returned value.
 
         Args:
             chunks (list[bytes]): The chunks argument.
@@ -243,7 +243,7 @@ def fake_stream_response_factory() -> Any:
                 """Enter the fake response context and return the response object.
 
                 Returns:
-                    The returned value.
+                    Any: The returned value.
                 """
                 return self
 
@@ -253,7 +253,7 @@ def fake_stream_response_factory() -> Any:
                 """Exit the fake response context without suppressing exceptions.
 
                 Returns:
-                    The returned value.
+                    bool: The returned value.
 
                 Args:
                     exc_type (type[BaseException] | None): Exception type raised inside the context
@@ -269,7 +269,7 @@ def fake_stream_response_factory() -> Any:
                 """Expose a minimal async stream reader for the supplied chunks.
 
                 Returns:
-                    The returned value.
+                    Any: The returned value.
                 """
 
                 class C:
@@ -306,7 +306,7 @@ def coordinator() -> Any:
     """Provide a lightweight coordinator mock for tests. Use MagicMock so that registering listeners (which happens synchronously) does not produce AsyncMock "never awaited" warnings. Tests that need async behavior can set specific async methods on the mock to AsyncMock.
 
     Returns:
-        The returned value.
+        Any: The returned value.
     """
     return MagicMock()
 
@@ -325,7 +325,7 @@ def dummy_coordinator() -> Any:
     """Provide a fresh DummyCoordinator instance for a test. Tests can request this fixture when they need a lightweight coordinator mock that behaves like the previous `DummyCoordinator()` constructor.
 
     Returns:
-        The returned value.
+        Any: The returned value.
     """
     return DummyCoordinator()
 
@@ -380,7 +380,7 @@ def fake_client() -> Any:
                 """Return the fake device identifier configured for this client.
 
                 Returns:
-                    The returned value.
+                    Any: The returned value.
 
                 Args:
                     expected_id (str | None): Expected device identifier supplied by the caller
@@ -392,7 +392,7 @@ def fake_client() -> Any:
                 """Perform a no-op validation check for setup-time assertions.
 
                 Returns:
-                    The returned value.
+                    bool: The returned value.
                 """
                 return True
 
@@ -400,7 +400,7 @@ def fake_client() -> Any:
                 """Return the configured firmware version for test assertions.
 
                 Returns:
-                    The returned value.
+                    Any: The returned value.
                 """
                 return self._firmware
 
@@ -408,7 +408,7 @@ def fake_client() -> Any:
                 """Return the configured close result for shutdown tests.
 
                 Returns:
-                    The returned value.
+                    Any: The returned value.
                 """
                 return self._close_result
 
@@ -416,7 +416,7 @@ def fake_client() -> Any:
                 """Return the preloaded telemetry payload for coordinator tests.
 
                 Returns:
-                    The returned value.
+                    Any: The returned value.
                 """
                 return self._telemetry
 
@@ -429,7 +429,7 @@ def fake_client() -> Any:
                 """Return the stored number of fake REST/API query calls.
 
                 Returns:
-                    The returned value.
+                    int: The returned value.
                 """
                 return self._query_counts
 
@@ -437,7 +437,7 @@ def fake_client() -> Any:
                 """Return a minimal interface payload with traffic counters.
 
                 Returns:
-                    The returned value.
+                    Any: The returned value.
                 """
                 return {"eth0": {"inbytes": 200, "outbytes": 100}}
 
@@ -445,7 +445,7 @@ def fake_client() -> Any:
                 """Return an empty vnStat payload for tests that expect no interfaces.
 
                 Returns:
-                    The returned value.
+                    Any: The returned value.
                 """
                 return {"interface_count": 0, "interfaces": {}}
 
@@ -453,7 +453,7 @@ def fake_client() -> Any:
                 """Return an empty SMART payload for coordinator tests.
 
                 Returns:
-                    The returned value.
+                    Any: The returned value.
                 """
                 return []
 
@@ -461,7 +461,7 @@ def fake_client() -> Any:
                 """Return an empty NUT UPS status mapping for coordinator tests.
 
                 Returns:
-                    The returned value.
+                    Any: The returned value.
                 """
                 return {}
 
@@ -469,7 +469,7 @@ def fake_client() -> Any:
                 """Return an empty SMART info payload for coordinator tests.
 
                 Returns:
-                    The returned value.
+                    dict[str, Any]: The returned value.
 
                 Args:
                     device (str): SMART device name requested by the coordinator.
@@ -483,7 +483,7 @@ def fake_client() -> Any:
                 """Return an empty OpenVPN payload for coordinator tests.
 
                 Returns:
-                    The returned value.
+                    Any: The returned value.
                 """
                 return {"servers": {}}
 
@@ -491,7 +491,7 @@ def fake_client() -> Any:
                 """Return an empty WireGuard payload for coordinator tests.
 
                 Returns:
-                    The returned value.
+                    Any: The returned value.
                 """
                 return {"servers": {}}
 
@@ -499,7 +499,7 @@ def fake_client() -> Any:
                 """Return one fake CARP payload with interfaces and aggregate summary.
 
                 Returns:
-                    The returned value.
+                    dict[str, Any]: The returned value.
                 """
                 return {
                     "interfaces": [],
@@ -531,7 +531,7 @@ def fake_reg_factory() -> Any:
     removal methods so tests can assert registry cleanup behavior.
 
     Returns:
-        The returned value.
+        Any: The returned value.
     """
 
     def _make(
@@ -543,7 +543,7 @@ def fake_reg_factory() -> Any:
         """Create a fake device registry with configurable lookup and removal behavior.
 
         Returns:
-            The returned value.
+            Any: The returned value.
 
         Args:
             device_exists (bool): Whether ``async_get_device`` should return a device record.
@@ -572,7 +572,7 @@ def fake_flow_client() -> Any:
     """Return a factory that constructs a lightweight FakeClient used in flow tests.
 
     Returns:
-        The returned value.
+        Any: The returned value.
     """
 
     def _make(
@@ -582,7 +582,7 @@ def fake_flow_client() -> Any:
         """Build a lightweight flow-test client class with configurable identity.
 
         Returns:
-            The returned value.
+            Any: The returned value.
 
         Args:
             device_id (str): Device identifier returned by the fake client.
@@ -614,7 +614,7 @@ def fake_flow_client() -> Any:
                 """Return the configured firmware version for flow validation.
 
                 Returns:
-                    The returned value.
+                    str: The returned value.
                 """
                 return self._firmware
 
@@ -622,7 +622,7 @@ def fake_flow_client() -> Any:
                 """Return minimal system information for config-flow validation.
 
                 Returns:
-                    The returned value.
+                    dict: The returned value.
                 """
                 return {"name": "OPNsense"}
 
@@ -630,7 +630,7 @@ def fake_flow_client() -> Any:
                 """Return the fake device identifier configured for the flow test.
 
                 Returns:
-                    The returned value.
+                    str: The returned value.
 
                 Args:
                     expected_id (str | None): Expected device identifier supplied by the caller and
@@ -652,7 +652,7 @@ def fake_coordinator() -> Any:
     """Return a simple FakeCoordinator class tests can pass to coordinator_capture.factory. The class records when its refresh/shutdown methods are called and accepts kwargs such as `device_tracker_coordinator` to mirror prior test-local coordinator implementations.
 
     Returns:
-        The returned value.
+        Any: The returned value.
     """
 
     class FakeCoordinator:
@@ -670,7 +670,7 @@ def fake_coordinator() -> Any:
             """Async config entry first refresh.
 
             Returns:
-                The returned value.
+                bool: The returned value.
             """
             self.refreshed = True
             return True
@@ -680,7 +680,7 @@ def fake_coordinator() -> Any:
             """Async shutdown.
 
             Returns:
-                The returned value.
+                bool: The returned value.
             """
             self.shut = True
             return True
@@ -697,7 +697,7 @@ def make_config_entry() -> Any:
     scenario under test.
 
     Returns:
-        The returned value.
+        Any: The returned value.
     """
 
     def _make(
@@ -713,7 +713,7 @@ def make_config_entry() -> Any:
         """Create a ``MockConfigEntry`` with sensible defaults for integration tests.
 
         Returns:
-            The returned value.
+            MockConfigEntry: The returned value.
 
         Args:
             data (dict | None): Config entry data mapping, or a default device ID when omitted.
@@ -752,7 +752,7 @@ def ph_hass(hass: HomeAssistant) -> HomeAssistant:
     """Return the PHCC Home Assistant fixture with task creation observable by tests.
 
     Returns:
-        The returned value.
+        HomeAssistant: The returned value.
 
     Args:
         hass (HomeAssistant): The hass argument.
@@ -763,7 +763,7 @@ def ph_hass(hass: HomeAssistant) -> HomeAssistant:
         """Schedule or return.
 
         Returns:
-            The returned value.
+            Any: The returned value.
 
         Args:
             coro (Any): Coro provided by pytest or the test case.
@@ -785,6 +785,6 @@ def expected_lingering_timers() -> bool:
     """Allow switch delay timers that tests intentionally leave scheduled.
 
     Returns:
-        The returned value.
+        bool: The returned value.
     """
     return True

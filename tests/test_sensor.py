@@ -418,7 +418,10 @@ def test_carp_value_normalization_handles_empty_and_conversion_errors() -> None:
             """Raise a representative conversion error.
 
             Returns:
-                The returned value.
+                str: The returned value.
+
+            Raises:
+                ValueError: Always raised to simulate a failed string conversion.
             """
             raise ValueError
 
@@ -2063,10 +2066,10 @@ def test_vpn_sensor_handles_exceptions_from_instance_get(
                 kwargs (object): Additional keyword arguments accepted by the test double.
 
             Returns:
-                The returned value.
+                Never: The returned value.
 
             Raises:
-                Exception: Raised using ``self._exc`` to exercise sensor exception handling.
+                self._exc: Always raised to exercise sensor exception handling.
             """
             raise self._exc("simulated")
 
@@ -2278,7 +2281,7 @@ def test_temp_sensor_handles_index_exceptions(
             """Bool.
 
             Returns:
-                The returned value.
+                bool: The returned value.
             """
             return True
 
@@ -2289,7 +2292,7 @@ def test_temp_sensor_handles_index_exceptions(
                 key (str): Key provided by pytest or the test case.
 
             Raises:
-                Exception: Raised using ``self._exc`` to exercise temperature sensor handling.
+                self._exc: Always raised to exercise temperature sensor handling.
             """
             raise self._exc("simulated")
 
@@ -3201,10 +3204,10 @@ def test_dhcp_leases_handles_exceptions(
                 kwargs (object): Additional keyword arguments accepted by the test double.
 
             Returns:
-                The returned value.
+                Never: The returned value.
 
             Raises:
-                Exception: Raised using ``self._exc`` to exercise lease sensor handling.
+                self._exc: Always raised to exercise lease sensor handling.
             """
             raise self._exc("simulated")
 
@@ -3248,10 +3251,10 @@ def test_dhcp_lease_interfaces_items_raises(
             """Raise the parametrized exception when lease interfaces are iterated.
 
             Returns:
-                The returned value.
+                Never: The returned value.
 
             Raises:
-                Exception: Raised using ``exc_type`` to test interface iteration failures.
+                exc_type: Always raised to test interface iteration failures.
             """
             raise exc_type("simulated")
 
@@ -3295,10 +3298,10 @@ def test_dhcp_leases_iterable_raises_on_iter(
             """Raise the parametrized exception when the lease list is iterated.
 
             Returns:
-                The returned value.
+                Never: The returned value.
 
             Raises:
-                Exception: Raised using ``exc_type`` to test iterable failure handling.
+                exc_type: Always raised to test iterable failure handling.
             """
             raise exc_type("simulated")
 
@@ -3347,7 +3350,7 @@ def test_dhcp_leases_inner_except_writes_unavailable(
                 kwargs (object): Additional keyword arguments accepted by the test double.
 
             Returns:
-                The returned value.
+                Never: The returned value.
 
             Raises:
                 TypeError: If a supplied argument has an unsupported type.
@@ -3400,7 +3403,7 @@ def test_dhcp_leases_items_except_writes_unavailable(
             """Raise ``KeyError`` when interface items are requested.
 
             Returns:
-                The returned value.
+                Never: The returned value.
 
             Raises:
                 KeyError: Always raised to exercise item-iteration fallback handling.
@@ -3471,10 +3474,10 @@ def test_dhcp_leases_per_interface_handles_exceptions(
                 kwargs (object): Additional keyword arguments accepted by the test double.
 
             Returns:
-                The returned value.
+                Never: The returned value.
 
             Raises:
-                Exception: Raised using ``self._exc`` to test per-interface error handling.
+                self._exc: Always raised to test per-interface error handling.
             """
             raise self._exc("simulated")
 
@@ -3509,7 +3512,7 @@ def capture_reconciled_desired_entities(
     """Capture reconciliation desired entities during setup.
 
     Returns:
-        The returned value.
+        dict[str, Any]: The returned value.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
@@ -4352,7 +4355,10 @@ class _BadDHCPLeaseInterfaces(dict):
         """Raise when the compiler queries interface items.
 
         Returns:
-            The returned value.
+            Never: The returned value.
+
+        Raises:
+            RuntimeError: Always raised to simulate a failed interface lookup.
         """
         raise RuntimeError("items failure for test")
 

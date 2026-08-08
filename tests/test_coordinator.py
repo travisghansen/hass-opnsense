@@ -974,7 +974,7 @@ async def test_async_update_data_reentrancy_and_full_flow(
         """Force the Device ID validation step to succeed.
 
         Returns:
-            The returned value.
+            bool: The returned value.
         """
         return True
 
@@ -1077,7 +1077,7 @@ async def test_async_update_data_enables_firewall_polling_when_runtime_firmware_
         """Force the Device ID validation step to succeed.
 
         Returns:
-            The returned value.
+            bool: The returned value.
         """
         return True
 
@@ -1169,7 +1169,7 @@ async def test_build_categories_and_refresh_queue_firewall_for_legacy_firmware(
         """Force the Device ID validation step to succeed.
 
         Returns:
-            The returned value.
+            bool: The returned value.
         """
         return True
 
@@ -1260,7 +1260,7 @@ async def test_async_update_data_continues_firewall_polling_after_runtime_downgr
         """Force the Device ID validation step to succeed.
 
         Returns:
-            The returned value.
+            bool: The returned value.
         """
         return True
 
@@ -1356,7 +1356,7 @@ async def test_async_update_data_fetches_firewall_on_first_refresh_if_firmware_i
         """Force the Device ID validation step to succeed.
 
         Returns:
-            The returned value.
+            bool: The returned value.
         """
         return True
 
@@ -1604,7 +1604,7 @@ async def test_async_update_data_preserves_only_counter_snapshot(
         """Force Device ID validation to pass for previous-state assertions.
 
         Returns:
-            The returned value.
+            bool: The returned value.
         """
         return True
 
@@ -1664,7 +1664,7 @@ async def test_async_update_data_device_tracker_branch(
         """Return a canned device-tracker payload and record the call count.
 
         Returns:
-            The returned value.
+            dict[str, Any]: The returned value.
         """
         called["dt_called"] += 1
         return {"dt": True}
@@ -1710,7 +1710,7 @@ async def test_async_update_data_returns_empty_when_device_id_check_fails(
         """Force Device ID validation to fail for the early-return branch.
 
         Returns:
-            The returned value.
+            bool: The returned value.
         """
         return False
 
@@ -1831,7 +1831,7 @@ async def test_async_update_dt_data_device_id_branches(
         """Return the canned state payload used by the device-tracker branch test.
 
         Returns:
-            The returned value.
+            dict[str, Any]: The returned value.
 
         Args:
             categories (list[dict[str, str]]): Categories requested by the coordinator and ignored
@@ -1886,7 +1886,7 @@ async def test_async_update_dt_data_uses_shared_device_id_mismatch_policy(
         """Return a mismatched device ID for the device-tracker refresh.
 
         Returns:
-            The returned value.
+            dict[str, Any]: The returned value.
 
         Args:
             categories (list[dict[str, str]]): The categories argument.

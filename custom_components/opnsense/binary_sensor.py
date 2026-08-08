@@ -33,7 +33,7 @@ def _is_valid_interface_row(interface_name: Any, interface: Any) -> bool:
     """Return whether an interface row can produce a binary sensor.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         interface_name (Any): The interface_name argument.
@@ -46,7 +46,7 @@ def _is_valid_smart_device_row(smart_device: Any) -> bool:
     """Return whether a SMART device row can produce a binary sensor.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         smart_device (Any): The smart_device argument.
@@ -61,7 +61,7 @@ def _smart_device_slug(device_name: str) -> str:
         device_name (str): SMART device name to normalize.
 
     Returns:
-        The slugified device name, or ``unknown`` when slugification fails.
+        str: The slugified device name, or ``unknown`` when slugification fails.
     """
     return slugify(device_name) or "unknown"
 
@@ -77,7 +77,7 @@ def _build_interface_enabled_binary_sensor_description(
         interface (Mapping[str, Any]): Interface data used to derive the display name.
 
     Returns:
-        A binary sensor description for the interface enabled state.
+        BinarySensorEntityDescription: A binary sensor description for the interface enabled state.
     """
     return BinarySensorEntityDescription(
         key=f"interface.{interface_name}.enabled",
@@ -96,7 +96,7 @@ def _build_smart_status_binary_sensor_description(
         device_name (str): SMART device name used for the entity key and label.
 
     Returns:
-        A binary sensor description for SMART health state.
+        BinarySensorEntityDescription: A binary sensor description for SMART health state.
     """
     return BinarySensorEntityDescription(
         key=f"smart.{slugify(device_name) or 'unknown'}.status",
@@ -111,7 +111,8 @@ def _build_pending_notices_present_binary_sensor_description() -> BinarySensorEn
     """Build the pending notices presence binary sensor description.
 
     Returns:
-        A binary sensor description for the pending notices indicator.
+        BinarySensorEntityDescription: A binary sensor description for the pending notices
+            indicator.
     """
     return BinarySensorEntityDescription(
         key="notices.pending_notices_present",

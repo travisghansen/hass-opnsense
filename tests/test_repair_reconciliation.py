@@ -42,7 +42,7 @@ class _EntityRegistry:
         """Return an entry by entity ID.
 
         Returns:
-            The returned value.
+            Any | None: The returned value.
 
         Args:
             entity_id (str): The entity_id argument.
@@ -53,7 +53,7 @@ class _EntityRegistry:
         """Return the entity ID matching a full registry identity.
 
         Returns:
-            The returned value.
+            str | None: The returned value.
 
         Args:
             domain (str): The domain argument.
@@ -74,11 +74,14 @@ class _EntityRegistry:
         """Apply supported registry changes in place.
 
         Returns:
-            The returned value.
+            Any: The returned value.
 
         Args:
             entity_id (str): The entity_id argument.
             _changes (Any): Registry changes applied by the test double.
+
+        Raises:
+            KeyError: The requested entity is not present in the fake registry.
         """
         entry = self.async_get(entity_id)
         if entry is None:
@@ -115,7 +118,7 @@ class _DeviceRegistry:
         """Return a device matching an identifier.
 
         Returns:
-            The returned value.
+            Any | None: The returned value.
 
         Args:
             identifiers (set[tuple[str, str]]): The identifiers argument.
@@ -126,7 +129,7 @@ class _DeviceRegistry:
         """Apply identifiers or config-entry removal.
 
         Returns:
-            The returned value.
+            Any: The returned value.
 
         Args:
             device_id (str): The device_id argument.
@@ -158,7 +161,7 @@ class _ConfigEntries:
         """Return a stored config entry.
 
         Returns:
-            The returned value.
+            object | None: The returned value.
 
         Args:
             entry_id (str): The entry_id argument.
@@ -184,7 +187,7 @@ class _DesiredTrackerEntity(Entity):
         """Return the tracker MAC address.
 
         Returns:
-            The returned value.
+            str: The returned value.
         """
         return self._mac_address
 
@@ -193,7 +196,7 @@ def _other_config_entry(entry_id: str, unique_id: str) -> MockConfigEntry:
     """Create a config entry carrying OPNsense device unique identifier.
 
     Returns:
-        The returned value.
+        MockConfigEntry: The returned value.
 
     Args:
         entry_id (str): The entry_id argument.
@@ -212,7 +215,7 @@ def _entry(unique_id: str, *, entity_id: str, device_id: str | None = None, **_a
     """Create a registry-entry stand-in.
 
     Returns:
-        The returned value.
+        Any: The returned value.
 
     Args:
         unique_id (str): The unique_id argument.
@@ -235,7 +238,7 @@ def _config_entry_with_runtime_data(runtime_data: Any) -> MockConfigEntry:
     """Create an entry carrying explicit runtime reconciliation wiring.
 
     Returns:
-        The returned value.
+        MockConfigEntry: The returned value.
 
     Args:
         runtime_data (Any): The runtime_data argument.
@@ -256,7 +259,7 @@ def _device(
     """Create a device-registry stand-in.
 
     Returns:
-        The returned value.
+        Any: The returned value.
 
     Args:
         device_id (str): The device_id argument.
@@ -283,7 +286,7 @@ def _subject(
     """Create reconciliation with patched mutable registries.
 
     Returns:
-        The returned value.
+        tuple[RepairReconciliation, _EntityRegistry, _DeviceRegistry]: The returned value.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.

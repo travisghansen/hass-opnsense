@@ -65,7 +65,7 @@ def _make_options_flow(config_entry: Any) -> Any:
     """Create an options flow using Home Assistant's built-in config entry lookup.
 
     Returns:
-        The returned value.
+        Any: The returned value.
 
     Args:
         config_entry (Any): The config_entry argument.
@@ -126,7 +126,7 @@ class _CarpFlowClient:
         """Return fake firmware version.
 
         Returns:
-            The returned value.
+            str: The returned value.
         """
         return self.firmware_version
 
@@ -134,7 +134,7 @@ class _CarpFlowClient:
         """Return fake responder metadata.
 
         Returns:
-            The returned value.
+            dict[str, str]: The returned value.
         """
         return {"name": self.system_name}
 
@@ -142,7 +142,7 @@ class _CarpFlowClient:
         """Return CARP endpoint payload.
 
         Returns:
-            The returned value.
+            dict[str, Any]: The returned value.
         """
         return {"interfaces": self.carp_interfaces}
 
@@ -151,7 +151,7 @@ def _make_basic_device_input() -> dict[str, Any]:
     """Build a minimal device-flow input payload.
 
     Returns:
-        The returned value.
+        dict[str, Any]: The returned value.
     """
     return {
         "url": "https://router.example",
@@ -166,7 +166,7 @@ def _make_basic_carp_input() -> dict[str, Any]:
     """Build a minimal CARP-flow input payload.
 
     Returns:
-        The returned value.
+        dict[str, Any]: The returned value.
     """
     return {
         "url": "https://router.example",
@@ -418,10 +418,10 @@ async def test_validate_input_exception_mapping(
             kwargs (object): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            Never: The returned value.
 
         Raises:
-            OSError: Raised with the prepared message for the current parametrized case.
+            exc: Always raised with the prepared exception for the current parametrized case.
         """
         raise exc
 
@@ -450,10 +450,10 @@ async def test_validate_input_reraises_unmapped_opnsense_error(
             kwargs (object): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            Never: The returned value.
 
         Raises:
-            OPNsenseError: Always raised to exercise the re-raise path.
+            exc: Always raised to exercise the re-raise path.
         """
         raise exc
 
@@ -486,7 +486,11 @@ async def test_validate_input_timeout_uses_connect_timeout_error(
             kwargs (object): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            Never: The returned value.
+
+        Raises:
+            aiopnsense_exceptions.OPNsenseTimeoutError: Always raised with a message containing
+                test credentials.
         """
         raise aiopnsense_exceptions.OPNsenseTimeoutError(
             f"timed out for user={username} pass={password}"
@@ -1023,7 +1027,10 @@ async def test_validate_input_can_map_carp_not_configured_error(
             _kwargs (object): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            Never: The returned value.
+
+        Raises:
+            cf_mod.OPNsenseCarpNotConfiguredError: Always raised to exercise CARP error mapping.
         """
         raise cf_mod.OPNsenseCarpNotConfiguredError("No CARP VIPs were returned")
 
@@ -1094,7 +1101,7 @@ async def test_get_dt_entries_sorts_and_includes_selected(
         """Return arp table.
 
         Returns:
-            The returned value.
+            Any: The returned value.
 
         Args:
             self (Any): The self argument.
@@ -1151,7 +1158,7 @@ async def test_get_dt_entries_passes_throw_errors_to_client(
         """Return no ARP rows for deterministic entry-point assertions.
 
         Returns:
-            The returned value.
+            list[dict[str, str]]: The returned value.
 
         Args:
             self (Any): The self argument.
@@ -1168,7 +1175,7 @@ async def test_get_dt_entries_passes_throw_errors_to_client(
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            Any: The returned value.
         """
         create_calls.update(kwargs)
         return client_cls(**kwargs)
@@ -1200,7 +1207,7 @@ async def test_get_dt_entries_preserves_missing_selected_devices(
         """Return arp table.
 
         Returns:
-            The returned value.
+            Any: The returned value.
 
         Args:
             self (Any): The self argument.
@@ -1313,7 +1320,7 @@ async def test_get_dt_entries_closes_client(monkeypatch: pytest.MonkeyPatch) -> 
                 resolve_hostnames (bool): Hostname-resolution flag passed by caller and ignored.
 
             Returns:
-                list: Empty ARP-table payload.
+                Any: Empty ARP-table payload.
             """
             return []
 
@@ -1365,7 +1372,7 @@ async def test_validate_client_details_closes_client(monkeypatch: pytest.MonkeyP
             """Return minimal system metadata for name derivation.
 
             Returns:
-                dict[str, str]: Mapping containing router display name.
+                Any: Mapping containing router display name.
             """
             return {"name": "OPNsense"}
 
@@ -1430,7 +1437,7 @@ async def test_validate_client_details_raises_when_device_id_missing(
             """Return firmware that passes minimum-version validation.
 
             Returns:
-                The returned value.
+                str: The returned value.
             """
             return "26.1.1"
 
@@ -1438,7 +1445,7 @@ async def test_validate_client_details_raises_when_device_id_missing(
             """Return minimal system metadata for validation.
 
             Returns:
-                The returned value.
+                dict[str, str]: The returned value.
             """
             return {"name": "OPNsense"}
 
@@ -1446,7 +1453,7 @@ async def test_validate_client_details_raises_when_device_id_missing(
             """Return an empty device identifier.
 
             Returns:
-                The returned value.
+                str: The returned value.
 
             Args:
                 expected_id (str | None): Expected device ID supplied by validation and ignored.
@@ -1800,7 +1807,7 @@ async def test_options_flow_granular_sync_calls_validate_and_updates(
         """Return an empty error mapping so the options flow can proceed.
 
         Returns:
-            The returned value.
+            Any: The returned value.
 
         Args:
             hass (HomeAssistant): Home Assistant instance that owns the integration state, entity
@@ -1846,7 +1853,7 @@ async def test_device_tracker_shows_form_when_no_user_input(
         """Return a deterministic mapping of selectable device-tracker entries.
 
         Returns:
-            The returned value.
+            Any: The returned value.
 
         Args:
             hass (HomeAssistant): Home Assistant instance that owns the integration state, entity
@@ -1917,10 +1924,10 @@ async def test_device_tracker_handles_arp_lookup_failure(
             kwargs (object): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            Never: The returned value.
 
         Raises:
-            BaseException: Always raised to exercise error handling in the options flow.
+            exc: Always raised to exercise error handling in the options flow.
         """
         raise exc
 
@@ -1960,7 +1967,10 @@ async def test_device_tracker_handles_opnsense_timeout_error(
             kwargs (object): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            Never: The returned value.
+
+        Raises:
+            aiopnsense_exceptions.OPNsenseTimeoutError: Always raised to exercise timeout mapping.
         """
         raise aiopnsense_exceptions.OPNsenseTimeoutError("request timed out")
 
@@ -2685,7 +2695,7 @@ async def test_validate_input_granular_sync_uses_native_validation_only(
             """Return the fake firmware version.
 
             Returns:
-                The returned value.
+                str: The returned value.
             """
             return self.firmware_version
 
@@ -2693,7 +2703,7 @@ async def test_validate_input_granular_sync_uses_native_validation_only(
             """Return static system metadata for validation.
 
             Returns:
-                The returned value.
+                dict[str, str]: The returned value.
             """
             return {"name": "OPNsense"}
 
@@ -2703,7 +2713,7 @@ async def test_validate_input_granular_sync_uses_native_validation_only(
             """Return a stable device unique id.
 
             Returns:
-                The returned value.
+                str: The returned value.
 
             Args:
                 _expected_id (str | None): The _expected_id argument.

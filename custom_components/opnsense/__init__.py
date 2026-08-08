@@ -161,6 +161,9 @@ async def _async_first_refresh_with_marker_issue(
         entry (ConfigEntry): The entry argument.
         coordinator (OPNsenseDataUpdateCoordinator): The coordinator argument.
         repair_marker (RepairMarker | None): The repair_marker argument.
+
+    Raises:
+        ConfigEntryNotReady: If the coordinator cannot complete its first refresh.
     """
     try:
         await coordinator.async_config_entry_first_refresh()
@@ -180,7 +183,7 @@ def _resolve_device_id_probe_state(
     """Handle marker and mismatch-issue decisions after Device ID probe.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         hass (HomeAssistant): The hass argument.
@@ -227,7 +230,7 @@ async def _unload_setup_platforms_after_reconciliation_failure(
     """Unload forwarded setup platforms when reconciliation aborts.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         hass (HomeAssistant): The hass argument.
@@ -260,7 +263,7 @@ async def _cleanup_reconciliation_failure(
     """Persist marker-backed repair issue and unload any partially loaded platforms.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         hass (HomeAssistant): The hass argument.
@@ -448,7 +451,7 @@ async def _async_setup_carp_entry(hass: HomeAssistant, entry: ConfigEntry) -> bo
 
     Raises:
         ConfigEntryNotReady: If the initial refresh returns no usable CARP VIPs.
-        OPNsenseError: If client validation or the initial refresh fails.
+        OPNsenseConnectionError: If a connection-error subclass cannot be translated safely.
     """
     client: OPNsenseClient | None = None
     setup_succeeded: bool = False
@@ -525,6 +528,7 @@ async def _async_create_validated_client(hass: HomeAssistant, entry: ConfigEntry
 
     Raises:
         ConfigEntryNotReady: If a transient connection failure prevents validation.
+        OPNsenseConnectionError: If a connection-error subclass cannot be translated safely.
         OPNsenseError: If validation fails with a non-retryable client error.
         TimeoutError: If validation raises a raw timeout.
     """
@@ -564,8 +568,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             the router identity has changed or its firmware is unsupported.
 
     Raises:
-        ConfigEntryNotReady: If a transient connection failure prevents setup.
-        OPNsenseError: If setup fails with a non-retryable OPNsense client error.
+        RepairReconciliationError: If Device ID reconciliation cannot safely update registries.
     """
     if is_carp_entry(entry):
         return await _async_setup_carp_entry(hass, entry)

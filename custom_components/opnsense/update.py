@@ -26,7 +26,7 @@ def _build_firmware_update_entity_description() -> UpdateEntityDescription:
     """Build the firmware update entity description.
 
     Returns:
-        An update entity description for firmware availability.
+        UpdateEntityDescription: An update entity description for firmware availability.
     """
     return UpdateEntityDescription(
         key="firmware.update_available",
@@ -44,7 +44,7 @@ def _mapping_or_empty(value: Any) -> Mapping[str, Any]:
         value (Any): Candidate mapping value.
 
     Returns:
-        The mapping when provided, otherwise an empty dict.
+        Mapping[str, Any]: The mapping when provided, otherwise an empty dict.
     """
     return value if isinstance(value, Mapping) else {}
 
@@ -56,7 +56,7 @@ def _list_or_empty(value: Any) -> list[Any]:
         value (Any): Candidate list value.
 
     Returns:
-        The list when provided, otherwise an empty list.
+        list[Any]: The list when provided, otherwise an empty list.
     """
     return value if isinstance(value, list) else []
 
@@ -68,7 +68,7 @@ def _affected_package_count(value: Any) -> int:
         value (Any): Candidate package collection from firmware status data.
 
     Returns:
-        The number of packages represented by ``value``.
+        int: The number of packages represented by ``value``.
     """
     if isinstance(value, Mapping):
         return len(value)
@@ -84,7 +84,7 @@ def _opnsense_package_version(packages: list[Any]) -> str | None:
         packages (list[Any]): Firmware package rows from OPNsense.
 
     Returns:
-        The OPNsense package version, or ``None`` when unavailable.
+        str | None: The OPNsense package version, or ``None`` when unavailable.
     """
     for package in packages:
         if not isinstance(package, Mapping):
@@ -220,7 +220,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
             state (MutableMapping[str, Any]): Current OPNsense state payload.
 
         Returns:
-            ``True`` when firmware update data reports an actionable status.
+            bool: ``True`` when firmware update data reports an actionable status.
         """
         if not isinstance(state, Mapping):
             return False
@@ -237,7 +237,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
             state (MutableMapping[str, Any]): Current OPNsense state payload.
 
         Returns:
-            The installed firmware version, or ``None`` when unavailable.
+            str | None: The installed firmware version, or ``None`` when unavailable.
         """
         product_version = dict_get(state, "firmware_update_info.product.product_version")
         return product_version if isinstance(product_version, str) else None
@@ -251,7 +251,8 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
             state (MutableMapping[str, Any]): Current OPNsense state payload.
 
         Returns:
-            A tuple of installed version, latest version, and series version.
+            tuple[str | None, str | None, str | None]: A tuple of installed version, latest
+                version, and series version.
         """
         product_version = dict_get(state, "firmware_update_info.product.product_version")
         product_latest = dict_get(state, "firmware_update_info.product.product_latest")
@@ -291,7 +292,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
             product_series (str | None): Firmware product series string.
 
         Returns:
-            The OPNsense product class, or ``None`` when the series is unknown.
+            str | None: The OPNsense product class, or ``None`` when the series is unknown.
         """
         if product_series:
             try:
@@ -318,7 +319,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
             product_version (str | None): Installed firmware version.
 
         Returns:
-            A formatted release-notes summary, status message, or ``None``.
+            str | None: A formatted release-notes summary, status message, or ``None``.
         """
         firmware_update_info = state.get("firmware_update_info")
         if not isinstance(firmware_update_info, Mapping):
@@ -372,7 +373,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
         """Return the release notes of the latest version.
 
         Returns:
-            Cached release notes for the currently available update.
+            str | None: Cached release notes for the currently available update.
         """
         return self._release_notes
 

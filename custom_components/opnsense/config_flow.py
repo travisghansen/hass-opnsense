@@ -444,10 +444,13 @@ def _normalize_url(url: str) -> str:
     """Normalize and validate an OPNsense base URL.
 
     Returns:
-        The returned value.
+        str: The returned value.
 
     Args:
         url (str): The url argument.
+
+    Raises:
+        OPNsenseInvalidURL: If the URL has no host or contains an invalid port.
     """
     fix_url = url.strip()
     if "://" not in fix_url:
@@ -498,8 +501,6 @@ async def _validate_client_details(
         expected_id (str | None): Expected device unique ID for reconfigure/options validation.
 
     Raises:
-        OPNsenseUnknownFirmware: Firmware could not be parsed or compared safely.
-        OPNsenseBelowMinFirmware: Firmware is below the minimum supported version.
         OPNsenseMissingDeviceUniqueID: Backend did not return a device unique ID.
     """
     _clean_and_parse_url(user_input)
@@ -547,7 +548,8 @@ async def _validate_carp_client_details(
             discovered values.
 
     Raises:
-        OPNsenseError: If URL, client, responder, or CARP VIP validation fails.
+        OPNsenseCarpNotConfiguredError: If the router has no usable CARP VIPs.
+        OPNsenseCarpResponderUnavailableError: If responder information is unavailable.
     """
     _clean_and_parse_url(user_input)
 
@@ -1412,6 +1414,9 @@ class OPNsenseOptionsFlow(OptionsFlow):
 
         Returns:
             ConfigFlowResult: The next form step or the saved options entry.
+
+        Raises:
+            OPNsenseError: If loading available device trackers from OPNsense fails.
         """
         errors: dict[str, Any] = {}
         selected_devices: list[str] = _merge_selected_devices(self._options.get(CONF_DEVICES, []))

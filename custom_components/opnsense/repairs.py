@@ -24,7 +24,7 @@ def build_device_id_mismatch_issue_id(entry_id: str) -> str:
     """Build the stable mismatch issue ID for a config entry.
 
     Returns:
-        The returned value.
+        str: The returned value.
 
     Args:
         entry_id (str): The entry_id argument.
@@ -36,7 +36,7 @@ def is_valid_device_id(device_id: object) -> TypeGuard[str]:
     """Return whether a device ID is a usable string identifier.
 
     Returns:
-        The returned value.
+        TypeGuard[str]: The returned value.
 
     Args:
         device_id (object): The device_id argument.
@@ -86,7 +86,7 @@ def _without_tracked_macs_for_recovery(payload: dict[str, object]) -> dict[str, 
     """Return a snapshot copy that ignores setup-time tracked MAC mutations.
 
     Returns:
-        The returned value.
+        dict[str, object]: The returned value.
 
     Args:
         payload (dict[str, object]): The payload argument.
@@ -140,8 +140,6 @@ async def _async_validate_and_probe_device_id(
     Returns:
         str | None: Device identifier returned by OPNsense.
 
-    Raises:
-        OPNsenseError: If validation or the Device ID probe fails.
     """
     client = create_opnsense_client_from_config_entry(
         hass=hass,
@@ -412,7 +410,7 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         """Return the entry when the runtime snapshot still matches.
 
         Returns:
-            The returned value.
+            ConfigEntry | None: The returned value.
 
         Args:
             current_entry (ConfigEntry | None): The current_entry argument.

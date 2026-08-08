@@ -80,7 +80,7 @@ class _FakeFlowClient:
         """Return the firmware version configured for this fake flow client.
 
         Returns:
-            The returned value.
+            str: The returned value.
         """
         return self._firmware
 
@@ -88,7 +88,7 @@ class _FakeFlowClient:
         """Return a minimal system info payload used by flow validation.
 
         Returns:
-            The returned value.
+            MutableMapping[str, Any]: The returned value.
         """
         return {"name": "OPNsenseTest"}
 
@@ -96,7 +96,7 @@ class _FakeFlowClient:
         """Return the fake router identifier used by the flow tests.
 
         Returns:
-            The returned value.
+            str: The returned value.
 
         Args:
             expected_id (str | None): Expected device identifier supplied by the caller and
@@ -109,7 +109,7 @@ class _FakeFlowClient:
         """Return two static ARP entries for device-tracker options tests.
 
         Returns:
-            The returned value.
+            list[dict[str, Any]]: The returned value.
 
         Args:
             resolve_hostnames (bool): The resolve_hostnames argument.
@@ -148,7 +148,7 @@ class _FakeRuntimeClient:
         """Return the fake runtime device identifier for setup and refresh calls.
 
         Returns:
-            The returned value.
+            str: The returned value.
 
         Args:
             expected_id (str | None): Expected device identifier supplied by the caller and
@@ -160,7 +160,7 @@ class _FakeRuntimeClient:
         """Return the fake firmware version used by setup and coordinator refreshes.
 
         Returns:
-            The returned value.
+            str: The returned value.
         """
         return self._firmware
 
@@ -181,7 +181,7 @@ class _FakeRuntimeClient:
         """Return a fixed query-count value for coordinator assertions.
 
         Returns:
-            The returned value.
+            int: The returned value.
         """
         return 0
 
@@ -189,7 +189,7 @@ class _FakeRuntimeClient:
         """Return minimal system information for the initial refresh path.
 
         Returns:
-            The returned value.
+            dict[str, str]: The returned value.
         """
         return {"name": "sys"}
 
@@ -258,7 +258,7 @@ def _make_basic_user_input() -> dict[str, Any]:
     """Create basic user input.
 
     Returns:
-        The returned value.
+        dict[str, Any]: The returned value.
     """
     return {
         CONF_URL: "https://router.example",
@@ -274,7 +274,7 @@ def _build_mock_hass() -> Any:
     """Construct a lightweight hass stand‑in with required attributes.
 
     Returns:
-        The returned value.
+        Any: The returned value.
     """
     hass = MagicMock()
     hass.data = {}
@@ -291,7 +291,7 @@ def _build_mock_hass() -> Any:
             """Return config entries matching domain.
 
             Returns:
-                The returned value.
+                list[MockConfigEntry]: The returned value.
 
             Args:
                 domain (str | None): Domain name used to filter registry entries.
@@ -317,7 +317,7 @@ def _build_mock_hass() -> Any:
             """Async update entry.
 
             Returns:
-                The returned value.
+                bool: The returned value.
 
             Args:
                 entry (MockConfigEntry): Config entry being set up, unloaded, migrated, or reloaded.
@@ -344,7 +344,7 @@ def _build_mock_hass() -> Any:
             """Async forward entry setups.
 
             Returns:
-                The returned value.
+                bool: The returned value.
 
             Args:
                 entry (MockConfigEntry): Config entry being set up, unloaded, migrated, or reloaded.
@@ -358,7 +358,7 @@ def _build_mock_hass() -> Any:
             """Async unload platforms.
 
             Returns:
-                The returned value.
+                bool: The returned value.
 
             Args:
                 entry (MockConfigEntry): Config entry being set up, unloaded, migrated, or reloaded.
@@ -715,7 +715,7 @@ async def test_e2e_full_migration_chain(
             """Async update device.
 
             Returns:
-                The returned value.
+                Any: The returned value.
 
             Args:
                 device_id (str): Device identifier used to target the correct OPNsense device or
@@ -798,7 +798,7 @@ async def test_e2e_full_migration_chain(
             """Async update entity.
 
             Returns:
-                The returned value.
+                Any: The returned value.
 
             Args:
                 entity_id (str): Entity identifier used to resolve the matching OPNsense entity.
@@ -852,7 +852,7 @@ async def test_e2e_full_migration_chain(
             """Return the migrated device identifier used by the migration test.
 
             Returns:
-                The returned value.
+                str: The returned value.
             """
             return "newmacid"
 
@@ -864,7 +864,7 @@ async def test_e2e_full_migration_chain(
             """Return a placeholder firmware version for migration compatibility.
 
             Returns:
-                The returned value.
+                str: The returned value.
             """
             return "25.1"
 
@@ -872,7 +872,7 @@ async def test_e2e_full_migration_chain(
             """Return minimal telemetry so migration code can inspect filesystems.
 
             Returns:
-                The returned value.
+                dict[str, Any]: The returned value.
             """
             return {"filesystems": []}  # keep simple to avoid extra branches
 
@@ -880,7 +880,7 @@ async def test_e2e_full_migration_chain(
             """Return current aiopnsense firewall rules for stale-switch pruning.
 
             Returns:
-                The returned value.
+                dict[str, Any]: The returned value.
             """
             return {"rules": {"row-key": {"uuid": "current"}}}
 

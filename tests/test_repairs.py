@@ -40,7 +40,7 @@ def _make_entry(
     """Build a config entry with connection data used by the repair tests.
 
     Returns:
-        The returned value.
+        MockConfigEntry: The returned value.
 
     Args:
         entry_id (str): The entry_id argument.
@@ -67,7 +67,7 @@ def _make_carp_entry(*, entry_id: str = "carp-entry", unique_id: str = "other") 
     """Build a device-ID-less CARP config entry for repair boundary tests.
 
     Returns:
-        The returned value.
+        MockConfigEntry: The returned value.
 
     Args:
         entry_id (str): The entry_id argument.
@@ -96,7 +96,7 @@ def _make_flow(
     """Create a configured repair flow for direct step testing.
 
     Returns:
-        The returned value.
+        repairs.DeviceIDMismatchRepairFlow: The returned value.
 
     Args:
         hass (Any): The hass argument.
@@ -142,7 +142,7 @@ def _patch_registries(
     """Return registry spies proving the confirmation flow does not mutate registries.
 
     Returns:
-        The returned value.
+        tuple[MagicMock, MagicMock]: The returned value.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
@@ -158,7 +158,7 @@ def _patch_registries(
         """Return a matching entity from the provided entity fixture list.
 
         Returns:
-            The returned value.
+            Any: The returned value.
 
         Args:
             entity_id (str): The entity_id argument.
@@ -172,7 +172,7 @@ def _patch_registries(
         """Return the stored entity_id matching domain, platform, and unique_id.
 
         Returns:
-            The returned value.
+            str | None: The returned value.
 
         Args:
             domain (str): The domain argument.
@@ -192,7 +192,7 @@ def _patch_registries(
         """Return a matching device fixture whose identifiers cover the query.
 
         Returns:
-            The returned value.
+            Any: The returned value.
 
         Args:
             identifiers (set[tuple[str, str]] | frozenset[tuple[str, str]]): The identifiers
@@ -207,7 +207,7 @@ def _patch_registries(
         """Return configured entities for a config-entry-based lookup.
 
         Returns:
-            The returned value.
+            list[Any]: The returned value.
 
         Args:
             _registry (Any): The _registry argument.
@@ -219,7 +219,7 @@ def _patch_registries(
         """Return configured devices for a config-entry-based lookup.
 
         Returns:
-            The returned value.
+            list[Any]: The returned value.
 
         Args:
             _registry (Any): The _registry argument.
@@ -253,7 +253,7 @@ def _patch_issue_registry(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     """Patch issue lookups used to render confirmation placeholders.
 
     Returns:
-        The returned value.
+        MagicMock: The returned value.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
@@ -281,7 +281,7 @@ def _patch_probe_client(
     """Patch strict client construction and return the client mock.
 
     Returns:
-        The returned value.
+        MagicMock: The returned value.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
@@ -296,7 +296,7 @@ def _patch_probe_client(
         """Return the configured replacement identifier.
 
         Returns:
-            The returned value.
+            Any: The returned value.
         """
         if events is not None:
             events.append("probe")
@@ -533,7 +533,7 @@ async def test_duplicate_entry_aborts_before_unload_or_registry_mutation(
         """Create a competing entry after the initial duplicate check.
 
         Returns:
-            The returned value.
+            bool: The returned value.
 
         Args:
             entry_id (str): The entry_id argument.
@@ -586,7 +586,7 @@ async def test_loaded_entry_duplicate_after_unload_schedules_changed_entry_reloa
         """Return a duplicate config entry only after unload and snapshot checks.
 
         Returns:
-            The returned value.
+            list[Any]: The returned value.
 
         Args:
             domain (str): The domain argument.
@@ -692,7 +692,7 @@ async def test_loaded_entry_unloads_before_marker_update_and_reload(
         """Record unload before returning success.
 
         Returns:
-            The returned value.
+            bool: The returned value.
 
         Args:
             entry_id (str): The entry_id argument.
@@ -711,7 +711,7 @@ async def test_loaded_entry_unloads_before_marker_update_and_reload(
             """Record the duplicate candidate comparison.
 
             Returns:
-                The returned value.
+                str: The returned value.
             """
             events.append("duplicate_check")
             return "different"
@@ -720,7 +720,7 @@ async def test_loaded_entry_unloads_before_marker_update_and_reload(
         """Record the duplicate scan and return only non-conflicting entries.
 
         Returns:
-            The returned value.
+            list[Any]: The returned value.
 
         Args:
             domain (str): The domain argument.
@@ -748,7 +748,7 @@ async def test_loaded_entry_unloads_before_marker_update_and_reload(
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            bool: The returned value.
         """
         del args, kwargs
         events.append("config_update")
@@ -760,7 +760,7 @@ async def test_loaded_entry_unloads_before_marker_update_and_reload(
         """Record reload scheduling and signal success.
 
         Returns:
-            The returned value.
+            bool: The returned value.
 
         Args:
             entry_id (str): The entry_id argument.
@@ -781,7 +781,7 @@ async def test_loaded_entry_unloads_before_marker_update_and_reload(
             _ (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            dict[str, str]: The returned value.
         """
         events.append("create")
         return {"type": "create_entry"}
@@ -838,7 +838,7 @@ async def test_loaded_entry_reprobe_after_unload_rejects_router_swap_without_mut
         """Return a stale ID before unload and a swapped ID after unload.
 
         Returns:
-            The returned value.
+            str: The returned value.
         """
         probe_calls.append(1)
         if len(probe_calls) == 1:
@@ -887,7 +887,10 @@ async def test_loaded_entry_reprobe_after_unload_rejects_probe_failure_without_m
         """Return a stale ID before unload and fail on the re-probe.
 
         Returns:
-            The returned value.
+            str: The returned value.
+
+        Raises:
+            OPNsenseConnectionError: Raised on the second probe to simulate an offline firewall.
         """
         probe_calls.append(1)
         if len(probe_calls) == 1:
@@ -980,7 +983,7 @@ async def test_entry_swap_reprobe_snapshot_stability_checks_after_unload(
         """Mutate entry persistence during the second probe cycle.
 
         Returns:
-            The returned value.
+            str: The returned value.
         """
         probe_calls.append(1)
         if len(probe_calls) == 2:
@@ -1266,7 +1269,7 @@ async def test_entry_changed_during_probe_or_unload_aborts_without_mutation(
             """Mutate the entry before the probe completes.
 
             Returns:
-                The returned value.
+                str: The returned value.
             """
             _mutate_entry()
             return "other"
@@ -1278,7 +1281,7 @@ async def test_entry_changed_during_probe_or_unload_aborts_without_mutation(
             """Mutate the entry while unloading it.
 
             Returns:
-                The returned value.
+                bool: The returned value.
 
             Args:
                 entry_id (str): The entry_id argument.
@@ -1547,7 +1550,7 @@ async def test_expected_id_retry_rechecks_snapshot_after_unload(
         """Mutate persisted data while the retry is awaiting unload.
 
         Returns:
-            The returned value.
+            bool: The returned value.
 
         Args:
             entry_id (str): The entry_id argument.
@@ -1615,7 +1618,7 @@ async def test_reload_failure_keeps_entry_update_and_keeps_issue(
         """Apply the requested entry mutation to the in-memory test object.
 
         Returns:
-            The returned value.
+            bool: The returned value.
 
         Args:
             config_entry (MockConfigEntry): The config_entry argument.

@@ -61,7 +61,7 @@ def _patch_clients(monkeypatch: pytest.MonkeyPatch, clients: list[Any]) -> None:
             _kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            list[Any]: The returned value.
         """
         return clients
 
@@ -72,7 +72,7 @@ def _voucher_call_data() -> dict[str, str]:
     """Return a valid voucher service payload.
 
     Returns:
-        The returned value.
+        dict[str, str]: The returned value.
     """
     return {"validity": "1", "expirytime": "2", "count": "2", "vouchergroup": "g1"}
 
@@ -458,7 +458,7 @@ async def test_get_clients_registry_errors_raise_for_explicit_targets(
         """Raises.
 
         Returns:
-            The returned value.
+            Any: The returned value.
 
         Args:
             exc (BaseException | None): Exc provided by pytest or the test case.
@@ -472,10 +472,10 @@ async def test_get_clients_registry_errors_raise_for_explicit_targets(
                 _k (object): Additional keyword arguments accepted by the test double.
 
             Returns:
-                Never returns normally because the supplied exception is always raised.
+                Never: Never returns normally because the supplied exception is always raised.
 
             Raises:
-                Exception: Raised with the exception instance supplied to ``_raises``.
+                exc: The exception instance supplied to ``_raises``.
             """
             assert isinstance(exc, BaseException)
             raise exc

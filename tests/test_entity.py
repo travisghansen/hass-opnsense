@@ -29,7 +29,10 @@ class _BadStrValue:
         """Raise when the display-name helper converts this value to text.
 
         Returns:
-            The returned value.
+            str: The returned value.
+
+        Raises:
+            ValueError: Always raised to simulate failed string conversion.
         """
         raise ValueError("string conversion failure")
 
@@ -43,10 +46,13 @@ class _BadStripValue(str):
         """Raise when display-name normalization strips whitespace.
 
         Returns:
-            The returned value.
+            str: The returned value.
 
         Args:
             chars (str | None): Optional characters to strip, matching ``str.strip``.
+
+        Raises:
+            ValueError: Always raised to simulate failed whitespace normalization.
         """
         raise ValueError("strip failure")
 

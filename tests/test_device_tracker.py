@@ -51,7 +51,7 @@ def _make_scanner_entity(
         mac (str): MAC address tracked by the entity.
 
     Returns:
-        A scanner entity for the requested MAC address.
+        OPNsenseScannerEntity: A scanner entity for the requested MAC address.
     """
     coordinator.data = {"arp_table": []} if coordinator_data is None else coordinator_data
     entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -621,7 +621,7 @@ def test_entity_registry_enabled_default_fallback_when_no_matching_device(
                 _kwargs (Any): Additional keyword arguments accepted by the test double.
 
             Returns:
-                The returned value.
+                Any: The returned value.
             """
             return self._device if matched_state["has_device"] else None
 
@@ -1908,7 +1908,7 @@ async def test_async_setup_entry_removes_stale_tracker_entities_and_reparents_sh
         """Return the registered tracker entity for a stale unique ID.
 
         Returns:
-            The returned value.
+            str | None: The returned value.
 
         Args:
             domain (str): The domain argument.
@@ -1984,7 +1984,7 @@ async def test_async_setup_entry_removes_stale_tracker_entities_and_reparents_sh
         """Return the fake router or stale device for the requested lookup.
 
         Returns:
-            The returned value.
+            Any: The returned value.
 
         Args:
             identifiers (set[tuple[str, str]] | None): The identifiers argument.
@@ -2093,7 +2093,7 @@ async def test_async_setup_entry_removes_stale_tracker_entities_clears_missing_p
         """Return fake stale tracker devices and missing router lookup results.
 
         Returns:
-            The returned value.
+            Any: The returned value.
 
         Args:
             identifiers (set[tuple[str, str]] | None): The identifiers argument.

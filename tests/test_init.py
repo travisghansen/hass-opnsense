@@ -81,7 +81,7 @@ def _make_valid_setup_client() -> MagicMock:
     """Create a valid OPNsense client mock for setup-entry lifecycle tests.
 
     Returns:
-        The returned value.
+        MagicMock: The returned value.
     """
     client = MagicMock()
     client.validate = AsyncMock(return_value=True)
@@ -95,7 +95,7 @@ def _make_setup_coordinator() -> MagicMock:
     """Create a coordinator mock that succeeds initial setup and supports shutdown.
 
     Returns:
-        The returned value.
+        MagicMock: The returned value.
     """
     coordinator = MagicMock()
     coordinator.async_config_entry_first_refresh = AsyncMock(return_value=True)
@@ -239,7 +239,7 @@ async def test_async_setup_entry_validates_client_before_probes(
         """Return test router Device ID after recording probe ordering.
 
         Returns:
-            The returned value.
+            str: The returned value.
 
         Args:
             expected_id (str | None): The expected_id argument.
@@ -251,7 +251,7 @@ async def test_async_setup_entry_validates_client_before_probes(
         """Return test firmware after recording probe ordering.
 
         Returns:
-            The returned value.
+            str: The returned value.
         """
         probe_calls.append("get_host_firmware_version")
         return "99.0"
@@ -267,7 +267,8 @@ async def test_async_setup_entry_validates_client_before_probes(
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            Any: The returned value.
+
         """
         return client
 
@@ -527,7 +528,7 @@ async def test_async_setup_entry_carp_entry_uses_identity_less_runtime(
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            bool: The returned value.
         """
         validate_calls.append(kwargs)
         return True
@@ -543,7 +544,7 @@ async def test_async_setup_entry_carp_entry_uses_identity_less_runtime(
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            Any: The returned value.
         """
         create_calls.update(kwargs)
         return client
@@ -568,7 +569,7 @@ async def test_async_setup_entry_carp_entry_uses_identity_less_runtime(
             """Complete the coordinator's initial refresh protocol.
 
             Returns:
-                The returned value.
+                bool: The returned value.
             """
             return True
 
@@ -576,7 +577,7 @@ async def test_async_setup_entry_carp_entry_uses_identity_less_runtime(
             """Complete the coordinator's shutdown protocol.
 
             Returns:
-                The returned value.
+                bool: The returned value.
             """
             return True
 
@@ -996,7 +997,7 @@ async def test_async_setup_entry_carp_registers_update_listener_after_forwarding
         """Record listener registration and return its removal callback.
 
         Returns:
-            The returned value.
+            MagicMock: The returned value.
 
         Args:
             listener (Any): The listener argument.
@@ -1023,7 +1024,7 @@ async def test_async_setup_entry_carp_registers_update_listener_after_forwarding
             _kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            bool: The returned value.
         """
         call_order.append("forward")
         return True
@@ -1072,7 +1073,7 @@ async def test_async_setup_entry_closes_client_when_validation_fails(
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            Any: The returned value.
         """
         return client
 
@@ -1123,7 +1124,7 @@ async def test_async_setup_entry_does_not_catch_raw_validation_timeout(
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            Any: The returned value.
         """
         return client
 
@@ -1179,7 +1180,7 @@ async def test_async_setup_entry_retries_on_transient_validation_failures(
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            Any: The returned value.
         """
         return client
 
@@ -1249,7 +1250,7 @@ async def test_async_setup_entry_does_not_retry_non_transient_validation_failure
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            Any: The returned value.
         """
         return client
 
@@ -1320,7 +1321,7 @@ async def test_async_setup_entry_with_repair_marker_recreates_issue_on_early_pro
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            Any: The returned value.
         """
         del kwargs
         return create_client
@@ -1413,7 +1414,10 @@ async def test_async_setup_entry_reraises_client_creation_error(
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            Any: The returned value.
+
+        Raises:
+            OPNsenseError: Always raised to simulate client creation failure.
         """
         raise OPNsenseError("boom")
 
@@ -1479,7 +1483,7 @@ async def test_async_setup_entry_continues_after_ignored_validation_error(
         """Return test router Device ID after recording probe ordering.
 
         Returns:
-            The returned value.
+            str: The returned value.
 
         Args:
             expected_id (str | None): The expected_id argument.
@@ -1491,7 +1495,7 @@ async def test_async_setup_entry_continues_after_ignored_validation_error(
         """Return test firmware after recording probe ordering.
 
         Returns:
-            The returned value.
+            str: The returned value.
         """
         probe_calls.append("get_host_firmware_version")
         return "99.0"
@@ -1506,7 +1510,7 @@ async def test_async_setup_entry_continues_after_ignored_validation_error(
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            Any: The returned value.
         """
         return client
 
@@ -1754,7 +1758,7 @@ async def test_async_unload_entry_and_pop(
         """Record platform unload order and return success.
 
         Returns:
-            The returned value.
+            bool: The returned value.
 
         Args:
             _entry (Any): The _entry argument.
@@ -3970,6 +3974,10 @@ async def test_async_setup_entry_awesomeversion_exception(
 
             Args:
                 other (Any): The other argument.
+
+            Raises:
+                awesomeversion.exceptions.AwesomeVersionCompareException: Always raised to
+                    exercise the safe comparison fallback.
             """
             raise awesomeversion.exceptions.AwesomeVersionCompareException
 
@@ -5084,7 +5092,7 @@ async def test_async_setup_entry_cleans_up_when_device_tracker_refresh_fails(
             _kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            Any: The returned value.
         """
         return coordinators.pop(0)
 
@@ -5147,7 +5155,7 @@ async def test_async_setup_entry_recreates_marker_issue_when_device_tracker_refr
             _kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            Any: The returned value.
         """
         return coordinators.pop(0)
 
@@ -5484,7 +5492,7 @@ async def _run_reconciliation_cleanup_unload(
             _kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            Any: The returned value.
         """
         return coordinators.pop(0)
 
@@ -6013,7 +6021,7 @@ async def test_async_setup_entry_recreates_marker_issue_on_probe_mismatch_before
         """Return a probe value that triggers marker-based probe mismatch.
 
         Returns:
-            The returned value.
+            Any: The returned value.
 
         Args:
             expected_id (str | None): The expected_id argument.
@@ -6379,7 +6387,11 @@ async def test_migrate_2_to_3_handles_identifier_collision(
                 k (object): Additional keyword arguments accepted by the test double.
 
             Returns:
-                Never returns normally because the collision error is always raised.
+                Never: Never returns normally because the collision error is always raised.
+
+            Raises:
+                dr.DeviceIdentifierCollisionError: Always raised to simulate an identifier
+                    collision.
             """
             raise dr.DeviceIdentifierCollisionError(dev.identifiers, MagicMock(id="other"))
 

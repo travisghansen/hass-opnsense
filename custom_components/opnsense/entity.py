@@ -43,7 +43,7 @@ class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseEntityCoordinator]):
             allow_scalar (bool): Whether non-container scalar values should be stringified.
 
         Returns:
-            String display label from the first usable field, otherwise the fallback.
+            str: String display label from the first usable field, otherwise the fallback.
         """
         for field in fields:
             value: Any | None

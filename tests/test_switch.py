@@ -53,7 +53,7 @@ def make_coord(data: Any) -> Any:
     """Create a MagicMock that behaves like an OPNsenseDataUpdateCoordinator for tests.
 
     Returns:
-        The returned value.
+        Any: The returned value.
 
     Args:
         data (Any): The data argument.
@@ -72,7 +72,7 @@ def make_carp_config_entry(
     """Create a config entry with CARP test coordinator runtime data.
 
     Returns:
-        The returned value.
+        MockConfigEntry: The returned value.
 
     Args:
         make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
@@ -95,7 +95,7 @@ def make_carp_maintenance_switch(
     """Create a CARP maintenance switch entity for tests.
 
     Returns:
-        The returned value.
+        OPNsenseCarpMaintenanceSwitch: The returned value.
 
     Args:
         ph_hass (HomeAssistant): The ph_hass argument.
@@ -123,7 +123,7 @@ def capture_reconciled_desired_entities(
     """Capture reconciliation desired entities during setup.
 
     Returns:
-        The returned value.
+        dict[str, Any]: The returned value.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
@@ -161,7 +161,7 @@ def setup_switch_reconciliation_entry(
     """Create a switch test entry with coordinator/runtime pre-wired.
 
     Returns:
-        The returned value.
+        MockConfigEntry: The returned value.
 
     Args:
         make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
@@ -613,7 +613,7 @@ async def collect_setup_carp_switches(
     """Run switch setup and return CARP maintenance switches.
 
     Returns:
-        The returned value.
+        list[OPNsenseCarpMaintenanceSwitch]: The returned value.
 
     Args:
         ph_hass (HomeAssistant): The ph_hass argument.
@@ -977,7 +977,7 @@ async def test_carp_maintenance_switch_serializes_overlapping_requests(
         """Pause toggles so both requests can overlap before completion.
 
         Returns:
-            The returned value.
+            bool: The returned value.
         """
         nonlocal toggle_calls
         toggle_calls += 1
@@ -2085,7 +2085,7 @@ def test_delay_update_setter(
                 kwargs (Any): Additional keyword arguments accepted by the test double.
 
             Returns:
-                The returned value.
+                Callable[[], None]: The returned value.
             """
 
             def remover() -> None:
@@ -2131,7 +2131,7 @@ async def test_vpn_turn_on_off_calls_client_and_sets_delay(
         """Return a no-op remover instead of scheduling a delayed callback.
 
         Returns:
-            The returned value.
+            Callable[[], None]: The returned value.
 
         Args:
             hass (HomeAssistant): Home Assistant instance that would own the scheduled callback.
@@ -2791,7 +2791,7 @@ async def test_switch_handle_error_sets_unavailable(
             """Return a non-mapping value to exercise service error handling.
 
             Returns:
-                The returned value.
+                MutableMapping[str, Any] | None: The returned value.
             """
             return cast("MutableMapping[str, Any] | None", 5)
 
@@ -3027,7 +3027,10 @@ def test_rule_switch_handlers_fail_closed_when_enabled_lookup_raises(
                 kwargs (Any): Additional keyword arguments accepted by the test double.
 
             Returns:
-                The returned value.
+                Any: The returned value.
+
+            Raises:
+                TypeError: Always raised to simulate a failed enabled-flag lookup.
             """
             raise TypeError("simulated")
 
@@ -4182,9 +4185,7 @@ def test_vpn_handle_exceptions_sets_unavailable(
                 _k (Any): The _k argument.
 
             Raises:
-                TypeError: If ``exc_type`` is ``TypeError`` for this parameterized case.
-                KeyError: If ``exc_type`` is ``KeyError`` for this parameterized case.
-                AttributeError: If ``exc_type`` is ``AttributeError`` for this parameterized case.
+                exc_type: Always raised with the exception type selected by the test case.
             """
             raise exc_type("boom")
 
@@ -4232,9 +4233,7 @@ def test_service_handle_exceptions_sets_unavailable(
                 _k (Any): The _k argument.
 
             Raises:
-                TypeError: If ``exc_type`` is ``TypeError`` for this parameterized case.
-                KeyError: If ``exc_type`` is ``KeyError`` for this parameterized case.
-                AttributeError: If ``exc_type`` is ``AttributeError`` for this parameterized case.
+                exc_type: Always raised with the exception type selected by the test case.
             """
             raise exc_type("boom")
 

@@ -274,7 +274,7 @@ def test_create_opnsense_client_builds_client_with_expected_options(
         """Capture session construction options and return a fake session.
 
         Returns:
-            The returned value.
+            aiohttp.ClientSession: The returned value.
 
         Args:
             hass (Any): The hass argument.
@@ -291,7 +291,7 @@ def test_create_opnsense_client_builds_client_with_expected_options(
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            MagicMock: The returned value.
         """
         created["client_kwargs"] = kwargs
         return MagicMock()
@@ -394,7 +394,7 @@ def test_create_opnsense_client_from_config_entry_forwards_entry_data(
             kwargs (Any): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            MagicMock: The returned value.
         """
         captured.update(kwargs)
         return client

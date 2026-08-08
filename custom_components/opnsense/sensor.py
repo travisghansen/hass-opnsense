@@ -121,7 +121,7 @@ def _is_valid_vnstat_interface_row(interface_name: Any) -> TypeIs[str]:
     """Return whether a vnStat interface key can produce sensors.
 
     Returns:
-        The returned value.
+        TypeIs[str]: The returned value.
 
     Args:
         interface_name (Any): The interface_name argument.
@@ -133,7 +133,7 @@ def _is_valid_smart_device_row(smart_device: Any) -> bool:
     """Return whether a SMART device row can produce a sensor.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         smart_device (Any): The smart_device argument.
@@ -145,7 +145,7 @@ def _is_valid_filesystem_row(filesystem: Any) -> bool:
     """Return whether a filesystem row can produce a sensor.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         filesystem (Any): The filesystem argument.
@@ -177,7 +177,7 @@ def _is_valid_carp_interface_row(interface: Any) -> bool:
     """Return whether a CARP interface row can produce a sensor.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         interface (Any): The interface argument.
@@ -193,7 +193,7 @@ def _is_valid_mutable_mapping_row(row: Any) -> bool:
     """Return whether a dynamic inventory row is a mutable mapping.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         row (Any): The row argument.
@@ -205,7 +205,7 @@ def _is_valid_vpn_sensor_row(instance: Any) -> bool:
     """Return whether a VPN instance row can produce sensors.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         instance (Any): The instance argument.
@@ -217,7 +217,7 @@ def _vnstat_rows_are_complete(state: MutableMapping[str, Any]) -> bool:
     """Return whether every consumed vnStat interface row is valid.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         state (MutableMapping[str, Any]): The state argument.
@@ -232,7 +232,7 @@ def _vpn_sensor_rows_are_complete(state: MutableMapping[str, Any]) -> bool:
     """Return whether every VPN row consumed by the sensor compiler is valid.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         state (MutableMapping[str, Any]): The state argument.
@@ -254,7 +254,7 @@ def _telemetry_rows_are_complete(telemetry: Any) -> bool:
     """Return whether telemetry inventories and all consumed rows are valid.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         telemetry (Any): The telemetry argument.
@@ -1575,7 +1575,7 @@ async def _compile_interface_sensors(
             statistics.
 
     Returns:
-        list[OPNsenseInterfaceSensor]: Compiled interface sensors; rate properties use
+        list: Compiled interface sensors; rate properties use
             ``OPNsenseLiveTrafficSensor`` when live traffic is configured and available.
     """
     if not isinstance(state, MutableMapping):

@@ -39,7 +39,7 @@ class _OpaqueDiagnosticValue:
         """Preserve identity when snapshotting the immutable test value.
 
         Returns:
-            The returned value.
+            Self: The returned value.
 
         Args:
             memo (dict[int, Any]): The memo argument.
@@ -50,7 +50,10 @@ class _OpaqueDiagnosticValue:
         """Fail if diagnostics attempts to render the private object.
 
         Returns:
-            Never returns normally because rendering raises ``AssertionError``.
+            str: Never returns normally because rendering raises ``AssertionError``.
+
+        Raises:
+            AssertionError: Always raised if diagnostics renders the private object.
         """
         raise AssertionError("opaque diagnostics values must not be rendered")
 
@@ -64,7 +67,7 @@ def _coordinator(
     """Create a coordinator-shaped object for diagnostics tests.
 
     Returns:
-        The returned value.
+        SimpleNamespace: The returned value.
 
     Args:
         data (dict[str, Any]): The data argument.

@@ -32,7 +32,7 @@ def _is_valid_service_row(service: Any) -> bool:
     """Return whether a service row can be evaluated by the compiler.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         service (Any): The service argument.
@@ -44,7 +44,7 @@ def _service_identity(service: Mapping[str, Any]) -> str | None:
     """Return a stable service identity from a row when available.
 
     Returns:
-        The returned value.
+        str | None: The returned value.
 
     Args:
         service (Mapping[str, Any]): The service argument.
@@ -68,7 +68,7 @@ def _is_valid_vpn_switch_row(instance: Any) -> bool:
     """Return whether a VPN instance row can produce a switch.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         instance (Any): The instance argument.
@@ -80,7 +80,7 @@ def _is_valid_unbound_row(dnsbl: Any) -> bool:
     """Return whether an Unbound blocklist row can produce a switch.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         dnsbl (Any): The dnsbl argument.
@@ -92,7 +92,7 @@ def _is_valid_firewall_rule_row(rule_key: Any, rule: Any) -> bool:
     """Return whether a firewall rule row can produce a switch.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         rule_key (Any): The rule_key argument.
@@ -109,7 +109,7 @@ def _is_valid_nat_rule_row(rule_key: Any, rule: Any) -> bool:
     """Return whether a NAT rule row can produce a switch.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         rule_key (Any): The rule_key argument.
@@ -126,7 +126,7 @@ def _vpn_switch_rows_are_complete(state: MutableMapping[str, Any]) -> bool:
     """Return whether every VPN row consumed by the switch compiler is valid.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         state (MutableMapping[str, Any]): The state argument.
@@ -156,7 +156,7 @@ def _create_switch[EntityT: OPNsenseSwitch](
         entity_description (SwitchEntityDescription): Description that defines the entity identity.
 
     Returns:
-        A configured switch entity instance.
+        EntityT: A configured switch entity instance.
     """
     return entity_cls(
         config_entry=config_entry,
@@ -172,7 +172,7 @@ def _build_service_switch_description(service: Mapping[str, Any]) -> SwitchEntit
         service (Mapping[str, Any]): Service record from the OPNsense state payload.
 
     Returns:
-        A switch entity description for the service status toggle.
+        SwitchEntityDescription: A switch entity description for the service status toggle.
     """
     prop_name = "status"
     service_id = _service_identity(service) or "unknown"
@@ -201,7 +201,7 @@ def _build_vpn_switch_description(
         instance (Mapping[str, Any]): Instance metadata used to build the display name.
 
     Returns:
-        A switch entity description for the VPN instance.
+        SwitchEntityDescription: A switch entity description for the VPN instance.
     """
     instance_name = OPNsenseEntity.payload_display_name(
         instance,
@@ -226,7 +226,7 @@ def _build_carp_maintenance_switch_description() -> SwitchEntityDescription:
     """Build the CARP maintenance switch description.
 
     Returns:
-        A switch entity description for CARP persistent maintenance mode.
+        SwitchEntityDescription: A switch entity description for CARP persistent maintenance mode.
     """
     return SwitchEntityDescription(
         key="carp.maintenance_mode",
@@ -241,7 +241,8 @@ def _build_unbound_legacy_switch_description() -> SwitchEntityDescription:
     """Build the legacy Unbound blocklist switch description.
 
     Returns:
-        A switch entity description for the legacy Unbound blocklist toggle.
+        SwitchEntityDescription: A switch entity description for the legacy Unbound blocklist
+            toggle.
     """
     return SwitchEntityDescription(
         key="unbound_blocklist.switch",
@@ -261,7 +262,7 @@ def _build_unbound_switch_description(
         dnsbl (Mapping[str, Any]): DNSBL rule data used for naming.
 
     Returns:
-        A switch entity description for the DNSBL rule.
+        SwitchEntityDescription: A switch entity description for the DNSBL rule.
     """
     return SwitchEntityDescription(
         key=f"unbound_blocklist.switch.{uuid}",
@@ -283,7 +284,7 @@ def _build_firewall_rule_switch_description(
         rule (Mapping[str, Any]): Firewall rule data from the OPNsense payload.
 
     Returns:
-        A switch entity description for the firewall rule toggle.
+        SwitchEntityDescription: A switch entity description for the firewall rule toggle.
     """
     interface = rule.get("%interface", rule.get("interface", ""))
     if not isinstance(interface, str):
@@ -314,7 +315,7 @@ def _build_nat_rule_switch_description(
         rule_id (str): NAT rule identifier used for entity identity and toggling.
 
     Returns:
-        A switch entity description for the NAT rule toggle.
+        SwitchEntityDescription: A switch entity description for the NAT rule toggle.
     """
     return SwitchEntityDescription(
         key=f"firewall.nat.{nat_rule_type}.{rule_id}",
@@ -532,7 +533,7 @@ async def _compile_nat_rule_switches(
         name_prefix (str): Human-readable prefix for the generated entities.
 
     Returns:
-        A list of NAT rule switch entities.
+        list: A list of NAT rule switch entities.
     """
     rules = dict_get(state, f"firewall.nat.{nat_rule_type}")
     if not isinstance(rules, MutableMapping):
@@ -964,7 +965,7 @@ class OPNsenseCarpMaintenanceSwitch(OPNsenseSwitch):
         """Return the icon for the entity.
 
         Returns:
-            Icon name for the entity, or the base icon when inactive.
+            str | None: Icon name for the entity, or the base icon when inactive.
         """
         if self.available and self.is_on:
             return "mdi:server-network-off"
@@ -1083,7 +1084,7 @@ class OPNsenseFirewallRuleSwitch(OPNsenseSwitch):
         """Return the icon for the entity.
 
         Returns:
-            Icon name for the entity, or the base icon when inactive.
+            str | None: Icon name for the entity, or the base icon when inactive.
         """
         if self.available and self.is_on:
             return "mdi:play-network"
@@ -1247,7 +1248,7 @@ class OPNsenseNATRuleSwitch(OPNsenseSwitch):
         """Return the icon for the entity.
 
         Returns:
-            Icon name for the entity, or the base icon when inactive.
+            str | None: Icon name for the entity, or the base icon when inactive.
         """
         if self.available and self.is_on:
             return "mdi:network"
@@ -1370,7 +1371,7 @@ class OPNsenseServiceSwitch(OPNsenseSwitch):
         """Return the icon for the entity.
 
         Returns:
-            Icon name for the entity, or the base icon when inactive.
+            str | None: Icon name for the entity, or the base icon when inactive.
         """
         if self.available and self.is_on:
             return "mdi:application-cog"
@@ -1655,7 +1656,7 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
         """Return the icon for the entity.
 
         Returns:
-            Icon name for the entity, or the base icon when inactive.
+            str | None: Icon name for the entity, or the base icon when inactive.
         """
         if self.available and self.is_on:
             return "mdi:folder-key-network"

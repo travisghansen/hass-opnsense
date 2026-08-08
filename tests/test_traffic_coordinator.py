@@ -61,7 +61,7 @@ def _build_test_coordinator(
     """Build a traffic coordinator and its parent coordinator with defaults.
 
     Returns:
-        The returned value.
+        tuple[OPNsenseLiveTrafficCoordinator, MagicMock]: The returned value.
 
     Args:
         make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.
@@ -509,7 +509,7 @@ async def test_live_traffic_coordinator_consumes_stream_records_update_error(
             dict[str, Any]: The next yielded value.
 
         Raises:
-            Exception: Stream iteration raises a transport or payload exception.
+            stream_exception: The configured transport or payload exception.
         """
         raise stream_exception
         yield {}

@@ -41,7 +41,7 @@ def build_repair_marker(old_device_id: str, new_device_id: str) -> dict[str, obj
     """Build the current persisted Device ID repair marker.
 
     Returns:
-        The returned value.
+        dict[str, object]: The returned value.
 
     Args:
         old_device_id (str): The old_device_id argument.
@@ -58,7 +58,7 @@ def has_repair_marker(entry: ConfigEntry) -> bool:
     """Return whether the entry contains a persisted repair marker.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         entry (ConfigEntry): The entry argument.
@@ -70,7 +70,7 @@ def parse_repair_marker(entry: ConfigEntry) -> RepairMarker | None:
     """Parse and validate the entry's persisted repair marker.
 
     Returns:
-        The returned value.
+        RepairMarker | None: The returned value.
 
     Args:
         entry (ConfigEntry): The entry argument.
@@ -98,7 +98,7 @@ def _platform_domain_value(platform_domain: PlatformDomain) -> str:
     """Return the string entity domain for a platform value.
 
     Returns:
-        The returned value.
+        str: The returned value.
 
     Args:
         platform_domain (PlatformDomain): The platform_domain argument.
@@ -120,7 +120,11 @@ class RepairReconciliation:
     _candidate_entity_ids: set[str] = field(default_factory=set)
 
     def prepare(self) -> None:
-        """Preflight every target collision, then migrate identifiers in place."""
+        """Preflight every target collision, then migrate identifiers in place.
+
+        Raises:
+            RepairReconciliationError: If a target collides or registry migration fails.
+        """
         entity_registry = er.async_get(self.hass)
         device_registry = dr.async_get(self.hass)
         candidates = er.async_entries_for_config_entry(entity_registry, self.config_entry.entry_id)
@@ -226,6 +230,9 @@ class RepairReconciliation:
 
         Args:
             platform_domains (Iterable[PlatformDomain]): The platform_domains argument.
+
+        Raises:
+            RepairReconciliationError: If any forwarded platform has incomplete discovery.
         """
         required_domains = {
             _platform_domain_value(platform_domain) for platform_domain in platform_domains
@@ -236,7 +243,11 @@ class RepairReconciliation:
             raise RepairReconciliationError(f"platform discovery incomplete: {missing}")
 
     def finalize(self) -> None:
-        """Remove stale candidates and detach only unreferenced obsolete devices."""
+        """Remove stale candidates and detach only unreferenced obsolete devices.
+
+        Raises:
+            RepairReconciliationError: If registry finalization fails.
+        """
         entity_registry = er.async_get(self.hass)
         device_registry = dr.async_get(self.hass)
         try:
@@ -320,7 +331,7 @@ def is_reconciliation_active(config_entry: ConfigEntry) -> bool:
     """Return whether this setup is performing Device ID reconciliation.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         config_entry (ConfigEntry): The config_entry argument.

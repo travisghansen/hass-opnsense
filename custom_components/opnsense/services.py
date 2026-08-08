@@ -302,7 +302,8 @@ async def _get_clients(
         opnentity_id (str | None): Entity identifier used to resolve the matching OPNsense entity.
 
     Raises:
-        ServiceValidationError: If explicit target selectors do not resolve to configured clients.
+        _service_validation_error: If explicit target selectors do not resolve to configured
+            clients.
 
     Returns:
         list[OPNsenseServiceClient]: Clients selected by the request.
@@ -438,7 +439,7 @@ def _get_service_identifier(call: ServiceCall) -> str:
         str: OPNsense service identifier.
 
     Raises:
-        ServiceValidationError: If no service identifier is present.
+        _service_validation_error: If no service identifier is present.
     """
     service_identifier = call.data.get("service_id", call.data.get("service_name"))
     if not service_identifier:
@@ -470,7 +471,8 @@ async def _run_boolean_client_action(
         action (BooleanClientAction): Awaitable client action returning success state.
 
     Raises:
-        ServiceValidationError: If no selected clients report success or any selected client fails.
+        _service_validation_error: If no selected clients report success or any selected client
+            fails.
     """
     all_clients_succeeded = bool(clients)
     for client in clients:
@@ -514,7 +516,7 @@ async def _collect_mapping_results(
         list[dict[str, Any]]: Per-client mapping results with ``client_name`` included.
 
     Raises:
-        ServiceValidationError: If no selected client returns a non-empty mapping.
+        _service_validation_error: If no selected client returns a non-empty mapping.
     """
     response_list: list[dict[str, Any]] = []
     for client in clients:
@@ -554,7 +556,8 @@ async def _collect_kill_state_results(
         list[dict[str, Any]]: Successful per-client dropped state counts.
 
     Raises:
-        ServiceValidationError: If no selected clients report success or any selected client fails.
+        _service_validation_error: If no selected clients report success or any selected client
+            fails.
     """
     all_clients_succeeded = bool(clients)
     response_list: list[dict[str, Any]] = []
@@ -596,7 +599,7 @@ async def _collect_voucher_results(
         list[Any]: Voucher response items with client names added to mapping entries.
 
     Raises:
-        ServiceValidationError: If no OPNsense clients are selected or the voucher server fails.
+        _service_validation_error: If no OPNsense clients are selected or the voucher server fails.
     """
     if not clients:
         raise _service_validation_error(_TRANSLATION_KEY_GENERATE_VOUCHERS_FAILED)
@@ -657,9 +660,6 @@ async def _service_start_service(hass: HomeAssistant, call: ServiceCall) -> None
             services.
         call (ServiceCall): Service call payload received from Home Assistant.
 
-    Raises:
-        ServiceValidationError: If the service call payload is missing a valid target or
-            required value.
     """
     service_identifier = _get_service_identifier(call)
     clients = await _get_target_clients(hass, call)
@@ -684,9 +684,6 @@ async def _service_stop_service(hass: HomeAssistant, call: ServiceCall) -> None:
             services.
         call (ServiceCall): Service call payload received from Home Assistant.
 
-    Raises:
-        ServiceValidationError: If the service call payload is missing a valid target or
-            required value.
     """
     service_identifier = _get_service_identifier(call)
     clients = await _get_target_clients(hass, call)
@@ -711,9 +708,6 @@ async def _service_restart_service(hass: HomeAssistant, call: ServiceCall) -> No
             services.
         call (ServiceCall): Service call payload received from Home Assistant.
 
-    Raises:
-        ServiceValidationError: If the service call payload is missing a valid target or
-            required value.
     """
     service_identifier = _get_service_identifier(call)
     clients = await _get_target_clients(hass, call)
@@ -800,9 +794,6 @@ async def _service_reload_interface(hass: HomeAssistant, call: ServiceCall) -> N
             services.
         call (ServiceCall): Service call payload received from Home Assistant.
 
-    Raises:
-        ServiceValidationError: If the service call payload is missing a valid target or
-            required value.
     """
     clients = await _get_target_clients(hass, call)
     interface = call.data.get("interface")
@@ -827,10 +818,6 @@ async def _service_generate_vouchers(hass: HomeAssistant, call: ServiceCall) -> 
             services.
         call (ServiceCall): Service call payload received from Home Assistant.
 
-    Raises:
-        ServiceValidationError: If the service call payload is missing a valid target or
-            required value.
-
     Returns:
         ServiceResponse: Generated voucher values grouped under ``vouchers``.
     """
@@ -851,10 +838,6 @@ async def _service_kill_states(hass: HomeAssistant, call: ServiceCall) -> Servic
             registry, and
             services.
         call (ServiceCall): Service call payload received from Home Assistant.
-
-    Raises:
-        ServiceValidationError: If the service call payload is missing a valid target or
-            required value.
 
     Returns:
         ServiceResponse: Dropped-state results grouped under ``dropped_states``.
@@ -925,9 +908,6 @@ async def _service_toggle_alias(hass: HomeAssistant, call: ServiceCall) -> None:
             services.
         call (ServiceCall): Service call payload received from Home Assistant.
 
-    Raises:
-        ServiceValidationError: If the service call payload is missing a valid target or
-            required value.
     """
     clients = await _get_target_clients(hass, call)
     alias: str = call.data["alias"]

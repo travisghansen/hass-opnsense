@@ -45,7 +45,7 @@ def capture_reconciled_desired_entities(
     """Capture reconciliation desired entities during setup.
 
     Returns:
-        The returned value.
+        dict[str, Any]: The returned value.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): The monkeypatch argument.
@@ -81,7 +81,7 @@ def setup_binary_sensor_reconciliation_entry(
     """Create a binary-sensor test entry with coordinator/runtime pre-wired.
 
     Returns:
-        The returned value.
+        MockConfigEntry: The returned value.
 
     Args:
         make_config_entry (Callable[..., MockConfigEntry]): The make_config_entry argument.

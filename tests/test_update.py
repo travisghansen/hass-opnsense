@@ -45,7 +45,7 @@ def _firmware_update_state(
         upgrade_major_version (Any): Optional major upgrade version.
 
     Returns:
-        Firmware update state with the requested product and status payload.
+        dict[str, Any]: Firmware update state with the requested product and status payload.
     """
     firmware_update_info: dict[str, Any] = {
         "product": {
@@ -98,7 +98,7 @@ class _FirmwareInstallClient:
                 this fake client.
 
         Returns:
-            Payload indicating that the upgrade request started.
+            dict[str, Any]: Payload indicating that the upgrade request started.
         """
         return {"started": True}
 
@@ -106,10 +106,10 @@ class _FirmwareInstallClient:
         """Return or raise the configured polling result.
 
         Raises:
-            BaseException: The configured ``status_error``, when provided.
+            self.status_error: The configured polling error, when provided.
 
         Returns:
-            The next queued status response, or the configured repeated response.
+            Any: The next queued status response, or the configured repeated response.
         """
         if self.status_error is not None:
             raise self.status_error
@@ -121,7 +121,7 @@ class _FirmwareInstallClient:
         """Return configured firmware metadata.
 
         Returns:
-            Firmware update metadata.
+            dict[str, Any]: Firmware update metadata.
         """
         return self.firmware_info
 

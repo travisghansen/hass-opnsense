@@ -64,7 +64,7 @@ def normalize_arp_mac(mac: object) -> str:
     """Normalize a MAC address from an ARP payload.
 
     Returns:
-        The returned value.
+        str: The returned value.
 
     Args:
         mac (object): The mac argument.
@@ -78,7 +78,7 @@ def get_arp_mac(entry: Mapping[str, Any]) -> str:
     """Return a normalized MAC address from an ARP payload.
 
     Returns:
-        The returned value.
+        str: The returned value.
 
     Args:
         entry (Mapping[str, Any]): The entry argument.
@@ -93,7 +93,7 @@ def get_arp_ip(entry: Mapping[str, Any]) -> str:
     """Return an IP address from an ARP payload.
 
     Returns:
-        The returned value.
+        str: The returned value.
 
     Args:
         entry (Mapping[str, Any]): The entry argument.
@@ -108,7 +108,7 @@ def get_smart_device_name(smart_device: Mapping[str, Any]) -> str:
     """Return a SMART device identifier, preferring ``device`` over ``ident``.
 
     Returns:
-        The returned value.
+        str: The returned value.
 
     Args:
         smart_device (Mapping[str, Any]): The smart_device argument.
@@ -125,7 +125,7 @@ def firewall_rule_id_from_payload(rule_key: object, rule: object) -> str | None:
     """Get a firewall rule ID from an aiopnsense rule payload.
 
     Returns:
-        The returned value.
+        str | None: The returned value.
 
     Args:
         rule_key (object): The rule_key argument.

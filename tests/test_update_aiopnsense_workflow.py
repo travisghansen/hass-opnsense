@@ -43,7 +43,7 @@ class FakeCleanupClient:
         """Return fake pull requests by state.
 
         Returns:
-            The returned value.
+            list[dict[str, object]]: The returned value.
 
         Args:
             state (str): The state argument.
@@ -55,6 +55,9 @@ class FakeCleanupClient:
 
         Args:
             pull_number (int): The pull_number argument.
+
+        Raises:
+            AssertionError: The fake was configured to reject close requests.
         """
         if self.fail_on_close:
             raise AssertionError(f"Unexpected close for PR {pull_number}")
@@ -85,7 +88,7 @@ def _workflow_pull(
         merged_at (str | None): Optional merge timestamp for closed PRs.
 
     Returns:
-        Fake pull request object shaped like the GitHub REST API response.
+        dict[str, object]: Fake pull request object shaped like the GitHub REST API response.
     """
     return {
         "number": number,
@@ -106,7 +109,7 @@ def _write_pin_files(
     """Write temporary manifest, pyproject, and prek files with aiopnsense pins.
 
     Returns:
-        The returned value.
+        tuple[Path, Path, Path]: The returned value.
 
     Args:
         tmp_path (Path): The tmp_path argument.
@@ -156,7 +159,7 @@ def updater_script() -> ModuleType:
     """Load the aiopnsense pin updater script as a test module.
 
     Returns:
-        The returned value.
+        ModuleType: The returned value.
     """
     return _load_script("update_aiopnsense_pins", SCRIPT_PATH)
 
@@ -166,7 +169,7 @@ def release_notes_script() -> ModuleType:
     """Load the aiopnsense release-note builder script as a test module.
 
     Returns:
-        The returned value.
+        ModuleType: The returned value.
     """
     return _load_script("build_aiopnsense_release_notes", RELEASE_NOTES_SCRIPT_PATH)
 
@@ -176,7 +179,7 @@ def cleanup_script() -> ModuleType:
     """Load the aiopnsense cleanup script as a test module.
 
     Returns:
-        The returned value.
+        ModuleType: The returned value.
     """
     return _load_script("cleanup_aiopnsense_update_branches", CLEANUP_SCRIPT_PATH)
 
@@ -185,7 +188,7 @@ def _load_script(module_name: str, script_path: Path) -> ModuleType:
     """Load a checked-in workflow helper script as a test module.
 
     Returns:
-        The returned value.
+        ModuleType: The returned value.
 
     Args:
         module_name (str): The module_name argument.
@@ -405,7 +408,7 @@ def test_updater_script_selects_latest_stable_from_pypi_payload(
             __ (object): Additional keyword arguments accepted by the test double.
 
         Returns:
-            The returned value.
+            StringIO: The returned value.
         """
         return StringIO(json.dumps(payload))
 
@@ -515,10 +518,10 @@ def test_release_note_script_handles_url_errors(
             _ (object): Additional keyword arguments accepted by the test double.
 
         Returns:
-            Never returns normally because ``URLError`` is always raised.
+            Never: Never returns normally because ``URLError`` is always raised.
 
         Raises:
-            URLError: Always raised to simulate a network failure.
+            release_notes_script.URLError: Always raised to simulate a network failure.
         """
         raise release_notes_script.URLError("DNS failure")
 

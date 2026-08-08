@@ -121,7 +121,7 @@ def _normalize_field(field_name: object) -> str:
     """Normalize a payload field name for sensitivity matching.
 
     Returns:
-        The returned value.
+        str: The returned value.
 
     Args:
         field_name (object): The field_name argument.
@@ -142,7 +142,7 @@ def _is_secret_field(field_name: str) -> bool:
     """Return whether a normalized field contains a secret value.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         field_name (str): The field_name argument.
@@ -158,7 +158,7 @@ def _is_sensitive_field(field_name: str) -> bool:
     """Return whether a normalized field contains a private identifier.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         field_name (str): The field_name argument.
@@ -172,7 +172,7 @@ def _is_alias_metadata_field(field_name: str) -> bool:
     """Return whether a normalized field contains OPNsense alias display metadata.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         field_name (str): The field_name argument.
@@ -184,7 +184,7 @@ def _is_speedtest_server_field(path: tuple[str, ...], field_name: str) -> bool:
     """Return whether a field is a latest speed-test metric's server description.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         path (tuple[str, ...]): The path argument.
@@ -203,7 +203,7 @@ def _is_safe_ipv4(value: str) -> bool:
     """Return whether a value is an allowed local IPv4 address or interface.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         value (str): The value argument.
@@ -221,7 +221,7 @@ def _is_safe_ipv6(value: str) -> bool:
     """Return whether a value is an allowed local IPv6 address or interface.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         value (str): The value argument.
@@ -239,7 +239,7 @@ def _is_safe_network_identifier(value: object) -> bool:
     """Return whether a mapping identifier is safe and useful in diagnostics.
 
     Returns:
-        The returned value.
+        bool: The returned value.
 
     Args:
         value (object): The value argument.
@@ -253,7 +253,7 @@ def _validated_ipv6_candidate(candidate: str) -> tuple[str, str] | None:
     """Return a valid IPv6 candidate and any trailing sentence punctuation.
 
     Returns:
-        The returned value.
+        tuple[str, str] | None: The returned value.
 
     Args:
         candidate (str): The candidate argument.
@@ -281,7 +281,7 @@ def _coordinator_diagnostics(coordinator: Any | None) -> dict[str, Any] | None:
     """Build diagnostics from an existing coordinator without refreshing it.
 
     Returns:
-        The returned value.
+        dict[str, Any] | None: The returned value.
 
     Args:
         coordinator (Any | None): The coordinator argument.
@@ -336,7 +336,7 @@ class _Pseudonymizer:
         """Return the registered alias for a supported scalar value.
 
         Returns:
-            The returned value.
+            str | None: The returned value.
 
         Args:
             value (object): The value argument.
@@ -423,7 +423,7 @@ class _Pseudonymizer:
         """Return the distinct alias registered for a dynamic mapping key.
 
         Returns:
-            The returned value.
+            str: The returned value.
 
         Args:
             value (object): The value argument.
@@ -435,7 +435,7 @@ class _Pseudonymizer:
         """Build a non-rendering, type-aware token for a dynamic mapping key.
 
         Returns:
-            The returned value.
+            tuple[object, object]: The returned value.
 
         Args:
             value (object): The value argument.
@@ -529,7 +529,7 @@ class _Pseudonymizer:
         """Return a recursively pseudonymized, JSON-compatible copy.
 
         Returns:
-            The returned value.
+            Any: The returned value.
 
         Args:
             value (Any): The value argument.
@@ -603,7 +603,7 @@ class _Pseudonymizer:
         """Return whether a mapping key needs replacement for privacy or JSON safety.
 
         Returns:
-            The returned value.
+            bool: The returned value.
 
         Args:
             value (object): The value argument.
@@ -660,7 +660,7 @@ class _Pseudonymizer:
         """Return a useful placeholder type for a sensitive field.
 
         Returns:
-            The returned value.
+            str | None: The returned value.
 
         Args:
             field_name (str): The field_name argument.
@@ -697,7 +697,7 @@ class _Pseudonymizer:
         """Replace detected formatted identifiers without scanning unrelated aliases.
 
         Returns:
-            The returned value.
+            str: The returned value.
 
         Args:
             value (str): The value argument.
@@ -712,7 +712,7 @@ class _Pseudonymizer:
             """Replace a candidate only when it is a valid IP address or interface.
 
             Returns:
-                The returned value.
+                str: The returned value.
 
             Args:
                 match (re.Match[str]): The match argument.
@@ -730,7 +730,7 @@ class _Pseudonymizer:
             """Replace a valid IPv6 core while preserving sentence punctuation.
 
             Returns:
-                The returned value.
+                str: The returned value.
 
             Args:
                 match (re.Match[str]): The match argument.
@@ -759,7 +759,7 @@ class _Pseudonymizer:
         """Replace registered values in a scalar while preserving its type otherwise.
 
         Returns:
-            The returned value.
+            Any: The returned value.
 
         Args:
             value (Any): The value argument.
@@ -784,7 +784,7 @@ async def async_get_config_entry_diagnostics(
     """Return privacy-safe diagnostics for an OPNsense config entry.
 
     Returns:
-        The returned value.
+        dict[str, Any]: The returned value.
 
     Args:
         hass (HomeAssistant): The hass argument.
