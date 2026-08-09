@@ -1,7 +1,26 @@
+<a id="v1.0.5"></a>
+# [v1.0.5](https://github.com/travisghansen/hass-opnsense/releases/tag/v1.0.5) - 2026-08-09
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 📚 Documentation
+* Add pydoclint documentation checks by [@Snuffy2](https://github.com/Snuffy2) in [#694](https://github.com/travisghansen/hass-opnsense/pull/694)
+### 🎓 Code Quality
+* test: streamline redundant test coverage by [@Snuffy2](https://github.com/Snuffy2) in [#696](https://github.com/travisghansen/hass-opnsense/pull/696)
+### 🧰 Maintenance
+* Bump aiopnsense to 1.1.7 by [@github-actions](https://github.com/github-actions)[bot] in [#695](https://github.com/travisghansen/hass-opnsense/pull/695)
+
+
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v1.0.4...v1.0.5
+
+[Changes][v1.0.5]
+
+
 <a id="v1.0.4"></a>
 # [v1.0.4](https://github.com/travisghansen/hass-opnsense/releases/tag/v1.0.4) - 2026-08-02
 
-<!-- Release notes generated using configuration in .github/release.yml at main -->
+<h3>OPNsense Minimum Firmware Required: 25.1</h3><h4>OPNsense Recommended Firmware: 26.1+</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
 ## What's Changed
 ### 🐛 Bug Fixes
@@ -14,7 +33,7 @@
 * Bump aiopnsense to 1.1.6 by [@github-actions](https://github.com/github-actions)[bot] in [#691](https://github.com/travisghansen/hass-opnsense/pull/691)
 
 
-**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v1.0.3...v1.0.4
+**Full Changelog**: https://github.com/travisghansen/hass-opnsense/compare/v1.0.3...v1.0.4<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>
 
 [Changes][v1.0.4]
 
@@ -1218,6 +1237,7 @@ Released 2023-02-19
 [Changes][v0.1.0]
 
 
+[v1.0.5]: https://github.com/travisghansen/hass-opnsense/compare/v1.0.4...v1.0.5
 [v1.0.4]: https://github.com/travisghansen/hass-opnsense/compare/v1.0.3...v1.0.4
 [v1.0.3]: https://github.com/travisghansen/hass-opnsense/compare/v1.0.2...v1.0.3
 [v1.0.2]: https://github.com/travisghansen/hass-opnsense/compare/v1.0.1...v1.0.2
