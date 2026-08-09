@@ -74,6 +74,7 @@ rev = "0.9.1"
 
 [[repos.hooks]]
 id = "pydoclint"
+language_version = "python3.14"
 
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"
