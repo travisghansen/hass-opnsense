@@ -1935,17 +1935,20 @@ async def test_markerless_retry_requires_entry_unique_id_match(
 @pytest.mark.parametrize(
     "schedule_error",
     [
-        pytest.param(HomeAssistantError("reload schedule failed"), id="homeassistant-error"),
-        pytest.param(KeyError("entry_id"), id="key-error"),
+        pytest.param(HomeAssistantError("schedule failed"), id="homeassistant-error"),
+        pytest.param(KeyError("entry-id"), id="key-error"),
     ],
 )
-async def test_schedule_changed_entry_reload_handles_schedule_errors(
+@pytest.mark.parametrize("scheduler", ["changed-entry", "guarded-recovery"])
+async def test_schedule_reload_helpers_ignore_schedule_errors(
     schedule_error: Exception,
+    scheduler: str,
 ) -> None:
-    """Recovery scheduling for changed entries should tolerate schedule failures.
+    """Reload scheduling helpers should tolerate handled scheduling failures.
 
     Args:
         schedule_error (Exception): Failure injected into the simulated operation.
+        scheduler (str): Reload-scheduling helper under test.
     """
     hass = MagicMock()
     entry = _make_entry()
@@ -1954,7 +1957,16 @@ async def test_schedule_changed_entry_reload_handles_schedule_errors(
     hass.config_entries.async_schedule_reload.side_effect = schedule_error
     flow = _make_flow(hass, entry)
 
-    flow._schedule_changed_entry_reload(entry_id=entry.entry_id, entry_title=entry.title)
+    if scheduler == "changed-entry":
+        flow._schedule_changed_entry_reload(entry_id=entry.entry_id, entry_title=entry.title)
+    else:
+        flow._schedule_recovery_reload(
+            data_snapshot=dict(entry.data),
+            options_snapshot=dict(entry.options),
+            unique_id_snapshot=entry.unique_id,
+            entry_id=entry.entry_id,
+            entry_title=entry.title,
+        )
 
     hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
 
@@ -1986,40 +1998,6 @@ async def test_schedule_recovery_reload_skips_when_snapshot_changes() -> None:
     )
 
     hass.config_entries.async_schedule_reload.assert_not_called()
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "schedule_error",
-    [
-        pytest.param(HomeAssistantError("schedule failed"), id="homeassistant-error"),
-        pytest.param(KeyError("entry-id"), id="key-error"),
-    ],
-)
-async def test_schedule_recovery_reload_ignores_schedule_errors(
-    schedule_error: HomeAssistantError | KeyError,
-) -> None:
-    """Failure to schedule recovery should not crash the flow.
-
-    Args:
-        schedule_error (HomeAssistantError | KeyError): Failure injected into the simulated operation.
-    """
-    hass = MagicMock()
-    entry = _make_entry()
-    hass.config_entries = MagicMock()
-    hass.config_entries.async_get_entry.return_value = entry
-    hass.config_entries.async_schedule_reload.side_effect = schedule_error
-    flow = _make_flow(hass, entry)
-
-    flow._schedule_recovery_reload(
-        data_snapshot=dict(entry.data),
-        options_snapshot=dict(entry.options),
-        unique_id_snapshot=entry.unique_id,
-        entry_id=entry.entry_id,
-        entry_title=entry.title,
-    )
-
-    hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
 
 
 @pytest.mark.asyncio
