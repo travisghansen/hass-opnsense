@@ -5942,48 +5942,52 @@ async def test_compile_smart_sensors_keeps_entities_when_device_info_malformed(
     ]
 
 
+@pytest.mark.parametrize(
+    ("state", "key", "entity_id"),
+    [
+        pytest.param(
+            {
+                "smart": [{"device": "nvme0"}],
+                "smart_info": {"nvme0": {"temperature": {"current": 37}}},
+            },
+            "smart.ada0.temperature",
+            "sensor.smart_ada0_temperature",
+            id="missing-device",
+        ),
+        pytest.param(
+            {"smart": [{"device": "nvme0"}], "smart_info": {"nvme0": []}},
+            "smart.nvme0.temperature",
+            "sensor.smart_nvme0_temperature",
+            id="malformed-device-info",
+        ),
+        pytest.param(
+            {"smart": [{"device": "nvme0"}], "smart_info": {"nvme0": {}}},
+            "smart.nvme0.temperature",
+            "sensor.smart_nvme0_temperature",
+            id="missing-property",
+        ),
+    ],
+)
 def test_smart_sensor_unavailable_when_device_or_property_missing(
     make_config_entry: Callable[..., MockConfigEntry],
+    state: dict[str, Any],
+    key: str,
+    entity_id: str,
 ) -> None:
     """SMART disk sensors should be unavailable when their row or field is absent.
 
     Args:
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        state (dict[str, Any]): Coordinator state used to construct the sensor.
+        key (str): SMART sensor description key under test.
+        entity_id (str): Entity ID used to initialize the sensor.
     """
     sensor = _build_smart_sensor(
         make_config_entry,
-        {
-            "smart": [{"device": "nvme0"}],
-            "smart_info": {"nvme0": {"temperature": {"current": 37}}},
-        },
-        "smart.ada0.temperature",
-        "SMART ada0 Temperature",
+        state,
+        key,
     )
-    _prepare_smart_sensor(sensor, "sensor.smart_ada0_temperature")
-    sensor._handle_coordinator_update()
-    assert sensor.available is False
-
-    sensor = _build_smart_sensor(
-        make_config_entry,
-        {
-            "smart": [{"device": "nvme0"}],
-            "smart_info": {"nvme0": []},
-        },
-        "smart.nvme0.temperature",
-    )
-    _prepare_smart_sensor(sensor, "sensor.smart_nvme0_temperature")
-    sensor._handle_coordinator_update()
-    assert sensor.available is False
-
-    sensor = _build_smart_sensor(
-        make_config_entry,
-        {
-            "smart": [{"device": "nvme0"}],
-            "smart_info": {"nvme0": {}},
-        },
-        "smart.nvme0.temperature",
-    )
-    _prepare_smart_sensor(sensor, "sensor.smart_nvme0_temperature")
+    _prepare_smart_sensor(sensor, entity_id)
     sensor._handle_coordinator_update()
     assert sensor.available is False
 

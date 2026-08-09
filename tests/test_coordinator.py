@@ -66,36 +66,6 @@ async def test_init_requires_config_entry(fake_client: Any) -> None:
 
 
 @pytest.mark.asyncio
-async def test_build_categories_respects_flags(
-    make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
-) -> None:
-    """Categories builder respects configuration sync flags.
-
-    Args:
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
-        fake_client (Any): Mocked OPNsense API client used by the coordinator.
-    """
-    entry = make_config_entry(
-        {CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_INTERFACES: True, CONF_SYNC_VPN: True}
-    )
-    client = fake_client()()
-    coord = OPNsenseDataUpdateCoordinator(
-        hass=MagicMock(),
-        client=client,
-        name="n",
-        update_interval=timedelta(seconds=1),
-        device_unique_id="id",
-        config_entry=entry,
-    )
-    # categories built on init
-    keys = [c["state_key"] for c in coord._categories]
-    assert "interfaces" in keys
-    assert "openvpn" in keys
-    assert "wireguard" in keys
-    assert "smart" in keys
-
-
-@pytest.mark.asyncio
 async def test_build_categories_includes_smart_by_default(
     make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
 ) -> None:

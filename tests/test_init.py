@@ -3013,73 +3013,6 @@ async def test_async_update_listener_handles_native_firewall_entities_by_sync_st
 
 
 @pytest.mark.asyncio
-async def test_async_update_listener_skips_native_firewall_entities_when_firewall_sync_is_enabled(
-    monkeypatch: pytest.MonkeyPatch,
-    ph_hass: Any,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Native entities should remain when sync is enabled for this entry.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
-        ph_hass (Any): Patched Home Assistant test instance.
-        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
-    """
-    entry = make_config_entry(
-        data={
-            CONF_DEVICE_UNIQUE_ID: "dev1",
-            CONF_SYNC_FIREWALL_AND_NAT: True,
-        },
-        unique_id="unit two",
-    )
-    setattr(entry.runtime_data, SHOULD_RELOAD, True)
-
-    hass = ph_hass
-    hass.config_entries.async_reload = AsyncMock()
-    hass.data = {}
-
-    class Ent:
-        """Simple entity record for registry cleanup assertions."""
-
-        def __init__(self, entity_id: str, unique_id: str) -> None:
-            """Store entity and unique IDs for the test.
-
-            Args:
-                entity_id (str): Registry entity identifier under test.
-                unique_id (str): Registry unique identifier under test.
-            """
-            self.entity_id = entity_id
-            self.unique_id = unique_id
-
-    ent = Ent(
-        "switch.native_firewall",
-        f"{slugify(entry.data[CONF_DEVICE_UNIQUE_ID])}_firewall_rule_rule1",
-    )
-
-    entity_registry = MagicMock()
-    entity_registry.async_remove = MagicMock()
-    monkeypatch.setattr(er, "async_get", lambda hass: entity_registry)
-    monkeypatch.setattr(
-        er,
-        "async_entries_for_config_entry",
-        lambda registry, config_entry_id: [ent],
-    )
-
-    device_registry = MagicMock()
-    device_registry.async_remove_device = MagicMock()
-    monkeypatch.setattr(dr, "async_get", lambda hass: device_registry)
-    monkeypatch.setattr(
-        dr,
-        "async_entries_for_config_entry",
-        lambda registry, config_entry_id: [],
-    )
-
-    await init_mod._async_update_listener(hass, entry)
-
-    entity_registry.async_remove.assert_not_called()
-
-
-@pytest.mark.asyncio
 async def test_async_update_listener_uses_shared_default_for_smart_entity_pruning(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
@@ -4734,57 +4667,21 @@ async def test_async_migrate_entry_returns_false_when_migration_client_missing(
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_firmware_above_ltd_calls_delete(
+@pytest.mark.parametrize(
+    "firmware_version",
+    [
+        pytest.param(OPNSENSE_LTD_FIRMWARE, id="ltd-threshold"),
+        pytest.param("99.9", id="newer-version"),
+    ],
+)
+async def test_async_setup_entry_firmware_at_or_above_ltd_deletes_threshold_issues(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     coordinator_capture: Any,
     fake_client: Any,
     fake_coordinator: Any,
     make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """async_setup_entry deletes previous issues when firmware is at or above LTD.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
-        ph_hass (Any): Patched Home Assistant test instance.
-        coordinator_capture (Any): Capture object recording constructed coordinators.
-        fake_client (Any): Mock OPNsense client used at the integration boundary.
-        fake_coordinator (Any): Mock coordinator installed for the scenario.
-        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
-    """
-    patch_opnsense_client(
-        monkeypatch, init_mod, fake_client(firmware_version=OPNSENSE_LTD_FIRMWARE)
-    )
-    monkeypatch.setattr(
-        init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
-    )
-    called = []
-    monkeypatch.setattr(ir, "async_delete_issue", lambda *a, **k: called.append(True))
-
-    entry = make_config_entry(
-        data={
-            CONF_URL: "http://1.2.3.4",
-            CONF_USERNAME: "u",
-            CONF_PASSWORD: "p",
-            CONF_DEVICE_UNIQUE_ID: "dev1",
-        }
-    )
-    hass = ph_hass
-    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
-    hass.config_entries.async_reload = MagicMock()
-    res = await init_mod.async_setup_entry(hass, entry)
-    assert res is True
-    assert called, "async_delete_issue should have been called for firmware >= LTD"
-
-
-@pytest.mark.asyncio
-async def test_async_setup_entry_firmware_at_or_above_ltd_deletes_previous_issues(
-    monkeypatch: pytest.MonkeyPatch,
-    ph_hass: Any,
-    coordinator_capture: Any,
-    fake_client: Any,
-    fake_coordinator: Any,
-    make_config_entry: Callable[..., MockConfigEntry],
+    firmware_version: str,
 ) -> None:
     """async_setup_entry cleans up previous firmware-related issues for LTD and min thresholds.
 
@@ -4795,10 +4692,9 @@ async def test_async_setup_entry_firmware_at_or_above_ltd_deletes_previous_issue
         fake_client (Any): Mock OPNsense client used at the integration boundary.
         fake_coordinator (Any): Mock coordinator installed for the scenario.
         make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        firmware_version (str): Firmware reported by the mocked client.
     """
-    patch_opnsense_client(
-        monkeypatch, init_mod, fake_client(firmware_version=OPNSENSE_LTD_FIRMWARE)
-    )
+    patch_opnsense_client(monkeypatch, init_mod, fake_client(firmware_version=firmware_version))
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
     )
@@ -4832,61 +4728,6 @@ async def test_async_setup_entry_firmware_at_or_above_ltd_deletes_previous_issue
     )
     assert expected_min in called_issue_ids
     assert expected_ltd in called_issue_ids
-
-
-@pytest.mark.asyncio
-async def test_async_setup_entry_delete_uses_actual_firmware_string(
-    monkeypatch: pytest.MonkeyPatch,
-    ph_hass: Any,
-    coordinator_capture: Any,
-    fake_client: Any,
-    fake_coordinator: Any,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """async_setup_entry uses the client's firmware string when deleting previous issues.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
-        ph_hass (Any): Patched Home Assistant test instance.
-        coordinator_capture (Any): Capture object recording constructed coordinators.
-        fake_client (Any): Mock OPNsense client used at the integration boundary.
-        fake_coordinator (Any): Mock coordinator installed for the scenario.
-        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
-    """
-    firmware_str = "99.9"
-    patch_opnsense_client(monkeypatch, init_mod, fake_client(firmware_version=firmware_str))
-    monkeypatch.setattr(
-        init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
-    )
-
-    calls = MagicMock()
-    monkeypatch.setattr(ir, "async_delete_issue", calls)
-
-    entry = make_config_entry(
-        data={
-            CONF_URL: "http://1.2.3.4",
-            CONF_USERNAME: "u",
-            CONF_PASSWORD: "p",
-            CONF_DEVICE_UNIQUE_ID: "dev1",
-        }
-    )
-    hass = ph_hass
-    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
-    hass.config_entries.async_reload = MagicMock()
-    res = await init_mod.async_setup_entry(hass, entry)
-    assert res is True
-
-    # Confirm delete_issue was called for the expected issue ids
-    expected_min = (
-        f"{entry.data[CONF_DEVICE_UNIQUE_ID]}_opnsense_below_min_firmware_{OPNSENSE_MIN_FIRMWARE}"
-    )
-    expected_ltd = (
-        f"{entry.data[CONF_DEVICE_UNIQUE_ID]}_opnsense_below_ltd_firmware_{OPNSENSE_LTD_FIRMWARE}"
-    )
-    assert calls.called, "async_delete_issue should have been called"
-    issue_ids = [call[0][2] for call in calls.call_args_list if len(call[0]) > 2]
-    assert expected_min in issue_ids
-    assert expected_ltd in issue_ids
 
 
 @pytest.mark.asyncio
@@ -5580,40 +5421,32 @@ async def test_reconciliation_cleanup_unload_outcomes(
 
 
 @pytest.mark.asyncio
-async def test_unload_setup_platforms_after_reconciliation_failure_returns_false_on_platform_unload_failure(
+@pytest.mark.parametrize(
+    "unload_result",
+    [
+        pytest.param(False, id="false-result"),
+        pytest.param(HomeAssistantError("unload error"), id="handled-error"),
+    ],
+)
+async def test_unload_setup_platforms_after_reconciliation_failure_returns_false_for_failures(
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
+    unload_result: bool | BaseException,
 ) -> None:
-    """A platform unload failure should be surfaced as a failed cleanup result.
+    """Platform unload failures should be surfaced as failed cleanup results.
 
     Args:
         ph_hass (Any): Patched Home Assistant test instance.
         make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        unload_result (bool | BaseException): Return value or exception from the platform unload.
     """
     entry = make_config_entry()
-    ph_hass.config_entries.async_unload_platforms = AsyncMock(return_value=False)
-
-    result = await init_mod._unload_setup_platforms_after_reconciliation_failure(
-        ph_hass, entry, [Platform.SENSOR]
-    )
-    assert result is False
-
-
-@pytest.mark.asyncio
-async def test_unload_setup_platforms_after_reconciliation_failure_returns_false_on_unload_exception(
-    ph_hass: Any,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Unloading exceptions should be converted into a false cleanup outcome.
-
-    Args:
-        ph_hass (Any): Patched Home Assistant test instance.
-        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
-    """
-    entry = make_config_entry()
-    ph_hass.config_entries.async_unload_platforms = AsyncMock(
-        side_effect=HomeAssistantError("unload error")
-    )
+    unload_platforms = AsyncMock()
+    if isinstance(unload_result, BaseException):
+        unload_platforms.side_effect = unload_result
+    else:
+        unload_platforms.return_value = unload_result
+    ph_hass.config_entries.async_unload_platforms = unload_platforms
 
     result = await init_mod._unload_setup_platforms_after_reconciliation_failure(
         ph_hass, entry, [Platform.SENSOR]
@@ -5664,70 +5497,27 @@ async def test_cleanup_reconciliation_failure_returns_platform_unload_result(
 
 
 @pytest.mark.asyncio
-async def test_reconciliation_marker_clear_false_retains_marker(
-    monkeypatch: pytest.MonkeyPatch,
-    ph_hass: Any,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """A rejected marker-clear update leaves persisted repair intent retryable.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
-        ph_hass (Any): Patched Home Assistant test instance.
-        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
-    """
-    client = _make_valid_setup_client()
-    monkeypatch.setattr(
-        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
-    )
-    coordinator = _make_setup_coordinator()
-    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
-    marker = {"version": 1, "old_device_id": "old-dev", "new_device_id": "dev1"}
-    entry = make_config_entry(
-        data={
-            CONF_URL: "http://1.2.3.4",
-            CONF_USERNAME: "u",
-            CONF_PASSWORD: "p",
-            CONF_DEVICE_UNIQUE_ID: "dev1",
-            REPAIR_MARKER_KEY: marker,
-        },
-        options={CONF_DEVICE_TRACKER_ENABLED: False},
-        unique_id="dev1",
-    )
-    reconciliation = MagicMock()
-    monkeypatch.setattr(init_mod, "RepairReconciliation", lambda *_args: reconciliation)
-    ph_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
-    ph_hass.config_entries.async_update_entry = MagicMock(return_value=False)
-    ph_hass.data = {}
-
-    result = await init_mod.async_setup_entry(ph_hass, entry)
-
-    assert result is False
-    reconciliation.require_platforms_complete.assert_called_once()
-    reconciliation.finalize.assert_called_once_with()
-    ph_hass.config_entries.async_update_entry.assert_called_once()
-    reconciliation.mark_complete.assert_not_called()
-    assert entry.data[REPAIR_MARKER_KEY] == marker
-
-
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "clear_error",
-    [HomeAssistantError("storage failed"), KeyError("entry removed")],
+    "clear_result",
+    [
+        pytest.param(False, id="false-result"),
+        pytest.param(HomeAssistantError("storage failed"), id="homeassistant-error"),
+        pytest.param(KeyError("entry removed"), id="key-error"),
+    ],
 )
-async def test_reconciliation_marker_clear_exception_retains_marker(
+async def test_reconciliation_marker_clear_failure_retains_marker(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
-    clear_error: BaseException,
+    clear_result: bool | BaseException,
 ) -> None:
-    """Handled marker-clear failures preserve repair intent for retry.
+    """Marker-clear failures should preserve repair intent for retry.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
         ph_hass (Any): Patched Home Assistant test instance.
         make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
-        clear_error (BaseException): Issue-clear failure injected by the scenario.
+        clear_result (bool | BaseException): Return value or exception from marker clearing.
     """
     client = _make_valid_setup_client()
     monkeypatch.setattr(
@@ -5750,7 +5540,12 @@ async def test_reconciliation_marker_clear_exception_retains_marker(
     reconciliation = MagicMock()
     monkeypatch.setattr(init_mod, "RepairReconciliation", lambda *_args: reconciliation)
     ph_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
-    ph_hass.config_entries.async_update_entry = MagicMock(side_effect=clear_error)
+    update_entry = MagicMock()
+    if isinstance(clear_result, BaseException):
+        update_entry.side_effect = clear_result
+    else:
+        update_entry.return_value = clear_result
+    ph_hass.config_entries.async_update_entry = update_entry
     ph_hass.data = {}
 
     result = await init_mod.async_setup_entry(ph_hass, entry)
@@ -5759,7 +5554,7 @@ async def test_reconciliation_marker_clear_exception_retains_marker(
     ph_hass.config_entries.async_forward_entry_setups.assert_awaited_once()
     reconciliation.require_platforms_complete.assert_called_once()
     reconciliation.finalize.assert_called_once_with()
-    ph_hass.config_entries.async_update_entry.assert_called_once()
+    update_entry.assert_called_once()
     reconciliation.mark_complete.assert_not_called()
     assert entry.data[REPAIR_MARKER_KEY] == marker
 
