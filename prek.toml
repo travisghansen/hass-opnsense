@@ -78,7 +78,7 @@ language_version = "python3.14"
 
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"
-rev = "v0.16.0"
+rev = "v0.16.1"
 
 [[repos.hooks]]
 id = "ruff-check"
