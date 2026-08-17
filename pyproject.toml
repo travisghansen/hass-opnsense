@@ -28,6 +28,7 @@ ha = [
 lint = [
     { include-group = "ha" },
     "aiohttp",
+    "homeassistant-stubs",
     "mypy",
     "prek",
     "ruff",
@@ -38,6 +39,7 @@ lint = [
     "types-PyYAML",
     "types-requests",
     "types-setuptools",
+    "uv",
 ]
 pytest = [
     { include-group = "ha" },
