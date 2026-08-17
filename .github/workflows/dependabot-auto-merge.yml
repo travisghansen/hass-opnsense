@@ -11,6 +11,7 @@ concurrency:
 jobs:
   verify-dependency-update:
     if: >-
+      github.event.repository.fork == false &&
       github.repository == 'Snuffy2/hass-opnsense' &&
       github.event.pull_request.user.login == 'dependabot[bot]' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
