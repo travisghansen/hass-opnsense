@@ -1,0 +1,75 @@
+name: Dependabot dependency auto-merge
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: dependabot-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify-dependency-update:
+    if: >-
+      github.repository == 'Snuffy2/hass-opnsense' &&
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.base.ref == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Fetch Dependabot metadata
+        id: dependabot-metadata
+        uses: dependabot/fetch-metadata@v3
+
+      - name: Verify supported dependency update
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PACKAGE_ECOSYSTEM: ${{ steps.dependabot-metadata.outputs.package-ecosystem }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          changed_files="$(gh api --paginate \
+            "repos/${REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" \
+            --jq '.[].filename')"
+          [[ -n "${changed_files}" ]] || {
+            echo "Refusing auto-merge; no changed files were reported"
+            exit 1
+          }
+          case "${PACKAGE_ECOSYSTEM}" in
+            uv)
+              [[ "${changed_files}" == "uv.lock" ]] || {
+                echo "Refusing uv auto-merge; changed files were:"
+                echo "${changed_files}"
+                exit 1
+              }
+              ;;
+            github_actions)
+              invalid_files="$(printf '%s\n' "${changed_files}" | grep -Ev '^\.github/workflows/[^/]+\.ya?ml$' || true)"
+              [[ -z "${invalid_files}" ]] || {
+                echo "Refusing GitHub Actions auto-merge; unexpected files were:"
+                echo "${invalid_files}"
+                exit 1
+              }
+              ;;
+            *)
+              echo "Refusing unsupported ecosystem: ${PACKAGE_ECOSYSTEM}"
+              exit 1
+              ;;
+          esac
+
+  enable-auto-merge:
+    needs: verify-dependency-update
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Enable auto-merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --squash --match-head-commit "${HEAD_SHA}" "${PR_URL}"
