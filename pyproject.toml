@@ -23,12 +23,11 @@ version = { attr = "custom_components.opnsense.const.VERSION" }
 [dependency-groups]
 ha = [
     "aiopnsense==1.1.8",
-    "homeassistant",
+    "homeassistant>=2026.2.3",
 ]
 lint = [
     { include-group = "ha" },
     "aiohttp",
-    "homeassistant-stubs",
     "mypy",
     "prek",
     "ruff",

@@ -1547,8 +1547,6 @@ dev = [
     { name = "aiopnsense" },
     { name = "homeassistant", version = "2026.2.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14.2'" },
     { name = "homeassistant", version = "2026.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14.2'" },
-    { name = "homeassistant-stubs", version = "2026.2.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14.2'" },
-    { name = "homeassistant-stubs", version = "2026.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14.2'" },
     { name = "mypy" },
     { name = "prek" },
     { name = "pytest", version = "9.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14.2'" },
@@ -1582,8 +1580,6 @@ lint = [
     { name = "aiopnsense" },
     { name = "homeassistant", version = "2026.2.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14.2'" },
     { name = "homeassistant", version = "2026.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14.2'" },
-    { name = "homeassistant-stubs", version = "2026.2.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14.2'" },
-    { name = "homeassistant-stubs", version = "2026.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14.2'" },
     { name = "mypy" },
     { name = "prek" },
     { name = "ruff" },
@@ -1620,8 +1616,7 @@ pytest = [
 dev = [
     { name = "aiohttp" },
     { name = "aiopnsense", specifier = "==1.1.7" },
-    { name = "homeassistant" },
-    { name = "homeassistant-stubs" },
+    { name = "homeassistant", specifier = ">=2026.2.3" },
     { name = "mypy" },
     { name = "prek" },
     { name = "pytest" },
@@ -1641,13 +1636,12 @@ dev = [
 ]
 ha = [
     { name = "aiopnsense", specifier = "==1.1.7" },
-    { name = "homeassistant" },
+    { name = "homeassistant", specifier = ">=2026.2.3" },
 ]
 lint = [
     { name = "aiohttp" },
     { name = "aiopnsense", specifier = "==1.1.7" },
-    { name = "homeassistant" },
-    { name = "homeassistant-stubs" },
+    { name = "homeassistant", specifier = ">=2026.2.3" },
     { name = "mypy" },
     { name = "prek" },
     { name = "ruff" },
@@ -1663,7 +1657,7 @@ lint = [
 pytest = [
     { name = "aiohttp" },
     { name = "aiopnsense", specifier = "==1.1.7" },
-    { name = "homeassistant" },
+    { name = "homeassistant", specifier = ">=2026.2.3" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
@@ -1829,37 +1823,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/fc/ae/98994d31c158e412fd8fa91269a3a576b2c094e81132ca1d42b40b619e2b/homeassistant-2026.7.2.tar.gz", hash = "sha256:dce0f0da7fc11faab12706a4103df0b89d175bd88dc636844b147b6c1080c475", size = 35204064, upload-time = "2026-07-10T21:32:23.571Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5a/a3/ca5e8035fed01a72f875862e0adefc03d235a5bd3e6e96d8a5d136092450/homeassistant-2026.7.2-py3-none-any.whl", hash = "sha256:6c444632e7c9c7326f0840da9e14e3e3a07c468264439a6f1a1b64cab37335cf", size = 57479942, upload-time = "2026-07-10T21:32:16.014Z" },
-]
-
-[[package]]
-name = "homeassistant-stubs"
-version = "2026.2.3"
-source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version < '3.14.2'",
-]
-dependencies = [
-    { name = "homeassistant", version = "2026.2.3", source = { registry = "https://pypi.org/simple" } },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/af/b0/a7376776f8a348ef0d7330fbed0e65860bffdf88a9f3bb8081e13d1604f2/homeassistant_stubs-2026.2.3.tar.gz", hash = "sha256:2726a92636d7f450b97aff1abaf9185f51264fed7c4e76ca9fbd379496bc7e9f", size = 1241369, upload-time = "2026-02-21T02:52:03.984Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a1/52/ee71f51ee437b01ea02452b7c7695eca45fcbee2324aff4ecc6c301fa0a3/homeassistant_stubs-2026.2.3-py3-none-any.whl", hash = "sha256:65cdadd6f62154f7aef41bf7f997cca28ff3979e675d30a0504a9c2f03489911", size = 3486905, upload-time = "2026-02-21T02:52:01.554Z" },
-]
-
-[[package]]
-name = "homeassistant-stubs"
-version = "2026.7.2"
-source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version >= '3.15'",
-    "python_full_version >= '3.14.2' and python_full_version < '3.15'",
-]
-dependencies = [
-    { name = "homeassistant", version = "2026.7.2", source = { registry = "https://pypi.org/simple" } },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/9e/95/ccf6416b7942b119bbd945911a7f30059640b84e2369d8a8cb9223237ab1/homeassistant_stubs-2026.7.2.tar.gz", hash = "sha256:c3b542a441c91311b388e6aa8ec6bd3ca5e8f580b3ec03e9e34026c24359ba54", size = 1400801, upload-time = "2026-07-11T03:46:38.916Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/8c/dc/b829f96628946856c1183d85cf9a166354d38af72275f191c7b3f398b7ae/homeassistant_stubs-2026.7.2-py3-none-any.whl", hash = "sha256:6ff93eb69a0697413743617ba7886ab1d175f694e8236053203f26504d89be6a", size = 3985093, upload-time = "2026-07-11T03:46:36.869Z" },
 ]
 
 [[package]]
