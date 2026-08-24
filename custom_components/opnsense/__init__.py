@@ -39,10 +39,12 @@ from .const import (
     CONF_DEVICE_TRACKER_ENABLED,
     CONF_DEVICE_TRACKER_SCAN_INTERVAL,
     CONF_DEVICE_UNIQUE_ID,
+    CONF_LIVE_TRAFFIC_POLL_INTERVAL,
     CONF_SYNC_INTERFACES,
     CONF_SYNC_LIVE_TRAFFIC,
     DEFAULT_DEVICE_TRACKER_ENABLED,
     DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
+    DEFAULT_LIVE_TRAFFIC_POLL_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SYNC_OPTION_VALUE,
     DOMAIN,
@@ -700,11 +702,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         await _async_first_refresh_with_marker_issue(hass, entry, coordinator, repair_marker)
         if should_create_live_traffic_coordinator:
+            live_traffic_poll_interval: int = options.get(
+                CONF_LIVE_TRAFFIC_POLL_INTERVAL, DEFAULT_LIVE_TRAFFIC_POLL_INTERVAL
+            )
             live_traffic_coordinator = OPNsenseLiveTrafficCoordinator(
                 hass=hass,
                 config_entry=entry,
                 coordinator=coordinator,
                 client=client,
+                poll_interval=live_traffic_poll_interval,
             )
 
         platforms: list[Platform] = PLATFORMS.copy()

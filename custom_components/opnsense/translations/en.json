@@ -100,6 +100,7 @@
       "init": {
         "data": {
           "scan_interval": "Scan Interval",
+          "live_traffic_poll_interval": "Live Traffic Poll Interval",
           "device_tracking_mode": "Device Tracker Mode",
           "device_tracker_scan_interval": "Device Tracker Scan Interval",
           "device_tracker_consider_home": "Device Tracker Consider Home",
@@ -108,7 +109,8 @@
         "description": "This screen exposes {options_scope}.",
         "data_description": {
           "device_tracking_mode": "For `Track only selected devices`, a next step lets you pick devices from recent ARP detections and add MAC addresses manually",
-          "scan_interval": "Scan interval controls how often this entry polls its source."
+          "scan_interval": "Scan interval controls how often this entry polls its source.",
+          "live_traffic_poll_interval": "Poll interval in seconds for live interface traffic updates."
         }
       },
       "granular_sync": {

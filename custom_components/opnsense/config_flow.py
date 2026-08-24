@@ -44,11 +44,13 @@ from .const import (
     CONF_ENTRY_TYPE,
     CONF_FIRMWARE_VERSION,
     CONF_GRANULAR_SYNC_OPTIONS,
+    CONF_LIVE_TRAFFIC_POLL_INTERVAL,
     CONF_MANUAL_DEVICES,
     DEFAULT_DEVICE_TRACKER_CONSIDER_HOME,
     DEFAULT_DEVICE_TRACKER_ENABLED,
     DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
     DEFAULT_GRANULAR_SYNC_OPTIONS,
+    DEFAULT_LIVE_TRAFFIC_POLL_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SYNC_OPTION_VALUE,
     DEFAULT_VERIFY_SSL,
@@ -100,6 +102,7 @@ OPTIONS_INIT_NUMBER_BOUNDS: dict[str, tuple[int, int]] = {
     CONF_SCAN_INTERVAL: (10, 300),
     CONF_DEVICE_TRACKER_SCAN_INTERVAL: (30, 300),
     CONF_DEVICE_TRACKER_CONSIDER_HOME: (0, 3600),
+    CONF_LIVE_TRAFFIC_POLL_INTERVAL: (1, 300),
 }
 
 
@@ -799,6 +802,7 @@ def _build_options_init_schema(
     )
     defaults = {
         CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
+        CONF_LIVE_TRAFFIC_POLL_INTERVAL: DEFAULT_LIVE_TRAFFIC_POLL_INTERVAL,
         CONF_DEVICE_TRACKER_SCAN_INTERVAL: DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
         CONF_DEVICE_TRACKER_CONSIDER_HOME: DEFAULT_DEVICE_TRACKER_CONSIDER_HOME,
         **option_values,
@@ -811,6 +815,17 @@ def _build_options_init_schema(
 
     return vol.Schema(
         {
+            vol.Optional(
+                CONF_LIVE_TRAFFIC_POLL_INTERVAL,
+                default=defaults[CONF_LIVE_TRAFFIC_POLL_INTERVAL],
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=OPTIONS_INIT_NUMBER_BOUNDS[CONF_LIVE_TRAFFIC_POLL_INTERVAL][0],
+                    max=OPTIONS_INIT_NUMBER_BOUNDS[CONF_LIVE_TRAFFIC_POLL_INTERVAL][1],
+                    step=1,
+                    unit_of_measurement="seconds",
+                )
+            ),
             vol.Optional(
                 CONF_SCAN_INTERVAL,
                 default=defaults[CONF_SCAN_INTERVAL],

@@ -6,7 +6,7 @@ and options flow behaviors such as device tracker handling.
 
 from collections.abc import Callable
 import ipaddress
-from typing import Any, Never
+from typing import Any, Never, cast
 from unittest.mock import AsyncMock, MagicMock
 
 from aiopnsense import exceptions as aiopnsense_exceptions
@@ -30,6 +30,7 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 import voluptuous as vol
 
+import custom_components.opnsense as init_mod
 import custom_components.opnsense.config_flow as cf_mod
 from custom_components.opnsense.config_flow import (
     CONF_DEVICE_TRACKING_MODE,
@@ -47,11 +48,14 @@ from custom_components.opnsense.const import (
     CONF_ENTRY_TYPE,
     CONF_FIRMWARE_VERSION,
     CONF_GRANULAR_SYNC_OPTIONS,
+    CONF_LIVE_TRAFFIC_POLL_INTERVAL,
     CONF_MANUAL_DEVICES,
     CONF_SYNC_FIREWALL_AND_NAT,
+    CONF_SYNC_INTERFACES,
     CONF_SYNC_LIVE_TRAFFIC,
     CONF_SYNC_SMART,
     CONF_SYNC_TELEMETRY,
+    DEFAULT_LIVE_TRAFFIC_POLL_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     ENTRY_TYPE_CARP,
@@ -2745,3 +2749,85 @@ async def test_validate_input_granular_sync_uses_native_validation_only(
     client.is_plugin_installed.assert_not_awaited()
     client.set_use_snake_case.assert_not_awaited()
     client.async_close.assert_awaited_once()
+
+
+def test_options_init_schema_includes_live_traffic_poll_interval() -> None:
+    """Options init schema should expose a bounded live-traffic poll interval defaulting to 5s."""
+    oschema = cf_mod._build_options_init_schema(user_input=None)
+    validated = oschema({})
+    assert validated[CONF_LIVE_TRAFFIC_POLL_INTERVAL] == DEFAULT_LIVE_TRAFFIC_POLL_INTERVAL
+    minimum, maximum = OPTIONS_INIT_NUMBER_BOUNDS[CONF_LIVE_TRAFFIC_POLL_INTERVAL]
+    assert minimum >= 1
+    assert oschema({CONF_LIVE_TRAFFIC_POLL_INTERVAL: 15})[CONF_LIVE_TRAFFIC_POLL_INTERVAL] == 15
+    with pytest.raises(vol.Invalid):
+        oschema({CONF_LIVE_TRAFFIC_POLL_INTERVAL: maximum + 1})
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_passes_configured_live_traffic_poll_interval(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator_capture: Any,
+    fake_client: Any,
+    fake_coordinator: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """The live traffic coordinator should receive the poll interval from entry options.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        coordinator_capture (Any): Capture object recording constructed coordinators.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
+        fake_coordinator (Any): Mock coordinator installed for the scenario.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+    """
+    patch_opnsense_client(monkeypatch, init_mod, fake_client())
+    monkeypatch.setattr(
+        init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
+    )
+
+    construction_kwargs: list[dict[str, Any]] = []
+
+    def _live_factory(**kwargs: Any) -> Any:
+        """Capture constructor kwargs and return a fake live-traffic coordinator.
+
+        Args:
+            kwargs (Any): Keyword arguments passed to the live-traffic coordinator.
+
+        Returns:
+            Any: A fake coordinator with `async_start` and `async_shutdown` mocks.
+        """
+        construction_kwargs.append(kwargs)
+        live = MagicMock()
+        live.async_start = AsyncMock(return_value=True)
+        live.async_shutdown = AsyncMock(return_value=True)
+        return live
+
+    monkeypatch.setattr(init_mod, "OPNsenseLiveTrafficCoordinator", _live_factory)
+
+    for options, expected_interval in (
+        ({}, DEFAULT_LIVE_TRAFFIC_POLL_INTERVAL),
+        ({CONF_LIVE_TRAFFIC_POLL_INTERVAL: 12}, 12),
+    ):
+        construction_kwargs.clear()
+        entry = make_config_entry(
+            data={
+                CONF_URL: "http://1.2.3.4",
+                CONF_USERNAME: "u",
+                CONF_PASSWORD: "p",
+                CONF_DEVICE_UNIQUE_ID: "dev1",
+                CONF_SYNC_INTERFACES: True,
+                CONF_SYNC_LIVE_TRAFFIC: True,
+            },
+            options={CONF_DEVICE_TRACKER_ENABLED: False, **options},
+        )
+        hass = cast("MagicMock", ph_hass)
+        hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+        hass.config_entries.async_reload = MagicMock()
+        hass.data = {}
+
+        res = await init_mod.async_setup_entry(hass, entry)
+        assert res is True
+        assert len(construction_kwargs) == 1
+        assert construction_kwargs[0]["poll_interval"] == expected_interval

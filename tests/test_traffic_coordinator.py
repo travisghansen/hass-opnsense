@@ -683,3 +683,27 @@ async def test_live_traffic_run_applies_and_caps_backoff_sequence(
 
     assert sleep_calls == [5, 10, 20, 30, 30]
     assert coordinator._failure_count == 4
+
+
+@pytest.mark.asyncio
+async def test_live_traffic_coordinator_passes_configured_poll_interval_to_stream(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """The configured poll interval (not the hardcoded 1s default) should reach the stream call.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+    """
+    main_coordinator = MagicMock()
+    main_coordinator.data = {"interfaces": {"wan": {"name": "WAN"}}}
+    client = _FakeStreamClient([])
+
+    coordinator, _ = _build_test_coordinator(
+        make_config_entry,
+        client=client,
+        poll_interval=7,
+    )
+
+    await coordinator._consume_stream()
+
+    assert client.stream_calls == [7]

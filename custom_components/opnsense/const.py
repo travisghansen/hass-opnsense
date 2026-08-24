@@ -26,6 +26,7 @@ DEVICE_TRACKER_COORDINATOR = "device_tracker_coordinator"
 SHOULD_RELOAD = "should_reload"
 TRACKED_MACS = "tracked_macs"
 DEFAULT_SCAN_INTERVAL = 30
+DEFAULT_LIVE_TRAFFIC_POLL_INTERVAL = 5
 CONF_TLS_INSECURE = "tls_insecure"
 DEFAULT_TLS_INSECURE = False
 DEFAULT_VERIFY_SSL = True
@@ -62,6 +63,7 @@ CONF_SYNC_FIREWALL_AND_NAT = "sync_filters_and_nat"
 CONF_SYNC_UNBOUND = "sync_unbound"
 CONF_SYNC_INTERFACES = "sync_interfaces"
 CONF_SYNC_LIVE_TRAFFIC = "sync_live_traffic"
+CONF_LIVE_TRAFFIC_POLL_INTERVAL = "live_traffic_poll_interval"
 CONF_SYNC_CERTIFICATES = "sync_certificates"
 CONF_GRANULAR_SYNC_OPTIONS = "granular_sync_options"
 
