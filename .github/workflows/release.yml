@@ -1,98 +1,201 @@
-name: Update Version and Create Zip on Release
+name: Release
+
+run-name: Release ${{ inputs.tag || inputs.bump }}
+
 on:
   workflow_dispatch:
-  release:
-    types: [published, edited]
+    inputs:
+      bump:
+        description: Stable version bump when tag is blank
+        required: true
+        default: none
+        type: choice
+        options:
+          - none
+          - patch
+          - minor
+          - major
+      tag:
+        description: Release tag (for example, v1.0.6 or v1.1.0-beta.1)
+        required: false
+        default: ""
+        type: string
+      prerelease:
+        description: Publish as a prerelease
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  update_version_and_create_zip:
-    name: Update Version and Create Zip on Release
-    runs-on: ubuntu-latest
+  release:
     permissions:
       contents: write
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: Validate dispatch ref
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RELEASE_REF: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$RELEASE_REF" != "$DEFAULT_BRANCH" ]]; then
+            echo "Release workflow must be dispatched from $DEFAULT_BRANCH," >&2
+            echo "not $RELEASE_REF." >&2
+            exit 1
+          fi
+
+      - name: Checkout selected revision
         uses: actions/checkout@v7
         with:
-          # Use the release branch when available so git-auto-commit can push
-          # back cleanly; otherwise keep the workflow's triggering ref.
-          ref: ${{ github.event_name == 'release' && github.event.release.target_commitish || github.ref }}
+          fetch-depth: 0
 
-      - name: Debug GitHub Variables
-        run: |
-          echo "github.event_name: ${{ github.event_name }}"
-          echo "github.ref_name: ${{ github.ref_name }}"
-          echo "github.event.release.tag_name: ${{ github.event.release.tag_name }}"
-          echo "github.event.repository.default_branch: ${{ github.event.repository.default_branch }}"
-          echo "github.event.release.target_commitish: ${{ github.event.release.target_commitish }}"
-          echo "github.event.release.prerelease: ${{ github.event.release.prerelease }}"
-          echo "github.event.release.draft: ${{ github.event.release.draft }}"
-
-      - name: Update Version in Manifest
-        if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
-        run: |
-          sed -i 's/\"version\"\s*\:\s*\".*\"/\"version\"\:\"${{ github.event.release.tag_name }}\"/g' ./custom_components/opnsense/manifest.json
-
-      - name: Update Version in const.py
-        if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
-        run: |
-          sed -i 's/^VERSION \= \".*\"/VERSION \= \"${{ github.event.release.tag_name }}\"/' ./custom_components/opnsense/const.py
-
-      - name: Update Changelog
-        if: ${{ github.event_name == 'release' && github.event.release.draft == false && github.event.release.prerelease == false  }}
-        uses: rhysd/changelog-from-release/action@v3
-        with:
-          file: CHANGELOG.md
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          commit: false
-
-      - name: Commit & Push Version Changes
-        if: ${{ github.event_name == 'release' && github.event.release.draft == false && github.event.release.prerelease == false  }}
-        uses: stefanzweifel/git-auto-commit-action@v7
-        with:
-          branch: ${{ github.event.release.target_commitish }}
-          commit_message: 'Updating to version ${{ github.event.release.tag_name }} [skip ci]'
-
-      - name: Update Release with Version Changes Commit
-        if: ${{ github.event_name == 'release' && github.event.release.draft == false && github.event.release.prerelease == false  }}
-        run: |
-          git tag -f ${{ github.event.release.tag_name }}
-          git push -f origin ${{ github.event.release.tag_name }}
-
-      - name: Extract Firmware Variables from const.py
-        if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
-        id: extract_variables
-        run: |
-          OPNSENSE_LTD_FIRMWARE="$(grep 'OPNSENSE_LTD_FIRMWARE' custom_components/opnsense/const.py | cut -d '"' -f2)"
-          OPNSENSE_MIN_FIRMWARE="$(grep 'OPNSENSE_MIN_FIRMWARE' custom_components/opnsense/const.py | cut -d '"' -f2)"
-          echo "OPNSENSE_LTD_FIRMWARE=$OPNSENSE_LTD_FIRMWARE" >> "$GITHUB_ENV"
-          echo "OPNSENSE_MIN_FIRMWARE=$OPNSENSE_MIN_FIRMWARE" >> "$GITHUB_ENV"
-
-      - name: Update release notes with firmware information
-        if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
-        run: |
-          echo "Updating release with tag: ${{ github.event.release.tag_name }}"
-          gh release edit ${{ github.event.release.tag_name }} \
-          --notes "<h3>OPNsense Minimum Firmware Required: ${{ env.OPNSENSE_MIN_FIRMWARE }}</h3><h4>OPNsense Recommended Firmware: ${{ env.OPNSENSE_LTD_FIRMWARE }}+</h4><p>$(gh release view ${{ github.event.release.tag_name }} --json body -q .body)<p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i>"
+      - name: Resolve release tag
+        id: release_tag
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create Zip
+          BUMP_TYPE: ${{ inputs.bump }}
+          EXPLICIT_TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+          IS_PRERELEASE: ${{ inputs.prerelease }}
         run: |
-          cd ${{ github.workspace }}/custom_components/opnsense
-          zip opnsense.zip -r ./
+          set -euo pipefail
 
-      - name: Upload Zip to Release
-        if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
-        uses: softprops/action-gh-release@v3
-        with:
-          files: ./custom_components/opnsense/opnsense.zip
-          tag_name: ${{ github.event.release.tag_name }}
+          if [[ -n "$EXPLICIT_TAG" ]]; then
+            if [[ "$BUMP_TYPE" != "none" ]]; then
+              echo "An explicit tag requires bump=none." >&2
+              exit 1
+            fi
+            python3 .github/scripts/prepare_release.py --check-only \
+              --expected-prerelease "$IS_PRERELEASE" "$EXPLICIT_TAG"
+            echo "release-tag=$EXPLICIT_TAG" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-      - name: Add Zip to Action
-        if: ${{ github.event_name == 'workflow_dispatch' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: opnsense
-          path: ./custom_components/opnsense/opnsense.zip
-          if-no-files-found: error
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            echo "Prereleases require an explicit tag." >&2
+            exit 1
+          fi
+          if [[ "$BUMP_TYPE" == "none" ]]; then
+            echo "Provide an explicit tag or select a stable version bump." >&2
+            exit 1
+          fi
+
+          release_tags="$(gh release list --exclude-drafts \
+            --exclude-pre-releases --limit 1000 --json tagName \
+            --jq '.[].tagName')"
+          release_tag="$(printf '%s\n' "$release_tags" | \
+            python3 .github/scripts/prepare_release.py --next-tag "$BUMP_TYPE")"
+          echo "release-tag=$release_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Validate release request
+        env:
+          IS_PRERELEASE: ${{ inputs.prerelease }}
+          RELEASE_TAG: ${{ steps.release_tag.outputs.release-tag }}
+        run: |
+          python3 .github/scripts/prepare_release.py --check-only \
+            --expected-prerelease "$IS_PRERELEASE" "$RELEASE_TAG"
+
+      - name: Require unused tag and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release_tag.outputs.release-tag }}
+        run: |
+          set -euo pipefail
+
+          set +e
+          tag_output="$(git ls-remote --exit-code --tags origin \
+            "refs/tags/$RELEASE_TAG" 2>&1)"
+          tag_status=$?
+          set -e
+          case "$tag_status" in
+            0)
+              echo "Remote tag already exists: $RELEASE_TAG" >&2
+              exit 1
+              ;;
+            2) ;;
+            *)
+              echo "Unable to verify whether remote tag exists:" >&2
+              echo "$RELEASE_TAG" >&2
+              printf '%s\n' "$tag_output" >&2
+              exit 1
+              ;;
+          esac
+
+          set +e
+          release_output="$(gh api --include \
+            "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" 2>&1)"
+          release_status=$?
+          set -e
+          if [[ "$release_status" -eq 0 ]]; then
+            echo "GitHub release already exists: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          if ! printf '%s\n' "$release_output" | \
+            grep -Eq '^HTTP/[0-9.]+ 404 '; then
+            echo "Unable to verify whether GitHub release exists:" >&2
+            echo "$RELEASE_TAG" >&2
+            printf '%s\n' "$release_output" >&2
+            exit 1
+          fi
+
+      - name: Create versioned release commit and annotated tag
+        env:
+          RELEASE_TAG: ${{ steps.release_tag.outputs.release-tag }}
+        run: |
+          set -euo pipefail
+
+          python3 .github/scripts/prepare_release.py "$RELEASE_TAG"
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          git add custom_components/opnsense/manifest.json \
+            custom_components/opnsense/const.py
+          git commit -m "Release $RELEASE_TAG"
+          git tag -a "$RELEASE_TAG" -m "Release $RELEASE_TAG"
+
+      - name: Build and test HACS archive from release tag
+        env:
+          RELEASE_ARCHIVE: ${{ runner.temp }}/opnsense.zip
+          RELEASE_TAG: ${{ steps.release_tag.outputs.release-tag }}
+        run: |
+          set -euo pipefail
+
+          git archive --format=zip --output="$RELEASE_ARCHIVE" \
+            "$RELEASE_TAG:custom_components/opnsense"
+          unzip -t "$RELEASE_ARCHIVE"
+
+      - name: Push release tag
+        env:
+          RELEASE_TAG: ${{ steps.release_tag.outputs.release-tag }}
+        run: git push origin "refs/tags/$RELEASE_TAG"
+
+      - name: Create GitHub release with HACS archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IS_PRERELEASE: ${{ inputs.prerelease }}
+          RELEASE_ARCHIVE: ${{ runner.temp }}/opnsense.zip
+          RELEASE_TAG: ${{ steps.release_tag.outputs.release-tag }}
+        run: |
+          set -euo pipefail
+
+          OPNSENSE_LTD_FIRMWARE="$(grep 'OPNSENSE_LTD_FIRMWARE' \
+            custom_components/opnsense/const.py | cut -d '"' -f2)"
+          OPNSENSE_MIN_FIRMWARE="$(grep 'OPNSENSE_MIN_FIRMWARE' \
+            custom_components/opnsense/const.py | cut -d '"' -f2)"
+          firmware_notes="<h3>OPNsense Minimum Firmware Required: $OPNSENSE_MIN_FIRMWARE</h3><h4>OPNsense Recommended Firmware: $OPNSENSE_LTD_FIRMWARE+</h4><p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i></p>"
+          release_asset="$RELEASE_ARCHIVE#opnsense.zip"
+          arguments=(release create "$RELEASE_TAG" "$release_asset")
+          arguments+=(--generate-notes --notes "$firmware_notes")
+          arguments+=(--title "$RELEASE_TAG" --verify-tag)
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            arguments+=(--prerelease)
+          fi
+          gh "${arguments[@]}"
