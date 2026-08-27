@@ -11,6 +11,23 @@ updates:
       python-dependencies:
         patterns:
           - "*"
+    ignore:
+      # Ignore routine updates by type instead of ignoring each dependency
+      # completely, so Dependabot security updates remain enabled.
+      # Home Assistant pins the compatible uv version.
+      - dependency-name: "uv"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
+      # pytest-homeassistant-custom-component pins the compatible pytest version.
+      - dependency-name: "pytest"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
+    open-pull-requests-limit: 1
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
