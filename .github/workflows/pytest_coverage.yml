@@ -21,8 +21,8 @@ jobs:
       # comments in pull requests.
       pull-requests: write
       # Gives the action the necessary permissions for pushing data to the
-      # python-coverage-comment-action branch, and for editing existing
-      # comments (to avoid publishing multiple comments in the same PR)
+      # python-coverage-comment-action branch. In v4, the action passes the
+      # GITHUB_TOKEN directly to git instead of using persisted credentials.
       contents: write
 
     steps:
@@ -44,13 +44,15 @@ jobs:
 
       - name: 'Generate coverage Comment (and possibly Post to PR)'
         if: >-
-          github.event_name != 'workflow_dispatch' &&
+          (github.event_name != 'workflow_dispatch' ||
+          github.ref_name == github.event.repository.default_branch) &&
           (github.event_name != 'pull_request' ||
           github.event.pull_request.user.login != 'prek-autoupdate-bot')
         id: coverage_comment
-        uses: py-cov-action/python-coverage-comment-action@v3
+        uses: py-cov-action/python-coverage-comment-action@v4.3
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTIVITY: ${{ github.event_name == 'workflow_dispatch' && 'save_coverage_data_files' || '' }}
           MINIMUM_GREEN: 90
           MINIMUM_ORANGE: 70
 
