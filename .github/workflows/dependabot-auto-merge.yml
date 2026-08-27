@@ -73,3 +73,30 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: gh pr merge --auto --squash --match-head-commit "${HEAD_SHA}" "${PR_URL}"
+
+  disable-auto-merge:
+    if: >-
+      always() &&
+      needs.verify-dependency-update.result == 'failure' &&
+      github.event.repository.fork == false &&
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.base.ref == github.event.repository.default_branch
+    needs: verify-dependency-update
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Disable an existing auto-merge request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          set -euo pipefail
+          auto_merge_enabled="$(gh pr view "${PR_URL}" --json autoMergeRequest --jq '.autoMergeRequest != null')"
+          if [[ "${auto_merge_enabled}" == true ]]; then
+            gh pr merge --disable-auto "${PR_URL}"
+          else
+            echo "Auto-merge is not enabled."
+          fi
