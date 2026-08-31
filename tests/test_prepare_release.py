@@ -170,6 +170,68 @@ def test_next_tag_cli_reads_tags_from_standard_input(
     assert capsys.readouterr().out == "v0.9.0\n"
 
 
+@pytest.mark.parametrize(
+    ("arguments", "expected_message"),
+    [
+        ((), "Provide exactly one release tag"),
+        (("v1.0.6", "--next-tag", "patch"), "Provide exactly one release tag"),
+        (("--next-tag", "patch", "--check-only"), "Validation options"),
+        (
+            ("--next-tag", "patch", "--expected-prerelease", "false"),
+            "Validation options",
+        ),
+        (
+            ("v1.0.6", "--expected-prerelease", "false"),
+            "--expected-prerelease requires --check-only",
+        ),
+    ],
+)
+def test_main_rejects_invalid_option_combinations(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    arguments: tuple[str, ...],
+    expected_message: str,
+) -> None:
+    """Reject missing, conflicting, or incorrectly gated CLI options.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Fixture for replacing CLI arguments.
+        capsys (pytest.CaptureFixture[str]): Fixture for capturing parser errors.
+        arguments (tuple[str, ...]): CLI arguments to reject.
+        expected_message (str): Expected parser error text.
+    """
+    monkeypatch.setattr(sys, "argv", [str(SCRIPT_PATH), *arguments])
+
+    with pytest.raises(SystemExit) as error:
+        prepare_release.main()
+
+    assert error.value.code == 2
+    assert expected_message in capsys.readouterr().err
+
+
+def test_check_only_cli_accepts_matching_expected_prerelease(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Accept the release workflow's stable check-only validation request.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Fixture for replacing CLI arguments.
+    """
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--check-only",
+            "--expected-prerelease",
+            "false",
+            "v1.0.6",
+        ],
+    )
+
+    assert prepare_release.main() == 0
+
+
 def _write_version_files(repository: Path, const_content: str | None = None) -> tuple[Path, Path]:
     """Create representative integration version files.
 
