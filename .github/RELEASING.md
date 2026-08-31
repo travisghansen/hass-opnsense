@@ -3,70 +3,36 @@
 ## Normal release
 
 1. Merge the release-ready changes into the default branch.
-2. From that branch, run the **Release** workflow with one of these inputs:
+2. Create and publish a GitHub release targeted at that default branch, using a
+   valid `v`-prefixed tag. Tags containing only numeric components are stable;
+   tags with a suffix are prereleases. The tag initially points at the current
+   default-branch commit.
+3. The **Release** workflow runs on the published release event.
 
-   - To release an explicit tag (including every prerelease), provide an unused,
-     valid `v`-prefixed tag, leave **bump** set to `none`, and set
-     **prerelease** to match the tag. Tags with a suffix are prereleases; tags
-     containing only numeric components are stable.
-   - To make a stable automatic bump, leave **tag** blank, set **prerelease** to
-     false, and choose `patch`, `minor`, or `major`. The workflow derives the
-     next tag from the published stable releases.
+For a stable release, the workflow validates the tag and release target,
+creates a deterministic version-only commit, builds and tests `opnsense.zip`,
+publishes the candidate to a temporary validation branch, and dispatches the
+immutable validation, pytest, and lint gates. Only their exact successful jobs
+allow a lease-guarded atomic promotion of the default branch and annotated tag.
+It then uploads `opnsense.zip` and adds the firmware compatibility note.
 
-3. Wait for the workflow to validate the tag, create a local version-only
-   commit and annotated tag, build and test `opnsense.zip` from that tag, push
-   only the tag, and create the GitHub release with generated and firmware
-   compatibility notes.
+Prereleases build, validate, and upload the archive from the published tag but
+never mutate the default branch or move the tag. Their source must already have
+the matching manifest and `const.py` version.
 
-No personal access token is needed. The workflow never pushes `main`.
+No personal access token is needed. The workflow uses the scoped GitHub token
+only for the release API, temporary validation ref, gate dispatch, guarded
+promotion, and cleanup.
 
-## Rare recovery after a tag push
+## Recovery
 
-If the tag push succeeds but GitHub release creation fails, do not rerun the
-workflow: it correctly rejects existing tags. This is especially important for
-automatic bumps, which intentionally have no persisted retry state. Do not
-force-move the tag.
+Do not force-move a tag or default branch after any failure. A failed stable
+release intentionally leaves its temporary validation branch for inspection;
+delete it only after determining that its candidate and CI evidence are no
+longer needed. Create a new correctly targeted release after fixing any source
+or workflow issue.
 
-1. Inspect the existing tag and its version files:
-
-   ```sh
-   git fetch --tags origin
-   git show --no-patch --decorate <tag>
-   git show <tag>:custom_components/opnsense/manifest.json
-   git show <tag>:custom_components/opnsense/const.py
-   ```
-
-2. If the tag and both version files are correct, build and test the archive
-   directly from the tag:
-
-   ```sh
-   git archive --format=zip --output=opnsense.zip \
-     <tag>:custom_components/opnsense
-   unzip -t opnsense.zip
-   ```
-
-3. Inspect the GitHub release. If none exists, create it with the archive; if a
-   matching draft exists, finish that draft and attach the archive. Do not
-   create a second release for the tag. Preserve the firmware compatibility
-   note used by the workflow when creating the release manually. Derive its
-   firmware versions from the tagged source, not the current checkout:
-
-   ```sh
-   OPNSENSE_LTD_FIRMWARE="$(git show <tag>:custom_components/opnsense/const.py | \
-     grep 'OPNSENSE_LTD_FIRMWARE' | cut -d '"' -f2)"
-   OPNSENSE_MIN_FIRMWARE="$(git show <tag>:custom_components/opnsense/const.py | \
-     grep 'OPNSENSE_MIN_FIRMWARE' | cut -d '"' -f2)"
-   firmware_notes="<h3>OPNsense Minimum Firmware Required: $OPNSENSE_MIN_FIRMWARE</h3><h4>OPNsense Recommended Firmware: $OPNSENSE_LTD_FIRMWARE+</h4><p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i></p>"
-
-   gh release view <tag>
-   gh release create <tag> opnsense.zip \
-     --generate-notes --notes "$firmware_notes" --title <tag> --verify-tag
-   # Or, for an existing matching draft:
-   gh release upload <tag> opnsense.zip --clobber
-   gh release edit <tag> --notes "$firmware_notes" --draft=false
-   ```
-
-   Add `--prerelease` when the tag is a prerelease.
-
-If the tag points to the wrong commit or contains wrong version files, leave it
-unchanged and release a new, correct version instead.
+For an upload-only recovery, inspect the promoted annotated tag, version files,
+and archive before attaching `opnsense.zip` to the existing release. Preserve
+the firmware compatibility note using the firmware bounds from the tagged
+`custom_components/opnsense/const.py`.

@@ -6,6 +6,11 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Immutable commit SHA required by release orchestration
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -15,9 +20,18 @@ jobs:
     name: Run Linters
     runs-on: ubuntu-latest
     steps:
+      - name: Require expected release commit
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$WORKFLOW_SHA" = "$EXPECTED_SHA"
       - name: Checkout Repository
         uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.expected_sha || github.sha }}
           persist-credentials: false
 
       - name: Setup uv (with caching)
