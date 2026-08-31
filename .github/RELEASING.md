@@ -48,15 +48,22 @@ force-move the tag.
 3. Inspect the GitHub release. If none exists, create it with the archive; if a
    matching draft exists, finish that draft and attach the archive. Do not
    create a second release for the tag. Preserve the firmware compatibility
-   note used by the workflow when creating the release manually.
+   note used by the workflow when creating the release manually. Derive its
+   firmware versions from the tagged source, not the current checkout:
 
    ```sh
+   OPNSENSE_LTD_FIRMWARE="$(git show <tag>:custom_components/opnsense/const.py | \
+     grep 'OPNSENSE_LTD_FIRMWARE' | cut -d '"' -f2)"
+   OPNSENSE_MIN_FIRMWARE="$(git show <tag>:custom_components/opnsense/const.py | \
+     grep 'OPNSENSE_MIN_FIRMWARE' | cut -d '"' -f2)"
+   firmware_notes="<h3>OPNsense Minimum Firmware Required: $OPNSENSE_MIN_FIRMWARE</h3><h4>OPNsense Recommended Firmware: $OPNSENSE_LTD_FIRMWARE+</h4><p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i></p>"
+
    gh release view <tag>
    gh release create <tag> opnsense.zip \
-     --generate-notes --title <tag> --verify-tag
+     --generate-notes --notes "$firmware_notes" --title <tag> --verify-tag
    # Or, for an existing matching draft:
    gh release upload <tag> opnsense.zip --clobber
-   gh release edit <tag> --draft=false
+   gh release edit <tag> --notes "$firmware_notes" --draft=false
    ```
 
    Add `--prerelease` when the tag is a prerelease.
