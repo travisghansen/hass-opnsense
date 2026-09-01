@@ -147,6 +147,71 @@ def test_wait_for_workflow_requires_exact_identity_and_successful_jobs(
     )
 
 
+def test_wait_for_workflow_retries_a_transient_run_not_found(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retry a transient run lookup failure before verifying its completed checks.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Fixture for replacing API and time helpers.
+    """
+    responses: list[dict[str, Any] | RuntimeError] = [
+        {"id": 7},
+        verify.GitHubCommandError("HTTP 404 Not Found"),
+        {
+            "id": 42,
+            "workflow_id": 7,
+            "event": "workflow_dispatch",
+            "head_branch": REF,
+            "head_sha": SHA,
+            "status": "completed",
+            "conclusion": "success",
+            "check_suite_id": 99,
+        },
+        {"head_sha": SHA, "app": {"slug": "github-actions"}},
+        {
+            "total_count": 1,
+            "jobs": [{"name": "HACS Validation", "conclusion": "success"}],
+        },
+    ]
+    sleeps: list[int] = []
+
+    def fake_api(_arguments: Sequence[str]) -> dict[str, Any]:
+        """Return the next scripted API response.
+
+        Args:
+            _arguments (Sequence[str]): API request arguments, unused by this scripted response.
+
+        Returns:
+            dict[str, Any]: The scripted API response.
+
+        Raises:
+            verify.GitHubCommandError: When simulating a transient run lookup failure.
+        """
+        response = responses.pop(0)
+        if isinstance(response, RuntimeError):
+            raise verify.GitHubCommandError(str(response))
+        return response
+
+    monkeypatch.setattr(verify, "github_api", fake_api)
+    monkeypatch.setattr(verify.time, "monotonic", lambda: 0.0)
+    monkeypatch.setattr(verify.time, "sleep", sleeps.append)
+
+    assert (
+        verify.wait_for_workflow(
+            REPOSITORY,
+            "validate.yml",
+            REF,
+            SHA,
+            {"HACS Validation"},
+            deadline=1.0,
+            expected_run_id=42,
+        )
+        == 42
+    )
+    assert sleeps == [5]
+
+
 @pytest.mark.parametrize(
     "run",
     [
@@ -239,6 +304,24 @@ def test_github_api_rejects_malformed_or_non_authoritative_http_response(
         verify.github_api([])
 
 
+def test_verify_check_suite_error_identifies_the_candidate_commit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Describe an invalid check suite relative to the candidate commit.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Fixture for replacing the API helper.
+    """
+    monkeypatch.setattr(
+        verify,
+        "github_api",
+        lambda _arguments: {"head_sha": "b" * 40, "app": {"slug": "github-actions"}},
+    )
+
+    with pytest.raises(verify.GitHubCommandError, match="candidate commit"):
+        verify.verify_check_suite(REPOSITORY, {"check_suite_id": 99}, SHA)
+
+
 def test_release_workflow_has_guarded_promotion_and_firmware_archive_contract() -> None:
     """Preserve published-release handling, lease promotion, and opnsense.zip uploads."""
     document = _load_workflow("release.yml")
@@ -273,6 +356,22 @@ def test_release_workflow_has_guarded_promotion_and_firmware_archive_contract() 
     )
     assert steps["Delete validated temporary branch"]["if"] == (
         "github.event.release.prerelease == false && success()"
+    )
+
+
+def test_release_workflow_resumes_an_existing_validated_release_commit() -> None:
+    """Preserve wiring that reuses a previously validated stable release commit."""
+    document = _load_workflow("release.yml")
+    steps = _named_steps(document, "release")
+    base = steps["Validate trusted release metadata and immutable starting refs"]
+    candidate = steps["Create deterministic stable release commit B"]
+    promotion = steps["Atomically advance target and guarded release tag"]
+
+    assert 'echo "candidate-sha=$target_sha" >> "$GITHUB_OUTPUT"' in base["run"]
+    assert candidate["env"]["RESUME_SHA"] == "${{ steps.base.outputs.candidate-sha }}"
+    assert 'echo "sha=$RESUME_SHA" >> "$GITHUB_OUTPUT"' in candidate["run"]
+    assert promotion["if"] == (
+        "github.event.release.prerelease == false && steps.base.outputs.resume != 'true'"
     )
 
 

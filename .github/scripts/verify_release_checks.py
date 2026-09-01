@@ -113,7 +113,9 @@ def verify_check_suite(repository: str, run: dict[str, Any], sha: str) -> None:
         or not isinstance(app, dict)
         or app.get("slug") != "github-actions"
     ):
-        raise GitHubCommandError("Workflow run is not a GitHub Actions check suite for B.")
+        raise GitHubCommandError(
+            "Workflow run is not a GitHub Actions check suite for the candidate commit."
+        )
 
 
 def verify_jobs(repository: str, run_id: int, required_checks: set[str]) -> None:
