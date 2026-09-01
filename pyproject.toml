@@ -172,7 +172,6 @@ convention = "google"
 ignore-words-list = "hass,ist"
 skip = "CHANGELOG.md,custom_components/opnsense/translations/fr.json"
 
-
 [tool.pytest.ini_options]
 addopts = """
   --quiet

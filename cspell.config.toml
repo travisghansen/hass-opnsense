@@ -1,0 +1,48 @@
+language = "en"
+allowCompoundWords = false
+caseSensitive = false
+import = [
+    "@cspell/dict-fr-fr/cspell-ext.json",
+]
+
+words = [
+    "aiohttp",
+    "aiopnsense",
+    "automations",
+    "blocklist",
+    "blocklists",
+    "conftest",
+    "devicetracker",
+    "docstrings",
+    "entityid",
+    "expirytime",
+    "hacs",
+    "hass",
+    "homeassistant",
+    "mbuf",
+    "mypy",
+    "nbsp",
+    "opnsense",
+    "parameterizing",
+    "pfstate",
+    "prek",
+    "pyopnsense",
+    "pyproject",
+    "pytest",
+    "stddev",
+    "tunables",
+    "udpbroadcastrelay",
+    "venv",
+    "vhid",
+    "vnstat",
+    "vouchergroup",
+    "worktree",
+]
+
+[[overrides]]
+filename = "**/custom_components/opnsense/translations/en.json"
+language = "en"
+
+[[overrides]]
+filename = "**/custom_components/opnsense/translations/fr.json"
+language = "en, fr, fr_FR"

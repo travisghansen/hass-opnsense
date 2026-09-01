@@ -42,6 +42,18 @@ rev = "v2.4.3"
 id = "codespell"
 
 [[repos]]
+repo = "https://github.com/streetsidesoftware/cspell-cli"
+rev = "v10.0.1"
+
+[[repos.hooks]]
+id = "cspell"
+files = "(?:\\.md$|custom_components/opnsense/translations/(?:en|fr)\\.json$)"
+exclude = "^(?:CHANGELOG\\.md|docs/granular_permissions\\.md)$"
+additional_dependencies = [
+  "@cspell/dict-fr-fr@2.3.2"
+]
+
+[[repos]]
 repo = "local"
 
 [[repos.hooks]]

@@ -153,7 +153,7 @@ Many entities are created by `hass-opnsense` for statistics etc. Due to the volu
 
 ### Sensor
 
-* System details (name, version, temp, boottime, etc.)
+* System details (name, version, temp, boot time, etc.)
 * pfstate details
 * CPU details (usage, load, cores)
 * mbuf details
