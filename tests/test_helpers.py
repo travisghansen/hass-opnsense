@@ -1,6 +1,7 @@
 """Unit tests for shared OPNsense integration helpers."""
 
 from collections.abc import Callable
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -16,6 +17,9 @@ from custom_components.opnsense.const import (
     ENTRY_TYPE_CARP,
 )
 from custom_components.opnsense.helpers import (
+    async_get_device_by_connection,
+    async_get_device_by_identifier,
+    async_get_devices_by_connection,
     coerce_bool,
     config_entry_identity,
     create_opnsense_client,
@@ -31,6 +35,96 @@ from custom_components.opnsense.helpers import (
     is_usable_carp_vip,
     normalize_arp_mac,
 )
+
+
+@pytest.mark.parametrize("use_modern_api", [True, False], ids=["modern", "legacy"])
+def test_async_get_device_by_identifier_supports_ha_versions(
+    use_modern_api: bool,
+) -> None:
+    """Use the scoped identifier API when available and retain the HA 2026.3 fallback.
+
+    Args:
+        use_modern_api (bool): Whether the fake registry exposes the current scoped API.
+    """
+    device = MagicMock()
+    legacy_get = MagicMock(return_value=device)
+    registry: Any = SimpleNamespace(async_get_device=legacy_get)
+    if use_modern_api:
+        modern_get = MagicMock(return_value=device)
+        registry.async_get_device_by_identifier = modern_get
+
+    result = async_get_device_by_identifier(
+        registry,
+        ("opnsense", "router-id"),
+        "entry-id",
+    )
+
+    assert result is device
+    if use_modern_api:
+        modern_get.assert_called_once_with(("opnsense", "router-id"), "entry-id")
+        legacy_get.assert_not_called()
+    else:
+        legacy_get.assert_called_once_with(identifiers={("opnsense", "router-id")})
+
+
+@pytest.mark.parametrize("use_modern_api", [True, False], ids=["modern", "legacy"])
+def test_async_get_device_by_connection_supports_ha_versions(
+    use_modern_api: bool,
+) -> None:
+    """Use the scoped connection API when available and retain the HA 2026.3 fallback.
+
+    Args:
+        use_modern_api (bool): Whether the fake registry exposes the current scoped API.
+    """
+    device = MagicMock()
+    legacy_get = MagicMock(return_value=device)
+    registry: Any = SimpleNamespace(async_get_device=legacy_get)
+    if use_modern_api:
+        modern_get = MagicMock(return_value=device)
+        registry.async_get_device_by_connection = modern_get
+
+    result = async_get_device_by_connection(
+        registry,
+        ("mac", "aa:bb:cc:dd:ee:ff"),
+        "entry-id",
+    )
+
+    assert result is device
+    if use_modern_api:
+        modern_get.assert_called_once_with(("mac", "aa:bb:cc:dd:ee:ff"), "entry-id")
+        legacy_get.assert_not_called()
+    else:
+        legacy_get.assert_called_once_with(connections={("mac", "aa:bb:cc:dd:ee:ff")})
+
+
+@pytest.mark.parametrize("use_modern_api", [True, False], ids=["modern", "legacy"])
+def test_async_get_devices_by_connection_supports_ha_versions(
+    use_modern_api: bool,
+) -> None:
+    """Return every current match while adapting the singular HA 2026.3 fallback.
+
+    Args:
+        use_modern_api (bool): Whether the fake registry exposes the current multi-device API.
+    """
+    device = MagicMock()
+    legacy_get = MagicMock(return_value=device)
+    registry: Any = SimpleNamespace(async_get_device=legacy_get)
+    if use_modern_api:
+        modern_get = MagicMock(return_value=[device, MagicMock()])
+        registry.async_get_devices = modern_get
+
+    result = async_get_devices_by_connection(
+        registry,
+        ("mac", "aa:bb:cc:dd:ee:ff"),
+    )
+
+    if use_modern_api:
+        assert len(result) == 2
+        modern_get.assert_called_once_with(connections={("mac", "aa:bb:cc:dd:ee:ff")})
+        legacy_get.assert_not_called()
+    else:
+        assert result == [device]
+        legacy_get.assert_called_once_with(connections={("mac", "aa:bb:cc:dd:ee:ff")})
 
 
 @pytest.mark.parametrize(

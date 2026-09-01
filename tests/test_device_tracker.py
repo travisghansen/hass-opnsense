@@ -2002,6 +2002,12 @@ async def test_async_setup_entry_removes_stale_tracker_entities_and_reparents_sh
 
     device_registry = MagicMock()
     device_registry.async_get_device.side_effect = get_device
+    device_registry.async_get_device_by_identifier.side_effect = (
+        lambda identifier, _config_entry_id: get_device(identifiers={identifier})
+    )
+    device_registry.async_get_device_by_connection.side_effect = (
+        lambda connection, _config_entry_id: get_device(connections={connection})
+    )
     monkeypatch.setattr(dt_mod, "async_get_dev_reg", MagicMock(return_value=device_registry))
 
     ph_hass.config_entries.async_update_entry = MagicMock()
@@ -2110,6 +2116,12 @@ async def test_async_setup_entry_removes_stale_tracker_entities_clears_missing_p
 
     device_registry = MagicMock()
     device_registry.async_get_device = MagicMock(side_effect=get_device)
+    device_registry.async_get_device_by_identifier.side_effect = (
+        lambda identifier, _config_entry_id: get_device(identifiers={identifier})
+    )
+    device_registry.async_get_device_by_connection.side_effect = (
+        lambda connection, _config_entry_id: get_device(connections={connection})
+    )
     device_registry.async_get = MagicMock(return_value=None)
     monkeypatch.setattr(dt_mod, "async_get_dev_reg", MagicMock(return_value=device_registry))
 

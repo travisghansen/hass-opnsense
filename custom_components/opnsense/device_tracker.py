@@ -37,6 +37,9 @@ from .const import (
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseBaseEntity
 from .helpers import (
+    async_get_device_by_connection,
+    async_get_device_by_identifier,
+    async_get_devices_by_connection,
     detach_shared_router_parent,
     dict_get,
     get_arp_ip,
@@ -364,14 +367,18 @@ def _cleanup_stale_tracked_devices(
         return
 
     entity_registry = er.async_get(hass)
-    router_device = device_registry.async_get_device(
-        identifiers={(DOMAIN, config_entry.data[CONF_DEVICE_UNIQUE_ID])}
+    router_device = async_get_device_by_identifier(
+        device_registry,
+        (DOMAIN, config_entry.data[CONF_DEVICE_UNIQUE_ID]),
+        config_entry.entry_id,
     )
     router_device_id = router_device.id if router_device else None
 
     for mac_address in stale_mac_addresses:
-        rem_device = device_registry.async_get_device(
-            connections={(CONNECTION_NETWORK_MAC, mac_address)}
+        rem_device = async_get_device_by_connection(
+            device_registry,
+            (CONNECTION_NETWORK_MAC, mac_address),
+            config_entry.entry_id,
         )
         expected_unique_id = slugify(
             f"{config_entry.data[CONF_DEVICE_UNIQUE_ID]}_mac_{mac_address}"
@@ -462,13 +469,11 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             return False
 
         device_registry = async_get_dev_reg(hass)
-        existing_device = device_registry.async_get_device(
-            connections={(CONNECTION_NETWORK_MAC, self.mac_address)}
+        existing_devices = async_get_devices_by_connection(
+            device_registry,
+            (CONNECTION_NETWORK_MAC, self.mac_address),
         )
-        if existing_device is None:
-            return False
-
-        return getattr(existing_device, "disabled_by", None) is None
+        return any(getattr(device, "disabled_by", None) is None for device in existing_devices)
 
     @property
     def is_connected(self) -> bool:

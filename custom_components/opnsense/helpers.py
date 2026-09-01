@@ -1,6 +1,6 @@
 """Helper methods for OPNsense."""
 
-from collections.abc import Mapping, MutableMapping
+from collections.abc import Callable, Mapping, MutableMapping
 import ipaddress
 import re
 from typing import Any
@@ -23,6 +23,82 @@ from .const import (
     ENTRY_TYPE_CARP,
     ENTRY_TYPE_DEVICE,
 )
+
+
+def async_get_device_by_identifier(
+    device_registry: DeviceRegistry,
+    identifier: tuple[str, str],
+    config_entry_id: str,
+) -> DeviceEntry | None:
+    """Get a config-entry device by identifier across supported HA versions.
+
+    Current Home Assistant releases provide config-entry-scoped device
+    lookups. Older supported releases, including 2026.3, expose only
+    ``async_get_device``.
+
+    Args:
+        device_registry (DeviceRegistry): Registry that owns the requested device.
+        identifier (tuple[str, str]): Domain and identifier value to match.
+        config_entry_id (str): Config entry that owns the requested device.
+
+    Returns:
+        DeviceEntry | None: Matching device, if registered.
+    """
+    modern_get: Callable[[tuple[str, str], str], DeviceEntry | None] | None = getattr(
+        device_registry, "async_get_device_by_identifier", None
+    )
+    if modern_get is not None:
+        return modern_get(identifier, config_entry_id)
+    legacy_get: Callable[..., DeviceEntry | None] = device_registry.async_get_device
+    return legacy_get(identifiers={identifier})
+
+
+def async_get_device_by_connection(
+    device_registry: DeviceRegistry,
+    connection: tuple[str, str],
+    config_entry_id: str,
+) -> DeviceEntry | None:
+    """Get a config-entry device by connection across supported HA versions.
+
+    Args:
+        device_registry (DeviceRegistry): Registry that owns the requested device.
+        connection (tuple[str, str]): Connection type and value to match.
+        config_entry_id (str): Config entry that owns the requested device.
+
+    Returns:
+        DeviceEntry | None: Matching device, if registered.
+    """
+    modern_get: Callable[[tuple[str, str], str], DeviceEntry | None] | None = getattr(
+        device_registry, "async_get_device_by_connection", None
+    )
+    if modern_get is not None:
+        return modern_get(connection, config_entry_id)
+    legacy_get: Callable[..., DeviceEntry | None] = device_registry.async_get_device
+    return legacy_get(connections={connection})
+
+
+def async_get_devices_by_connection(
+    device_registry: DeviceRegistry,
+    connection: tuple[str, str],
+) -> list[DeviceEntry]:
+    """Get all devices matching a connection across supported HA versions.
+
+    Args:
+        device_registry (DeviceRegistry): Registry that owns the requested devices.
+        connection (tuple[str, str]): Connection type and value to match.
+
+    Returns:
+        list[DeviceEntry]: Every matching device on current HA, or the single
+            unscoped match exposed by older supported releases.
+    """
+    modern_get: Callable[..., list[DeviceEntry]] | None = getattr(
+        device_registry, "async_get_devices", None
+    )
+    if modern_get is not None:
+        return modern_get(connections={connection})
+    legacy_get: Callable[..., DeviceEntry | None] = device_registry.async_get_device
+    device = legacy_get(connections={connection})
+    return [device] if device is not None else []
 
 
 def dict_get(data: MutableMapping[str, Any], path: str, default: Any | None = None) -> Any | None:
@@ -315,8 +391,10 @@ def find_replacement_router_device_id(
         owner_device_unique_id = owner_entry.data.get(CONF_DEVICE_UNIQUE_ID)
         if not isinstance(owner_device_unique_id, str):
             continue
-        owner_router = device_registry.async_get_device(
-            identifiers={(DOMAIN, owner_device_unique_id)}
+        owner_router = async_get_device_by_identifier(
+            device_registry,
+            (DOMAIN, owner_device_unique_id),
+            owner_entry_id,
         )
         if owner_router is not None:
             return owner_router.id

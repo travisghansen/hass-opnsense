@@ -546,15 +546,15 @@ def fake_reg_factory() -> Any:
             Any: Configured object produced by the local test double.
 
         Args:
-            device_exists (bool): Whether ``async_get_device`` should return a device record.
+            device_exists (bool): Whether registry lookups should return a device record.
             device_id (str): Device identifier returned when ``device_exists`` is true.
             config_entries (set[str] | None): Config entries already linked to the fake device.
             disabled_by (str | None): Disable source reported by the fake device entry.
         """
         registry = MagicMock()
-        registry.async_get_device.side_effect = lambda *args, **kwargs: (
+        device = (
             None
-            if not device_exists or "identifiers" in kwargs
+            if not device_exists
             else MagicMock(
                 id=device_id,
                 via_device_id=None,
@@ -562,6 +562,12 @@ def fake_reg_factory() -> Any:
                 disabled_by=disabled_by,
             )
         )
+        registry.async_get_device.side_effect = lambda *args, **kwargs: (
+            None if "identifiers" in kwargs else device
+        )
+        registry.async_get_device_by_identifier.return_value = None
+        registry.async_get_device_by_connection.return_value = device
+        registry.async_get_devices.return_value = [] if device is None else [device]
         return registry
 
     return _make
