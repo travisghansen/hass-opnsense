@@ -163,9 +163,6 @@ jobs:
           set -euo pipefail
           python3 .github/scripts/verify_release_checks.py \
             --repository "$GITHUB_REPOSITORY" --ref "$TEMP_REF" --sha "$CANDIDATE_SHA" \
-            --workflow validate.yml \
-            --workflow pytest_check.yml \
-            --workflow linters.yml \
             --required-check 'validate.yml::HACS Validation' \
             --required-check 'validate.yml::Hassfest Validation' \
             --required-check 'pytest_check.yml::pytest and coverage report' \

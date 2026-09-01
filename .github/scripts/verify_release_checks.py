@@ -198,20 +198,17 @@ def parse_required_checks(values: Sequence[str]) -> dict[str, set[str]]:
 
 
 def main() -> int:
-    """Dispatch and verify all supplied workflows for one candidate commit."""
+    """Dispatch and verify all workflows named by required checks."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repository", required=True)
     parser.add_argument("--ref", required=True)
     parser.add_argument("--sha", required=True)
-    parser.add_argument("--workflow", action="append", required=True)
     parser.add_argument("--required-check", action="append", required=True)
     parser.add_argument("--timeout-seconds", type=int, default=1800)
     args = parser.parse_args()
     try:
         checks = parse_required_checks(args.required_check)
-        workflows = list(dict.fromkeys(args.workflow))
-        if set(workflows) != checks.keys():
-            raise ValueError("Every workflow must have exact required checks and vice versa.")
+        workflows = list(checks)
         if args.timeout_seconds <= 0:
             raise ValueError("timeout-seconds must be positive.")
         dispatched = {

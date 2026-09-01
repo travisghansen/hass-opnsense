@@ -103,6 +103,24 @@ def test_dispatch_workflow_rejects_missing_or_invalid_run_id(
         verify.dispatch_workflow(REPOSITORY, "validate.yml", REF, SHA)
 
 
+def test_parse_required_checks_derives_workflows_in_first_seen_order() -> None:
+    """Group required jobs while preserving workflow dispatch order."""
+    checks = verify.parse_required_checks(
+        [
+            "pytest_check.yml::pytest and coverage report",
+            "validate.yml::HACS Validation",
+            "validate.yml::Hassfest Validation",
+            "pytest_check.yml::pytest and coverage report",
+        ]
+    )
+
+    assert list(checks) == ["pytest_check.yml", "validate.yml"]
+    assert checks == {
+        "pytest_check.yml": {"pytest and coverage report"},
+        "validate.yml": {"HACS Validation", "Hassfest Validation"},
+    }
+
+
 def test_wait_for_workflow_requires_exact_identity_and_successful_jobs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -345,6 +363,7 @@ def test_release_workflow_has_guarded_promotion_and_firmware_archive_contract() 
         == "github.event.release.prerelease"
     )
     dispatch = steps["Dispatch and verify immutable release gates"]["run"]
+    assert "--workflow" not in dispatch
     assert "validate.yml::HACS Validation" in dispatch
     assert "validate.yml::Hassfest Validation" in dispatch
     assert "pytest_check.yml::pytest and coverage report" in dispatch
