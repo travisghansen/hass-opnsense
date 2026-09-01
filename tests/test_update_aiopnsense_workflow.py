@@ -202,7 +202,6 @@ def test_workflow_regenerates_uv_lock_after_updating_pins() -> None:
         "        if: steps.versions.outputs.update_needed == 'true'\n"
         "        run: uv lock"
     ) in workflow
-    assert "        run: uv lock" in workflow
     assert "            uv.lock" in workflow
     assert "prek.toml" not in workflow
 
