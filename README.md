@@ -9,19 +9,19 @@
 | custom\_components/opnsense/config\_flow.py           |      445 |       14 |      184 |       22 |     94% |116, 174, 198-\>196, 249, 276, 282, 584-\>587, 647-\>659, 939, 1048-1052, 1131-\>1137, 1137-\>1140, 1162-\>1217, 1194-\>1217, 1195-\>1205, 1218, 1312-\>1315, 1387-\>1395, 1395-\>1398, 1437-1438, 1449 |
 | custom\_components/opnsense/const.py                  |       76 |        0 |        0 |        0 |    100% |           |
 | custom\_components/opnsense/coordinator.py            |      232 |        3 |      120 |        4 |     98% |107, 244-\>246, 449-\>452, 452-\>exit, 528-529, 535-\>538 |
-| custom\_components/opnsense/device\_tracker.py        |      306 |        5 |      144 |        7 |     97% |162, 248, 303-\>305, 313, 389-\>372, 506, 578 |
+| custom\_components/opnsense/device\_tracker.py        |      304 |        5 |      142 |        7 |     97% |165, 251, 306-\>308, 316, 396-\>377, 511, 583 |
 | custom\_components/opnsense/diagnostics.py            |      338 |        0 |      178 |        0 |    100% |           |
 | custom\_components/opnsense/entity.py                 |       95 |        0 |       24 |        2 |     98% |97-\>99, 183-\>185 |
-| custom\_components/opnsense/helpers.py                |      159 |        5 |       78 |        5 |     96% |53, 166-\>157, 210, 214-215, 317, 321-\>309 |
+| custom\_components/opnsense/helpers.py                |      178 |        5 |       84 |        5 |     96% |129, 242-\>233, 286, 290-291, 393, 399-\>385 |
 | custom\_components/opnsense/migrate.py                |      249 |        2 |      100 |        3 |     99% |80, 322-\>325, 552 |
-| custom\_components/opnsense/repair\_reconciliation.py |      141 |        0 |       48 |        2 |     99% |172-\>176, 214-\>216 |
+| custom\_components/opnsense/repair\_reconciliation.py |      141 |        0 |       48 |        2 |     99% |176-\>180, 218-\>220 |
 | custom\_components/opnsense/repairs.py                |      230 |        3 |       88 |        6 |     97% |73-\>76, 288-\>290, 395-\>exit, 472-476, 542, 692-\>700 |
 | custom\_components/opnsense/sensor.py                 |     1194 |       38 |      560 |       36 |     96% |577, 582, 586, 594-\>589, 619, 623, 629-632, 1111, 1175, 1252, 1321, 1341, 1361-1362, 1379, 1543, 1775, 1890, 2057, 2066-\>2069, 2076-\>2085, 2080-\>2085, 2082-\>2085, 2160-\>2162, 2162-\>2165, 2268, 2269-\>2276, 2400, 2447-2448, 2452-2453, 2456-2457, 2474-\>exit, 2525-2529, 2532-2533, 2541, 2571, 2790-\>2787, 2942-2944, 2967-\>2964 |
 | custom\_components/opnsense/services.py               |      241 |        0 |       72 |        0 |    100% |           |
 | custom\_components/opnsense/switch.py                 |      646 |       34 |      266 |       34 |     93% |55-\>58, 61-\>64, 119, 451, 507, 548, 812, 816-817, 1014-1017, 1055, 1063, 1072, 1080, 1091, 1127, 1199-\>1207, 1219, 1227, 1236, 1244, 1255, 1290, 1297, 1298-\>1295, 1336, 1358, 1367, 1378, 1418, 1435, 1474-1478, 1505, 1522, 1607, 1663 |
 | custom\_components/opnsense/traffic\_coordinator.py   |      174 |        4 |       62 |        6 |     96% |111-\>118, 148, 173-\>170, 309-\>exit, 331-\>334, 335-341 |
 | custom\_components/opnsense/update.py                 |      183 |        0 |       56 |        1 |     99% |442-\>exit |
-| **TOTAL**                                             | **5286** |  **116** | **2198** |  **134** | **97%** |           |
+| **TOTAL**                                             | **5303** |  **116** | **2202** |  **134** | **97%** |           |
 
 
 ## Setup coverage badge
