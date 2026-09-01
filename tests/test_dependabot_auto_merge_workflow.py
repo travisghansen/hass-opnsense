@@ -55,8 +55,17 @@ def test_verify_job_guards_source_and_changed_file_allowlist() -> None:
         "Verify supported dependency update"
     ]["run"]
     assert isinstance(verify_run, str)
+    assert (
+        '[[ -n "${changed_files}" ]] || {\n'
+        '  echo "Refusing auto-merge; no changed files were reported"\n'
+        "  exit 1\n"
+        "}"
+    ) in verify_run
     assert '[[ "${changed_files}" == "uv.lock" ]]' in verify_run
     assert r"grep -Ev '^\.github/workflows/[^/]+\.ya?ml$'" in verify_run
+    assert (
+        '  *)\n    echo "Refusing unsupported ecosystem: ${PACKAGE_ECOSYSTEM}"\n    exit 1\n    ;;'
+    ) in verify_run
 
 
 def test_disable_job_repeats_failure_and_trusted_source_guards() -> None:
@@ -67,6 +76,7 @@ def test_disable_job_repeats_failure_and_trusted_source_guards() -> None:
     disable_guard = disable_job["if"]
     assert isinstance(disable_guard, str)
     assert disable_guard.startswith("failure() && !cancelled() &&")
+    assert "needs.verify-dependency-update.result != 'success'" in disable_guard
     for constraint in TRUSTED_PULL_REQUEST_GUARD.split(" && "):
         assert constraint in disable_guard
 
@@ -79,6 +89,7 @@ def test_merge_jobs_keep_write_permissions_and_head_commit_match() -> None:
     for job_id in ("enable-auto-merge", "disable-auto-merge"):
         job = jobs[job_id]
         assert isinstance(job, dict)
+        assert job["needs"] == "verify-dependency-update"
         assert job["permissions"] == {
             "contents": "write",
             "pull-requests": "write",
