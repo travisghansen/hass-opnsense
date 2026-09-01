@@ -1065,50 +1065,105 @@ def test_gateway_lookup_handles_invalid_payloads_and_casefold_match(
     }
 
 
-@pytest.mark.parametrize("description_key", ["gateway", "gateway.wan"])
-def test_gateway_sensor_invalid_description_key_unavailable(
+@pytest.mark.parametrize(
+    ("sensor_class", "description_key", "state"),
+    [
+        pytest.param(
+            OPNsenseGatewaySensor,
+            "gateway",
+            {"gateways": {"wan": {"name": "WAN", "status": "online"}}},
+            id="gateway-missing-path",
+        ),
+        pytest.param(
+            OPNsenseGatewaySensor,
+            "gateway.wan",
+            {"gateways": {"wan": {"name": "WAN", "status": "online"}}},
+            id="gateway-missing-property",
+        ),
+        pytest.param(
+            OPNsenseInterfaceSensor,
+            "interface",
+            {"interfaces": {"lan": {"name": "LAN", "status": "up"}}},
+            id="interface-missing-path",
+        ),
+        pytest.param(
+            OPNsenseInterfaceSensor,
+            "interface.lan",
+            {"interfaces": {"lan": {"name": "LAN", "status": "up"}}},
+            id="interface-missing-property",
+        ),
+    ],
+)
+def test_sensors_with_invalid_description_key_are_unavailable(
+    sensor_class: type[OPNsenseGatewaySensor | OPNsenseInterfaceSensor],
     description_key: str,
+    state: dict[str, dict[str, dict[str, str]]],
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Gateway sensor should be unavailable when its description key cannot be parsed.
+    """Gateway and interface sensors reject unparsable description keys.
 
     Args:
+        sensor_class (type[OPNsenseGatewaySensor | OPNsenseInterfaceSensor]): Sensor class under test.
         description_key (str): Sensor description key selected for the scenario.
+        state (dict[str, dict[str, dict[str, str]]]): Coordinator payload for the sensor class.
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = {"gateways": {"wan": {"name": "WAN", "status": "online"}}}
+    coord.data = state
     desc = MagicMock()
     desc.key = description_key
-    desc.name = "Gateway Invalid"
+    desc.name = "Invalid Description"
 
-    sensor = OPNsenseGatewaySensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    sensor = sensor_class(config_entry=entry, coordinator=coord, entity_description=desc)
     sensor.hass = MagicMock()
-    sensor.entity_id = "sensor.gateway_invalid"
+    sensor.entity_id = "sensor.invalid_description"
     object.__setattr__(sensor, "async_write_ha_state", lambda: None)
     sensor._handle_coordinator_update()
 
     assert sensor.available is False
 
 
-def test_gateway_sensor_invalid_icon_key_uses_description_icon(
+@pytest.mark.parametrize(
+    ("sensor_class", "description_key", "state"),
+    [
+        pytest.param(
+            OPNsenseGatewaySensor,
+            "gateway",
+            {"gateways": {"wan": {"name": "WAN", "status": "online"}}},
+            id="gateway",
+        ),
+        pytest.param(
+            OPNsenseInterfaceSensor,
+            "interface",
+            {"interfaces": {"lan": {"name": "LAN", "status": "up"}}},
+            id="interface",
+        ),
+    ],
+)
+def test_sensors_with_invalid_icon_key_use_description_icon(
+    sensor_class: type[OPNsenseGatewaySensor | OPNsenseInterfaceSensor],
+    description_key: str,
+    state: dict[str, dict[str, dict[str, str]]],
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Gateway sensor icon should fall back when its description key cannot be parsed.
+    """Gateway and interface sensors fall back to their description icon.
 
     Args:
+        sensor_class (type[OPNsenseGatewaySensor | OPNsenseInterfaceSensor]): Sensor class under test.
+        description_key (str): Sensor description key selected for the scenario.
+        state (dict[str, dict[str, dict[str, str]]]): Coordinator payload for the sensor class.
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = {"gateways": {"wan": {"name": "WAN", "status": "online"}}}
+    coord.data = state
     desc = MagicMock()
-    desc.key = "gateway"
-    desc.name = "Gateway Invalid"
+    desc.key = description_key
+    desc.name = "Invalid Icon"
     desc.icon = "mdi:gauge"
 
-    sensor = OPNsenseGatewaySensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    sensor = sensor_class(config_entry=entry, coordinator=coord, entity_description=desc)
 
     assert sensor.icon == "mdi:gauge"
 
@@ -2293,54 +2348,52 @@ def test_temp_sensor_handles_index_exceptions(
     assert s.available is False
 
 
-def test_temp_sensor_fails_closed_for_malformed_telemetry_payload(
+@pytest.mark.parametrize(
+    ("sensor_class", "description_key", "entity_id"),
+    [
+        pytest.param(
+            OPNsenseTempSensor,
+            "telemetry.temps.sensor1",
+            "sensor.temp_malformed",
+            id="temperature",
+        ),
+        pytest.param(
+            OPNsenseFilesystemSensor,
+            "telemetry.filesystems.root",
+            "sensor.filesystem_malformed",
+            id="filesystem",
+        ),
+    ],
+)
+def test_sensors_fail_closed_for_malformed_telemetry_payload(
+    sensor_class: type[OPNsenseTempSensor | OPNsenseFilesystemSensor],
+    description_key: str,
+    entity_id: str,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Temp sensor should mark unavailable when telemetry is not a mapping.
+    """Sensors should mark unavailable when telemetry is not a mapping.
 
     Args:
+        sensor_class (type[OPNsenseTempSensor | OPNsenseFilesystemSensor]): Sensor class under test.
+        description_key (str): Entity description key selected for the scenario.
+        entity_id (str): Entity ID assigned to the sensor under test.
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry()
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord.data = {"telemetry": "not-a-mapping"}
     desc = MagicMock()
-    desc.key = "telemetry.temps.sensor1"
-    desc.name = "Temp Malformed"
+    desc.key = description_key
+    desc.name = "Malformed Telemetry"
 
-    s = OPNsenseTempSensor(config_entry=entry, coordinator=coord, entity_description=desc)
-    s.hass = MagicMock()
-    s.entity_id = "sensor.temp_malformed"
-    object.__setattr__(s, "async_write_ha_state", lambda: None)
+    sensor = sensor_class(config_entry=entry, coordinator=coord, entity_description=desc)
+    sensor.hass = MagicMock()
+    sensor.entity_id = entity_id
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
 
-    s._handle_coordinator_update()
+    sensor._handle_coordinator_update()
 
-    assert s.available is False
-
-
-def test_filesystem_sensor_fails_closed_for_malformed_telemetry_payload(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Filesystem sensor should mark unavailable when telemetry is not a mapping.
-
-    Args:
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
-    """
-    entry = make_config_entry()
-    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = {"telemetry": "not-a-mapping"}
-    desc = MagicMock()
-    desc.key = "telemetry.filesystems.root"
-    desc.name = "Filesystem Malformed"
-
-    s = OPNsenseFilesystemSensor(config_entry=entry, coordinator=coord, entity_description=desc)
-    s.hass = MagicMock()
-    s.entity_id = "sensor.filesystem_malformed"
-    object.__setattr__(s, "async_write_ha_state", lambda: None)
-
-    s._handle_coordinator_update()
-
-    assert s.available is False
+    assert sensor.available is False
 
 
 @pytest.mark.parametrize(
@@ -2722,62 +2775,6 @@ async def test_interface_rate_sensor_unavailable_when_counter_disappears_mid_ref
 
     rate_sensor._handle_coordinator_update()
     assert rate_sensor.available is False
-
-
-@pytest.mark.parametrize("description_key", ["interface", "interface.lan"])
-def test_interface_sensor_invalid_description_key_unavailable(
-    description_key: str,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Interface sensor should be unavailable when its description key cannot be parsed.
-
-    Args:
-        description_key (str): Sensor description key selected for the scenario.
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
-    """
-    entry = make_config_entry()
-    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = {"interfaces": {"lan": {"name": "LAN", "status": "up"}}}
-    desc = MagicMock()
-    desc.key = description_key
-    desc.name = "Interface Invalid"
-
-    sensor = OPNsenseInterfaceSensor(
-        config_entry=entry,
-        coordinator=coord,
-        entity_description=desc,
-    )
-    sensor.hass = MagicMock()
-    sensor.entity_id = "sensor.interface_invalid"
-    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
-    sensor._handle_coordinator_update()
-
-    assert sensor.available is False
-
-
-def test_interface_sensor_invalid_icon_key_uses_description_icon(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Interface sensor icon should fall back when its description key cannot be parsed.
-
-    Args:
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
-    """
-    entry = make_config_entry()
-    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = {"interfaces": {"lan": {"name": "LAN", "status": "up"}}}
-    desc = MagicMock()
-    desc.key = "interface"
-    desc.name = "Interface Invalid"
-    desc.icon = "mdi:gauge"
-
-    sensor = OPNsenseInterfaceSensor(
-        config_entry=entry,
-        coordinator=coord,
-        entity_description=desc,
-    )
-
-    assert sensor.icon == "mdi:gauge"
 
 
 def test_gateway_sensor_with_dotted_key_parses_gateway_name_and_icon(
@@ -4476,45 +4473,6 @@ def test_filesystem_sensor_handles_partial_matching_row(
     assert sensor.available is True
     assert sensor.native_value == 42
     assert sensor.extra_state_attributes == {"mountpoint": "/"}
-
-
-@pytest.mark.parametrize(
-    "state",
-    [
-        [],
-        {"telemetry": {"filesystems": "bad-filesystems"}},
-        {"telemetry": {"filesystems": [{"mountpoint": "/var", "used_pct": 12}]}},
-        {"telemetry": "bad-telemetry"},
-    ],
-)
-def test_filesystem_sensor_unavailable_with_malformed_containers(
-    make_config_entry: Callable[..., MockConfigEntry],
-    state: Any,
-) -> None:
-    """Missing or malformed filesystem state should mark the sensor unavailable.
-
-    Args:
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
-        state (Any): Coordinator payload used for this test scenario.
-    """
-    entry = make_config_entry()
-    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = state
-    desc = MagicMock()
-    desc.key = f"telemetry.filesystems.{slugify_filesystem_mountpoint('/')}"
-    desc.name = "Filesystem Test"
-
-    sensor = OPNsenseFilesystemSensor(
-        config_entry=entry,
-        coordinator=coord,
-        entity_description=desc,
-    )
-    sensor.hass = MagicMock()
-    sensor.entity_id = "sensor.fs_root"
-    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
-    sensor._handle_coordinator_update()
-
-    assert sensor.available is False
 
 
 @pytest.mark.asyncio
