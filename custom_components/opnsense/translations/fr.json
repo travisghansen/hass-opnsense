@@ -1,0 +1,605 @@
+{
+  "title": "OPNsense",
+  "config": {
+    "abort": {
+      "already_configured": "L'appareil est déjà configuré",
+      "carp_device_url_conflict": "Une entrée CARP et une entrée de périphérique ne peuvent pas utiliser la même URL. ",
+      "reconfigure_successful": "Intégration OPNsense reconfigurée"
+    },
+    "error": {
+      "cannot_connect": "Échec de la connexion",
+      "invalid_auth": "Authentification invalide",
+      "unknown": "Erreur inattendue",
+      "invalid_url_format": "Format d'URL invalide",
+      "privilege_missing": "L'utilisateur OPNsense ne dispose pas de privilèges suffisants. ",
+      "connect_timeout": "Délai de connexion",
+      "cannot_connect_ssl": "Erreur de vérification du certificat SSL. ",
+      "url_redirect": "URL incorrecte (redirection)",
+      "missing_device_unique_id": "Impossible d'obtenir les adresses MAC d'OPNsense pour les utiliser comme ID unique de l'appareil",
+      "below_min_firmware": "Le micrologiciel OPNsense de {firmware} est inférieur à la version minimale prise en charge de {min_firmware}",
+      "carp_not_configured": "Aucune interface CARP VIP n'est configurée sur l'hôte OPNsense sélectionné",
+      "carp_responder_unavailable": "Impossible de déterminer le répondeur CARP actif à partir de l'hôte OPNsense sélectionné",
+      "unknown_firmware": "Impossible d'obtenir la version du micrologiciel OPNsense"
+    },
+    "step": {
+      "user": {
+        "title": "Ajouter une instance hass-opnsense",
+        "menu_options": {
+          "device": "Entrée du périphérique OPNsense",
+          "carp": "Entrée VIP CARP"
+        }
+      },
+      "device": {
+        "data": {
+          "url": "URL",
+          "username": "Clé API",
+          "password": "Secret API",
+          "name": "Nom du pare-feu",
+          "verify_ssl": "Vérifier le certificat SSL",
+          "granular_sync_options": "Activer les options de synchronisation granulaire"
+        },
+        "title": "Connectez-vous au pare-feu/routeur OPNsense",
+        "data_description": {
+          "url": "Utilisez l’URL réelle de l’appareil OPNsense. "
+        }
+      },
+      "carp": {
+        "description": "Les entrées CARP VIP sont en lecture seule. ",
+        "data": {
+          "url": "URL",
+          "username": "Clé API",
+          "password": "Secret API",
+          "name": "Nom d'affichage VIP CARP",
+          "verify_ssl": "Vérifier le certificat SSL"
+        },
+        "title": "Connectez-vous à l'entrée VIP OPNsense CARP",
+        "data_description": {
+          "url": "Utilisez l'URL virtuelle CARP ; "
+        }
+      },
+      "granular_sync": {
+        "data": {
+          "sync_telemetry": "Données télémétriques de base",
+          "sync_interfaces": "Informations sur les interfaces",
+          "sync_live_traffic": "Trafic de l'interface en direct",
+          "sync_dhcp_leases": "Baux DHCP",
+          "sync_gateways": "Informations sur la passerelle",
+          "sync_firmware_updates": "Mises à jour du micrologiciel",
+          "sync_vpn": "Informations VPN et commutateurs",
+          "sync_carp": "Informations CARPE",
+          "sync_services": "Commutateurs de service",
+          "sync_notices": "Informations sur les avis",
+          "sync_filters_and_nat": "Commutateurs de règles de pare-feu et NAT",
+          "sync_unbound": "Commutateurs de liste de blocage non liés",
+          "sync_certificates": "Informations sur le certificat de sécurité",
+          "sync_vnstat": "Utilisation de la bande passante vnStat",
+          "sync_speedtest": "Résultats des tests de vitesse",
+          "sync_smart": "Informations sur le disque SMART",
+          "sync_nut": "Statut NUT-UPS"
+        },
+        "title": "Choisissez les éléments à synchroniser"
+      },
+      "reconfigure": {
+        "data": {
+          "name": "Nom d'affichage",
+          "url": "URL",
+          "username": "Clé API",
+          "password": "Secret API",
+          "verify_ssl": "Vérifier le certificat SSL"
+        },
+        "title": "Mettre à jour la connexion au pare-feu/routeur OPNsense"
+      }
+    }
+  },
+  "options": {
+    "error": {
+      "cannot_connect": "Échec de la connexion",
+      "unknown": "Erreur inattendue"
+    },
+    "step": {
+      "init": {
+        "data": {
+          "scan_interval": "Intervalle de numérisation",
+          "device_tracking_mode": "Mode de suivi des appareils",
+          "device_tracker_scan_interval": "Intervalle d'analyse du suivi des appareils",
+          "device_tracker_consider_home": "Dispositif de suivi des appareils Considérez la maison",
+          "granular_sync_options": "Activer les options de synchronisation granulaire"
+        },
+        "description": "Cet écran expose {options_scope}.",
+        "data_description": {
+          "device_tracking_mode": "Pour « Suivre uniquement les appareils sélectionnés », une étape suivante vous permet de sélectionner les appareils parmi les détections ARP récentes et d'ajouter manuellement des adresses MAC.",
+          "scan_interval": "L'intervalle d'analyse contrôle la fréquence à laquelle cette entrée interroge sa source."
+        }
+      },
+      "granular_sync": {
+        "data": {
+          "sync_telemetry": "Données télémétriques de base",
+          "sync_vnstat": "Utilisation de la bande passante vnStat",
+          "sync_speedtest": "Résultats des tests de vitesse",
+          "sync_live_traffic": "Trafic de l'interface en direct",
+          "sync_smart": "Informations sur le disque SMART",
+          "sync_nut": "Statut NUT-UPS",
+          "sync_vpn": "Informations VPN et commutateurs",
+          "sync_firmware_updates": "Mises à jour du micrologiciel",
+          "sync_carp": "Informations CARPE",
+          "sync_dhcp_leases": "Baux DHCP",
+          "sync_gateways": "Informations sur la passerelle",
+          "sync_services": "Commutateurs de service",
+          "sync_notices": "Informations sur les avis",
+          "sync_filters_and_nat": "Commutateurs de règles de pare-feu et NAT",
+          "sync_unbound": "Commutateurs de liste de blocage non liés",
+          "sync_interfaces": "Informations sur les interfaces",
+          "sync_certificates": "Informations sur le certificat de sécurité"
+        },
+        "title": "Choisissez les éléments à synchroniser"
+      },
+      "device_tracker": {
+        "description": "Choisissez les appareils à suivre. ",
+        "data": {
+          "devices": "Appareils à suivre",
+          "manual_devices": "Adresses MAC supplémentaires non détectées actuellement"
+        },
+        "data_description": {
+          "devices": "Seuls les appareils récemment détectés apparaissent ici. ",
+          "manual_devices": "Entrez les adresses MAC séparées par des virgules ou des nouvelles lignes. "
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "carp_active_responder": {
+        "name": "Répondeur actif"
+      },
+      "carp_status_summary": {
+        "name": "Statut VIP CARPE"
+      },
+      "carp_vip": {
+        "name": "CARP VIP {sous-réseau} (VHID {vhid})"
+      }
+    }
+  },
+  "issues": {
+    "below_min_firmware": {
+      "title": "Micrologiciel OPNsense inférieur à la version minimale",
+      "description": "hass-opnsense {version} nécessite le micrologiciel OPNsense {min_firmware} ou version ultérieure. "
+    },
+    "below_ltd_firmware": {
+      "title": "Micrologiciel OPNsense inférieur à la version recommandée",
+      "description": "Certaines fonctions hass-opnsense {version} nécessitent le micrologiciel OPNsense {ltd_firmware} ou version ultérieure. "
+    },
+    "device_id_mismatched": {
+      "title": "Matériel de remplacement détecté",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Rapprocher l'inventaire du matériel de remplacement",
+            "description": "Cette réparation rapprochera {entry_title} avec l'ID d'appareil de remplacement {new_device_id}. "
+          }
+        },
+        "abort": {
+          "entry_not_found": "L’entrée du périphérique OPNsense n’existe plus.",
+          "entry_changed": "L’entrée du périphérique OPNsense a été modifiée pendant l’exécution de la réparation. ",
+          "cannot_connect": "Le matériel de remplacement n'a pas pu être confirmé. ",
+          "already_configured": "Une autre entrée de périphérique OPNsense utilise déjà l'ID de périphérique de remplacement. ",
+          "cannot_unload": "L'entrée du périphérique OPNsense n'a pas pu être déchargée en toute sécurité. ",
+          "repair_failed": "La réparation du matériel de remplacement n'est pas terminée. "
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "generate_vouchers_failed": {
+      "message": "La génération des bons a échoué. "
+    },
+    "get_vnstat_metrics_failed": {
+      "message": "Échec de l’obtention des métriques vnStat. "
+    },
+    "kill_states_failed": {
+      "message": "Échec de l'élimination des états : {ip_addr}"
+    },
+    "no_target_clients": {
+      "message": "Aucun client OPNsense ne correspond à la cible sélectionnée."
+    },
+    "reload_interface_failed": {
+      "message": "Échec du rechargement de l'interface : {interface}"
+    },
+    "restart_service_failed": {
+      "message": "Échec du redémarrage du service : {service}"
+    },
+    "run_speedtest_failed": {
+      "message": "L'exécution du test de vitesse a échoué. "
+    },
+    "service_identifier_required": {
+      "message": "Doit utiliser service_id ou service_name."
+    },
+    "start_service_failed": {
+      "message": "Échec du démarrage du service : {service}"
+    },
+    "stop_service_failed": {
+      "message": "Échec de l'arrêt du service : {service}"
+    },
+    "toggle_alias_failed": {
+      "message": "Échec du basculement de l'alias. "
+    },
+    "voucher_server_error": {
+      "message": "Erreur lors de l'obtention des bons de {client}. "
+    }
+  },
+  "selector": {
+    "toggle_on_off": {
+      "options": {
+        "toggle": "Basculer",
+        "on": "Sur",
+        "off": "Désactivé"
+      }
+    },
+    "expirytime": {
+      "options": {
+        "0": "jamais",
+        "21600": "6 heures",
+        "43200": "12 heures",
+        "86400": "1 jour",
+        "172800": "2 jours",
+        "259200": "3 jours",
+        "345600": "4 jours",
+        "432000": "5 jours",
+        "518400": "6 jours",
+        "604800": "1 semaine",
+        "1209600": "2 semaines",
+        "1814400": "3 semaines",
+        "2419200": "1 mois",
+        "4838400": "2 mois",
+        "7257600": "3 mois"
+      }
+    },
+    "validity": {
+      "options": {
+        "14400": "4 heures",
+        "28800": "8 heures",
+        "86400": "1 jour",
+        "172800": "2 jours",
+        "259200": "3 jours",
+        "345600": "4 jours",
+        "432000": "5 jours",
+        "518400": "6 jours",
+        "604800": "1 semaine",
+        "1209600": "2 semaines"
+      }
+    },
+    "vnstat_metric_period": {
+      "options": {
+        "hourly": "Horaire",
+        "daily": "Tous les jours",
+        "monthly": "Mensuel",
+        "yearly": "Annuel"
+      }
+    },
+    "device_tracking_mode": {
+      "options": {
+        "disabled": "Désactivé",
+        "all_detected": "Suivre tous les appareils détectés (les entités sont désactivées par défaut)",
+        "selected_only": "Suivre uniquement les appareils sélectionnés (choisir les appareils dans une étape suivante)"
+      }
+    }
+  },
+  "services": {
+    "close_notice": {
+      "name": "Fermer l'avis",
+      "description": "Ferme une ou toutes les notifications sur OPNsense",
+      "fields": {
+        "id": {
+          "name": "ID de l'avis",
+          "description": "L’ID de la notification à effacer. "
+        },
+        "device_id": {
+          "name": "Appareil OPNsense",
+          "description": "Sélectionnez le routeur OPNsense sur lequel appeler la commande. "
+        },
+        "entity_id": {
+          "name": "Entité OPNsense",
+          "description": "Choisissez n’importe quel capteur du routeur OPNsense sur lequel vous souhaitez appeler la commande. "
+        }
+      },
+      "sections": {
+        "multiple_opnsense": {
+          "name": "Nécessaire uniquement s'il existe plusieurs routeurs OPNsense"
+        }
+      }
+    },
+    "start_service": {
+      "name": "Démarrer le service",
+      "description": "Démarre un service OPNsense",
+      "fields": {
+        "service_id": {
+          "name": "Numéro de service",
+          "description": "L'identifiant du service. "
+        },
+        "service_name": {
+          "name": "Nom du service",
+          "description": "Le nom du service. "
+        },
+        "device_id": {
+          "name": "Appareil OPNsense",
+          "description": "Sélectionnez le routeur OPNsense sur lequel appeler la commande. "
+        },
+        "entity_id": {
+          "name": "Entité OPNsense",
+          "description": "Choisissez n’importe quel capteur du routeur OPNsense sur lequel vous souhaitez appeler la commande. "
+        }
+      },
+      "sections": {
+        "multiple_opnsense": {
+          "name": "Nécessaire uniquement s'il existe plusieurs routeurs OPNsense"
+        }
+      }
+    },
+    "stop_service": {
+      "name": "Arrêter le service",
+      "description": "Arrête un service OPNsense",
+      "fields": {
+        "service_id": {
+          "name": "Numéro de service",
+          "description": "L'identifiant du service. "
+        },
+        "service_name": {
+          "name": "Nom du service",
+          "description": "Le nom du service. "
+        },
+        "device_id": {
+          "name": "Appareil OPNsense",
+          "description": "Sélectionnez le routeur OPNsense sur lequel appeler la commande. "
+        },
+        "entity_id": {
+          "name": "Entité OPNsense",
+          "description": "Choisissez n’importe quel capteur du routeur OPNsense sur lequel vous souhaitez appeler la commande. "
+        }
+      },
+      "sections": {
+        "multiple_opnsense": {
+          "name": "Nécessaire uniquement s'il existe plusieurs routeurs OPNsense"
+        }
+      }
+    },
+    "restart_service": {
+      "name": "Redémarrer le service",
+      "description": "Redémarre un service OPNsense",
+      "fields": {
+        "service_id": {
+          "name": "Numéro de service",
+          "description": "L'identifiant du service. "
+        },
+        "service_name": {
+          "name": "Nom du service",
+          "description": "Le nom du service. "
+        },
+        "only_if_running": {
+          "name": "Seulement si vous courez",
+          "description": "Redémarrez le service uniquement s'il est déjà en cours d'exécution."
+        },
+        "device_id": {
+          "name": "Appareil OPNsense",
+          "description": "Sélectionnez le routeur OPNsense sur lequel appeler la commande. "
+        },
+        "entity_id": {
+          "name": "Entité OPNsense",
+          "description": "Choisissez n’importe quel capteur du routeur OPNsense sur lequel vous souhaitez appeler la commande. "
+        }
+      },
+      "sections": {
+        "multiple_opnsense": {
+          "name": "Nécessaire uniquement s'il existe plusieurs routeurs OPNsense"
+        }
+      }
+    },
+    "system_halt": {
+      "name": "Système d'arrêt",
+      "description": "Arrête le routeur OPNsense",
+      "fields": {
+        "device_id": {
+          "name": "Appareil OPNsense",
+          "description": "Nécessaire uniquement s’il existe plusieurs routeurs OPNsense. "
+        },
+        "entity_id": {
+          "name": "Entité OPNsense",
+          "description": "Nécessaire uniquement s’il existe plusieurs routeurs OPNsense. "
+        }
+      }
+    },
+    "system_reboot": {
+      "name": "Redémarrer le système",
+      "description": "Redémarre le routeur OPNsense",
+      "fields": {
+        "device_id": {
+          "name": "Appareil OPNsense",
+          "description": "Nécessaire uniquement s’il existe plusieurs routeurs OPNsense. "
+        },
+        "entity_id": {
+          "name": "Entité OPNsense",
+          "description": "Nécessaire uniquement s’il existe plusieurs routeurs OPNsense. "
+        }
+      }
+    },
+    "send_wol": {
+      "name": "Envoyer WOL",
+      "description": "Envoie un paquet magique de réveil sur réseau local",
+      "fields": {
+        "interface": {
+          "name": "Nom de l'interface",
+          "description": "Le nom de l'interface. "
+        },
+        "mac": {
+          "name": "Adresse MAC",
+          "description": "L'adresse MAC cible."
+        },
+        "device_id": {
+          "name": "Appareil OPNsense",
+          "description": "Sélectionnez le routeur OPNsense sur lequel appeler la commande. "
+        },
+        "entity_id": {
+          "name": "Entité OPNsense",
+          "description": "Choisissez n’importe quel capteur du routeur OPNsense sur lequel vous souhaitez appeler la commande. "
+        }
+      },
+      "sections": {
+        "multiple_opnsense": {
+          "name": "Nécessaire uniquement s'il existe plusieurs routeurs OPNsense"
+        }
+      }
+    },
+    "reload_interface": {
+      "name": "Recharger une interface",
+      "description": "Recharger ou redémarrer une interface OPNsense",
+      "fields": {
+        "interface": {
+          "name": "Nom de l'interface",
+          "description": "Le nom de l'interface. "
+        },
+        "device_id": {
+          "name": "Appareil OPNsense",
+          "description": "Sélectionnez le routeur OPNsense sur lequel appeler la commande. "
+        },
+        "entity_id": {
+          "name": "Entité OPNsense",
+          "description": "Choisissez n’importe quel capteur du routeur OPNsense sur lequel vous souhaitez appeler la commande. "
+        }
+      },
+      "sections": {
+        "multiple_opnsense": {
+          "name": "Nécessaire uniquement s'il existe plusieurs routeurs OPNsense"
+        }
+      }
+    },
+    "generate_vouchers": {
+      "name": "Générer des bons de portail captif",
+      "description": "Bons à utiliser avec Captive Portal (comme le WiFi invité)",
+      "fields": {
+        "validity": {
+          "name": "Validité",
+          "description": "Si vous saisissez manuellement une durée, saisissez-la en secondes"
+        },
+        "expirytime": {
+          "name": "Expire dans",
+          "description": "Si vous saisissez manuellement une durée, saisissez-la en secondes"
+        },
+        "count": {
+          "name": "Nombre de bons",
+          "description": "Le nombre de bons à générer"
+        },
+        "vouchergroup": {
+          "name": "Nom du groupe",
+          "description": "Le nom du groupe dans opnsense pour créer les bons sous"
+        },
+        "voucher_server": {
+          "name": "Serveur de bons de portail captif",
+          "description": "FACULTATIF : nécessaire uniquement s'il existe plusieurs serveurs de bons de portail captifs"
+        },
+        "device_id": {
+          "name": "Appareil OPNsense",
+          "description": "Sélectionnez le routeur OPNsense sur lequel appeler la commande. "
+        },
+        "entity_id": {
+          "name": "Entité OPNsense",
+          "description": "Choisissez n’importe quel capteur du routeur OPNsense sur lequel vous souhaitez appeler la commande. "
+        }
+      },
+      "sections": {
+        "multiple_opnsense": {
+          "name": "Nécessaire uniquement s'il existe plusieurs routeurs OPNsense"
+        }
+      }
+    },
+    "kill_states": {
+      "name": "Tuer les États",
+      "description": "Tuez tous les états pour une adresse IP",
+      "fields": {
+        "ip_addr": {
+          "name": "Adresse IP",
+          "description": "L'adresse IP pour laquelle supprimer tous les états. "
+        },
+        "device_id": {
+          "name": "Appareil OPNsense",
+          "description": "Sélectionnez le routeur OPNsense sur lequel appeler la commande. "
+        },
+        "entity_id": {
+          "name": "Entité OPNsense",
+          "description": "Choisissez n’importe quel capteur du routeur OPNsense sur lequel vous souhaitez appeler la commande. "
+        }
+      },
+      "sections": {
+        "multiple_opnsense": {
+          "name": "Nécessaire uniquement s'il existe plusieurs routeurs OPNsense"
+        }
+      }
+    },
+    "run_speedtest": {
+      "name": "Exécuter un test de vitesse",
+      "description": "Exécutez un test de vitesse OPNsense et renvoyez les résultats sous forme de données de réponse à l'action",
+      "fields": {
+        "device_id": {
+          "name": "Appareil OPNsense",
+          "description": "Sélectionnez le routeur OPNsense sur lequel appeler la commande. "
+        },
+        "entity_id": {
+          "name": "Entité OPNsense",
+          "description": "Choisissez n’importe quel capteur du routeur OPNsense sur lequel vous souhaitez appeler la commande. "
+        }
+      },
+      "sections": {
+        "multiple_opnsense": {
+          "name": "Nécessaire uniquement s'il existe plusieurs routeurs OPNsense"
+        }
+      }
+    },
+    "get_vnstat_metrics": {
+      "name": "Obtenir les métriques vnStat",
+      "description": "Obtenez les métriques vnStat analysées pour une période sélectionnée en tant que données de réponse à l'action",
+      "fields": {
+        "period": {
+          "name": "Période",
+          "description": "La période vnStat à interroger"
+        },
+        "device_id": {
+          "name": "Appareil OPNsense",
+          "description": "Sélectionnez le routeur OPNsense sur lequel appeler la commande. "
+        },
+        "entity_id": {
+          "name": "Entité OPNsense",
+          "description": "Choisissez n’importe quel capteur du routeur OPNsense sur lequel vous souhaitez appeler la commande. "
+        }
+      },
+      "sections": {
+        "multiple_opnsense": {
+          "name": "Nécessaire uniquement s'il existe plusieurs routeurs OPNsense"
+        }
+      }
+    },
+    "toggle_alias": {
+      "name": "Basculer l'alias",
+      "description": "Activer, activer ou désactiver un alias",
+      "fields": {
+        "alias": {
+          "name": "Nom d'alias",
+          "description": "Le nom de l'alias dans OPNsense"
+        },
+        "toggle_on_off": {
+          "name": "Action d'alias",
+          "description": "Quelle action entreprendre sur l'alias"
+        },
+        "device_id": {
+          "name": "Appareil OPNsense",
+          "description": "Sélectionnez le routeur OPNsense sur lequel appeler la commande. "
+        },
+        "entity_id": {
+          "name": "Entité OPNsense",
+          "description": "Choisissez n’importe quel capteur du routeur OPNsense sur lequel vous souhaitez appeler la commande. "
+        }
+      },
+      "sections": {
+        "multiple_opnsense": {
+          "name": "Nécessaire uniquement s'il existe plusieurs routeurs OPNsense"
+        }
+      }
+    }
+  }
+}
