@@ -1,6 +1,8 @@
 """Tests for the Dependabot auto-merge workflow contracts."""
 
 from pathlib import Path
+import re
+import shlex
 from typing import Any
 
 import yaml
@@ -59,17 +61,21 @@ def test_verify_job_guards_source_and_changed_file_allowlist() -> None:
         "Verify supported dependency update"
     ]["run"]
     assert isinstance(verify_run, str)
-    for token in (
-        "changed_files=",
-        "gh api --paginate",
-        '[[ -n "${changed_files}" ]] || {',
-        "uv)",
-        "github_actions)",
-        "*)",
-        "exit 1",
-        "unsupported ecosystem",
-    ):
-        assert token in verify_run
+    assert "changed_files=" in verify_run
+    assert "gh api --paginate" in verify_run
+    assert "uv)" in verify_run
+    assert "github_actions)" in verify_run
+    assert re.search(
+        r'\[\[\s*-n\s+"\$\{changed_files\}"\s*\]\]\s*\|\|\s*\{.*?'
+        r"\bexit\s+1\b.*?\}",
+        verify_run,
+        re.DOTALL,
+    )
+    assert re.search(
+        r"\*\)\s*.*?unsupported ecosystem.*?\bexit\s+1\b",
+        verify_run,
+        re.DOTALL,
+    )
     assert '[[ "${changed_files}" == "uv.lock" ]]' in verify_run
     assert r"grep -Ev '^\.github/workflows/[^/]+\.ya?ml$'" in verify_run
     assert 'case "${PACKAGE_ECOSYSTEM}" in' in verify_run
@@ -109,12 +115,11 @@ def test_merge_jobs_keep_write_permissions_and_head_commit_match() -> None:
 
     enable_run = _named_steps(document, "enable-auto-merge")["Enable auto-merge"]["run"]
     assert isinstance(enable_run, str)
-    for token in (
-        "gh pr merge",
-        "--auto",
-        "--squash",
-        "--match-head-commit",
-        '"${HEAD_SHA}"',
-        '"${PR_URL}"',
-    ):
-        assert token in enable_run
+    command = shlex.split(enable_run)
+    assert command[:3] == ["gh", "pr", "merge"]
+    assert {"--auto", "--squash"}.issubset(command)
+    assert "--match-head-commit" in command
+    match_head_index = command.index("--match-head-commit")
+    assert match_head_index + 1 < len(command)
+    assert command[match_head_index + 1] == "${HEAD_SHA}"
+    assert "${PR_URL}" in command

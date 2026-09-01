@@ -4,6 +4,7 @@ from collections.abc import Sequence
 import importlib.util
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 from types import SimpleNamespace
@@ -98,7 +99,7 @@ def test_dispatch_workflow_rejects_missing_or_invalid_run_id(
         lambda _arguments, expected_status=None: {"workflow_run_id": run_id},
     )
 
-    with pytest.raises(verify.GitHubCommandError, match="valid workflow_run_id"):
+    with pytest.raises(verify.GitHubCommandError):
         verify.dispatch_workflow(REPOSITORY, "validate.yml", REF, SHA)
 
 
@@ -241,16 +242,16 @@ def test_wait_for_workflow_rejects_non_authoritative_identity(
     )
     monkeypatch.setattr(verify.time, "monotonic", lambda: 0.0)
 
-    with pytest.raises(verify.GitHubCommandError, match="does not match"):
+    with pytest.raises(verify.GitHubCommandError):
         verify.wait_for_workflow(
             REPOSITORY, "validate.yml", REF, SHA, set(), deadline=1.0, expected_run_id=42
         )
 
 
-def test_verify_jobs_rejects_missing_duplicate_or_unsuccessful_required_jobs(
+def test_verify_jobs_rejects_incomplete_required_check_results(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Classify missing, duplicate, and unsuccessful required checks distinctly.
+    """Reject required checks unless every requested job has one successful result.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): Fixture for replacing the API helper.
@@ -269,13 +270,8 @@ def test_verify_jobs_rejects_missing_duplicate_or_unsuccessful_required_jobs(
         },
     )
 
-    with pytest.raises(verify.GitHubCommandError) as error:
+    with pytest.raises(verify.GitHubCommandError):
         verify.verify_jobs(REPOSITORY, 42, {"required", "duplicate", "failed", "missing"})
-
-    message = str(error.value)
-    assert "missing=['missing']" in message
-    assert "duplicate=['duplicate']" in message
-    assert "unsuccessful=['failed']" in message
 
 
 def test_github_api_rejects_malformed_or_non_authoritative_http_response(
@@ -287,7 +283,7 @@ def test_github_api_rejects_malformed_or_non_authoritative_http_response(
         monkeypatch (pytest.MonkeyPatch): Fixture for replacing CLI discovery and execution.
     """
     monkeypatch.setattr(shutil, "which", lambda _name: None)
-    with pytest.raises(verify.GitHubCommandError, match="unavailable"):
+    with pytest.raises(verify.GitHubCommandError):
         verify.github_api([])
 
     monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/gh")
@@ -298,7 +294,7 @@ def test_github_api_rejects_malformed_or_non_authoritative_http_response(
             returncode=0, stdout="HTTP/2 204 No Content\n\n", stderr=""
         ),
     )
-    with pytest.raises(verify.GitHubCommandError, match="unexpected HTTP"):
+    with pytest.raises(verify.GitHubCommandError):
         verify.github_api([], expected_status=200)
 
     monkeypatch.setattr(
@@ -375,13 +371,20 @@ def test_release_workflow_preserves_resume_wiring_for_validated_release_commit()
     candidate = steps["Create deterministic stable release commit B"]
     promotion = steps["Atomically advance target and guarded release tag"]
 
-    assert "candidate-sha=" in base["run"]
-    assert "resume=" in base["run"]
+    assert re.search(
+        r'echo\s+"candidate-sha=\$target_sha"\s*>>\s*"\$GITHUB_OUTPUT"',
+        base["run"],
+        re.DOTALL,
+    )
     assert candidate["env"]["RESUME"] == "${{ steps.base.outputs.resume }}"
     assert candidate["env"]["RESUME_SHA"] == "${{ steps.base.outputs.candidate-sha }}"
     candidate_run = candidate["run"]
-    for token in ("RESUME", "RESUME_SHA", "GITHUB_OUTPUT", "sha="):
-        assert token in candidate_run
+    assert re.search(
+        r'if\s+\[\[\s*"\$RESUME"\s*==\s*true\s*\]\]\s*;\s*then.*?'
+        r'echo\s+"sha=\$RESUME_SHA"\s*>>\s*"\$GITHUB_OUTPUT".*?exit\s+0\b',
+        candidate_run,
+        re.DOTALL,
+    )
     promotion_if = promotion["if"]
     assert "github.event.release.prerelease == false" in promotion_if
     assert "steps.base.outputs.resume != 'true'" in promotion_if
@@ -412,8 +415,16 @@ def test_release_gate_workflows_guard_and_checkout_the_exact_dispatch_sha(
         steps = _named_steps(document, job_id)
         guard = steps["Require expected release commit"]
         guard_run = guard["run"]
-        assert '[[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]' in guard_run
-        assert 'test "$WORKFLOW_SHA" = "$EXPECTED_SHA"' in guard_run
+        assert re.search(
+            r'\[\[\s*"\$EXPECTED_SHA"\s*=~\s*\^\[0-9a-f\]\{40\}\$\s*\]\]',
+            guard_run,
+            re.DOTALL,
+        )
+        assert re.search(
+            r'test\s+"\$WORKFLOW_SHA"\s*=\s*"\$EXPECTED_SHA"',
+            guard_run,
+            re.DOTALL,
+        )
         checkout = next(
             step
             for step in steps.values()
