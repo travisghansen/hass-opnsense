@@ -382,6 +382,24 @@ def test_release_workflow_has_guarded_promotion_and_firmware_archive_contract() 
     )
 
 
+def test_release_workflow_uses_scoped_github_cli_credentials_for_git_pushes() -> None:
+    """Authenticate release pushes without persisting checkout credentials."""
+    document = _load_workflow("release.yml")
+    steps = _named_steps(document, "release")
+    push_step_names = (
+        "Publish B to an isolated validation branch",
+        "Atomically advance target and guarded release tag",
+        "Delete validated temporary branch",
+    )
+
+    for step_name in push_step_names:
+        step = steps[step_name]
+        assert step["env"]["GH_TOKEN"] == "${{ github.token }}"
+        assert "extraheader" not in step["run"].lower()
+
+    assert "gh auth setup-git" in steps["Publish B to an isolated validation branch"]["run"]
+
+
 def test_release_workflow_preserves_resume_wiring_for_validated_release_commit() -> None:
     """Preserve resume wiring for a previously validated stable release commit."""
     document = _load_workflow("release.yml")
