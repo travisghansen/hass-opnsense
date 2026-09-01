@@ -66,7 +66,7 @@
           "sync_gateways": "Informations sur la passerelle",
           "sync_firmware_updates": "Mises à jour du micrologiciel",
           "sync_vpn": "Informations VPN et commutateurs",
-          "sync_carp": "Informations CARPE",
+          "sync_carp": "Informations CARP",
           "sync_services": "Commutateurs de service",
           "sync_notices": "Informations sur les avis",
           "sync_filters_and_nat": "Commutateurs de règles de pare-feu et NAT",
@@ -121,7 +121,7 @@
           "sync_nut": "Statut NUT-UPS",
           "sync_vpn": "Informations VPN et commutateurs",
           "sync_firmware_updates": "Mises à jour du micrologiciel",
-          "sync_carp": "Informations CARPE",
+          "sync_carp": "Informations CARP",
           "sync_dhcp_leases": "Baux DHCP",
           "sync_gateways": "Informations sur la passerelle",
           "sync_services": "Commutateurs de service",
@@ -152,10 +152,10 @@
         "name": "Répondeur actif"
       },
       "carp_status_summary": {
-        "name": "Statut VIP CARPE"
+        "name": "Statut VIP CARP"
       },
       "carp_vip": {
-        "name": "CARP VIP {sous-réseau} (VHID {vhid})"
+        "name": "CARP VIP {subnet} (VHID {vhid})"
       }
     }
   },
