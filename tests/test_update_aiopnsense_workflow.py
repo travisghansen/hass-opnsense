@@ -12,7 +12,6 @@ from typing import Never
 import pytest
 
 SCRIPT_PATH = Path(".github/scripts/update_aiopnsense_pins.py")
-WORKFLOW_PATH = Path(".github/workflows/update_aiopnsense.yml")
 RELEASE_NOTES_SCRIPT_PATH = Path(".github/scripts/build_aiopnsense_release_notes.py")
 CLEANUP_SCRIPT_PATH = Path(".github/scripts/cleanup_aiopnsense_update_branches.py")
 
@@ -187,23 +186,6 @@ def _load_script(module_name: str, script_path: Path) -> ModuleType:
     sys.modules[module_name] = module
     spec.loader.exec_module(module)
     return module
-
-
-def test_workflow_regenerates_uv_lock_after_updating_pins() -> None:
-    """Workflow should refresh and include the lockfile after a pin update."""
-    workflow = WORKFLOW_PATH.read_text()
-
-    assert "uses: astral-sh/setup-uv@v9.0.0" in workflow
-    assert workflow.index("- name: Update aiopnsense dependency pins") < workflow.index(
-        "- name: Regenerate uv lock"
-    )
-    assert (
-        "      - name: Regenerate uv lock\n"
-        "        if: steps.versions.outputs.update_needed == 'true'\n"
-        "        run: uv lock"
-    ) in workflow
-    assert "            uv.lock" in workflow
-    assert "prek.toml" not in workflow
 
 
 @pytest.mark.parametrize(

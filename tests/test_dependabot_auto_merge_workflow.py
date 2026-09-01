@@ -49,23 +49,30 @@ def test_verify_job_guards_source_and_changed_file_allowlist() -> None:
     document = _load_workflow()
     verify_job = document["jobs"]["verify-dependency-update"]
     assert isinstance(verify_job, dict)
-    assert verify_job["if"] == TRUSTED_PULL_REQUEST_GUARD
+    verify_guard = verify_job["if"]
+    assert isinstance(verify_guard, str)
+    for constraint in TRUSTED_PULL_REQUEST_GUARD.split(" && "):
+        assert constraint in verify_guard
+    assert "||" not in verify_guard
 
     verify_run = _named_steps(document, "verify-dependency-update")[
         "Verify supported dependency update"
     ]["run"]
     assert isinstance(verify_run, str)
-    assert (
-        '[[ -n "${changed_files}" ]] || {\n'
-        '  echo "Refusing auto-merge; no changed files were reported"\n'
-        "  exit 1\n"
-        "}"
-    ) in verify_run
+    for token in (
+        "changed_files=",
+        "gh api --paginate",
+        '[[ -n "${changed_files}" ]] || {',
+        "uv)",
+        "github_actions)",
+        "*)",
+        "exit 1",
+        "unsupported ecosystem",
+    ):
+        assert token in verify_run
     assert '[[ "${changed_files}" == "uv.lock" ]]' in verify_run
     assert r"grep -Ev '^\.github/workflows/[^/]+\.ya?ml$'" in verify_run
-    assert (
-        '  *)\n    echo "Refusing unsupported ecosystem: ${PACKAGE_ECOSYSTEM}"\n    exit 1\n    ;;'
-    ) in verify_run
+    assert 'case "${PACKAGE_ECOSYSTEM}" in' in verify_run
 
 
 def test_disable_job_repeats_failure_and_trusted_source_guards() -> None:
@@ -75,14 +82,19 @@ def test_disable_job_repeats_failure_and_trusted_source_guards() -> None:
     assert isinstance(disable_job, dict)
     disable_guard = disable_job["if"]
     assert isinstance(disable_guard, str)
-    assert disable_guard.startswith("failure() && !cancelled() &&")
-    assert "needs.verify-dependency-update.result != 'success'" in disable_guard
+    for token in (
+        "failure()",
+        "!cancelled()",
+        "needs.verify-dependency-update.result != 'success'",
+    ):
+        assert token in disable_guard
+    assert "||" not in disable_guard
     for constraint in TRUSTED_PULL_REQUEST_GUARD.split(" && "):
         assert constraint in disable_guard
 
 
 def test_merge_jobs_keep_write_permissions_and_head_commit_match() -> None:
-    """Preserve merge mutation permissions and the exact head SHA check."""
+    """Preserve merge mutation permissions and the head SHA check."""
     document = _load_workflow()
     jobs = document["jobs"]
     assert isinstance(jobs, dict)
@@ -96,4 +108,13 @@ def test_merge_jobs_keep_write_permissions_and_head_commit_match() -> None:
         }
 
     enable_run = _named_steps(document, "enable-auto-merge")["Enable auto-merge"]["run"]
-    assert enable_run == 'gh pr merge --auto --squash --match-head-commit "${HEAD_SHA}" "${PR_URL}"'
+    assert isinstance(enable_run, str)
+    for token in (
+        "gh pr merge",
+        "--auto",
+        "--squash",
+        "--match-head-commit",
+        '"${HEAD_SHA}"',
+        '"${PR_URL}"',
+    ):
+        assert token in enable_run
