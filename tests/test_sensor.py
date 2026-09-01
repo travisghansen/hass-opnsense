@@ -694,28 +694,6 @@ def test_carp_sensor_unavailable_variants(
     assert s.available is False
 
 
-def test_carp_sensor_state_wrong_type(make_config_entry: Callable[..., MockConfigEntry]) -> None:
-    """CARP sensor should be unavailable when coordinator.data is not a mapping (e.g., list).
-
-    Args:
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
-    """
-    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = []
-    entry = make_config_entry()
-
-    desc = MagicMock()
-    desc.key = f"carp.interface.wan.{slugify('10.10.10.10')}"
-    desc.name = "CARP WrongType"
-
-    s = OPNsenseCarpInterfaceSensor(config_entry=entry, coordinator=coord, entity_description=desc)
-    s.hass = MagicMock()
-    s.entity_id = "sensor.carp_wrongtype"
-    object.__setattr__(s, "async_write_ha_state", lambda: None)
-    s._handle_coordinator_update()
-    assert s.available is False
-
-
 @pytest.mark.parametrize(
     ("desc_key", "cls"),
     [
