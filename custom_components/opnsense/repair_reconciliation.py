@@ -14,7 +14,7 @@ from homeassistant.helpers.entity import Entity
 from homeassistant.util import slugify
 
 from .const import DOMAIN
-from .helpers import detach_shared_router_parent
+from .helpers import async_get_device_by_identifier, detach_shared_router_parent
 
 REPAIR_MARKER_KEY: str = "device_id_repair"
 _REPAIR_MARKER_VERSION = 1
@@ -148,11 +148,15 @@ class RepairReconciliation:
                 )
             migrations.append((candidate, target_unique_id))
 
-        old_main = device_registry.async_get_device(
-            identifiers={(DOMAIN, self.marker.old_device_id)}
+        old_main = async_get_device_by_identifier(
+            device_registry,
+            (DOMAIN, self.marker.old_device_id),
+            self.config_entry.entry_id,
         )
-        new_main = device_registry.async_get_device(
-            identifiers={(DOMAIN, self.marker.new_device_id)}
+        new_main = async_get_device_by_identifier(
+            device_registry,
+            (DOMAIN, self.marker.new_device_id),
+            self.config_entry.entry_id,
         )
         if new_main is not None:
             if old_main is not None and new_main.id != old_main.id:
@@ -270,8 +274,10 @@ class RepairReconciliation:
             preserved_device_ids = {
                 entity.device_id for entity in surviving_entities if entity.device_id is not None
             }
-            main_device = device_registry.async_get_device(
-                identifiers={(DOMAIN, self.marker.new_device_id)}
+            main_device = async_get_device_by_identifier(
+                device_registry,
+                (DOMAIN, self.marker.new_device_id),
+                self.config_entry.entry_id,
             )
             if main_device is not None:
                 preserved_device_ids.add(main_device.id)

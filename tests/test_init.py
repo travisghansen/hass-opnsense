@@ -3539,6 +3539,9 @@ async def test_async_update_listener_reparents_tracker_link_to_remaining_opnsens
         return identifier_router_map.get(key)
 
     dr_reg.async_get_device = MagicMock(side_effect=get_device)
+    dr_reg.async_get_device_by_identifier.side_effect = lambda identifier, _config_entry_id: (
+        get_device(identifiers={identifier})
+    )
     monkeypatch.setattr(dr, "async_get", MagicMock(return_value=dr_reg))
     monkeypatch.setattr(
         dr,
