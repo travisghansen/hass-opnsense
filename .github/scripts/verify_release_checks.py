@@ -6,7 +6,6 @@ import argparse
 from collections import defaultdict
 from collections.abc import Sequence
 import json
-from pathlib import Path
 import shutil
 import subprocess
 import sys
@@ -36,7 +35,7 @@ def github_api(arguments: Sequence[str], expected_status: int | None = None) -> 
         raise GitHubCommandError("GitHub CLI executable is unavailable.")
     try:
         result = subprocess.run(  # noqa: S603 -- API arguments are constructed internally.
-            [str(Path(executable)), "api", *arguments],
+            [executable, "api", *arguments],
             check=False,
             capture_output=True,
             text=True,
