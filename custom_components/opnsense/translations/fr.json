@@ -166,7 +166,7 @@
     },
     "below_ltd_firmware": {
       "title": "Micrologiciel OPNsense inférieur à la version recommandée",
-      "description": "Certaines fonctions hass-opnsense {version} nécessitent le micrologiciel OPNsense {ltd_firmware} ou version ultérieure. "
+      "description": "Certaines fonctions hass-opnsense {version} nécessitent le micrologiciel OPNsense {ltd_firmware} ou version ultérieure. Avec le micrologiciel {firmware}, certaines fonctions peuvent ne pas fonctionner et des erreurs peuvent apparaître dans les journaux."
     },
     "device_id_mismatched": {
       "title": "Matériel de remplacement détecté",
@@ -174,7 +174,7 @@
         "step": {
           "confirm": {
             "title": "Rapprocher l'inventaire du matériel de remplacement",
-            "description": "Cette réparation rapprochera {entry_title} avec l'ID d'appareil de remplacement {new_device_id}. "
+            "description": "Cette réparation rapprochera {entry_title} avec l'ID d'appareil de remplacement {new_device_id}. L'ID de l'appareil précédent était {old_device_id}."
           }
         },
         "abort": {
@@ -220,10 +220,10 @@
       "message": "Échec de l'arrêt du service : {service}"
     },
     "toggle_alias_failed": {
-      "message": "Échec du basculement de l'alias. "
+      "message": "Échec du basculement de l'alias. Alias : {alias}, action : {action}"
     },
     "voucher_server_error": {
-      "message": "Erreur lors de l'obtention des bons de {client}. "
+      "message": "Erreur lors de l'obtention des bons de {client}. {error}"
     }
   },
   "selector": {
