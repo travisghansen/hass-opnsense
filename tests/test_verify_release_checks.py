@@ -348,6 +348,8 @@ def test_release_workflow_has_guarded_promotion_and_firmware_archive_contract() 
         == "github.event.release.prerelease"
     )
     dispatch = steps["Dispatch and verify immutable release gates"]["run"]
+    assert "validate.yml::HACS Validation" in dispatch
+    assert "validate.yml::Hassfest Validation" in dispatch
     assert "pytest_check.yml::pytest and coverage report" in dispatch
     assert "linters.yml::Run Linters" in dispatch
     promotion = steps["Atomically advance target and guarded release tag"]["run"]
