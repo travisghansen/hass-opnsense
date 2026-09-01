@@ -250,7 +250,7 @@ def test_wait_for_workflow_rejects_non_authoritative_identity(
 def test_verify_jobs_rejects_missing_duplicate_or_unsuccessful_required_jobs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Fail promotion when any exact required check is not uniquely successful.
+    """Classify missing, duplicate, and unsuccessful required checks distinctly.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): Fixture for replacing the API helper.
@@ -259,17 +259,22 @@ def test_verify_jobs_rejects_missing_duplicate_or_unsuccessful_required_jobs(
         verify,
         "github_api",
         lambda _arguments: {
-            "total_count": 3,
+            "total_count": 4,
             "jobs": [
                 {"name": "required", "conclusion": "success"},
                 {"name": "duplicate", "conclusion": "success"},
                 {"name": "duplicate", "conclusion": "success"},
+                {"name": "failed", "conclusion": "failure"},
             ],
         },
     )
 
-    with pytest.raises(verify.GitHubCommandError, match=r"missing=.*missing"):
-        verify.verify_jobs(REPOSITORY, 42, {"required", "duplicate", "missing"})
+    with pytest.raises(verify.GitHubCommandError) as error:
+        verify.verify_jobs(REPOSITORY, 42, {"required", "duplicate", "failed", "missing"})
+
+    assert str(error.value) == (
+        "Required checks missing=['missing'], duplicate=['duplicate'], unsuccessful=['failed']."
+    )
 
 
 def test_github_api_rejects_malformed_or_non_authoritative_http_response(
@@ -368,7 +373,9 @@ def test_release_workflow_resumes_an_existing_validated_release_commit() -> None
     promotion = steps["Atomically advance target and guarded release tag"]
 
     assert 'echo "candidate-sha=$target_sha" >> "$GITHUB_OUTPUT"' in base["run"]
+    assert "resume=true" in base["run"]
     assert candidate["env"]["RESUME_SHA"] == "${{ steps.base.outputs.candidate-sha }}"
+    assert 'if [[ "$RESUME" == true ]]; then' in candidate["run"]
     assert 'echo "sha=$RESUME_SHA" >> "$GITHUB_OUTPUT"' in candidate["run"]
     assert promotion["if"] == (
         "github.event.release.prerelease == false && steps.base.outputs.resume != 'true'"

@@ -130,8 +130,12 @@ def verify_jobs(repository: str, run_id: int, required_checks: set[str]) -> None
         if isinstance(job, dict) and isinstance(job.get("name"), str):
             outcomes[job["name"]].append(job.get("conclusion"))
     missing = sorted(required_checks - outcomes.keys())
-    duplicate = sorted(name for name in required_checks if len(outcomes.get(name, [])) != 1)
-    failed = sorted(name for name in required_checks if outcomes.get(name) != ["success"])
+    duplicate = sorted(name for name in required_checks if len(outcomes.get(name, [])) > 1)
+    failed = sorted(
+        name
+        for name in required_checks
+        if len(outcomes.get(name, [])) == 1 and outcomes[name] != ["success"]
+    )
     if missing or duplicate or failed:
         raise GitHubCommandError(
             "Required checks "
