@@ -317,7 +317,7 @@ async def test_get_clients_single_and_multiple(
     hass_local = ph_hass
     client = MagicMock()
     client.name = "one"
-    hass_local.data = {DOMAIN: {"e1": client}}
+    hass_local.data[DOMAIN] = {"e1": client}
     _add_entry_for_client(hass_local, make_config_entry, "e1")
 
     res = await services_mod._get_clients(hass_local)
@@ -359,7 +359,7 @@ async def test_get_clients_untargeted_resolution_skips_carp_entries(
     normal_client.name = "normal"
     carp_client = MagicMock(name="carp")
     carp_client.name = "carp"
-    hass_local.data = {DOMAIN: {"normal": normal_client, "carp": carp_client}}
+    hass_local.data[DOMAIN] = {"normal": normal_client, "carp": carp_client}
     _add_entry_for_client(hass_local, make_config_entry, "normal")
     _add_entry_for_client(hass_local, make_config_entry, "carp", ENTRY_TYPE_CARP)
 
@@ -393,7 +393,7 @@ async def test_get_clients_explicit_carp_target_raises_no_target_clients(
     normal_client.name = "normal"
     carp_client = MagicMock(name="carp")
     carp_client.name = "carp"
-    hass_local.data = {DOMAIN: {"normal": normal_client, "carp": carp_client}}
+    hass_local.data[DOMAIN] = {"normal": normal_client, "carp": carp_client}
     _add_entry_for_client(hass_local, make_config_entry, "normal")
     _add_entry_for_client(hass_local, make_config_entry, "carp", ENTRY_TYPE_CARP)
 
@@ -432,7 +432,7 @@ async def test_get_clients_only_carp_entries_reject_explicit_targets(
     """
     hass_local = ph_hass
     carp_client = MagicMock(name="carp")
-    hass_local.data = {DOMAIN: {"carp": carp_client}}
+    hass_local.data[DOMAIN] = {"carp": carp_client}
     _add_entry_for_client(hass_local, make_config_entry, "carp", ENTRY_TYPE_CARP)
 
     with pytest.raises(ServiceValidationError) as exc_info:
@@ -692,7 +692,7 @@ async def test_service_start_stop_restart_failure_variants(
         client_order (str): Parameterized client order used by the test service start stop restart failure variants scenario.
     """
     hass = ph_hass
-    hass.data = {}
+    hass.data.clear()
     ok_client = MagicMock()
     ok_client.name = "ok"
     bad_client = MagicMock()
@@ -1048,7 +1048,8 @@ async def test_service_system_reboot_does_not_call_carp_clients(
     carp_client = MagicMock(name="carp")
     carp_client.name = "carp"
     carp_client.system_reboot = AsyncMock(return_value=None)
-    hass.data = {DOMAIN: {}}
+    hass.data.clear()
+    hass.data[DOMAIN] = {}
     if include_normal:
         hass.data[DOMAIN]["normal"] = normal_client
     hass.data[DOMAIN]["carp"] = carp_client

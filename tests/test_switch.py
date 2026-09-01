@@ -2867,6 +2867,11 @@ def test_service_switch_missing_service_marks_unavailable(
             OPNsenseVPNSwitch,
             {"openvpn": "not-a-mapping"},
         ),
+        pytest.param(
+            OPNsenseVPNSwitch,
+            {"openvpn": {"clients": "not-a-mapping"}},
+            id="vpn-clients-not-mapping",
+        ),
     ],
 )
 def test_switch_handlers_fail_closed_for_malformed_nested_payloads(
@@ -3866,91 +3871,6 @@ def test_vpn_handle_coordinator_update_state_not_mapping(
     coordinator.data = None
     object.__setattr__(ent, "async_write_ha_state", lambda: None)
     ent._handle_coordinator_update()
-    assert ent.available is False
-
-
-def test_unbound_blocklist_switch_update_handles_malformed_container(
-    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
-) -> None:
-    """Malformed Unbound blocklist containers should mark the switch unavailable.
-
-    Args:
-        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
-    """
-    desc = SwitchEntityDescription(key="unbound_blocklist.switch.u1", name="Unbound u1")
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    ent = OPNsenseUnboundBlocklistSwitch(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=desc,
-    )
-    coordinator.data = {"unbound_blocklist": "bad-container"}
-    object.__setattr__(ent, "async_write_ha_state", lambda: None)
-
-    ent._handle_coordinator_update()
-
-    assert ent.available is False
-
-
-def test_unbound_legacy_switch_update_handles_malformed_container(
-    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
-) -> None:
-    """Malformed legacy Unbound blocklist containers should mark the legacy switch unavailable.
-
-    Args:
-        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
-    """
-    desc = SwitchEntityDescription(key="unbound_blocklist.switch", name="Unbound Blocklist")
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    ent = OPNsenseUnboundBlocklistSwitchLegacy(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=desc,
-    )
-    coordinator.data = {"unbound_blocklist": "bad-container"}
-    object.__setattr__(ent, "async_write_ha_state", lambda: None)
-
-    ent._handle_coordinator_update()
-
-    assert ent.available is False
-
-
-@pytest.mark.parametrize(
-    "state",
-    [
-        {"openvpn": "bad-openvpn"},
-        {"openvpn": {"clients": "bad-clients"}},
-    ],
-)
-def test_vpn_switch_update_handles_malformed_instance_container(
-    coordinator: MagicMock,
-    make_config_entry: Callable[..., MockConfigEntry],
-    state: dict[str, Any],
-) -> None:
-    """Malformed VPN containers should mark the switch unavailable.
-
-    Args:
-        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
-        state (dict[str, Any]): Coordinator payload used for this test scenario.
-    """
-    desc = SwitchEntityDescription(key="openvpn.clients.c1", name="VPNC")
-    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
-    ent = OPNsenseVPNSwitch(
-        config_entry=config_entry,
-        coordinator=coordinator,
-        entity_description=desc,
-    )
-    coordinator.data = state
-    object.__setattr__(ent, "async_write_ha_state", lambda: None)
-
-    ent._handle_coordinator_update()
-
     assert ent.available is False
 
 

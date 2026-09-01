@@ -1,6 +1,6 @@
 [project]
 name = "hass-opnsense"
-requires-python = ">=3.14"
+requires-python = ">=3.14.2"
 dynamic = ["version"]
 
 [build-system]
@@ -23,7 +23,7 @@ version = { attr = "custom_components.opnsense.const.VERSION" }
 [dependency-groups]
 ha = [
     "aiopnsense==1.1.8",
-    "homeassistant",
+    "homeassistant>=2026.3",
 ]
 lint = [
     { include-group = "ha" },
@@ -38,20 +38,24 @@ lint = [
     "types-PyYAML",
     "types-requests",
     "types-setuptools",
+    "uv",
 ]
 pytest = [
     { include-group = "ha" },
     "aiohttp",
-    "pytest",
+    "pytest>=9",
     "pytest-asyncio",
     "pytest-cov",
-    "pytest-homeassistant-custom-component",
+    "pytest-homeassistant-custom-component>=0.13.317",
     "pytest-timeout",
 ]
 dev = [
     { include-group = "lint" },
     { include-group = "pytest" },
 ]
+
+[tool.uv]
+required-version = ">=0.11.0"
 
 [tool.mypy]
 python_version = "3.14"

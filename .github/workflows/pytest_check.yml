@@ -1,0 +1,98 @@
+name: pytest and coverage
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Immutable commit SHA required by release orchestration
+        required: true
+        type: string
+
+jobs:
+  tests:
+    name: pytest and coverage report
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.user.login == 'prek-autoupdate-bot' ||
+      !(contains(github.event.pull_request.labels.*.name, 'dependencies') ||
+      github.event.pull_request.user.type == 'Bot')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Require expected release commit
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$WORKFLOW_SHA" = "$EXPECTED_SHA"
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.expected_sha || github.sha }}
+          persist-credentials: false
+
+      - name: Setup uv (with caching)
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+          ignore-nothing-to-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Run pytest with coverage from the lock
+        run: uv run --locked --group pytest pytest
+
+  coverage_publisher:
+    name: Publish coverage report
+    needs: tests
+    if: >-
+      github.event_name != 'workflow_dispatch' &&
+      (github.event_name != 'pull_request' ||
+      github.event.pull_request.user.login != 'prek-autoupdate-bot')
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: write
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Setup uv (with caching)
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+          ignore-nothing-to-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Run pytest with coverage from the lock
+        run: uv run --locked --group pytest pytest
+
+      - name: Generate coverage Comment (and possibly Post to PR)
+        id: coverage_comment
+        uses: py-cov-action/python-coverage-comment-action@v4.3
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MINIMUM_GREEN: 90
+          MINIMUM_ORANGE: 70
+
+      - name: Store PR Comment to be Posted
+        if: steps.coverage_comment.outputs.COMMENT_FILE_WRITTEN == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          # If you use a different name, update COMMENT_ARTIFACT_NAME accordingly
+          name: python-coverage-comment-action
+          # If you use a different name, update COMMENT_FILENAME accordingly
+          path: python-coverage-comment-action.txt
+          retention-days: 1

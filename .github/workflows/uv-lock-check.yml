@@ -1,0 +1,29 @@
+name: Validate uv lock
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  uv-lock-check:
+    name: Validate uv lock consistency
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Check uv lock consistency
+        run: uv lock --check

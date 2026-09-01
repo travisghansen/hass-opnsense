@@ -1215,7 +1215,9 @@ async def test_async_internal_added_to_hass_creates_integration_device_for_exist
 
     await ent.async_internal_added_to_hass()
 
-    linked_device = device_reg.async_get(ent.registry_entry.device_id)
+    device_id = ent.registry_entry.device_id
+    assert device_id is not None
+    linked_device = device_reg.async_get(device_id)
     assert linked_device is not None
     assert linked_device.id != existing_device.id
     assert (dr.CONNECTION_NETWORK_MAC, mac_address) in linked_device.connections
