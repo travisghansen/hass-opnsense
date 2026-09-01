@@ -144,13 +144,14 @@ jobs:
         if: github.event.release.prerelease == false
         id: validation_ref
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
           temp_ref="release-validation/${RELEASE_TAG}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           git check-ref-format --branch "$temp_ref"
-          git -c http.https://github.com/.extraheader="AUTHORIZATION: bearer $GITHUB_TOKEN" push origin "HEAD:refs/heads/$temp_ref"
+          gh auth setup-git --hostname github.com
+          git push origin "HEAD:refs/heads/$temp_ref"
           echo "name=$temp_ref" >> "$GITHUB_OUTPUT"
 
       - name: Dispatch and verify immutable release gates
@@ -171,7 +172,7 @@ jobs:
       - name: Atomically advance target and guarded release tag
         if: github.event.release.prerelease == false && steps.base.outputs.resume != 'true'
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
           ORIGINAL_TAG_OID: ${{ steps.base.outputs.tag-oid }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           RELEASE_TARGET: ${{ steps.release.outputs.target }}
@@ -185,8 +186,7 @@ jobs:
           [[ "$(git rev-parse "refs/tags/$RELEASE_TAG")" == "$ORIGINAL_TAG_OID" ]]
           [[ "$(git rev-parse HEAD^)" == "$TARGET_SHA" ]]
           git tag -fa "$RELEASE_TAG" -m "Release $RELEASE_TAG" HEAD
-          git -c http.https://github.com/.extraheader="AUTHORIZATION: bearer $GITHUB_TOKEN" \
-            push --atomic \
+          git push --atomic \
             --force-with-lease="refs/heads/$RELEASE_TARGET:$TARGET_SHA" \
             --force-with-lease="refs/tags/$RELEASE_TAG:$ORIGINAL_TAG_OID" \
             origin "HEAD:refs/heads/$RELEASE_TARGET" "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
@@ -220,7 +220,7 @@ jobs:
       - name: Delete validated temporary branch
         if: github.event.release.prerelease == false && success()
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
           TEMP_REF: ${{ steps.validation_ref.outputs.name }}
         run: |
-          git -c http.https://github.com/.extraheader="AUTHORIZATION: bearer $GITHUB_TOKEN" push origin --delete "$TEMP_REF"
+          git push origin --delete "$TEMP_REF"
