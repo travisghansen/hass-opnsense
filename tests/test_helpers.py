@@ -48,10 +48,12 @@ def test_async_get_device_by_identifier_supports_ha_versions(
     """
     device = MagicMock()
     legacy_get = MagicMock(return_value=device)
-    registry: Any = SimpleNamespace(async_get_device=legacy_get)
+    registry: Any = SimpleNamespace()
     if use_modern_api:
         modern_get = MagicMock(return_value=device)
         registry.async_get_device_by_identifier = modern_get
+    else:
+        registry.async_get_device = legacy_get
 
     result = async_get_device_by_identifier(
         registry,
@@ -78,10 +80,12 @@ def test_async_get_device_by_connection_supports_ha_versions(
     """
     device = MagicMock()
     legacy_get = MagicMock(return_value=device)
-    registry: Any = SimpleNamespace(async_get_device=legacy_get)
+    registry: Any = SimpleNamespace()
     if use_modern_api:
         modern_get = MagicMock(return_value=device)
         registry.async_get_device_by_connection = modern_get
+    else:
+        registry.async_get_device = legacy_get
 
     result = async_get_device_by_connection(
         registry,
@@ -108,10 +112,12 @@ def test_async_get_devices_by_connection_supports_ha_versions(
     """
     device = MagicMock()
     legacy_get = MagicMock(return_value=device)
-    registry: Any = SimpleNamespace(async_get_device=legacy_get)
+    registry: Any = SimpleNamespace()
     if use_modern_api:
         modern_get = MagicMock(return_value=[device, MagicMock()])
         registry.async_get_devices = modern_get
+    else:
+        registry.async_get_device = legacy_get
 
     result = async_get_devices_by_connection(
         registry,
