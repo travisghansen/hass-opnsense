@@ -84,7 +84,6 @@ jobs:
         uses: py-cov-action/python-coverage-comment-action@v4.3
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ACTIVITY: ${{ github.event_name == 'workflow_dispatch' && 'save_coverage_data_files' || '' }}
           MINIMUM_GREEN: 90
           MINIMUM_ORANGE: 70
 
