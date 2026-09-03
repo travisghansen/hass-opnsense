@@ -225,6 +225,15 @@ async def test_async_setup_entry_configured_devices(
     assert uid.endswith("mac_aa_bb_cc")
     assert "aa_bb_cc" in uid
     assert created.mac_address == "aa:bb:cc"
+    assert created._router_device_id == "router-device-id"
+    device_info = created.device_info
+    assert device_info is not None
+    assert device_info["via_device_id"] == "router-device-id"
+    assert "via_device" not in device_info
+    fake.async_get_or_create.assert_called_once_with(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, "dev1")},
+    )
     assert hass.config_entries.async_update_entry.called
     call = hass.config_entries.async_update_entry.call_args
     args = call.args
@@ -961,6 +970,7 @@ async def test_restore_last_state_and_device_info(
         mac="aa:bb:cc",
         mac_vendor="mfg",
         hostname="dev",
+        router_device_id="router-device-id",
     )
     assert ent.name is None
     assert ent.unique_id == "dev1_mac_aa_bb_cc"
@@ -991,21 +1001,35 @@ async def test_restore_last_state_and_device_info(
     assert "last_known_connected_time" in attributes
 
     devinfo = ent.device_info
-    # support both DeviceInfo object and dict-shaped DeviceInfo used in tests
-    if isinstance(devinfo, MutableMapping):
-        connections = devinfo.get("connections", [])
-        via = devinfo.get("via_device")
-        default_name = devinfo.get("default_name")
-    else:
-        connections = getattr(devinfo, "connections", [])
-        via = getattr(devinfo, "via_device", None)
-        default_name = getattr(devinfo, "default_name", None)
+    assert devinfo is not None
+    assert any(t[1] == "aa:bb:cc" for t in devinfo["connections"])
+    assert devinfo["name"] == "dev"
+    assert devinfo["manufacturer"] == "mfg"
+    assert devinfo["via_device_id"] == "router-device-id"
+    assert "default_name" not in devinfo
+    assert "default_manufacturer" not in devinfo
+    assert "via_device" not in devinfo
 
-    assert any(t[1] == "aa:bb:cc" for t in connections)
-    assert default_name == "dev"
-    assert via is not None
-    assert via[0] == DOMAIN
-    assert via[1] == entry.data[CONF_DEVICE_UNIQUE_ID]
+
+def test_device_info_uses_legacy_parent_identifier(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Retain identifier-based parent linking for Home Assistant 2026.3-2026.7.
+
+    Args:
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+    """
+    entity = _make_scanner_entity(coordinator, make_config_entry)
+
+    device_info = entity.device_info
+
+    assert device_info is not None
+    assert device_info["via_device"] == (DOMAIN, "dev1")
+    assert "via_device_id" not in device_info
+    assert "default_name" not in device_info
+    assert "default_manufacturer" not in device_info
 
 
 @pytest.mark.asyncio
