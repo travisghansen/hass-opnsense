@@ -568,6 +568,7 @@ def fake_reg_factory() -> Any:
         registry.async_get_device_by_identifier.return_value = None
         registry.async_get_device_by_connection.return_value = device
         registry.async_get_devices.return_value = [] if device is None else [device]
+        registry.async_get_or_create.return_value = MagicMock(id="router-device-id")
         return registry
 
     return _make

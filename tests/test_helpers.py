@@ -24,6 +24,8 @@ from custom_components.opnsense.helpers import (
     config_entry_identity,
     create_opnsense_client,
     create_opnsense_client_from_config_entry,
+    detach_shared_router_parent,
+    device_belongs_to_config_entry,
     dict_get,
     firewall_nat_switch_unique_ids_from_payload,
     firewall_rule_id_from_payload,
@@ -131,6 +133,71 @@ def test_async_get_devices_by_connection_supports_ha_versions(
     else:
         assert result == [device]
         legacy_get.assert_called_once_with(connections={("mac", "aa:bb:cc:dd:ee:ff")})
+
+
+@pytest.mark.parametrize(
+    ("device", "expected"),
+    [
+        pytest.param(SimpleNamespace(config_entry_id="entry-id"), True, id="modern-owner"),
+        pytest.param(SimpleNamespace(config_entry_id="other-entry"), False, id="modern-foreign"),
+        pytest.param(
+            SimpleNamespace(config_entries={"entry-id", "other-entry"}),
+            True,
+            id="legacy-shared",
+        ),
+    ],
+)
+def test_device_belongs_to_config_entry_supports_ha_versions(
+    device: Any,
+    expected: bool,
+) -> None:
+    """Read singular modern ownership before falling back to the legacy set.
+
+    Args:
+        device (Any): Device entry shaped for the selected Home Assistant API generation.
+        expected (bool): Whether the helper should report ownership by ``entry-id``.
+    """
+    assert device_belongs_to_config_entry(device, "entry-id") is expected
+
+
+@pytest.mark.parametrize(
+    ("owner_entry_id", "expected_removed"),
+    [
+        pytest.param("entry-id", True, id="owned"),
+        pytest.param("other-entry", False, id="foreign"),
+    ],
+)
+def test_detach_tracker_uses_modern_device_removal(
+    owner_entry_id: str,
+    expected_removed: bool,
+) -> None:
+    """Remove a singly-owned modern device without deprecated update parameters.
+
+    Args:
+        owner_entry_id (str): Config entry that owns the simulated tracker device.
+        expected_removed (bool): Whether the tracker should be removed.
+    """
+    device: Any = SimpleNamespace(
+        id="tracker-id",
+        config_entry_id=owner_entry_id,
+        via_device_id="router-id",
+    )
+    registry = MagicMock()
+
+    result = detach_shared_router_parent(
+        shared_config_entry_id="entry-id",
+        shared_device_entry=device,
+        router_device_id="router-id",
+        config_entries=MagicMock(),
+        device_registry=registry,
+    )
+
+    assert result == (True, None)
+    if expected_removed:
+        registry.async_remove_device.assert_called_once_with("tracker-id")
+    else:
+        registry.async_remove_device.assert_not_called()
+    registry.async_update_device.assert_not_called()
 
 
 @pytest.mark.parametrize(

@@ -310,6 +310,14 @@ async def async_setup_entry(
         reconciliation_complete = _track_all_arp_entries_are_complete(arp_entries)
     devices, mac_addresses, enabled_default = _compile_tracked_devices(config_entry, arp_entries)
 
+    router_device_id: str | None = None
+    if devices and getattr(dev_reg, "async_get_device_by_identifier", None) is not None:
+        router_device = dev_reg.async_get_or_create(
+            config_entry_id=config_entry.entry_id,
+            identifiers={(DOMAIN, config_entry.data[CONF_DEVICE_UNIQUE_ID])},
+        )
+        router_device_id = router_device.id
+
     for device in devices:
         mac = device.get("mac")
         if not isinstance(mac, str):
@@ -321,6 +329,7 @@ async def async_setup_entry(
             mac=mac,
             mac_vendor=device.get("manufacturer", None),
             hostname=device.get("hostname", None),
+            router_device_id=router_device_id,
         )
         entities.append(entity)
     if not is_reconciliation_active(config_entry):
@@ -429,6 +438,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         mac: str,
         mac_vendor: str | None,
         hostname: str | None,
+        router_device_id: str | None = None,
     ) -> None:
         """Set up the OPNsense scanner entity.
 
@@ -439,6 +449,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             mac (str): MAC address tracked by the entity.
             mac_vendor (str | None): Vendor name reported for the MAC address.
             hostname (str | None): Hostname reported by OPNsense.
+            router_device_id (str | None): Registry id of the parent router on HA 2026.8+.
         """
         super().__init__(config_entry, coordinator, unique_id_suffix=f"mac_{mac}")
         self._mac_vendor: str | None = mac_vendor
@@ -454,6 +465,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         self._attr_source_type: SourceType = SourceType.ROUTER
         self._attr_icon: str | None = None
         self._fallback_device_info_consumed: bool = False
+        self._router_device_id: str | None = router_device_id
 
     def _has_matching_enabled_mac_device(self) -> bool:
         """Return whether a matching MAC device exists and is not disabled.
@@ -637,10 +649,19 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         if self.mac_address is not None:
             connections.add((CONNECTION_NETWORK_MAC, self.mac_address))
 
-        return DeviceInfo(
+        device_info = DeviceInfo(
             connections=connections,
-            default_manufacturer=self._mac_vendor or "",
-            default_name=self.hostname or self.mac_address or "",
+            manufacturer=self._mac_vendor or "",
+            name=self.hostname or self.mac_address or "",
+        )
+        if self._router_device_id is not None:
+            device_info["via_device_id"] = self._router_device_id
+            return device_info
+
+        # Home Assistant 2026.3-2026.7 resolves parent devices by identifier.
+        legacy_device_info_factory: Any = DeviceInfo
+        return legacy_device_info_factory(
+            **device_info,
             via_device=(DOMAIN, self._device_unique_id),
         )
 

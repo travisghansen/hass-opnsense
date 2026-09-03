@@ -49,7 +49,8 @@ def async_get_device_by_identifier(
     )
     if modern_get is not None:
         return modern_get(identifier, config_entry_id)
-    legacy_get: Callable[..., DeviceEntry | None] = device_registry.async_get_device
+    legacy_registry: Any = device_registry
+    legacy_get: Callable[..., DeviceEntry | None] = legacy_registry.async_get_device
     return legacy_get(identifiers={identifier})
 
 
@@ -73,7 +74,8 @@ def async_get_device_by_connection(
     )
     if modern_get is not None:
         return modern_get(connection, config_entry_id)
-    legacy_get: Callable[..., DeviceEntry | None] = device_registry.async_get_device
+    legacy_registry: Any = device_registry
+    legacy_get: Callable[..., DeviceEntry | None] = legacy_registry.async_get_device
     return legacy_get(connections={connection})
 
 
@@ -96,9 +98,34 @@ def async_get_devices_by_connection(
     )
     if modern_get is not None:
         return modern_get(connections={connection})
-    legacy_get: Callable[..., DeviceEntry | None] = device_registry.async_get_device
+    legacy_registry: Any = device_registry
+    legacy_get: Callable[..., DeviceEntry | None] = legacy_registry.async_get_device
     device = legacy_get(connections={connection})
     return [device] if device is not None else []
+
+
+def device_belongs_to_config_entry(
+    device_entry: DeviceEntry,
+    config_entry_id: str,
+) -> bool:
+    """Return whether a device belongs to a config entry across supported HA versions.
+
+    Home Assistant 2026.8 and newer expose the single owner through
+    ``config_entry_id``. Older supported releases expose the legacy
+    ``config_entries`` set instead.
+
+    Args:
+        device_entry (DeviceEntry): Device whose ownership should be checked.
+        config_entry_id (str): Config entry expected to own the device.
+
+    Returns:
+        bool: Whether the device belongs to the requested config entry.
+    """
+    owner_entry_id = getattr(device_entry, "config_entry_id", None)
+    if isinstance(owner_entry_id, str):
+        return owner_entry_id == config_entry_id
+    legacy_entry_ids: set[str] = getattr(device_entry, "config_entries", set())
+    return config_entry_id in legacy_entry_ids
 
 
 def dict_get(data: MutableMapping[str, Any], path: str, default: Any | None = None) -> Any | None:
@@ -381,7 +408,10 @@ def find_replacement_router_device_id(
         str | None: Replacement router ``device_id`` if a surviving OPNsense entry
             can be resolved, otherwise ``None``.
     """
-    remaining_config_entries = sorted(shared_device_entry.config_entries)
+    if isinstance(getattr(shared_device_entry, "config_entry_id", None), str):
+        return None
+    legacy_entry_ids: set[str] = getattr(shared_device_entry, "config_entries", set())
+    remaining_config_entries = sorted(legacy_entry_ids)
     for owner_entry_id in remaining_config_entries:
         if owner_entry_id == shared_config_entry_id:
             continue
@@ -409,7 +439,12 @@ def detach_shared_router_parent(
     config_entries: ConfigEntries,
     device_registry: DeviceRegistry,
 ) -> tuple[bool, str | None]:
-    """Detach a shared tracker device from a removed router config entry.
+    """Remove or detach a tracker device across supported HA versions.
+
+    Home Assistant 2026.8 and newer assign each device to one config entry,
+    so an OPNsense-owned tracker device is removed directly. Older supported
+    releases may share one device across config entries and retain the legacy
+    detach-and-reparent behavior.
 
     Args:
         shared_config_entry_id (str): The config entry being detached from the shared device.
@@ -429,6 +464,12 @@ def detach_shared_router_parent(
         and router_device_id is not None
         and shared_device_entry.via_device_id == router_device_id
     )
+    owner_entry_id = getattr(shared_device_entry, "config_entry_id", None)
+    if isinstance(owner_entry_id, str):
+        if owner_entry_id == shared_config_entry_id:
+            device_registry.async_remove_device(shared_device_entry.id)
+        return is_device_from_router, None
+
     replacement_router_id: str | None = None
     if is_device_from_router:
         replacement_router_id = find_replacement_router_device_id(
@@ -438,26 +479,18 @@ def detach_shared_router_parent(
             device_registry=device_registry,
         )
 
+    legacy_changes: dict[str, Any] = {"remove_config_entry_id": shared_config_entry_id}
     if replacement_router_id is not None:
-        device_registry.async_update_device(
-            shared_device_entry.id,
-            remove_config_entry_id=shared_config_entry_id,
-            via_device_id=replacement_router_id,
-        )
+        legacy_changes["via_device_id"] = replacement_router_id
+        device_registry.async_update_device(shared_device_entry.id, **legacy_changes)
         return is_device_from_router, replacement_router_id
 
     if is_device_from_router:
-        device_registry.async_update_device(
-            shared_device_entry.id,
-            remove_config_entry_id=shared_config_entry_id,
-            via_device_id=None,
-        )
+        legacy_changes["via_device_id"] = None
+        device_registry.async_update_device(shared_device_entry.id, **legacy_changes)
         return is_device_from_router, None
 
-    device_registry.async_update_device(
-        shared_device_entry.id,
-        remove_config_entry_id=shared_config_entry_id,
-    )
+    device_registry.async_update_device(shared_device_entry.id, **legacy_changes)
     return is_device_from_router, None
 
 

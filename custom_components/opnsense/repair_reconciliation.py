@@ -14,7 +14,11 @@ from homeassistant.helpers.entity import Entity
 from homeassistant.util import slugify
 
 from .const import DOMAIN
-from .helpers import async_get_device_by_identifier, detach_shared_router_parent
+from .helpers import (
+    async_get_device_by_identifier,
+    detach_shared_router_parent,
+    device_belongs_to_config_entry,
+)
 
 REPAIR_MARKER_KEY: str = "device_id_repair"
 _REPAIR_MARKER_VERSION = 1
@@ -161,7 +165,9 @@ class RepairReconciliation:
         if new_main is not None:
             if old_main is not None and new_main.id != old_main.id:
                 raise RepairReconciliationError("primary device identifier target collision")
-            if old_main is None and self.config_entry.entry_id not in new_main.config_entries:
+            if old_main is None and not device_belongs_to_config_entry(
+                new_main, self.config_entry.entry_id
+            ):
                 raise RepairReconciliationError("primary device identifier target collision")
 
         try:
