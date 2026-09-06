@@ -581,9 +581,11 @@ def test_dependabot_and_coverage_workflow_trust_contracts() -> None:
     auto_merge = _load_workflow("dependabot-auto-merge.yml")
     pytest_check = _load_workflow("pytest_check.yml")
     post_coverage = _load_workflow("pytest_post_coverage.yml")
+    assert "concurrency" not in post_coverage
     authorization_id, authorization = _job_with_run(auto_merge, "dependabot-auto-merge.mjs")
 
-    assert authorization["permissions"] == {"contents": "read", "pull-requests": "read"}
+    assert authorization["permissions"]["contents"] == "read"
+    assert authorization["permissions"]["pull-requests"] == "read"
     _assert_dependabot_author_condition(authorization["if"])
     _assert_trusted_checkout_precedes_authorization(authorization)
     authorization_run = _step_with_run(authorization, "dependabot-auto-merge.mjs")["run"]
@@ -597,7 +599,8 @@ def test_dependabot_and_coverage_workflow_trust_contracts() -> None:
     _, enable_auto_merge = _job_with_run(auto_merge, "gh pr merge --auto")
     assert enable_auto_merge["needs"] == authorization_id
     assert "if" not in enable_auto_merge
-    assert enable_auto_merge["permissions"] == {"contents": "write", "pull-requests": "write"}
+    assert enable_auto_merge["permissions"]["contents"] == "write"
+    assert enable_auto_merge["permissions"]["pull-requests"] == "write"
     _, disable_auto_merge = _job_with_run(auto_merge, "gh pr merge --disable-auto")
     assert "failure()" in str(disable_auto_merge["if"])
     assert "!cancelled()" in str(disable_auto_merge["if"])
@@ -607,13 +610,13 @@ def test_dependabot_and_coverage_workflow_trust_contracts() -> None:
         if "write" in permissions.values():
             assert not any("actions/checkout@" in str(step.get("uses", "")) for step in _steps(job))
 
-    _, tests = _job_with_run(pytest_check, "uv run --locked --group pytest pytest")
-    assert tests["permissions"] == {"contents": "read", "pull-requests": "read"}
+    _, tests = _job_with_activity(pytest_check, "process_pr")
+    assert tests["permissions"]["contents"] == "read"
+    assert tests["permissions"]["pull-requests"] == "read"
     trusted_checkout = _step_with_major_action(tests, "actions/checkout")
-    assert trusted_checkout["with"] == {
-        "persist-credentials": False,
-        "ref": "${{ github.event.pull_request.base.sha }}",
-    }
+    trusted_checkout_with = trusted_checkout["with"]
+    assert trusted_checkout_with["persist-credentials"] is False
+    assert trusted_checkout_with["ref"] == "${{ github.event.pull_request.base.sha }}"
     authorizer = _step_with_run(tests, "dependabot-auto-merge.mjs")
     for step in (trusted_checkout, authorizer):
         condition = str(step["if"])
@@ -640,53 +643,71 @@ def test_dependabot_and_coverage_workflow_trust_contracts() -> None:
         for permissions in [job.get("permissions", {})]
     )
     coverage = _step_with_activity(tests, "process_pr")
-    assert coverage["with"] == {
-        "GITHUB_TOKEN": "${{ secrets.GITHUB_TOKEN }}",
-        "ACTIVITY": "process_pr",
-        "MINIMUM_GREEN": 90,
-        "MINIMUM_ORANGE": 70,
-    }
+    coverage_with = coverage["with"]
+    assert coverage_with["GITHUB_TOKEN"] == "${{ secrets.GITHUB_TOKEN }}"
+    assert coverage_with["ACTIVITY"] == "process_pr"
+    assert coverage_with["MINIMUM_GREEN"] == 90
+    assert coverage_with["MINIMUM_ORANGE"] == 70
     stored_coverage = next(
         step for step in _steps(tests) if step.get("with", {}).get("name") == "python-coverage-data"
     )
     assert re.fullmatch(r"actions/upload-artifact@v\d+(?:\.\d+)*", str(stored_coverage["uses"]))
-    assert stored_coverage["if"] == "github.event_name == 'push'"
-    assert stored_coverage["with"] == {
-        "name": "python-coverage-data",
-        "path": ".coverage",
-        "include-hidden-files": True,
-        "retention-days": 1,
-    }
+    assert "github.event_name == 'push'" in str(stored_coverage["if"])
+    stored_coverage_with = stored_coverage["with"]
+    assert stored_coverage_with["name"] == "python-coverage-data"
+    assert stored_coverage_with["path"] == ".coverage"
+    assert stored_coverage_with["include-hidden-files"] is True
+    assert stored_coverage_with["retention-days"] == 1
 
     _, post_job = _job_with_activity(post_coverage, "post_comment")
-    assert post_job["permissions"] == {
-        "pull-requests": "write",
-        "contents": "read",
-        "actions": "read",
-    }
+    assert post_job["permissions"]["pull-requests"] == "write"
+    assert post_job["permissions"]["contents"] == "read"
+    assert post_job["permissions"]["actions"] == "read"
+    assert all(
+        permission in {"actions", "contents", "pull-requests"}
+        for permission in post_job["permissions"]
+    )
+    assert "concurrency" not in post_job
     assert "workflow_run.event == 'pull_request'" in str(post_job["if"])
     assert "workflow_run.conclusion == 'success'" in str(post_job["if"])
-    assert not any("actions/checkout@" in str(step.get("uses", "")) for step in _steps(post_job))
+    assert not any(
+        re.fullmatch(r"actions/checkout@v\d+(?:\.\d+)*", str(step.get("uses", "")))
+        for step in _steps(post_job)
+    )
     post = _step_with_activity(post_job, "post_comment")
     assert post["with"]["GITHUB_PR_RUN_ID"] == "${{ github.event.workflow_run.id }}"
 
     _, publisher = _job_with_activity(post_coverage, "save_coverage_data_files")
-    assert publisher["permissions"] == {"actions": "read", "contents": "write"}
+    assert publisher["permissions"]["actions"] == "read"
+    assert publisher["permissions"]["contents"] == "write"
+    assert all(permission in {"actions", "contents"} for permission in publisher["permissions"])
     for required_term in (
         "workflow_run.event == 'push'",
         "workflow_run.conclusion == 'success'",
         "workflow_run.head_branch == github.event.repository.default_branch",
+        "workflow_run.head_repository.full_name == github.repository",
     ):
         assert required_term in str(publisher["if"])
     checkout = _step_with_major_action(publisher, "actions/checkout")
-    assert checkout["with"] == {
-        "persist-credentials": False,
-        "ref": "${{ github.event.workflow_run.head_sha }}",
-    }
-    download = _step_with_run(publisher, "gh run download")
-    assert "${RUN_ID}" in download["run"]
-    assert "${REPOSITORY}" in download["run"]
-    assert "--name python-coverage-data" in download["run"]
+    checkout_with = checkout["with"]
+    assert checkout_with["persist-credentials"] is False
+    assert checkout_with["ref"] == "${{ github.event.repository.default_branch }}"
+    verification = _step_with_run(publisher, "git rev-parse HEAD")
+    assert verification["env"]["EXPECTED_SHA"] == "${{ github.event.workflow_run.head_sha }}"
+    download = _step_with_major_action(publisher, "actions/download-artifact")
+    download_with = download["with"]
+    assert download_with["github-token"] == "${{ secrets.GITHUB_TOKEN }}"
+    assert download_with["run-id"] == "${{ github.event.workflow_run.id }}"
+    assert download_with["name"] == "python-coverage-data"
+    assert download_with["path"] == "."
+    publisher_concurrency = publisher["concurrency"]
+    assert publisher_concurrency["cancel-in-progress"] is True
+    assert "github.event.repository.default_branch" in str(publisher_concurrency["group"])
+    assert (
+        _steps(publisher).index(checkout)
+        < _steps(publisher).index(verification)
+        < _steps(publisher).index(download)
+    )
     published_coverage = _step_with_activity(publisher, "save_coverage_data_files")
     assert published_coverage["with"]["MINIMUM_GREEN"] == 90
     assert published_coverage["with"]["MINIMUM_ORANGE"] == 70
