@@ -18,6 +18,7 @@ jobs:
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.user.login == 'prek-autoupdate-bot' ||
+      github.event.pull_request.user.login == 'dependabot[bot]' ||
       !(contains(github.event.pull_request.labels.*.name, 'dependencies') ||
       github.event.pull_request.user.type == 'Bot')
     runs-on: ubuntu-latest
@@ -25,6 +26,36 @@ jobs:
       contents: read
 
     steps:
+      - name: Checkout trusted dependency authorization helper
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.user.login == 'dependabot[bot]'
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Authorize Dependabot update before checking out its head
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.user.login == 'dependabot[bot]'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          changed_files="${RUNNER_TEMP}/dependabot-changed-files"
+          commits="${RUNNER_TEMP}/dependabot-commits.json"
+          gh api --paginate \
+            "repos/${REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" \
+            --jq '.[].filename' > "${changed_files}"
+          gh api --paginate --slurp \
+            "repos/${REPOSITORY}/pulls/${PR_NUMBER}/commits?per_page=100" \
+            > "${commits}"
+          node .github/scripts/dependabot-auto-merge.mjs \
+            "${GITHUB_EVENT_PATH}" "${changed_files}" "${commits}"
+
       - name: Require expected release commit
         if: github.event_name == 'workflow_dispatch'
         env:
@@ -56,7 +87,8 @@ jobs:
     if: >-
       github.event_name != 'workflow_dispatch' &&
       (github.event_name != 'pull_request' ||
-      github.event.pull_request.user.login != 'prek-autoupdate-bot')
+      (github.event.pull_request.user.login != 'prek-autoupdate-bot' &&
+      github.event.pull_request.user.login != 'dependabot[bot]'))
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write

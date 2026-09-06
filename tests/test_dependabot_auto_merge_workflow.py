@@ -1,125 +1,200 @@
-"""Tests for the Dependabot auto-merge workflow contracts."""
+"""Executable behavior tests for Dependabot auto-merge authorization."""
 
+import json
+import os
 from pathlib import Path
-import re
-import shlex
+import shutil
+import subprocess
 from typing import Any
 
-import yaml
+import pytest
 
-WORKFLOW_PATH = Path(__file__).parents[1] / ".github" / "workflows" / "dependabot-auto-merge.yml"
-TRUSTED_PULL_REQUEST_GUARD = (
-    "github.event.repository.fork == false && "
-    "github.event.pull_request.user.login == 'dependabot[bot]' && "
-    "github.event.pull_request.head.repo.full_name == github.repository && "
-    "github.event.pull_request.base.ref == github.event.repository.default_branch"
-)
-
-
-def _load_workflow() -> dict[str, Any]:
-    """Load the Dependabot workflow while normalizing YAML's boolean `on` key.
-
-    Returns:
-        dict[str, Any]: Parsed workflow document.
-    """
-    document = yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
-    assert isinstance(document, dict)
-    if True in document:
-        document["on"] = document.pop(True)
-    return document
+AUTHORIZER = Path(__file__).parents[1] / ".github" / "scripts" / "dependabot-auto-merge.mjs"
+BASE_SHA = "4" * 40
+DEPENDABOT_SHA = "1" * 40
+HEAD_SHA = "5" * 40
+REPOSITORY = "Snuffy2/hass-opnsense"
+NODE = shutil.which("node")
 
 
-def _named_steps(document: dict[str, Any], job_id: str) -> dict[str, dict[str, Any]]:
-    """Index named steps in one workflow job.
+def _event(action: str, head_ref: str) -> dict[str, Any]:
+    """Build a same-repository Dependabot pull-request event fixture.
 
     Args:
-        document (dict[str, Any]): Parsed workflow document.
-        job_id (str): Workflow job identifier.
+        action (str): Pull-request event action.
+        head_ref (str): Dependabot branch name.
 
     Returns:
-        dict[str, dict[str, Any]]: Named workflow steps.
+        dict[str, Any]: Event consumed by the authorizer.
     """
-    job = document["jobs"][job_id]
-    assert isinstance(job, dict)
-    steps = job["steps"]
-    assert isinstance(steps, list)
-    return {step["name"]: step for step in steps if isinstance(step, dict) and "name" in step}
+    return {
+        "action": action,
+        "repository": {"default_branch": "main", "fork": False, "full_name": REPOSITORY},
+        "pull_request": {
+            "base": {"ref": "main", "sha": BASE_SHA},
+            "head": {"ref": head_ref, "repo": {"full_name": REPOSITORY}, "sha": HEAD_SHA},
+            "user": {"login": "dependabot[bot]"},
+        },
+    }
 
 
-def test_verify_job_guards_source_and_changed_file_allowlist() -> None:
-    """Require trusted Dependabot pull requests and the supported file allowlists."""
-    document = _load_workflow()
-    verify_job = document["jobs"]["verify-dependency-update"]
-    assert isinstance(verify_job, dict)
-    verify_guard = verify_job["if"]
-    assert isinstance(verify_guard, str)
-    for constraint in TRUSTED_PULL_REQUEST_GUARD.split(" && "):
-        assert constraint in verify_guard
-    assert "||" not in verify_guard
+def _dependabot_commit(sha: str = HEAD_SHA, *, verified: bool = True) -> dict[str, Any]:
+    """Build a Dependabot commit fixture.
 
-    verify_run = _named_steps(document, "verify-dependency-update")[
-        "Verify supported dependency update"
-    ]["run"]
-    assert isinstance(verify_run, str)
-    assert "changed_files=" in verify_run
-    assert "gh api --paginate" in verify_run
-    assert "uv)" in verify_run
-    assert "github_actions)" in verify_run
-    assert re.search(
-        r'\[\[\s*-n\s+"\$\{changed_files\}"\s*\]\]\s*\|\|\s*\{.*?'
-        r"\bexit\s+1\b.*?\}",
-        verify_run,
-        re.DOTALL,
+    Args:
+        sha (str): Commit SHA.
+        verified (bool): Whether GitHub verified the commit.
+
+    Returns:
+        dict[str, Any]: Commit data returned by the pull-request API.
+    """
+    return {
+        "author": {"login": "dependabot[bot]"},
+        "commit": {"verification": {"verified": verified}},
+        "parents": [],
+        "sha": sha,
+    }
+
+
+def _update_commit(previous: str) -> dict[str, Any]:
+    """Build a verified GitHub Update branch merge commit.
+
+    Args:
+        previous (str): SHA of the preceding Dependabot commit.
+
+    Returns:
+        dict[str, Any]: Commit data for the current-base merge.
+    """
+    return {
+        "author": {"login": "Snuffy2"},
+        "commit": {"verification": {"verified": True}},
+        "committer": {"login": "web-flow"},
+        "parents": [{"sha": previous}, {"sha": BASE_SHA}],
+        "sha": HEAD_SHA,
+    }
+
+
+def _authorize(
+    tmp_path: Path,
+    *,
+    actor: str,
+    changed_files: list[str],
+    commits: list[dict[str, Any]],
+    event: dict[str, Any],
+) -> subprocess.CompletedProcess[str]:
+    """Run the checked-in authorization command with API-shaped inputs.
+
+    Args:
+        tmp_path (Path): Trusted base checkout fixture directory.
+        actor (str): GitHub Actions actor.
+        changed_files (list[str]): Files reported by the pull-request API.
+        commits (list[dict[str, Any]]): Commit pages returned by the API.
+        event (dict[str, Any]): Pull-request event payload.
+
+    Returns:
+        subprocess.CompletedProcess[str]: Result from the authorizer process.
+
+    Raises:
+        RuntimeError: If Node.js is unavailable.
+    """
+    event_path = tmp_path / "event.json"
+    changed_files_path = tmp_path / "changed-files"
+    commits_path = tmp_path / "commits.json"
+    event_path.write_text(json.dumps(event), encoding="utf-8")
+    changed_files_path.write_text("\n".join(changed_files), encoding="utf-8")
+    commits_path.write_text(json.dumps([commits]), encoding="utf-8")
+    if NODE is None:
+        raise RuntimeError("Node.js is required to run the Dependabot authorizer.")
+    return subprocess.run(  # noqa: S603
+        [NODE, str(AUTHORIZER), str(event_path), str(changed_files_path), str(commits_path)],
+        check=False,
+        cwd=tmp_path,
+        env={**os.environ, "GITHUB_ACTOR": actor},
+        capture_output=True,
+        text=True,
     )
-    assert re.search(
-        r"\*\)\s*.*?unsupported ecosystem.*?\bexit\s+1\b",
-        verify_run,
-        re.DOTALL,
+
+
+@pytest.mark.parametrize(
+    ("changed_files", "authorized"),
+    [(["uv.lock"], True), (["pyproject.toml", "uv.lock"], False)],
+)
+def test_uv_authorization_requires_only_the_lockfile(
+    tmp_path: Path, changed_files: list[str], authorized: bool
+) -> None:
+    """Authorize direct uv updates only when their API file list is lockfile-only.
+
+    Args:
+        tmp_path (Path): Trusted base checkout fixture directory.
+        changed_files (list[str]): Files reported by the pull-request API.
+        authorized (bool): Whether the update should pass authorization.
+    """
+    result = _authorize(
+        tmp_path,
+        actor="dependabot[bot]",
+        changed_files=changed_files,
+        commits=[_dependabot_commit()],
+        event=_event("opened", "dependabot/uv/pytest-9.0.0"),
     )
-    assert '[[ "${changed_files}" == "uv.lock" ]]' in verify_run
-    assert r"grep -Ev '^\.github/workflows/[^/]+\.ya?ml$'" in verify_run
-    assert 'case "${PACKAGE_ECOSYSTEM}" in' in verify_run
+
+    assert (result.returncode == 0) is authorized
 
 
-def test_disable_job_repeats_failure_and_trusted_source_guards() -> None:
-    """Keep failure handling and trusted pull-request constraints on disable."""
-    document = _load_workflow()
-    disable_job = document["jobs"]["disable-auto-merge"]
-    assert isinstance(disable_job, dict)
-    disable_guard = disable_job["if"]
-    assert isinstance(disable_guard, str)
-    for token in (
-        "failure()",
-        "!cancelled()",
-        "needs.verify-dependency-update.result != 'success'",
-    ):
-        assert token in disable_guard
-    assert "||" not in disable_guard
-    for constraint in TRUSTED_PULL_REQUEST_GUARD.split(" && "):
-        assert constraint in disable_guard
+def test_authorization_accepts_only_verified_update_branch_history(tmp_path: Path) -> None:
+    """Accept a GitHub Update branch merge and reject an unverified base commit.
+
+    Args:
+        tmp_path (Path): Trusted base checkout fixture directory.
+    """
+    valid = _authorize(
+        tmp_path,
+        actor="Snuffy2",
+        changed_files=["uv.lock"],
+        commits=[_dependabot_commit(DEPENDABOT_SHA), _update_commit(DEPENDABOT_SHA)],
+        event=_event("synchronize", "dependabot/uv/pytest-9.0.0"),
+    )
+    invalid = _authorize(
+        tmp_path,
+        actor="Snuffy2",
+        changed_files=["uv.lock"],
+        commits=[
+            _dependabot_commit(DEPENDABOT_SHA, verified=False),
+            _update_commit(DEPENDABOT_SHA),
+        ],
+        event=_event("synchronize", "dependabot/uv/pytest-9.0.0"),
+    )
+
+    assert valid.returncode == 0
+    assert invalid.returncode != 0
 
 
-def test_merge_jobs_keep_write_permissions_and_head_commit_match() -> None:
-    """Preserve merge mutation permissions and the head SHA check."""
-    document = _load_workflow()
-    jobs = document["jobs"]
-    assert isinstance(jobs, dict)
-    for job_id in ("enable-auto-merge", "disable-auto-merge"):
-        job = jobs[job_id]
-        assert isinstance(job, dict)
-        assert job["needs"] == "verify-dependency-update"
-        assert job["permissions"] == {
-            "contents": "write",
-            "pull-requests": "write",
-        }
+@pytest.mark.parametrize(
+    ("changed_file", "trusted_file", "authorized"),
+    [
+        (".github/workflows/pytest_check.yml", ".github/workflows/pytest_check.yml", True),
+        (".github/workflows/nested/unsafe.yml", ".github/workflows/nested/unsafe.yml", False),
+    ],
+)
+def test_actions_authorization_requires_an_existing_top_level_file(
+    tmp_path: Path, changed_file: str, trusted_file: str, authorized: bool
+) -> None:
+    """Authorize only trusted-base top-level GitHub Actions workflow updates.
 
-    enable_run = _named_steps(document, "enable-auto-merge")["Enable auto-merge"]["run"]
-    assert isinstance(enable_run, str)
-    command = shlex.split(enable_run)
-    assert command[:3] == ["gh", "pr", "merge"]
-    assert {"--auto", "--squash"}.issubset(command)
-    assert "--match-head-commit" in command
-    match_head_index = command.index("--match-head-commit")
-    assert match_head_index + 1 < len(command)
-    assert command[match_head_index + 1] == "${HEAD_SHA}"
-    assert "${PR_URL}" in command
+    Args:
+        tmp_path (Path): Trusted base checkout fixture directory.
+        changed_file (str): File reported by the pull-request API.
+        trusted_file (str): Corresponding file present in the trusted checkout.
+        authorized (bool): Whether the update should pass authorization.
+    """
+    trusted_path = tmp_path / trusted_file
+    trusted_path.parent.mkdir(parents=True)
+    trusted_path.write_text("name: trusted\n", encoding="utf-8")
+    result = _authorize(
+        tmp_path,
+        actor="dependabot[bot]",
+        changed_files=[changed_file],
+        commits=[_dependabot_commit()],
+        event=_event("opened", "dependabot/github_actions/actions/checkout-7"),
+    )
+
+    assert (result.returncode == 0) is authorized
