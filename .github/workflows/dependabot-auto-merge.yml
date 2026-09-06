@@ -14,9 +14,6 @@ jobs:
       github.event.repository.fork == false &&
       github.event.pull_request.user.login == 'dependabot[bot]' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      (startsWith(github.event.pull_request.head.ref, 'dependabot/uv/') ||
-      startsWith(github.event.pull_request.head.ref, 'dependabot/npm_and_yarn/') ||
-      startsWith(github.event.pull_request.head.ref, 'dependabot/github_actions/')) &&
       github.event.pull_request.base.ref == github.event.repository.default_branch
     runs-on: ubuntu-latest
     permissions:
@@ -67,9 +64,6 @@ jobs:
       github.event.repository.fork == false &&
       github.event.pull_request.user.login == 'dependabot[bot]' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      (startsWith(github.event.pull_request.head.ref, 'dependabot/uv/') ||
-      startsWith(github.event.pull_request.head.ref, 'dependabot/npm_and_yarn/') ||
-      startsWith(github.event.pull_request.head.ref, 'dependabot/github_actions/')) &&
       github.event.pull_request.base.ref == github.event.repository.default_branch
     needs: authorize-dependency-update
     runs-on: ubuntu-latest

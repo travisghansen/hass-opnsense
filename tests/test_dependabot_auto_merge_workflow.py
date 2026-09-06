@@ -81,6 +81,7 @@ def _authorize(
     changed_files: list[str],
     commits: list[dict[str, Any]],
     event: dict[str, Any],
+    trusted_base_files: list[str],
 ) -> subprocess.CompletedProcess[str]:
     """Run the checked-in authorization command with API-shaped inputs.
 
@@ -90,6 +91,7 @@ def _authorize(
         changed_files (list[str]): Files reported by the pull-request API.
         commits (list[dict[str, Any]]): Commit pages returned by the API.
         event (dict[str, Any]): Pull-request event payload.
+        trusted_base_files (list[str]): Files present in the trusted base checkout.
 
     Returns:
         subprocess.CompletedProcess[str]: Result from the authorizer process.
@@ -100,6 +102,10 @@ def _authorize(
     event_path = tmp_path / "event.json"
     changed_files_path = tmp_path / "changed-files"
     commits_path = tmp_path / "commits.json"
+    for trusted_base_file in trusted_base_files:
+        trusted_path = tmp_path / trusted_base_file
+        trusted_path.parent.mkdir(parents=True, exist_ok=True)
+        trusted_path.write_text("fixture\n", encoding="utf-8")
     event_path.write_text(json.dumps(event), encoding="utf-8")
     changed_files_path.write_text("\n".join(changed_files), encoding="utf-8")
     commits_path.write_text(json.dumps([commits]), encoding="utf-8")
@@ -116,16 +122,38 @@ def _authorize(
 
 
 @pytest.mark.parametrize(
-    ("changed_files", "authorized"),
-    [(["uv.lock"], True), (["pyproject.toml", "uv.lock"], False)],
+    ("head_ref", "trusted_base_files", "changed_files", "authorized"),
+    [
+        ("dependabot/uv/pytest-9.0.0", ["uv.lock"], ["uv.lock"], True),
+        ("dependabot/uv/pytest-9.0.0", ["uv.lock"], ["pyproject.toml", "uv.lock"], False),
+        (
+            "dependabot/uv/pytest-9.0.0",
+            ["package.json", "package-lock.json"],
+            ["uv.lock"],
+            False,
+        ),
+        (
+            "dependabot/npm_and_yarn/pytest-9.0.0",
+            ["package.json", "package-lock.json"],
+            ["package-lock.json"],
+            True,
+        ),
+        ("dependabot/npm_and_yarn/pytest-9.0.0", ["uv.lock"], ["package-lock.json"], False),
+    ],
 )
-def test_uv_authorization_requires_only_the_lockfile(
-    tmp_path: Path, changed_files: list[str], authorized: bool
+def test_authorization_derives_dependency_policy_from_the_trusted_base(
+    tmp_path: Path,
+    head_ref: str,
+    trusted_base_files: list[str],
+    changed_files: list[str],
+    authorized: bool,
 ) -> None:
-    """Authorize direct uv updates only when their API file list is lockfile-only.
+    """Authorize matching lockfile updates only when their trusted base uses that ecosystem.
 
     Args:
         tmp_path (Path): Trusted base checkout fixture directory.
+        head_ref (str): Dependabot branch associated with the update.
+        trusted_base_files (list[str]): Files in the trusted base checkout.
         changed_files (list[str]): Files reported by the pull-request API.
         authorized (bool): Whether the update should pass authorization.
     """
@@ -134,7 +162,8 @@ def test_uv_authorization_requires_only_the_lockfile(
         actor="dependabot[bot]",
         changed_files=changed_files,
         commits=[_dependabot_commit()],
-        event=_event("opened", "dependabot/uv/pytest-9.0.0"),
+        event=_event("opened", head_ref),
+        trusted_base_files=trusted_base_files,
     )
 
     assert (result.returncode == 0) is authorized
@@ -152,6 +181,7 @@ def test_authorization_accepts_only_verified_update_branch_history(tmp_path: Pat
         changed_files=["uv.lock"],
         commits=[_dependabot_commit(DEPENDABOT_SHA), _update_commit(DEPENDABOT_SHA)],
         event=_event("synchronize", "dependabot/uv/pytest-9.0.0"),
+        trusted_base_files=["uv.lock"],
     )
     invalid = _authorize(
         tmp_path,
@@ -162,6 +192,7 @@ def test_authorization_accepts_only_verified_update_branch_history(tmp_path: Pat
             _update_commit(DEPENDABOT_SHA),
         ],
         event=_event("synchronize", "dependabot/uv/pytest-9.0.0"),
+        trusted_base_files=["uv.lock"],
     )
 
     assert valid.returncode == 0
@@ -169,32 +200,31 @@ def test_authorization_accepts_only_verified_update_branch_history(tmp_path: Pat
 
 
 @pytest.mark.parametrize(
-    ("changed_file", "trusted_file", "authorized"),
+    ("changed_file", "trusted_base_files", "authorized"),
     [
-        (".github/workflows/pytest_check.yml", ".github/workflows/pytest_check.yml", True),
-        (".github/workflows/nested/unsafe.yml", ".github/workflows/nested/unsafe.yml", False),
+        (".github/workflows/pytest_check.yml", [".github/workflows/pytest_check.yml"], True),
+        ("actions/release/action.yaml", ["actions/release/action.yaml"], True),
+        (".github/workflows/nested/unsafe.yml", [".github/workflows/nested/unsafe.yml"], False),
     ],
 )
-def test_actions_authorization_requires_an_existing_top_level_file(
-    tmp_path: Path, changed_file: str, trusted_file: str, authorized: bool
+def test_actions_authorization_requires_trusted_allowed_files(
+    tmp_path: Path, changed_file: str, trusted_base_files: list[str], authorized: bool
 ) -> None:
-    """Authorize only trusted-base top-level GitHub Actions workflow updates.
+    """Authorize only trusted-base top-level workflows and action manifests.
 
     Args:
         tmp_path (Path): Trusted base checkout fixture directory.
         changed_file (str): File reported by the pull-request API.
-        trusted_file (str): Corresponding file present in the trusted checkout.
+        trusted_base_files (list[str]): Files in the trusted base checkout.
         authorized (bool): Whether the update should pass authorization.
     """
-    trusted_path = tmp_path / trusted_file
-    trusted_path.parent.mkdir(parents=True)
-    trusted_path.write_text("name: trusted\n", encoding="utf-8")
     result = _authorize(
         tmp_path,
         actor="dependabot[bot]",
         changed_files=[changed_file],
         commits=[_dependabot_commit()],
         event=_event("opened", "dependabot/github_actions/actions/checkout-7"),
+        trusted_base_files=trusted_base_files,
     )
 
     assert (result.returncode == 0) is authorized

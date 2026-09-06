@@ -1,6 +1,6 @@
 /** Validate that a dependency pull request remains safe to auto-merge. */
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const DEPENDABOT = "dependabot[bot]";
@@ -17,23 +17,46 @@ function dependencyEcosystem(headRef) {
   refuse(`unsupported Dependabot branch: ${headRef}`);
 }
 
+function isTrustedBaseFile(trustedBaseDirectory, path) {
+  const base = resolve(trustedBaseDirectory);
+  const candidate = resolve(base, path);
+  const pathFromBase = relative(base, candidate);
+  if (
+    pathFromBase === "" ||
+    isAbsolute(pathFromBase) ||
+    pathFromBase === ".." ||
+    pathFromBase.startsWith(`..${sep}`)
+  )
+    return false;
+  return existsSync(candidate) && statSync(candidate).isFile();
+}
+
 function assertAllowedFiles(ecosystem, changedFiles, trustedBaseDirectory) {
   if (changedFiles.length === 0)
     refuse("the pull request has no changed files.");
   if (ecosystem === "uv") {
+    if (!isTrustedBaseFile(trustedBaseDirectory, "uv.lock"))
+      refuse("the trusted base does not use uv.");
     if (changedFiles.length !== 1 || changedFiles[0] !== "uv.lock")
       refuse("uv updates must change only uv.lock.");
     return;
   }
   if (ecosystem === "npm") {
+    if (
+      !isTrustedBaseFile(trustedBaseDirectory, "package.json") ||
+      !isTrustedBaseFile(trustedBaseDirectory, "package-lock.json")
+    )
+      refuse("the trusted base does not use npm.");
     const isPackageFile = (path) =>
       path === "package.json" || path === "package-lock.json";
-    if (
-      changedFiles.length !== 2 ||
-      !changedFiles.includes("package.json") ||
-      !changedFiles.includes("package-lock.json") ||
-      !changedFiles.every(isPackageFile)
-    )
+    const isLockfileOnly =
+      changedFiles.length === 1 && changedFiles[0] === "package-lock.json";
+    const isManifestAndLockfile =
+      changedFiles.length === 2 &&
+      changedFiles.includes("package.json") &&
+      changedFiles.includes("package-lock.json") &&
+      changedFiles.every(isPackageFile);
+    if (!isLockfileOnly && !isManifestAndLockfile)
       refuse(
         "npm updates must change only package.json and package-lock.json.",
       );
@@ -42,9 +65,8 @@ function assertAllowedFiles(ecosystem, changedFiles, trustedBaseDirectory) {
 
   const isExistingAllowedFile = (path) =>
     (/^\.github\/workflows\/[^/]+\.ya?ml$/.test(path) ||
-      path === "action.yml" ||
-      path === "action.yaml") &&
-    existsSync(resolve(trustedBaseDirectory, path));
+      /(^|\/)action\.ya?ml$/.test(path)) &&
+    isTrustedBaseFile(trustedBaseDirectory, path);
   if (!changedFiles.every(isExistingAllowedFile))
     refuse("the update changes a file outside the trusted dependency scope.");
 }
