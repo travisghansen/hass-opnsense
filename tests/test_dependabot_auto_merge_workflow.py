@@ -57,6 +57,7 @@ def _dependabot_commit(sha: str = HEAD_SHA, *, verified: bool = True) -> dict[st
     return {
         "author": {"login": "dependabot[bot]"},
         "commit": {"verification": {"verified": verified}},
+        "committer": {"login": "web-flow"},
         "parents": [],
         "sha": sha,
     }
@@ -275,6 +276,35 @@ def test_authorization_accepts_a_direct_reopened_dependabot_update(tmp_path: Pat
     )
 
     assert result.returncode == 0
+
+
+@pytest.mark.parametrize("is_update_branch", [False, True], ids=["direct", "update-branch"])
+@pytest.mark.parametrize("committer", [None, "maintainer"], ids=["missing", "maintainer"])
+def test_authorization_rejects_untrusted_dependabot_root_committer(
+    tmp_path: Path, is_update_branch: bool, committer: str | None
+) -> None:
+    """Reject direct and reopened roots without a verified GitHub web-flow committer.
+
+    Args:
+        tmp_path (Path): Trusted base checkout fixture directory.
+        is_update_branch (bool): Whether to exercise a GitHub Update branch chain.
+        committer (str | None): Missing or untrusted root committer identity.
+    """
+    commits = _update_chain() if is_update_branch else [_dependabot_commit()]
+    if committer is None:
+        commits[0].pop("committer")
+    else:
+        commits[0]["committer"] = {"login": committer}
+    result = _authorize(
+        tmp_path,
+        ancestry_proofs=_update_chain_proofs() if is_update_branch else [],
+        changed_files=["uv.lock"],
+        commits=commits,
+        event=_event(),
+        trusted_base_files=["uv.lock"],
+    )
+
+    assert result.returncode != 0
 
 
 def test_authorization_rejects_invalid_dependabot_provenance(tmp_path: Path) -> None:
@@ -571,6 +601,19 @@ def _assert_trusted_checkout_precedes_authorization(job: dict[str, Any]) -> None
     assert checkout["with"]["persist-credentials"] is False
 
 
+def _assert_current_base_evidence_collector(step: dict[str, Any]) -> None:
+    """Assert that compare evidence receives the event base SHA through its environment.
+
+    Args:
+        step (dict[str, Any]): Authorization shell step from a parsed workflow.
+    """
+    assert step["env"]["BASE_SHA"] == "${{ github.event.pull_request.base.sha }}"
+    run = step["run"]
+    assert "compare/${second_parent}...${BASE_SHA}" in run
+    assert '--arg base_sha "${BASE_SHA}"' in run
+    assert 'base_sha="${{ github.event.pull_request.base.sha }}"' not in run
+
+
 def test_dependabot_and_coverage_workflow_trust_contracts() -> None:
     """Keep authorization inputs read-only and coverage comments in the checkout-free writer.
 
@@ -588,7 +631,9 @@ def test_dependabot_and_coverage_workflow_trust_contracts() -> None:
     assert authorization["permissions"]["pull-requests"] == "read"
     _assert_dependabot_author_condition(authorization["if"])
     _assert_trusted_checkout_precedes_authorization(authorization)
-    authorization_run = _step_with_run(authorization, "dependabot-auto-merge.mjs")["run"]
+    authorization_step = _step_with_run(authorization, "dependabot-auto-merge.mjs")
+    authorization_run = authorization_step["run"]
+    _assert_current_base_evidence_collector(authorization_step)
     for required_dataflow in (
         "pulls/${PR_NUMBER}/files",
         "pulls/${PR_NUMBER}/commits",
@@ -629,6 +674,7 @@ def test_dependabot_and_coverage_workflow_trust_contracts() -> None:
         ):
             assert disallowed_restriction not in condition
     _assert_trusted_checkout_precedes_authorization(tests)
+    _assert_current_base_evidence_collector(authorizer)
     authorization_index = _steps(tests).index(authorizer)
     head_checkout_index = next(
         index

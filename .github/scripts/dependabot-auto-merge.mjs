@@ -71,12 +71,19 @@ function assertAllowedFiles(ecosystem, changedFiles, trustedBaseDirectory) {
     refuse("the update changes a file outside the trusted dependency scope.");
 }
 
+function isVerifiedDependabotCommit(commit) {
+  return (
+    commit?.author?.login === DEPENDABOT &&
+    commit?.committer?.login === WEB_FLOW &&
+    commit?.commit?.verification?.verified === true
+  );
+}
+
 function assertDirectDependabotHistory(event, commits) {
   const [commit] = commits;
   if (
     commits.length !== 1 ||
-    commit?.author?.login !== DEPENDABOT ||
-    commit?.commit?.verification?.verified !== true ||
+    !isVerifiedDependabotCommit(commit) ||
     commit?.sha !== event.pull_request.head.sha
   )
     refuse("the pull request does not have a verified Dependabot head commit.");
@@ -113,10 +120,7 @@ function assertMergeParentAncestry(event, commits, ancestryProofs) {
 function assertUpdateBranchHistory(event, commits, ancestryProofs) {
   if (commits.length < 2)
     refuse("the pull request is not a GitHub Update branch merge.");
-  if (
-    commits[0]?.author?.login !== DEPENDABOT ||
-    commits[0]?.commit?.verification?.verified !== true
-  )
+  if (!isVerifiedDependabotCommit(commits[0]))
     refuse("the pull request history does not begin with Dependabot.");
 
   for (let index = 1; index < commits.length; index += 1) {

@@ -25,6 +25,7 @@ jobs:
 
       - name: Authorize dependency update files
         env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPOSITORY: ${{ github.repository }}
@@ -34,7 +35,6 @@ jobs:
           commits="${RUNNER_TEMP}/dependabot-commits.json"
           ancestry_proofs="${RUNNER_TEMP}/dependabot-ancestry-proofs.json"
           ancestry_proof_items="${RUNNER_TEMP}/dependabot-ancestry-proof-items.jsonl"
-          base_sha="${{ github.event.pull_request.base.sha }}"
           gh api --paginate \
             "repos/${REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" \
             --jq '.[].filename' > "${changed_files}"
@@ -43,8 +43,8 @@ jobs:
             > "${commits}"
           : > "${ancestry_proof_items}"
           while IFS= read -r second_parent; do
-            gh api "repos/${REPOSITORY}/compare/${second_parent}...${base_sha}" |
-              jq -c --arg parent_sha "${second_parent}" --arg base_sha "${base_sha}" \
+            gh api "repos/${REPOSITORY}/compare/${second_parent}...${BASE_SHA}" |
+              jq -c --arg parent_sha "${second_parent}" --arg base_sha "${BASE_SHA}" \
                 '{parent_sha, base_sha, base_commit: .base_commit.sha, head_commit: .head_commit.sha, merge_base_commit: .merge_base_commit.sha, status, ahead_by, behind_by}' \
                 >> "${ancestry_proof_items}"
           done < <(jq -r '.[].[] | select(.parents | length == 2) | .parents[1].sha' "${commits}")
