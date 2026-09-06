@@ -29,4 +29,40 @@ jobs:
         uses: py-cov-action/python-coverage-comment-action@v4.3
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTIVITY: post_comment
           GITHUB_PR_RUN_ID: ${{ github.event.workflow_run.id }}
+
+  publish-default-coverage:
+    name: Publish default coverage data
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Checkout tested default-branch commit
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Download coverage data from test run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          gh run download "${RUN_ID}" --repo "${REPOSITORY}" \
+            --name python-coverage-data --dir .
+
+      - name: Publish default-branch coverage data
+        uses: py-cov-action/python-coverage-comment-action@v4.3
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTIVITY: save_coverage_data_files
+          MINIMUM_GREEN: 90
+          MINIMUM_ORANGE: 70

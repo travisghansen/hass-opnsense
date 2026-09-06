@@ -82,11 +82,37 @@ function assertDirectDependabotHistory(event, commits) {
     refuse("the pull request does not have a verified Dependabot head commit.");
 }
 
-function assertUpdateBranchHistory(event, commits) {
-  if (event.action !== "synchronize")
-    refuse(`the triggering actor was not ${DEPENDABOT}.`);
+function assertMergeParentAncestry(event, commits, ancestryProofs) {
+  const mergeCommits = commits.slice(1);
+  const currentBase = event.pull_request.base.sha;
+  if (
+    !Array.isArray(ancestryProofs) ||
+    ancestryProofs.length !== mergeCommits.length
+  )
+    refuse("the merge-parent ancestry evidence is incomplete.");
+
+  for (const [index, commit] of mergeCommits.entries()) {
+    const secondParent = commit?.parents?.[1]?.sha;
+    const proof = ancestryProofs[index];
+    if (
+      typeof secondParent !== "string" ||
+      proof?.parent_sha !== secondParent ||
+      proof?.base_sha !== currentBase ||
+      proof?.base_commit !== secondParent ||
+      proof?.head_commit !== currentBase ||
+      proof?.merge_base_commit !== secondParent ||
+      !["ahead", "identical"].includes(proof?.status) ||
+      !Number.isInteger(proof?.ahead_by) ||
+      proof.ahead_by < 0 ||
+      proof?.behind_by !== 0
+    )
+      refuse("a merge second parent is not proven to be on the current base.");
+  }
+}
+
+function assertUpdateBranchHistory(event, commits, ancestryProofs) {
   if (commits.length < 2)
-    refuse("the synchronization was not a GitHub Update branch merge.");
+    refuse("the pull request is not a GitHub Update branch merge.");
   if (
     commits[0]?.author?.login !== DEPENDABOT ||
     commits[0]?.commit?.verification?.verified !== true
@@ -105,6 +131,7 @@ function assertUpdateBranchHistory(event, commits) {
       refuse("the pull request contains a non-Dependabot edit.");
   }
 
+  assertMergeParentAncestry(event, commits, ancestryProofs);
   const latest = commits.at(-1);
   if (
     latest?.sha !== event.pull_request.head.sha ||
@@ -119,7 +146,7 @@ function assertUpdateBranchHistory(event, commits) {
  * @param {object} input Validation inputs from the pull-request event and API.
  */
 export function authorizeDependabotUpdate({
-  actor,
+  ancestryProofs = [],
   changedFiles,
   commits,
   event,
@@ -137,17 +164,18 @@ export function authorizeDependabotUpdate({
     );
 
   const ecosystem = dependencyEcosystem(pullRequest.head.ref);
-  if (actor === DEPENDABOT) assertDirectDependabotHistory(event, commits);
-  else assertUpdateBranchHistory(event, commits);
+  if (commits.length === 1) assertDirectDependabotHistory(event, commits);
+  else assertUpdateBranchHistory(event, commits, ancestryProofs);
   assertAllowedFiles(ecosystem, changedFiles, trustedBaseDirectory);
   return ecosystem;
 }
 
 function main() {
-  const [, , eventPath, changedFilesPath, commitsPath] = process.argv;
-  if (!eventPath || !changedFilesPath || !commitsPath)
+  const [, , eventPath, changedFilesPath, commitsPath, ancestryProofsPath] =
+    process.argv;
+  if (!eventPath || !changedFilesPath || !commitsPath || !ancestryProofsPath)
     throw new Error(
-      "Usage: dependabot-auto-merge.mjs EVENT CHANGED_FILES COMMITS",
+      "Usage: dependabot-auto-merge.mjs EVENT CHANGED_FILES COMMITS ANCESTRY_PROOFS",
     );
   const event = JSON.parse(readFileSync(eventPath, "utf8"));
   const changedFiles = readFileSync(changedFilesPath, "utf8")
@@ -155,8 +183,9 @@ function main() {
     .filter(Boolean);
   const commitPages = JSON.parse(readFileSync(commitsPath, "utf8"));
   const commits = commitPages.flat();
+  const ancestryProofs = JSON.parse(readFileSync(ancestryProofsPath, "utf8"));
   authorizeDependabotUpdate({
-    actor: process.env.GITHUB_ACTOR,
+    ancestryProofs,
     changedFiles,
     commits,
     event,

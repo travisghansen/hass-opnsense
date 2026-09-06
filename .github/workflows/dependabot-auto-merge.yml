@@ -11,10 +11,7 @@ concurrency:
 jobs:
   authorize-dependency-update:
     if: >-
-      github.event.repository.fork == false &&
-      github.event.pull_request.user.login == 'dependabot[bot]' &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.base.ref == github.event.repository.default_branch
+      github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -35,14 +32,25 @@ jobs:
           set -euo pipefail
           changed_files="${RUNNER_TEMP}/dependabot-changed-files"
           commits="${RUNNER_TEMP}/dependabot-commits.json"
+          ancestry_proofs="${RUNNER_TEMP}/dependabot-ancestry-proofs.json"
+          ancestry_proof_items="${RUNNER_TEMP}/dependabot-ancestry-proof-items.jsonl"
+          base_sha="${{ github.event.pull_request.base.sha }}"
           gh api --paginate \
             "repos/${REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" \
             --jq '.[].filename' > "${changed_files}"
           gh api --paginate --slurp \
             "repos/${REPOSITORY}/pulls/${PR_NUMBER}/commits?per_page=100" \
             > "${commits}"
+          : > "${ancestry_proof_items}"
+          while IFS= read -r second_parent; do
+            gh api "repos/${REPOSITORY}/compare/${second_parent}...${base_sha}" |
+              jq -c --arg parent_sha "${second_parent}" --arg base_sha "${base_sha}" \
+                '{parent_sha, base_sha, base_commit: .base_commit.sha, head_commit: .head_commit.sha, merge_base_commit: .merge_base_commit.sha, status, ahead_by, behind_by}' \
+                >> "${ancestry_proof_items}"
+          done < <(jq -r '.[].[] | select(.parents | length == 2) | .parents[1].sha' "${commits}")
+          jq -s . "${ancestry_proof_items}" > "${ancestry_proofs}"
           node .github/scripts/dependabot-auto-merge.mjs \
-            "${GITHUB_EVENT_PATH}" "${changed_files}" "${commits}"
+            "${GITHUB_EVENT_PATH}" "${changed_files}" "${commits}" "${ancestry_proofs}"
 
   enable-auto-merge:
     needs: authorize-dependency-update

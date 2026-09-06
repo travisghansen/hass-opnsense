@@ -24,6 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pull-requests: read
 
     steps:
       - name: Checkout trusted dependency authorization helper
@@ -47,14 +48,25 @@ jobs:
           set -euo pipefail
           changed_files="${RUNNER_TEMP}/dependabot-changed-files"
           commits="${RUNNER_TEMP}/dependabot-commits.json"
+          ancestry_proofs="${RUNNER_TEMP}/dependabot-ancestry-proofs.json"
+          ancestry_proof_items="${RUNNER_TEMP}/dependabot-ancestry-proof-items.jsonl"
+          base_sha="${{ github.event.pull_request.base.sha }}"
           gh api --paginate \
             "repos/${REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" \
             --jq '.[].filename' > "${changed_files}"
           gh api --paginate --slurp \
             "repos/${REPOSITORY}/pulls/${PR_NUMBER}/commits?per_page=100" \
             > "${commits}"
+          : > "${ancestry_proof_items}"
+          while IFS= read -r second_parent; do
+            gh api "repos/${REPOSITORY}/compare/${second_parent}...${base_sha}" |
+              jq -c --arg parent_sha "${second_parent}" --arg base_sha "${base_sha}" \
+                '{parent_sha, base_sha, base_commit: .base_commit.sha, head_commit: .head_commit.sha, merge_base_commit: .merge_base_commit.sha, status, ahead_by, behind_by}' \
+                >> "${ancestry_proof_items}"
+          done < <(jq -r '.[].[] | select(.parents | length == 2) | .parents[1].sha' "${commits}")
+          jq -s . "${ancestry_proof_items}" > "${ancestry_proofs}"
           node .github/scripts/dependabot-auto-merge.mjs \
-            "${GITHUB_EVENT_PATH}" "${changed_files}" "${commits}"
+            "${GITHUB_EVENT_PATH}" "${changed_files}" "${commits}" "${ancestry_proofs}"
 
       - name: Require expected release commit
         if: github.event_name == 'workflow_dispatch'
@@ -81,50 +93,32 @@ jobs:
       - name: Run pytest with coverage from the lock
         run: uv run --locked --group pytest pytest
 
-  coverage_publisher:
-    name: Publish coverage report
-    needs: tests
-    if: >-
-      github.event_name != 'workflow_dispatch' &&
-      (github.event_name != 'pull_request' ||
-      (github.event.pull_request.user.login != 'prek-autoupdate-bot' &&
-      github.event.pull_request.user.login != 'dependabot[bot]'))
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-      contents: write
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-
-      - name: Setup uv (with caching)
-        uses: astral-sh/setup-uv@v10.0.1
-        with:
-          python-version: "3.14"
-          enable-cache: true
-          ignore-nothing-to-cache: true
-          cache-dependency-glob: uv.lock
-
-      - name: Run pytest with coverage from the lock
-        run: uv run --locked --group pytest pytest
-
-      - name: Generate coverage Comment (and possibly Post to PR)
+      - name: Generate coverage comment
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.user.login != 'prek-autoupdate-bot' &&
+          github.event.pull_request.user.login != 'dependabot[bot]'
         id: coverage_comment
         uses: py-cov-action/python-coverage-comment-action@v4.3
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTIVITY: process_pr
           MINIMUM_GREEN: 90
           MINIMUM_ORANGE: 70
 
-      - name: Store PR Comment to be Posted
-        if: steps.coverage_comment.outputs.COMMENT_FILE_WRITTEN == 'true'
+      - name: Store PR coverage comment
+        if: steps.coverage_comment.outputs.comment_file_written == 'true'
         uses: actions/upload-artifact@v7
         with:
-          # If you use a different name, update COMMENT_ARTIFACT_NAME accordingly
           name: python-coverage-comment-action
-          # If you use a different name, update COMMENT_FILENAME accordingly
           path: python-coverage-comment-action.txt
+          retention-days: 1
+
+      - name: Store coverage data for trusted publication
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-coverage-data
+          path: .coverage
+          include-hidden-files: true
           retention-days: 1
