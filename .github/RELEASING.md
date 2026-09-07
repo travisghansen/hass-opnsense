@@ -1,38 +1,38 @@
 # Releasing hass-opnsense
 
-## Normal release
+<!-- cspell:ignore Hassfest -->
 
-1. Merge the release-ready changes into the default branch.
-2. Create and publish a GitHub release targeted at that default branch, using a
-   valid `v`-prefixed tag. Tags containing only numeric components are stable;
-   tags with a suffix are prereleases. The tag initially points at the current
-   default-branch commit.
-3. The **Release** workflow runs on the published release event.
+## Stable releases
 
-For a stable release, the workflow validates the tag and release target,
-creates a deterministic version-only commit, builds and tests `opnsense.zip`,
-publishes the candidate to a temporary validation branch, and dispatches the
-immutable validation, pytest, and lint gates. Only their exact successful jobs
-allow a lease-guarded atomic promotion of the default branch and annotated tag.
-It then uploads `opnsense.zip` and adds the firmware compatibility note.
+1. Merge release-ready changes into the default branch, then publish a GitHub
+   Release with an unused valid `v`-prefixed stable tag targeting that branch.
+   The new tag and branch must initially name the same commit.
+2. The **Release** workflow creates one deterministic commit changing only
+   `manifest.json` and `const.py`, then builds and validates `opnsense.zip`.
+3. It publishes that candidate to a unique validation branch and dispatches its
+   exact SHA to HACS, Hassfest, pytest, and lint checks. After they pass, it
+   atomically advances the default branch and annotated tag, verifies both refs,
+   uploads the archive, and idempotently adds the firmware compatibility note.
 
-Prereleases build, validate, and upload the archive from the published tag but
-never mutate the default branch or move the tag. Their source must already have
-the matching manifest and `const.py` version.
+No personal access token is required. The workflow uses `GITHUB_TOKEN` with
+step-scoped access; branch protection remains active for promotion.
 
-No personal access token is needed. The workflow uses the scoped GitHub token
-only for the release API, temporary validation ref, gate dispatch, guarded
-promotion, and cleanup.
+## Prereleases
 
-## Recovery
+Publish an explicit unused prerelease tag whose `manifest.json` and `const.py`
+versions already match. The workflow builds and uploads `opnsense.zip` without
+creating a commit or moving a branch or tag. It also idempotently maintains the
+firmware compatibility note. Before upload, the default branch and tag must
+still resolve to the exact source selected by the published release.
 
-Do not force-move a tag or default branch after any failure. A failed stable
-release intentionally leaves its temporary validation branch for inspection;
-delete it only after determining that its candidate and CI evidence are no
-longer needed. Create a new correctly targeted release after fixing any source
-or workflow issue.
+## Failures and retries
 
-For an upload-only recovery, inspect the promoted annotated tag, version files,
-and archive before attaching `opnsense.zip` to the existing release. Preserve
-the firmware compatibility note using the firmware bounds from the tagged
-`custom_components/opnsense/const.py`.
+A failed stable validation retains its `release-validation/...` branch. Verify
+its exact SHA before deleting it; do not promote that commit directly or
+force-move its tag.
+
+If an upload fails after promotion, rerun the workflow only when the default
+branch and annotated tag still name the same one-parent `Release <tag>` commit,
+its only changed paths are the two version files, and regenerating those files
+from the parent produces identical contents. Otherwise, start a new release
+from current default-branch state.

@@ -180,6 +180,12 @@ def main() -> int:
         choices=("true", "false"),
         help="Require the tag to match the workflow prerelease selection",
     )
+    parser.add_argument(
+        "--repository",
+        type=Path,
+        default=Path.cwd(),
+        help="Repository root whose version files should be validated or updated",
+    )
     args = parser.parse_args()
 
     try:
@@ -202,7 +208,7 @@ def main() -> int:
             if args.expected_prerelease is not None:
                 msg = "--expected-prerelease requires --check-only."
                 raise ValueError(msg)
-            update_release_versions(Path.cwd(), args.tag)
+            update_release_versions(args.repository, args.tag)
     except (OSError, ValueError) as error:
         parser.error(str(error))
 

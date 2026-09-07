@@ -70,11 +70,22 @@ jobs:
           resume=false
           if [[ "$(git log -1 --format=%s "$target_sha")" == "Release $RELEASE_TAG" ]]; then
             if [[ "$(git rev-list --parents -n 1 "$target_sha" | wc -w)" -ne 2 ]] || \
+              [[ "$(git diff --name-only "$target_sha^" "$target_sha")" != $'custom_components/opnsense/const.py\ncustom_components/opnsense/manifest.json' ]] || \
               [[ "$(jq -r .version custom_components/opnsense/manifest.json)" != "$RELEASE_TAG" ]] || \
               ! grep -Fx "VERSION = \"$RELEASE_TAG\"" custom_components/opnsense/const.py >/dev/null; then
               echo "Matching branch/tag release commit has invalid release contents." >&2
               exit 1
             fi
+            resume_dir="$(mktemp -d)"
+            mkdir -p "$resume_dir/custom_components/opnsense"
+            git show "$target_sha^:custom_components/opnsense/manifest.json" > \
+              "$resume_dir/custom_components/opnsense/manifest.json"
+            git show "$target_sha^:custom_components/opnsense/const.py" > \
+              "$resume_dir/custom_components/opnsense/const.py"
+            python3 .github/scripts/prepare_release.py --repository "$resume_dir" "$RELEASE_TAG"
+            cmp "$resume_dir/custom_components/opnsense/manifest.json" \
+              custom_components/opnsense/manifest.json
+            cmp "$resume_dir/custom_components/opnsense/const.py" custom_components/opnsense/const.py
             resume=true
             echo "candidate-sha=$target_sha" >> "$GITHUB_OUTPUT"
           fi
@@ -91,9 +102,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_ARCHIVE: ${{ runner.temp }}/opnsense.zip
           RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TARGET: ${{ steps.release.outputs.target }}
+          SOURCE_SHA: ${{ steps.base.outputs.target-sha }}
+          TAG_OID: ${{ steps.base.outputs.tag-oid }}
         run: |
           set -euo pipefail
-          git archive --format=zip --output="$RELEASE_ARCHIVE" \
+          git archive --format=zip --mtime="@$(git log -1 --format=%ct HEAD)" --output="$RELEASE_ARCHIVE" \
             "HEAD:custom_components/opnsense"
           unzip -t "$RELEASE_ARCHIVE"
           [[ "$(unzip -p "$RELEASE_ARCHIVE" manifest.json | jq -r .version)" == "$RELEASE_TAG" ]]
@@ -105,6 +119,12 @@ jobs:
           if [[ "$release_body" != *"opnsense-firmware-compatibility"* ]]; then
             gh release edit "$RELEASE_TAG" --notes "${release_body}"$'\n\n'"$firmware_notes"
           fi
+          git fetch --force --no-tags origin \
+            "refs/heads/$RELEASE_TARGET:refs/remotes/origin/$RELEASE_TARGET" \
+            "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          [[ "$(git rev-parse "refs/remotes/origin/$RELEASE_TARGET")" == "$SOURCE_SHA" ]]
+          [[ "$(git rev-parse "refs/tags/$RELEASE_TAG")" == "$TAG_OID" ]]
+          [[ "$(git rev-parse "refs/tags/$RELEASE_TAG^{}")" == "$SOURCE_SHA" ]]
           gh release upload "$RELEASE_TAG" "$RELEASE_ARCHIVE#opnsense.zip" --clobber
 
       - name: Create deterministic stable release commit B
@@ -135,7 +155,8 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
-          git archive --format=zip --output="$RELEASE_ARCHIVE" "HEAD:custom_components/opnsense"
+          git archive --format=zip --mtime="@$(git log -1 --format=%ct HEAD)" \
+            --output="$RELEASE_ARCHIVE" "HEAD:custom_components/opnsense"
           unzip -t "$RELEASE_ARCHIVE"
           [[ "$(unzip -p "$RELEASE_ARCHIVE" manifest.json | jq -r .version)" == "$RELEASE_TAG" ]]
           unzip -p "$RELEASE_ARCHIVE" const.py | grep -Fx "VERSION = \"$RELEASE_TAG\"" >/dev/null
@@ -171,6 +192,7 @@ jobs:
 
       - name: Atomically advance target and guarded release tag
         if: github.event.release.prerelease == false && steps.base.outputs.resume != 'true'
+        id: promotion
         env:
           GH_TOKEN: ${{ github.token }}
           ORIGINAL_TAG_OID: ${{ steps.base.outputs.tag-oid }}
@@ -186,6 +208,7 @@ jobs:
           [[ "$(git rev-parse "refs/tags/$RELEASE_TAG")" == "$ORIGINAL_TAG_OID" ]]
           [[ "$(git rev-parse HEAD^)" == "$TARGET_SHA" ]]
           git tag -fa "$RELEASE_TAG" -m "Release $RELEASE_TAG" HEAD
+          echo "tag-oid=$(git rev-parse "refs/tags/$RELEASE_TAG")" >> "$GITHUB_OUTPUT"
           git push --atomic \
             --force-with-lease="refs/heads/$RELEASE_TARGET:$TARGET_SHA" \
             --force-with-lease="refs/tags/$RELEASE_TAG:$ORIGINAL_TAG_OID" \
@@ -196,6 +219,7 @@ jobs:
         env:
           CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
           GH_TOKEN: ${{ github.token }}
+          PROMOTED_TAG_OID: ${{ steps.promotion.outputs.tag-oid || steps.base.outputs.tag-oid }}
           RELEASE_ARCHIVE: ${{ runner.temp }}/opnsense.zip
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           RELEASE_TARGET: ${{ steps.release.outputs.target }}
@@ -205,6 +229,7 @@ jobs:
             "refs/heads/$RELEASE_TARGET:refs/remotes/origin/$RELEASE_TARGET" \
             "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
           [[ "$(git rev-parse "refs/remotes/origin/$RELEASE_TARGET")" == "$CANDIDATE_SHA" ]]
+          [[ "$(git rev-parse "refs/tags/$RELEASE_TAG")" == "$PROMOTED_TAG_OID" ]]
           [[ "$(git rev-parse "refs/tags/$RELEASE_TAG^{}")" == "$CANDIDATE_SHA" ]]
           python3 .github/scripts/prepare_release.py "$RELEASE_TAG"
           git diff --quiet -- custom_components/opnsense/manifest.json custom_components/opnsense/const.py
@@ -221,6 +246,8 @@ jobs:
         if: github.event.release.prerelease == false && success()
         env:
           GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
           TEMP_REF: ${{ steps.validation_ref.outputs.name }}
         run: |
-          git push origin --delete "$TEMP_REF"
+          git push --force-with-lease="refs/heads/$TEMP_REF:$CANDIDATE_SHA" \
+            origin --delete "$TEMP_REF"
