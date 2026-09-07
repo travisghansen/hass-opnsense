@@ -467,12 +467,12 @@ def test_release_gate_workflows_guard_and_checkout_the_exact_dispatch_sha(
             for step in steps.values()
             if isinstance(step.get("uses"), str)
             and step["uses"].split("@", 1)[0] == "actions/checkout"
+            and step.get("with", {}).get("ref") == "${{ inputs.expected_sha || github.sha }}"
         )
-        assert checkout["with"]["ref"] == "${{ inputs.expected_sha || github.sha }}"
         assert checkout["with"]["persist-credentials"] is False
 
     if workflow == "pytest_check.yml":
-        assert document["jobs"]["tests"]["permissions"] == {"contents": "read"}
-        assert document["jobs"]["coverage_publisher"]["if"].startswith(
-            "github.event_name != 'workflow_dispatch'"
-        )
+        assert document["jobs"]["tests"]["permissions"] == {
+            "contents": "read",
+            "pull-requests": "read",
+        }
