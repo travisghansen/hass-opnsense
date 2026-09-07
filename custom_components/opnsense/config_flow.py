@@ -71,6 +71,12 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 DeviceEntries = dict[str, str]
 
+CONFIG_FLOW_DOCUMENTATION_URL = "https://github.com/travisghansen/hass-opnsense"
+USER_MENU_OPTIONS = {
+    "device": "OPNsense device entry",
+    "carp": "CARP VIP entry",
+}
+
 
 class OPNsenseCarpNotConfiguredError(OPNsenseError):
     """Raised when an endpoint has no usable CARP VIP rows."""
@@ -1006,7 +1012,16 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
         Returns:
             ConfigFlowResult: Menu containing device and CARP setup choices.
         """
-        return self.async_show_menu(step_id="user", menu_options=["device", "carp"])
+        # Home Assistant Core also provides an ``opnsense`` integration. Its user-step
+        # translation can be loaded before this custom integration and requires
+        # ``doc_url`` while providing no labels for this menu. Supplying both values in
+        # the flow result keeps the custom flow renderable regardless of which
+        # translation bundle was cached first.
+        return self.async_show_menu(
+            step_id="user",
+            menu_options=USER_MENU_OPTIONS,
+            description_placeholders={"doc_url": CONFIG_FLOW_DOCUMENTATION_URL},
+        )
 
     async def async_step_device(
         self, user_input: MutableMapping[str, Any] | None = None
