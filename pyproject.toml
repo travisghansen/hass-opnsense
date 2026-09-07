@@ -56,6 +56,8 @@ dev = [
 
 [tool.uv]
 required-version = ">=0.11.0"
+# Override Home Assistant's 48.0.1 pin until it includes the CVE-2026-69247 fix.
+override-dependencies = ["cryptography>=50.0.0"]
 
 [tool.mypy]
 python_version = "3.14"
