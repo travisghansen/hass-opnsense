@@ -1,4 +1,4 @@
-name: pytest and coverage
+name: pytest check and post coverage
 
 on:
   push:
@@ -14,7 +14,7 @@ on:
 
 jobs:
   tests:
-    name: pytest and coverage report
+    name: pytest check and post coverage
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.user.login == 'prek-autoupdate-bot' ||

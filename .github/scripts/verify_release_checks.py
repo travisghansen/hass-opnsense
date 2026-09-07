@@ -6,6 +6,7 @@ import argparse
 from collections import defaultdict
 from collections.abc import Sequence
 import json
+from pathlib import Path
 import shutil
 import subprocess
 import sys
@@ -18,24 +19,13 @@ class GitHubCommandError(RuntimeError):
 
 
 def github_api(arguments: Sequence[str], expected_status: int | None = None) -> dict[str, Any]:
-    """Run a GitHub API request and parse its JSON response.
-
-    Args:
-        arguments: GitHub CLI API arguments.
-        expected_status: Optional required HTTP response status.
-
-    Returns:
-        Parsed JSON object response.
-
-    Raises:
-        GitHubCommandError: If the CLI, response status, or response shape is invalid.
-    """
+    """Run a GitHub API request and parse its JSON response."""
     executable = shutil.which("gh")
     if executable is None:
         raise GitHubCommandError("GitHub CLI executable is unavailable.")
     try:
         result = subprocess.run(  # noqa: S603 -- API arguments are constructed internally.
-            [executable, "api", *arguments],
+            [str(Path(executable)), "api", *arguments],
             check=False,
             capture_output=True,
             text=True,
@@ -63,20 +53,7 @@ def github_api(arguments: Sequence[str], expected_status: int | None = None) -> 
 
 
 def dispatch_workflow(repository: str, workflow: str, ref: str, sha: str) -> int:
-    """Dispatch one workflow for the validated temporary branch.
-
-    Args:
-        repository: GitHub owner and repository name.
-        workflow: Workflow filename.
-        ref: Temporary branch containing the candidate.
-        sha: Candidate commit SHA.
-
-    Returns:
-        The authoritative workflow run ID returned by GitHub.
-
-    Raises:
-        GitHubCommandError: If GitHub does not return a valid run ID.
-    """
+    """Dispatch one workflow for the validated temporary branch."""
     response = github_api(
         [
             "--include",
@@ -101,7 +78,7 @@ def dispatch_workflow(repository: str, workflow: str, ref: str, sha: str) -> int
 
 
 def verify_check_suite(repository: str, run: dict[str, Any], sha: str) -> None:
-    """Require the workflow run's GitHub Actions check suite to use the candidate SHA."""
+    """Require the run's check suite to be a GitHub Actions suite for the SHA."""
     suite_id = run.get("check_suite_id")
     if not isinstance(suite_id, int):
         raise GitHubCommandError("Workflow run did not expose a check suite ID.")
@@ -113,7 +90,7 @@ def verify_check_suite(repository: str, run: dict[str, Any], sha: str) -> None:
         or app.get("slug") != "github-actions"
     ):
         raise GitHubCommandError(
-            "Workflow run is not a GitHub Actions check suite for the candidate commit."
+            f"Workflow run is not a GitHub Actions check suite for candidate SHA {sha}."
         )
 
 
@@ -121,8 +98,10 @@ def verify_jobs(repository: str, run_id: int, required_checks: set[str]) -> None
     """Require every named job to have passed in the selected workflow run."""
     payload = github_api([f"repos/{repository}/actions/runs/{run_id}/jobs?per_page=100"])
     jobs = payload.get("jobs", [])
+    if not isinstance(jobs, list):
+        raise GitHubCommandError("Workflow jobs response did not include jobs.")
     total_count = payload.get("total_count")
-    if not isinstance(jobs, list) or not isinstance(total_count, int) or total_count > len(jobs):
+    if not isinstance(total_count, int) or total_count > len(jobs):
         raise GitHubCommandError("Workflow job list was truncated or unverifiable.")
     outcomes: dict[str, list[Any]] = defaultdict(list)
     for job in jobs:
@@ -164,7 +143,8 @@ def wait_for_workflow(
                 raise
             time.sleep(5)
             continue
-        if run.get("id") != expected_run_id:
+        run_id = run.get("id")
+        if run_id != expected_run_id:
             raise GitHubCommandError("Workflow run ID does not match the dispatch response.")
         if (
             run.get("workflow_id") != workflow_id
@@ -178,11 +158,11 @@ def wait_for_workflow(
             continue
         if run.get("conclusion") != "success":
             raise GitHubCommandError(
-                f"Workflow {workflow!r} run {expected_run_id} concluded {run.get('conclusion')!r}."
+                f"Workflow {workflow!r} run {run_id} concluded {run.get('conclusion')!r}."
             )
         verify_check_suite(repository, run, sha)
-        verify_jobs(repository, expected_run_id, required_checks)
-        return expected_run_id
+        verify_jobs(repository, run_id, required_checks)
+        return run_id
     raise GitHubCommandError(f"Timed out waiting for workflow {workflow!r}.")
 
 

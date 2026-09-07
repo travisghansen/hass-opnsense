@@ -9,15 +9,13 @@ from pathlib import Path
 import re
 import sys
 
+_NUMERIC_COMPONENT = r"(?:0|[1-9][0-9]*)"
 TAG_PATTERN = re.compile(
-    r"^v[0-9]+(?:\.[0-9]+){1,3}(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?(?:[A-Za-z]+[0-9]+)?$"
+    rf"^v{_NUMERIC_COMPONENT}(?:\.{_NUMERIC_COMPONENT}){{1,3}}(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?(?:[A-Za-z]+[0-9]+)?$"
 )
 MANIFEST_VERSION_PATTERN = re.compile(r'("version"\s*:\s*)"[^"]*"')
 CONST_VERSION_PATTERN = re.compile(r'^(VERSION\s*=\s*)"[^"]*"', re.MULTILINE)
-STABLE_TAG_PATTERN = re.compile(
-    r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:\.(0|[1-9][0-9]*))?$"
-)
-NUMERIC_TAG_PATTERN = re.compile(r"^v[0-9]+(?:\.[0-9]+){1,3}$")
+STABLE_TAG_PATTERN = re.compile(rf"^v{_NUMERIC_COMPONENT}(?:\.{_NUMERIC_COMPONENT}){{1,3}}$")
 
 
 def validate_release_tag(tag: str) -> None:
@@ -45,7 +43,7 @@ def validate_release_request(tag: str, prerelease: bool) -> None:
         ValueError: If the tag format and prerelease selection disagree.
     """
     validate_release_tag(tag)
-    tag_is_prerelease = NUMERIC_TAG_PATTERN.fullmatch(tag) is None
+    tag_is_prerelease = STABLE_TAG_PATTERN.fullmatch(tag) is None
     if tag_is_prerelease != prerelease:
         tag_kind = "Prerelease" if tag_is_prerelease else "Stable"
         required_value = str(tag_is_prerelease).lower()
@@ -71,9 +69,10 @@ def next_stable_release_tag(tags: Iterable[str], bump_type: str) -> str:
         raise ValueError(msg)
 
     versions = [
-        tuple(int(component or 0) for component in match.groups())
+        tuple(int(component) for component in tag.removeprefix("v").split("."))
+        + (0,) * (4 - len(tag.removeprefix("v").split(".")))
         for tag in tags
-        if (match := STABLE_TAG_PATTERN.fullmatch(tag)) is not None
+        if STABLE_TAG_PATTERN.fullmatch(tag) is not None
     ]
     if not versions:
         msg = "No stable released tag found."
@@ -119,7 +118,7 @@ def _replace_version(
     return updated
 
 
-def update_release_versions(repository: Path, tag: str) -> None:
+def update_release_versions(repository: Path, tag: str, component_path: str | None = None) -> None:
     """Update manifest.json and const.py to the release tag.
 
     Both files are validated before either is written, preventing a partial update.
@@ -127,12 +126,22 @@ def update_release_versions(repository: Path, tag: str) -> None:
     Args:
         repository: Repository root containing the integration.
         tag: Requested release tag.
+        component_path: Integration directory relative to the repository.
 
     Raises:
         ValueError: If the tag or either version declaration is invalid.
     """
     validate_release_tag(tag)
-    integration = repository / "custom_components" / "opnsense"
+    if component_path is None:
+        components = [
+            path for path in (repository / "custom_components").iterdir() if path.is_dir()
+        ]
+        if len(components) != 1:
+            msg = "component-path is required unless the repository has one component."
+            raise ValueError(msg)
+        integration = components[0]
+    else:
+        integration = repository / component_path
     manifest_path = integration / "manifest.json"
     const_path = integration / "const.py"
 
@@ -180,6 +189,16 @@ def main() -> int:
         choices=("true", "false"),
         help="Require the tag to match the workflow prerelease selection",
     )
+    parser.add_argument(
+        "--repository",
+        type=Path,
+        default=Path.cwd(),
+        help="Repository root whose version files should be validated or updated",
+    )
+    parser.add_argument(
+        "--component-path",
+        help="Integration directory relative to --repository.",
+    )
     args = parser.parse_args()
 
     try:
@@ -202,7 +221,7 @@ def main() -> int:
             if args.expected_prerelease is not None:
                 msg = "--expected-prerelease requires --check-only."
                 raise ValueError(msg)
-            update_release_versions(Path.cwd(), args.tag)
+            update_release_versions(args.repository, args.tag, args.component_path)
     except (OSError, ValueError) as error:
         parser.error(str(error))
 

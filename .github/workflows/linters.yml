@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   linters:
-    name: Run Linters
+    name: review
     runs-on: ubuntu-latest
     steps:
       - name: Require expected release commit
@@ -42,7 +42,15 @@ jobs:
           ignore-nothing-to-cache: true
           cache-dependency-glob: uv.lock
 
-      - name: Run prek
+      - name: Run prek for pull requests and pushes
+        if: github.event_name != 'workflow_dispatch'
         uses: j178/prek-action@v2
         env:
           UV_LOCKED: "1"
+
+      - name: Validate locked prek without mutation
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          UV_LOCKED=1 uv run --locked prek run --all-files
+          test -z "$(git status --porcelain)"

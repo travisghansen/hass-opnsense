@@ -2,7 +2,7 @@ name: Post coverage Comment to PR
 
 on:
   workflow_run:
-    workflows: ['pytest and coverage']
+    workflows: ['pytest check and post coverage']
     types:
       - completed
 
