@@ -515,7 +515,7 @@ async def test_validate_input_timeout_uses_connect_timeout_error(
 
 @pytest.mark.asyncio
 async def test_async_step_user_shows_menu() -> None:
-    """Initial config flow step should present a menu with two entry types."""
+    """Initial config flow step should provide standalone labels and placeholders."""
     flow = cf_mod.OPNsenseConfigFlow()
     flow.hass = MagicMock()
 
@@ -523,7 +523,13 @@ async def test_async_step_user_shows_menu() -> None:
 
     assert result["type"] == "menu"
     assert result["step_id"] == "user"
-    assert result["menu_options"] == ["device", "carp"]
+    assert result["menu_options"] == {
+        "device": "OPNsense device entry",
+        "carp": "CARP VIP entry",
+    }
+    assert result["description_placeholders"] == {
+        "doc_url": "https://github.com/travisghansen/hass-opnsense"
+    }
 
 
 @pytest.mark.asyncio
