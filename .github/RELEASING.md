@@ -21,10 +21,11 @@ pushing the candidate to a unique `release-validation/...` branch.
 
 It dispatches and verifies these exact candidate-SHA gates:
 
-- `linters.yml::Run Linters`
-- `pytest_check.yml::pytest and coverage report`
+- `pytest_check.yml::pytest check and post coverage`
+- `uv-lock-check.yml::Validate uv lock consistency`
 - `validate.yml::Hassfest Validation`
 - `validate.yml::HACS Validation`
+- `linters.yml::review`
 
 After every gate succeeds, the workflow atomically advances the default branch
 and replaces the tag with an annotated tag, using leases for both original

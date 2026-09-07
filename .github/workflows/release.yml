@@ -27,10 +27,11 @@ jobs:
       STABLE_TAG_PARTS: "2,3,4"
       FIRMWARE_NOTES: "true"
       REQUIRED_CHECKS: |
-        linters.yml::Run Linters
-        pytest_check.yml::pytest and coverage report
+        pytest_check.yml::pytest check and post coverage
+        uv-lock-check.yml::Validate uv lock consistency
         validate.yml::Hassfest Validation
         validate.yml::HACS Validation
+        linters.yml::review
     steps:
       - name: Require the default-branch release target
         id: release
