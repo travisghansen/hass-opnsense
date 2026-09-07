@@ -3,6 +3,7 @@
 from collections.abc import Sequence
 import importlib.util
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -57,6 +58,255 @@ def _named_steps(document: dict[str, Any], job_id: str) -> dict[str, dict[str, A
     steps = job["steps"]
     assert isinstance(steps, list)
     return {step["name"]: step for step in steps if isinstance(step, dict) and "name" in step}
+
+
+def _git(repository: Path, *arguments: str) -> str:
+    """Run one Git command in a temporary release-fixture repository.
+
+    Args:
+        repository (Path): Fixture repository.
+        *arguments (str): Arguments following the Git executable.
+
+    Returns:
+        str: Standard output from the successful command.
+    """
+    return subprocess.run(  # noqa: S603 -- test arguments are fixed by fixture helpers.
+        ["git", *arguments],  # noqa: S607 -- Git is the fixed test executable.
+        check=True,
+        cwd=repository,
+        text=True,
+        capture_output=True,
+    ).stdout.strip()
+
+
+def _release_fixture(tmp_path: Path, tag: str) -> tuple[Path, str, str]:
+    """Create a pushed tag whose release-subject commit also changes a third path.
+
+    Args:
+        tmp_path (Path): Pytest temporary directory.
+        tag (str): Release tag used by the fixture.
+
+    Returns:
+        tuple[Path, str, str]: Repository, tagged source SHA, and annotated tag OID.
+    """
+    remote = tmp_path / "remote.git"
+    repository = tmp_path / "repository"
+    subprocess.run(  # noqa: S603 -- test-only fixture repository initialization.
+        ["git", "init", "--bare", str(remote)],  # noqa: S607 -- test fixture executable.
+        check=True,
+        capture_output=True,
+    )
+    _git(tmp_path, "init", "-b", "main", str(repository))
+    _git(repository, "config", "user.name", "Release Test")
+    _git(repository, "config", "user.email", "release-test@example.invalid")
+    integration = repository / "custom_components" / "opnsense"
+    integration.mkdir(parents=True)
+    (integration / "manifest.json").write_text('{"version": "v0.0.0"}\n', encoding="utf-8")
+    (integration / "const.py").write_text(
+        'VERSION = "v0.0.0"\nOPNSENSE_LTD_FIRMWARE = "26.1"\nOPNSENSE_MIN_FIRMWARE = "25.1"\n',
+        encoding="utf-8",
+    )
+    helper = repository / ".github" / "scripts"
+    helper.mkdir(parents=True)
+    shutil.copy2(SCRIPT_PATH.parent / "prepare_release.py", helper / "prepare_release.py")
+    shutil.copy2(SCRIPT_PATH.parent / "verify_hacs_archive.py", helper / "verify_hacs_archive.py")
+    _git(repository, "add", ".")
+    _git(repository, "commit", "-m", "Initial component")
+    _git(repository, "remote", "add", "origin", str(remote))
+    _git(repository, "push", "-u", "origin", "main")
+    (integration / "manifest.json").write_text(f'{{"version": "{tag}"}}\n', encoding="utf-8")
+    (integration / "const.py").write_text(
+        f'VERSION = "{tag}"\nOPNSENSE_LTD_FIRMWARE = "26.1"\nOPNSENSE_MIN_FIRMWARE = "25.1"\n',
+        encoding="utf-8",
+    )
+    (repository / "release-notes.txt").write_text("third changed path\n", encoding="utf-8")
+    _git(repository, "add", ".")
+    _git(repository, "commit", "-m", f"Release {tag}")
+    source_sha = _git(repository, "rev-parse", "HEAD")
+    _git(repository, "tag", "-a", tag, "-m", tag)
+    tag_oid = _git(repository, "rev-parse", f"refs/tags/{tag}")
+    _git(repository, "push", "origin", "main", tag)
+    return repository, source_sha, tag_oid
+
+
+def _run_workflow_shell(
+    repository: Path, run: str, environment: dict[str, str]
+) -> subprocess.CompletedProcess[str]:
+    """Run an extracted workflow shell block in a release fixture.
+
+    Args:
+        repository (Path): Fixture repository.
+        run (str): Workflow step shell content.
+        environment (dict[str, str]): Step-specific environment values.
+
+    Returns:
+        subprocess.CompletedProcess[str]: The completed workflow shell process.
+    """
+    component = next(
+        path.name for path in (repository / "custom_components").iterdir() if path.is_dir()
+    )
+    workflow_environment = {
+        "ARCHIVE_NAME": f"{component}.zip",
+        "COMPONENT_PATH": f"custom_components/{component}",
+        "FIRMWARE_NOTES": str(component == "opnsense").lower(),
+        "STABLE_TAG_PARTS": "2,3,4",
+    }
+    return subprocess.run(  # noqa: S603 -- extracted trusted workflow shell is under test.
+        ["bash", "-c", run],  # noqa: S607 -- test shell for extracted workflow source.
+        cwd=repository,
+        env={**os.environ, **workflow_environment, **environment},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def _stub_gh(tmp_path: Path) -> tuple[Path, Path]:
+    """Create a deterministic GitHub CLI stub that records release mutations.
+
+    Args:
+        tmp_path (Path): Pytest temporary directory.
+
+    Returns:
+        tuple[Path, Path]: Stub binary directory and its command log path.
+    """
+    binary_dir = tmp_path / "bin"
+    binary_dir.mkdir()
+    log_path = tmp_path / "gh.log"
+    gh = binary_dir / "gh"
+    gh.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        'printf "%s\\n" "$*" >> "$GH_LOG"\n'
+        'if [[ "$1 $2" == "release view" ]]; then\n'
+        '  printf "%s" "${GH_RELEASE_BODY:-}"\n'
+        "fi\n",
+        encoding="utf-8",
+    )
+    gh.chmod(0o755)
+    return binary_dir, log_path
+
+
+def test_prerelease_release_subject_with_extra_path_reaches_archive_upload(tmp_path: Path) -> None:
+    """Keep archive-only prereleases outside stable resume provenance validation.
+
+    Args:
+        tmp_path (Path): Temporary fixture directory.
+    """
+    tag = "v1.2.3-beta.1"
+    repository, source_sha, tag_oid = _release_fixture(tmp_path, tag)
+    steps = _named_steps(_load_workflow("release.yml"), "release")
+    output = tmp_path / "base-output"
+    base = _run_workflow_shell(
+        repository,
+        steps["Validate trusted release metadata and immutable starting refs"]["run"],
+        {
+            "GITHUB_OUTPUT": str(output),
+            "IS_PRERELEASE": "true",
+            "RELEASE_TAG": tag,
+            "RELEASE_TARGET": "main",
+        },
+    )
+
+    assert base.returncode == 0, base.stderr
+    assert "resume=false" in output.read_text(encoding="utf-8")
+    binary_dir, log_path = _stub_gh(tmp_path)
+    archive = tmp_path / "opnsense.zip"
+    prerelease = _run_workflow_shell(
+        repository,
+        steps["Build prerelease archive without mutating refs"]["run"],
+        {
+            "GH_LOG": str(log_path),
+            "GH_TOKEN": "test-token",
+            "PATH": f"{binary_dir}:{os.environ['PATH']}",
+            "RELEASE_ARCHIVE": str(archive),
+            "RELEASE_TAG": tag,
+            "RELEASE_TARGET": "main",
+            "SOURCE_SHA": source_sha,
+            "TAG_OID": tag_oid,
+        },
+    )
+
+    assert prerelease.returncode == 0, prerelease.stderr
+    assert archive.is_file()
+    upload = _run_workflow_shell(
+        repository,
+        steps["Verify prerelease identity and upload archive"]["run"],
+        {
+            "GH_LOG": str(log_path),
+            "GH_TOKEN": "test-token",
+            "PATH": f"{binary_dir}:{os.environ['PATH']}",
+            "RELEASE_ARCHIVE": str(archive),
+            "RELEASE_TAG": tag,
+            "RELEASE_TARGET": "main",
+            "SOURCE_SHA": source_sha,
+            "TAG_OID": tag_oid,
+        },
+    )
+    assert upload.returncode == 0, upload.stderr
+    assert "release upload" in log_path.read_text(encoding="utf-8")
+
+
+def test_stable_release_subject_with_extra_path_rejects_invalid_resume(tmp_path: Path) -> None:
+    """Reject stable retry candidates whose version transform changed a third path.
+
+    Args:
+        tmp_path (Path): Temporary fixture directory.
+    """
+    tag = "v1.2.3"
+    repository, _source_sha, _tag_oid = _release_fixture(tmp_path, tag)
+    output = tmp_path / "base-output"
+    base = _run_workflow_shell(
+        repository,
+        _named_steps(_load_workflow("release.yml"), "release")[
+            "Validate trusted release metadata and immutable starting refs"
+        ]["run"],
+        {
+            "GITHUB_OUTPUT": str(output),
+            "IS_PRERELEASE": "false",
+            "RELEASE_TAG": tag,
+            "RELEASE_TARGET": "main",
+        },
+    )
+
+    assert base.returncode != 0
+    assert "invalid release contents" in base.stderr
+
+
+def test_prerelease_ref_mismatch_does_not_edit_or_upload_release(tmp_path: Path) -> None:
+    """Fail before any GitHub release mutation when the source branch advances.
+
+    Args:
+        tmp_path (Path): Temporary fixture directory.
+    """
+    tag = "v1.2.3-beta.1"
+    repository, source_sha, tag_oid = _release_fixture(tmp_path, tag)
+    (repository / "advanced.txt").write_text("moved branch\n", encoding="utf-8")
+    _git(repository, "add", "advanced.txt")
+    _git(repository, "commit", "-m", "Advance main")
+    _git(repository, "push", "origin", "HEAD:main")
+    _git(repository, "checkout", "--detach", source_sha)
+    binary_dir, log_path = _stub_gh(tmp_path)
+    archive = tmp_path / "opnsense.zip"
+    prerelease = _run_workflow_shell(
+        repository,
+        _named_steps(_load_workflow("release.yml"), "release")[
+            "Verify prerelease identity and upload archive"
+        ]["run"],
+        {
+            "GH_LOG": str(log_path),
+            "GH_TOKEN": "test-token",
+            "PATH": f"{binary_dir}:{os.environ['PATH']}",
+            "RELEASE_ARCHIVE": str(archive),
+            "RELEASE_TAG": tag,
+            "RELEASE_TARGET": "main",
+            "SOURCE_SHA": source_sha,
+            "TAG_OID": tag_oid,
+        },
+    )
+
+    assert prerelease.returncode != 0
+    assert not log_path.exists()
 
 
 def test_dispatch_workflow_uses_expected_ref_sha_and_authoritative_run_id(
@@ -364,19 +614,20 @@ def test_release_workflow_has_guarded_promotion_and_firmware_archive_contract() 
     )
     dispatch = steps["Dispatch and verify immutable release gates"]["run"]
     assert "--workflow" not in dispatch
-    assert "validate.yml::HACS Validation" in dispatch
-    assert "validate.yml::Hassfest Validation" in dispatch
-    assert "pytest_check.yml::pytest and coverage report" in dispatch
-    assert "linters.yml::Run Linters" in dispatch
+    assert '"${required_check_args[@]}"' in dispatch
+    assert job["env"]["REQUIRED_CHECKS"].splitlines() == [
+        "linters.yml::Run Linters",
+        "pytest_check.yml::pytest and coverage report",
+        "validate.yml::Hassfest Validation",
+        "validate.yml::HACS Validation",
+    ]
     promotion = steps["Atomically advance target and guarded release tag"]["run"]
     assert "push --atomic" in promotion
-    assert "refs/heads/$RELEASE_TARGET:$TARGET_SHA" in promotion
+    assert "refs/heads/$RELEASE_TARGET:$SOURCE_SHA" in promotion
     assert "refs/tags/$RELEASE_TAG:$ORIGINAL_TAG_OID" in promotion
-    assert "opnsense.zip" in steps["Verify release identity and upload B archive"]["run"]
-    assert (
-        "opnsense-firmware-compatibility"
-        in steps["Verify release identity and upload B archive"]["run"]
-    )
+    upload = steps["Verify release identity and upload verified archive"]["run"]
+    assert '"$RELEASE_ARCHIVE#$ARCHIVE_NAME"' in upload
+    assert "opnsense-firmware-compatibility" in upload
     assert steps["Delete validated temporary branch"]["if"] == (
         "github.event.release.prerelease == false && success()"
     )

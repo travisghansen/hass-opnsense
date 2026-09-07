@@ -88,6 +88,35 @@ def test_validate_release_request_rejects_mismatched_classification(
 
 
 @pytest.mark.parametrize(
+    ("tag", "stable_parts"),
+    [("v1.2", (2,)), ("v1.2.3", (3,)), ("v1.2.3.4", (4,))],
+)
+def test_validate_release_request_honors_configured_numeric_component_counts(
+    tag: str, stable_parts: tuple[int, ...]
+) -> None:
+    """Accept only the configured numeric component count as stable.
+
+    Args:
+        tag (str): Numeric release tag under test.
+        stable_parts (tuple[int, ...]): Configured stable component count.
+    """
+    prepare_release.validate_release_request(tag, False, stable_parts)
+
+
+@pytest.mark.parametrize("stable_parts", [(2, 3, 4), (3,)])
+def test_validate_release_request_rejects_leading_zero_numeric_components(
+    stable_parts: tuple[int, ...],
+) -> None:
+    """Reject numeric stable tags with leading zero components.
+
+    Args:
+        stable_parts (tuple[int, ...]): Configured stable component counts.
+    """
+    with pytest.raises(ValueError, match=r"Prerelease tag.*requires prerelease=true"):
+        prepare_release.validate_release_request("v01.02.003", False, stable_parts)
+
+
+@pytest.mark.parametrize(
     ("bump_type", "expected_tag"),
     [("patch", "v1.0.6"), ("minor", "v1.1.0"), ("major", "v2.0.0")],
 )

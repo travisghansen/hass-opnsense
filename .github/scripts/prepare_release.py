@@ -1,4 +1,5 @@
 """Validate a release tag and prepare the integration version files."""
+# ruff: noqa: E501
 
 from __future__ import annotations
 
@@ -17,7 +18,24 @@ CONST_VERSION_PATTERN = re.compile(r'^(VERSION\s*=\s*)"[^"]*"', re.MULTILINE)
 STABLE_TAG_PATTERN = re.compile(
     r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:\.(0|[1-9][0-9]*))?$"
 )
-NUMERIC_TAG_PATTERN = re.compile(r"^v[0-9]+(?:\.[0-9]+){1,3}$")
+
+
+def _stable_tag_pattern(parts: tuple[int, ...]) -> re.Pattern[str]:
+    """Return the numeric release-tag pattern for permitted component counts."""
+    component = r"(?:0|[1-9][0-9]*)"
+    suffixes = "|".join(rf"(?:\.{component}){{{part - 1}}}" for part in sorted(parts))
+    return re.compile(rf"^v{component}(?:{suffixes})$")
+
+
+def _parse_stable_parts(value: str) -> tuple[int, ...]:
+    """Parse supported stable version component counts from workflow configuration."""
+    try:
+        parts = tuple(sorted({int(part) for part in value.split(",")}))
+    except ValueError as error:
+        raise ValueError("stable-parts must be comma-separated integers.") from error
+    if not parts or any(part < 2 or part > 4 for part in parts):
+        raise ValueError("stable-parts must contain values from 2 through 4.")
+    return parts
 
 
 def validate_release_tag(tag: str) -> None:
@@ -34,18 +52,21 @@ def validate_release_tag(tag: str) -> None:
         raise ValueError(msg)
 
 
-def validate_release_request(tag: str, prerelease: bool) -> None:
+def validate_release_request(
+    tag: str, prerelease: bool, stable_parts: tuple[int, ...] = (2, 3, 4)
+) -> None:
     """Validate that a release tag agrees with the prerelease selection.
 
     Args:
         tag: Candidate release tag.
         prerelease: Whether the release should be treated as a prerelease.
+        stable_parts: Accepted numeric component counts for stable tags.
 
     Raises:
         ValueError: If the tag format and prerelease selection disagree.
     """
     validate_release_tag(tag)
-    tag_is_prerelease = NUMERIC_TAG_PATTERN.fullmatch(tag) is None
+    tag_is_prerelease = _stable_tag_pattern(stable_parts).fullmatch(tag) is None
     if tag_is_prerelease != prerelease:
         tag_kind = "Prerelease" if tag_is_prerelease else "Stable"
         required_value = str(tag_is_prerelease).lower()
@@ -53,12 +74,15 @@ def validate_release_request(tag: str, prerelease: bool) -> None:
         raise ValueError(msg)
 
 
-def next_stable_release_tag(tags: Iterable[str], bump_type: str) -> str:
+def next_stable_release_tag(
+    tags: Iterable[str], bump_type: str, stable_parts: tuple[int, ...] = (2, 3, 4)
+) -> str:
     """Return the next stable tag after the highest released stable version.
 
     Args:
         tags: Candidate tag names from the release repository.
         bump_type: Requested stable version increment.
+        stable_parts: Accepted numeric component counts for stable tags.
 
     Returns:
         The next stable release tag.
@@ -71,9 +95,10 @@ def next_stable_release_tag(tags: Iterable[str], bump_type: str) -> str:
         raise ValueError(msg)
 
     versions = [
-        tuple(int(component or 0) for component in match.groups())
+        tuple(int(component) for component in tag.removeprefix("v").split("."))
+        + (0,) * (4 - len(tag.removeprefix("v").split(".")))
         for tag in tags
-        if (match := STABLE_TAG_PATTERN.fullmatch(tag)) is not None
+        if _stable_tag_pattern(stable_parts).fullmatch(tag) is not None
     ]
     if not versions:
         msg = "No stable released tag found."
@@ -119,7 +144,7 @@ def _replace_version(
     return updated
 
 
-def update_release_versions(repository: Path, tag: str) -> None:
+def update_release_versions(repository: Path, tag: str, component_path: str | None = None) -> None:
     """Update manifest.json and const.py to the release tag.
 
     Both files are validated before either is written, preventing a partial update.
@@ -127,12 +152,22 @@ def update_release_versions(repository: Path, tag: str) -> None:
     Args:
         repository: Repository root containing the integration.
         tag: Requested release tag.
+        component_path: Integration directory relative to the repository.
 
     Raises:
         ValueError: If the tag or either version declaration is invalid.
     """
     validate_release_tag(tag)
-    integration = repository / "custom_components" / "opnsense"
+    if component_path is None:
+        components = [
+            path for path in (repository / "custom_components").iterdir() if path.is_dir()
+        ]
+        if len(components) != 1:
+            msg = "component-path is required unless the repository has one component."
+            raise ValueError(msg)
+        integration = components[0]
+    else:
+        integration = repository / component_path
     manifest_path = integration / "manifest.json"
     const_path = integration / "const.py"
 
@@ -186,6 +221,15 @@ def main() -> int:
         default=Path.cwd(),
         help="Repository root whose version files should be validated or updated",
     )
+    parser.add_argument(
+        "--component-path",
+        help="Integration directory relative to --repository.",
+    )
+    parser.add_argument(
+        "--stable-parts",
+        default="2,3,4",
+        help="Comma-separated stable release version component counts.",
+    )
     args = parser.parse_args()
 
     try:
@@ -197,18 +241,22 @@ def main() -> int:
                 msg = "Validation options cannot be used with --next-tag."
                 raise ValueError(msg)
             sys.stdout.write(
-                f"{next_stable_release_tag(sys.stdin.read().splitlines(), args.next_tag)}\n"
+                f"{next_stable_release_tag(sys.stdin.read().splitlines(), args.next_tag, _parse_stable_parts(args.stable_parts))}\n"
             )
         elif args.check_only:
             if args.expected_prerelease is None:
                 validate_release_tag(args.tag)
             else:
-                validate_release_request(args.tag, args.expected_prerelease == "true")
+                validate_release_request(
+                    args.tag,
+                    args.expected_prerelease == "true",
+                    _parse_stable_parts(args.stable_parts),
+                )
         else:
             if args.expected_prerelease is not None:
                 msg = "--expected-prerelease requires --check-only."
                 raise ValueError(msg)
-            update_release_versions(args.repository, args.tag)
+            update_release_versions(args.repository, args.tag, args.component_path)
     except (OSError, ValueError) as error:
         parser.error(str(error))
 
