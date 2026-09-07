@@ -98,59 +98,36 @@ def test_validate_release_request_rejects_mismatched_classification(
         prepare_release.validate_release_request(tag, prerelease)
 
 
-@pytest.mark.parametrize(
-    ("tag", "stable_parts"),
-    [("v1.2", (2,)), ("v1.2.3", (3,)), ("v1.2.3.4", (4,))],
-)
-def test_validate_release_request_honors_configured_numeric_component_counts(
-    tag: str, stable_parts: tuple[int, ...]
-) -> None:
-    """Accept each configured stable numeric component count.
+@pytest.mark.parametrize("tag", ["v1.2", "v1.2.3", "v1.2.3.4"])
+def test_validate_release_request_accepts_fixed_numeric_component_counts(tag: str) -> None:
+    """Accept every supported fixed numeric stable-tag length.
 
     Args:
         tag (str): Numeric release tag under test.
-        stable_parts (tuple[int, ...]): Configured stable component count.
     """
-    prepare_release.validate_release_request(tag, False, stable_parts)
+    prepare_release.validate_release_request(tag, False)
 
 
-@pytest.mark.parametrize(
-    ("tag", "stable_parts"),
-    [
-        ("v01.2", (2,)),
-        ("v1.02.3", (3,)),
-        ("v1.2.03", (3,)),
-        ("v1.2.3.04", (4,)),
-    ],
-)
-def test_validate_release_request_rejects_leading_zero_components(
-    tag: str, stable_parts: tuple[int, ...]
-) -> None:
+@pytest.mark.parametrize("tag", ["v01.2", "v1.02.3", "v1.2.03", "v1.2.3.04"])
+def test_validate_release_request_rejects_leading_zero_components(tag: str) -> None:
     """Reject stable tags with leading zeros at every supported length.
 
     Args:
         tag (str): Stable tag containing a leading-zero component.
-        stable_parts (tuple[int, ...]): Configured stable component count.
     """
     with pytest.raises(ValueError, match=r"Prerelease tag.*requires prerelease=true"):
-        prepare_release.validate_release_request(tag, False, stable_parts)
+        prepare_release.validate_release_request(tag, False)
 
 
-@pytest.mark.parametrize(
-    ("tag", "stable_parts"),
-    [("v1.2.3", (2,)), ("v1.2", (3,)), ("v1.2.3.4", (3,))],
-)
-def test_validate_release_request_rejects_unconfigured_component_counts(
-    tag: str, stable_parts: tuple[int, ...]
-) -> None:
-    """Treat a valid but unconfigured numeric length as prerelease.
+@pytest.mark.parametrize("tag", ["v1", "v1.2.3.4.5"])
+def test_validate_release_request_rejects_unsupported_numeric_lengths(tag: str) -> None:
+    """Reject numeric tags outside the fixed two- through four-part range.
 
     Args:
-        tag (str): Numeric release tag with an unsupported configured length.
-        stable_parts (tuple[int, ...]): Configured stable component counts.
+        tag (str): Numeric tag using an unsupported component count.
     """
-    with pytest.raises(ValueError, match=r"Prerelease tag.*requires prerelease=true"):
-        prepare_release.validate_release_request(tag, False, stable_parts)
+    with pytest.raises(ValueError, match="Invalid release tag"):
+        prepare_release.validate_release_request(tag, False)
 
 
 @pytest.mark.parametrize(
@@ -238,21 +215,17 @@ def test_next_tag_cli_reads_tags_from_standard_input(
     assert capsys.readouterr().out == "v0.9.0\n"
 
 
-def test_next_tag_cli_honors_configured_stable_component_counts(
+def test_next_tag_cli_considers_fixed_component_counts(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Use the workflow stable-parts setting when selecting the next tag.
+    """Use supported two- through four-part tags when selecting the next tag.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): Fixture for replacing CLI inputs.
         capsys (pytest.CaptureFixture[str]): Fixture for capturing CLI output.
     """
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [str(SCRIPT_PATH), "--next-tag", "patch", "--stable-parts", "3"],
-    )
-    monkeypatch.setattr(sys, "stdin", io.StringIO("v1.2.3\nv1.2.3.4\n"))
+    monkeypatch.setattr(sys, "argv", [str(SCRIPT_PATH), "--next-tag", "patch"])
+    monkeypatch.setattr(sys, "stdin", io.StringIO("v1.2\nv1.2.3\nv1.2.3.4\n"))
 
     assert prepare_release.main() == 0
     assert capsys.readouterr().out == "v1.2.4\n"
@@ -297,36 +270,6 @@ def test_main_rejects_invalid_option_combinations(
     assert expected_message in capsys.readouterr().err
 
 
-def test_main_rejects_invalid_stable_parts(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """Reject stable-parts values outside the configured version range.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): Fixture for replacing CLI arguments.
-        capsys (pytest.CaptureFixture[str]): Fixture for capturing parser errors.
-    """
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            str(SCRIPT_PATH),
-            "--check-only",
-            "--expected-prerelease",
-            "false",
-            "--stable-parts",
-            "1,5",
-            INITIAL_TAG,
-        ],
-    )
-
-    with pytest.raises(SystemExit) as error:
-        prepare_release.main()
-
-    assert error.value.code == 2
-    assert "stable-parts must contain values from 2 through 4" in capsys.readouterr().err
-
-
 def test_check_only_cli_preserves_positional_tag_contract(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -366,13 +309,15 @@ def test_check_only_cli_rejects_prerelease_input_mismatch(
         prepare_release.main()
 
 
-def test_check_only_cli_accepts_configured_component_count(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize("tag", ["v1.2", "v1.2.3", "v1.2.3.4"])
+def test_check_only_cli_accepts_fixed_component_counts(
+    monkeypatch: pytest.MonkeyPatch, tag: str
 ) -> None:
-    """Accept a stable tag whose component count is explicitly configured.
+    """Accept each fixed stable component count through the CLI contract.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): Fixture for replacing CLI arguments.
+        tag (str): Stable tag using a supported component count.
     """
     monkeypatch.setattr(
         sys,
@@ -382,9 +327,7 @@ def test_check_only_cli_accepts_configured_component_count(
             "--check-only",
             "--expected-prerelease",
             "false",
-            "--stable-parts",
-            "2",
-            "v1.2",
+            tag,
         ],
     )
 

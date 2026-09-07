@@ -1,5 +1,4 @@
 """Validate a release tag and prepare the integration version files."""
-# ruff: noqa: E501
 
 from __future__ import annotations
 
@@ -15,27 +14,8 @@ TAG_PATTERN = re.compile(
 )
 MANIFEST_VERSION_PATTERN = re.compile(r'("version"\s*:\s*)"[^"]*"')
 CONST_VERSION_PATTERN = re.compile(r'^(VERSION\s*=\s*)"[^"]*"', re.MULTILINE)
-STABLE_TAG_PATTERN = re.compile(
-    r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:\.(0|[1-9][0-9]*))?$"
-)
-
-
-def _stable_tag_pattern(parts: tuple[int, ...]) -> re.Pattern[str]:
-    """Return the numeric release-tag pattern for permitted component counts."""
-    component = r"(?:0|[1-9][0-9]*)"
-    suffixes = "|".join(rf"(?:\.{component}){{{part - 1}}}" for part in sorted(parts))
-    return re.compile(rf"^v{component}(?:{suffixes})$")
-
-
-def _parse_stable_parts(value: str) -> tuple[int, ...]:
-    """Parse supported stable version component counts from workflow configuration."""
-    try:
-        parts = tuple(sorted({int(part) for part in value.split(",")}))
-    except ValueError as error:
-        raise ValueError("stable-parts must be comma-separated integers.") from error
-    if not parts or any(part < 2 or part > 4 for part in parts):
-        raise ValueError("stable-parts must contain values from 2 through 4.")
-    return parts
+_NUMERIC_COMPONENT = r"(?:0|[1-9][0-9]*)"
+STABLE_TAG_PATTERN = re.compile(rf"^v{_NUMERIC_COMPONENT}(?:\.{_NUMERIC_COMPONENT}){{1,3}}$")
 
 
 def validate_release_tag(tag: str) -> None:
@@ -52,21 +32,18 @@ def validate_release_tag(tag: str) -> None:
         raise ValueError(msg)
 
 
-def validate_release_request(
-    tag: str, prerelease: bool, stable_parts: tuple[int, ...] = (2, 3, 4)
-) -> None:
+def validate_release_request(tag: str, prerelease: bool) -> None:
     """Validate that a release tag agrees with the prerelease selection.
 
     Args:
         tag: Candidate release tag.
         prerelease: Whether the release should be treated as a prerelease.
-        stable_parts: Accepted numeric component counts for stable tags.
 
     Raises:
         ValueError: If the tag format and prerelease selection disagree.
     """
     validate_release_tag(tag)
-    tag_is_prerelease = _stable_tag_pattern(stable_parts).fullmatch(tag) is None
+    tag_is_prerelease = STABLE_TAG_PATTERN.fullmatch(tag) is None
     if tag_is_prerelease != prerelease:
         tag_kind = "Prerelease" if tag_is_prerelease else "Stable"
         required_value = str(tag_is_prerelease).lower()
@@ -74,15 +51,12 @@ def validate_release_request(
         raise ValueError(msg)
 
 
-def next_stable_release_tag(
-    tags: Iterable[str], bump_type: str, stable_parts: tuple[int, ...] = (2, 3, 4)
-) -> str:
+def next_stable_release_tag(tags: Iterable[str], bump_type: str) -> str:
     """Return the next stable tag after the highest released stable version.
 
     Args:
         tags: Candidate tag names from the release repository.
         bump_type: Requested stable version increment.
-        stable_parts: Accepted numeric component counts for stable tags.
 
     Returns:
         The next stable release tag.
@@ -98,7 +72,7 @@ def next_stable_release_tag(
         tuple(int(component) for component in tag.removeprefix("v").split("."))
         + (0,) * (4 - len(tag.removeprefix("v").split(".")))
         for tag in tags
-        if _stable_tag_pattern(stable_parts).fullmatch(tag) is not None
+        if STABLE_TAG_PATTERN.fullmatch(tag) is not None
     ]
     if not versions:
         msg = "No stable released tag found."
@@ -225,11 +199,6 @@ def main() -> int:
         "--component-path",
         help="Integration directory relative to --repository.",
     )
-    parser.add_argument(
-        "--stable-parts",
-        default="2,3,4",
-        help="Comma-separated stable release version component counts.",
-    )
     args = parser.parse_args()
 
     try:
@@ -241,17 +210,13 @@ def main() -> int:
                 msg = "Validation options cannot be used with --next-tag."
                 raise ValueError(msg)
             sys.stdout.write(
-                f"{next_stable_release_tag(sys.stdin.read().splitlines(), args.next_tag, _parse_stable_parts(args.stable_parts))}\n"
+                f"{next_stable_release_tag(sys.stdin.read().splitlines(), args.next_tag)}\n"
             )
         elif args.check_only:
             if args.expected_prerelease is None:
                 validate_release_tag(args.tag)
             else:
-                validate_release_request(
-                    args.tag,
-                    args.expected_prerelease == "true",
-                    _parse_stable_parts(args.stable_parts),
-                )
+                validate_release_request(args.tag, args.expected_prerelease == "true")
         else:
             if args.expected_prerelease is not None:
                 msg = "--expected-prerelease requires --check-only."

@@ -24,7 +24,6 @@ jobs:
     env:
       COMPONENT_PATH: custom_components/opnsense
       ARCHIVE_NAME: opnsense.zip
-      STABLE_TAG_PARTS: "2,3,4"
       FIRMWARE_NOTES: "true"
       REQUIRED_CHECKS: |
         pytest_check.yml::pytest check and post coverage
@@ -67,8 +66,7 @@ jobs:
           [[ "$target_sha" == "$trusted_sha" ]] || {
             echo "Default branch moved before trusted helper execution." >&2; exit 1; }
           python3 .github/scripts/prepare_release.py --component-path "$COMPONENT_PATH" \
-            --stable-parts "$STABLE_TAG_PARTS" --check-only \
-            --expected-prerelease "$IS_PRERELEASE" "$RELEASE_TAG"
+            --check-only --expected-prerelease "$IS_PRERELEASE" "$RELEASE_TAG"
           tag_sha="$(git rev-parse "refs/tags/$RELEASE_TAG^{}")"
           tag_oid="$(git rev-parse "refs/tags/$RELEASE_TAG")"
           [[ "$target_sha" == "$tag_sha" ]] || {

@@ -79,7 +79,6 @@ def _release_environment() -> dict[str, str]:
         "ARCHIVE_NAME": str(environment["ARCHIVE_NAME"]),
         "COMPONENT_PATH": str(environment["COMPONENT_PATH"]),
         "FIRMWARE_NOTES": str(environment["FIRMWARE_NOTES"]),
-        "STABLE_TAG_PARTS": str(environment["STABLE_TAG_PARTS"]),
     }
 
 
