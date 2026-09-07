@@ -1026,7 +1026,7 @@ def test_device_info_uses_legacy_parent_identifier(
     device_info = entity.device_info
 
     assert device_info is not None
-    assert device_info["via_device"] == (DOMAIN, "dev1")
+    assert dict(device_info)["via_device"] == (DOMAIN, "dev1")
     assert "via_device_id" not in device_info
     assert "default_name" not in device_info
     assert "default_manufacturer" not in device_info
@@ -1223,7 +1223,9 @@ async def test_async_internal_added_to_hass_creates_integration_device_for_exist
         connections={(dr.CONNECTION_NETWORK_MAC, mac_address)},
     )
     assert (
-        device_reg.async_get_device(connections={(dr.CONNECTION_NETWORK_MAC, mac_address)})
+        device_reg.async_get_device_by_connection(
+            (dr.CONNECTION_NETWORK_MAC, mac_address), existing_entry.entry_id
+        )
         == existing_device
     )
     entity_reg = er.async_get(ph_hass)
@@ -1242,7 +1244,7 @@ async def test_async_internal_added_to_hass_creates_integration_device_for_exist
     device_id = ent.registry_entry.device_id
     assert device_id is not None
     linked_device = device_reg.async_get(device_id)
-    assert linked_device is not None
+    assert isinstance(linked_device, dr.DeviceEntry)
     assert linked_device.id != existing_device.id
     assert (dr.CONNECTION_NETWORK_MAC, mac_address) in linked_device.connections
     assert entry.entry_id in linked_device.config_entries
