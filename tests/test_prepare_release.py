@@ -108,15 +108,32 @@ def test_validate_release_request_accepts_fixed_numeric_component_counts(tag: st
     prepare_release.validate_release_request(tag, False)
 
 
-@pytest.mark.parametrize("tag", ["v01.2", "v1.02.3", "v1.2.03", "v1.2.3.04"])
-def test_validate_release_request_rejects_leading_zero_components(tag: str) -> None:
-    """Reject stable tags with leading zeros at every supported length.
+@pytest.mark.parametrize(
+    ("tag", "prerelease"),
+    [
+        ("v01.2", False),
+        ("v01.2", True),
+        ("v1.02.3", False),
+        ("v1.02.3", True),
+        ("v1.2.03", False),
+        ("v1.2.03", True),
+        ("v1.2.3.04", False),
+        ("v1.2.3.04", True),
+        ("v01.2-beta.1", False),
+        ("v01.2-beta.1", True),
+    ],
+)
+def test_validate_release_request_rejects_leading_zero_components(
+    tag: str, prerelease: bool
+) -> None:
+    """Reject malformed numeric bases regardless of prerelease selection.
 
     Args:
-        tag (str): Stable tag containing a leading-zero component.
+        tag (str): Tag containing a leading-zero numeric component.
+        prerelease (bool): Requested release classification.
     """
-    with pytest.raises(ValueError, match=r"Prerelease tag.*requires prerelease=true"):
-        prepare_release.validate_release_request(tag, False)
+    with pytest.raises(ValueError, match="Invalid release tag"):
+        prepare_release.validate_release_request(tag, prerelease)
 
 
 @pytest.mark.parametrize("tag", ["v1", "v1.2.3.4.5"])

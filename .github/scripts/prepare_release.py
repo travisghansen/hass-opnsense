@@ -9,12 +9,12 @@ from pathlib import Path
 import re
 import sys
 
+_NUMERIC_COMPONENT = r"(?:0|[1-9][0-9]*)"
 TAG_PATTERN = re.compile(
-    r"^v[0-9]+(?:\.[0-9]+){1,3}(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?(?:[A-Za-z]+[0-9]+)?$"
+    rf"^v{_NUMERIC_COMPONENT}(?:\.{_NUMERIC_COMPONENT}){{1,3}}(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?(?:[A-Za-z]+[0-9]+)?$"
 )
 MANIFEST_VERSION_PATTERN = re.compile(r'("version"\s*:\s*)"[^"]*"')
 CONST_VERSION_PATTERN = re.compile(r'^(VERSION\s*=\s*)"[^"]*"', re.MULTILINE)
-_NUMERIC_COMPONENT = r"(?:0|[1-9][0-9]*)"
 STABLE_TAG_PATTERN = re.compile(rf"^v{_NUMERIC_COMPONENT}(?:\.{_NUMERIC_COMPONENT}){{1,3}}$")
 
 
