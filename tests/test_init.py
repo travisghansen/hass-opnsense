@@ -44,6 +44,8 @@ from custom_components.opnsense.const import (
     CONF_SYNC_INTERFACES,
     CONF_SYNC_LIVE_TRAFFIC,
     CONF_TLS_INSECURE,
+    COORDINATOR,
+    DEVICE_TRACKER_COORDINATOR,
     DOMAIN,
     ENTRY_TYPE_CARP,
     GRANULAR_SYNC_PREFIX,
@@ -1035,9 +1037,10 @@ async def test_async_setup_entry_carp_registers_update_listener_after_forwarding
 
     assert await init_mod.async_setup_entry(hass, entry) is True
 
-    assert call_order == ["forward", "add_listener", "async_on_unload"]
+    assert call_order == ["forward", "add_listener", "async_on_unload", "async_on_unload"]
     entry.add_update_listener.assert_called_once_with(init_mod._async_update_listener)
-    entry.async_on_unload.assert_called_once_with(remove_listener)
+    assert entry.async_on_unload.call_count == 2
+    entry.async_on_unload.assert_any_call(remove_listener)
     remove_listener.assert_not_called()
 
 
@@ -1783,6 +1786,68 @@ async def test_async_unload_entry_and_pop(
     assert unload_order == ["platforms_unloaded", "live_shutdown", "client_close"]
     fake_client.async_close.assert_awaited_once()
     fake_live_traffic.async_shutdown.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_async_handle_hass_stop_shuts_down_background_work(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """_async_handle_hass_stop should stop every coordinator and close the client.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+    """
+    entry = make_config_entry()
+    stop_order: list[str] = []
+    entry.runtime_data.live_traffic_coordinator.async_shutdown = AsyncMock(
+        side_effect=lambda: stop_order.append("live_traffic")
+    )
+    setattr(
+        entry.runtime_data,
+        COORDINATOR,
+        MagicMock(async_shutdown=AsyncMock(side_effect=lambda: stop_order.append("coordinator"))),
+    )
+    setattr(
+        entry.runtime_data,
+        DEVICE_TRACKER_COORDINATOR,
+        MagicMock(
+            async_shutdown=AsyncMock(side_effect=lambda: stop_order.append("device_tracker"))
+        ),
+    )
+    setattr(
+        entry.runtime_data,
+        OPNSENSE_CLIENT,
+        MagicMock(async_close=AsyncMock(side_effect=lambda: stop_order.append("client"))),
+    )
+
+    await init_mod._async_handle_hass_stop(entry, MagicMock())
+
+    assert stop_order == ["live_traffic", "coordinator", "device_tracker", "client"]
+
+
+@pytest.mark.asyncio
+async def test_async_handle_hass_stop_skips_absent_coordinators(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """_async_handle_hass_stop should tolerate a CARP-style entry with no trackers.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+    """
+    entry = make_config_entry(
+        runtime_data=init_mod.OPNsenseData(
+            coordinator=MagicMock(async_shutdown=AsyncMock()),
+            device_tracker_coordinator=None,
+            opnsense_client=MagicMock(async_close=AsyncMock()),
+            loaded_platforms=[],
+            device_unique_id=None,
+        )
+    )
+
+    await init_mod._async_handle_hass_stop(entry, MagicMock())
+
+    entry.runtime_data.coordinator.async_shutdown.assert_awaited_once()
+    entry.runtime_data.opnsense_client.async_close.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -6148,7 +6213,8 @@ async def test_async_setup_entry_registers_update_listener_after_forwarding(
     assert res is True
     assert call_order.index("forward") < call_order.index("add_listener")
     entry.add_update_listener.assert_called_once_with(init_mod._async_update_listener)
-    entry.async_on_unload.assert_called_once_with(remove_listener)
+    assert entry.async_on_unload.call_count == 2
+    entry.async_on_unload.assert_any_call(remove_listener)
     remove_listener.assert_not_called()
 
 

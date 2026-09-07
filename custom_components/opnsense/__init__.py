@@ -8,6 +8,7 @@ and various other OPNsense features through the Home Assistant interface.
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import timedelta
+from functools import partial
 import logging
 from typing import Any
 
@@ -22,8 +23,8 @@ from aiopnsense.exceptions import (
 )
 import awesomeversion
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_SCAN_INTERVAL, Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.const import CONF_SCAN_INTERVAL, EVENT_HOMEASSISTANT_STOP, Platform
+from homeassistant.core import Event, HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import (
     config_validation as cv,
@@ -41,10 +42,12 @@ from .const import (
     CONF_DEVICE_UNIQUE_ID,
     CONF_SYNC_INTERFACES,
     CONF_SYNC_LIVE_TRAFFIC,
+    COORDINATOR,
     DEFAULT_DEVICE_TRACKER_ENABLED,
     DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SYNC_OPTION_VALUE,
+    DEVICE_TRACKER_COORDINATOR,
     DOMAIN,
     GRANULAR_SYNC_PREFIX,
     LOADED_PLATFORMS,
@@ -106,6 +109,35 @@ class OPNsenseData:
     live_traffic_coordinator: OPNsenseLiveTrafficCoordinator | None = None
     repair_reconciliation: RepairReconciliation | None = None
     should_reload: bool = True
+
+
+async def _async_handle_hass_stop(entry: ConfigEntry, _event: Event) -> None:
+    """Stop an entry's background work before EVENT_HOMEASSISTANT_CLOSE detaches its session.
+
+    Home Assistant does not call async_unload_entry on a full restart, only
+    EVENT_HOMEASSISTANT_STOP followed by EVENT_HOMEASSISTANT_CLOSE, and the
+    latter detaches the aiohttp session backing this entry's client. Without
+    this listener the coordinators and aiopnsense queue workers keep running
+    and race that detach, logging bursts of "Session is closed" errors.
+
+    Args:
+        entry (ConfigEntry): Config entry whose background work should stop.
+        _event (Event): Unused EVENT_HOMEASSISTANT_STOP event payload.
+    """
+    live_traffic_coordinator: OPNsenseLiveTrafficCoordinator | None = getattr(
+        entry.runtime_data, "live_traffic_coordinator", None
+    )
+    if live_traffic_coordinator is not None:
+        await live_traffic_coordinator.async_shutdown()
+    coordinator: OPNsenseDataUpdateCoordinator = getattr(entry.runtime_data, COORDINATOR)
+    await coordinator.async_shutdown()
+    device_tracker_coordinator: OPNsenseDataUpdateCoordinator | None = getattr(
+        entry.runtime_data, DEVICE_TRACKER_COORDINATOR, None
+    )
+    if device_tracker_coordinator is not None:
+        await device_tracker_coordinator.async_shutdown()
+    client: OPNsenseClient = getattr(entry.runtime_data, OPNSENSE_CLIENT)
+    await client.async_close()
 
 
 def _align_aiopnsense_log_level() -> None:
@@ -503,6 +535,11 @@ async def _async_setup_carp_entry(hass: HomeAssistant, entry: ConfigEntry) -> bo
         )
         await hass.config_entries.async_forward_entry_setups(entry, platforms)
         entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+        entry.async_on_unload(
+            hass.bus.async_listen_once(
+                EVENT_HOMEASSISTANT_STOP, partial(_async_handle_hass_stop, entry)
+            )
+        )
 
         setup_succeeded = True
         return True
@@ -817,6 +854,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await hass.config_entries.async_forward_entry_setups(entry, platforms)
 
         entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+        entry.async_on_unload(
+            hass.bus.async_listen_once(
+                EVENT_HOMEASSISTANT_STOP, partial(_async_handle_hass_stop, entry)
+            )
+        )
 
         setup_succeeded = True
         return True
