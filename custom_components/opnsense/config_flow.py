@@ -38,6 +38,7 @@ import voluptuous as vol
 from .const import (
     CONF_DEVICE_TRACKER_CONSIDER_HOME,
     CONF_DEVICE_TRACKER_ENABLED,
+    CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
     CONF_DEVICE_TRACKER_SCAN_INTERVAL,
     CONF_DEVICE_UNIQUE_ID,
     CONF_DEVICES,
@@ -47,6 +48,7 @@ from .const import (
     CONF_MANUAL_DEVICES,
     DEFAULT_DEVICE_TRACKER_CONSIDER_HOME,
     DEFAULT_DEVICE_TRACKER_ENABLED,
+    DEFAULT_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
     DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
     DEFAULT_GRANULAR_SYNC_OPTIONS,
     DEFAULT_SCAN_INTERVAL,
@@ -807,6 +809,7 @@ def _build_options_init_schema(
         CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
         CONF_DEVICE_TRACKER_SCAN_INTERVAL: DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
         CONF_DEVICE_TRACKER_CONSIDER_HOME: DEFAULT_DEVICE_TRACKER_CONSIDER_HOME,
+        CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES: DEFAULT_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
         **option_values,
         CONF_DEVICE_TRACKING_MODE: tracking_mode,
         CONF_GRANULAR_SYNC_OPTIONS: granular_sync_options,
@@ -864,6 +867,10 @@ def _build_options_init_schema(
                     unit_of_measurement="seconds",
                 )
             ),
+            vol.Optional(
+                CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
+                default=defaults[CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES],
+            ): selector.BooleanSelector(selector.BooleanSelectorConfig()),
             vol.Optional(
                 CONF_GRANULAR_SYNC_OPTIONS,
                 default=defaults[CONF_GRANULAR_SYNC_OPTIONS],

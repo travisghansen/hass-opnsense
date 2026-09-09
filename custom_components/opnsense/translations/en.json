@@ -103,10 +103,12 @@
           "device_tracking_mode": "Device Tracker Mode",
           "device_tracker_scan_interval": "Device Tracker Scan Interval",
           "device_tracker_consider_home": "Device Tracker Consider Home",
+          "device_tracker_resolve_hostnames": "Resolve Device Tracker Hostnames",
           "granular_sync_options": "Enable Granular Sync Options"
         },
         "description": "This screen exposes {options_scope}.",
         "data_description": {
+          "device_tracker_resolve_hostnames": "Ask OPNsense to reverse-resolve ARP entries so device trackers are named by hostname instead of MAC address. Disable if the OPNsense host has no working reverse DNS for LAN clients.",
           "device_tracking_mode": "For `Track only selected devices`, a next step lets you pick devices from recent ARP detections and add MAC addresses manually",
           "scan_interval": "Scan interval controls how often this entry polls its source."
         }

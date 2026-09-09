@@ -103,6 +103,7 @@
           "device_tracking_mode": "Mode de suivi des appareils",
           "device_tracker_scan_interval": "Intervalle d'analyse du suivi des appareils",
           "device_tracker_consider_home": "Dispositif de suivi des appareils Considérez la maison",
+          "device_tracker_resolve_hostnames": "Résoudre les noms d'hôte du suivi d'appareils",
           "granular_sync_options": "Activer les options de synchronisation granulaire"
         },
         "description": "Cet écran expose {options_scope}.",
