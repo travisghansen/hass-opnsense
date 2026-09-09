@@ -14,6 +14,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
     ATTR_UNBOUND_BLOCKLIST,
+    CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
     CONF_SYNC_CARP,
     CONF_SYNC_CERTIFICATES,
     CONF_SYNC_DHCP_LEASES,
@@ -30,6 +31,7 @@ from .const import (
     CONF_SYNC_UNBOUND,
     CONF_SYNC_VNSTAT,
     CONF_SYNC_VPN,
+    DEFAULT_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
     DEFAULT_SYNC_OPTION_VALUE,
     DOMAIN,
 )
@@ -157,6 +159,10 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                                 info_type=cat.get("info_type", "A"),
                             )
                     state[cat.get("state_key")] = smart_info
+                elif method_name == "get_arp_table":
+                    state[cat.get("state_key")] = await method(
+                        resolve_hostnames=bool(cat.get("resolve_hostnames", False))
+                    )
                 else:
                     state[cat.get("state_key")] = await method()
                 end_time: float = time.perf_counter()
@@ -321,6 +327,21 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         self._mismatched_count = 0
         return True
 
+    def _resolve_arp_hostnames(self) -> bool:
+        """Return whether the ARP table should be fetched with hostname resolution.
+
+        Returns:
+            bool: True when OPNsense should reverse-resolve ARP entries, otherwise False.
+        """
+        if self.config_entry is None:
+            return DEFAULT_DEVICE_TRACKER_RESOLVE_HOSTNAMES
+        return bool(
+            self.config_entry.options.get(
+                CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
+                DEFAULT_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
+            )
+        )
+
     async def _async_update_dt_data(self) -> dict[str, Any]:
         """Refresh the reduced state payload used by the device-tracker coordinator.
 
@@ -338,6 +359,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             {
                 "function": "get_arp_table",
                 "state_key": "arp_table",
+                "resolve_hostnames": self._resolve_arp_hostnames(),
             },
         ]
         self._state.update(await self._get_states(categories))

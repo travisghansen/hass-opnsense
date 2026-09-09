@@ -20,6 +20,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.opnsense import coordinator as coordinator_module
 from custom_components.opnsense.const import (
     ATTR_UNBOUND_BLOCKLIST,
+    CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
     CONF_DEVICE_UNIQUE_ID,
     CONF_ENTRY_TYPE,
     CONF_FIRMWARE_VERSION,
@@ -40,6 +41,7 @@ from custom_components.opnsense.const import (
     CONF_SYNC_UNBOUND,
     CONF_SYNC_VNSTAT,
     CONF_SYNC_VPN,
+    DEFAULT_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
     DOMAIN,
     ENTRY_TYPE_CARP,
 )
@@ -2021,3 +2023,126 @@ async def test_check_device_unique_id_invalid_runtime_id_is_not_counted(
     assert coord._mismatched_count == 0
     assert called["issue"] == 0
     assert called["shutdown"] == 0
+
+
+def _arp_coordinator(client: MagicMock, entry: MockConfigEntry) -> OPNsenseDataUpdateCoordinator:
+    """Build a coordinator wired to the supplied client and config entry.
+
+    Args:
+        client (MagicMock): Mocked OPNsense API client.
+        entry (MockConfigEntry): Config entry backing the coordinator.
+
+    Returns:
+        OPNsenseDataUpdateCoordinator: Coordinator under test.
+    """
+    return OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("resolve_hostnames", [True, False])
+async def test_get_states_passes_arp_hostname_resolution(
+    make_config_entry: Callable[..., MockConfigEntry],
+    resolve_hostnames: bool,
+) -> None:
+    """The ARP table should be fetched using the category resolution flag.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        resolve_hostnames (bool): Resolution flag carried on the call category.
+    """
+    client = MagicMock()
+    client.get_arp_table = AsyncMock(return_value=[{"mac": "00:11:22:33:44:55"}])
+    coordinator = _arp_coordinator(client, make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"}))
+
+    state = await coordinator._get_states(
+        [
+            {
+                "function": "get_arp_table",
+                "state_key": "arp_table",
+                "resolve_hostnames": resolve_hostnames,
+            }
+        ]
+    )
+
+    assert state["arp_table"] == [{"mac": "00:11:22:33:44:55"}]
+    client.get_arp_table.assert_awaited_once_with(resolve_hostnames=resolve_hostnames)
+
+
+@pytest.mark.asyncio
+async def test_get_states_arp_hostname_resolution_defaults_to_disabled(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """A category omitting the flag should not request hostname resolution.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+    """
+    client = MagicMock()
+    client.get_arp_table = AsyncMock(return_value=[])
+    coordinator = _arp_coordinator(client, make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"}))
+
+    await coordinator._get_states([{"function": "get_arp_table", "state_key": "arp_table"}])
+
+    client.get_arp_table.assert_awaited_once_with(resolve_hostnames=False)
+
+
+@pytest.mark.parametrize(
+    ("options", "expected"),
+    [
+        (None, DEFAULT_DEVICE_TRACKER_RESOLVE_HOSTNAMES),
+        ({CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES: True}, True),
+        ({CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES: False}, False),
+    ],
+)
+def test_resolve_arp_hostnames_follows_config_entry_option(
+    make_config_entry: Callable[..., MockConfigEntry],
+    options: dict | None,
+    expected: bool,
+) -> None:
+    """The resolution flag should follow the stored config entry option.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        options (dict | None): Stored config entry options, or None when unset.
+        expected (bool): Resolution flag the coordinator should report.
+    """
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"}, options=options)
+    coordinator = _arp_coordinator(MagicMock(), entry)
+
+    assert coordinator._resolve_arp_hostnames() is expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("configured", [True, False])
+async def test_dt_refresh_requests_arp_resolution_from_options(
+    make_config_entry: Callable[..., MockConfigEntry],
+    configured: bool,
+) -> None:
+    """The device-tracker refresh should honour the stored resolution option.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        configured (bool): Stored option value the refresh should forward.
+    """
+    client = MagicMock()
+    client.get_device_unique_id = AsyncMock(return_value="id")
+    client.get_host_firmware_version = AsyncMock(return_value="26.1")
+    client.get_system_info = AsyncMock(return_value={})
+    client.get_arp_table = AsyncMock(return_value=[])
+    client.get_query_counts = AsyncMock(return_value=0)
+    entry = make_config_entry(
+        {CONF_DEVICE_UNIQUE_ID: "id"},
+        options={CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES: configured},
+    )
+    coordinator = _arp_coordinator(client, entry)
+
+    await coordinator._async_update_dt_data()
+
+    client.get_arp_table.assert_awaited_once_with(resolve_hostnames=configured)
