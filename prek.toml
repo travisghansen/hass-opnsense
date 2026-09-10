@@ -43,7 +43,7 @@ id = "codespell"
 
 [[repos]]
 repo = "https://github.com/streetsidesoftware/cspell-cli"
-rev = "v10.0.1"
+rev = "v10.1.0"
 
 [[repos.hooks]]
 id = "cspell"
@@ -76,7 +76,7 @@ language_version = "python3.14"
 
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"
-rev = "v0.16.1"
+rev = "v0.16.5"
 
 [[repos.hooks]]
 id = "ruff-check"
