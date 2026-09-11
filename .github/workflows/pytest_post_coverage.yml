@@ -61,7 +61,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
 
       - name: Download coverage data from test run
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           name: python-coverage-data
