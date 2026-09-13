@@ -909,7 +909,10 @@ def _build_device_tracker_schema(
 
 
 async def _get_dt_entries(
-    hass: HomeAssistant, config: Mapping[str, Any], selected_devices: Iterable[str]
+    hass: HomeAssistant,
+    config: Mapping[str, Any],
+    selected_devices: Iterable[str],
+    resolve_hostnames: bool = DEFAULT_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
 ) -> DeviceEntries:
     """Return device-tracker selector entries.
 
@@ -919,6 +922,8 @@ async def _get_dt_entries(
         selected_devices (Iterable[str]): Persisted MAC addresses that should remain selectable even
             when
             not currently present in the ARP table.
+        resolve_hostnames (bool): Whether OPNsense should reverse-resolve ARP hostnames for the
+            device labels.
 
     Returns:
         DeviceEntries: Mapping of MAC addresses to user-facing labels.
@@ -938,7 +943,7 @@ async def _get_dt_entries(
     try:
         # dicts are ordered so put all previously selected items at the top
         entries: DeviceEntries = _build_selected_device_entries(selected_devices)
-        arp_table: list = await client.get_arp_table(resolve_hostnames=True)
+        arp_table: list = await client.get_arp_table(resolve_hostnames=resolve_hostnames)
         if arp_table:
             ip_by_mac: dict[str, str] = {}
             # follow with all arp table entries
@@ -1463,7 +1468,15 @@ class OPNsenseOptionsFlow(OptionsFlow):
 
         try:
             dt_entries: DeviceEntries = await _get_dt_entries(
-                hass=self.hass, config=self.config_entry.data, selected_devices=selected_devices
+                hass=self.hass,
+                config=self.config_entry.data,
+                selected_devices=selected_devices,
+                resolve_hostnames=bool(
+                    self._options.get(
+                        CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
+                        DEFAULT_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
+                    )
+                ),
             )
         except OPNsenseError as err:
             validation_error = _get_validation_error_details(error=err, user_input=self._config)

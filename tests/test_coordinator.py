@@ -41,7 +41,6 @@ from custom_components.opnsense.const import (
     CONF_SYNC_UNBOUND,
     CONF_SYNC_VNSTAT,
     CONF_SYNC_VPN,
-    DEFAULT_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
     DOMAIN,
     ENTRY_TYPE_CARP,
 )
@@ -2096,7 +2095,7 @@ async def test_get_states_arp_hostname_resolution_defaults_to_disabled(
 @pytest.mark.parametrize(
     ("options", "expected"),
     [
-        (None, DEFAULT_DEVICE_TRACKER_RESOLVE_HOSTNAMES),
+        (None, False),
         ({CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES: True}, True),
         ({CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES: False}, False),
     ],
@@ -2120,16 +2119,26 @@ def test_resolve_arp_hostnames_follows_config_entry_option(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("configured", [True, False])
+@pytest.mark.parametrize(
+    ("options", "expected"),
+    [
+        ({}, False),
+        ({CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES: True}, True),
+        ({CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES: False}, False),
+    ],
+    ids=["unset", "enabled", "disabled"],
+)
 async def test_dt_refresh_requests_arp_resolution_from_options(
     make_config_entry: Callable[..., MockConfigEntry],
-    configured: bool,
+    options: dict[str, Any],
+    expected: bool,
 ) -> None:
     """The device-tracker refresh should honour the stored resolution option.
 
     Args:
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
-        configured (bool): Stored option value the refresh should forward.
+        options (dict[str, Any]): Stored config entry options; empty means never saved.
+        expected (bool): Resolution flag the refresh should request.
     """
     client = MagicMock()
     client.get_device_unique_id = AsyncMock(return_value="id")
@@ -2139,10 +2148,10 @@ async def test_dt_refresh_requests_arp_resolution_from_options(
     client.get_query_counts = AsyncMock(return_value=0)
     entry = make_config_entry(
         {CONF_DEVICE_UNIQUE_ID: "id"},
-        options={CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES: configured},
+        options=options,
     )
     coordinator = _arp_coordinator(client, entry)
 
     await coordinator._async_update_dt_data()
 
-    client.get_arp_table.assert_awaited_once_with(resolve_hostnames=configured)
+    client.get_arp_table.assert_awaited_once_with(resolve_hostnames=expected)
