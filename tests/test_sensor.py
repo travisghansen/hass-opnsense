@@ -2587,34 +2587,32 @@ def test_normalize_filesystem_mountpoint(input_value: Any, expected: str) -> Non
 
 
 @pytest.mark.parametrize(
-    ("cpu_map", "previous", "expected_available", "expected_value"),
+    ("samples", "expected_states"),
     [
-        ({"usage_total": 0}, None, False, None),
-        ({"usage_total": 0}, 0, False, None),
-        ({"usage_total": 0, "usage_1": 1}, 7, True, 7),
+        ([{"usage_total": 0}], [(True, 0)]),
+        (
+            [{"usage_total": 7}, {"usage_total": 0}, {"usage_total": 1}, {"usage_total": 0}],
+            [(True, 7), (True, 0), (True, 1), (True, 0)],
+        ),
+        (
+            [{"usage_total": 5}, {}, {"usage_total": None}, {"usage_total": 0}],
+            [(True, 5), (False, None), (False, None), (True, 0)],
+        ),
     ],
 )
-def test_static_cpu_zero_variants(
-    cpu_map: dict,
-    previous: int | None,
-    expected_available: bool,
-    expected_value: int | None,
+def test_static_cpu_reports_zero_and_recovers_from_missing_samples(
+    samples: list[dict[str, int | None]],
+    expected_states: list[tuple[bool, int | None]],
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Zero CPU totals make the sensor unavailable unless a previous value exists.
-
-    This parameterized test covers both the unavailable path and the branch
-    that reuses the previous sensor value.
+    """Publish valid zero CPU samples and recover after missing samples.
 
     Args:
-        cpu_map (dict): CPU usage mapping supplied by the coordinator.
-        previous (int | None): Previously stored CPU counter used to calculate the next value.
-        expected_available (bool): Expected entity availability for the scenario.
-        expected_value (int | None): Expected entity value asserted by the test.
+        samples (list[dict[str, int | None]]): Consecutive CPU usage mappings.
+        expected_states (list[tuple[bool, int | None]]): Expected availability and values.
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
-    coord.data = {"telemetry": {"cpu": cpu_map}}
     entry = make_config_entry()
 
     desc = MagicMock()
@@ -2625,13 +2623,13 @@ def test_static_cpu_zero_variants(
     sensor.hass = MagicMock()
     sensor.entity_id = "sensor.cpu_total"
     object.__setattr__(sensor, "async_write_ha_state", lambda: None)
-    if previous is not None:
-        sensor._previous_value = previous
 
-    sensor._handle_coordinator_update()
-    assert sensor.available is expected_available
-    if expected_value is not None:
-        assert sensor.native_value == expected_value
+    for cpu_map, (expected_available, expected_value) in zip(samples, expected_states, strict=True):
+        coord.data = {"telemetry": {"cpu": cpu_map}}
+        sensor._handle_coordinator_update()
+        assert sensor.available is expected_available
+        if expected_available:
+            assert sensor.native_value == expected_value
 
 
 def test_gateway_empty_string_unavailable(

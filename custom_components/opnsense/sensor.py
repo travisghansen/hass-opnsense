@@ -2030,7 +2030,6 @@ class OPNsenseSensor(OPNsenseEntity, SensorEntity):
             name_suffix=name_suffix,
         )
         self.entity_description: SensorEntityDescription = entity_description
-        self._previous_value: Any = None
         self._attr_native_value: Any = None
 
 
@@ -2045,29 +2044,12 @@ class OPNsenseStaticKeySensor(OPNsenseSensor):
             self._mark_unavailable()
             return
 
-        if (
-            value == 0
-            and self._previous_value is None
-            and self.entity_description.key == "telemetry.cpu.usage_total"
-        ):
-            self._mark_unavailable()
-            return
-
         if self.entity_description.key == "telemetry.system.boottime":
             value = utc_from_timestamp(value) if value else None
-
-        elif self.entity_description.key == "telemetry.cpu.usage_total":
-            if value == 0 and self._previous_value is not None:
-                value = self._previous_value
-
-            if value == 0:
-                self._mark_unavailable()
-                return
         elif self.entity_description.key == "certificates":
             value = len(value)
 
         self._available = True
-        self._previous_value = value
         self._attr_native_value = value
 
         self._attr_extra_state_attributes = {}
