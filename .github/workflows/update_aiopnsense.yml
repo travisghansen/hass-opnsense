@@ -100,8 +100,8 @@ jobs:
         with:
           branch: chore/update-aiopnsense-manifest
           delete-branch: true
-          commit-message: 'Bump aiopnsense to ${{ steps.versions.outputs.latest }}'
-          title: 'Bump aiopnsense to ${{ steps.versions.outputs.latest }}'
+          commit-message: 'deps(aiopnsense): bump to ${{ steps.versions.outputs.latest }}'
+          title: 'deps(aiopnsense): bump to ${{ steps.versions.outputs.latest }}'
           author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
           labels: aiopnsense-auto-update
           body-path: aiopnsense-update-pr-body.md
