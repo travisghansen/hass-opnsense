@@ -25,14 +25,11 @@ id = "check-added-large-files"
 exclude = "^uv\\.lock$"
 
 [[repos]]
-repo = "https://github.com/rhysd/actionlint"
-rev = "v1.7.12"
+repo = "https://github.com/kjanat/actionlint"
+rev = "v1.15.1"
 
 [[repos.hooks]]
-id = "actionlint"
-additional_dependencies = [
-  "github.com/wasilibs/go-shellcheck/cmd/shellcheck@v0.11.1",
-]
+id = "actionlint-shellcheck"
 
 [[repos]]
 repo = "https://github.com/codespell-project/codespell"
