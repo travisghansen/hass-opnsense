@@ -680,7 +680,7 @@ def test_dependabot_and_coverage_workflow_trust_contracts() -> None:
         index
         for index, step in enumerate(_steps(tests))
         if re.fullmatch(r"actions/checkout@v\d+(?:\.\d+)*", str(step.get("uses", "")))
-        and step.get("with", {}).get("ref") == "${{ inputs.expected_sha || github.sha }}"
+        and step.get("with", {}).get("ref") == "${{ github.sha }}"
     )
     assert head_checkout_index > authorization_index
     assert all(
