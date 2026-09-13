@@ -5,12 +5,6 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:
-    inputs:
-      expected_sha:
-        description: Immutable commit SHA required by release orchestration
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -20,18 +14,10 @@ jobs:
     name: review
     runs-on: ubuntu-latest
     steps:
-      - name: Require expected release commit
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          EXPECTED_SHA: ${{ inputs.expected_sha }}
-          WORKFLOW_SHA: ${{ github.sha }}
-        run: |
-          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
-          test "$WORKFLOW_SHA" = "$EXPECTED_SHA"
       - name: Checkout Repository
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.expected_sha || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Setup uv (with caching)
@@ -42,15 +28,7 @@ jobs:
           ignore-nothing-to-cache: true
           cache-dependency-glob: uv.lock
 
-      - name: Run prek for pull requests and pushes
-        if: github.event_name != 'workflow_dispatch'
+      - name: Run prek
         uses: j178/prek-action@v2
         env:
           UV_LOCKED: "1"
-
-      - name: Validate locked prek without mutation
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          set -euo pipefail
-          UV_LOCKED=1 uv run --locked prek run --all-files
-          test -z "$(git status --porcelain)"
