@@ -96,7 +96,11 @@ def verify_archive(archive_path: str, release_tag: str) -> None:
             if not isinstance(manifest, dict) or manifest.get("version") != release_tag:
                 raise ArchiveError("Archive manifest version does not match the release tag.")
             const = archive.read("const.py").decode("utf-8")
-            if f'VERSION = "{release_tag}"' not in const.splitlines():
+            version_line = f'VERSION = "{release_tag}"'
+            if not any(
+                line in (version_line, f"{version_line}  # x-release-please-version")
+                for line in const.splitlines()
+            ):
                 raise ArchiveError("Archive const.py version does not match the release tag.")
     except (OSError, UnicodeDecodeError, zipfile.BadZipFile) as error:
         raise ArchiveError(f"Unable to validate release archive: {error}") from error

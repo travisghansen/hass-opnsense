@@ -75,14 +75,16 @@ def _set_compressed_size(path: Path, member_name: str, compressed_size: int) -> 
     raise AssertionError(f"Archive member not found: {member_name}")
 
 
-def test_verify_archive_accepts_a_real_zip_artifact(tmp_path: Path) -> None:
+@pytest.mark.parametrize("annotation", ["", "  # x-release-please-version"])
+def test_verify_archive_accepts_a_real_zip_artifact(tmp_path: Path, annotation: str) -> None:
     """Accept a normal integration archive produced for the release tag.
 
     Args:
         tmp_path (Path): Temporary test directory.
+        annotation (str): Optional Release Please version annotation.
     """
     archive = tmp_path / "integration.zip"
-    _archive(archive)
+    _archive(archive, const=f'VERSION = "{RELEASE_TAG}"{annotation}\n')
 
     archive_verifier.verify_archive(str(archive), RELEASE_TAG)
     assert archive_verifier.main([str(archive), RELEASE_TAG]) == 0

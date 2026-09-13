@@ -29,7 +29,6 @@ jobs:
         id: release
         uses: googleapis/release-please-action@v5
         with:
-          #token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
@@ -47,7 +46,7 @@ jobs:
           github.event_name == 'workflow_dispatch' ||
           steps.release.outputs.release_created == 'true'
         env:
-          #GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release.outputs.tag_name || inputs.release_tag }}
         run: |
           set -euo pipefail
@@ -55,12 +54,17 @@ jobs:
             echo "Release tag must use the vMAJOR.MINOR.PATCH format." >&2
             exit 1
           fi
-          RELEASE_VERSION="${RELEASE_TAG#v}"
           gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
-          test "$(jq -r .version custom_components/places/manifest.json)" = "$RELEASE_VERSION"
-          grep -Fx "VERSION = \"$RELEASE_VERSION\"  # x-release-please-version" \
-            custom_components/places/const.py
-          git archive --format=zip --output="$RUNNER_TEMP/places.zip" \
-            HEAD:custom_components/places
-          gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/places.zip#places.zip" \
+          git archive --format=zip --output="$RUNNER_TEMP/opnsense.zip" \
+            HEAD:custom_components/opnsense
+          python3 .github/scripts/verify_hacs_archive.py "$RUNNER_TEMP/opnsense.zip" "$RELEASE_TAG"
+          opnsense_ltd_firmware="$(grep 'OPNSENSE_LTD_FIRMWARE' custom_components/opnsense/const.py | cut -d '"' -f2)"
+          opnsense_min_firmware="$(grep 'OPNSENSE_MIN_FIRMWARE' custom_components/opnsense/const.py | cut -d '"' -f2)"
+          firmware_notes="<!-- opnsense-firmware-compatibility --><h3>OPNsense Minimum Firmware Required: $opnsense_min_firmware</h3><h4>OPNsense Recommended Firmware: $opnsense_ltd_firmware+</h4><p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i></p>"
+          release_body="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body)"
+          if [[ "$release_body" != *"opnsense-firmware-compatibility"* ]]; then
+            gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --notes "${release_body}"$'\n\n'"$firmware_notes"
+          fi
+          gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/opnsense.zip#opnsense.zip" \
             --clobber --repo "$GITHUB_REPOSITORY"
