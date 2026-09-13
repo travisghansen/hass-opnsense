@@ -1,0 +1,66 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag whose HACS archive should be rebuilt
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    if: github.event.repository.fork == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create or update the release pull request
+        if: github.event_name == 'push'
+        id: release
+        uses: googleapis/release-please-action@v5
+        with:
+          #token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Checkout the released tag
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          steps.release.outputs.release_created == 'true'
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.release.outputs.tag_name || inputs.release_tag }}
+          persist-credentials: false
+
+      - name: Build and upload the HACS archive
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          steps.release.outputs.release_created == 'true'
+        env:
+          #GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag_name || inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag must use the vMAJOR.MINOR.PATCH format." >&2
+            exit 1
+          fi
+          RELEASE_VERSION="${RELEASE_TAG#v}"
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+          test "$(jq -r .version custom_components/places/manifest.json)" = "$RELEASE_VERSION"
+          grep -Fx "VERSION = \"$RELEASE_VERSION\"  # x-release-please-version" \
+            custom_components/places/const.py
+          git archive --format=zip --output="$RUNNER_TEMP/places.zip" \
+            HEAD:custom_components/places
+          gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/places.zip#places.zip" \
+            --clobber --repo "$GITHUB_REPOSITORY"

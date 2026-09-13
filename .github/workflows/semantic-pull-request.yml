@@ -1,0 +1,39 @@
+name: Lint PR title
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - edited
+      - synchronize
+
+concurrency:
+  group: semantic-pull-request-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate PR title
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - name: Validate PR title
+        uses: amannn/action-semantic-pull-request@v6
+        with:
+          types: |
+            build
+            chore
+            ci
+            deps
+            docs
+            feat
+            fix
+            perf
+            refactor
+            revert
+            style
+            test
+        env:
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
